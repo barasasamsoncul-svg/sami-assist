@@ -13,6 +13,15 @@ import {
   normalizeInvoiceDeliveryChannels,
 } from '@/lib/apps/invoicing/delivery';
 
+import {
+  postCreditNoteToAccounting,
+  postInvoiceToAccounting,
+  postPaymentToAccounting,
+  reverseCreditNoteAccounting,
+  reverseInvoiceAccounting,
+  reversePaymentAccounting,
+} from '@/lib/apps/erp/accounting-integration';
+
 import type {
   CreateInvoiceInput,
   CreateInvoiceLineInput,
@@ -2860,6 +2869,20 @@ export async function createInvoice(
       },
     );
 
+    if (
+      status ===
+        'confirmed'
+    ) {
+      await postInvoiceToAccounting(
+        client,
+        {
+          companyId:
+            context.companyId,
+          invoiceId,
+        },
+      );
+    }
+
     await client.query(
       'COMMIT',
     );
@@ -4118,6 +4141,39 @@ export async function changeInvoiceStatus(
       ],
     );
 
+    if (
+      next ===
+        'confirmed'
+    ) {
+      await postInvoiceToAccounting(
+        client,
+        {
+          companyId:
+            context.companyId,
+          invoiceId,
+        },
+      );
+    } else if (
+      [
+        'cancelled',
+        'void',
+      ].includes(
+        next,
+      )
+    ) {
+      await reverseInvoiceAccounting(
+        client,
+        {
+          companyId:
+            context.companyId,
+          invoiceId,
+          reason:
+            reason ||
+            'Invoice cancelled',
+        },
+      );
+    }
+
     await recordInvoicingActivity(
       client,
       {
@@ -4614,6 +4670,15 @@ export async function recordInvoicePayment(
       },
     );
 
+    await postPaymentToAccounting(
+      client,
+      {
+        companyId:
+          context.companyId,
+        paymentId,
+      },
+    );
+
     await client.query(
       'COMMIT',
     );
@@ -4893,6 +4958,16 @@ export async function reverseInvoicePayment(
         },
       );
     }
+
+    await reversePaymentAccounting(
+      client,
+      {
+        companyId:
+          context.companyId,
+        paymentId,
+        reason,
+      },
+    );
 
     await client.query(
       'COMMIT',
@@ -5191,15 +5266,27 @@ export async function issueInvoiceCreditNote(
       },
     );
 
+    const creditNoteId =
+      String(
+        result.rows[0].id,
+      );
+
+    await postCreditNoteToAccounting(
+      client,
+      {
+        companyId:
+          context.companyId,
+        creditNoteId,
+      },
+    );
+
     await client.query(
       'COMMIT',
     );
 
     return {
       id:
-        String(
-          result.rows[0].id,
-        ),
+        creditNoteId,
       creditNoteNumber,
       amount:
         creditAmount,
@@ -5397,6 +5484,16 @@ export async function cancelInvoiceCreditNote(
             ),
           reason,
         },
+      },
+    );
+
+    await reverseCreditNoteAccounting(
+      client,
+      {
+        companyId:
+          context.companyId,
+        creditNoteId,
+        reason,
       },
     );
 
