@@ -19,6 +19,12 @@ import type {
 } from '@/lib/apps/invoicing/types';
 
 import {
+  postInvoiceConfirmationToAccounting,
+  postInvoiceCreditToAccounting,
+  postInvoicePaymentToAccounting,
+} from '@/lib/apps/invoicing/accounting';
+
+import {
   cleanText,
   datePlusDays,
   ensureCompanyDefaults,
@@ -4118,6 +4124,22 @@ export async function changeInvoiceStatus(
       ],
     );
 
+    if (
+      next ===
+        'confirmed'
+    ) {
+      await postInvoiceConfirmationToAccounting(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          invoiceId,
+        },
+      );
+    }
+
     await recordInvoicingActivity(
       client,
       {
@@ -4211,6 +4233,7 @@ export async function recordInvoicePayment(
             invoice_number,
             customer_id,
             currency,
+            exchange_rate,
             total_amount,
             status
           FROM invoicing_invoices
@@ -4583,6 +4606,31 @@ export async function recordInvoicePayment(
         ' recorded',
         context.userId,
       ],
+    );
+
+    await postInvoicePaymentToAccounting(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        invoiceId,
+        paymentId,
+        paymentNumber,
+        paymentDate:
+          isoDate(
+            input.paymentDate,
+            new Date(),
+          ),
+        amount:
+          paymentAmount,
+        exchangeRate:
+          Number(
+            invoice.exchange_rate ||
+            1,
+          ),
+      },
     );
 
     await recordInvoicingActivity(
@@ -5006,6 +5054,7 @@ export async function issueInvoiceCreditNote(
             customer_id,
             invoice_number,
             currency,
+            exchange_rate,
             status
           FROM invoicing_invoices
           WHERE id =
@@ -5156,6 +5205,30 @@ export async function issueInvoiceCreditNote(
         reason,
         creditAmount,
       ],
+    );
+
+    await postInvoiceCreditToAccounting(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        invoiceId,
+        creditNoteId:
+          String(
+            result.rows[0].id,
+          ),
+        creditNoteNumber,
+        amount:
+          creditAmount,
+        exchangeRate:
+          Number(
+            locked.rows[0]
+              .exchange_rate ||
+            1,
+          ),
+      },
     );
 
     const settlement =
