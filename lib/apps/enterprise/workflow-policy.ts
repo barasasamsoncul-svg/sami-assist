@@ -1375,6 +1375,115 @@ const DOMAIN_GRAPH:
       accepted: ['withdrawn'],
       rejected: ['withdrawn'],
     },
+    'pos_shop:shop_sessions': {
+      open: ['closing','cancelled'],
+      closing: ['closed','open'],
+    },
+    'pos_shop:shop_payments': {
+      pending: ['authorized','captured','failed','void'],
+      authorized: ['captured','failed','void'],
+      captured: ['refunded','void'],
+      failed: ['pending','void'],
+    },
+    'pos_shop:shop_offline_batches': {
+      received: ['processing','cancelled'],
+      processing: ['processed','failed','cancelled'],
+      failed: ['processing','cancelled'],
+    },
+    'pos_restaurant:restaurant_floors': {
+      active: ['inactive'],
+      inactive: ['active'],
+    },
+    'pos_restaurant:restaurant_payments': {
+      pending: ['authorized','captured','failed','void'],
+      authorized: ['captured','failed','void'],
+      captured: ['refunded','void'],
+      failed: ['pending','void'],
+    },
+    'pos_restaurant:restaurant_kitchen_tickets': {
+      queued: ['preparing','cancelled'],
+      preparing: ['ready','cancelled'],
+      ready: ['served','cancelled'],
+    },
+    'sign:signers': {
+      pending: ['signed','declined'],
+      signed: [],
+      declined: [],
+    },
+    'sign:signature_envelopes': {
+      draft: ['sent','cancelled'],
+      sent: ['completed','expired','cancelled'],
+    },
+    'sign:signature_fields': {
+      pending: ['completed','waived'],
+    },
+    'sign:signature_auth_challenges': {
+      pending: ['verified','expired','locked','cancelled'],
+      expired: ['pending','cancelled'],
+      locked: ['cancelled'],
+    },
+    'appointments:appointment_resources': {
+      active: ['inactive'],
+      inactive: ['active'],
+    },
+    'appointments:appointment_resource_assignments': {
+      reserved: ['released','cancelled'],
+      released: ['reserved','cancelled'],
+    },
+    'appointments:appointment_questions': {
+      active: ['inactive'],
+      inactive: ['active'],
+    },
+    'calendar:external_calendar_connections': {
+      active: ['paused','error','revoked'],
+      paused: ['active','revoked'],
+      error: ['active','paused','revoked'],
+    },
+    'calendar:calendar_sync_mappings': {
+      active: ['paused','error','revoked'],
+      paused: ['active','revoked'],
+      error: ['active','paused','revoked'],
+    },
+    'calendar:calendar_event_reminders': {
+      scheduled: ['sent','failed','cancelled'],
+      failed: ['scheduled','cancelled'],
+    },
+    'documents:document_tags': {
+      active: ['archived'],
+      archived: ['active'],
+    },
+    'documents:document_share_links': {
+      active: ['expired','revoked'],
+    },
+    'surveys:survey_question_logic': {
+      active: ['inactive'],
+      inactive: ['active'],
+    },
+    'surveys:survey_invitations': {
+      pending: ['sent','cancelled'],
+      sent: ['opened','completed','expired','cancelled'],
+      opened: ['completed','expired','cancelled'],
+    },
+    'surveys:survey_response_scores': {
+      computed: ['reviewed','invalidated'],
+      reviewed: ['invalidated'],
+    },
+    'spreadsheet:spreadsheet_charts': {
+      active: ['archived'],
+      archived: ['active'],
+    },
+    'spreadsheet:spreadsheet_filters': {
+      active: ['archived'],
+      archived: ['active'],
+    },
+    'spreadsheet:spreadsheet_snapshots': {
+      current: ['archived'],
+      archived: ['current'],
+    },
+    'spreadsheet:spreadsheet_refresh_runs': {
+      running: ['completed','failed','cancelled'],
+      failed: ['running','cancelled'],
+    },
   };
 
 
