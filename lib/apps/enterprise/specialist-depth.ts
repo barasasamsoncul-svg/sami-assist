@@ -808,4 +808,6 @@ export function specialistDepthSql(
     case 'manufacturing':
       return manufacturingSql();
   }
+
+  return '';
 }
