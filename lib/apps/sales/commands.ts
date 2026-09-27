@@ -2913,6 +2913,8 @@ export async function convertSalesQuoteToInvoice(
           'quote-' +
           quoteId
         ),
+      exchangeRate:
+        input.exchangeRate,
     });
 
   return {
@@ -4096,6 +4098,8 @@ export async function createSalesOrderInvoice(
             ),
           currency:
             orderRow.currency,
+          exchangeRate:
+            input.exchangeRate,
           reference:
             sourceReference,
           notes:
