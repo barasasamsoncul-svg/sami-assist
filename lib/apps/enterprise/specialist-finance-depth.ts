@@ -651,6 +651,24 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_batch_number
   ON public.payment_batches(company_id, batch_number)
   WHERE deleted_at IS NULL;
 
+CREATE TABLE IF NOT EXISTS public.payment_batch_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  batch_id UUID NOT NULL REFERENCES public.payment_batches(id) ON DELETE CASCADE,
+  payment_id UUID NOT NULL REFERENCES public.business_payments(id) ON DELETE RESTRICT,
+  amount NUMERIC(19,4) NOT NULL,
+  status VARCHAR(30) NOT NULL DEFAULT 'pending',
+  created_by UUID, updated_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
+  CHECK (amount > 0),
+  CHECK (status IN ('pending','processed','failed','cancelled'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_batch_item
+  ON public.payment_batch_items(company_id, batch_id, payment_id)
+  WHERE deleted_at IS NULL;
+
 CREATE TABLE IF NOT EXISTS public.payment_refunds (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
