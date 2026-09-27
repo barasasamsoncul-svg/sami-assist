@@ -1205,6 +1205,105 @@ const DOMAIN_GRAPH:
       active: ['archived','closed'],
       archived: ['active','closed'],
     },
+    'appointments:appointment_availability_blocks': {
+      blocked: ['released','cancelled'],
+      released: ['blocked'],
+    },
+    'appointments:appointment_reminders': {
+      scheduled: ['sent','failed','cancelled'],
+      failed: ['scheduled','cancelled'],
+    },
+    'documents:document_versions': {
+      current: ['superseded','archived'],
+      superseded: ['archived'],
+    },
+    'documents:document_approvals': {
+      pending: ['approved','rejected','cancelled'],
+    },
+    'email_marketing:email_templates': {
+      draft: ['active','archived'],
+      active: ['archived'],
+    },
+    'email_marketing:email_campaign_events': {
+      recorded: ['ignored'],
+    },
+    'events:event_sessions': {
+      scheduled: ['open','completed','cancelled'],
+      open: ['completed','cancelled'],
+    },
+    'events:event_tickets': {
+      issued: ['checked_in','refunded','cancelled'],
+      checked_in: ['refunded'],
+    },
+    'field_services:service_checklists': {
+      open: ['completed','waived','cancelled'],
+    },
+    'fleet:vehicle_fuel_logs': {
+      draft: ['posted','void'],
+      posted: ['void'],
+    },
+    'maintenance:preventive_maintenance_plans': {
+      active: ['paused','retired'],
+      paused: ['active','retired'],
+    },
+    'marketing_automation:automation_segments': {
+      draft: ['active','archived'],
+      active: ['paused','archived'],
+      paused: ['active','archived'],
+    },
+    'planning:planning_capacity': {
+      open: ['overallocated','closed'],
+      overallocated: ['open','closed'],
+    },
+    'plm:engineering_change_approvals': {
+      pending: ['approved','rejected','cancelled'],
+    },
+    'pos_shop:shop_returns': {
+      draft: ['approved','rejected','cancelled'],
+      approved: ['processed','cancelled'],
+    },
+    'quality:quality_corrective_actions': {
+      open: ['in_progress','cancelled'],
+      in_progress: ['implemented','cancelled'],
+      implemented: ['verified','in_progress'],
+    },
+    'referrals:referral_conversions': {
+      pending: ['confirmed','reversed'],
+      confirmed: ['reversed'],
+    },
+    'referrals:referral_rewards': {
+      pending: ['approved','cancelled'],
+      approved: ['issued','cancelled'],
+    },
+    'rentals:rental_reservations': {
+      reserved: ['active','cancelled'],
+      active: ['returned','cancelled'],
+    },
+    'rentals:rental_charges': {
+      pending: ['posted','waived','cancelled'],
+    },
+    'sign:signature_templates': {
+      draft: ['active','archived'],
+      active: ['archived'],
+    },
+    'sign:signature_audit_events': {
+      recorded: ['ignored'],
+    },
+    'sms_marketing:sms_templates': {
+      draft: ['active','archived'],
+      active: ['archived'],
+    },
+    'sms_marketing:sms_delivery_events': {
+      recorded: ['ignored'],
+    },
+    'social_marketing:social_campaigns': {
+      draft: ['scheduled','active','cancelled'],
+      scheduled: ['active','cancelled'],
+      active: ['completed','cancelled'],
+    },
+    'social_marketing:social_post_metrics': {
+      recorded: ['estimated'],
+    },
   };
 
 
