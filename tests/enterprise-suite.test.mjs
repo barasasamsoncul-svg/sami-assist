@@ -1714,6 +1714,48 @@ test('shared enterprise apps expose real routed operational workspaces', async (
 });
 
 
+test('shared app lifecycle policy is explicit wherever the schema exposes business status', async () => {
+  const workflow =
+    await source(
+      'lib/apps/enterprise/workflow-policy.ts',
+    );
+
+  for (
+    const moduleKey
+    of [
+      'assets',
+      'barcode',
+      'chat',
+      'cpq',
+      'web_analytics',
+    ]
+  ) {
+    assert.match(
+      workflow,
+      new RegExp(
+        "'" +
+          moduleKey +
+          ":",
+      ),
+      moduleKey +
+        ' must not rely only on the generic workflow graph.',
+    );
+  }
+
+  assert.doesNotMatch(
+    workflow,
+    /'documents:/,
+    'Documents currently has no business status field to transition.',
+  );
+
+  assert.doesNotMatch(
+    workflow,
+    /'spreadsheet:/,
+    'Spreadsheet currently has no business status field to transition.',
+  );
+});
+
+
 test('suite-wide product depth gives every shared app a domain workspace and connected-app experience', async () => {
   const [
     experience,
