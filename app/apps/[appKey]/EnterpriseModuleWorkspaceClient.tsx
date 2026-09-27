@@ -2131,6 +2131,11 @@ export default function EnterpriseModuleWorkspaceClient({
                   .capabilities
                   .canEdit
               }
+              canTransition={
+                initialData
+                  .capabilities
+                  .canTransition
+              }
               canDelete={
                 initialData
                   .capabilities
@@ -2973,6 +2978,7 @@ function Records({
   busy,
   canCreate,
   canEdit,
+  canTransition,
   canDelete,
   onSelect,
   onCreate,
@@ -3021,6 +3027,8 @@ function Records({
   canCreate:
     boolean;
   canEdit:
+    boolean;
+  canTransition:
     boolean;
   canDelete:
     boolean;
@@ -3649,7 +3657,7 @@ function Records({
           {
             selectedRecordIds.size >
               0 &&
-            canEdit &&
+            canTransition &&
             selected.workflows[0] &&
             (
               <select
@@ -3970,14 +3978,15 @@ function Records({
                               {
                                 (
                                   canEdit &&
-                                  (
-                                    selected
-                                      .supportsEdit ||
-                                    selected
-                                      .workflows
-                                      .length >
-                                      0
-                                  )
+                                  selected
+                                    .supportsEdit
+                                ) ||
+                                (
+                                  canTransition &&
+                                  selected
+                                    .workflows
+                                    .length >
+                                    0
                                 ) ||
                                 (
                                   canDelete &&
@@ -4064,6 +4073,13 @@ function Records({
                                               .supportsEdit
                                           ) ||
                                           (
+                                            canTransition &&
+                                            selected
+                                              .workflows
+                                              .length >
+                                              0
+                                          ) ||
+                                          (
                                             canDelete &&
                                             selected
                                               .supportsDelete
@@ -4072,7 +4088,7 @@ function Records({
                                                 <td className="px-4 py-3">
                                                   <div className="flex flex-wrap justify-end gap-1">
                                                     {
-                                                      canEdit &&
+                                                      canTransition &&
                                                       selected
                                                         .workflows
                                                         .length >
