@@ -64,6 +64,11 @@ import {
 } from '@/lib/apps/enterprise/domain-hooks';
 
 import {
+  applyFinanceSpecialistTransition,
+} from '@/lib/apps/enterprise/specialist-finance-transitions';
+
+
+import {
   getEnterpriseRelationDefinitions,
   listEnterpriseRelationOptions,
   validateEnterpriseRelationValues,
@@ -3429,6 +3434,7 @@ async function validateEnterpriseTransition(
   context: {
     moduleKey: string;
     companyId: string;
+    userId: string;
   },
   table:
     string,
@@ -3604,6 +3610,22 @@ async function validateEnterpriseTransition(
       );
     }
   }
+
+  await applyFinanceSpecialistTransition(
+    client,
+    {
+      moduleKey:
+        context.moduleKey,
+      table,
+      companyId:
+        context.companyId,
+      userId:
+        context.userId,
+      recordId,
+      nextStatus:
+        next,
+    },
+  );
 }
 
 
