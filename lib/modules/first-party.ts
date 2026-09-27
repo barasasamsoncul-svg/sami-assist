@@ -789,7 +789,7 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
   defineSamiModule({
     key: "sales",
     name: "Sales",
-    version: '2.1.0',
+    version: '2.2.0',
     description: "Run quotations, approvals, sales orders, fulfillment and invoice handoff.",
     category: "sales",
     icon: "shopping-cart",
