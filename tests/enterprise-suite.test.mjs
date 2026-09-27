@@ -3612,3 +3612,144 @@ test('isolated specialist modules gain operational depth beyond generic CRUD', a
   }
 });
 
+test('product-grade backend depth covers POS Sign scheduling Documents Surveys and Spreadsheet', async () => {
+  const [
+    catalog,
+    specialistCatalog,
+    depth,
+    execution,
+    workflow,
+    hardening,
+    migrations,
+    contract,
+  ] = await Promise.all([
+    source('lib/apps/enterprise/catalog.ts'),
+    source('lib/apps/enterprise/specialist-catalog.ts'),
+    source('lib/apps/enterprise/specialist-product-depth.ts'),
+    source('lib/apps/enterprise/specialist-product-execution.ts'),
+    source('lib/apps/enterprise/workflow-policy.ts'),
+    source('lib/apps/enterprise/hardening.ts'),
+    source('lib/modules/migrations.ts'),
+    source('lib/modules/enterprise-contract.ts'),
+  ]);
+
+  const tables = [
+    'shop_sessions',
+    'shop_payments',
+    'shop_offline_batches',
+    'shop_inventory_postings',
+    'restaurant_floors',
+    'restaurant_payments',
+    'restaurant_kitchen_tickets',
+    'restaurant_inventory_postings',
+    'signature_envelopes',
+    'signature_envelope_requests',
+    'signature_fields',
+    'signature_auth_challenges',
+    'signature_completion_certificates',
+    'appointment_resources',
+    'appointment_resource_assignments',
+    'appointment_questions',
+    'appointment_answers',
+    'external_calendar_connections',
+    'calendar_sync_mappings',
+    'calendar_event_reminders',
+    'document_tags',
+    'document_tag_links',
+    'document_share_links',
+    'survey_question_logic',
+    'survey_invitations',
+    'survey_response_scores',
+    'spreadsheet_charts',
+    'spreadsheet_filters',
+    'spreadsheet_snapshots',
+    'spreadsheet_refresh_runs',
+  ];
+
+  for (const table of tables) {
+    assert.ok(
+      catalog.includes(
+        "'" + table + "'",
+      ),
+      table + ' runtime catalog registration',
+    );
+
+    assert.ok(
+      specialistCatalog.includes(
+        "'" + table + "'",
+      ),
+      table + ' specialist registration',
+    );
+
+    assert.ok(
+      depth.includes(
+        'public.' + table,
+      ),
+      table + ' executable schema',
+    );
+  }
+
+  for (
+    const marker
+    of [
+      'postPosInventory',
+      'mirrorPayment',
+      'issueSignatureCertificate',
+      'appointment_resource_assignments',
+      'survey_answers',
+      'spreadsheet_refresh_runs',
+      'document_share_links',
+    ]
+  ) {
+    assert.ok(
+      execution.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  for (
+    const workflowKey
+    of [
+      'pos_shop:shop_sessions',
+      'pos_shop:shop_payments',
+      'pos_restaurant:restaurant_kitchen_tickets',
+      'sign:signers',
+      'sign:signature_envelopes',
+      'appointments:appointment_resources',
+      'calendar:external_calendar_connections',
+      'documents:document_share_links',
+      'surveys:survey_invitations',
+      'spreadsheet:spreadsheet_refresh_runs',
+    ]
+  ) {
+    assert.ok(
+      workflow.includes(
+        "'" + workflowKey + "'",
+      ),
+      workflowKey,
+    );
+  }
+
+  assert.match(
+    hardening,
+    /ENTERPRISE_SPECIALIST_INTEGRATION_MIGRATIONS/,
+  );
+
+  assert.match(
+    hardening,
+    /'2\.2\.0'[\s\S]*'2\.3\.0'/s,
+  );
+
+  assert.match(
+    migrations,
+    /ENTERPRISE_SPECIALIST_INTEGRATION_MIGRATIONS/,
+  );
+
+  assert.match(
+    contract,
+    /isSpecialistEnterpriseModuleKey[\s\S]*'2\.3\.0'/s,
+  );
+});
+
