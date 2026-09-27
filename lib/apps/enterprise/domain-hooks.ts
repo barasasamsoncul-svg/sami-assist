@@ -24,6 +24,11 @@ import {
   assertSuiteSpecialistMutationAllowed,
 } from '@/lib/apps/enterprise/specialist-suite-execution';
 
+import {
+  applyProductSpecialistRecordSideEffects,
+  assertProductSpecialistMutationAllowed,
+} from '@/lib/apps/enterprise/specialist-product-execution';
+
 
 
 
@@ -3235,6 +3240,13 @@ async function validateDomainLifecycleMutation(
     row,
   );
 
+  assertProductSpecialistMutationAllowed(
+    moduleKey,
+    table,
+    operation,
+    row,
+  );
+
   if (
     moduleKey ===
       'accounting' &&
@@ -3641,6 +3653,18 @@ export async function applyEnterpriseDomainSideEffects(
   );
 
   await applySuiteSpecialistRecordSideEffects(
+    client,
+    {
+      moduleKey,
+      table,
+      companyId,
+      userId,
+      operation,
+      row,
+    },
+  );
+
+  await applyProductSpecialistRecordSideEffects(
     client,
     {
       moduleKey,
