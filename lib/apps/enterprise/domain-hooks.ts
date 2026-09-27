@@ -9,6 +9,11 @@ import {
   validateFinanceSpecialistRow,
 } from '@/lib/apps/enterprise/specialist-finance-rules';
 
+import {
+  assertSpecialistExecutionMutationAllowed,
+} from '@/lib/apps/enterprise/specialist-execution';
+
+
 
 
 type MutationOperation =
@@ -3192,6 +3197,13 @@ async function validateDomainLifecycleMutation(
     >,
 ) {
   assertFinanceSpecialistMutationAllowed(
+    moduleKey,
+    table,
+    operation,
+    row,
+  );
+
+  assertSpecialistExecutionMutationAllowed(
     moduleKey,
     table,
     operation,
