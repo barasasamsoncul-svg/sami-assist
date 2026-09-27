@@ -5,6 +5,62 @@ import type {
 } from 'pg';
 
 
+function accountingDate(
+  value: unknown,
+) {
+  if (
+    value instanceof
+      Date
+  ) {
+    return value
+      .toISOString()
+      .slice(
+        0,
+        10,
+      );
+  }
+
+  const text =
+    String(
+      value ||
+      '',
+    )
+      .trim();
+
+  if (
+    /^\d{4}-\d{2}-\d{2}$/.test(
+      text,
+    )
+  ) {
+    return text;
+  }
+
+  const parsed =
+    Date.parse(
+      text,
+    );
+
+  if (
+    Number.isFinite(
+      parsed,
+    )
+  ) {
+    return new Date(
+      parsed,
+    )
+      .toISOString()
+      .slice(
+        0,
+        10,
+      );
+  }
+
+  throw new Error(
+    'SaMi could not resolve a valid accounting date for this posting.',
+  );
+}
+
+
 type AccountingLine = {
   account:
     'receivable' |
@@ -252,7 +308,7 @@ async function postJournal(
     sourceId:
       string;
     journalDate:
-      string;
+      unknown;
     description:
       string;
     lines:
@@ -408,7 +464,9 @@ async function postJournal(
       [
         input.companyId,
         input.eventKey,
-        input.journalDate,
+        accountingDate(
+          input.journalDate,
+        ),
         input.description,
         input.userId,
       ],
