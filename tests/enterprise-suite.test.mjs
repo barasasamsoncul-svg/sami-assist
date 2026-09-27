@@ -2169,12 +2169,16 @@ test('enterprise lifecycle stages and core business invariants are governed tran
 test('enterprise suite uses one audited workflow engine across business modules', async () => {
   const [
     service,
+    effects,
     policy,
     api,
     client,
   ] = await Promise.all([
     source(
       'lib/apps/enterprise/service.ts',
+    ),
+    source(
+      'lib/apps/enterprise/transition-effects.ts',
     ),
     source(
       'lib/apps/enterprise/workflow-policy.ts',
@@ -2239,13 +2243,18 @@ test('enterprise suite uses one audited workflow engine across business modules'
   }
 
   assert.match(
-    service,
+    effects,
     /balanced debit and credit lines/,
   );
 
   assert.match(
-    service,
+    effects,
     /Record produced quantity before completing a manufacturing order/,
+  );
+
+  assert.match(
+    service,
+    /applyEnterpriseTransitionEffects/,
   );
 
   assert.match(

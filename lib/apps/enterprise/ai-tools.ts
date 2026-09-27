@@ -1,12 +1,19 @@
 import 'server-only';
 
 import {
+  randomUUID,
+} from 'node:crypto';
+
+import {
   isEnterpriseModuleKey,
 } from '@/lib/apps/enterprise/catalog';
 
 import {
+  createEnterpriseModuleRecord,
   getEnterpriseModuleWorkspace,
   searchEnterpriseModuleRecords,
+  transitionEnterpriseModuleRecord,
+  updateEnterpriseModuleRecord,
 } from '@/lib/apps/enterprise/service';
 
 import {
@@ -243,6 +250,266 @@ export const ENTERPRISE_SUITE_AI_TOOLS:
                   )
                 : [],
           };
+        },
+    },
+    {
+      key:
+        'workspace_app_create_record',
+      name:
+        'Create business app record',
+      description:
+        'Create a record in an accessible SaMi business app using the same company, relation, validation and domain rules as the workspace.',
+      moduleKey:
+        null,
+      operation:
+        'write',
+      riskLevel:
+        'high',
+      confirmationRequired:
+        true,
+      inputSchema: {
+        type:
+          'object',
+        additionalProperties:
+          false,
+        properties: {
+          moduleKey: {
+            type:
+              'string',
+          },
+          table: {
+            type:
+              'string',
+          },
+          values: {
+            type:
+              'object',
+          },
+        },
+        required: [
+          'moduleKey',
+          'table',
+          'values',
+        ],
+      },
+      execute:
+        async (
+          context,
+          input,
+        ) => {
+          const moduleKey =
+            typeof input.moduleKey ===
+              'string'
+              ? input.moduleKey
+                  .trim()
+                  .toLowerCase()
+              : '';
+
+          if (
+            !isEnterpriseModuleKey(
+              moduleKey,
+            ) ||
+            !context
+              .accessibleModuleKeys
+              .includes(
+                moduleKey,
+              )
+          ) {
+            throw new Error(
+              'That SaMi app is not available in the current workspace.',
+            );
+          }
+
+          return createEnterpriseModuleRecord(
+            moduleKey,
+            {
+              table:
+                input.table,
+              values:
+                input.values,
+              idempotencyKey:
+                randomUUID(),
+            },
+          );
+        },
+    },
+    {
+      key:
+        'workspace_app_update_record',
+      name:
+        'Update business app record',
+      description:
+        'Update editable fields on an accessible SaMi business record using the authoritative module service.',
+      moduleKey:
+        null,
+      operation:
+        'write',
+      riskLevel:
+        'high',
+      confirmationRequired:
+        true,
+      inputSchema: {
+        type:
+          'object',
+        additionalProperties:
+          false,
+        properties: {
+          moduleKey: {
+            type:
+              'string',
+          },
+          table: {
+            type:
+              'string',
+          },
+          recordId: {
+            type:
+              'string',
+          },
+          values: {
+            type:
+              'object',
+          },
+        },
+        required: [
+          'moduleKey',
+          'table',
+          'recordId',
+          'values',
+        ],
+      },
+      execute:
+        async (
+          context,
+          input,
+        ) => {
+          const moduleKey =
+            typeof input.moduleKey ===
+              'string'
+              ? input.moduleKey
+                  .trim()
+                  .toLowerCase()
+              : '';
+
+          if (
+            !isEnterpriseModuleKey(
+              moduleKey,
+            ) ||
+            !context
+              .accessibleModuleKeys
+              .includes(
+                moduleKey,
+              )
+          ) {
+            throw new Error(
+              'That SaMi app is not available in the current workspace.',
+            );
+          }
+
+          return updateEnterpriseModuleRecord(
+            moduleKey,
+            {
+              table:
+                input.table,
+              recordId:
+                input.recordId,
+              values:
+                input.values,
+            },
+          );
+        },
+    },
+    {
+      key:
+        'workspace_app_transition_record',
+      name:
+        'Run business workflow action',
+      description:
+        'Move a permitted business record through an allowed workflow transition. Specialist validation and transactional consequences still apply.',
+      moduleKey:
+        null,
+      operation:
+        'write',
+      riskLevel:
+        'high',
+      confirmationRequired:
+        true,
+      inputSchema: {
+        type:
+          'object',
+        additionalProperties:
+          false,
+        properties: {
+          moduleKey: {
+            type:
+              'string',
+          },
+          table: {
+            type:
+              'string',
+          },
+          recordId: {
+            type:
+              'string',
+          },
+          statusField: {
+            type:
+              'string',
+          },
+          nextStatus: {
+            type:
+              'string',
+          },
+        },
+        required: [
+          'moduleKey',
+          'table',
+          'recordId',
+          'statusField',
+          'nextStatus',
+        ],
+      },
+      execute:
+        async (
+          context,
+          input,
+        ) => {
+          const moduleKey =
+            typeof input.moduleKey ===
+              'string'
+              ? input.moduleKey
+                  .trim()
+                  .toLowerCase()
+              : '';
+
+          if (
+            !isEnterpriseModuleKey(
+              moduleKey,
+            ) ||
+            !context
+              .accessibleModuleKeys
+              .includes(
+                moduleKey,
+              )
+          ) {
+            throw new Error(
+              'That SaMi app is not available in the current workspace.',
+            );
+          }
+
+          return transitionEnterpriseModuleRecord(
+            moduleKey,
+            {
+              table:
+                input.table,
+              recordId:
+                input.recordId,
+              statusField:
+                input.statusField,
+              nextStatus:
+                input.nextStatus,
+            },
+          );
         },
     },
   ];

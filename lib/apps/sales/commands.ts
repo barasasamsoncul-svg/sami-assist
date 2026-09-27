@@ -17,6 +17,11 @@ import {
 } from '@/lib/apps/sales/delivery';
 
 import {
+  postSalesOrderDelivery,
+  reserveSalesOrderInventory,
+} from '@/lib/apps/erp/sales-inventory-integration';
+
+import {
   cleanText,
   datePlusDays,
   ensureSalesDefaults,
@@ -36,6 +41,98 @@ import {
 import type {
   CreateSalesQuoteInput,
 } from '@/lib/apps/sales/types';
+
+import {
+  dispatchBusinessAutomationEventSafely,
+} from '@/lib/automation/business-events';
+
+
+function salesAutomationRuntime(
+  context:
+    Awaited<
+      ReturnType<
+        typeof requireSalesContext
+      >
+    >,
+) {
+  return {
+    userId:
+      context.userId,
+    sessionId:
+      context.permissions
+        .sessionId,
+    tenantId:
+      context.tenantId,
+    companyId:
+      context.companyId,
+    accessibleModuleKeys: [
+      ...new Set([
+        'sales',
+        ...context.permissions
+          .permissions
+          .map(
+            permission =>
+              permission.moduleKey
+                ?.trim()
+                .toLowerCase() ||
+              '',
+          )
+          .filter(
+            Boolean,
+          ),
+      ]),
+    ],
+    permissionSet:
+      context.permissions
+        .permissionSet,
+    isOwner:
+      context.permissions
+        .isOwner,
+  };
+}
+
+
+async function emitSalesAutomationEvent(
+  context:
+    Awaited<
+      ReturnType<
+        typeof requireSalesContext
+      >
+    >,
+  input: {
+    triggerKey: string;
+    recordType: string;
+    recordId: string;
+    idempotencySeed: string;
+    payload?:
+      Record<string, unknown>;
+  },
+) {
+  await dispatchBusinessAutomationEventSafely({
+    runtime:
+      salesAutomationRuntime(
+        context,
+      ),
+    moduleKey:
+      'sales',
+    triggerKey:
+      input.triggerKey,
+    recordType:
+      input.recordType,
+    recordId:
+      input.recordId,
+    payload: {
+      recordId:
+        input.recordId,
+      ...(
+        input.payload ||
+        {}
+      ),
+    },
+    idempotencySeed:
+      input.idempotencySeed,
+  });
+}
 
 
 type NormalizedQuoteLine = {
@@ -2424,24 +2521,53 @@ export async function sendSalesQuote(
       'Quote',
     );
 
-  return deliverSalesQuote({
-    pool:
-      context.pool,
-    tenantId:
-      context.tenantId,
-    companyId:
-      context.companyId,
-    companyName:
-      context.company
-        .currentCompany.name,
-    userId:
-      context.userId,
-    quoteId,
-    channels:
-      normalizeSalesQuoteDeliveryChannels(
-        input.channels,
-      ),
-  });
+  const channels =
+    normalizeSalesQuoteDeliveryChannels(
+      input.channels,
+    );
+
+  const result =
+    await deliverSalesQuote({
+      pool:
+        context.pool,
+      tenantId:
+        context.tenantId,
+      companyId:
+        context.companyId,
+      companyName:
+        context.company
+          .currentCompany.name,
+      userId:
+        context.userId,
+      quoteId,
+      channels,
+    });
+
+  await emitSalesAutomationEvent(
+    context,
+    {
+      triggerKey:
+        'sales.quote.sent',
+      recordType:
+        'sales_quotes',
+      recordId:
+        quoteId,
+      idempotencySeed:
+        quoteId +
+        ':' +
+        channels.join(
+          ',',
+        ) +
+        ':' +
+        Date.now(),
+      payload: {
+        quoteId,
+        channels,
+      },
+    },
+  );
+
+  return result;
 }
 
 
@@ -2745,6 +2871,17 @@ export async function createSalesOrderFromQuote(
       ],
     );
 
+    await reserveSalesOrderInventory(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        orderId,
+      },
+    );
+
     await client.query(
       `
         UPDATE sales_quotes
@@ -2828,6 +2965,26 @@ export async function createSalesOrderFromQuote(
 
     await client.query(
       'COMMIT',
+    );
+
+    await emitSalesAutomationEvent(
+      context,
+      {
+        triggerKey:
+          'sales.order.created',
+        recordType:
+          'sales_orders_v2',
+        recordId:
+          orderId,
+        idempotencySeed:
+          orderId +
+          ':created',
+        payload: {
+          orderId,
+          orderNumber,
+          quoteId,
+        },
+      },
     );
 
     return {
@@ -3047,6 +3204,19 @@ export async function updateSalesOrderFulfillment(
           },
         );
 
+      await postSalesOrderDelivery(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          orderId,
+          lineId,
+          deliveredQuantity,
+        },
+      );
+
       const changed =
         await client.query(
           `
@@ -3187,6 +3357,37 @@ export async function updateSalesOrderFulfillment(
     await client.query(
       'COMMIT',
     );
+
+    if (
+      nextFulfillment ===
+        'fulfilled' &&
+      currentFulfillment !==
+        'fulfilled'
+    ) {
+      await emitSalesAutomationEvent(
+        context,
+        {
+          triggerKey:
+            'sales.order.fulfilled',
+          recordType:
+            'sales_orders_v2',
+          recordId:
+            orderId,
+          idempotencySeed:
+            orderId +
+            ':fulfilled',
+          payload: {
+            orderId,
+            orderedQuantity:
+              ordered,
+            deliveredQuantity:
+              delivered,
+            status:
+              nextStatus,
+          },
+        },
+      );
+    }
 
     return {
       id:
@@ -4246,6 +4447,29 @@ export async function createSalesOrderInvoice(
 
     await client.query(
       'COMMIT',
+    );
+
+    await emitSalesAutomationEvent(
+      context,
+      {
+        triggerKey:
+          'sales.invoice.created',
+        recordType:
+          'sales_orders_v2',
+        recordId:
+          orderId,
+        idempotencySeed:
+          batchId +
+          ':invoice:' +
+          invoiceId,
+        payload: {
+          orderId,
+          invoiceId,
+          batchId,
+          invoiceStatus:
+            nextInvoiceStatus,
+        },
+      },
     );
 
     return {
