@@ -189,6 +189,14 @@ export default function InvoiceComposer({
   );
 
   const [
+    exchangeRate,
+    setExchangeRate,
+  ] = useState(
+    invoice?.exchangeRate ||
+    1,
+  );
+
+  const [
     templateId,
     setTemplateId,
   ] = useState(
@@ -486,10 +494,22 @@ export default function InvoiceComposer({
       return;
     }
 
-    setCurrency(
+    const nextCurrency =
       customer.currency ||
-        data.settings.defaultCurrency,
+      data.settings.defaultCurrency;
+
+    setCurrency(
+      nextCurrency,
     );
+
+    if (
+      nextCurrency ===
+      data.company.currency
+    ) {
+      setExchangeRate(
+        1,
+      );
+    }
 
     setDueDate(
       plusDays(
@@ -532,6 +552,7 @@ export default function InvoiceComposer({
       invoiceDate,
       dueDate,
       currency,
+      exchangeRate,
       templateId,
       reference,
       purchaseOrderNumber,
@@ -599,11 +620,17 @@ export default function InvoiceComposer({
             .defaultDueDays,
         ),
       );
-      setCurrency(
+      const resetCurrency =
         data.settings
           .defaultCurrency ||
         data.company
-          .currency,
+          .currency;
+
+      setCurrency(
+        resetCurrency,
+      );
+      setExchangeRate(
+        1,
       );
       setTemplateId(
         data.settings
@@ -761,14 +788,66 @@ export default function InvoiceComposer({
                   value={currency}
                   maxLength={3}
                   onChange={
-                    event =>
-                      setCurrency(
+                    event => {
+                      const nextCurrency =
                         event.target.value
-                          .toUpperCase(),
-                      )
+                          .toUpperCase();
+
+                      setCurrency(
+                        nextCurrency,
+                      );
+
+                      if (
+                        nextCurrency ===
+                        data.company.currency
+                      ) {
+                        setExchangeRate(
+                          1,
+                        );
+                      }
+                    }
                   }
                   className="h-12 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm uppercase"
                 />
+              </label>
+
+              <label className="block space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                  Exchange rate
+                </span>
+
+                <input
+                  type="number"
+                  min="0.00000001"
+                  step="0.00000001"
+                  value={
+                    currency ===
+                      data.company.currency
+                      ? 1
+                      : exchangeRate
+                  }
+                  disabled={
+                    currency ===
+                    data.company.currency
+                  }
+                  required={
+                    currency !==
+                    data.company.currency
+                  }
+                  onChange={
+                    event =>
+                      setExchangeRate(
+                        Number(
+                          event.target.value ||
+                          0,
+                        ),
+                      )
+                  }
+                  className="h-12 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm disabled:opacity-60"
+                />
+                <span className="block text-[10px] leading-4 text-slate-400">
+                  1 {currency || 'currency'} = {exchangeRate || 0} {data.company.currency}. The rate is stored on this invoice for audit-safe accounting.
+                </span>
               </label>
 
               <label className="block space-y-1">
