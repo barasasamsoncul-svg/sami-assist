@@ -3913,7 +3913,7 @@ function Records({
           {
             selectedRecordIds.size >
               0 &&
-            canEdit &&
+            canTransition &&
             selected.workflows[0] &&
             (
               <select
@@ -3949,6 +3949,22 @@ function Records({
                 {
                   selected.workflows[0]
                     .databaseAllowedValues
+                    .filter(
+                      state => {
+                        const privilege =
+                          specialistTransitionPrivilege(
+                            state,
+                          );
+
+                        return privilege ===
+                          'approve'
+                          ? canApprove
+                          : privilege ===
+                              'close'
+                            ? canClose
+                            : canExecute;
+                      },
+                    )
                     .map(
                       state => (
                         <option
