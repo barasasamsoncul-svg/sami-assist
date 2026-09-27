@@ -1,4 +1,11 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+
+dotenv.config({
+  path:
+    '.env.local',
+});
+
+dotenv.config();
 
 import { queryControl, getControlPool } from '../lib/db/control';
 import { getTenantPoolByTenantId } from '../lib/db/tenant';
