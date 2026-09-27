@@ -10,6 +10,7 @@ import {
 } from '@/lib/apps/enterprise/specialist-finance-rules';
 
 import {
+  applySpecialistExecutionRecordSideEffects,
   assertSpecialistExecutionMutationAllowed,
 } from '@/lib/apps/enterprise/specialist-execution';
 
@@ -3600,6 +3601,23 @@ export async function applyEnterpriseDomainSideEffects(
       companyId,
     );
   }
+
+  await applySpecialistExecutionRecordSideEffects(
+    client,
+    {
+      moduleKey,
+      table,
+      companyId,
+      userId:
+        String(
+          row.updated_by ||
+          row.created_by ||
+          '',
+        ),
+      operation,
+      row,
+    },
+  );
 
   if (
     moduleKey ===
