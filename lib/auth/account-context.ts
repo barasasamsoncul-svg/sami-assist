@@ -1926,8 +1926,7 @@ async function getTenantModules(
     );
 
 
-  const modules:
-    ModuleContext[] =
+  const modules =
     result.rows.map(
       (
         row:
@@ -1999,9 +1998,7 @@ async function getTenantModules(
       },
     );
 
-  return sortAppNavigation<
-    ModuleContext
-  >(
+  return sortAppNavigation(
     modules,
   );
 }
