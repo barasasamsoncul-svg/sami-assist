@@ -48,6 +48,10 @@ import {
   applySpecialistExecutionTransition,
 } from '@/lib/apps/enterprise/specialist-execution';
 
+import {
+  applyPeopleSpecialistTransition,
+} from '@/lib/apps/enterprise/specialist-people-transitions';
+
 
 const IDENTIFIER =
   /^[a-z_][a-z0-9_]*$/;
@@ -1254,6 +1258,20 @@ async function transitionRecord(
     );
 
     await applySpecialistExecutionTransition(
+      client,
+      {
+        moduleKey,
+        table,
+        companyId:
+          runtime.companyId,
+        userId:
+          runtime.userId,
+        recordId,
+        nextStatus,
+      },
+    );
+
+    await applyPeopleSpecialistTransition(
       client,
       {
         moduleKey,
