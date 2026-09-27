@@ -1208,7 +1208,10 @@ test('specialist ERP 2.2 deepens finance inventory payroll CRM projects helpdesk
     of [
       "fromVersion:\n        '2.1.0'",
       "toVersion:\n        '2.2.0'",
+      "fromVersion:\n        '2.2.0'",
+      "toVersion:\n        '2.3.0'",
       'ENTERPRISE_SPECIALIST_DEPTH_MIGRATIONS',
+      'ENTERPRISE_SPECIALIST_INTEGRATION_MIGRATIONS',
       'deepenSpecialistModule',
       'specialistDepthSql',
     ]
@@ -1227,8 +1230,13 @@ test('specialist ERP 2.2 deepens finance inventory payroll CRM projects helpdesk
   );
 
   assert.match(
+    migrations,
+    /ENTERPRISE_SPECIALIST_INTEGRATION_MIGRATIONS/,
+  );
+
+  assert.match(
     contract,
-    /isSpecialistEnterpriseModuleKey[\s\S]*'2\.2\.0'/s,
+    /isSpecialistEnterpriseModuleKey[\s\S]*'2\.3\.0'/s,
   );
 
   for (
