@@ -1228,7 +1228,7 @@ test('specialist ERP 2.2 deepens finance inventory payroll CRM projects helpdesk
 
   assert.match(
     contract,
-    /isSpecialistEnterpriseModuleKey[\s\S]*'2\.2\.0'/s,
+    /isSpecialistEnterpriseModuleKey[\s\S]*'2\.3\.0'/s,
   );
 
   for (
@@ -3311,6 +3311,178 @@ test('all 78 shared apps are specialist-grade backend contracts with journeys pe
     workflow,
     /GENERIC_GRAPH/,
     'Every status-aware app must retain a safe workflow fallback when no stricter domain graph is defined.',
+  );
+});
+
+test('strict Odoo Zoho parity v2.3 adds domain depth and dependency execution instead of relying on generic CRUD', async () => {
+  const [
+    commerceDepth,
+    peopleMarketingDepth,
+    integrationExecution,
+    specialistDepth,
+    specialistCatalog,
+    hardening,
+    migrations,
+    contract,
+    domainHooks,
+    service,
+    automation,
+  ] = await Promise.all([
+    source('lib/apps/enterprise/strict-parity-commerce-depth.ts'),
+    source('lib/apps/enterprise/strict-parity-people-marketing-depth.ts'),
+    source('lib/apps/enterprise/specialist-integration-execution.ts'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+    source('lib/apps/enterprise/specialist-catalog.ts'),
+    source('lib/apps/enterprise/hardening.ts'),
+    source('lib/modules/migrations.ts'),
+    source('lib/modules/enterprise-contract.ts'),
+    source('lib/apps/enterprise/domain-hooks.ts'),
+    source('lib/apps/enterprise/service.ts'),
+    source('lib/apps/enterprise/automation.ts'),
+  ]);
+
+  for (const marker of [
+    'appointment_questions',
+    'appointment_calendar_links',
+    'appointment_payment_requests',
+    'crm_blueprints',
+    'crm_blueprint_transitions',
+    'crm_approval_requests',
+    'inventory_price_lists',
+    'inventory_transfer_orders',
+    'inventory_cycle_counts',
+    'pos_shop_sessions',
+    'pos_shop_payments',
+    'restaurant_preparation_tickets',
+    'restaurant_self_order_sessions',
+    'signature_documents',
+    'signature_fields',
+    'signature_auth_challenges',
+    'signature_completion_certificates',
+    'supplier_rfqs',
+    'supplier_rfq_responses',
+    'shipping_rate_quotes',
+    'shipping_labels',
+    'portal_requests',
+    'vendor_portal_rfqs',
+  ]) {
+    assert.ok(
+      commerceDepth.includes(marker),
+      marker + ' strict commerce parity depth',
+    );
+    assert.ok(
+      specialistCatalog.includes("'" + marker + "'"),
+      marker + ' specialist catalog registration',
+    );
+  }
+
+  for (const marker of [
+    'employee_departments',
+    'employee_certifications',
+    'attendance_devices',
+    'attendance_geofences',
+    'payroll_salary_rules',
+    'payroll_work_entries',
+    'email_segments',
+    'email_suppressions',
+    'sms_segments',
+    'sms_opt_outs',
+    'social_inbox_items',
+    'social_audiences',
+    'document_shares',
+    'document_access_events',
+    'quality_control_points',
+    'quality_alerts',
+    'workbook_data_sources',
+    'workbook_versions',
+    'dashboard_widgets',
+  ]) {
+    assert.ok(
+      peopleMarketingDepth.includes(marker),
+      marker + ' strict people/marketing parity depth',
+    );
+    assert.ok(
+      specialistCatalog.includes("'" + marker + "'"),
+      marker + ' specialist catalog registration',
+    );
+  }
+
+  for (const moduleKey of [
+    'assets',
+    'barcode',
+    'chat',
+    'customer_portal',
+    'email_marketing',
+    'employees',
+    'landing_pages',
+    'lead_capture',
+    'mail',
+    'quality',
+    'sales_inbox',
+    'sms_marketing',
+    'social_marketing',
+    'spreadsheet',
+    'team_inbox',
+    'vendor_portal',
+  ]) {
+    assert.ok(
+      integrationExecution.includes(
+        "moduleKey ===\n      '" + moduleKey + "'",
+      ),
+      moduleKey + ' must have module-specific dependency execution',
+    );
+  }
+
+  for (const marker of [
+    'createCrmLead',
+    'inventory_adjustments',
+    'support_tickets',
+    'payroll_employees',
+    'quality_issues',
+    'last_message_at',
+  ]) {
+    assert.ok(
+      integrationExecution.includes(marker),
+      marker + ' cross-module consequence',
+    );
+  }
+
+  assert.match(
+    specialistDepth,
+    /commerceParityDepthSql/,
+  );
+  assert.match(
+    specialistDepth,
+    /peopleMarketingParityDepthSql/,
+  );
+  assert.match(
+    domainHooks,
+    /applyIntegratedSpecialistRecordSideEffects/,
+  );
+  assert.match(
+    service,
+    /applyIntegratedSpecialistTransition/,
+  );
+  assert.match(
+    automation,
+    /applyIntegratedSpecialistTransition/,
+  );
+
+  assert.match(
+    hardening,
+    /fromVersion:\n        '2\.2\.0'[\s\S]*toVersion:\n        '2\.3\.0'/s,
+  );
+  assert.match(
+    hardening,
+    /ENTERPRISE_STRICT_PARITY_MIGRATIONS/,
+  );
+  assert.match(
+    migrations,
+    /ENTERPRISE_STRICT_PARITY_MIGRATIONS/,
+  );
+  assert.match(
+    contract,
+    /isSpecialistEnterpriseModuleKey[\s\S]*'2\.3\.0'/s,
   );
 });
 
