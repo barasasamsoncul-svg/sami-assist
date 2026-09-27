@@ -5153,6 +5153,135 @@ function Reports({
   );
 }
 
+function editorFieldGroups(
+  fields:
+    EnterpriseField[],
+) {
+  const groups = [
+    {
+      key:
+        'primary',
+      label:
+        'Primary details',
+      description:
+        'Core information used to identify and operate this record.',
+      fields:
+        [] as EnterpriseField[],
+    },
+    {
+      key:
+        'relationships',
+      label:
+        'Relationships',
+      description:
+        'Company-scoped links to related business records.',
+      fields:
+        [] as EnterpriseField[],
+    },
+    {
+      key:
+        'commercial',
+      label:
+        'Amounts & quantities',
+      description:
+        'Numeric values, quantities, rates and commercial measures.',
+      fields:
+        [] as EnterpriseField[],
+    },
+    {
+      key:
+        'schedule',
+      label:
+        'Dates & schedule',
+      description:
+        'Dates, deadlines and operational timing.',
+      fields:
+        [] as EnterpriseField[],
+    },
+    {
+      key:
+        'details',
+      label:
+        'Notes & configuration',
+      description:
+        'Long-form notes and structured configuration.',
+      fields:
+        [] as EnterpriseField[],
+    },
+  ];
+
+  for (
+    const field
+    of fields
+  ) {
+    if (
+      field.relation
+    ) {
+      groups[1]
+        .fields
+        .push(
+          field,
+        );
+      continue;
+    }
+
+    if (
+      field.inputType ===
+        'number'
+    ) {
+      groups[2]
+        .fields
+        .push(
+          field,
+        );
+      continue;
+    }
+
+    if (
+      field.inputType ===
+        'date' ||
+      field.inputType ===
+        'datetime'
+    ) {
+      groups[3]
+        .fields
+        .push(
+          field,
+        );
+      continue;
+    }
+
+    if (
+      field.inputType ===
+        'textarea' ||
+      field.inputType ===
+        'json'
+    ) {
+      groups[4]
+        .fields
+        .push(
+          field,
+        );
+      continue;
+    }
+
+    groups[0]
+      .fields
+      .push(
+        field,
+      );
+  }
+
+  return groups
+    .filter(
+      group =>
+        group.fields
+          .length >
+        0,
+    );
+}
+
+
 function RecordEditor({
   moduleKey,
   table,
@@ -5205,6 +5334,11 @@ function RecordEditor({
     table.fields.filter(
       field =>
         field.writable,
+    );
+
+  const fieldGroups =
+    editorFieldGroups(
+      fields,
     );
 
   return (
@@ -5303,34 +5437,64 @@ function RecordEditor({
                   </p>
                 )
               : (
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-4">
                     {
-                      fields.map(
-                        field => (
-                          <Field
-                            key={
-                              field.key
-                            }
-                            moduleKey={
-                              moduleKey
-                            }
-                            tableKey={
-                              table.key
-                            }
-                            field={
-                              field
-                            }
-                            value={
-                              record
-                                ? record[
-                                    field
-                                      .key
-                                  ]
-                                : undefined
-                            }
-                          />
-                        ),
-                      )
+                      fieldGroups
+                        .map(
+                          group => (
+                            <section
+                              key={
+                                group.key
+                              }
+                              className="rounded-[22px] border border-[var(--sami-border)] bg-slate-500/[0.018] p-4"
+                            >
+                              <div>
+                                <h3 className="text-xs font-black">
+                                  {
+                                    group.label
+                                  }
+                                </h3>
+                                <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                                  {
+                                    group.description
+                                  }
+                                </p>
+                              </div>
+
+                              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                                {
+                                  group.fields
+                                    .map(
+                                      field => (
+                                        <Field
+                                          key={
+                                            field.key
+                                          }
+                                          moduleKey={
+                                            moduleKey
+                                          }
+                                          tableKey={
+                                            table.key
+                                          }
+                                          field={
+                                            field
+                                          }
+                                          value={
+                                            record
+                                              ? record[
+                                                  field
+                                                    .key
+                                                ]
+                                              : undefined
+                                          }
+                                        />
+                                      ),
+                                    )
+                                }
+                              </div>
+                            </section>
+                          ),
+                        )
                     }
                   </div>
                 )
