@@ -2459,6 +2459,16 @@ function Overview({
               specialistLayout
                 .controlTables,
           },
+          {
+            key: 'insights',
+            label: 'Insights',
+            description:
+              'Outcome, history and performance evidence used to manage this specialist process.',
+            tableKeys:
+              specialistLayout
+                .insightTables ||
+              [],
+          },
         ]
       : [];
 
@@ -2562,7 +2572,7 @@ function Overview({
                   }
                 </p>
 
-                <div className="mt-5 grid gap-3 md:grid-cols-3">
+                <div className="mt-5 grid gap-3 md:grid-cols-2 2xl:grid-cols-4">
                   {
                     specialistGroups
                       .map(
