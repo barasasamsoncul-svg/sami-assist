@@ -1097,6 +1097,64 @@ export async function applyIntegratedSpecialistRecordSideEffects(
 
   if (
     moduleKey ===
+      'spreadsheet' &&
+    table ===
+      'cells' &&
+    row.sheet_id
+  ) {
+    await client.query(
+      `
+        UPDATE workbooks w
+        SET
+          updated_by = $3,
+          updated_at = NOW()
+        FROM sheets s
+        WHERE s.id = $1
+          AND s.company_id = $2
+          AND s.deleted_at IS NULL
+          AND w.id = s.workbook_id
+          AND w.company_id = $2
+          AND w.deleted_at IS NULL
+      `,
+      [
+        row.sheet_id,
+        companyId,
+        userId,
+      ],
+    );
+  }
+
+  if (
+    moduleKey ===
+      'vendor_portal' &&
+    (
+      table ===
+        'vendor_portal_documents' ||
+      table ===
+        'vendor_portal_messages'
+    ) &&
+    row.vendor_account_id
+  ) {
+    await client.query(
+      `
+        UPDATE vendor_portal_accounts
+        SET
+          updated_by = $3,
+          updated_at = NOW()
+        WHERE id = $1
+          AND company_id = $2
+          AND deleted_at IS NULL
+      `,
+      [
+        row.vendor_account_id,
+        companyId,
+        userId,
+      ],
+    );
+  }
+
+  if (
+    moduleKey ===
       'quality' &&
     table ===
       'quality_corrective_actions' &&
