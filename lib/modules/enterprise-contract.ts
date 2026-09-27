@@ -225,7 +225,7 @@ export function withEnterpriseModuleDefaults(
       isSpecialistEnterpriseModuleKey(
         key,
       )
-        ? '2.2.0'
+        ? '2.3.0'
         : manifest.version ===
               '1.0.0' ||
             manifest.version ===
