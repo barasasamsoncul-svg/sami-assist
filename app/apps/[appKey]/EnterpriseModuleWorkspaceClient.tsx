@@ -63,6 +63,11 @@ import {
   getEnterpriseWorkflowTransitions,
 } from '@/lib/apps/enterprise/workflow-policy';
 
+import {
+  getEnterpriseModuleExperience,
+  type EnterpriseModuleExperience,
+} from '@/lib/apps/enterprise/suite-experience';
+
 
 type ViewKey =
   | 'overview'
@@ -483,6 +488,7 @@ export default function EnterpriseModuleWorkspaceClient({
   userId,
   initialView,
   initialTableKey,
+  accessibleModuleKeys,
 }: {
   initialData:
     EnterpriseWorkspaceData;
@@ -492,6 +498,8 @@ export default function EnterpriseModuleWorkspaceClient({
     ViewKey;
   initialTableKey:
     string | null;
+  accessibleModuleKeys:
+    string[];
 }) {
   const router =
     useRouter();
@@ -526,6 +534,28 @@ export default function EnterpriseModuleWorkspaceClient({
               table.settingTable,
           ),
       [
+        initialData.tables,
+      ],
+    );
+
+  const experience =
+    useMemo(
+      () =>
+        getEnterpriseModuleExperience(
+          initialData
+            .module
+            .key,
+          initialData
+            .tables
+            .map(
+              table =>
+                table.key,
+            ),
+        ),
+      [
+        initialData
+          .module
+          .key,
         initialData.tables,
       ],
     );
@@ -2019,10 +2049,22 @@ export default function EnterpriseModuleWorkspaceClient({
               data={
                 initialData
               }
+              experience={
+                experience
+              }
+              accessibleModuleKeys={
+                accessibleModuleKeys
+              }
               onOpenTable={
                 table =>
                   navigateTable(
                     table,
+                  )
+              }
+              onOpenModule={
+                href =>
+                  router.push(
+                    href,
                   )
               }
             />
@@ -2298,14 +2340,28 @@ export default function EnterpriseModuleWorkspaceClient({
 
 function Overview({
   data,
+  experience,
+  accessibleModuleKeys,
   onOpenTable,
+  onOpenModule,
 }: {
   data:
     EnterpriseWorkspaceData;
+  experience:
+    EnterpriseModuleExperience |
+    null;
+  accessibleModuleKeys:
+    string[];
   onOpenTable:
     (
       table:
         EnterpriseTable,
+    ) =>
+      void;
+  onOpenModule:
+    (
+      href:
+        string,
     ) =>
       void;
 }) {
@@ -2342,6 +2398,19 @@ function Overview({
             table,
           ),
       );
+
+  const availableIntegrations =
+    experience
+      ?.integrations
+      .filter(
+        integration =>
+          accessibleModuleKeys
+            .includes(
+              integration
+                .moduleKey,
+            ),
+      ) ||
+    [];
 
   return (
     <section className="space-y-4">
@@ -2415,6 +2484,232 @@ function Overview({
           }
         />
       </div>
+
+      {
+        experience &&
+        (
+          <div className="grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
+            <div className="sami-surface overflow-hidden rounded-[26px]">
+              <div className="border-b border-[var(--sami-border)] px-4 py-4 sm:px-5">
+                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-blue-600 dark:text-blue-300">
+                  Operating journey
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                  {
+                    experience
+                      .process
+                      .map(
+                        (
+                          step,
+                          index,
+                        ) => (
+                          <div
+                            key={
+                              step
+                            }
+                            className="relative rounded-2xl border border-[var(--sami-border)] bg-slate-500/[0.025] px-3 py-3"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-[10px] font-black text-white">
+                                {
+                                  index +
+                                  1
+                                }
+                              </span>
+                              <span className="text-xs font-black">
+                                {
+                                  step
+                                }
+                              </span>
+                            </div>
+                          </div>
+                        ),
+                      )
+                  }
+                </div>
+              </div>
+
+              <div className="p-4 sm:p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-sm font-black">
+                      Operational areas
+                    </h2>
+                    <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">
+                      The app is organized around business work rather than a flat database table list. Open the area you need and SaMi keeps the same company, permission and workflow boundary.
+                    </p>
+                  </div>
+                  <Columns3 className="h-5 w-5 shrink-0 text-blue-600 dark:text-blue-300" />
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {
+                    experience
+                      .zones
+                      .map(
+                        zone => {
+                          const zoneTables =
+                            zone.tables
+                              .map(
+                                tableKey =>
+                                  data.tables
+                                    .find(
+                                      table =>
+                                        table.key ===
+                                        tableKey,
+                                    ),
+                              )
+                              .filter(
+                                (
+                                  table,
+                                ): table is
+                                  EnterpriseTable =>
+                                  Boolean(
+                                    table,
+                                  ),
+                              );
+
+                          return (
+                            <div
+                              key={
+                                zone.key
+                              }
+                              className="rounded-[22px] border border-[var(--sami-border)] bg-slate-500/[0.02] p-4"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-xs font-black">
+                                    {
+                                      zone.label
+                                    }
+                                  </p>
+                                  <p className="mt-1 text-[11px] leading-4 text-slate-500">
+                                    {
+                                      zone.description
+                                    }
+                                  </p>
+                                </div>
+                                <span className="rounded-full bg-blue-500/10 px-2 py-1 text-[10px] font-black text-blue-700 dark:text-blue-300">
+                                  {
+                                    zoneTables
+                                      .length
+                                  }
+                                </span>
+                              </div>
+
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {
+                                  zoneTables
+                                    .map(
+                                      table => (
+                                        <button
+                                          key={
+                                            table.key
+                                          }
+                                          type="button"
+                                          onClick={
+                                            () =>
+                                              onOpenTable(
+                                                table,
+                                              )
+                                          }
+                                          className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 py-2 text-left text-[11px] font-bold transition hover:-translate-y-px hover:bg-blue-500/[0.05]"
+                                        >
+                                          <span>
+                                            {
+                                              table.label
+                                            }
+                                          </span>
+                                          <span className="text-[10px] text-slate-400">
+                                            {
+                                              table.count
+                                            }
+                                          </span>
+                                        </button>
+                                      ),
+                                    )
+                                }
+                              </div>
+                            </div>
+                          );
+                        },
+                      )
+                  }
+                </div>
+              </div>
+            </div>
+
+            <div className="sami-soft-surface rounded-[26px] p-4 sm:p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                    Connected apps
+                  </p>
+                  <h2 className="mt-1 text-sm font-black">
+                    Continue the workflow
+                  </h2>
+                </div>
+                <Workflow className="h-5 w-5 text-blue-600 dark:text-blue-300" />
+              </div>
+
+              {
+                availableIntegrations
+                  .length >
+                  0
+                  ? (
+                      <div className="mt-4 space-y-2">
+                        {
+                          availableIntegrations
+                            .map(
+                              integration => (
+                                <button
+                                  key={
+                                    integration
+                                      .moduleKey
+                                  }
+                                  type="button"
+                                  onClick={
+                                    () =>
+                                      onOpenModule(
+                                        integration
+                                          .href,
+                                      )
+                                  }
+                                  className="w-full rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-3 text-left transition hover:-translate-y-px"
+                                >
+                                  <div className="flex items-center justify-between gap-3">
+                                    <span className="text-xs font-black">
+                                      {
+                                        integration
+                                          .label
+                                      }
+                                    </span>
+                                    <span className="text-[10px] font-black text-blue-600 dark:text-blue-300">
+                                      Open
+                                    </span>
+                                  </div>
+                                  <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                                    {
+                                      integration
+                                        .description
+                                    }
+                                  </p>
+                                </button>
+                              ),
+                            )
+                        }
+                      </div>
+                    )
+                  : (
+                      <p className="mt-4 rounded-2xl border border-dashed border-[var(--sami-border)] p-3 text-[11px] leading-4 text-slate-500">
+                        Related apps appear here only when they are installed and accessible to you.
+                      </p>
+                    )
+              }
+            </div>
+          </div>
+        )
+      }
 
       <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
         <div className="sami-surface rounded-[24px] p-4 sm:p-5">
