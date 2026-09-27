@@ -360,11 +360,19 @@ test('enterprise app API uses same-origin protection and bounded request bodies'
 
 test('generic app workspace is operational instead of an installed-app placeholder', async () => {
   const [
-    page,
+    rootPage,
+    sectionPage,
+    serverPage,
     client,
   ] = await Promise.all([
     source(
       'app/apps/[appKey]/page.tsx',
+    ),
+    source(
+      'app/apps/[appKey]/[section]/page.tsx',
+    ),
+    source(
+      'app/apps/[appKey]/EnterpriseModulePage.tsx',
     ),
     source(
       'app/apps/[appKey]/EnterpriseModuleWorkspaceClient.tsx',
@@ -372,17 +380,27 @@ test('generic app workspace is operational instead of an installed-app placehold
   ]);
 
   assert.match(
-    page,
+    rootPage,
+    /EnterpriseModulePage/,
+  );
+
+  assert.match(
+    sectionPage,
+    /EnterpriseModulePage/,
+  );
+
+  assert.match(
+    serverPage,
     /getEnterpriseModuleWorkspace/,
   );
 
   assert.match(
-    page,
+    serverPage,
     /EnterpriseModuleWorkspaceClient/,
   );
 
   assert.doesNotMatch(
-    page,
+    serverPage,
     /Additional features for this app will appear here as they become available/,
   );
 
