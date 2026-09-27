@@ -1,6 +1,7 @@
 import 'server-only';
 
 import type {
+  Pool,
   PoolClient,
 } from 'pg';
 
@@ -17,6 +18,7 @@ import type {
 
 import {
   SPECIALIST_ENTERPRISE_TABLES,
+  isSpecialistEnterpriseModuleKey,
   specialistEnterpriseTables,
   type SpecialistEnterpriseModuleKey,
 } from '@/lib/apps/enterprise/specialist-catalog';
@@ -486,6 +488,110 @@ async function deepenSpecialistModule(
       client,
       table,
     );
+  }
+}
+
+
+export async function ensureEnterpriseModuleRuntimeSchema(
+  pool:
+    Pool,
+  moduleKeyInput:
+    string,
+) {
+  const moduleKey =
+    moduleKeyInput
+      .trim()
+      .toLowerCase();
+
+  if (
+    !isEnterpriseModuleKey(
+      moduleKey,
+    )
+  ) {
+    return;
+  }
+
+  const client =
+    await pool.connect();
+
+  const lockKey =
+    'sami:enterprise-runtime-schema:' +
+    moduleKey;
+
+  try {
+    await client.query(
+      `
+        SELECT
+          pg_advisory_lock(
+            hashtext(
+              $1
+            )
+          )
+      `,
+      [
+        lockKey,
+      ],
+    );
+
+    await client.query(
+      'BEGIN',
+    );
+
+    await hardenModule(
+      client,
+      moduleKey,
+    );
+
+    await completeModule(
+      client,
+    );
+
+    if (
+      isSpecialistEnterpriseModuleKey(
+        moduleKey,
+      )
+    ) {
+      await deepenSpecialistModule(
+        client,
+        moduleKey,
+      );
+    }
+
+    await client.query(
+      'COMMIT',
+    );
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {
+      // Preserve the schema repair error.
+    }
+
+    throw error;
+  } finally {
+    try {
+      await client.query(
+        `
+          SELECT
+            pg_advisory_unlock(
+              hashtext(
+                $1
+              )
+            )
+        `,
+        [
+          lockKey,
+        ],
+      );
+    } catch {
+      // Releasing the pooled connection also releases session locks.
+    }
+
+    client.release();
   }
 }
 
