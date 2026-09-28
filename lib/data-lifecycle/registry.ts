@@ -10,53 +10,25 @@ import {
   SUITE_DATA_LIFECYCLE_HANDLERS,
 } from '@/lib/data-lifecycle/suite-export';
 
-export type SamiDataLifecycleContext = {
-  userId: string;
-  tenantId: string;
-  membershipId: string;
-  isOwner: boolean;
-  permissionKeys: string[];
-  accessibleModuleKeys: string[];
-  companyId: string | null;
-};
+import {
+  APP_RUNTIME_DATA_LIFECYCLE_HANDLERS,
+} from '@/lib/apps/runtime-lifecycle';
 
-export type SamiModuleDataExportResult = {
-  moduleKey: string;
-  version: string;
-  generatedAt: string;
-  data: unknown;
-};
+import type {
+  SamiDataLifecycleContext,
+  SamiModuleDataErasurePlan,
+  SamiModuleDataErasureResult,
+  SamiModuleDataExportResult,
+  SamiModuleDataLifecycleHandler,
+} from '@/lib/data-lifecycle/types';
 
-export type SamiModuleDataErasurePlan = {
-  moduleKey: string;
-  blockers: string[];
-  recordCounts: Record<string, number>;
-  notes?: string[];
-};
-
-export type SamiModuleDataErasureResult = {
-  moduleKey: string;
-  erasedRecords: number;
-  anonymizedRecords: number;
-  retainedRecords: number;
-  notes?: string[];
-};
-
-export type SamiModuleDataLifecycleHandler = {
-  moduleKey: string;
-
-  exportData?: (
-    context: SamiDataLifecycleContext,
-  ) => Promise<SamiModuleDataExportResult>;
-
-  planErasure?: (
-    context: SamiDataLifecycleContext,
-  ) => Promise<SamiModuleDataErasurePlan>;
-
-  executeErasure?: (
-    context: SamiDataLifecycleContext,
-  ) => Promise<SamiModuleDataErasureResult>;
-};
+export type {
+  SamiDataLifecycleContext,
+  SamiModuleDataErasurePlan,
+  SamiModuleDataErasureResult,
+  SamiModuleDataExportResult,
+  SamiModuleDataLifecycleHandler,
+} from '@/lib/data-lifecycle/types';
 
 /*
  * Code-owned module lifecycle handlers.
@@ -66,8 +38,10 @@ export type SamiModuleDataLifecycleHandler = {
  * here and added to this array.
  */
 export const APP_DATA_LIFECYCLE_HANDLERS:
-  readonly SamiModuleDataLifecycleHandler[] =
-  SUITE_DATA_LIFECYCLE_HANDLERS;
+  readonly SamiModuleDataLifecycleHandler[] = [
+    ...SUITE_DATA_LIFECYCLE_HANDLERS,
+    ...APP_RUNTIME_DATA_LIFECYCLE_HANDLERS,
+  ];
 
 function normalizeModuleKey(
   value: string | null | undefined,

@@ -654,12 +654,16 @@ test('enterprise search providers cover the code-owned module catalog', async ()
   const [
     enterpriseSearch,
     registry,
+    runtimeSearch,
   ] = await Promise.all([
     source(
       'lib/apps/enterprise/search.ts',
     ),
     source(
       'lib/search/registry.ts',
+    ),
+    source(
+      'lib/apps/runtime-search.ts',
     ),
   ]);
 
@@ -675,6 +679,11 @@ test('enterprise search providers cover the code-owned module catalog', async ()
 
   assert.match(
     registry,
+    /APP_RUNTIME_SEARCH_PROVIDERS/,
+  );
+
+  assert.match(
+    runtimeSearch,
     /ENTERPRISE_MODULE_SEARCH_PROVIDERS/,
   );
 });
@@ -684,12 +693,16 @@ test('SaMi AI has a bounded suite-wide read bridge instead of raw database acces
   const [
     enterpriseAi,
     registry,
+    runtimeAi,
   ] = await Promise.all([
     source(
       'lib/apps/enterprise/ai-tools.ts',
     ),
     source(
       'lib/ai/tool-registry.ts',
+    ),
+    source(
+      'lib/apps/runtime-ai.ts',
     ),
   ]);
 
@@ -720,6 +733,11 @@ test('SaMi AI has a bounded suite-wide read bridge instead of raw database acces
 
   assert.match(
     registry,
+    /APP_RUNTIME_AI_TOOLS/,
+  );
+
+  assert.match(
+    runtimeAi,
     /ENTERPRISE_SUITE_AI_TOOLS/,
   );
 
@@ -778,7 +796,7 @@ test('enterprise v2 hardening adds company and audit boundaries to legacy app sc
       'lib/services/workspace-app-lifecycle.ts',
     ),
     source(
-      'lib/modules/migrations.ts',
+      'lib/apps/runtime-migrations.ts',
     ),
   ]);
 
@@ -1116,7 +1134,7 @@ test('specialist ERP 2.2 deepens finance inventory payroll CRM projects helpdesk
       'lib/apps/enterprise/hardening.ts',
     ),
     source(
-      'lib/modules/migrations.ts',
+      'lib/apps/runtime-migrations.ts',
     ),
     source(
       'lib/modules/enterprise-contract.ts',
@@ -2466,6 +2484,7 @@ test('enterprise suite registers company-scoped business automation triggers and
   const [
     contract,
     registry,
+    runtimeAutomation,
     automation,
   ] = await Promise.all([
     source(
@@ -2473,6 +2492,9 @@ test('enterprise suite registers company-scoped business automation triggers and
     ),
     source(
       'lib/automation/registry.ts',
+    ),
+    source(
+      'lib/apps/runtime-automation.ts',
     ),
     source(
       'lib/apps/enterprise/automation.ts',
@@ -2491,16 +2513,31 @@ test('enterprise suite registers company-scoped business automation triggers and
 
   assert.match(
     registry,
+    /APP_RUNTIME_AUTOMATION_TRIGGERS/,
+  );
+
+  assert.match(
+    registry,
+    /APP_RUNTIME_AUTOMATION_ACTIONS/,
+  );
+
+  assert.match(
+    registry,
+    /APP_RUNTIME_AUTOMATION_ACTION_HANDLERS/,
+  );
+
+  assert.match(
+    runtimeAutomation,
     /ENTERPRISE_AUTOMATION_TRIGGERS/,
   );
 
   assert.match(
-    registry,
+    runtimeAutomation,
     /ENTERPRISE_AUTOMATION_ACTIONS/,
   );
 
   assert.match(
-    registry,
+    runtimeAutomation,
     /ENTERPRISE_AUTOMATION_ACTION_HANDLERS/,
   );
 
@@ -3334,7 +3371,9 @@ test('strict Odoo Zoho parity v2.3 adds domain depth and dependency execution in
     source('lib/apps/enterprise/specialist-depth.ts'),
     source('lib/apps/enterprise/specialist-catalog.ts'),
     source('lib/apps/enterprise/hardening.ts'),
-    source('lib/modules/migrations.ts'),
+    source(
+      'lib/apps/runtime-migrations.ts',
+    ),
     source('lib/modules/enterprise-contract.ts'),
     source('lib/apps/enterprise/domain-hooks.ts'),
     source('lib/apps/enterprise/service.ts'),

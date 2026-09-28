@@ -32,6 +32,7 @@ test('shared enterprise modules expose only backed cross-cutting capabilities', 
     contract,
     notifications,
     integrations,
+    appIntegrations,
   ] = await Promise.all([
     source(
       'lib/modules/enterprise-contract.ts',
@@ -41,6 +42,9 @@ test('shared enterprise modules expose only backed cross-cutting capabilities', 
     ),
     source(
       'lib/integrations/registry.ts',
+    ),
+    source(
+      'lib/apps/runtime-integrations.ts',
     ),
   ]);
 
@@ -58,7 +62,13 @@ test('shared enterprise modules expose only backed cross-cutting capabilities', 
 
   assert.match(
     integrations,
-    /APP_INTEGRATION_PROVIDERS:\s*[\s\S]*=\s*\[\]/s,
+    /APP_RUNTIME_INTEGRATION_PROVIDERS/,
+    'Integration core must consume the app-owned provider boundary generically.',
+  );
+
+  assert.match(
+    appIntegrations,
+    /APP_RUNTIME_INTEGRATION_PROVIDERS:\s*[\s\S]*=\s*\[\]/s,
     'App-specific integration providers must remain explicit rather than being fabricated by the shared contract.',
   );
 

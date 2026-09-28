@@ -10,133 +10,50 @@ import {
 } from '@/lib/modules/registry';
 
 import {
-  INVOICING_1_0_0_TO_2_0_0,
-} from '@/lib/apps/invoicing/migrations/1.0.0-to-2.0.0';
+  APP_RUNTIME_MODULE_MIGRATIONS,
+} from '@/lib/apps/runtime-migrations';
+
+import type {
+  SamiModuleMigrationDefinition,
+  SamiModuleMigrationResult,
+} from '@/lib/modules/migration-types';
 
 import {
-  INVOICING_2_0_0_TO_2_1_0,
-} from '@/lib/apps/invoicing/migrations/2.0.0-to-2.1.0';
+  SamiModuleMigrationError,
+} from '@/lib/modules/migration-errors';
 
 import {
-  INVOICING_2_1_0_TO_2_2_0,
-} from '@/lib/apps/invoicing/migrations/2.1.0-to-2.2.0';
+  assertSafeSamiModuleMigrationSql,
+  executeSafeSamiModuleMigrationSql,
+} from '@/lib/modules/migration-safety';
 
-import {
-  INVOICING_2_2_0_TO_2_3_0,
-} from '@/lib/apps/invoicing/migrations/2.2.0-to-2.3.0';
+export type {
+  SamiModuleMigrationContext,
+  SamiModuleMigrationDefinition,
+  SamiModuleMigrationResult,
+} from '@/lib/modules/migration-types';
 
-import {
-  ENTERPRISE_SPECIALIST_DEPTH_MIGRATIONS,
-  ENTERPRISE_STRICT_PARITY_MIGRATIONS,
-  ENTERPRISE_SUITE_COMPLETION_MIGRATIONS,
-  ENTERPRISE_SUITE_MIGRATIONS,
-} from '@/lib/apps/enterprise/hardening';
+export {
+  SamiModuleMigrationError,
+} from '@/lib/modules/migration-errors';
 
-import {
-  SALES_1_0_0_TO_2_0_0,
-} from '@/lib/apps/sales/migrations/1.0.0-to-2.0.0';
-
-import {
-  SALES_2_0_0_TO_2_1_0,
-} from '@/lib/apps/sales/migrations/2.0.0-to-2.1.0';
-
-import {
-  SALES_2_1_0_TO_2_2_0,
-} from '@/lib/apps/sales/migrations/2.1.0-to-2.2.0';
-
-export type SamiModuleMigrationContext = {
-  moduleKey: string;
-  namespace: string;
-  fromVersion: string;
-  toVersion: string;
-};
-
-export type SamiModuleMigrationDefinition = {
-  key: string;
-  moduleKey: string;
-  namespace: string;
-  fromVersion: string;
-  toVersion: string;
-  run:
-    (
-      client:
-        PoolClient,
-      context:
-        SamiModuleMigrationContext,
-    ) =>
-      Promise<void>;
-};
-
-export type SamiModuleMigrationResult = {
-  moduleKey: string;
-  previousVersion: string;
-  currentVersion: string;
-  targetVersion: string;
-  appliedMigrations: string[];
-  changed: boolean;
-};
-
-export class SamiModuleMigrationError
-  extends Error {
-  readonly code:
-    | 'MODULE_VERSION_INVALID'
-    | 'MODULE_DOWNGRADE_UNSUPPORTED'
-    | 'MODULE_MIGRATION_PATH_MISSING'
-    | 'MODULE_MIGRATION_REGISTRY_INVALID'
-    | 'MODULE_MIGRATION_UNSAFE'
-    | 'MODULE_MIGRATION_FAILED';
-
-  constructor(
-    code:
-      SamiModuleMigrationError['code'],
-    message:
-      string,
-  ) {
-    super(
-      message,
-    );
-
-    this.name =
-      'SamiModuleMigrationError';
-
-    this.code =
-      code;
-  }
-}
+export {
+  assertSafeSamiModuleMigrationSql,
+  executeSafeSamiModuleMigrationSql,
+} from '@/lib/modules/migration-safety';
 
 /*
- * Code-owned business-module migrations.
- *
- * When a module gains a new version, import its immutable migration
- * definition here and append it to this array. Database rows can record
- * state but can never create executable migration code.
- *
- * Example future import:
- *
- * import { CRM_1_0_0_TO_1_1_0 }
- *   from '@/lib/apps/crm/migrations/1.0.0-to-1.1.0';
+ * Code-owned business-module migrations are registered by app runtime
+ * contributions. The kernel validates and executes them but never imports
+ * individual business apps.
  */
 export const APP_MODULE_MIGRATIONS:
   readonly SamiModuleMigrationDefinition[] =
-  [
-    INVOICING_1_0_0_TO_2_0_0,
-    INVOICING_2_0_0_TO_2_1_0,
-    INVOICING_2_1_0_TO_2_2_0,
-    INVOICING_2_2_0_TO_2_3_0,
-    SALES_1_0_0_TO_2_0_0,
-    SALES_2_0_0_TO_2_1_0,
-    SALES_2_1_0_TO_2_2_0,
-    ...ENTERPRISE_SUITE_MIGRATIONS,
-    ...ENTERPRISE_SUITE_COMPLETION_MIGRATIONS,
-    ...ENTERPRISE_SPECIALIST_DEPTH_MIGRATIONS,
-  ...ENTERPRISE_STRICT_PARITY_MIGRATIONS,
-  ];
+  APP_RUNTIME_MODULE_MIGRATIONS;
+
 
 const VERSION_PATTERN =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
-
-const DESTRUCTIVE_SQL_PATTERN =
-  /\b(?:DROP\s+(?:TABLE|SCHEMA|DATABASE|COLUMN)|TRUNCATE\s+|DELETE\s+FROM\s+[^;]+(?:;|$))\b/i;
 
 function normalizeKey(
   value:
@@ -226,49 +143,6 @@ export function compareSamiModuleVersions(
   }
 
   return 0;
-}
-
-export function assertSafeSamiModuleMigrationSql(
-  sql:
-    string,
-) {
-  const normalized =
-    sql.trim();
-
-  if (
-    !normalized
-  ) {
-    throw new SamiModuleMigrationError(
-      'MODULE_MIGRATION_UNSAFE',
-      'SaMi module migration SQL cannot be empty.',
-    );
-  }
-
-  if (
-    DESTRUCTIVE_SQL_PATTERN.test(
-      normalized,
-    )
-  ) {
-    throw new SamiModuleMigrationError(
-      'MODULE_MIGRATION_UNSAFE',
-      'SaMi module migrations are additive by default. DROP, TRUNCATE and bulk DELETE operations require a separately reviewed data-migration strategy.',
-    );
-  }
-
-  return normalized;
-}
-
-export async function executeSafeSamiModuleMigrationSql(
-  client:
-    PoolClient,
-  sql:
-    string,
-) {
-  await client.query(
-    assertSafeSamiModuleMigrationSql(
-      sql,
-    ),
-  );
 }
 
 function validateRegistryForModule(

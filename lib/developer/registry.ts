@@ -6,10 +6,6 @@ import {
   getSamiModuleManifests,
 } from '@/lib/modules/registry';
 
-import {
-  isEnterpriseModuleKey,
-} from '@/lib/apps/enterprise/catalog';
-
 export type SamiDeveloperEndpointOperation =
   | 'read'
   | 'create'
@@ -40,21 +36,16 @@ export const MODULE_DEVELOPER_ENDPOINTS:
         manifest.extensions
           .apiEndpoints ===
           true &&
-        (
-          isEnterpriseModuleKey(
-            manifest.key,
-          ) ||
-          manifest.resources
-            .some(
-              resource =>
-                typeof resource.table ===
-                  'string' &&
-                resource.table
-                  .trim()
-                  .length >
-                  0,
-            )
-        ),
+        manifest.resources
+          .some(
+            resource =>
+              typeof resource.table ===
+                'string' &&
+              resource.table
+                .trim()
+                .length >
+                0,
+          ),
     )
     .map(
       manifest => ({

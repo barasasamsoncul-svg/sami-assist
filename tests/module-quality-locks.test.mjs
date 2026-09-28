@@ -66,12 +66,12 @@ test(
 
     assert.equal(
       lock.baselineCommit,
-      'f861cb865fa0b9e6c04464147738fcc3d4370cee',
+      '15074a731c00ae85a37d1c933c3031ffaba76c6e',
     );
 
     assert.equal(
       lock.baselineBranch,
-      'feat/every-app-own-sidebar',
+      'feat/platform-kernel-closure',
     );
 
     for (

@@ -5,16 +5,8 @@ import type {
 } from '@/lib/search/types';
 
 import {
-  INVOICING_SEARCH_PROVIDER,
-} from '@/lib/apps/invoicing/search';
-
-import {
-  ENTERPRISE_MODULE_SEARCH_PROVIDERS,
-} from '@/lib/apps/enterprise/search';
-
-import {
-  SALES_SEARCH_PROVIDER,
-} from '@/lib/apps/sales/search';
+  APP_RUNTIME_SEARCH_PROVIDERS,
+} from '@/lib/apps/runtime-search';
 
 import {
   filterAccessibleModuleExtensions,
@@ -30,9 +22,7 @@ import {
 export const WORKSPACE_SEARCH_PROVIDERS:
   WorkspaceSearchProvider[] =
   [
-    INVOICING_SEARCH_PROVIDER,
-    SALES_SEARCH_PROVIDER,
-    ...ENTERPRISE_MODULE_SEARCH_PROVIDERS,
+    ...APP_RUNTIME_SEARCH_PROVIDERS,
   ];
 
 export function getWorkspaceSearchProviders(

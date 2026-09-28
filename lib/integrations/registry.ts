@@ -8,6 +8,10 @@ import {
   getSamiModuleManifest,
 } from '@/lib/modules/registry';
 
+import {
+  APP_RUNTIME_INTEGRATION_PROVIDERS,
+} from '@/lib/apps/runtime-integrations';
+
 import type {
   SamiIntegrationProviderDefinition,
   SamiIntegrationPublicProvider,
@@ -181,7 +185,9 @@ export const CORE_INTEGRATION_PROVIDERS:
 
 export const APP_INTEGRATION_PROVIDERS:
   SamiIntegrationProviderDefinition[] =
-  [];
+  [
+    ...APP_RUNTIME_INTEGRATION_PROVIDERS,
+  ];
 
 const PROVIDERS:
   SamiIntegrationProviderDefinition[] = [

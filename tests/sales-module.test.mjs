@@ -574,7 +574,10 @@ test('Sales API exposes the complete quotation-to-cash action surface', async ()
 test('Sales v2 is registered into manifests, migrations, Search and SaMi AI', async () => {
   const [
     manifest,
-    migrations,
+    migrationEngine,
+    runtimeMigrations,
+    runtimeSearch,
+    runtimeAi,
     search,
     ai,
   ] =
@@ -586,12 +589,26 @@ test('Sales v2 is registered into manifests, migrations, Search and SaMi AI', as
         'lib/modules/migrations.ts',
       ),
       source(
+        'lib/apps/runtime-migrations.ts',
+      ),
+      source(
+        'lib/apps/runtime-search.ts',
+      ),
+      source(
+        'lib/apps/runtime-ai.ts',
+      ),
+      source(
         'lib/search/registry.ts',
       ),
       source(
         'lib/ai/tool-registry.ts',
       ),
     ]);
+
+  assert.match(
+    migrationEngine,
+    /APP_RUNTIME_MODULE_MIGRATIONS/,
+  );
 
   assert.match(
     manifest,
@@ -609,17 +626,17 @@ test('Sales v2 is registered into manifests, migrations, Search and SaMi AI', as
   );
 
   assert.match(
-    migrations,
+    runtimeMigrations,
     /SALES_1_0_0_TO_2_0_0/,
   );
 
   assert.match(
-    migrations,
+    runtimeMigrations,
     /SALES_2_0_0_TO_2_1_0/,
   );
 
   assert.match(
-    migrations,
+    runtimeMigrations,
     /SALES_2_1_0_TO_2_2_0/,
   );
 
@@ -660,11 +677,21 @@ test('Sales v2 is registered into manifests, migrations, Search and SaMi AI', as
 
   assert.match(
     search,
+    /APP_RUNTIME_SEARCH_PROVIDERS/,
+  );
+
+  assert.match(
+    runtimeSearch,
     /SALES_SEARCH_PROVIDER/,
   );
 
   assert.match(
     ai,
+    /APP_RUNTIME_AI_TOOLS/,
+  );
+
+  assert.match(
+    runtimeAi,
     /SALES_AI_TOOLS/,
   );
 });

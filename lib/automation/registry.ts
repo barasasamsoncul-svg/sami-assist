@@ -24,22 +24,10 @@ import {
 } from '@/lib/integrations/runtime';
 
 import {
-  ENTERPRISE_AUTOMATION_ACTIONS,
-  ENTERPRISE_AUTOMATION_ACTION_HANDLERS,
-  ENTERPRISE_AUTOMATION_TRIGGERS,
-} from '@/lib/apps/enterprise/automation';
-
-import {
-  SALES_AUTOMATION_ACTIONS,
-  SALES_AUTOMATION_ACTION_HANDLERS,
-  SALES_AUTOMATION_TRIGGERS,
-} from '@/lib/apps/sales/automation';
-
-import {
-  INVOICING_AUTOMATION_ACTIONS,
-  INVOICING_AUTOMATION_ACTION_HANDLERS,
-  INVOICING_AUTOMATION_TRIGGERS,
-} from '@/lib/apps/invoicing/automation';
+  APP_RUNTIME_AUTOMATION_ACTION_HANDLERS,
+  APP_RUNTIME_AUTOMATION_ACTIONS,
+  APP_RUNTIME_AUTOMATION_TRIGGERS,
+} from '@/lib/apps/runtime-automation';
 
 export const CORE_AUTOMATION_TRIGGERS:
   SamiAutomationTriggerDefinition[] = [
@@ -152,9 +140,7 @@ export const CORE_AUTOMATION_TRIGGERS:
  */
 export const APP_AUTOMATION_TRIGGERS:
   SamiAutomationTriggerDefinition[] = [
-    ...ENTERPRISE_AUTOMATION_TRIGGERS,
-    ...SALES_AUTOMATION_TRIGGERS,
-    ...INVOICING_AUTOMATION_TRIGGERS,
+    ...APP_RUNTIME_AUTOMATION_TRIGGERS,
   ];
 
 export const CORE_AUTOMATION_ACTIONS:
@@ -249,9 +235,7 @@ export const CORE_AUTOMATION_ACTIONS:
 
 export const APP_AUTOMATION_ACTIONS:
   SamiAutomationActionDefinition[] = [
-    ...ENTERPRISE_AUTOMATION_ACTIONS,
-    ...SALES_AUTOMATION_ACTIONS,
-    ...INVOICING_AUTOMATION_ACTIONS,
+    ...APP_RUNTIME_AUTOMATION_ACTIONS,
   ];
 
 const CORE_AUTOMATION_ACTION_HANDLERS =
@@ -387,14 +371,9 @@ export const APP_AUTOMATION_ACTION_HANDLERS =
   new Map<
     string,
     SamiAutomationActionHandler
-  >([
-    ...ENTERPRISE_AUTOMATION_ACTION_HANDLERS
-      .entries(),
-    ...SALES_AUTOMATION_ACTION_HANDLERS
-      .entries(),
-    ...INVOICING_AUTOMATION_ACTION_HANDLERS
-      .entries(),
-  ]);
+  >(
+    APP_RUNTIME_AUTOMATION_ACTION_HANDLERS,
+  );
 
 export function isAutomationWorkerEnabled() {
   return (

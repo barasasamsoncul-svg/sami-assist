@@ -199,6 +199,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
     developerRoute,
     developerRegistry,
     suiteExport,
+    runtimeTables,
   ] =
     await Promise.all([
       source(
@@ -209,6 +210,9 @@ test('Invoicing manifest is a real first-party module with permissions, resource
       ),
       source(
         'lib/data-lifecycle/suite-export.ts',
+      ),
+      source(
+        'lib/apps/runtime-data-tables.ts',
       ),
     ]);
 
@@ -228,8 +232,26 @@ test('Invoicing manifest is a real first-party module with permissions, resource
   );
 
   assert.match(
+    runtimeTables,
+    /invoicing_invoices/,
+    'Invoicing owns its additional lifecycle tables in the app runtime contribution boundary.',
+  );
+
+  assert.match(
+    runtimeTables,
+    /APP_RUNTIME_ADDITIONAL_DATA_TABLES/,
+  );
+
+  assert.match(
+    suiteExport,
+    /getAdditionalModuleDataTables/,
+    'Generic export must discover app-owned tables without hard-coding Invoicing.',
+  );
+
+  assert.doesNotMatch(
     suiteExport,
     /invoicing_invoices/,
+    'The platform lifecycle kernel must not hard-code Invoicing table names.',
   );
 
   assert.match(
@@ -435,13 +457,18 @@ test('Invoicing workspace exposes operational Odoo/Zoho-class surfaces rather th
 test('Invoicing participates in SaMi Search and SaMi AI through code-owned registries', async () => {
   const [
     searchRegistry,
+    runtimeSearch,
     provider,
     aiRegistry,
+    runtimeAi,
     tools,
   ] =
     await Promise.all([
       source(
         'lib/search/registry.ts',
+      ),
+      source(
+        'lib/apps/runtime-search.ts',
       ),
       source(
         'lib/apps/invoicing/search.ts',
@@ -450,12 +477,20 @@ test('Invoicing participates in SaMi Search and SaMi AI through code-owned regis
         'lib/ai/tool-registry.ts',
       ),
       source(
+        'lib/apps/runtime-ai.ts',
+      ),
+      source(
         'lib/apps/invoicing/ai-tools.ts',
       ),
     ]);
 
   assert.match(
     searchRegistry,
+    /APP_RUNTIME_SEARCH_PROVIDERS/,
+  );
+
+  assert.match(
+    runtimeSearch,
     /INVOICING_SEARCH_PROVIDER/,
   );
 
@@ -466,6 +501,11 @@ test('Invoicing participates in SaMi Search and SaMi AI through code-owned regis
 
   assert.match(
     aiRegistry,
+    /APP_RUNTIME_AI_TOOLS/,
+  );
+
+  assert.match(
+    runtimeAi,
     /INVOICING_AI_TOOLS/,
   );
 
@@ -493,7 +533,8 @@ test('Invoicing participates in SaMi Search and SaMi AI through code-owned regis
 test('Invoicing has a forward-only v1 to v2 migration and CI includes module regression tests', async () => {
   const [
     migration,
-    registry,
+    migrationEngine,
+    runtimeMigrations,
     pkg,
   ] =
     await Promise.all([
@@ -504,9 +545,17 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
         'lib/modules/migrations.ts',
       ),
       source(
+        'lib/apps/runtime-migrations.ts',
+      ),
+      source(
         'package.json',
       ),
     ]);
+
+  assert.match(
+    migrationEngine,
+    /APP_RUNTIME_MODULE_MIGRATIONS/,
+  );
 
   assert.match(
     migration,
@@ -539,7 +588,7 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
   );
 
   assert.match(
-    registry,
+    runtimeMigrations,
     /INVOICING_2_0_0_TO_2_1_0/,
   );
 
@@ -569,7 +618,7 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
   );
 
   assert.match(
-    registry,
+    runtimeMigrations,
     /INVOICING_2_1_0_TO_2_2_0/,
   );
 
@@ -594,7 +643,7 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
   );
 
   assert.match(
-    registry,
+    runtimeMigrations,
     /INVOICING_2_2_0_TO_2_3_0/,
   );
 
@@ -629,7 +678,7 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
   );
 
   assert.match(
-    registry,
+    runtimeMigrations,
     /INVOICING_1_0_0_TO_2_0_0/,
   );
 
