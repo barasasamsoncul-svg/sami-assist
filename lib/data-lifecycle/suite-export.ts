@@ -6,7 +6,7 @@ import {
 
 import {
   getAdditionalModuleDataTables,
-} from '@/lib/apps/runtime-registry';
+} from '@/lib/apps/runtime-data-tables';
 
 import {
   getSamiModuleManifest,
