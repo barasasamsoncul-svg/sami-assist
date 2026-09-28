@@ -294,7 +294,7 @@ test(
 
     assert.match(
       enterprise,
-      /data\.tables[\s\S]*appSidebarItems/s,
+      /data\.tables[\s\S]*appSidebarItems/,
       'Enterprise apps must derive sidebar sections from their real module tables.',
     );
 
@@ -318,7 +318,7 @@ test(
 
     assert.doesNotMatch(
       invoicingClient,
-      /visibleNav\.map\([\s\S]*setView\(/s,
+      /visibleNav\.map\([\s\S]*setView\(/,
       'Invoicing must not keep the former horizontal primary navigation after adopting its sidebar.',
     );
   },
