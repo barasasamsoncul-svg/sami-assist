@@ -9,11 +9,6 @@ import {
 } from '@/lib/db/tenant';
 
 import {
-  enterpriseModuleTables,
-  isEnterpriseModuleKey,
-} from '@/lib/apps/enterprise/catalog';
-
-import {
   getSamiModuleManifest,
 } from '@/lib/modules/registry';
 
@@ -153,20 +148,10 @@ function allowedModuleTables(
       ) ||
     [];
 
-  const enterpriseTables =
-    isEnterpriseModuleKey(
-      moduleKey,
-    )
-      ? enterpriseModuleTables(
-          moduleKey,
-        )
-      : [];
-
   return [
-    ...new Set([
-      ...manifestTables,
-      ...enterpriseTables,
-    ]),
+    ...new Set(
+      manifestTables,
+    ),
   ];
 }
 
