@@ -3741,6 +3741,10 @@ export async function confirmWorkspaceAiAction(
           AND company_id = $3
           AND status =
             'pending_confirmation'
+          AND expires_at
+              IS NOT NULL
+          AND expires_at >
+              NOW()
         RETURNING id
       `,
       [
