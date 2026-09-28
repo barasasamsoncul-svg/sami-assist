@@ -1,90 +1,19 @@
 import 'server-only';
 
-import type {
-  DashboardProvider,
-} from '@/lib/dashboard/providers';
-
-import type {
-  WorkspaceSearchProvider,
-} from '@/lib/search/types';
-
-import type {
-  SamiAiToolDefinition,
-} from '@/lib/ai/types';
-
-import type {
-  SamiAutomationActionDefinition,
-  SamiAutomationActionHandler,
-  SamiAutomationTriggerDefinition,
-} from '@/lib/automation/types';
-
-import type {
-  SamiIntegrationProviderDefinition,
-} from '@/lib/integrations/types';
-
-import type {
-  SamiModuleDataLifecycleHandler,
-} from '@/lib/data-lifecycle/types';
-
-import type {
-  SamiModuleMigrationDefinition,
-} from '@/lib/modules/migration-types';
-
 import {
   ENTERPRISE_MODULE_TABLES,
 } from '@/lib/apps/enterprise/catalog';
 
 import {
-  ENTERPRISE_MODULE_SEARCH_PROVIDERS,
-} from '@/lib/apps/enterprise/search';
-
-import {
-  SALES_SEARCH_PROVIDER,
-} from '@/lib/apps/sales/search';
-
-import {
-  INVOICING_SEARCH_PROVIDER,
-} from '@/lib/apps/invoicing/search';
-
-import {
-  ENTERPRISE_SUITE_AI_TOOLS,
-} from '@/lib/apps/enterprise/ai-tools';
-
-import {
-  SALES_AI_TOOLS,
-} from '@/lib/apps/sales/ai-tools';
-
-import {
-  INVOICING_AI_TOOLS,
-} from '@/lib/apps/invoicing/ai-tools';
-
-import {
-  ENTERPRISE_AUTOMATION_ACTION_HANDLERS,
-  ENTERPRISE_AUTOMATION_ACTIONS,
-  ENTERPRISE_AUTOMATION_TRIGGERS,
-} from '@/lib/apps/enterprise/automation';
-
-import {
-  SALES_AUTOMATION_ACTION_HANDLERS,
-  SALES_AUTOMATION_ACTIONS,
-  SALES_AUTOMATION_TRIGGERS,
-} from '@/lib/apps/sales/automation';
-
-import {
-  INVOICING_AUTOMATION_ACTION_HANDLERS,
-  INVOICING_AUTOMATION_ACTIONS,
-  INVOICING_AUTOMATION_TRIGGERS,
-} from '@/lib/apps/invoicing/automation';
+  APP_RUNTIME_ADDITIONAL_DATA_TABLES,
+  getAdditionalModuleDataTables,
+} from '@/lib/apps/runtime-data-tables';
 
 import {
   ENTERPRISE_RUNTIME_MIGRATIONS,
   INVOICING_RUNTIME_MIGRATIONS,
   SALES_RUNTIME_MIGRATIONS,
 } from '@/lib/apps/runtime-migrations';
-
-import {
-  getSamiModuleManifests,
-} from '@/lib/modules/registry';
 
 import {
   assertSamiAppRuntimeContributions,
@@ -94,53 +23,24 @@ import type {
   SamiAppRuntimeContribution,
 } from '@/lib/apps/runtime-contract';
 
-export type {
-  SamiAppRuntimeContribution,
-} from '@/lib/apps/runtime-contract';
+import {
+  getSamiModuleManifests,
+} from '@/lib/modules/registry';
 
+
+/*
+ * Lightweight app-runtime index.
+ *
+ * Executable Search/AI/Automation/Integration/Dashboard/Lifecycle providers
+ * are loaded through their cycle-safe extension-specific runtime files.
+ * This index owns cross-cutting metadata and validates the common contribution
+ * contract without eagerly initializing those executable subsystems.
+ */
 
 const ENTERPRISE_MODULE_KEYS =
   Object.keys(
     ENTERPRISE_MODULE_TABLES,
   );
-
-
-const DEDICATED_DATA_TABLES = {
-  invoicing: [
-    'invoicing_payment_terms',
-    'invoicing_tax_rates',
-    'invoicing_customers',
-    'invoicing_catalog_items',
-    'invoicing_templates',
-    'invoicing_sequences',
-    'invoicing_settings',
-    'invoicing_invoices',
-    'invoicing_invoice_items',
-    'invoicing_status_history',
-    'invoicing_payments',
-    'invoicing_payment_allocations',
-    'invoicing_credit_notes',
-    'invoicing_credit_note_items',
-    'invoicing_recurring_templates',
-    'invoicing_reminders',
-    'invoicing_delivery_log',
-    'invoicing_events',
-  ],
-  sales: [
-    'sales_settings',
-    'sales_sequences',
-    'sales_quote_templates',
-    'sales_quotes',
-    'sales_quote_items',
-    'sales_orders_v2',
-    'sales_order_items_v2',
-    'sales_order_invoice_batches',
-    'sales_quote_approval_history',
-    'sales_quote_status_history',
-    'sales_order_status_history',
-    'sales_delivery_log',
-  ],
-} as const;
 
 
 export const SAMI_APP_RUNTIME_CONTRIBUTIONS:
@@ -150,16 +50,6 @@ export const SAMI_APP_RUNTIME_CONTRIBUTIONS:
         'enterprise-suite',
       moduleKeys:
         ENTERPRISE_MODULE_KEYS,
-      searchProviders:
-        ENTERPRISE_MODULE_SEARCH_PROVIDERS,
-      aiTools:
-        ENTERPRISE_SUITE_AI_TOOLS,
-      automationTriggers:
-        ENTERPRISE_AUTOMATION_TRIGGERS,
-      automationActions:
-        ENTERPRISE_AUTOMATION_ACTIONS,
-      automationActionHandlers:
-        ENTERPRISE_AUTOMATION_ACTION_HANDLERS,
       migrations:
         ENTERPRISE_RUNTIME_MIGRATIONS,
     },
@@ -169,23 +59,13 @@ export const SAMI_APP_RUNTIME_CONTRIBUTIONS:
       moduleKeys: [
         'sales',
       ],
-      searchProviders: [
-        SALES_SEARCH_PROVIDER,
-      ],
-      aiTools:
-        SALES_AI_TOOLS,
-      automationTriggers:
-        SALES_AUTOMATION_TRIGGERS,
-      automationActions:
-        SALES_AUTOMATION_ACTIONS,
-      automationActionHandlers:
-        SALES_AUTOMATION_ACTION_HANDLERS,
       migrations:
         SALES_RUNTIME_MIGRATIONS,
       additionalDataTables: {
         sales:
-          DEDICATED_DATA_TABLES
-            .sales,
+          APP_RUNTIME_ADDITIONAL_DATA_TABLES
+            .sales ||
+          [],
       },
     },
     {
@@ -194,41 +74,16 @@ export const SAMI_APP_RUNTIME_CONTRIBUTIONS:
       moduleKeys: [
         'invoicing',
       ],
-      searchProviders: [
-        INVOICING_SEARCH_PROVIDER,
-      ],
-      aiTools:
-        INVOICING_AI_TOOLS,
-      automationTriggers:
-        INVOICING_AUTOMATION_TRIGGERS,
-      automationActions:
-        INVOICING_AUTOMATION_ACTIONS,
-      automationActionHandlers:
-        INVOICING_AUTOMATION_ACTION_HANDLERS,
       migrations:
         INVOICING_RUNTIME_MIGRATIONS,
       additionalDataTables: {
         invoicing:
-          DEDICATED_DATA_TABLES
-            .invoicing,
+          APP_RUNTIME_ADDITIONAL_DATA_TABLES
+            .invoicing ||
+          [],
       },
     },
   ];
-
-
-function normalize(
-  value:
-    string | null | undefined,
-) {
-  return (
-    value ||
-    ''
-  )
-    .trim()
-    .toLowerCase();
-}
-
-
 
 
 export function assertSamiAppRuntimeRegistry() {
@@ -242,159 +97,11 @@ export function assertSamiAppRuntimeRegistry() {
 assertSamiAppRuntimeRegistry();
 
 
-export const APP_RUNTIME_DASHBOARD_PROVIDERS:
-  DashboardProvider[] =
-  SAMI_APP_RUNTIME_CONTRIBUTIONS
-    .flatMap(
-      contribution => [
-        ...(
-          contribution
-            .dashboardProviders ||
-          []
-        ),
-      ],
-    );
+export {
+  assertSamiAppRuntimeContributions,
+  getAdditionalModuleDataTables,
+};
 
-
-export const APP_RUNTIME_SEARCH_PROVIDERS:
-  WorkspaceSearchProvider[] =
-  SAMI_APP_RUNTIME_CONTRIBUTIONS
-    .flatMap(
-      contribution => [
-        ...(
-          contribution
-            .searchProviders ||
-          []
-        ),
-      ],
-    );
-
-
-export const APP_RUNTIME_AI_TOOLS:
-  SamiAiToolDefinition[] =
-  SAMI_APP_RUNTIME_CONTRIBUTIONS
-    .flatMap(
-      contribution => [
-        ...(
-          contribution.aiTools ||
-          []
-        ),
-      ],
-    );
-
-
-export const APP_RUNTIME_AUTOMATION_TRIGGERS:
-  SamiAutomationTriggerDefinition[] =
-  SAMI_APP_RUNTIME_CONTRIBUTIONS
-    .flatMap(
-      contribution => [
-        ...(
-          contribution
-            .automationTriggers ||
-          []
-        ),
-      ],
-    );
-
-
-export const APP_RUNTIME_AUTOMATION_ACTIONS:
-  SamiAutomationActionDefinition[] =
-  SAMI_APP_RUNTIME_CONTRIBUTIONS
-    .flatMap(
-      contribution => [
-        ...(
-          contribution
-            .automationActions ||
-          []
-        ),
-      ],
-    );
-
-
-export const APP_RUNTIME_AUTOMATION_ACTION_HANDLERS =
-  new Map<
-    string,
-    SamiAutomationActionHandler
-  >(
-    SAMI_APP_RUNTIME_CONTRIBUTIONS
-      .flatMap(
-        contribution => [
-          ...(
-            contribution
-              .automationActionHandlers
-              ?.entries() ||
-            []
-          ),
-        ],
-      ),
-  );
-
-
-export const APP_RUNTIME_INTEGRATION_PROVIDERS:
-  SamiIntegrationProviderDefinition[] =
-  SAMI_APP_RUNTIME_CONTRIBUTIONS
-    .flatMap(
-      contribution => [
-        ...(
-          contribution
-            .integrationProviders ||
-          []
-        ),
-      ],
-    );
-
-
-export const APP_RUNTIME_DATA_LIFECYCLE_HANDLERS:
-  SamiModuleDataLifecycleHandler[] =
-  SAMI_APP_RUNTIME_CONTRIBUTIONS
-    .flatMap(
-      contribution => [
-        ...(
-          contribution
-            .dataLifecycleHandlers ||
-          []
-        ),
-      ],
-    );
-
-
-export const APP_RUNTIME_MODULE_MIGRATIONS:
-  SamiModuleMigrationDefinition[] =
-  SAMI_APP_RUNTIME_CONTRIBUTIONS
-    .flatMap(
-      contribution => [
-        ...(
-          contribution.migrations ||
-          []
-        ),
-      ],
-    );
-
-
-export function getAdditionalModuleDataTables(
-  moduleKey:
-    string,
-) {
-  const key =
-    normalize(
-      moduleKey,
-    );
-
-  return [
-    ...new Set(
-      SAMI_APP_RUNTIME_CONTRIBUTIONS
-        .flatMap(
-          contribution => [
-            ...(
-              contribution
-                .additionalDataTables
-                ?.[
-                  key
-                ] ||
-              []
-            ),
-          ],
-        ),
-    ),
-  ];
-}
+export type {
+  SamiAppRuntimeContribution,
+};
