@@ -4,22 +4,14 @@ import {
   CORE_SAMI_AI_TOOLS,
 } from '@/lib/ai/core-tools';
 
-import {
-  INVOICING_AI_TOOLS,
-} from '@/lib/apps/invoicing/ai-tools';
-
-import {
-  ENTERPRISE_SUITE_AI_TOOLS,
-} from '@/lib/apps/enterprise/ai-tools';
-
-import {
-  SALES_AI_TOOLS,
-} from '@/lib/apps/sales/ai-tools';
-
 import type {
   SamiAiRuntimeContext,
   SamiAiToolDefinition,
 } from '@/lib/ai/types';
+
+import {
+  APP_RUNTIME_AI_TOOLS,
+} from '@/lib/apps/runtime-registry';
 
 import {
   filterAccessibleModuleExtensions,
@@ -35,7 +27,7 @@ import {
 export const APP_SAMI_AI_TOOLS:
   SamiAiToolDefinition[] =
   [
-    ...INVOICING_AI_TOOLS,
+    ...APP_RUNTIME_AI_TOOLS,
   ];
 
 function hasAllPermissions(
@@ -136,9 +128,22 @@ function toolIsSafe(
 export function getAvailableSamiAiTools(
   context: SamiAiRuntimeContext,
 ) {
-  const appTools =
+  const sharedAppTools =
+    APP_SAMI_AI_TOOLS
+      .filter(
+        tool =>
+          !tool.moduleKey,
+      );
+
+  const moduleAppTools =
     filterAccessibleModuleExtensions(
-      APP_SAMI_AI_TOOLS,
+      APP_SAMI_AI_TOOLS
+        .filter(
+          tool =>
+            Boolean(
+              tool.moduleKey,
+            ),
+        ),
       context.accessibleModuleKeys,
       tool =>
         tool.moduleKey,
@@ -147,9 +152,8 @@ export function getAvailableSamiAiTools(
 
   return [
     ...CORE_SAMI_AI_TOOLS,
-    ...ENTERPRISE_SUITE_AI_TOOLS,
-    ...SALES_AI_TOOLS,
-    ...appTools,
+    ...sharedAppTools,
+    ...moduleAppTools,
   ].filter(
     tool =>
       toolIsSafe(
