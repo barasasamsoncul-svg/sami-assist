@@ -506,7 +506,9 @@ export async function createWorkspaceFileUploadIntent(
 
       if (
         error.code ===
-          'USAGE_WORKSPACE_SUSPENDED'
+          'USAGE_WORKSPACE_SUSPENDED' ||
+        error.code ===
+          'USAGE_WORKSPACE_NOT_ENTITLED'
       ) {
         throw new WorkspaceFileError(
           'WORKSPACE_SUBSCRIPTION_REQUIRED',
