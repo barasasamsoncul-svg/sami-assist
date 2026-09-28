@@ -522,6 +522,18 @@ test('Category 20: custom webhook secrets are one-time and inbound delivery is b
 
   assert.match(
     webhook,
+    /ON CONFLICT \([\s\S]*endpoint_id,[\s\S]*external_event_id[\s\S]*WHERE external_event_id IS NOT NULL[\s\S]*DO NOTHING[\s\S]*RETURNING id/s,
+    'Concurrent retries with the same external event ID must be claimed atomically by the webhook delivery insert.',
+  );
+
+  assert.match(
+    webhook,
+    /deliveryInsert\.rows\.length ===[\s\S]*0[\s\S]*duplicate:[\s\S]*true/s,
+    'A concurrent duplicate must return an idempotent duplicate acknowledgement instead of failing the transaction.',
+  );
+
+  assert.match(
+    webhook,
     /payload_digest/,
   );
 
