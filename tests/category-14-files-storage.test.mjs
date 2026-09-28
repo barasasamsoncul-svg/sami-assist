@@ -76,6 +76,92 @@ test('Category 14: browser upload is a metadata intent and file bytes go directl
   assert.match(compactService, /BLOCKED_EXTENSIONS/);
 });
 
+test('Category 14: storage quota is reserved transactionally across concurrent upload intents', async () => {
+  const [
+    service,
+    usage,
+  ] =
+    await Promise.all([
+      source(
+        'lib/services/workspace-files.ts',
+      ),
+      source(
+        'lib/usage/entitlements.ts',
+      ),
+    ]);
+
+  assert.match(
+    usage,
+    /assertStorageReservationAvailableWithClient/,
+  );
+
+  assert.match(
+    usage,
+    /pg_advisory_xact_lock[\s\S]*sami:usage:storage:/s,
+    'Upload reservations must serialize against one workspace storage quota lock.',
+  );
+
+  assert.match(
+    usage,
+    /status[\s\S]*'active'[\s\S]*'pending_upload'[\s\S]*upload_expires_at[\s\S]*NOW\(\)/s,
+    'Quota reservation must include active bytes plus unexpired pending uploads.',
+  );
+
+  const intentStart =
+    service.indexOf(
+      'export async function createWorkspaceFileUploadIntent',
+    );
+
+  const completeStart =
+    service.indexOf(
+      'export async function completeWorkspaceFileUpload',
+      intentStart,
+    );
+
+  assert.ok(
+    intentStart >= 0 &&
+      completeStart >
+        intentStart,
+  );
+
+  const intentBlock =
+    service.slice(
+      intentStart,
+      completeStart,
+    );
+
+  const beginIndex =
+    intentBlock.indexOf(
+      "client.query('BEGIN')",
+    );
+
+  const reserveIndex =
+    intentBlock.indexOf(
+      'assertStorageReservationAvailableWithClient',
+    );
+
+  const insertIndex =
+    intentBlock.indexOf(
+      'INSERT INTO files',
+    );
+
+  const commitIndex =
+    intentBlock.indexOf(
+      "client.query('COMMIT')",
+    );
+
+  assert.ok(
+    beginIndex >= 0 &&
+      reserveIndex >
+        beginIndex &&
+      insertIndex >
+        reserveIndex &&
+      commitIndex >
+        insertIndex,
+    'Quota check and pending-upload reservation must commit in the same transaction.',
+  );
+});
+
 test('Category 14: upload completion verifies object metadata before activation', async () => {
   const service = compact(
     await source('lib/services/workspace-files.ts'),
