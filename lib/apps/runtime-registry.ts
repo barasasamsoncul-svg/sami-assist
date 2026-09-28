@@ -77,39 +77,10 @@ import {
 } from '@/lib/apps/invoicing/automation';
 
 import {
-  INVOICING_1_0_0_TO_2_0_0,
-} from '@/lib/apps/invoicing/migrations/1.0.0-to-2.0.0';
-
-import {
-  INVOICING_2_0_0_TO_2_1_0,
-} from '@/lib/apps/invoicing/migrations/2.0.0-to-2.1.0';
-
-import {
-  INVOICING_2_1_0_TO_2_2_0,
-} from '@/lib/apps/invoicing/migrations/2.1.0-to-2.2.0';
-
-import {
-  INVOICING_2_2_0_TO_2_3_0,
-} from '@/lib/apps/invoicing/migrations/2.2.0-to-2.3.0';
-
-import {
-  SALES_1_0_0_TO_2_0_0,
-} from '@/lib/apps/sales/migrations/1.0.0-to-2.0.0';
-
-import {
-  SALES_2_0_0_TO_2_1_0,
-} from '@/lib/apps/sales/migrations/2.0.0-to-2.1.0';
-
-import {
-  SALES_2_1_0_TO_2_2_0,
-} from '@/lib/apps/sales/migrations/2.1.0-to-2.2.0';
-
-import {
-  ENTERPRISE_SPECIALIST_DEPTH_MIGRATIONS,
-  ENTERPRISE_STRICT_PARITY_MIGRATIONS,
-  ENTERPRISE_SUITE_COMPLETION_MIGRATIONS,
-  ENTERPRISE_SUITE_MIGRATIONS,
-} from '@/lib/apps/enterprise/hardening';
+  ENTERPRISE_RUNTIME_MIGRATIONS,
+  INVOICING_RUNTIME_MIGRATIONS,
+  SALES_RUNTIME_MIGRATIONS,
+} from '@/lib/apps/runtime-migrations';
 
 import {
   getSamiModuleManifest,
@@ -206,12 +177,8 @@ export const SAMI_APP_RUNTIME_CONTRIBUTIONS:
         ENTERPRISE_AUTOMATION_ACTIONS,
       automationActionHandlers:
         ENTERPRISE_AUTOMATION_ACTION_HANDLERS,
-      migrations: [
-        ...ENTERPRISE_SUITE_MIGRATIONS,
-        ...ENTERPRISE_SUITE_COMPLETION_MIGRATIONS,
-        ...ENTERPRISE_SPECIALIST_DEPTH_MIGRATIONS,
-        ...ENTERPRISE_STRICT_PARITY_MIGRATIONS,
-      ],
+      migrations:
+        ENTERPRISE_RUNTIME_MIGRATIONS,
     },
     {
       key:
@@ -230,11 +197,8 @@ export const SAMI_APP_RUNTIME_CONTRIBUTIONS:
         SALES_AUTOMATION_ACTIONS,
       automationActionHandlers:
         SALES_AUTOMATION_ACTION_HANDLERS,
-      migrations: [
-        SALES_1_0_0_TO_2_0_0,
-        SALES_2_0_0_TO_2_1_0,
-        SALES_2_1_0_TO_2_2_0,
-      ],
+      migrations:
+        SALES_RUNTIME_MIGRATIONS,
       additionalDataTables: {
         sales:
           DEDICATED_DATA_TABLES
@@ -258,12 +222,8 @@ export const SAMI_APP_RUNTIME_CONTRIBUTIONS:
         INVOICING_AUTOMATION_ACTIONS,
       automationActionHandlers:
         INVOICING_AUTOMATION_ACTION_HANDLERS,
-      migrations: [
-        INVOICING_1_0_0_TO_2_0_0,
-        INVOICING_2_0_0_TO_2_1_0,
-        INVOICING_2_1_0_TO_2_2_0,
-        INVOICING_2_2_0_TO_2_3_0,
-      ],
+      migrations:
+        INVOICING_RUNTIME_MIGRATIONS,
       additionalDataTables: {
         invoicing:
           DEDICATED_DATA_TABLES
