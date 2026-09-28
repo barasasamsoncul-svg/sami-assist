@@ -15,7 +15,7 @@ import {
 
 import AppSurfaceShell from '@/app/components/apps/AppSurfaceShell';
 import SamiAppIconTile from '@/app/components/apps/SamiAppIconTile';
-import EnterpriseModuleWorkspaceClient from '@/app/apps/[appKey]/EnterpriseModuleWorkspaceClient';
+import EnterpriseModuleWorkspaceClient from '@/app/apps/_shared/EnterpriseDataWorkspaceClient';
 import styles from '@/app/apps/[appKey]/EnterpriseModuleWorkspaceShell.module.css';
 
 import {

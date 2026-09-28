@@ -1,6 +1,6 @@
 'use client';
 
-import EnterpriseModuleWorkspaceClient from '@/app/apps/[appKey]/EnterpriseModuleWorkspaceClient';
+import EnterpriseDataWorkspaceClient from '@/app/apps/_shared/EnterpriseDataWorkspaceClient';
 
 import type {
   EnterpriseWorkspaceData,
@@ -24,7 +24,7 @@ export default function LeadCaptureWorkspaceClient({
   accessibleModuleKeys: string[];
 }) {
   return (
-    <EnterpriseModuleWorkspaceClient
+    <EnterpriseDataWorkspaceClient
       initialData={initialData}
       userId={userId}
       initialView={initialView}
