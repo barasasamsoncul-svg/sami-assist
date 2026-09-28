@@ -2690,15 +2690,6 @@ FOR EACH ROW
 EXECUTE FUNCTION {schema}.set_updated_at();
 
 
-DROP TRIGGER IF EXISTS trg_documents_updated_at
-    ON {schema}.documents;
-
-CREATE TRIGGER trg_documents_updated_at
-BEFORE UPDATE ON {schema}.documents
-FOR EACH ROW
-EXECUTE FUNCTION {schema}.set_updated_at();
-
-
 DROP TRIGGER IF EXISTS trg_comments_updated_at
     ON {schema}.comments;
 
