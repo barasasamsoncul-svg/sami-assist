@@ -936,6 +936,7 @@ test('Category 19: full-suite gate includes Automation regression coverage', asy
 test('Category 19: enterprise apps contribute code-owned triggers and approved write handlers', async () => {
   const [
     registry,
+    runtimeRegistry,
     enterprise,
     contract,
     service,
@@ -945,6 +946,9 @@ test('Category 19: enterprise apps contribute code-owned triggers and approved w
     await Promise.all([
       source(
         'lib/automation/registry.ts',
+      ),
+      source(
+        'lib/apps/runtime-registry.ts',
       ),
       source(
         'lib/apps/enterprise/automation.ts',
@@ -965,16 +969,31 @@ test('Category 19: enterprise apps contribute code-owned triggers and approved w
 
   assert.match(
     registry,
+    /APP_RUNTIME_AUTOMATION_TRIGGERS/,
+  );
+
+  assert.match(
+    registry,
+    /APP_RUNTIME_AUTOMATION_ACTIONS/,
+  );
+
+  assert.match(
+    registry,
+    /APP_RUNTIME_AUTOMATION_ACTION_HANDLERS/,
+  );
+
+  assert.match(
+    runtimeRegistry,
     /ENTERPRISE_AUTOMATION_TRIGGERS/,
   );
 
   assert.match(
-    registry,
+    runtimeRegistry,
     /ENTERPRISE_AUTOMATION_ACTIONS/,
   );
 
   assert.match(
-    registry,
+    runtimeRegistry,
     /ENTERPRISE_AUTOMATION_ACTION_HANDLERS/,
   );
 
