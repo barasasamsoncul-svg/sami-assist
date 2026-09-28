@@ -364,7 +364,7 @@ export default function AppSurfaceShell({
                   user.id
                 }
                 initialUnreadNotifications={
-                  unreadNotifications
+                  liveUnreadNotifications
                 }
                 onUnreadChange={
                   setLiveUnreadNotifications
