@@ -27,7 +27,7 @@ import {
   APP_RUNTIME_AUTOMATION_ACTION_HANDLERS,
   APP_RUNTIME_AUTOMATION_ACTIONS,
   APP_RUNTIME_AUTOMATION_TRIGGERS,
-} from '@/lib/apps/runtime-registry';
+} from '@/lib/apps/runtime-automation';
 
 export const CORE_AUTOMATION_TRIGGERS:
   SamiAutomationTriggerDefinition[] = [
