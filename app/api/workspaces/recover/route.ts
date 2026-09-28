@@ -16,6 +16,10 @@ import {
   provisionTenant,
 } from '@/lib/services/tenant-provisioning';
 
+import {
+  getSamiModuleDependencyPlan,
+} from '@/lib/modules/registry';
+
 
 export const runtime =
   'nodejs';
@@ -267,7 +271,7 @@ export async function POST(
       ],
     );
 
-  const appKeys =
+  const reservedAppKeys =
     [
       ...new Set(
         appsResult.rows
@@ -287,7 +291,7 @@ export async function POST(
     ];
 
   if (
-    appKeys.length ===
+    reservedAppKeys.length ===
       0
   ) {
     return json(
@@ -298,6 +302,45 @@ export async function POST(
           'WORKSPACE_RECOVERY_APPS_MISSING',
         error:
           'SaMi could not recover the original app selection for this workspace.',
+      },
+      409,
+    );
+  }
+
+  let appKeys:
+    string[];
+
+  try {
+    appKeys =
+      [
+        ...new Set(
+          reservedAppKeys.flatMap(
+            appKey =>
+              getSamiModuleDependencyPlan(
+                appKey,
+              ).map(
+                manifest =>
+                  manifest.key,
+              ),
+          ),
+        ),
+      ];
+  } catch (
+    error
+  ) {
+    console.error(
+      '[SaMi] Workspace recovery dependency planning failed:',
+      error,
+    );
+
+    return json(
+      {
+        success:
+          false,
+        code:
+          'WORKSPACE_RECOVERY_DEPENDENCY_INVALID',
+        error:
+          'SaMi could not resolve the saved app dependency plan for this workspace.',
       },
       409,
     );

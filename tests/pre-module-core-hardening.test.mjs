@@ -122,6 +122,60 @@ test('pre-module hardening: tenant core SQL uses valid PostgreSQL dollar quoting
 });
 
 
+test('pre-module hardening: tenant core triggers only target core-owned tables', async () => {
+  const schema =
+    await source(
+      'lib/schema/tenant-core.sql',
+    );
+
+  const createdTables =
+    new Set(
+      [
+        ...schema.matchAll(
+          /CREATE TABLE IF NOT EXISTS \{schema\}\.([a-zA-Z0-9_]+)/g,
+        ),
+      ].map(
+        match =>
+          match[1],
+      ),
+    );
+
+  const triggerTargets =
+    new Set(
+      [
+        ...schema.matchAll(
+          /(?:DROP TRIGGER IF EXISTS[\s\S]*?\n\s*ON|BEFORE UPDATE ON) \{schema\}\.([a-zA-Z0-9_]+)/g,
+        ),
+      ].map(
+        match =>
+          match[1],
+      ),
+    );
+
+  for (
+    const table
+    of triggerTargets
+  ) {
+    assert.ok(
+      createdTables.has(
+        table,
+      ),
+      'Tenant core trigger target ' +
+        table +
+        ' must be created by tenant core before its trigger is declared.',
+    );
+  }
+
+  assert.equal(
+    triggerTargets.has(
+      'documents',
+    ),
+    false,
+    'Documents is app-owned and must install its trigger with the Documents app schema.',
+  );
+});
+
+
 test('pre-module hardening: external callbacks are not blanket-blocked by browser CSRF policy', async () => {
   const security =
     compact(

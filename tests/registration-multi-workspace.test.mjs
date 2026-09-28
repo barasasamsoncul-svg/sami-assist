@@ -376,6 +376,12 @@ test('Registration recovery: failed owned workspaces retry in place instead of c
 
   assert.match(
     route,
+    /getSamiModuleDependencyPlan/,
+    'Recovery must rebuild the saved app set through the same dependency planner used by registration.',
+  );
+
+  assert.match(
+    route,
     /provisionTenant\([\s\S]*tenantId[\s\S]*appKeys/s,
     'Recovery must retry the existing tenant rather than create another tenant.',
   );

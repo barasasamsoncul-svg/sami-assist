@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 
 import {
   Pool,
@@ -743,6 +745,119 @@ integration(
           ' should be created by the specialist parity migration',
         );
       }
+
+      await client.query(
+        'ROLLBACK',
+      );
+    } finally {
+      client.release();
+      await pool.end();
+    }
+  },
+);
+
+integration(
+  'Tenant provisioning: core and Documents schemas execute from an empty PostgreSQL database',
+  async () => {
+    const pool =
+      new Pool({
+        connectionString:
+          DATABASE_URL,
+      });
+
+    const client =
+      await pool.connect();
+
+    try {
+      await client.query(
+        'BEGIN',
+      );
+
+      await client.query(
+        'CREATE EXTENSION IF NOT EXISTS pgcrypto',
+      );
+
+      const coreSql =
+        (
+          await readFile(
+            path.join(
+              process.cwd(),
+              'lib',
+              'schema',
+              'tenant-core.sql',
+            ),
+            'utf8',
+          )
+        ).replace(
+          /\{schema\}/g,
+          'public',
+        );
+
+      await client.query(
+        coreSql,
+      );
+
+      const coreVersion =
+        await client.query(
+          `
+            SELECT version
+            FROM public.core_schema_version
+            ORDER BY installed_at DESC
+            LIMIT 1
+          `,
+        );
+
+      assert.ok(
+        coreVersion.rows[0]
+          ?.version,
+        'tenant core schema should install its version marker',
+      );
+
+      const documentsSql =
+        await readFile(
+          path.join(
+            process.cwd(),
+            'lib',
+            'apps',
+            'documents',
+            'schema.sql',
+          ),
+          'utf8',
+        );
+
+      await client.query(
+        documentsSql,
+      );
+
+      const documentsTable =
+        await client.query(
+          "SELECT to_regclass('public.documents') AS relation",
+        );
+
+      assert.equal(
+        documentsTable.rows[0]
+          ?.relation,
+        'documents',
+      );
+
+      const documentsTrigger =
+        await client.query(
+          `
+            SELECT tgname
+            FROM pg_trigger
+            WHERE tgrelid =
+                  'public.documents'::regclass
+              AND tgname =
+                  'trg_documents_updated_at'
+              AND NOT tgisinternal
+          `,
+        );
+
+      assert.equal(
+        documentsTrigger.rows.length,
+        1,
+        'Documents app should install its updated_at trigger after creating the table.',
+      );
 
       await client.query(
         'ROLLBACK',
