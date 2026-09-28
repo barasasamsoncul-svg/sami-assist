@@ -288,6 +288,52 @@ test('Registration: final identity and subscription email recipient are loaded f
 });
 
 
+test('Registration: selected-app guard follows the live installable app catalog instead of a stale fixed ceiling', async () => {
+  const [
+    registerRoute,
+    planPolicy,
+  ] =
+    await Promise.all([
+      source(
+        'app/api/auth/register/route.ts',
+      ),
+      source(
+        'lib/billing/plan-policy.ts',
+      ),
+    ]);
+
+  assert.match(
+    registerRoute,
+    /SAMI_APPS/,
+    'Registration must derive its selection ceiling from the canonical SaMi app catalog.',
+  );
+
+  assert.match(
+    registerRoute,
+    /const MAX_SELECTED_APPS\s*=\s*SAMI_APPS\.filter\([\s\S]*app\.installable[\s\S]*\)\.length;/s,
+    'The anti-abuse ceiling must grow with the installable business-app catalog.',
+  );
+
+  assert.doesNotMatch(
+    registerRoute,
+    /MAX_SELECTED_APPS\s*=\s*50\b/,
+    'The old 50-app registration ceiling must never return.',
+  );
+
+  assert.match(
+    planPolicy,
+    /standard:[\s\S]*allBusinessApps:\s*true[\s\S]*maxInstalledBusinessApps:\s*null/s,
+    'Standard must continue to allow the full business-app catalog.',
+  );
+
+  assert.match(
+    planPolicy,
+    /custom:[\s\S]*allBusinessApps:\s*true[\s\S]*maxInstalledBusinessApps:\s*null/s,
+    'Custom must continue to allow the full business-app catalog.',
+  );
+});
+
+
 test('Registration: existing workspace creation switches the authenticated session into the new tenant', async () => {
   const registerRoute =
     await source(
