@@ -13,15 +13,23 @@ import {
   SAMI_APP_UI_PROFILE_COUNT,
 } from '../lib/apps/ui-profiles';
 
-const routeFiles = [
+const standaloneSurfaceFiles = [
   'app/apps/[appKey]/EnterpriseModulePage.tsx',
-  'app/apps/[appKey]/page.tsx',
-  'app/apps/[appKey]/[section]/page.tsx',
   'app/apps/sales/page.tsx',
   'app/apps/sales/orders/[orderId]/page.tsx',
   'app/apps/sales/quotes/[quoteId]/page.tsx',
   'app/apps/invoicing/page.tsx',
   'app/apps/invoicing/[invoiceId]/page.tsx',
+];
+
+const delegatingRouteFiles = [
+  'app/apps/[appKey]/page.tsx',
+  'app/apps/[appKey]/[section]/page.tsx',
+];
+
+const allBusinessAppRouteFiles = [
+  ...standaloneSurfaceFiles,
+  ...delegatingRouteFiles,
 ];
 
 test(
@@ -165,7 +173,7 @@ test(
   async () => {
     for (
       const path
-      of routeFiles
+      of standaloneSurfaceFiles
     ) {
       const source =
         await readFile(
@@ -177,8 +185,37 @@ test(
         source,
         /AppSurfaceShell/,
         path +
-          ' must use the standalone business app surface',
+          ' must render the standalone business app surface',
       );
+    }
+
+    for (
+      const path
+      of delegatingRouteFiles
+    ) {
+      const source =
+        await readFile(
+          path,
+          'utf8',
+        );
+
+      assert.match(
+        source,
+        /EnterpriseModulePage/,
+        path +
+          ' must delegate to the standalone enterprise app page',
+      );
+    }
+
+    for (
+      const path
+      of allBusinessAppRouteFiles
+    ) {
+      const source =
+        await readFile(
+          path,
+          'utf8',
+        );
 
       assert.doesNotMatch(
         source,
