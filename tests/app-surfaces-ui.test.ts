@@ -235,6 +235,96 @@ test(
 );
 
 test(
+  'every standalone business app renders a module-owned sidebar',
+  async () => {
+    const shell =
+      await readFile(
+        'app/components/apps/AppSurfaceShell.tsx',
+        'utf8',
+      );
+
+    assert.match(
+      shell,
+      /data-app-sidebar/,
+      'The standalone app shell must always render an app-owned sidebar.',
+    );
+
+    assert.match(
+      shell,
+      /aria-label="Open app sidebar"/,
+      'Mobile app surfaces must expose the sidebar through a drawer control.',
+    );
+
+    assert.match(
+      shell,
+      /lg:grid-cols-\[248px_minmax\(0,1fr\)\]/,
+      'Desktop app surfaces must reserve a persistent sidebar column.',
+    );
+
+    for (
+      const path
+      of standaloneSurfaceFiles
+    ) {
+      const source =
+        await readFile(
+          path,
+          'utf8',
+        );
+
+      assert.match(
+        source,
+        /appSidebarItems=/,
+        path +
+          ' must supply its module-specific sidebar navigation.',
+      );
+
+      assert.match(
+        source,
+        /activeSidebarKey=/,
+        path +
+          ' must identify the active module-sidebar section.',
+      );
+    }
+
+    const enterprise =
+      await readFile(
+        'app/apps/[appKey]/EnterpriseModulePage.tsx',
+        'utf8',
+      );
+
+    assert.match(
+      enterprise,
+      /data\.tables[\s\S]*appSidebarItems/s,
+      'Enterprise apps must derive sidebar sections from their real module tables.',
+    );
+
+    const salesClient =
+      await readFile(
+        'app/apps/sales/SalesWorkspaceClient.tsx',
+        'utf8',
+      );
+
+    const invoicingClient =
+      await readFile(
+        'app/apps/invoicing/InvoicingWorkspaceClient.tsx',
+        'utf8',
+      );
+
+    assert.doesNotMatch(
+      salesClient,
+      /flex gap-2 overflow-x-auto p-3/,
+      'Sales must not keep the former horizontal primary navigation after adopting its sidebar.',
+    );
+
+    assert.doesNotMatch(
+      invoicingClient,
+      /visibleNav\.map\([\s\S]*setView\(/s,
+      'Invoicing must not keep the former horizontal primary navigation after adopting its sidebar.',
+    );
+  },
+);
+
+test(
   'enterprise apps expose profile-driven composition attributes',
   async () => {
     const source =
