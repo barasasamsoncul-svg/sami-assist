@@ -2,9 +2,13 @@ import {
   notFound,
 } from 'next/navigation';
 
-import WorkspaceShell from '@/app/components/workspace/WorkspaceShell';
+import AppSurfaceShell from '@/app/components/apps/AppSurfaceShell';
 
 import SalesQuoteDetailClient from '@/app/apps/sales/SalesQuoteDetailClient';
+
+import {
+  getSamiAppUiProfile,
+} from '@/lib/apps/ui-profiles';
 
 import {
   getAccountContextForUser,
@@ -116,8 +120,18 @@ export default async function SalesQuotePage({
     notFound();
   }
 
+  const uiProfile =
+    getSamiAppUiProfile(
+      'sales',
+    );
+
   return (
-    <WorkspaceShell
+    <AppSurfaceShell
+      appKey="sales"
+      appCategory="sales"
+      profile={
+        uiProfile
+      }
       user={
         session.user
       }
@@ -167,7 +181,6 @@ export default async function SalesQuotePage({
       contextLabel={
         workspace.company.name
       }
-      contentClassName="max-w-[1600px]"
     >
       <SalesQuoteDetailClient
         quote={
@@ -177,6 +190,6 @@ export default async function SalesQuotePage({
           workspace
         }
       />
-    </WorkspaceShell>
+    </AppSurfaceShell>
   );
 }
