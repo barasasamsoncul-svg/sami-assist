@@ -419,11 +419,45 @@ export function assertSamiAppRuntimeContributions(
       );
     }
 
+    const assertOwnedModule =
+      (
+        moduleKey:
+          string | null | undefined,
+        contributionType:
+          string,
+      ) => {
+        const key =
+          normalize(
+            moduleKey,
+          );
+
+        if (
+          !key
+        ) {
+          return;
+        }
+
+        if (
+          !owned.has(
+            key,
+          )
+        ) {
+          throw new Error(
+            `SaMi runtime contribution "${contribution.key}" contributes ${contributionType} for module "${key}" outside its owned module set.`,
+          );
+        }
+      };
+
     for (
       const provider
       of contribution.dashboardProviders ||
       []
     ) {
+      assertOwnedModule(
+        provider.moduleKey,
+        'dashboard provider',
+      );
+
       assertExtension(
         provider.moduleKey,
         'dashboard',
@@ -436,6 +470,11 @@ export function assertSamiAppRuntimeContributions(
       of contribution.searchProviders ||
       []
     ) {
+      assertOwnedModule(
+        provider.key,
+        'search provider',
+      );
+
       assertExtension(
         provider.key,
         'search',
@@ -448,6 +487,11 @@ export function assertSamiAppRuntimeContributions(
       of contribution.aiTools ||
       []
     ) {
+      assertOwnedModule(
+        tool.moduleKey,
+        'AI tool',
+      );
+
       assertExtension(
         tool.moduleKey,
         'aiTools',
@@ -460,6 +504,11 @@ export function assertSamiAppRuntimeContributions(
       of contribution.automationTriggers ||
       []
     ) {
+      assertOwnedModule(
+        trigger.moduleKey,
+        'automation trigger',
+      );
+
       assertExtension(
         trigger.moduleKey,
         'automationTriggers',
@@ -472,6 +521,11 @@ export function assertSamiAppRuntimeContributions(
       of contribution.automationActions ||
       []
     ) {
+      assertOwnedModule(
+        action.moduleKey,
+        'automation action',
+      );
+
       assertExtension(
         action.moduleKey,
         'automationActions',
@@ -484,6 +538,11 @@ export function assertSamiAppRuntimeContributions(
       of contribution.integrationProviders ||
       []
     ) {
+      assertOwnedModule(
+        provider.moduleKey,
+        'integration provider',
+      );
+
       assertExtension(
         provider.moduleKey,
         'integrationProviders',
@@ -501,12 +560,18 @@ export function assertSamiAppRuntimeContributions(
           handler.moduleKey,
         );
 
+      assertOwnedModule(
+        key,
+        'data lifecycle handler',
+      );
+
       if (
         handler.exportData
       ) {
         assertExtension(
           key,
           'dataExport',
+          manifests,
         );
       }
 
@@ -517,6 +582,7 @@ export function assertSamiAppRuntimeContributions(
         assertExtension(
           key,
           'dataErasure',
+          manifests,
         );
       }
     }
@@ -532,6 +598,11 @@ export function assertSamiAppRuntimeContributions(
         {},
       )
     ) {
+      assertOwnedModule(
+        moduleKey,
+        'additional data tables',
+      );
+
       manifestFor(
         moduleKey,
         manifests,
