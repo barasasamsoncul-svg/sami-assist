@@ -446,3 +446,72 @@ test(
     );
   },
 );
+
+
+test(
+  'future module acceptance: app-owned runtime providers must always identify their owning module',
+  () => {
+    const invalid:
+      SamiAppRuntimeContribution = {
+        ...FUTURE_CONTRIBUTION,
+        aiTools: [
+          {
+            ...FUTURE_CONTRIBUTION.aiTools![0],
+            moduleKey:
+              null,
+          },
+        ],
+      };
+
+    assert.throws(
+      () =>
+        assertSamiAppRuntimeContributions(
+          [
+            invalid,
+          ],
+          [
+            FUTURE_MODULE,
+          ],
+        ),
+      /without a module key/,
+    );
+  },
+);
+
+
+test(
+  'future module acceptance: contribution ownership lists reject blanks and duplicates',
+  () => {
+    for (
+      const moduleKeys
+      of [
+        [
+          'future_ops',
+          '',
+        ],
+        [
+          'future_ops',
+          'future_ops',
+        ],
+      ]
+    ) {
+      const invalid:
+        SamiAppRuntimeContribution = {
+          ...FUTURE_CONTRIBUTION,
+          moduleKeys,
+        };
+
+      assert.throws(
+        () =>
+          assertSamiAppRuntimeContributions(
+            [
+              invalid,
+            ],
+            [
+              FUTURE_MODULE,
+            ],
+          ),
+      );
+    }
+  },
+);
