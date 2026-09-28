@@ -199,6 +199,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
     developerRoute,
     developerRegistry,
     suiteExport,
+    runtimeRegistry,
   ] =
     await Promise.all([
       source(
@@ -209,6 +210,9 @@ test('Invoicing manifest is a real first-party module with permissions, resource
       ),
       source(
         'lib/data-lifecycle/suite-export.ts',
+      ),
+      source(
+        'lib/apps/runtime-registry.ts',
       ),
     ]);
 
@@ -228,8 +232,26 @@ test('Invoicing manifest is a real first-party module with permissions, resource
   );
 
   assert.match(
+    runtimeRegistry,
+    /invoicing_invoices/,
+    'Invoicing owns its additional lifecycle tables in the app runtime contribution boundary.',
+  );
+
+  assert.match(
+    runtimeRegistry,
+    /additionalDataTables/,
+  );
+
+  assert.match(
+    suiteExport,
+    /getAdditionalModuleDataTables/,
+    'Generic export must discover app-owned tables without hard-coding Invoicing.',
+  );
+
+  assert.doesNotMatch(
     suiteExport,
     /invoicing_invoices/,
+    'The platform lifecycle kernel must not hard-code Invoicing table names.',
   );
 
   assert.match(
