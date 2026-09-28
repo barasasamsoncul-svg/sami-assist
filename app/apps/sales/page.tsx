@@ -46,7 +46,27 @@ export const dynamic =
   'force-dynamic';
 
 
-export default async function SalesPage() {
+type SalesView =
+  | 'overview'
+  | 'quotes'
+  | 'orders'
+  | 'reports'
+  | 'settings';
+
+
+export default async function SalesPage({
+  searchParams,
+}: {
+  searchParams:
+    Promise<{
+      view?:
+        string |
+        string[];
+    }>;
+}) {
+  const query =
+    await searchParams;
+
   const session =
     await requirePageSession(
       '/apps/sales',
@@ -100,6 +120,131 @@ export default async function SalesPage() {
       'sales',
     );
 
+  const availableViews:
+    SalesView[] = [
+      'overview',
+      'quotes',
+      ...(
+        data.capabilities
+          .canViewOrders
+          ? [
+              'orders' as const,
+            ]
+          : []
+      ),
+      ...(
+        data.capabilities
+          .canViewReports
+          ? [
+              'reports' as const,
+            ]
+          : []
+      ),
+      ...(
+        data.capabilities
+          .canManageSettings
+          ? [
+              'settings' as const,
+            ]
+          : []
+      ),
+    ];
+
+  const requestedView =
+    Array.isArray(
+      query.view,
+    )
+      ? query.view[0]
+      : query.view;
+
+  const activeView:
+    SalesView =
+      availableViews.includes(
+        requestedView as
+          SalesView,
+      )
+        ? requestedView as
+            SalesView
+        : 'overview';
+
+  const appSidebarItems = [
+    {
+      key:
+        'overview',
+      label:
+        'Overview',
+      href:
+        '/apps/sales?view=overview',
+      description:
+        'Pipeline health, conversion and sales value.',
+    },
+    {
+      key:
+        'quotes',
+      label:
+        'Quotations',
+      href:
+        '/apps/sales?view=quotes',
+      description:
+        'Create, approve, send and convert quotations.',
+      badge:
+        data.quotes.length,
+    },
+    ...(
+      data.capabilities
+        .canViewOrders
+        ? [
+            {
+              key:
+                'orders',
+              label:
+                'Sales Orders',
+              href:
+                '/apps/sales?view=orders',
+              description:
+                'Fulfillment, delivery and invoice readiness.',
+              badge:
+                data.orders.length,
+            },
+          ]
+        : []
+    ),
+    ...(
+      data.capabilities
+        .canViewReports
+        ? [
+            {
+              key:
+                'reports',
+              label:
+                'Reports',
+              href:
+                '/apps/sales?view=reports',
+              description:
+                'Conversion, customer and monthly sales analysis.',
+            },
+          ]
+        : []
+    ),
+    ...(
+      data.capabilities
+        .canManageSettings
+        ? [
+            {
+              key:
+                'settings',
+              label:
+                'Settings',
+              href:
+                '/apps/sales?view=settings',
+              description:
+                'Sales policy, approvals and invoice behavior.',
+            },
+          ]
+        : []
+    ),
+  ];
+
   return (
     <AppSurfaceShell
       appKey="sales"
@@ -121,6 +266,12 @@ export default async function SalesPage() {
       }
       modules={
         shell.accessibleModules
+      }
+      appSidebarItems={
+        appSidebarItems
+      }
+      activeSidebarKey={
+        activeView
       }
       sidebarCapabilities={{
         aiEnabled:
@@ -158,6 +309,9 @@ export default async function SalesPage() {
       <SalesWorkspaceClient
         initialData={
           data
+        }
+        initialView={
+          activeView
         }
         userId={
           session.user.id
