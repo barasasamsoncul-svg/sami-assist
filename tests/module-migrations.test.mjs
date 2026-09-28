@@ -47,20 +47,42 @@ test('module migrations: migrationNamespace is now an enforced runtime contract'
   );
 });
 
-test('module migrations: executable migrations are code-owned and recorded inside the tenant database', async () => {
-  const migrations =
-    await source(
-      'lib/modules/migrations.ts',
-    );
+test('module migrations: executable migrations are app-owned and recorded inside the tenant database', async () => {
+  const [
+    migrations,
+    migrationTypes,
+    runtimeRegistry,
+  ] =
+    await Promise.all([
+      source(
+        'lib/modules/migrations.ts',
+      ),
+      source(
+        'lib/modules/migration-types.ts',
+      ),
+      source(
+        'lib/apps/runtime-registry.ts',
+      ),
+    ]);
 
   assert.match(
-    migrations,
+    migrationTypes,
     /SamiModuleMigrationDefinition/,
   );
 
   assert.match(
+    migrationTypes,
+    /run:/,
+  );
+
+  assert.match(
+    runtimeRegistry,
+    /APP_RUNTIME_MODULE_MIGRATIONS/,
+  );
+
+  assert.match(
     migrations,
-    /run:\s*\(/,
+    /APP_RUNTIME_MODULE_MIGRATIONS/,
   );
 
   assert.match(
@@ -75,15 +97,33 @@ test('module migrations: executable migrations are code-owned and recorded insid
 
   assert.doesNotMatch(
     migrations,
+    /apps\/(?:sales|invoicing|enterprise)/,
+    'The migration kernel must not import individual business-app migrations.',
+  );
+
+  assert.doesNotMatch(
+    migrations,
     /queryControl|manifest\s*:\s*json|eval\(|new Function/,
   );
 });
 
 test('module migrations: downgrade, missing paths, cycles and unsafe SQL fail closed', async () => {
-  const migrations =
-    await source(
-      'lib/modules/migrations.ts',
-    );
+  const [
+    migrations,
+    errors,
+    safety,
+  ] =
+    await Promise.all([
+      source(
+        'lib/modules/migrations.ts',
+      ),
+      source(
+        'lib/modules/migration-errors.ts',
+      ),
+      source(
+        'lib/modules/migration-safety.ts',
+      ),
+    ]);
 
   for (
     const marker
@@ -91,16 +131,35 @@ test('module migrations: downgrade, missing paths, cycles and unsafe SQL fail cl
       'MODULE_DOWNGRADE_UNSUPPORTED',
       'MODULE_MIGRATION_PATH_MISSING',
       'MODULE_MIGRATION_REGISTRY_INVALID',
+    ]
+  ) {
+    assert.ok(
+      migrations.includes(
+        marker,
+      ) ||
+      errors.includes(
+        marker,
+      ),
+      `missing migration safety marker ${marker}`,
+    );
+  }
+
+  for (
+    const marker
+    of [
       'MODULE_MIGRATION_UNSAFE',
       'DROP',
       'TRUNCATE',
     ]
   ) {
     assert.ok(
-      migrations.includes(
+      safety.includes(
+        marker,
+      ) ||
+      errors.includes(
         marker,
       ),
-      `missing migration safety marker ${marker}`,
+      `missing migration SQL safety marker ${marker}`,
     );
   }
 });
