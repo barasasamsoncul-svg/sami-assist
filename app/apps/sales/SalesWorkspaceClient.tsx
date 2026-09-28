@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -300,10 +301,14 @@ function exportSales(
 
 export default function SalesWorkspaceClient({
   initialData,
+  initialView =
+    'overview',
   userId,
 }: {
   initialData:
     SalesWorkspaceData;
+  initialView?:
+    View;
   userId:
     string;
 }) {
@@ -315,8 +320,19 @@ export default function SalesWorkspaceClient({
     setView,
   ] =
     useState<View>(
-      'overview',
+      initialView,
     );
+
+  useEffect(
+    () => {
+      setView(
+        initialView,
+      );
+    },
+    [
+      initialView,
+    ],
+  );
 
   const [
     search,
@@ -799,50 +815,6 @@ export default function SalesWorkspaceClient({
             </div>
           </div>
 
-          <div className="flex gap-2 overflow-x-auto p-3">
-            {
-              nav
-                .filter(
-                  item =>
-                    item.visible,
-                )
-                .map(
-                  item => {
-                    const Icon =
-                      item.icon;
-
-                    return (
-                      <button
-                        key={
-                          item.key
-                        }
-                        type="button"
-                        onClick={
-                          () =>
-                            setView(
-                              item.key,
-                            )
-                        }
-                        className={[
-                          'inline-flex h-10 shrink-0 items-center gap-2 rounded-xl px-3 text-xs font-black',
-                          view ===
-                            item.key
-                            ? 'bg-blue-600 text-white'
-                            : 'border border-[var(--sami-border)]',
-                        ].join(
-                          ' ',
-                        )}
-                      >
-                        <Icon className="h-4 w-4" />
-                        {
-                          item.label
-                        }
-                      </button>
-                    );
-                  },
-                )
-            }
-          </div>
         </section>
 
         {
