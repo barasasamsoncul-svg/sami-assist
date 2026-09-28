@@ -178,23 +178,36 @@ export function assertSamiAppRuntimeContributions(
       contributionKey,
     );
 
+    const normalizedModuleKeys =
+      contribution.moduleKeys
+        .map(
+          normalize,
+        );
+
+    if (
+      normalizedModuleKeys.length ===
+        0 ||
+      normalizedModuleKeys.some(
+        moduleKey =>
+          !moduleKey,
+      )
+    ) {
+      throw new Error(
+        `SaMi runtime contribution "${contribution.key}" must declare only non-empty owned module keys.`,
+      );
+    }
+
     const owned =
       new Set(
-        contribution.moduleKeys
-          .map(
-            normalize,
-          )
-          .filter(
-            Boolean,
-          ),
+        normalizedModuleKeys,
       );
 
     if (
-      owned.size ===
-        0
+      owned.size !==
+        normalizedModuleKeys.length
     ) {
       throw new Error(
-        `SaMi runtime contribution "${contribution.key}" must own at least one registered module.`,
+        `SaMi runtime contribution "${contribution.key}" declares duplicate owned module keys.`,
       );
     }
 
@@ -223,7 +236,9 @@ export function assertSamiAppRuntimeContributions(
         if (
           !key
         ) {
-          return;
+          throw new Error(
+            `SaMi runtime contribution "${contribution.key}" contributes ${contributionType} without a module key.`,
+          );
         }
 
         if (
