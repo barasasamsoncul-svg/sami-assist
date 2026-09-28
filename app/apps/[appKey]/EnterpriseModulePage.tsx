@@ -1,3 +1,7 @@
+import type {
+  CSSProperties,
+} from 'react';
+
 import Link from 'next/link';
 
 import {
@@ -9,7 +13,7 @@ import {
   redirect,
 } from 'next/navigation';
 
-import WorkspaceShell from '@/app/components/workspace/WorkspaceShell';
+import AppSurfaceShell from '@/app/components/apps/AppSurfaceShell';
 import SamiAppIconTile from '@/app/components/apps/SamiAppIconTile';
 import EnterpriseModuleWorkspaceClient from '@/app/apps/[appKey]/EnterpriseModuleWorkspaceClient';
 import styles from '@/app/apps/[appKey]/EnterpriseModuleWorkspaceShell.module.css';
@@ -17,6 +21,10 @@ import styles from '@/app/apps/[appKey]/EnterpriseModuleWorkspaceShell.module.cs
 import {
   getSaMiAppVisual,
 } from '@/lib/apps/visual-registry';
+
+import {
+  getSamiAppUiProfile,
+} from '@/lib/apps/ui-profiles';
 
 import {
   getCanonicalAppKey,
@@ -338,8 +346,25 @@ export default async function EnterpriseModulePage({
       app.category,
     );
 
+  const uiProfile =
+    getSamiAppUiProfile(
+      app.registryKey,
+    );
+
   return (
-    <WorkspaceShell
+    <AppSurfaceShell
+      appKey={
+        app.registryKey
+      }
+      appCategory={
+        app.category
+      }
+      appIconKey={
+        app.iconKey
+      }
+      profile={
+        uiProfile
+      }
       user={
         session.user
       }
@@ -416,12 +441,32 @@ export default async function EnterpriseModulePage({
           </Link>
         </div>
       }
-      contentClassName="max-w-[1600px]"
     >
       <div
         className={
           styles.enterpriseWorkspace
         }
+        data-module={
+          app.registryKey
+        }
+        data-archetype={
+          uiProfile.archetype
+        }
+        data-navigation={
+          uiProfile.navigation
+        }
+        data-density={
+          uiProfile.density
+        }
+        data-header={
+          uiProfile.header
+        }
+        style={{
+          '--sami-module-accent':
+            uiProfile.accent,
+          '--sami-module-secondary':
+            uiProfile.secondary,
+        } as CSSProperties}
       >
         <EnterpriseModuleWorkspaceClient
           initialData={
@@ -446,6 +491,6 @@ export default async function EnterpriseModulePage({
           }
         />
       </div>
-    </WorkspaceShell>
+    </AppSurfaceShell>
   );
 }
