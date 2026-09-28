@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   assertSamiAppRuntimeContributions,
   type SamiAppRuntimeContribution,
-} from '@/lib/apps/runtime-registry';
+} from '@/lib/apps/runtime-contract';
 
 import {
   assertValidSamiModuleManifests,
