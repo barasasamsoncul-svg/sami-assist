@@ -522,6 +522,45 @@ export function assertSamiAppRuntimeRegistry() {
     }
 
     for (
+      const migration
+      of contribution.migrations ||
+      []
+    ) {
+      const key =
+        normalize(
+          migration.moduleKey,
+        );
+
+      const manifest =
+        manifestFor(
+          key,
+        );
+
+      if (
+        !owned.has(
+          key,
+        )
+      ) {
+        throw new Error(
+          `SaMi runtime contribution "${contribution.key}" registered migration "${migration.key}" for module "${key}" outside its owned module set.`,
+        );
+      }
+
+      if (
+        normalize(
+          migration.namespace,
+        ) !==
+        normalize(
+          manifest.migrationNamespace,
+        )
+      ) {
+        throw new Error(
+          `SaMi migration "${migration.key}" does not match module "${key}" migration namespace.`,
+        );
+      }
+    }
+
+    for (
       const [
         actionKey,
       ]
