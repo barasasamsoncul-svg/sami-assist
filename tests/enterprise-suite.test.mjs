@@ -778,7 +778,7 @@ test('enterprise v2 hardening adds company and audit boundaries to legacy app sc
       'lib/services/workspace-app-lifecycle.ts',
     ),
     source(
-      'lib/modules/migrations.ts',
+      'lib/apps/runtime-registry.ts',
     ),
   ]);
 
@@ -1116,7 +1116,7 @@ test('specialist ERP 2.2 deepens finance inventory payroll CRM projects helpdesk
       'lib/apps/enterprise/hardening.ts',
     ),
     source(
-      'lib/modules/migrations.ts',
+      'lib/apps/runtime-registry.ts',
     ),
     source(
       'lib/modules/enterprise-contract.ts',
@@ -3334,7 +3334,9 @@ test('strict Odoo Zoho parity v2.3 adds domain depth and dependency execution in
     source('lib/apps/enterprise/specialist-depth.ts'),
     source('lib/apps/enterprise/specialist-catalog.ts'),
     source('lib/apps/enterprise/hardening.ts'),
-    source('lib/modules/migrations.ts'),
+    source(
+      'lib/apps/runtime-registry.ts',
+    ),
     source('lib/modules/enterprise-contract.ts'),
     source('lib/apps/enterprise/domain-hooks.ts'),
     source('lib/apps/enterprise/service.ts'),
