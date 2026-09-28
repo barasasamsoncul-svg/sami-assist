@@ -119,6 +119,10 @@ Migration execution belongs to the platform.
 
 Migration definitions belong to apps.
 
+App migration definitions are collected through the bootstrap-safe `lib/apps/runtime-migrations.ts` boundary. This subset is intentionally separate from the general executable `runtime-registry.ts` so module upgrade checks can run while Search, AI and Automation providers are still initializing without creating a circular dependency.
+
+The general runtime contribution contract may reference the same app-owned migration groups for validation and introspection, but the migration executor itself depends only on the bootstrap-safe migration registry.
+
 The migration engine:
 
 - receives app-owned migration definitions through the runtime contribution registry;
