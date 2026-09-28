@@ -1538,11 +1538,13 @@ test('Invoicing keeps customer, catalog, payment, recurring, report and settings
     queries,
     commands,
     workspace,
+    page,
   ] = await Promise.all([
     source('lib/apps/invoicing/types.ts'),
     source('lib/apps/invoicing/queries.ts'),
     source('lib/apps/invoicing/commands.ts'),
     source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('app/apps/invoicing/page.tsx'),
   ]);
 
   for (const capability of [
@@ -1612,9 +1614,28 @@ test('Invoicing keeps customer, catalog, payment, recurring, report and settings
   );
 
   assert.match(
-    workspace,
-    /visibleNav\.map/,
+    page,
+    /const appSidebarItems =/,
   );
+
+  for (const capability of [
+    'canViewCustomers',
+    'canViewCatalog',
+    'canViewPayments',
+    'canManageRecurring',
+    'canViewReports',
+    'canManageSettings',
+  ]) {
+    assert.match(
+      page,
+      new RegExp(
+        capability +
+        '[\\s\\S]*?label:',
+      ),
+      'Invoicing sidebar entries must remain capability-aware for ' +
+      capability,
+    );
+  }
 
   assert.match(
     workspace,
