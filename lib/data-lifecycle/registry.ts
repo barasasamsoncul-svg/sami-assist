@@ -12,7 +12,7 @@ import {
 
 import {
   APP_RUNTIME_DATA_LIFECYCLE_HANDLERS,
-} from '@/lib/apps/runtime-registry';
+} from '@/lib/apps/runtime-lifecycle';
 
 import type {
   SamiDataLifecycleContext,
