@@ -10,7 +10,7 @@ import {
 
 import {
   APP_RUNTIME_INTEGRATION_PROVIDERS,
-} from '@/lib/apps/runtime-registry';
+} from '@/lib/apps/runtime-integrations';
 
 import type {
   SamiIntegrationProviderDefinition,
