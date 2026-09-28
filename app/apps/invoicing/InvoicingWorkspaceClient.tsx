@@ -2,6 +2,7 @@
 
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -675,10 +676,14 @@ function MetricCard({
 
 export default function InvoicingWorkspaceClient({
   initialData,
+  initialView =
+    'dashboard',
   userId,
 }: {
   initialData:
     InvoicingWorkspaceData;
+  initialView?:
+    ViewKey;
   userId:
     string;
 }) {
@@ -690,8 +695,19 @@ export default function InvoicingWorkspaceClient({
     setView,
   ] =
     useState<ViewKey>(
-      'dashboard',
+      initialView,
     );
+
+  useEffect(
+    () => {
+      setView(
+        initialView,
+      );
+    },
+    [
+      initialView,
+    ],
+  );
 
   const [
     search,
@@ -1149,51 +1165,6 @@ export default function InvoicingWorkspaceClient({
               />
               Refresh
             </button>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto px-3 py-2">
-          <div className="flex min-w-max gap-1">
-            {
-              visibleNav.map(
-                item => {
-                  const Icon =
-                    item.icon;
-
-                  const active =
-                    item.key ===
-                    view;
-
-                  return (
-                    <button
-                      key={
-                        item.key
-                      }
-                      type="button"
-                      onClick={
-                        () =>
-                          setView(
-                            item.key,
-                          )
-                      }
-                      className={[
-                        'inline-flex h-10 items-center gap-2 rounded-xl px-3 text-xs font-bold transition',
-                        active
-                          ? 'bg-blue-600 text-white'
-                          : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/5',
-                      ].join(
-                        ' ',
-                      )}
-                    >
-                      <Icon className="h-4 w-4" />
-                      {
-                        item.label
-                      }
-                    </button>
-                  );
-                },
-              )
-            }
           </div>
         </div>
 
