@@ -181,6 +181,44 @@ test('Category 23: SaMi AI short-window limits use the same durable run records 
   );
 });
 
+test('Category 23: reusable AI and storage guards fail closed when subscription entitlement ends', async () => {
+  const [
+    usage,
+    files,
+  ] = await Promise.all([
+    source(
+      'lib/usage/entitlements.ts',
+    ),
+    source(
+      'lib/services/workspace-files.ts',
+    ),
+  ]);
+
+  assert.match(
+    usage,
+    /!snapshot\.subscription[\s\S]*\.entitled[\s\S]*USAGE_WORKSPACE_NOT_ENTITLED/s,
+    'Shared usage guards must reject ended subscriptions even when the caller omitted a higher-level workspace guard.',
+  );
+
+  assert.match(
+    usage,
+    /!snapshot\.entitlements[\s\S]*\.ai[\s\S]*USAGE_WORKSPACE_NOT_ENTITLED/s,
+    'The AI allowance helper must also honor plan-level AI entitlement.',
+  );
+
+  assert.match(
+    usage,
+    /Number\.isSafeInteger\([\s\S]*input\.incomingBytes[\s\S]*INVALID_USAGE_INPUT/s,
+    'Storage allocation helpers must reject unsafe or negative byte values.',
+  );
+
+  assert.match(
+    files,
+    /USAGE_WORKSPACE_NOT_ENTITLED/,
+    'Workspace files must translate ended subscriptions into the same subscription-required boundary as suspension.',
+  );
+});
+
 test('Category 23: storage allowance is checked before issuing an upload intent', async () => {
   const files =
     await source(
