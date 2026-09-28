@@ -1134,7 +1134,7 @@ test('specialist ERP 2.2 deepens finance inventory payroll CRM projects helpdesk
       'lib/apps/enterprise/hardening.ts',
     ),
     source(
-      'lib/apps/runtime-registry.ts',
+      'lib/apps/runtime-migrations.ts',
     ),
     source(
       'lib/modules/enterprise-contract.ts',
@@ -3372,7 +3372,7 @@ test('strict Odoo Zoho parity v2.3 adds domain depth and dependency execution in
     source('lib/apps/enterprise/specialist-catalog.ts'),
     source('lib/apps/enterprise/hardening.ts'),
     source(
-      'lib/apps/runtime-registry.ts',
+      'lib/apps/runtime-migrations.ts',
     ),
     source('lib/modules/enterprise-contract.ts'),
     source('lib/apps/enterprise/domain-hooks.ts'),
