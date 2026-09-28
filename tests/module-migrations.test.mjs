@@ -51,7 +51,7 @@ test('module migrations: executable migrations are app-owned and recorded inside
   const [
     migrations,
     migrationTypes,
-    runtimeRegistry,
+    runtimeMigrations,
   ] =
     await Promise.all([
       source(
@@ -61,7 +61,7 @@ test('module migrations: executable migrations are app-owned and recorded inside
         'lib/modules/migration-types.ts',
       ),
       source(
-        'lib/apps/runtime-registry.ts',
+        'lib/apps/runtime-migrations.ts',
       ),
     ]);
 
@@ -76,8 +76,14 @@ test('module migrations: executable migrations are app-owned and recorded inside
   );
 
   assert.match(
-    runtimeRegistry,
+    runtimeMigrations,
     /APP_RUNTIME_MODULE_MIGRATIONS/,
+  );
+
+  assert.doesNotMatch(
+    runtimeMigrations,
+    /runtime-registry/,
+    'Bootstrap migration discovery must not depend on the general runtime registry.',
   );
 
   assert.match(
