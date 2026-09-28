@@ -128,3 +128,12 @@ CREATE INDEX IF NOT EXISTS idx_documents_type
 CREATE INDEX IF NOT EXISTS idx_documents_active_created
     ON documents(company_id, created_at DESC, id DESC)
     WHERE deleted_at IS NULL;
+
+
+DROP TRIGGER IF EXISTS trg_documents_updated_at
+    ON documents;
+
+CREATE TRIGGER trg_documents_updated_at
+BEFORE UPDATE ON documents
+FOR EACH ROW
+EXECUTE FUNCTION public.set_updated_at();
