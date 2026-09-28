@@ -30,10 +30,10 @@ export interface TenantCoreMigration {
  *
  * tenant-core.sql currently installs:
  *
- *     1.8.0
+ *     1.9.0
  */
 export const CURRENT_TENANT_CORE_VERSION =
-  '1.8.0';
+  '1.9.0';
 
 /**
  * Migration chain.
@@ -46,6 +46,7 @@ export const CURRENT_TENANT_CORE_VERSION =
  * Category 19 adds durable automation definitions, events, runs, approvals and schedules at 1.6.0.
  * Category 20 adds integration connections, OAuth state, sync, webhooks and external apps at 1.7.0.
  * Category 21 adds company-scoped API credentials, durable rate limiting and request metadata at 1.8.0.
+ * Platform hardening 1.9.0 scopes notification deduplication by company while retaining one tenant-wide NULL-company dedupe domain.
  * New tenants receive the complete latest tenant-core.sql.
  */
 export const TENANT_CORE_MIGRATIONS:
@@ -97,5 +98,11 @@ export const TENANT_CORE_MIGRATIONS:
       fromVersion: '1.7.0',
       toVersion: '1.8.0',
       fileName: '008-core-1.7.0-to-1.8.0.sql',
+    },
+    {
+      key: 'core-1.8.0-to-1.9.0',
+      fromVersion: '1.8.0',
+      toVersion: '1.9.0',
+      fileName: '009-core-1.8.0-to-1.9.0.sql',
     },
   ];
