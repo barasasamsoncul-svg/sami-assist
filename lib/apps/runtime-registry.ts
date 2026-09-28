@@ -26,6 +26,10 @@ import type {
   SamiModuleDataLifecycleHandler,
 } from '@/lib/data-lifecycle/types';
 
+import type {
+  SamiModuleMigrationDefinition,
+} from '@/lib/modules/migration-types';
+
 import {
   ENTERPRISE_MODULE_TABLES,
 } from '@/lib/apps/enterprise/catalog';
@@ -73,6 +77,41 @@ import {
 } from '@/lib/apps/invoicing/automation';
 
 import {
+  INVOICING_1_0_0_TO_2_0_0,
+} from '@/lib/apps/invoicing/migrations/1.0.0-to-2.0.0';
+
+import {
+  INVOICING_2_0_0_TO_2_1_0,
+} from '@/lib/apps/invoicing/migrations/2.0.0-to-2.1.0';
+
+import {
+  INVOICING_2_1_0_TO_2_2_0,
+} from '@/lib/apps/invoicing/migrations/2.1.0-to-2.2.0';
+
+import {
+  INVOICING_2_2_0_TO_2_3_0,
+} from '@/lib/apps/invoicing/migrations/2.2.0-to-2.3.0';
+
+import {
+  SALES_1_0_0_TO_2_0_0,
+} from '@/lib/apps/sales/migrations/1.0.0-to-2.0.0';
+
+import {
+  SALES_2_0_0_TO_2_1_0,
+} from '@/lib/apps/sales/migrations/2.0.0-to-2.1.0';
+
+import {
+  SALES_2_1_0_TO_2_2_0,
+} from '@/lib/apps/sales/migrations/2.1.0-to-2.2.0';
+
+import {
+  ENTERPRISE_SPECIALIST_DEPTH_MIGRATIONS,
+  ENTERPRISE_STRICT_PARITY_MIGRATIONS,
+  ENTERPRISE_SUITE_COMPLETION_MIGRATIONS,
+  ENTERPRISE_SUITE_MIGRATIONS,
+} from '@/lib/apps/enterprise/hardening';
+
+import {
   getSamiModuleManifest,
 } from '@/lib/modules/registry';
 
@@ -95,6 +134,7 @@ export type SamiAppRuntimeContribution = {
   >;
   integrationProviders?: readonly SamiIntegrationProviderDefinition[];
   dataLifecycleHandlers?: readonly SamiModuleDataLifecycleHandler[];
+  migrations?: readonly SamiModuleMigrationDefinition[];
   additionalDataTables?: Readonly<
     Record<
       string,
@@ -165,6 +205,12 @@ export const SAMI_APP_RUNTIME_CONTRIBUTIONS:
         ENTERPRISE_AUTOMATION_ACTIONS,
       automationActionHandlers:
         ENTERPRISE_AUTOMATION_ACTION_HANDLERS,
+      migrations: [
+        ...ENTERPRISE_SUITE_MIGRATIONS,
+        ...ENTERPRISE_SUITE_COMPLETION_MIGRATIONS,
+        ...ENTERPRISE_SPECIALIST_DEPTH_MIGRATIONS,
+        ...ENTERPRISE_STRICT_PARITY_MIGRATIONS,
+      ],
     },
     {
       key:
@@ -183,6 +229,11 @@ export const SAMI_APP_RUNTIME_CONTRIBUTIONS:
         SALES_AUTOMATION_ACTIONS,
       automationActionHandlers:
         SALES_AUTOMATION_ACTION_HANDLERS,
+      migrations: [
+        SALES_1_0_0_TO_2_0_0,
+        SALES_2_0_0_TO_2_1_0,
+        SALES_2_1_0_TO_2_2_0,
+      ],
       additionalDataTables: {
         sales:
           DEDICATED_DATA_TABLES
@@ -206,6 +257,12 @@ export const SAMI_APP_RUNTIME_CONTRIBUTIONS:
         INVOICING_AUTOMATION_ACTIONS,
       automationActionHandlers:
         INVOICING_AUTOMATION_ACTION_HANDLERS,
+      migrations: [
+        INVOICING_1_0_0_TO_2_0_0,
+        INVOICING_2_0_0_TO_2_1_0,
+        INVOICING_2_1_0_TO_2_2_0,
+        INVOICING_2_2_0_TO_2_3_0,
+      ],
       additionalDataTables: {
         invoicing:
           DEDICATED_DATA_TABLES
@@ -609,6 +666,19 @@ export const APP_RUNTIME_DATA_LIFECYCLE_HANDLERS:
         ...(
           contribution
             .dataLifecycleHandlers ||
+          []
+        ),
+      ],
+    );
+
+
+export const APP_RUNTIME_MODULE_MIGRATIONS:
+  SamiModuleMigrationDefinition[] =
+  SAMI_APP_RUNTIME_CONTRIBUTIONS
+    .flatMap(
+      contribution => [
+        ...(
+          contribution.migrations ||
           []
         ),
       ],
