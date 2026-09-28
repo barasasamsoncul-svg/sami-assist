@@ -66,12 +66,12 @@ test(
 
     assert.equal(
       lock.baselineCommit,
-      '64ba681442651347f1b203d102bcf315f8cb14b8',
+      '4df6cab138037aa06ba0d825fa60c403b5e5b8d3',
     );
 
     assert.equal(
       lock.baselineBranch,
-      'feat/odoo-zoho-parity-closure',
+      'feat/standalone-app-surfaces-ui',
     );
 
     for (
