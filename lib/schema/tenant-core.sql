@@ -687,7 +687,14 @@ CREATE INDEX IF NOT EXISTS idx_notifications_event_key
     WHERE event_key IS NOT NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_user_dedupe_active
-    ON {schema}.notifications(user_id, dedupe_key)
+    ON {schema}.notifications(
+        user_id,
+        COALESCE(
+            company_id,
+            '00000000-0000-0000-0000-000000000000'::UUID
+        ),
+        dedupe_key
+    )
     WHERE dedupe_key IS NOT NULL
       AND archived_at IS NULL;
 
@@ -2930,7 +2937,7 @@ CREATE TABLE IF NOT EXISTS {schema}.core_schema_version (
 );
 
 INSERT INTO {schema}.core_schema_version (version)
-VALUES ('1.8.0')
+VALUES ('1.9.0')
 ON CONFLICT (version) DO NOTHING;
 
 
