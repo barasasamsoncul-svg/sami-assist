@@ -20,6 +20,10 @@ import {
 } from '@/lib/modules/registry';
 
 import {
+  SAMI_APPS,
+} from '@/lib/sami-apps';
+
+import {
   hashPassword,
 } from '@/lib/auth/password';
 
@@ -81,7 +85,11 @@ const VERIFICATION_EXPIRY_MINUTES = 15;
 
 const PAID_TRIAL_MONTHS = 1;
 
-const MAX_SELECTED_APPS = 50;
+const MAX_SELECTED_APPS =
+  SAMI_APPS.filter(
+    app =>
+      app.installable,
+  ).length;
 
 const MAX_NAME_LENGTH = 120;
 
