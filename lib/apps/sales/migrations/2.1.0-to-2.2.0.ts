@@ -1,10 +1,10 @@
 import type {
   SamiModuleMigrationDefinition,
-} from '@/lib/modules/migrations';
+} from '@/lib/modules/migration-types';
 
 import {
   executeSafeSamiModuleMigrationSql,
-} from '@/lib/modules/migrations';
+} from '@/lib/modules/migration-safety';
 
 const SQL = `
   ALTER TABLE public.sales_quotes
