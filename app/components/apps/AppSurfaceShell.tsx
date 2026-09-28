@@ -5,11 +5,14 @@ import Link from 'next/link';
 import {
   ArrowLeft,
   Boxes,
+  ChevronRight,
   CreditCard,
   LayoutDashboard,
   LockKeyhole,
+  Menu,
   Sparkles,
   TriangleAlert,
+  X,
 } from 'lucide-react';
 
 import {
@@ -92,6 +95,14 @@ type ModuleData = {
   categoryLabel?: string | null;
 };
 
+export type AppSidebarItem = {
+  key: string;
+  label: string;
+  href: string;
+  description?: string | null;
+  badge?: string | number | null;
+};
+
 type SidebarCapabilities = {
   aiEnabled?: boolean;
   filesEnabled?: boolean;
@@ -108,6 +119,8 @@ type Props = {
   membership: MembershipData;
   subscription: SubscriptionData;
   modules: ModuleData[];
+  appSidebarItems: AppSidebarItem[];
+  activeSidebarKey?: string | null;
   sidebarCapabilities?: SidebarCapabilities;
   unreadNotifications?: number;
   title: string;
@@ -169,6 +182,8 @@ export default function AppSurfaceShell({
   membership,
   subscription,
   modules,
+  appSidebarItems,
+  activeSidebarKey,
   sidebarCapabilities,
   unreadNotifications = 0,
   title,
@@ -186,6 +201,14 @@ export default function AppSurfaceShell({
   ] =
     useState(
       unreadNotifications,
+    );
+
+  const [
+    sidebarOpen,
+    setSidebarOpen,
+  ] =
+    useState(
+      false,
     );
 
   const subscriptionPastDue =
@@ -230,6 +253,209 @@ export default function AppSurfaceShell({
     profile.header ===
     'immersive';
 
+  const appSidebar = (
+    <div
+      data-app-sidebar={
+        appKey
+      }
+      className={[
+        'overflow-hidden rounded-[24px] border border-[var(--sami-border)] shadow-[var(--sami-shadow-sm)]',
+        profile.header ===
+          'command'
+          ? 'bg-slate-950 text-white dark:bg-[#0a0d13]'
+          : profile.header ===
+              'immersive'
+            ? 'bg-[var(--sami-surface)]'
+            : 'bg-[var(--sami-surface)]',
+      ].join(
+        ' ',
+      )}
+    >
+      <div
+        className="border-b border-[var(--sami-border)] px-4 py-4"
+        style={{
+          background:
+            'linear-gradient(135deg, color-mix(in srgb, var(--sami-app-accent) 12%, transparent), color-mix(in srgb, var(--sami-app-secondary) 8%, transparent))',
+        }}
+      >
+        <div className="flex items-center gap-3">
+          <SamiAppIconTile
+            appKey={
+              appKey
+            }
+            category={
+              appCategory
+            }
+            iconKey={
+              appIconKey
+            }
+            size="sm"
+          />
+
+          <div className="min-w-0">
+            <p className="truncate text-sm font-black tracking-[-0.02em]">
+              {title}
+            </p>
+            <p className="mt-0.5 truncate text-[10px] font-bold text-slate-400">
+              {
+                contextLabel ||
+                tenant?.name ||
+                profile.eyebrow
+              }
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <nav
+        aria-label={
+          title +
+          ' navigation'
+        }
+        className="max-h-[calc(100vh-190px)] space-y-1 overflow-y-auto p-2.5"
+      >
+        {
+          appSidebarItems.map(
+            item => {
+              const active =
+                activeSidebarKey ===
+                item.key;
+
+              return (
+                <Link
+                  key={
+                    item.key
+                  }
+                  href={
+                    item.href
+                  }
+                  onClick={
+                    () =>
+                      setSidebarOpen(
+                        false,
+                      )
+                  }
+                  aria-current={
+                    active
+                      ? 'page'
+                      : undefined
+                  }
+                  className={[
+                    'group flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-left transition',
+                    active
+                      ? 'text-white shadow-sm'
+                      : profile.header ===
+                          'command'
+                        ? 'text-slate-300 hover:bg-white/8 hover:text-white'
+                        : 'text-slate-600 hover:bg-[var(--sami-surface-soft)] hover:text-slate-950 dark:text-slate-300 dark:hover:text-white',
+                  ].join(
+                    ' ',
+                  )}
+                  style={
+                    active
+                      ? {
+                          background:
+                            'linear-gradient(135deg, var(--sami-app-accent), var(--sami-app-secondary))',
+                        }
+                      : undefined
+                  }
+                >
+                  <span
+                    className={[
+                      'h-2 w-2 shrink-0 rounded-full ring-4 ring-transparent transition',
+                      active
+                        ? 'bg-white ring-white/15'
+                        : 'bg-[var(--sami-app-accent)] opacity-55 group-hover:opacity-100',
+                    ].join(
+                      ' ',
+                    )}
+                  />
+
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[11px] font-black">
+                      {
+                        item.label
+                      }
+                    </span>
+                    {
+                      item.description
+                      ? (
+                        <span
+                          className={[
+                            'mt-0.5 block line-clamp-2 text-[9px] font-medium leading-4',
+                            active
+                              ? 'text-white/72'
+                              : 'text-slate-400',
+                          ].join(
+                            ' ',
+                          )}
+                        >
+                          {
+                            item.description
+                          }
+                        </span>
+                      ) : null
+                    }
+                  </span>
+
+                  {
+                    item.badge !==
+                      null &&
+                    item.badge !==
+                      undefined
+                    ? (
+                      <span
+                        className={[
+                          'rounded-full px-2 py-0.5 text-[9px] font-black',
+                          active
+                            ? 'bg-white/16 text-white'
+                            : 'bg-[var(--sami-surface-soft)] text-slate-500 dark:text-slate-300',
+                        ].join(
+                          ' ',
+                        )}
+                      >
+                        {
+                          item.badge
+                        }
+                      </span>
+                    ) : (
+                      <ChevronRight
+                        className={[
+                          'h-3.5 w-3.5 shrink-0 transition',
+                          active
+                            ? 'text-white/80'
+                            : 'text-slate-300 group-hover:translate-x-0.5 group-hover:text-[var(--sami-app-accent)] dark:text-slate-600',
+                        ].join(
+                          ' ',
+                        )}
+                      />
+                    )
+                  }
+                </Link>
+              );
+            },
+          )
+        }
+      </nav>
+
+      <div className="border-t border-[var(--sami-border)] p-2.5">
+        <Link
+          href="/apps"
+          onClick={
+            () =>
+              setSidebarOpen(
+                false,
+              )
+          }
+          className="flex h-10 items-center gap-2 rounded-xl px-3 text-[10px] font-black text-slate-500 transition hover:bg-[var(--sami-surface-soft)] hover:text-slate-950 dark:text-slate-400 dark:hover:text-white"
+        >
+          <Boxes className="h-4 w-4" />
+          All SaMi Apps
+        </Link>
+      </div>
+    </div>
+  );
+
   return (
     <main
       style={style}
@@ -252,10 +478,27 @@ export default function AppSurfaceShell({
     >
       <header className="sticky top-0 z-50 border-b border-[var(--sami-border)] bg-[var(--sami-topbar)]/95 backdrop-blur-xl">
         <div className="mx-auto flex min-h-[64px] w-full max-w-[1920px] items-center gap-2 px-3 sm:gap-3 sm:px-5 lg:px-7">
+          <button
+            type="button"
+            aria-label="Open app sidebar"
+            aria-expanded={
+              sidebarOpen
+            }
+            onClick={
+              () =>
+                setSidebarOpen(
+                  true,
+                )
+            }
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] text-slate-500 shadow-[var(--sami-shadow-sm)] transition hover:text-slate-950 lg:hidden dark:text-slate-300 dark:hover:text-white"
+          >
+            <Menu className="h-4 w-4" />
+          </button>
+
           <Link
             href="/apps"
             aria-label="Back to all apps"
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] text-slate-500 shadow-[var(--sami-shadow-sm)] transition hover:-translate-y-px hover:text-slate-950 dark:text-slate-300 dark:hover:text-white"
+            className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] text-slate-500 shadow-[var(--sami-shadow-sm)] transition hover:-translate-y-px hover:text-slate-950 lg:inline-flex dark:text-slate-300 dark:hover:text-white"
           >
             <ArrowLeft className="h-4 w-4" />
           </Link>
@@ -417,6 +660,51 @@ export default function AppSurfaceShell({
         ) : null
       }
 
+      {
+        sidebarOpen
+        ? (
+          <div className="fixed inset-0 z-[80] lg:hidden">
+            <button
+              type="button"
+              aria-label="Close app sidebar"
+              className="absolute inset-0 bg-slate-950/55 backdrop-blur-sm"
+              onClick={
+                () =>
+                  setSidebarOpen(
+                    false,
+                  )
+              }
+            />
+
+            <div className="absolute inset-y-0 left-0 w-[min(88vw,320px)] overflow-y-auto border-r border-[var(--sami-border)] bg-[var(--sami-canvas)] p-3 shadow-2xl">
+              <div className="mb-3 flex items-center justify-between px-1">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                  {
+                    profile.eyebrow
+                  }
+                </p>
+
+                <button
+                  type="button"
+                  aria-label="Close app sidebar"
+                  onClick={
+                    () =>
+                      setSidebarOpen(
+                        false,
+                      )
+                  }
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)]"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {appSidebar}
+            </div>
+          </div>
+        ) : null
+      }
+
       <div className="mx-auto w-full max-w-[1920px] px-3 pb-8 pt-4 sm:px-5 sm:pb-10 sm:pt-5 lg:px-7 lg:pt-6">
         {
           appLocked
@@ -473,7 +761,14 @@ export default function AppSurfaceShell({
               </div>
             </section>
           ) : (
-            <>
+            <div className="grid min-w-0 gap-5 lg:grid-cols-[248px_minmax(0,1fr)] lg:gap-6">
+              <aside className="hidden min-w-0 lg:block">
+                <div className="sticky top-[88px]">
+                  {appSidebar}
+                </div>
+              </aside>
+
+              <div className="min-w-0">
               <section
                 className={[
                   headerClasses(
@@ -616,7 +911,8 @@ export default function AppSurfaceShell({
               >
                 {children}
               </div>
-            </>
+              </div>
+            </div>
           )
         }
       </div>

@@ -45,7 +45,30 @@ export const dynamic =
   'force-dynamic';
 
 
-export default async function InvoicingPage() {
+type InvoicingView =
+  | 'dashboard'
+  | 'invoices'
+  | 'customers'
+  | 'items'
+  | 'payments'
+  | 'recurring'
+  | 'reports'
+  | 'settings';
+
+
+export default async function InvoicingPage({
+  searchParams,
+}: {
+  searchParams:
+    Promise<{
+      view?:
+        string |
+        string[];
+    }>;
+}) {
+  const query =
+    await searchParams;
+
   const session =
     await requirePageSession(
       '/apps/invoicing',
@@ -101,6 +124,212 @@ export default async function InvoicingPage() {
       'invoicing',
     );
 
+  const availableViews:
+    InvoicingView[] = [
+      'dashboard',
+      'invoices',
+      ...(
+        data.capabilities
+          .canViewCustomers
+          ? [
+              'customers' as const,
+            ]
+          : []
+      ),
+      ...(
+        data.capabilities
+          .canViewCatalog
+          ? [
+              'items' as const,
+            ]
+          : []
+      ),
+      ...(
+        data.capabilities
+          .canViewPayments
+          ? [
+              'payments' as const,
+            ]
+          : []
+      ),
+      ...(
+        data.capabilities
+          .canManageRecurring
+          ? [
+              'recurring' as const,
+            ]
+          : []
+      ),
+      ...(
+        data.capabilities
+          .canViewReports
+          ? [
+              'reports' as const,
+            ]
+          : []
+      ),
+      ...(
+        data.capabilities
+          .canManageSettings
+          ? [
+              'settings' as const,
+            ]
+          : []
+      ),
+    ];
+
+  const requestedView =
+    Array.isArray(
+      query.view,
+    )
+      ? query.view[0]
+      : query.view;
+
+  const activeView:
+    InvoicingView =
+      availableViews.includes(
+        requestedView as
+          InvoicingView,
+      )
+        ? requestedView as
+            InvoicingView
+        : 'dashboard';
+
+  const appSidebarItems = [
+    {
+      key:
+        'dashboard',
+      label:
+        'Overview',
+      href:
+        '/apps/invoicing?view=dashboard',
+      description:
+        'Receivables, collections and overdue exposure.',
+    },
+    {
+      key:
+        'invoices',
+      label:
+        'Invoices',
+      href:
+        '/apps/invoicing?view=invoices',
+      description:
+        'Create, send and manage invoice lifecycles.',
+      badge:
+        data.invoices.length,
+    },
+    ...(
+      data.capabilities
+        .canViewCustomers
+        ? [
+            {
+              key:
+                'customers',
+              label:
+                'Customers',
+              href:
+                '/apps/invoicing?view=customers',
+              description:
+                'Billing identities, terms and contact details.',
+              badge:
+                data.customers.length,
+            },
+          ]
+        : []
+    ),
+    ...(
+      data.capabilities
+        .canViewCatalog
+        ? [
+            {
+              key:
+                'items',
+              label:
+                'Items & Pricing',
+              href:
+                '/apps/invoicing?view=items',
+              description:
+                'Products, services, prices and tax defaults.',
+              badge:
+                data.catalogItems.length,
+            },
+          ]
+        : []
+    ),
+    ...(
+      data.capabilities
+        .canViewPayments
+        ? [
+            {
+              key:
+                'payments',
+              label:
+                'Payments',
+              href:
+                '/apps/invoicing?view=payments',
+              description:
+                'Receipts, allocations and reversals.',
+              badge:
+                data.payments.length,
+            },
+          ]
+        : []
+    ),
+    ...(
+      data.capabilities
+        .canManageRecurring
+        ? [
+            {
+              key:
+                'recurring',
+              label:
+                'Recurring',
+              href:
+                '/apps/invoicing?view=recurring',
+              description:
+                'Recurring schedules and automated delivery.',
+              badge:
+                data.recurring.length,
+            },
+          ]
+        : []
+    ),
+    ...(
+      data.capabilities
+        .canViewReports
+        ? [
+            {
+              key:
+                'reports',
+              label:
+                'Reports',
+              href:
+                '/apps/invoicing?view=reports',
+              description:
+                'Aging, invoice status and billing analysis.',
+            },
+          ]
+        : []
+    ),
+    ...(
+      data.capabilities
+        .canManageSettings
+        ? [
+            {
+              key:
+                'settings',
+              label:
+                'Settings',
+              href:
+                '/apps/invoicing?view=settings',
+              description:
+                'Templates, taxes, terms and reminders.',
+            },
+          ]
+        : []
+    ),
+  ];
+
   return (
     <AppSurfaceShell
       appKey="invoicing"
@@ -122,6 +351,12 @@ export default async function InvoicingPage() {
       }
       modules={
         shell.accessibleModules
+      }
+      appSidebarItems={
+        appSidebarItems
+      }
+      activeSidebarKey={
+        activeView
       }
       sidebarCapabilities={{
         aiEnabled:
@@ -157,6 +392,9 @@ export default async function InvoicingPage() {
       <InvoicingWorkspaceClient
         initialData={
           data
+        }
+        initialView={
+          activeView
         }
         userId={
           session.user.id

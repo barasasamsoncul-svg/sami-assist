@@ -125,6 +125,84 @@ export default async function SalesQuotePage({
       'sales',
     );
 
+  const appSidebarItems = [
+    {
+      key:
+        'overview',
+      label:
+        'Overview',
+      href:
+        '/apps/sales?view=overview',
+      description:
+        'Pipeline health, conversion and sales value.',
+    },
+    {
+      key:
+        'quotes',
+      label:
+        'Quotations',
+      href:
+        '/apps/sales?view=quotes',
+      description:
+        'Create, approve, send and convert quotations.',
+      badge:
+        workspace.quotes.length,
+    },
+    ...(
+      workspace.capabilities
+        .canViewOrders
+        ? [
+            {
+              key:
+                'orders',
+              label:
+                'Sales Orders',
+              href:
+                '/apps/sales?view=orders',
+              description:
+                'Fulfillment, delivery and invoice readiness.',
+              badge:
+                workspace.orders.length,
+            },
+          ]
+        : []
+    ),
+    ...(
+      workspace.capabilities
+        .canViewReports
+        ? [
+            {
+              key:
+                'reports',
+              label:
+                'Reports',
+              href:
+                '/apps/sales?view=reports',
+              description:
+                'Conversion, customer and monthly sales analysis.',
+            },
+          ]
+        : []
+    ),
+    ...(
+      workspace.capabilities
+        .canManageSettings
+        ? [
+            {
+              key:
+                'settings',
+              label:
+                'Settings',
+              href:
+                '/apps/sales?view=settings',
+              description:
+                'Sales policy, approvals and invoice behavior.',
+            },
+          ]
+        : []
+    ),
+  ];
+
   return (
     <AppSurfaceShell
       appKey="sales"
@@ -147,6 +225,10 @@ export default async function SalesQuotePage({
       modules={
         shell.accessibleModules
       }
+      appSidebarItems={
+        appSidebarItems
+      }
+      activeSidebarKey="quotes"
       sidebarCapabilities={{
         aiEnabled:
           shell.aiAvailable,

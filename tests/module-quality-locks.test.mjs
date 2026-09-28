@@ -66,12 +66,12 @@ test(
 
     assert.equal(
       lock.baselineCommit,
-      '4df6cab138037aa06ba0d825fa60c403b5e5b8d3',
+      'f861cb865fa0b9e6c04464147738fcc3d4370cee',
     );
 
     assert.equal(
       lock.baselineBranch,
-      'feat/standalone-app-surfaces-ui',
+      'feat/every-app-own-sidebar',
     );
 
     for (
