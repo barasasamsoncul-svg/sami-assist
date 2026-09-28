@@ -32,6 +32,24 @@ type CheckResult = {
   }>;
 };
 
+
+const environmentFailures: string[] = [];
+
+const registrationDraftSecret =
+  process.env
+    .SAMI_REGISTRATION_DRAFT_SECRET
+    ?.trim() ||
+  '';
+
+if (
+  registrationDraftSecret.length <
+    32
+) {
+  environmentFailures.push(
+    'SAMI_REGISTRATION_DRAFT_SECRET must be configured with at least 32 characters so secure account/workspace registration drafts can be created.',
+  );
+}
+
 const REQUIRED_CORE_TABLES = [
   'companies',
   'branches',
@@ -169,14 +187,20 @@ async function main() {
   console.log(JSON.stringify({
     targetCoreVersion: CURRENT_TENANT_CORE_VERSION,
     tenantsChecked: checks.length,
-    failures: failures.length,
+    failures:
+      failures.length +
+      environmentFailures.length,
+    environmentFailures,
     checks,
   }, null, 2));
 
   const controlPool = getControlPool();
   await controlPool.end().catch(() => undefined);
 
-  if (failures.length > 0) {
+  if (
+    failures.length > 0 ||
+    environmentFailures.length > 0
+  ) {
     process.exitCode = 1;
   }
 }

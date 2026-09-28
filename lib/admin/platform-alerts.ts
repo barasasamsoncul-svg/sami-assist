@@ -376,17 +376,17 @@ async function finishDelivery(
         UPDATE platform_admin_alert_deliveries
         SET
           status =
-            $2,
+            $2::varchar,
           provider =
-            $3,
+            $3::varchar,
           provider_message_id =
-            $4,
+            $4::varchar,
           error_code =
-            $5,
+            $5::varchar,
           sent_at =
             CASE
-              WHEN $2 =
-                   'sent'
+              WHEN $2::varchar =
+                   'sent'::varchar
               THEN NOW()
               ELSE sent_at
             END,

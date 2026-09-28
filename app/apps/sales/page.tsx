@@ -2,9 +2,13 @@ import {
   notFound,
 } from 'next/navigation';
 
-import WorkspaceShell from '@/app/components/workspace/WorkspaceShell';
+import AppSurfaceShell from '@/app/components/apps/AppSurfaceShell';
 
 import SalesWorkspaceClient from '@/app/apps/sales/SalesWorkspaceClient';
+
+import {
+  getSamiAppUiProfile,
+} from '@/lib/apps/ui-profiles';
 
 import {
   getAccountContextForUser,
@@ -91,8 +95,18 @@ export default async function SalesPage() {
         ),
     ]);
 
+  const uiProfile =
+    getSamiAppUiProfile(
+      'sales',
+    );
+
   return (
-    <WorkspaceShell
+    <AppSurfaceShell
+      appKey="sales"
+      appCategory="sales"
+      profile={
+        uiProfile
+      }
       user={
         session.user
       }
@@ -140,7 +154,6 @@ export default async function SalesPage() {
       contextLabel={
         data.company.name
       }
-      contentClassName="max-w-[1600px]"
     >
       <SalesWorkspaceClient
         initialData={
@@ -150,6 +163,6 @@ export default async function SalesPage() {
           session.user.id
         }
       />
-    </WorkspaceShell>
+    </AppSurfaceShell>
   );
 }

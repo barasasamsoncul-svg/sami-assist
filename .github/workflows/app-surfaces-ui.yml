@@ -1,0 +1,37 @@
+name: App Surfaces UI
+
+on:
+  push:
+    branches:
+      - main
+      - feat/standalone-app-surfaces-ui
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  app-surfaces-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify all 80 standalone app surfaces
+        run: npm run test:app-ui
+
+      - name: TypeScript
+        run: npx tsc --noEmit

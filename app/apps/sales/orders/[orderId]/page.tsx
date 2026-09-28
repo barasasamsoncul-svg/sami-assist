@@ -2,9 +2,13 @@ import {
   notFound,
 } from 'next/navigation';
 
-import WorkspaceShell from '@/app/components/workspace/WorkspaceShell';
+import AppSurfaceShell from '@/app/components/apps/AppSurfaceShell';
 
 import SalesOrderDetailClient from '@/app/apps/sales/SalesOrderDetailClient';
+
+import {
+  getSamiAppUiProfile,
+} from '@/lib/apps/ui-profiles';
 
 import {
   getAccountContextForUser,
@@ -116,8 +120,18 @@ export default async function SalesOrderPage({
     notFound();
   }
 
+  const uiProfile =
+    getSamiAppUiProfile(
+      'sales',
+    );
+
   return (
-    <WorkspaceShell
+    <AppSurfaceShell
+      appKey="sales"
+      appCategory="sales"
+      profile={
+        uiProfile
+      }
       user={
         session.user
       }
@@ -167,7 +181,6 @@ export default async function SalesOrderPage({
       contextLabel={
         workspace.company.name
       }
-      contentClassName="max-w-[1600px]"
     >
       <SalesOrderDetailClient
         order={
@@ -177,6 +190,6 @@ export default async function SalesOrderPage({
           workspace
         }
       />
-    </WorkspaceShell>
+    </AppSurfaceShell>
   );
 }
