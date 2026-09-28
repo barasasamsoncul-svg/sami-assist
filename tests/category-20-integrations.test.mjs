@@ -27,6 +27,35 @@ function compact(
   );
 }
 
+test(
+  'inbound webhook deduplication is atomic under concurrent delivery',
+  async () => {
+    const raw =
+      await source(
+        'lib/integrations/webhooks.ts',
+      );
+
+    assert.match(
+      raw,
+      /ON CONFLICT \([\s\S]*endpoint_id,[\s\S]*external_event_id[\s\S]*WHERE external_event_id[\s\S]*IS NOT NULL[\s\S]*DO NOTHING[\s\S]*RETURNING id/s,
+      'Webhook delivery insertion must rely on the database uniqueness boundary under concurrency.',
+    );
+
+    assert.match(
+      raw,
+      /insertedDelivery\.rows\.length[\s\S]*===\s*0/s,
+      'The losing concurrent delivery must be detected without raising a duplicate-key error.',
+    );
+
+    assert.match(
+      raw,
+      /duplicate:\s*true[\s\S]*dispatched:\s*0/s,
+      'A concurrently duplicated webhook must return as a duplicate and must not dispatch automation twice.',
+    );
+  },
+);
+
+
 test('Category 20: tenant core advances additively from 1.6.0 to 1.7.0', async () => {
   const [
     manifest,
