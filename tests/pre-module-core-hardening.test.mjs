@@ -392,12 +392,23 @@ test('pre-module hardening: module data lifecycle capabilities require code-owne
 
   assert.match(
     suiteExport,
-    /ENTERPRISE_MODULE_TABLES/,
+    /getSamiModuleManifests/,
   );
 
   assert.match(
     suiteExport,
-    /DEDICATED_EXPORT_TABLES/,
+    /manifest\.resources/,
+  );
+
+  assert.match(
+    suiteExport,
+    /getAdditionalModuleDataTables/,
+  );
+
+  assert.doesNotMatch(
+    suiteExport,
+    /ENTERPRISE_MODULE_TABLES|DEDICATED_EXPORT_TABLES/,
+    'Module export must derive table ownership from manifests and app-owned runtime metadata.',
   );
 
   assert.match(
