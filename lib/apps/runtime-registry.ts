@@ -113,6 +113,7 @@ import {
 
 import {
   getSamiModuleManifest,
+  getSamiModuleManifests,
 } from '@/lib/modules/registry';
 
 import type {
@@ -288,11 +289,26 @@ function normalize(
 function manifestFor(
   moduleKey:
     string,
+  manifests?:
+    readonly SamiModuleManifest[],
 ) {
-  const manifest =
-    getSamiModuleManifest(
+  const key =
+    normalize(
       moduleKey,
     );
+
+  const manifest =
+    manifests
+      ? manifests.find(
+          item =>
+            normalize(
+              item.key,
+            ) ===
+            key,
+        )
+      : getSamiModuleManifest(
+          key,
+        );
 
   if (
     !manifest
@@ -313,6 +329,8 @@ function assertExtension(
     keyof SamiModuleManifest[
       'extensions'
     ],
+  manifests?:
+    readonly SamiModuleManifest[],
 ) {
   const key =
     normalize(
@@ -328,6 +346,7 @@ function assertExtension(
   const manifest =
     manifestFor(
       key,
+      manifests,
     );
 
   if (
@@ -343,7 +362,12 @@ function assertExtension(
 }
 
 
-export function assertSamiAppRuntimeRegistry() {
+export function assertSamiAppRuntimeContributions(
+  contributions:
+    readonly SamiAppRuntimeContribution[],
+  manifests:
+    readonly SamiModuleManifest[],
+) {
   const contributionKeys =
     new Set<string>();
 
@@ -352,7 +376,7 @@ export function assertSamiAppRuntimeRegistry() {
 
   for (
     const contribution
-    of SAMI_APP_RUNTIME_CONTRIBUTIONS
+    of contributions
   ) {
     const contributionKey =
       normalize(
@@ -391,6 +415,7 @@ export function assertSamiAppRuntimeRegistry() {
     ) {
       manifestFor(
         moduleKey,
+        manifests,
       );
     }
 
@@ -402,6 +427,7 @@ export function assertSamiAppRuntimeRegistry() {
       assertExtension(
         provider.moduleKey,
         'dashboard',
+        manifests,
       );
     }
 
@@ -413,6 +439,7 @@ export function assertSamiAppRuntimeRegistry() {
       assertExtension(
         provider.key,
         'search',
+        manifests,
       );
     }
 
@@ -424,6 +451,7 @@ export function assertSamiAppRuntimeRegistry() {
       assertExtension(
         tool.moduleKey,
         'aiTools',
+        manifests,
       );
     }
 
@@ -435,6 +463,7 @@ export function assertSamiAppRuntimeRegistry() {
       assertExtension(
         trigger.moduleKey,
         'automationTriggers',
+        manifests,
       );
     }
 
@@ -446,6 +475,7 @@ export function assertSamiAppRuntimeRegistry() {
       assertExtension(
         action.moduleKey,
         'automationActions',
+        manifests,
       );
     }
 
@@ -457,6 +487,7 @@ export function assertSamiAppRuntimeRegistry() {
       assertExtension(
         provider.moduleKey,
         'integrationProviders',
+        manifests,
       );
     }
 
@@ -503,6 +534,7 @@ export function assertSamiAppRuntimeRegistry() {
     ) {
       manifestFor(
         moduleKey,
+        manifests,
       );
 
       for (
@@ -534,6 +566,7 @@ export function assertSamiAppRuntimeRegistry() {
       const manifest =
         manifestFor(
           key,
+          manifests,
         );
 
       if (
@@ -589,6 +622,14 @@ export function assertSamiAppRuntimeRegistry() {
       );
     }
   }
+}
+
+
+export function assertSamiAppRuntimeRegistry() {
+  assertSamiAppRuntimeContributions(
+    SAMI_APP_RUNTIME_CONTRIBUTIONS,
+    getSamiModuleManifests(),
+  );
 }
 
 
