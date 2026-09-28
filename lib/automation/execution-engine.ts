@@ -1569,46 +1569,93 @@ export async function resumeAutomationRun(
       );
     }
 
+    const previousAttempt =
+      attempt;
+
     attempt +=
       1;
 
-    await pool.query(
-      `
-        UPDATE automation_runs
-        SET
-          status =
-            'running',
-          attempt =
-            $2,
-          error_code =
-            NULL,
-          error_message =
-            NULL,
-          next_retry_at =
-            NULL,
-          completed_at =
-            NULL
-        WHERE id = $1
-      `,
-      [
-        input.runId,
-        attempt,
-      ],
-    );
+    const claim =
+      await pool.query(
+        `
+          UPDATE automation_runs
+          SET
+            status =
+              'running',
+            attempt =
+              $2,
+            error_code =
+              NULL,
+            error_message =
+              NULL,
+            next_retry_at =
+              NULL,
+            completed_at =
+              NULL
+          WHERE id = $1
+            AND company_id = $3
+            AND status =
+                'failed'
+            AND attempt = $4
+          RETURNING id
+        `,
+        [
+          input.runId,
+          attempt,
+          input.runtime
+            .companyId,
+          previousAttempt,
+        ],
+      );
+
+    if (
+      claim.rows.length !==
+        1
+    ) {
+      throw new AutomationExecutionError(
+        'RUN_NOT_RETRYABLE',
+        'This automation retry was already claimed or is no longer retryable.',
+      );
+    }
+  } else if (
+    currentStatus ===
+      'waiting_approval'
+  ) {
+    const claim =
+      await pool.query(
+        `
+          UPDATE automation_runs
+          SET
+            status =
+              'running',
+            completed_at =
+              NULL
+          WHERE id = $1
+            AND company_id = $2
+            AND status =
+                'waiting_approval'
+          RETURNING id
+        `,
+        [
+          input.runId,
+          input.runtime
+            .companyId,
+        ],
+      );
+
+    if (
+      claim.rows.length !==
+        1
+    ) {
+      throw new AutomationExecutionError(
+        'RUN_NOT_RETRYABLE',
+        'This approved automation run was already resumed or is no longer available.',
+      );
+    }
   } else {
-    await pool.query(
-      `
-        UPDATE automation_runs
-        SET
-          status =
-            'running',
-          completed_at =
-            NULL
-        WHERE id = $1
-      `,
-      [
-        input.runId,
-      ],
+    throw new AutomationExecutionError(
+      'RUN_NOT_RETRYABLE',
+      'Only a failed retry or an approved waiting run can be resumed.',
     );
   }
 
