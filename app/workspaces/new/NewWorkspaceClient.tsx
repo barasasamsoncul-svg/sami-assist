@@ -9,6 +9,7 @@ import {
   Loader2,
   Mail,
   Moon,
+  RotateCcw,
   ShieldCheck,
   Sun,
   UserRound,
@@ -45,7 +46,15 @@ const VERIFICATION_EMAIL_KEY =
   'sami_verification_email';
 
 
+type RecoverableWorkspace = {
+  id: string;
+  name: string;
+};
+
+
 type Props = {
+  recoverableWorkspaces:
+    RecoverableWorkspace[];
   account: {
     email: string;
     firstName: string;
@@ -97,6 +106,7 @@ function cleanBusinessName(
 
 export default function NewWorkspaceClient({
   account,
+  recoverableWorkspaces,
 }: Props) {
   const router =
     useRouter();
@@ -128,6 +138,17 @@ export default function NewWorkspaceClient({
     useState(
       false,
     );
+
+  const [
+    recoveringWorkspaceId,
+    setRecoveringWorkspaceId,
+  ] =
+    useState<
+      string | null
+    >(
+      null,
+    );
+
 
   const [
     overlay,
@@ -400,6 +421,104 @@ export default function NewWorkspaceClient({
   }
 
 
+  async function recoverWorkspace(
+    workspace:
+      RecoverableWorkspace,
+  ) {
+    if (
+      loading ||
+      recoveringWorkspaceId
+    ) {
+      return;
+    }
+
+    setOverlay(
+      null,
+    );
+
+    setRecoveringWorkspaceId(
+      workspace.id,
+    );
+
+    try {
+      const response =
+        await fetch(
+          '/api/workspaces/recover',
+          {
+            method:
+              'POST',
+            credentials:
+              'same-origin',
+            cache:
+              'no-store',
+            headers: {
+              'Content-Type':
+                'application/json',
+              Accept:
+                'application/json',
+            },
+            body:
+              JSON.stringify({
+                tenantId:
+                  workspace.id,
+              }),
+          },
+        );
+
+      let data: {
+        success?:
+          boolean;
+        error?:
+          string;
+        next?:
+          string;
+      } = {};
+
+      try {
+        data =
+          await response.json();
+      } catch {
+        data = {};
+      }
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+          'SaMi could not recover this workspace.',
+        );
+      }
+
+      router.push(
+        data.next ||
+        '/dashboard',
+      );
+
+      router.refresh();
+    } catch (
+      error
+    ) {
+      setOverlay({
+        type:
+          'error',
+        title:
+          'Workspace recovery failed',
+        message:
+          error instanceof
+            Error
+            ? error.message
+            : 'SaMi could not recover this workspace.',
+      });
+    } finally {
+      setRecoveringWorkspaceId(
+        null,
+      );
+    }
+  }
+
+
   const displayName =
     [
       account.firstName,
@@ -564,6 +683,70 @@ export default function NewWorkspaceClient({
                   </span>
                 </div>
               </div>
+
+              {recoverableWorkspaces.length > 0 ? (
+                <div className="mt-6 space-y-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-amber-600 dark:text-amber-300">
+                      Recovery available
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                      A previous workspace setup stopped before database provisioning completed. Retry it here instead of creating a duplicate workspace.
+                    </p>
+                  </div>
+
+                  {recoverableWorkspaces.map(
+                    workspace => {
+                      const recovering =
+                        recoveringWorkspaceId ===
+                        workspace.id;
+
+                      return (
+                        <div
+                          key={
+                            workspace.id
+                          }
+                          className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-amber-500/20 dark:bg-amber-500/10"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-black text-slate-950 dark:text-white">
+                              {
+                                workspace.name
+                              }
+                            </p>
+                            <p className="mt-1 text-[10px] leading-4 text-amber-800/80 dark:text-amber-200/75">
+                              Existing workspace, subscription and selected apps will be reused.
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            disabled={
+                              Boolean(
+                                recoveringWorkspaceId,
+                              ) ||
+                              loading
+                            }
+                            onClick={() =>
+                              void recoverWorkspace(
+                                workspace,
+                              )
+                            }
+                            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 text-[11px] font-black text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {recovering ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <RotateCcw className="h-4 w-4" />
+                            )}
+                            Retry setup
+                          </button>
+                        </div>
+                      );
+                    },
+                  )}
+                </div>
+              ) : null}
 
               <form
                 onSubmit={
