@@ -11,7 +11,7 @@ import type {
 
 import {
   APP_RUNTIME_AI_TOOLS,
-} from '@/lib/apps/runtime-registry';
+} from '@/lib/apps/runtime-ai';
 
 import {
   filterAccessibleModuleExtensions,
