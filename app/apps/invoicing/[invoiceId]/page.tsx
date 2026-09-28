@@ -2,8 +2,12 @@ import {
   notFound,
 } from 'next/navigation';
 
-import WorkspaceShell from '@/app/components/workspace/WorkspaceShell';
+import AppSurfaceShell from '@/app/components/apps/AppSurfaceShell';
 import InvoiceDetailClient from '@/app/apps/invoicing/[invoiceId]/InvoiceDetailClient';
+
+import {
+  getSamiAppUiProfile,
+} from '@/lib/apps/ui-profiles';
 
 import {
   getAccountContextForUser,
@@ -116,8 +120,18 @@ export default async function InvoiceDetailPage({
     notFound();
   }
 
+  const uiProfile =
+    getSamiAppUiProfile(
+      'invoicing',
+    );
+
   return (
-    <WorkspaceShell
+    <AppSurfaceShell
+      appKey="invoicing"
+      appCategory="finance"
+      profile={
+        uiProfile
+      }
       user={
         session.user
       }
@@ -165,7 +179,6 @@ export default async function InvoiceDetailPage({
       contextLabel={
         data.company.name
       }
-      contentClassName="max-w-[1600px]"
     >
       <InvoiceDetailClient
         data={
@@ -178,6 +191,6 @@ export default async function InvoiceDetailPage({
           session.user.id
         }
       />
-    </WorkspaceShell>
+    </AppSurfaceShell>
   );
 }
