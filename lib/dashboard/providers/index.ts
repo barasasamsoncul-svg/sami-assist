@@ -19,7 +19,7 @@ import {
 
 import {
   APP_RUNTIME_DASHBOARD_PROVIDERS,
-} from '@/lib/apps/runtime-registry';
+} from '@/lib/apps/runtime-dashboard';
 
 
 /* ================================================================
