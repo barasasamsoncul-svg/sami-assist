@@ -11,7 +11,7 @@ import {
 
 import {
   APP_RUNTIME_MODULE_MIGRATIONS,
-} from '@/lib/apps/runtime-registry';
+} from '@/lib/apps/runtime-migrations';
 
 import type {
   SamiModuleMigrationDefinition,
