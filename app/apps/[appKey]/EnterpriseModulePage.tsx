@@ -351,6 +351,109 @@ export default async function EnterpriseModulePage({
       app.registryKey,
     );
 
+  const appBaseHref =
+    app.href ||
+    (
+      '/apps/' +
+      app.registryKey
+    );
+
+  const appSidebarItems = [
+    {
+      key:
+        'overview',
+      label:
+        'Overview',
+      href:
+        appBaseHref,
+      description:
+        'KPIs, priorities and current operating state.',
+    },
+    ...data.tables
+      .filter(
+        table =>
+          !table.settingTable,
+      )
+      .map(
+        table => ({
+          key:
+            table.key,
+          label:
+            table.label,
+          href:
+            appBaseHref +
+            '/' +
+            encodeURIComponent(
+              table.key,
+            ),
+          description:
+            'Open ' +
+            table.label
+              .toLowerCase() +
+            ' records.',
+          badge:
+            table.count,
+        }),
+      ),
+    ...(
+      data.capabilities
+        .canReport
+        ? [
+            {
+              key:
+                'reports',
+              label:
+                'Reports',
+              href:
+                appBaseHref +
+                '/reports',
+              description:
+                'Module analysis and operational reporting.',
+            },
+          ]
+        : []
+    ),
+    {
+      key:
+        'activity',
+      label:
+        'Activity',
+      href:
+        appBaseHref +
+          '/activity',
+      description:
+        'Recent module changes and user actions.',
+    },
+    ...(
+      data.capabilities
+        .canManageSettings &&
+      data.tables.some(
+        table =>
+          table.settingTable,
+      )
+        ? [
+            {
+              key:
+                'settings',
+              label:
+                'Settings',
+              href:
+                appBaseHref +
+                  '/settings',
+              description:
+                'Module defaults, policy and configuration.',
+            },
+          ]
+        : []
+    ),
+  ];
+
+  const activeSidebarKey =
+    resolved.view ===
+      'records'
+      ? resolved.tableKey
+      : resolved.view;
+
   return (
     <AppSurfaceShell
       appKey={
@@ -379,6 +482,12 @@ export default async function EnterpriseModulePage({
       }
       modules={
         shell.accessibleModules
+      }
+      appSidebarItems={
+        appSidebarItems
+      }
+      activeSidebarKey={
+        activeSidebarKey
       }
       sidebarCapabilities={{
         aiEnabled:
