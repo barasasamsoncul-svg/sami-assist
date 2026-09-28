@@ -41,6 +41,26 @@ test('member app assignment is controlled by apps.manage rather than users.manag
     assert.match(implementation, /SAMI_PERMISSIONS\.USERS_VIEW|SAMI_PERMISSIONS\.USERS_MANAGE/, 'The employee target must remain inside the People visibility boundary.');
     assert.doesNotMatch(implementation, /function requireUsersManage[\s\S]{0,250}replaceMemberAppAccess/, 'App assignment still appears to rely on the old users.manage helper.');
 });
+test('member app access rejects inactive or deleted memberships', async () => {
+    const raw = await source('lib/services/member-app-access.ts');
+    const implementation = compact(stripComments(raw));
+    assert.match(
+        implementation,
+        /MEMBER_NOT_ACTIVE/,
+        'Inactive memberships must fail closed instead of retaining editable app access.',
+    );
+    assert.match(
+        implementation,
+        /deleted_at/,
+        'Deleted memberships must be excluded from app-access resolution.',
+    );
+    assert.match(
+        implementation,
+        /LOWER\(COALESCE\(status, ''\)\) = 'active'/,
+        'Directory app-access calculations must only include active memberships.',
+    );
+});
+
 test('member company assignment is controlled by companies.manage rather than users.manage', async () => {
     const raw = await source('lib/services/member-company-access.ts');
     const implementation = compact(stripComments(raw));
