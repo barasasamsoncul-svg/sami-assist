@@ -76,9 +76,24 @@ The manifest owns declarative module identity and capability metadata:
 
 Declarative metadata must never become arbitrary executable code.
 
-Executable contributions are code-owned and enter the platform through:
+The canonical executable-contribution contract is:
 
-`lib/apps/runtime-registry.ts`
+`lib/apps/runtime-contract.ts`
+
+It defines and validates the common `SamiAppRuntimeContribution` boundary, including module ownership and manifest extension opt-in.
+
+Executable providers are loaded through cycle-safe app-owned extension boundaries:
+
+- `lib/apps/runtime-dashboard.ts`;
+- `lib/apps/runtime-search.ts`;
+- `lib/apps/runtime-ai.ts`;
+- `lib/apps/runtime-automation.ts`;
+- `lib/apps/runtime-integrations.ts`;
+- `lib/apps/runtime-lifecycle.ts`;
+- `lib/apps/runtime-migrations.ts`;
+- `lib/apps/runtime-data-tables.ts`.
+
+`lib/apps/runtime-registry.ts` is a lightweight metadata/validation index. Platform kernels do not import it.
 
 The runtime contribution contract supports:
 
@@ -93,9 +108,7 @@ The runtime contribution contract supports:
 - module migrations;
 - additional app-owned data tables required by lifecycle services.
 
-The platform registries consume this boundary generically.
-
-The runtime registry validates that contributed code belongs to registered modules and that the corresponding manifest extension is enabled.
+Each platform subsystem imports only its corresponding app-owned extension boundary. This prevents Search, AI, Automation, Integrations, lifecycle, and migration bootstrap from recursively initializing one another while keeping business-app names out of the kernel.
 
 ## Tenant provisioning
 
@@ -119,9 +132,9 @@ Migration execution belongs to the platform.
 
 Migration definitions belong to apps.
 
-App migration definitions are collected through the bootstrap-safe `lib/apps/runtime-migrations.ts` boundary. This subset is intentionally separate from the general executable `runtime-registry.ts` so module upgrade checks can run while Search, AI and Automation providers are still initializing without creating a circular dependency.
+App migration definitions are collected through the bootstrap-safe `lib/apps/runtime-migrations.ts` boundary. This subset is intentionally separate from Search, AI, Automation, Integration and lifecycle provider loading so module upgrade checks can run without creating a circular dependency.
 
-The general runtime contribution contract may reference the same app-owned migration groups for validation and introspection, but the migration executor itself depends only on the bootstrap-safe migration registry.
+The canonical runtime contract governs the same app-owned migration shape, but the migration executor itself depends only on the bootstrap-safe migration registry.
 
 The migration engine:
 
@@ -155,7 +168,7 @@ A future module must not add a private authentication, membership or role engine
 
 ## Search
 
-Global Search discovers app-owned search providers from the app runtime registry.
+Global Search discovers app-owned search providers from its cycle-safe app runtime extension boundary.
 
 Search providers are exposed only when:
 
@@ -169,7 +182,7 @@ The Search kernel must not import named business apps.
 
 SaMi AI is a platform capability, not a business module.
 
-Apps contribute code-owned tools through the app runtime registry.
+Apps contribute code-owned tools through its cycle-safe app runtime extension boundary.
 
 The AI kernel applies:
 
@@ -183,7 +196,7 @@ A future module can expose AI tools without modifying SaMi AI core.
 
 ## Automation
 
-Apps can contribute triggers, actions and action handlers through the runtime registry.
+Apps can contribute triggers, actions and action handlers through the canonical runtime contract and the Automation app-extension boundary.
 
 The common automation engine owns:
 
@@ -209,7 +222,7 @@ The integration kernel owns:
 - sync/event infrastructure;
 - external-app launcher support.
 
-Apps may contribute integration provider definitions through the app runtime registry.
+Apps may contribute integration provider definitions through its cycle-safe app runtime extension boundary.
 
 ## Developer API
 
@@ -302,7 +315,7 @@ Before a future module is considered compatible with the frozen kernel, confirm:
 4. app-owned migrations register without modifying the migration kernel;
 5. its standalone frontend compiles;
 6. permissions and company boundaries are enforced;
-7. opted-in Search/AI/Automation/Integration/API extensions are discovered through the app runtime registry;
+7. opted-in Search/AI/Automation/Integration/API extensions are discovered through its cycle-safe app runtime extension boundary;
 8. notifications/activity use shared services;
 9. export/erasure behavior is explicitly declared;
 10. billing/usage recognizes installation without special casing;
