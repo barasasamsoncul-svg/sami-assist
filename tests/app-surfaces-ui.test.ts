@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  access,
   readFile,
 } from 'node:fs/promises';
 
@@ -31,6 +32,35 @@ const allBusinessAppRouteFiles = [
   ...standaloneSurfaceFiles,
   ...delegatingRouteFiles,
 ];
+
+const enterpriseStandaloneModules =
+  Object.keys(
+    ENTERPRISE_MODULE_TABLES,
+  );
+
+function componentName(
+  moduleKey:
+    string,
+) {
+  return moduleKey
+    .split(
+      '_',
+    )
+    .map(
+      part =>
+        part
+          .charAt(
+            0,
+          )
+          .toUpperCase() +
+        part.slice(
+          1,
+        ),
+    )
+    .join(
+      '',
+    );
+}
 
 test(
   'all 80 SaMi business apps own an explicit UI profile',
@@ -109,6 +139,110 @@ test(
           .trim()
           .length >=
           20,
+      );
+    }
+  },
+);
+
+test(
+  'all 78 enterprise business apps own dedicated frontend route trees',
+  async () => {
+    assert.equal(
+      enterpriseStandaloneModules.length,
+      78,
+    );
+
+    for (
+      const moduleKey
+      of enterpriseStandaloneModules
+    ) {
+      const component =
+        componentName(
+          moduleKey,
+        );
+
+      const paths = [
+        'app/apps/' +
+          moduleKey +
+          '/page.tsx',
+        'app/apps/' +
+          moduleKey +
+          '/[section]/page.tsx',
+        'app/apps/' +
+          moduleKey +
+          '/' +
+          component +
+          'Workspace.tsx',
+        'app/apps/' +
+          moduleKey +
+          '/' +
+          component +
+          'WorkspaceClient.tsx',
+      ];
+
+      for (
+        const path
+        of paths
+      ) {
+        await assert.doesNotReject(
+          access(
+            path,
+          ),
+          moduleKey +
+            ' must own ' +
+            path,
+        );
+      }
+
+      const workspace =
+        await readFile(
+          paths[2],
+          'utf8',
+        );
+
+      assert.match(
+        workspace,
+        /AppSurfaceShell/,
+        moduleKey +
+          ' must compose its own standalone app surface.',
+      );
+
+      assert.match(
+        workspace,
+        new RegExp(
+          "const MODULE_KEY = ['\"]" +
+          moduleKey +
+          "['\"]",
+        ),
+        moduleKey +
+          ' workspace must be bound to its own module key.',
+      );
+
+      assert.match(
+        workspace,
+        /appSidebarItems/,
+        moduleKey +
+          ' must own its sidebar composition.',
+      );
+
+      const client =
+        await readFile(
+          paths[3],
+          'utf8',
+        );
+
+      assert.match(
+        client,
+        /_shared\/EnterpriseDataWorkspaceClient/,
+        moduleKey +
+          ' may reuse the shared record engine but must enter through its own client.',
+      );
+
+      assert.doesNotMatch(
+        client,
+        /apps\/\[appKey\]\/EnterpriseModuleWorkspaceClient/,
+        moduleKey +
+          ' must not depend on the dynamic route as its frontend owner.',
       );
     }
   },
@@ -288,7 +422,7 @@ test(
 
     const enterprise =
       await readFile(
-        'app/apps/[appKey]/EnterpriseModulePage.tsx',
+        'app/apps/accounting/AccountingWorkspace.tsx',
         'utf8',
       );
 
@@ -329,7 +463,7 @@ test(
   async () => {
     const source =
       await readFile(
-        'app/apps/[appKey]/EnterpriseModulePage.tsx',
+        'app/apps/accounting/AccountingWorkspace.tsx',
         'utf8',
       );
 
