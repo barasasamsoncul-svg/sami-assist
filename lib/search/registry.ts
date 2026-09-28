@@ -6,7 +6,7 @@ import type {
 
 import {
   APP_RUNTIME_SEARCH_PROVIDERS,
-} from '@/lib/apps/runtime-registry';
+} from '@/lib/apps/runtime-search';
 
 import {
   filterAccessibleModuleExtensions,
