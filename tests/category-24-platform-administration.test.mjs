@@ -21,6 +21,58 @@ async function source(file) {
 }
 
 test(
+  'administrator recovery-code replacement is atomic and serialized',
+  async () => {
+    const raw =
+      await source(
+        'lib/auth/admin-two-factor.ts',
+      );
+
+    const start =
+      raw.indexOf(
+        'export async function regenerateAdminRecoveryCodes',
+      );
+
+    const end =
+      raw.indexOf(
+        'export async function useAdminRecoveryCode',
+        start,
+      );
+
+    const block =
+      raw.slice(
+        start,
+        end,
+      );
+
+    assert.match(
+      raw,
+      /withControlTransaction/,
+      'Admin recovery-code replacement must use the control transaction boundary.',
+    );
+
+    assert.match(
+      raw,
+      /sami:admin-recovery-codes:/,
+      'Admin recovery-code replacement must serialize per administrator.',
+    );
+
+    assert.match(
+      block,
+      /unnest\([\s\S]*\$2::text\[\]/s,
+      'Replacement codes must be inserted as one database operation rather than partial row-by-row writes.',
+    );
+
+    assert.doesNotMatch(
+      block,
+      /for\s*\([\s\S]*INSERT INTO platform_admin_recovery_codes/s,
+      'Recovery-code replacement must not perform non-atomic row-by-row inserts.',
+    );
+  },
+);
+
+
+test(
   'administrator 2FA serializes exact login-challenge verification before consuming factors',
   async () => {
     const raw =
