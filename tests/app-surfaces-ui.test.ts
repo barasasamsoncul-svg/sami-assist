@@ -105,6 +105,60 @@ test(
 );
 
 test(
+  'every business app owns a distinct visual-layout fingerprint',
+  () => {
+    const fingerprints =
+      new Map<
+        string,
+        string
+      >();
+
+    for (
+      const [
+        moduleKey,
+        profile,
+      ]
+      of Object.entries(
+        SAMI_APP_UI_PROFILES,
+      )
+    ) {
+      const fingerprint = [
+        profile.archetype,
+        profile.header,
+        profile.density,
+        profile.navigation,
+        profile.contentWidth,
+        profile.accent,
+        profile.secondary,
+      ].join('|');
+
+      const previous =
+        fingerprints.get(
+          fingerprint,
+        );
+
+      assert.equal(
+        previous,
+        undefined,
+        moduleKey +
+          ' must not share the exact visual-layout fingerprint owned by ' +
+          previous,
+      );
+
+      fingerprints.set(
+        fingerprint,
+        moduleKey,
+      );
+    }
+
+    assert.equal(
+      fingerprints.size,
+      80,
+    );
+  },
+);
+
+test(
   'business app routes use the standalone app surface instead of WorkspaceShell',
   async () => {
     for (
