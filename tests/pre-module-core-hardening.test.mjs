@@ -634,3 +634,35 @@ test('pre-module hardening: every module extension flag is enforced by a real ru
     /dataErasure/,
   );
 });
+
+
+test('pre-module hardening: tenant database pools are isolated by host port and database name', async () => {
+  const tenantDb =
+    await source(
+      'lib/db/tenant.ts',
+    );
+
+  assert.match(
+    tenantDb,
+    /function getTenantPoolKey\([\s\S]*databaseHost[\s\S]*databasePort[\s\S]*databaseName/s,
+    'Pool identity must include the physical database endpoint, not only database_name.',
+  );
+
+  assert.match(
+    tenantDb,
+    /getTenantPoolKey\([\s\S]*database\.databaseHost[\s\S]*database\.databasePort[\s\S]*database\.databaseName/s,
+    'Tenant-id resolution must cache by the exact registered host, port and database.',
+  );
+
+  assert.doesNotMatch(
+    tenantDb,
+    /tenantPools\.get\(\s*database\.databaseName\s*\)/,
+    'A same-named database on another host must never reuse the wrong tenant pool.',
+  );
+
+  assert.match(
+    tenantDb,
+    /entry\.databaseName ===\s*normalizedName/,
+    'Lifecycle pool closure must close every cached endpoint matching the physical database name.',
+  );
+});
