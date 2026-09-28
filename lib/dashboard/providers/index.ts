@@ -17,6 +17,10 @@ import {
   filterAccessibleModuleExtensions,
 } from '@/lib/modules/registry';
 
+import {
+  APP_RUNTIME_DASHBOARD_PROVIDERS,
+} from '@/lib/apps/runtime-registry';
+
 
 /* ================================================================
    PROVIDER CONTEXT
@@ -92,7 +96,9 @@ export interface DashboardProvider {
 
 export const DASHBOARD_PROVIDERS:
   DashboardProvider[] =
-  [];
+  [
+    ...APP_RUNTIME_DASHBOARD_PROVIDERS,
+  ];
 
 
 /* ================================================================
