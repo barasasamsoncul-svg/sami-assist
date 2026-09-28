@@ -119,12 +119,13 @@ test('developer API remains versioned, credential-scoped and app-bounded', async
   );
 });
 
-test('shared enterprise workspaces keep a contextual desktop rail and focused work canvas', async () => {
+test('shared enterprise runtime preserves app-specific navigation while rail apps keep a focused work canvas', async () => {
   const [
     rootPage,
     sectionPage,
     serverPage,
     layout,
+    profiles,
   ] = await Promise.all([
     source(
       'app/apps/[appKey]/page.tsx',
@@ -137,6 +138,9 @@ test('shared enterprise workspaces keep a contextual desktop rail and focused wo
     ),
     source(
       'app/apps/[appKey]/EnterpriseModuleWorkspaceShell.module.css',
+    ),
+    source(
+      'lib/apps/ui-profiles.ts',
     ),
   ]);
 
@@ -161,20 +165,63 @@ test('shared enterprise workspaces keep a contextual desktop rail and focused wo
   );
 
   assert.match(
+    serverPage,
+    /data-navigation/,
+    'The enterprise surface must expose its code-owned app navigation profile.',
+  );
+
+  for (
+    const mode
+    of [
+      'rail',
+      'tabs',
+      'pills',
+      'minimal',
+    ]
+  ) {
+    assert.match(
+      profiles,
+      new RegExp(
+        "navigation:\\s*['\"]" +
+        mode +
+        "['\"]",
+      ),
+      'The app UI registry must retain the ' +
+        mode +
+        ' navigation composition.',
+    );
+  }
+
+  assert.match(
     layout,
-    /grid-template-columns:\s*minmax\(210px, 248px\)\s+minmax\(0, 1fr\)/,
-    'Desktop enterprise workspaces must retain a dedicated contextual rail and one flexible work canvas.',
+    /\[data-navigation=["']rail["']\][\s\S]*grid-template-columns:\s*minmax\(220px, 270px\)\s+minmax\(0, 1fr\)/,
+    'Rail-profile apps must retain a dedicated contextual rail and one flexible work canvas.',
   );
 
   assert.match(
     layout,
-    /position:\s*sticky/,
-    'The contextual module rail must remain persistent on desktop.',
+    /\[data-navigation=["']rail["']\][\s\S]*position:\s*sticky/,
+    'The contextual rail must remain persistent for apps whose profile owns rail navigation.',
   );
 
   assert.match(
     layout,
     /@media \(min-width: 1024px\)/,
-    'The two-pane treatment must remain desktop-specific so mobile keeps its compact flow.',
+    'Rail composition must remain desktop-specific so mobile keeps its compact flow.',
+  );
+
+  assert.match(
+    layout,
+    /\[data-navigation=["']tabs["']\]/,
+  );
+
+  assert.match(
+    layout,
+    /\[data-navigation=["']pills["']\]/,
+  );
+
+  assert.match(
+    layout,
+    /\[data-navigation=["']minimal["']\]/,
   );
 });
