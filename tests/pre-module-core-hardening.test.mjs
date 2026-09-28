@@ -102,6 +102,26 @@ test('pre-module hardening: platform edge applies browser security policy and re
   );
 });
 
+test('pre-module hardening: tenant core SQL uses valid PostgreSQL dollar quoting', async () => {
+  const schema =
+    await source(
+      'lib/schema/tenant-core.sql',
+    );
+
+  assert.doesNotMatch(
+    schema,
+    /\b(?:AS|DO)\s+\$(?!\$)/,
+    'PL/pgSQL blocks must never use a bare single-dollar delimiter.',
+  );
+
+  assert.match(
+    schema,
+    /CREATE OR REPLACE FUNCTION \{schema\}\.set_updated_at\(\)[\s\S]*?AS \$\$[\s\S]*?\$\$;/s,
+    'The tenant core updated_at helper must remain valid dollar-quoted PL/pgSQL.',
+  );
+});
+
+
 test('pre-module hardening: external callbacks are not blanket-blocked by browser CSRF policy', async () => {
   const security =
     compact(

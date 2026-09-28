@@ -970,12 +970,12 @@ CREATE INDEX IF NOT EXISTS idx_workflow_transitions_states
 CREATE OR REPLACE FUNCTION {schema}.set_updated_at()
 RETURNS TRIGGER
 LANGUAGE plpgsql
-AS $
+AS $$
 BEGIN
     NEW.updated_at = NOW();
     RETURN NEW;
 END;
-$;
+$$;
 
 
 -- ============================================================

@@ -334,6 +334,74 @@ test('Registration: selected-app guard follows the live installable app catalog 
 });
 
 
+test('Registration recovery: failed owned workspaces retry in place instead of creating duplicates', async () => {
+  const [
+    route,
+    page,
+    client,
+  ] =
+    await Promise.all([
+      source(
+        'app/api/workspaces/recover/route.ts',
+      ),
+      source(
+        'app/workspaces/new/page.tsx',
+      ),
+      source(
+        'app/workspaces/new/NewWorkspaceClient.tsx',
+      ),
+    ]);
+
+  assert.match(
+    route,
+    /getSession/,
+  );
+
+  assert.match(
+    route,
+    /tu\.user_id = \$2[\s\S]*tu\.is_owner[\s\S]*TRUE/s,
+    'Recovery must be restricted to the authenticated workspace owner.',
+  );
+
+  assert.match(
+    route,
+    /provisioning_failed/,
+  );
+
+  assert.match(
+    route,
+    /FROM tenant_modules[\s\S]*INNER JOIN modules/s,
+    'Recovery must reuse the reserved app set from Control DB.',
+  );
+
+  assert.match(
+    route,
+    /provisionTenant\([\s\S]*tenantId[\s\S]*appKeys/s,
+    'Recovery must retry the existing tenant rather than create another tenant.',
+  );
+
+  assert.match(
+    route,
+    /setCurrentTenantForSession/,
+  );
+
+  assert.match(
+    page,
+    /provisioning_failed/,
+  );
+
+  assert.match(
+    client,
+    /\/api\/workspaces\/recover/,
+  );
+
+  assert.match(
+    client,
+    /Retry setup/,
+  );
+});
+
+
 test('Registration: existing workspace creation switches the authenticated session into the new tenant', async () => {
   const registerRoute =
     await source(
