@@ -1,35 +1,143 @@
 .enterpriseWorkspace {
   min-width: 0;
+  --module-accent: var(--sami-module-accent, #2563eb);
+  --module-secondary: var(--sami-module-secondary, #7c3aed);
 }
 
+/*
+ * The shared enterprise runtime owns data/actions, but layout composition is
+ * selected by each app's explicit UI profile. This keeps the backend common
+ * without making the applications visually interchangeable.
+ */
+.enterpriseWorkspace :global(.sami-surface) {
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.enterpriseWorkspace[data-density="compact"] :global(.sami-surface) {
+  --module-pad: 12px;
+}
+
+.enterpriseWorkspace[data-density="balanced"] :global(.sami-surface) {
+  --module-pad: 16px;
+}
+
+.enterpriseWorkspace[data-density="spacious"] :global(.sami-surface) {
+  --module-pad: 20px;
+}
+
+/* ----- app-local navigation compositions ----- */
+
+.enterpriseWorkspace[data-navigation="tabs"] > :global(.space-y-4) > :first-child,
+.enterpriseWorkspace[data-navigation="pills"] > :global(.space-y-4) > :first-child,
+.enterpriseWorkspace[data-navigation="minimal"] > :global(.space-y-4) > :first-child {
+  position: sticky;
+  top: 72px;
+  z-index: 30;
+  overflow: visible;
+  border-radius: 18px;
+  background:
+    color-mix(in srgb, var(--sami-surface) 94%, transparent);
+  backdrop-filter: blur(18px);
+}
+
+.enterpriseWorkspace[data-navigation="tabs"] > :global(.space-y-4) > :first-child > :first-child,
+.enterpriseWorkspace[data-navigation="pills"] > :global(.space-y-4) > :first-child > :first-child {
+  padding-block: 10px;
+}
+
+.enterpriseWorkspace[data-navigation="minimal"] > :global(.space-y-4) > :first-child > :first-child {
+  display: none;
+}
+
+.enterpriseWorkspace[data-navigation="tabs"] > :global(.space-y-4) > :first-child > :last-child {
+  gap: 4px;
+  padding: 7px;
+}
+
+.enterpriseWorkspace[data-navigation="tabs"] > :global(.space-y-4) > :first-child > :last-child button {
+  border-radius: 9px;
+}
+
+.enterpriseWorkspace[data-navigation="pills"] > :global(.space-y-4) > :first-child {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.enterpriseWorkspace[data-navigation="pills"] > :global(.space-y-4) > :first-child > :first-child {
+  border: 1px solid var(--sami-border);
+  border-radius: 20px;
+  background: var(--sami-surface);
+}
+
+.enterpriseWorkspace[data-navigation="pills"] > :global(.space-y-4) > :first-child > :last-child {
+  margin-top: 8px;
+  gap: 7px;
+  padding: 0;
+}
+
+.enterpriseWorkspace[data-navigation="pills"] > :global(.space-y-4) > :first-child > :last-child button {
+  border: 1px solid var(--sami-border);
+  border-radius: 999px;
+  background: var(--sami-surface);
+}
+
+.enterpriseWorkspace[data-navigation="minimal"] > :global(.space-y-4) > :first-child {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.enterpriseWorkspace[data-navigation="minimal"] > :global(.space-y-4) > :first-child > :last-child {
+  gap: 2px;
+  border-bottom: 1px solid var(--sami-border);
+  padding: 0 0 8px;
+}
+
+.enterpriseWorkspace[data-navigation="minimal"] > :global(.space-y-4) > :first-child > :last-child button {
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* ----- rail applications ----- */
+
 @media (min-width: 1024px) {
-  .enterpriseWorkspace > :global(.space-y-4) {
+  .enterpriseWorkspace[data-navigation="rail"] > :global(.space-y-4) {
     display: grid;
-    grid-template-columns: minmax(210px, 248px) minmax(0, 1fr);
+    grid-template-columns: minmax(220px, 270px) minmax(0, 1fr);
     align-items: start;
-    gap: 18px;
+    gap: 20px;
   }
 
-  .enterpriseWorkspace > :global(.space-y-4) > :first-child {
+  .enterpriseWorkspace[data-navigation="rail"] > :global(.space-y-4) > :first-child {
     position: sticky;
-    top: 78px;
+    top: 84px;
     grid-column: 1;
-    max-height: calc(100vh - 96px);
+    grid-row: 1 / span 20;
+    max-height: calc(100vh - 104px);
     overflow: auto;
-    border-radius: 20px;
-    box-shadow: none;
+    border-radius: 22px;
+    box-shadow:
+      0 16px 44px rgba(15, 23, 42, 0.06);
   }
 
-  .enterpriseWorkspace > :global(.space-y-4) > :first-child > :first-child {
+  .enterpriseWorkspace[data-navigation="rail"] > :global(.space-y-4) > :first-child > :first-child {
     display: block;
     padding: 16px 14px 12px;
+    border-bottom: 1px solid var(--sami-border);
   }
 
-  .enterpriseWorkspace > :global(.space-y-4) > :first-child > :first-child > :first-child {
+  .enterpriseWorkspace[data-navigation="rail"] > :global(.space-y-4) > :first-child > :first-child > :first-child {
     min-width: 0;
   }
 
-  .enterpriseWorkspace > :global(.space-y-4) > :first-child > :first-child > :first-child p:last-child {
+  .enterpriseWorkspace[data-navigation="rail"] > :global(.space-y-4) > :first-child > :first-child > :first-child p:last-child {
     display: -webkit-box;
     overflow: hidden;
     -webkit-box-orient: vertical;
@@ -37,14 +145,14 @@
     line-clamp: 3;
   }
 
-  .enterpriseWorkspace > :global(.space-y-4) > :first-child > :first-child > :last-child {
+  .enterpriseWorkspace[data-navigation="rail"] > :global(.space-y-4) > :first-child > :first-child > :last-child {
     margin-top: 12px;
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 6px;
   }
 
-  .enterpriseWorkspace > :global(.space-y-4) > :first-child > :first-child > :last-child button {
+  .enterpriseWorkspace[data-navigation="rail"] > :global(.space-y-4) > :first-child > :first-child > :last-child button {
     width: 100%;
     min-width: 0;
     justify-content: center;
@@ -53,7 +161,7 @@
     box-shadow: none;
   }
 
-  .enterpriseWorkspace > :global(.space-y-4) > :first-child > :last-child {
+  .enterpriseWorkspace[data-navigation="rail"] > :global(.space-y-4) > :first-child > :last-child {
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -61,7 +169,7 @@
     padding: 8px;
   }
 
-  .enterpriseWorkspace > :global(.space-y-4) > :first-child > :last-child button {
+  .enterpriseWorkspace[data-navigation="rail"] > :global(.space-y-4) > :first-child > :last-child button {
     width: 100%;
     justify-content: flex-start;
     border-radius: 10px;
@@ -69,15 +177,229 @@
     box-shadow: none;
   }
 
-  .enterpriseWorkspace > :global(.space-y-4) > :not(:first-child) {
+  .enterpriseWorkspace[data-navigation="rail"] > :global(.space-y-4) > :not(:first-child) {
     grid-column: 2;
     min-width: 0;
   }
 }
 
+/* ----- archetype identity ----- */
+
+.enterpriseWorkspace[data-archetype="ledger"] :global(.sami-surface) {
+  border-radius: 16px;
+  box-shadow: none;
+}
+
+.enterpriseWorkspace[data-archetype="ledger"] > :global(.space-y-4) {
+  gap: 12px;
+}
+
+.enterpriseWorkspace[data-archetype="ledger"] :global(table) {
+  font-variant-numeric: tabular-nums;
+}
+
+.enterpriseWorkspace[data-archetype="document"] :global(.sami-surface) {
+  border-radius: 22px;
+}
+
+.enterpriseWorkspace[data-archetype="document"] > :global(.space-y-4) > :not(:first-child) {
+  box-shadow:
+    0 16px 48px rgba(15, 23, 42, 0.055);
+}
+
+.enterpriseWorkspace[data-archetype="pipeline"] > :global(.space-y-4) {
+  gap: 18px;
+}
+
+.enterpriseWorkspace[data-archetype="pipeline"] :global(.sami-surface) {
+  border-radius: 24px;
+}
+
+.enterpriseWorkspace[data-archetype="pipeline"] :global(button:hover) {
+  border-color:
+    color-mix(in srgb, var(--module-accent) 34%, var(--sami-border));
+}
+
+.enterpriseWorkspace[data-archetype="board"] :global(.sami-surface) {
+  border-radius: 18px;
+}
+
+.enterpriseWorkspace[data-archetype="board"] > :global(.space-y-4) {
+  gap: 14px;
+}
+
+.enterpriseWorkspace[data-archetype="calendar"] :global(.sami-surface) {
+  border-radius: 26px;
+}
+
+.enterpriseWorkspace[data-archetype="calendar"] > :global(.space-y-4) {
+  gap: 20px;
+}
+
+.enterpriseWorkspace[data-archetype="canvas"] {
+  background:
+    radial-gradient(circle at 15% 10%, color-mix(in srgb, var(--module-accent) 7%, transparent), transparent 32%),
+    radial-gradient(circle at 90% 24%, color-mix(in srgb, var(--module-secondary) 8%, transparent), transparent 30%);
+}
+
+.enterpriseWorkspace[data-archetype="canvas"] :global(.sami-surface) {
+  border-radius: 28px;
+  box-shadow:
+    0 20px 60px rgba(15, 23, 42, 0.06);
+}
+
+.enterpriseWorkspace[data-archetype="analytics"] :global(.sami-surface) {
+  border-radius: 22px;
+}
+
+.enterpriseWorkspace[data-archetype="analytics"] > :global(.space-y-4) {
+  gap: 16px;
+}
+
+.enterpriseWorkspace[data-archetype="catalog"] :global(.sami-surface) {
+  border-radius: 24px;
+}
+
+.enterpriseWorkspace[data-archetype="catalog"] :global(button) {
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    border-color 160ms ease;
+}
+
+.enterpriseWorkspace[data-archetype="catalog"] :global(button:hover) {
+  transform: translateY(-1px);
+}
+
+.enterpriseWorkspace[data-archetype="operations"] :global(.sami-surface),
+.enterpriseWorkspace[data-archetype="pos"] :global(.sami-surface) {
+  border-radius: 14px;
+  box-shadow: none;
+}
+
+.enterpriseWorkspace[data-archetype="operations"] > :global(.space-y-4),
+.enterpriseWorkspace[data-archetype="pos"] > :global(.space-y-4) {
+  gap: 10px;
+}
+
+.enterpriseWorkspace[data-archetype="people"] :global(.sami-surface) {
+  border-radius: 26px;
+}
+
+.enterpriseWorkspace[data-archetype="people"] > :global(.space-y-4) {
+  gap: 18px;
+}
+
+.enterpriseWorkspace[data-archetype="service"] :global(.sami-surface) {
+  border-radius: 20px;
+}
+
+.enterpriseWorkspace[data-archetype="service"] > :global(.space-y-4) {
+  gap: 14px;
+}
+
+.enterpriseWorkspace[data-archetype="inbox"] :global(.sami-surface) {
+  border-radius: 16px;
+  box-shadow: none;
+}
+
+.enterpriseWorkspace[data-archetype="inbox"] > :global(.space-y-4) {
+  gap: 8px;
+}
+
+.enterpriseWorkspace[data-archetype="map"] :global(.sami-surface) {
+  border-radius: 24px;
+}
+
+.enterpriseWorkspace[data-archetype="map"] {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--module-accent) 4%, transparent),
+      transparent 180px
+    );
+}
+
+.enterpriseWorkspace[data-archetype="library"] :global(.sami-surface) {
+  border-radius: 18px;
+}
+
+.enterpriseWorkspace[data-archetype="library"] > :global(.space-y-4) {
+  gap: 12px;
+}
+
+.enterpriseWorkspace[data-archetype="compliance"] :global(.sami-surface) {
+  border-radius: 18px;
+  border-color:
+    color-mix(in srgb, var(--module-accent) 14%, var(--sami-border));
+}
+
+.enterpriseWorkspace[data-archetype="compliance"] > :global(.space-y-4) {
+  gap: 12px;
+}
+
+/* ----- accent ownership ----- */
+
+.enterpriseWorkspace > :global(.space-y-4) > :first-child button[class*="bg-blue-600"] {
+  background:
+    linear-gradient(
+      135deg,
+      var(--module-accent),
+      var(--module-secondary)
+    );
+}
+
+.enterpriseWorkspace :global(.text-blue-600),
+.enterpriseWorkspace :global(.text-blue-700) {
+  color: var(--module-accent);
+}
+
+.enterpriseWorkspace :global(.bg-blue-500\/10) {
+  background:
+    color-mix(in srgb, var(--module-accent) 10%, transparent);
+}
+
+/* Selected records, register tabs and primary states inherit the app accent. */
+.enterpriseWorkspace :global(button[class*="bg-slate-950"][class*="text-white"]) {
+  background:
+    linear-gradient(
+      135deg,
+      var(--module-accent),
+      var(--module-secondary)
+    );
+}
+
+/* ----- mobile ----- */
+
+@media (max-width: 1023px) {
+  .enterpriseWorkspace[data-navigation="rail"] > :global(.space-y-4) > :first-child {
+    position: sticky;
+    top: 72px;
+    z-index: 30;
+    border-radius: 18px;
+    background:
+      color-mix(in srgb, var(--sami-surface) 95%, transparent);
+    backdrop-filter: blur(18px);
+  }
+
+  .enterpriseWorkspace[data-navigation="rail"] > :global(.space-y-4) > :first-child > :first-child {
+    padding: 12px;
+  }
+
+  .enterpriseWorkspace[data-navigation="rail"] > :global(.space-y-4) > :first-child > :last-child {
+    overflow-x: auto;
+    padding: 8px;
+  }
+}
+
 @media (min-width: 1280px) {
-  .enterpriseWorkspace > :global(.space-y-4) {
-    grid-template-columns: minmax(224px, 260px) minmax(0, 1fr);
-    gap: 22px;
+  .enterpriseWorkspace[data-navigation="rail"] > :global(.space-y-4) {
+    grid-template-columns: minmax(236px, 286px) minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  .enterpriseWorkspace[data-density="spacious"][data-navigation="rail"] > :global(.space-y-4) {
+    grid-template-columns: minmax(250px, 304px) minmax(0, 1fr);
+    gap: 28px;
   }
 }
