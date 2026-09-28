@@ -3,11 +3,11 @@ import path from 'path';
 
 import type {
   SamiModuleMigrationDefinition,
-} from '@/lib/modules/migrations';
+} from '@/lib/modules/migration-types';
 
 import {
   executeSafeSamiModuleMigrationSql,
-} from '@/lib/modules/migrations';
+} from '@/lib/modules/migration-safety';
 
 
 export const SALES_1_0_0_TO_2_0_0:
