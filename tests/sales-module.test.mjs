@@ -576,6 +576,7 @@ test('Sales v2 is registered into manifests, migrations, Search and SaMi AI', as
     manifest,
     migrationEngine,
     runtimeMigrations,
+    runtimeRegistry,
     search,
     ai,
   ] =
@@ -588,6 +589,9 @@ test('Sales v2 is registered into manifests, migrations, Search and SaMi AI', as
       ),
       source(
         'lib/apps/runtime-migrations.ts',
+      ),
+      source(
+        'lib/apps/runtime-registry.ts',
       ),
       source(
         'lib/search/registry.ts',
@@ -673,7 +677,7 @@ test('Sales v2 is registered into manifests, migrations, Search and SaMi AI', as
   );
 
   assert.match(
-    runtimeMigrations,
+    runtimeRegistry,
     /SALES_SEARCH_PROVIDER/,
   );
 
@@ -683,7 +687,7 @@ test('Sales v2 is registered into manifests, migrations, Search and SaMi AI', as
   );
 
   assert.match(
-    runtimeMigrations,
+    runtimeRegistry,
     /SALES_AI_TOOLS/,
   );
 });
