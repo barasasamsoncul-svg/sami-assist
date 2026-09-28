@@ -14,7 +14,7 @@ import {
 
 import type {
   SamiModuleMigrationDefinition,
-} from '@/lib/modules/migrations';
+} from '@/lib/modules/migration-types';
 
 import {
   SPECIALIST_ENTERPRISE_TABLES,
