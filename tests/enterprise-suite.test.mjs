@@ -654,12 +654,16 @@ test('enterprise search providers cover the code-owned module catalog', async ()
   const [
     enterpriseSearch,
     registry,
+    runtimeRegistry,
   ] = await Promise.all([
     source(
       'lib/apps/enterprise/search.ts',
     ),
     source(
       'lib/search/registry.ts',
+    ),
+    source(
+      'lib/apps/runtime-registry.ts',
     ),
   ]);
 
@@ -675,6 +679,11 @@ test('enterprise search providers cover the code-owned module catalog', async ()
 
   assert.match(
     registry,
+    /APP_RUNTIME_SEARCH_PROVIDERS/,
+  );
+
+  assert.match(
+    runtimeRegistry,
     /ENTERPRISE_MODULE_SEARCH_PROVIDERS/,
   );
 });
@@ -684,12 +693,16 @@ test('SaMi AI has a bounded suite-wide read bridge instead of raw database acces
   const [
     enterpriseAi,
     registry,
+    runtimeRegistry,
   ] = await Promise.all([
     source(
       'lib/apps/enterprise/ai-tools.ts',
     ),
     source(
       'lib/ai/tool-registry.ts',
+    ),
+    source(
+      'lib/apps/runtime-registry.ts',
     ),
   ]);
 
@@ -720,6 +733,11 @@ test('SaMi AI has a bounded suite-wide read bridge instead of raw database acces
 
   assert.match(
     registry,
+    /APP_RUNTIME_AI_TOOLS/,
+  );
+
+  assert.match(
+    runtimeRegistry,
     /ENTERPRISE_SUITE_AI_TOOLS/,
   );
 
@@ -2466,6 +2484,7 @@ test('enterprise suite registers company-scoped business automation triggers and
   const [
     contract,
     registry,
+    runtimeRegistry,
     automation,
   ] = await Promise.all([
     source(
@@ -2473,6 +2492,9 @@ test('enterprise suite registers company-scoped business automation triggers and
     ),
     source(
       'lib/automation/registry.ts',
+    ),
+    source(
+      'lib/apps/runtime-registry.ts',
     ),
     source(
       'lib/apps/enterprise/automation.ts',
@@ -2491,16 +2513,31 @@ test('enterprise suite registers company-scoped business automation triggers and
 
   assert.match(
     registry,
+    /APP_RUNTIME_AUTOMATION_TRIGGERS/,
+  );
+
+  assert.match(
+    registry,
+    /APP_RUNTIME_AUTOMATION_ACTIONS/,
+  );
+
+  assert.match(
+    registry,
+    /APP_RUNTIME_AUTOMATION_ACTION_HANDLERS/,
+  );
+
+  assert.match(
+    runtimeRegistry,
     /ENTERPRISE_AUTOMATION_TRIGGERS/,
   );
 
   assert.match(
-    registry,
+    runtimeRegistry,
     /ENTERPRISE_AUTOMATION_ACTIONS/,
   );
 
   assert.match(
-    registry,
+    runtimeRegistry,
     /ENTERPRISE_AUTOMATION_ACTION_HANDLERS/,
   );
 
