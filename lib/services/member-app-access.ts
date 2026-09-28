@@ -377,6 +377,19 @@ export async function getMemberAppAccess(userIdInput: string): Promise<MemberApp
   }
 
   const member = memberResult.rows[0] as Record<string, unknown>;
+
+  if (
+    member.deleted_at ||
+    normalizeStatus(
+      member.status,
+    ) !== 'active'
+  ) {
+    throw new AppAccessError(
+      'MEMBER_NOT_ACTIVE',
+      'App access can only be viewed for an active workspace member.',
+    );
+  }
+
   const installedApps = await listInstalledWorkspaceApps(context.tenantId);
   const isOwner = member.is_owner === true;
 
@@ -501,7 +514,23 @@ export async function replaceMemberAppAccess(input: {
     if (memberResult.rows.length === 0) {
       throw new AppAccessError('MEMBER_NOT_FOUND', 'The workspace member could not be found.');
     }
-    if (memberResult.rows[0].is_owner === true) {
+    const lockedMember =
+      memberResult.rows[0] as
+        Record<string, unknown>;
+
+    if (
+      lockedMember.deleted_at ||
+      normalizeStatus(
+        lockedMember.status,
+      ) !== 'active'
+    ) {
+      throw new AppAccessError(
+        'MEMBER_NOT_ACTIVE',
+        'App access can only be changed for an active workspace member.',
+      );
+    }
+
+    if (lockedMember.is_owner === true) {
       throw new AppAccessError('OWNER_PROTECTED', 'Workspace owner app access cannot be restricted.');
     }
 
@@ -700,7 +729,10 @@ export async function getMemberDirectoryAppAccessMap(
   const memberships = await queryControl(`
     SELECT user_id, is_owner, app_access_mode
     FROM tenant_users
-    WHERE tenant_id = $1 AND user_id = ANY($2::uuid[])
+    WHERE tenant_id = $1
+      AND user_id = ANY($2::uuid[])
+      AND deleted_at IS NULL
+      AND LOWER(COALESCE(status, '')) = 'active'
   `, [tenantId, userIds]);
 
   const installed = await listInstalledWorkspaceApps(tenantId);
