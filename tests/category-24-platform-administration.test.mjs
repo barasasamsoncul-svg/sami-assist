@@ -693,6 +693,39 @@ test('Category 24 supports future custom SaMi dependencies without weakening cor
 });
 
 
+test('Category 24 platform alert ledger uses explicit PostgreSQL parameter types', async () => {
+  const alerts =
+    await source(
+      'lib/admin/platform-alerts.ts',
+    );
+
+  assert.match(
+    alerts,
+    /status =\s*\$2::varchar/,
+  );
+
+  assert.match(
+    alerts,
+    /provider =\s*\$3::varchar/,
+  );
+
+  assert.match(
+    alerts,
+    /provider_message_id =\s*\$4::varchar/,
+  );
+
+  assert.match(
+    alerts,
+    /error_code =\s*\$5::varchar/,
+  );
+
+  assert.match(
+    alerts,
+    /WHEN \$2::varchar =\s*'sent'::varchar/,
+    'Reusing the delivery-status parameter inside CASE must preserve an explicit type so PostgreSQL cannot infer incompatible parameter types.',
+  );
+});
+
 test('Category 24 new error and infrastructure alerts are deduplicated before operator delivery', async () => {
   const incidents = await source('lib/observability/platform-incidents.ts');
   const services = await source('lib/admin/platform-services.ts');
