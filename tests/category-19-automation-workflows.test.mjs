@@ -487,6 +487,119 @@ test('Category 19: manual, scheduled, approval and retry paths share one durable
   );
 });
 
+test('Category 19: approval authority is revalidated before approval is committed', async () => {
+  const service =
+    await source(
+      'lib/services/workspace-automation.ts',
+    );
+
+  const start =
+    service.indexOf(
+      'export async function resolveWorkspaceAutomationApproval',
+    );
+
+  const end =
+    service.indexOf(
+      'export async function pauseWorkspaceAutomation',
+      start,
+    );
+
+  assert.ok(
+    start >= 0 &&
+      end > start,
+  );
+
+  const block =
+    service.slice(
+      start,
+      end,
+    );
+
+  const authorityIndex =
+    block.indexOf(
+      'resolveAutomationWorkerRuntime',
+    );
+
+  const approvalIndex =
+    block.indexOf(
+      "status =\n              'approved'",
+    );
+
+  const commitIndex =
+    block.indexOf(
+      "await client.query(\n      'COMMIT'",
+    );
+
+  assert.ok(
+    authorityIndex >= 0 &&
+      approvalIndex >
+        authorityIndex &&
+      commitIndex >
+        approvalIndex,
+    'The original run-as authority must be revalidated before an approval can be persisted and committed.',
+  );
+
+  assert.match(
+    block,
+    /approvedRuntime:[\s\S]*SamiAutomationRuntimeContext \| null/s,
+  );
+});
+
+
+test('Category 19: retry and approval resume transitions are atomic single-winner claims', async () => {
+  const engine =
+    await source(
+      'lib/automation/execution-engine.ts',
+    );
+
+  const start =
+    engine.indexOf(
+      'export async function resumeAutomationRun',
+    );
+
+  const end =
+    engine.indexOf(
+      'export async function loadActiveAutomationWorkflow',
+      start,
+    );
+
+  assert.ok(
+    start >= 0 &&
+      end > start,
+  );
+
+  const block =
+    engine.slice(
+      start,
+      end,
+    );
+
+  assert.match(
+    block,
+    /status =[\s\S]*'failed'[\s\S]*AND attempt = \$4[\s\S]*RETURNING id/s,
+    'Failed retries must claim the exact old attempt before execution resumes.',
+  );
+
+  assert.match(
+    block,
+    /status =[\s\S]*'waiting_approval'[\s\S]*RETURNING id/s,
+    'Approved waiting runs must be claimed from waiting_approval before execution resumes.',
+  );
+
+  assert.match(
+    block,
+    /claim\.rows\.length !==[\s\S]*1[\s\S]*RUN_NOT_RETRYABLE/s,
+    'A concurrent loser must stop before executing automation actions.',
+  );
+
+  assert.match(
+    block,
+    /Only a failed retry or an approved waiting run can be resumed/,
+    'The shared resume primitive must reject unrelated run states.',
+  );
+});
+
+
 test('Category 19: browser APIs are narrow, same-origin protected and no-cache', async () => {
   const [
     helper,
