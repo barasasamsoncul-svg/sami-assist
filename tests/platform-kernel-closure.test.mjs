@@ -202,6 +202,7 @@ test(
     const [
       migrations,
       runtime,
+      runtimeMigrations,
       safety,
     ] =
       await Promise.all([
@@ -212,6 +213,9 @@ test(
           'lib/apps/runtime-registry.ts',
         ),
         source(
+          'lib/apps/runtime-migrations.ts',
+        ),
+        source(
           'lib/modules/migration-safety.ts',
         ),
       ]);
@@ -219,6 +223,23 @@ test(
     assert.match(
       migrations,
       /APP_RUNTIME_MODULE_MIGRATIONS/,
+    );
+
+    assert.match(
+      migrations,
+      /apps\/runtime-migrations/,
+      'The migration executor must depend only on the bootstrap-safe app migration contribution registry.',
+    );
+
+    assert.match(
+      runtimeMigrations,
+      /APP_RUNTIME_MODULE_MIGRATIONS/,
+    );
+
+    assert.doesNotMatch(
+      runtimeMigrations,
+      /runtime-registry/,
+      'Bootstrap migration discovery must not import the general app runtime registry.',
     );
 
     assert.doesNotMatch(
