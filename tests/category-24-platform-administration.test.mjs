@@ -552,6 +552,45 @@ test('Category 24 tenant backup and recovery operations are guarded audited and 
 });
 
 
+test('Category 24 backup verification distinguishes a missing object from a provider outage and restore enforces expiry', async () => {
+  const [
+    provider,
+    recovery,
+  ] =
+    await Promise.all([
+      source(
+        'lib/services/postgres-logical-backup-provider.ts',
+      ),
+      source(
+        'lib/services/tenant-recovery.ts',
+      ),
+    ]);
+
+  assert.match(
+    provider,
+    /isObjectNotFoundError/,
+    'Only a definite object-not-found response may mark a logical backup unavailable.',
+  );
+
+  assert.match(
+    provider,
+    /BACKUP_PROVIDER_FAILED[\s\S]*backup provider is unavailable/s,
+    'Provider outages and credential failures must surface as verification failures instead of expiring valid backups.',
+  );
+
+  assert.match(
+    provider,
+    /assertConfiguredBackupReference/,
+    'Restore, verification and deletion must reject backup references outside the configured SaMi backup bucket.',
+  );
+
+  assert.match(
+    recovery,
+    /recoveryPoint\.expiresAt[\s\S]*Date\.now\(\)[\s\S]*status = 'expired'[\s\S]*cannot be restored/s,
+    'Restore must enforce recovery-point expiry directly instead of depending on a periodic expiry sweep.',
+  );
+});
+
 test('Category 24 live provider checks include private object storage used by backups', async () => {
   const provider = await source('lib/admin/provider-health.ts');
   const env = await source('docs/platform-env.example');
