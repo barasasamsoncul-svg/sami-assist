@@ -3728,22 +3728,37 @@ export async function confirmWorkspaceAiAction(
     );
   }
 
-  await pool.query(
-    `
-      UPDATE ai_actions
-      SET
-        status = 'running',
-        confirmed_at = NOW(),
-        confirmed_by = $2
-      WHERE id = $1
-        AND status =
-          'pending_confirmation'
-    `,
-    [
-      actionId,
-      context.userId,
-    ],
-  );
+  const claimed =
+    await pool.query(
+      `
+        UPDATE ai_actions
+        SET
+          status = 'running',
+          confirmed_at = NOW(),
+          confirmed_by = $2
+        WHERE id = $1
+          AND user_id = $2
+          AND company_id = $3
+          AND status =
+            'pending_confirmation'
+        RETURNING id
+      `,
+      [
+        actionId,
+        context.userId,
+        context.companyId,
+      ],
+    );
+
+  if (
+    claimed.rows.length !==
+      1
+  ) {
+    throw new WorkspaceAiError(
+      'ACTION_NOT_AVAILABLE',
+      'This SaMi AI action is no longer waiting for confirmation.',
+    );
+  }
 
   try {
     const output =
