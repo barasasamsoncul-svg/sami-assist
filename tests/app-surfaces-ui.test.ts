@@ -15,6 +15,8 @@ import {
 
 const routeFiles = [
   'app/apps/[appKey]/EnterpriseModulePage.tsx',
+  'app/apps/[appKey]/page.tsx',
+  'app/apps/[appKey]/[section]/page.tsx',
   'app/apps/sales/page.tsx',
   'app/apps/sales/orders/[orderId]/page.tsx',
   'app/apps/sales/quotes/[quoteId]/page.tsx',
