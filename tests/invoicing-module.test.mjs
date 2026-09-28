@@ -199,7 +199,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
     developerRoute,
     developerRegistry,
     suiteExport,
-    runtimeRegistry,
+    runtimeTables,
   ] =
     await Promise.all([
       source(
@@ -212,7 +212,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
         'lib/data-lifecycle/suite-export.ts',
       ),
       source(
-        'lib/apps/runtime-registry.ts',
+        'lib/apps/runtime-data-tables.ts',
       ),
     ]);
 
@@ -232,14 +232,14 @@ test('Invoicing manifest is a real first-party module with permissions, resource
   );
 
   assert.match(
-    runtimeRegistry,
+    runtimeTables,
     /invoicing_invoices/,
     'Invoicing owns its additional lifecycle tables in the app runtime contribution boundary.',
   );
 
   assert.match(
-    runtimeRegistry,
-    /additionalDataTables/,
+    runtimeTables,
+    /APP_RUNTIME_ADDITIONAL_DATA_TABLES/,
   );
 
   assert.match(
@@ -457,9 +457,10 @@ test('Invoicing workspace exposes operational Odoo/Zoho-class surfaces rather th
 test('Invoicing participates in SaMi Search and SaMi AI through code-owned registries', async () => {
   const [
     searchRegistry,
-    runtimeRegistry,
+    runtimeSearch,
     provider,
     aiRegistry,
+    runtimeAi,
     tools,
   ] =
     await Promise.all([
@@ -467,13 +468,16 @@ test('Invoicing participates in SaMi Search and SaMi AI through code-owned regis
         'lib/search/registry.ts',
       ),
       source(
-        'lib/apps/runtime-registry.ts',
+        'lib/apps/runtime-search.ts',
       ),
       source(
         'lib/apps/invoicing/search.ts',
       ),
       source(
         'lib/ai/tool-registry.ts',
+      ),
+      source(
+        'lib/apps/runtime-ai.ts',
       ),
       source(
         'lib/apps/invoicing/ai-tools.ts',
@@ -486,7 +490,7 @@ test('Invoicing participates in SaMi Search and SaMi AI through code-owned regis
   );
 
   assert.match(
-    runtimeRegistry,
+    runtimeSearch,
     /INVOICING_SEARCH_PROVIDER/,
   );
 
@@ -501,7 +505,7 @@ test('Invoicing participates in SaMi Search and SaMi AI through code-owned regis
   );
 
   assert.match(
-    runtimeRegistry,
+    runtimeAi,
     /INVOICING_AI_TOOLS/,
   );
 
