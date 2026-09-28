@@ -435,6 +435,7 @@ test('Invoicing workspace exposes operational Odoo/Zoho-class surfaces rather th
 test('Invoicing participates in SaMi Search and SaMi AI through code-owned registries', async () => {
   const [
     searchRegistry,
+    runtimeRegistry,
     provider,
     aiRegistry,
     tools,
@@ -442,6 +443,9 @@ test('Invoicing participates in SaMi Search and SaMi AI through code-owned regis
     await Promise.all([
       source(
         'lib/search/registry.ts',
+      ),
+      source(
+        'lib/apps/runtime-registry.ts',
       ),
       source(
         'lib/apps/invoicing/search.ts',
@@ -456,6 +460,11 @@ test('Invoicing participates in SaMi Search and SaMi AI through code-owned regis
 
   assert.match(
     searchRegistry,
+    /APP_RUNTIME_SEARCH_PROVIDERS/,
+  );
+
+  assert.match(
+    runtimeRegistry,
     /INVOICING_SEARCH_PROVIDER/,
   );
 
@@ -466,6 +475,11 @@ test('Invoicing participates in SaMi Search and SaMi AI through code-owned regis
 
   assert.match(
     aiRegistry,
+    /APP_RUNTIME_AI_TOOLS/,
+  );
+
+  assert.match(
+    runtimeRegistry,
     /INVOICING_AI_TOOLS/,
   );
 
@@ -493,7 +507,8 @@ test('Invoicing participates in SaMi Search and SaMi AI through code-owned regis
 test('Invoicing has a forward-only v1 to v2 migration and CI includes module regression tests', async () => {
   const [
     migration,
-    registry,
+    migrationEngine,
+    runtimeRegistry,
     pkg,
   ] =
     await Promise.all([
@@ -504,9 +519,17 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
         'lib/modules/migrations.ts',
       ),
       source(
+        'lib/apps/runtime-registry.ts',
+      ),
+      source(
         'package.json',
       ),
     ]);
+
+  assert.match(
+    migrationEngine,
+    /APP_RUNTIME_MODULE_MIGRATIONS/,
+  );
 
   assert.match(
     migration,
@@ -539,7 +562,7 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
   );
 
   assert.match(
-    registry,
+    runtimeRegistry,
     /INVOICING_2_0_0_TO_2_1_0/,
   );
 
@@ -569,7 +592,7 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
   );
 
   assert.match(
-    registry,
+    runtimeRegistry,
     /INVOICING_2_1_0_TO_2_2_0/,
   );
 
@@ -594,7 +617,7 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
   );
 
   assert.match(
-    registry,
+    runtimeRegistry,
     /INVOICING_2_2_0_TO_2_3_0/,
   );
 
@@ -629,7 +652,7 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
   );
 
   assert.match(
-    registry,
+    runtimeRegistry,
     /INVOICING_1_0_0_TO_2_0_0/,
   );
 
