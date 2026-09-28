@@ -59,20 +59,67 @@ test(
         file +
           ' must consume the stable app-runtime or manifest contract instead of importing a current business app.',
       );
+
+      assert.doesNotMatch(
+        content,
+        /@\/lib\/apps\/runtime-registry/,
+        file +
+          ' must use its cycle-safe extension-specific app runtime boundary instead of the all-in-one registry.',
+      );
     }
   },
 );
 
 test(
-  'platform closure: app runtime is the single executable contribution boundary',
+  'platform closure: one canonical contract governs cycle-safe app contribution boundaries',
   async () => {
-    const runtime =
-      await source(
-        'lib/apps/runtime-registry.ts',
-      );
+    const [
+      contract,
+      runtime,
+      runtimeSearch,
+      runtimeAi,
+      runtimeAutomation,
+      runtimeIntegrations,
+      runtimeDashboard,
+      runtimeLifecycle,
+      runtimeMigrations,
+      runtimeTables,
+    ] =
+      await Promise.all([
+        source(
+          'lib/apps/runtime-contract.ts',
+        ),
+        source(
+          'lib/apps/runtime-registry.ts',
+        ),
+        source(
+          'lib/apps/runtime-search.ts',
+        ),
+        source(
+          'lib/apps/runtime-ai.ts',
+        ),
+        source(
+          'lib/apps/runtime-automation.ts',
+        ),
+        source(
+          'lib/apps/runtime-integrations.ts',
+        ),
+        source(
+          'lib/apps/runtime-dashboard.ts',
+        ),
+        source(
+          'lib/apps/runtime-lifecycle.ts',
+        ),
+        source(
+          'lib/apps/runtime-migrations.ts',
+        ),
+        source(
+          'lib/apps/runtime-data-tables.ts',
+        ),
+      ]);
 
     for (
-      const contract
+      const marker
       of [
         'SamiAppRuntimeContribution',
         'moduleKeys',
@@ -86,48 +133,87 @@ test(
         'dataLifecycleHandlers',
         'migrations',
         'additionalDataTables',
-        'assertSamiAppRuntimeRegistry',
-        'APP_RUNTIME_DASHBOARD_PROVIDERS',
-        'APP_RUNTIME_SEARCH_PROVIDERS',
-        'APP_RUNTIME_AI_TOOLS',
-        'APP_RUNTIME_AUTOMATION_TRIGGERS',
-        'APP_RUNTIME_AUTOMATION_ACTIONS',
-        'APP_RUNTIME_AUTOMATION_ACTION_HANDLERS',
-        'APP_RUNTIME_INTEGRATION_PROVIDERS',
-        'APP_RUNTIME_DATA_LIFECYCLE_HANDLERS',
-        'APP_RUNTIME_MODULE_MIGRATIONS',
-        'getAdditionalModuleDataTables',
+        'assertSamiAppRuntimeContributions',
+        'outside its owned module set',
+        'manifest.extensions',
+        'migrationNamespace',
+        'unsafe data table',
       ]
     ) {
       assert.ok(
-        runtime.includes(
-          contract,
+        contract.includes(
+          marker,
         ),
-        'Runtime registry must expose ' +
-          contract +
+        'Canonical runtime contract must expose ' +
+          marker +
           '.',
       );
     }
 
     assert.match(
       runtime,
-      /manifest\.extensions/,
+      /SAMI_APP_RUNTIME_CONTRIBUTIONS/,
     );
 
     assert.match(
       runtime,
-      /migrationNamespace/,
+      /assertSamiAppRuntimeContributions/,
     );
 
     assert.match(
-      runtime,
-      /unsafe data table/,
+      runtimeSearch,
+      /APP_RUNTIME_SEARCH_PROVIDERS/,
+    );
+
+    assert.match(
+      runtimeAi,
+      /APP_RUNTIME_AI_TOOLS/,
+    );
+
+    assert.match(
+      runtimeAutomation,
+      /APP_RUNTIME_AUTOMATION_TRIGGERS/,
+    );
+
+    assert.match(
+      runtimeAutomation,
+      /APP_RUNTIME_AUTOMATION_ACTIONS/,
+    );
+
+    assert.match(
+      runtimeAutomation,
+      /APP_RUNTIME_AUTOMATION_ACTION_HANDLERS/,
+    );
+
+    assert.match(
+      runtimeIntegrations,
+      /APP_RUNTIME_INTEGRATION_PROVIDERS/,
+    );
+
+    assert.match(
+      runtimeDashboard,
+      /APP_RUNTIME_DASHBOARD_PROVIDERS/,
+    );
+
+    assert.match(
+      runtimeLifecycle,
+      /APP_RUNTIME_DATA_LIFECYCLE_HANDLERS/,
+    );
+
+    assert.match(
+      runtimeMigrations,
+      /APP_RUNTIME_MODULE_MIGRATIONS/,
+    );
+
+    assert.match(
+      runtimeTables,
+      /getAdditionalModuleDataTables/,
     );
   },
 );
 
 test(
-  'platform closure: search AI automation integrations and dashboard discover app contributions generically',
+  'platform closure: kernel subsystems discover app extensions through isolated app-owned boundaries',
   async () => {
     const [
       search,
@@ -135,6 +221,8 @@ test(
       automation,
       integrations,
       dashboard,
+      lifecycle,
+      suiteExport,
     ] =
       await Promise.all([
         source(
@@ -152,26 +240,87 @@ test(
         source(
           'lib/dashboard/providers/index.ts',
         ),
+        source(
+          'lib/data-lifecycle/registry.ts',
+        ),
+        source(
+          'lib/data-lifecycle/suite-export.ts',
+        ),
       ]);
 
-    assert.match(
-      search,
-      /APP_RUNTIME_SEARCH_PROVIDERS/,
-    );
+    const boundaries = [
+      [
+        search,
+        'runtime-search',
+        'APP_RUNTIME_SEARCH_PROVIDERS',
+      ],
+      [
+        ai,
+        'runtime-ai',
+        'APP_RUNTIME_AI_TOOLS',
+      ],
+      [
+        automation,
+        'runtime-automation',
+        'APP_RUNTIME_AUTOMATION_TRIGGERS',
+      ],
+      [
+        integrations,
+        'runtime-integrations',
+        'APP_RUNTIME_INTEGRATION_PROVIDERS',
+      ],
+      [
+        dashboard,
+        'runtime-dashboard',
+        'APP_RUNTIME_DASHBOARD_PROVIDERS',
+      ],
+      [
+        lifecycle,
+        'runtime-lifecycle',
+        'APP_RUNTIME_DATA_LIFECYCLE_HANDLERS',
+      ],
+      [
+        suiteExport,
+        'runtime-data-tables',
+        'getAdditionalModuleDataTables',
+      ],
+    ];
 
-    assert.match(
-      ai,
-      /APP_RUNTIME_AI_TOOLS/,
-    );
+    for (
+      const [
+        sourceText,
+        boundary,
+        symbol,
+      ]
+      of boundaries
+    ) {
+      assert.ok(
+        sourceText.includes(
+          boundary,
+        ),
+        'Kernel subsystem must import cycle-safe ' +
+          boundary +
+          '.',
+      );
+
+      assert.ok(
+        sourceText.includes(
+          symbol,
+        ),
+        'Kernel subsystem must consume ' +
+          symbol +
+          '.',
+      );
+
+      assert.doesNotMatch(
+        sourceText,
+        /runtime-registry/,
+      );
+    }
 
     assert.match(
       ai,
       /filterAccessibleModuleExtensions/,
-    );
-
-    assert.match(
-      automation,
-      /APP_RUNTIME_AUTOMATION_TRIGGERS/,
     );
 
     assert.match(
@@ -182,16 +331,6 @@ test(
     assert.match(
       automation,
       /APP_RUNTIME_AUTOMATION_ACTION_HANDLERS/,
-    );
-
-    assert.match(
-      integrations,
-      /APP_RUNTIME_INTEGRATION_PROVIDERS/,
-    );
-
-    assert.match(
-      dashboard,
-      /APP_RUNTIME_DASHBOARD_PROVIDERS/,
     );
   },
 );
