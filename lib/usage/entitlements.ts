@@ -44,6 +44,8 @@ export class WorkspaceUsageError
   readonly code:
     | 'USAGE_SUBSCRIPTION_UNAVAILABLE'
     | 'USAGE_WORKSPACE_SUSPENDED'
+    | 'USAGE_WORKSPACE_NOT_ENTITLED'
+    | 'INVALID_USAGE_INPUT'
     | 'AI_MONTHLY_LIMIT_REACHED'
     | 'STORAGE_QUOTA_EXCEEDED'
     | 'INTERNAL_SEAT_LIMIT_REACHED';
@@ -1049,6 +1051,18 @@ export async function assertAiMonthlyUsageAvailable(
     );
   }
 
+  if (
+    !snapshot.subscription
+      .entitled ||
+    !snapshot.entitlements
+      .ai
+  ) {
+    throw new WorkspaceUsageError(
+      'USAGE_WORKSPACE_NOT_ENTITLED',
+      'An active SaMi subscription with AI access is required.',
+    );
+  }
+
   const ai =
     snapshot.usage
       .aiQueriesUserMonth;
@@ -1089,6 +1103,23 @@ export async function assertStorageAllocationAvailable(
     incomingBytes: number;
   },
 ) {
+  if (
+    !Number.isSafeInteger(
+      input.incomingBytes,
+    ) ||
+    input.incomingBytes <
+      0
+  ) {
+    throw new WorkspaceUsageError(
+      'INVALID_USAGE_INPUT',
+      'Storage allocation size must be a non-negative safe integer.',
+      {
+        incomingBytes:
+          input.incomingBytes,
+      },
+    );
+  }
+
   const snapshot =
     await getWorkspaceUsageSnapshot({
       tenantId:
@@ -1104,6 +1135,16 @@ export async function assertStorageAllocationAvailable(
     throw new WorkspaceUsageError(
       'USAGE_WORKSPACE_SUSPENDED',
       'This workspace is suspended until its subscription is restored.',
+    );
+  }
+
+  if (
+    !snapshot.subscription
+      .entitled
+  ) {
+    throw new WorkspaceUsageError(
+      'USAGE_WORKSPACE_NOT_ENTITLED',
+      'An active SaMi subscription is required before allocating workspace storage.',
     );
   }
 
