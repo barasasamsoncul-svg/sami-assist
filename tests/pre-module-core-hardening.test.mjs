@@ -229,6 +229,30 @@ test('pre-module hardening: CSP no longer requires an inline theme bootstrap', a
     /sami-theme-bootstrap\.js/,
   );
 
+  assert.match(
+    layout,
+    /from 'next\/headers'/,
+    'The root layout must read request headers so nonce-protected HTML is rendered per request.',
+  );
+
+  assert.match(
+    layout,
+    /await\s+headers\(\)/,
+    'The root layout must bind rendering to the incoming request before consuming the CSP nonce.',
+  );
+
+  assert.match(
+    layout,
+    /\.get\(\s*'x-nonce',?\s*\)/s,
+    'The root layout must consume the CSP nonce forwarded by proxy.ts.',
+  );
+
+  assert.match(
+    layout,
+    /nonce=\{nonce\}/,
+    'Application-owned bootstrap scripts must carry the same CSP nonce as the response policy.',
+  );
+
   assert.doesNotMatch(
     layout,
     /dangerouslySetInnerHTML/,
