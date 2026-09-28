@@ -3728,22 +3728,39 @@ export async function confirmWorkspaceAiAction(
     );
   }
 
-  await pool.query(
-    `
-      UPDATE ai_actions
-      SET
-        status = 'running',
-        confirmed_at = NOW(),
-        confirmed_by = $2
-      WHERE id = $1
-        AND status =
-          'pending_confirmation'
-    `,
-    [
-      actionId,
-      context.userId,
-    ],
-  );
+  const claim =
+    await pool.query(
+      `
+        UPDATE ai_actions
+        SET
+          status = 'running',
+          confirmed_at = NOW(),
+          confirmed_by = $2
+        WHERE id = $1
+          AND user_id = $2
+          AND company_id = $3
+          AND status =
+            'pending_confirmation'
+          AND expires_at IS NOT NULL
+          AND expires_at > NOW()
+        RETURNING id
+      `,
+      [
+        actionId,
+        context.userId,
+        context.companyId,
+      ],
+    );
+
+  if (
+    claim.rows.length !==
+      1
+  ) {
+    throw new WorkspaceAiError(
+      'ACTION_NOT_AVAILABLE',
+      'This SaMi AI action was already claimed, expired, or is no longer available.',
+    );
+  }
 
   try {
     const output =
