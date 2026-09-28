@@ -22,7 +22,7 @@ import {
 } from '@/lib/storage/object-storage';
 
 import {
-  assertStorageAllocationAvailable,
+  assertStorageReservationAvailableWithClient,
   WorkspaceUsageError,
 } from '@/lib/usage/entitlements';
 
@@ -222,6 +222,41 @@ function assertSupportedExtension(fileName: string) {
       'This executable file type is not accepted by workspace storage.',
     );
   }
+}
+
+function rethrowStorageUsageError(
+  error: unknown,
+): never {
+  if (
+    error instanceof
+      WorkspaceUsageError
+  ) {
+    if (
+      error.code ===
+        'STORAGE_QUOTA_EXCEEDED'
+    ) {
+      throw new WorkspaceFileError(
+        'STORAGE_QUOTA_EXCEEDED',
+        error.message,
+        error.details,
+      );
+    }
+
+    if (
+      error.code ===
+        'USAGE_WORKSPACE_SUSPENDED' ||
+      error.code ===
+        'USAGE_WORKSPACE_NOT_ENTITLED'
+    ) {
+      throw new WorkspaceFileError(
+        'WORKSPACE_SUBSCRIPTION_REQUIRED',
+        error.message,
+        error.details,
+      );
+    }
+  }
+
+  throw error;
 }
 
 function assertPermission(context: PermissionContext, mode: 'view' | 'manage') {
@@ -477,50 +512,6 @@ export async function createWorkspaceFileUploadIntent(
   const mimeType = safeMimeType(input.mimeType);
   const sizeBytes = safeFileSize(input.sizeBytes);
 
-  try {
-    await assertStorageAllocationAvailable({
-      tenantId:
-        context.tenantId,
-      userId:
-        context.userId,
-      incomingBytes:
-        sizeBytes,
-    });
-  } catch (
-    error
-  ) {
-    if (
-      error instanceof
-        WorkspaceUsageError
-    ) {
-      if (
-        error.code ===
-          'STORAGE_QUOTA_EXCEEDED'
-      ) {
-        throw new WorkspaceFileError(
-          'STORAGE_QUOTA_EXCEEDED',
-          error.message,
-          error.details,
-        );
-      }
-
-      if (
-        error.code ===
-          'USAGE_WORKSPACE_SUSPENDED' ||
-        error.code ===
-          'USAGE_WORKSPACE_NOT_ENTITLED'
-      ) {
-        throw new WorkspaceFileError(
-          'WORKSPACE_SUBSCRIPTION_REQUIRED',
-          error.message,
-          error.details,
-        );
-      }
-    }
-
-    throw error;
-  }
-
   const purpose = safePurpose(input.purpose);
   const extension = fileExtension(fileName);
   const fileId = crypto.randomUUID();
@@ -533,6 +524,24 @@ export async function createWorkspaceFileUploadIntent(
 
   try {
     await client.query('BEGIN');
+
+    try {
+      await assertStorageReservationAvailableWithClient(
+        client,
+        {
+          tenantId:
+            context.tenantId,
+          incomingBytes:
+            sizeBytes,
+        },
+      );
+    } catch (
+      error
+    ) {
+      rethrowStorageUsageError(
+        error,
+      );
+    }
 
     await client.query(
       `
