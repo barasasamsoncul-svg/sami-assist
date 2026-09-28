@@ -530,7 +530,7 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
   const [
     migration,
     migrationEngine,
-    runtimeRegistry,
+    runtimeMigrations,
     pkg,
   ] =
     await Promise.all([
@@ -541,7 +541,7 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
         'lib/modules/migrations.ts',
       ),
       source(
-        'lib/apps/runtime-registry.ts',
+        'lib/apps/runtime-migrations.ts',
       ),
       source(
         'package.json',
@@ -584,7 +584,7 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
   );
 
   assert.match(
-    runtimeRegistry,
+    runtimeMigrations,
     /INVOICING_2_0_0_TO_2_1_0/,
   );
 
@@ -614,7 +614,7 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
   );
 
   assert.match(
-    runtimeRegistry,
+    runtimeMigrations,
     /INVOICING_2_1_0_TO_2_2_0/,
   );
 
@@ -639,7 +639,7 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
   );
 
   assert.match(
-    runtimeRegistry,
+    runtimeMigrations,
     /INVOICING_2_2_0_TO_2_3_0/,
   );
 
@@ -674,7 +674,7 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
   );
 
   assert.match(
-    runtimeRegistry,
+    runtimeMigrations,
     /INVOICING_1_0_0_TO_2_0_0/,
   );
 
