@@ -666,3 +666,29 @@ test('pre-module hardening: tenant database pools are isolated by host port and 
     'Lifecycle pool closure must close every cached endpoint matching the physical database name.',
   );
 });
+
+
+test('pre-module hardening: replacing active sessions is atomic', async () => {
+  const session =
+    await source(
+      'lib/auth/session.ts',
+    );
+
+  assert.match(
+    session,
+    /withControlTransaction/,
+    'Session replacement must use the control-database transaction helper.',
+  );
+
+  assert.match(
+    session,
+    /withControlTransaction\([\s\S]*UPDATE sessions[\s\S]*INSERT INTO sessions/s,
+    'Revoking existing sessions and inserting the replacement session must commit or rollback together.',
+  );
+
+  assert.doesNotMatch(
+    session,
+    /if \(\s*revokeExistingSessions\s*\) \{\s*await queryControl\([\s\S]*?UPDATE sessions/s,
+    'Single-session mode must not revoke valid sessions before the replacement insert is guaranteed.',
+  );
+});
