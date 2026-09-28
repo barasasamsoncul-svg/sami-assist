@@ -125,6 +125,141 @@ export default async function InvoiceDetailPage({
       'invoicing',
     );
 
+  const appSidebarItems = [
+    {
+      key:
+        'dashboard',
+      label:
+        'Overview',
+      href:
+        '/apps/invoicing?view=dashboard',
+      description:
+        'Receivables, collections and overdue exposure.',
+    },
+    {
+      key:
+        'invoices',
+      label:
+        'Invoices',
+      href:
+        '/apps/invoicing?view=invoices',
+      description:
+        'Create, send and manage invoice lifecycles.',
+      badge:
+        data.invoices.length,
+    },
+    ...(
+      data.capabilities
+        .canViewCustomers
+        ? [
+            {
+              key:
+                'customers',
+              label:
+                'Customers',
+              href:
+                '/apps/invoicing?view=customers',
+              description:
+                'Billing identities, terms and contact details.',
+              badge:
+                data.customers.length,
+            },
+          ]
+        : []
+    ),
+    ...(
+      data.capabilities
+        .canViewCatalog
+        ? [
+            {
+              key:
+                'items',
+              label:
+                'Items & Pricing',
+              href:
+                '/apps/invoicing?view=items',
+              description:
+                'Products, services, prices and tax defaults.',
+              badge:
+                data.catalogItems.length,
+            },
+          ]
+        : []
+    ),
+    ...(
+      data.capabilities
+        .canViewPayments
+        ? [
+            {
+              key:
+                'payments',
+              label:
+                'Payments',
+              href:
+                '/apps/invoicing?view=payments',
+              description:
+                'Receipts, allocations and reversals.',
+              badge:
+                data.payments.length,
+            },
+          ]
+        : []
+    ),
+    ...(
+      data.capabilities
+        .canManageRecurring
+        ? [
+            {
+              key:
+                'recurring',
+              label:
+                'Recurring',
+              href:
+                '/apps/invoicing?view=recurring',
+              description:
+                'Recurring schedules and automated delivery.',
+              badge:
+                data.recurring.length,
+            },
+          ]
+        : []
+    ),
+    ...(
+      data.capabilities
+        .canViewReports
+        ? [
+            {
+              key:
+                'reports',
+              label:
+                'Reports',
+              href:
+                '/apps/invoicing?view=reports',
+              description:
+                'Aging, invoice status and billing analysis.',
+            },
+          ]
+        : []
+    ),
+    ...(
+      data.capabilities
+        .canManageSettings
+        ? [
+            {
+              key:
+                'settings',
+              label:
+                'Settings',
+              href:
+                '/apps/invoicing?view=settings',
+              description:
+                'Templates, taxes, terms and reminders.',
+            },
+          ]
+        : []
+    ),
+  ];
+
   return (
     <AppSurfaceShell
       appKey="invoicing"
@@ -147,6 +282,10 @@ export default async function InvoiceDetailPage({
       modules={
         shell.accessibleModules
       }
+      appSidebarItems={
+        appSidebarItems
+      }
+      activeSidebarKey="invoices"
       sidebarCapabilities={{
         aiEnabled:
           shell.aiAvailable,
