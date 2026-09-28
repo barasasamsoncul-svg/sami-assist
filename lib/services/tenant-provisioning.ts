@@ -8,6 +8,11 @@ import {
   CURRENT_TENANT_CORE_VERSION,
 } from '@/lib/schema/tenant-migrations/manifest';
 
+import {
+  getSamiModuleDependencyPlan,
+  getSamiModuleManifest,
+} from '@/lib/modules/registry';
+
 import fs from 'fs';
 import path from 'path';
 import { Client } from 'pg';
@@ -691,18 +696,78 @@ async function installAppSchema(
       .trim()
       .toLowerCase();
 
-
-  const appSchemaPath =
-    path.join(
-      process.cwd(),
-      'lib',
-      'apps',
+  const manifest =
+    getSamiModuleManifest(
       normalizedAppKey,
-      'schema.sql',
     );
 
 
   try {
+    if (
+      !manifest ||
+      !manifest.installable
+    ) {
+      return {
+        appKey:
+          normalizedAppKey,
+
+        success:
+          false,
+
+        error:
+          `SaMi module "${normalizedAppKey}" is not registered as installable.`,
+      };
+    }
+
+
+    if (
+      !manifest.schemaPath
+    ) {
+      console.log(
+        `[SaMi] App "${normalizedAppKey}" has no tenant schema and requires no SQL installation.`,
+      );
+
+      return {
+        appKey:
+          normalizedAppKey,
+
+        success:
+          true,
+      };
+    }
+
+
+    const appSchemaPath =
+      path.resolve(
+        process.cwd(),
+        manifest.schemaPath,
+      );
+
+    const repositoryRoot =
+      path.resolve(
+        process.cwd(),
+      ) +
+      path.sep;
+
+
+    if (
+      !appSchemaPath.startsWith(
+        repositoryRoot,
+      )
+    ) {
+      return {
+        appKey:
+          normalizedAppKey,
+
+        success:
+          false,
+
+        error:
+          `SaMi module "${normalizedAppKey}" declares an unsafe schema path.`,
+      };
+    }
+
+
     if (
       !fs.existsSync(
         appSchemaPath,
@@ -716,7 +781,7 @@ async function installAppSchema(
           false,
 
         error:
-          `Schema file not found for app "${normalizedAppKey}" at ${appSchemaPath}`,
+          `Schema file not found for app "${normalizedAppKey}" at its declared manifest path.`,
       };
     }
 
@@ -828,7 +893,23 @@ function getValidatedApps(
   }
 
 
-  return selectedApps;
+  const dependencyOrderedApps =
+    [
+      ...new Set(
+        selectedApps.flatMap(
+          appKey =>
+            getSamiModuleDependencyPlan(
+              appKey,
+            ).map(
+              manifest =>
+                manifest.key,
+            ),
+        ),
+      ),
+    ];
+
+
+  return dependencyOrderedApps;
 }
 
 
