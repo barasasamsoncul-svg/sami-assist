@@ -2,6 +2,67 @@ import type {
   SamiModuleManifest,
 } from '@/lib/modules/types';
 
+const MODULE_KEY_PATTERN =
+  /^[a-z][a-z0-9_]*$/;
+
+const VERSION_PATTERN =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+
+const MIGRATION_NAMESPACE_PATTERN =
+  /^[a-z][a-z0-9_.-]*$/;
+
+function isSafeModuleRoute(
+  value:
+    string,
+) {
+  const route =
+    value.trim();
+
+  return (
+    route.startsWith(
+      'apps/',
+    ) &&
+    !route.includes(
+      '..',
+    ) &&
+    !route.includes(
+      '\\',
+    ) &&
+    !/[\u0000-\u001f\u007f]/.test(
+      route,
+    )
+  );
+}
+
+function isSafeSchemaPath(
+  value:
+    string,
+) {
+  const path =
+    value.trim();
+
+  return (
+    path.startsWith(
+      'lib/apps/',
+    ) &&
+    path.endsWith(
+      '.sql',
+    ) &&
+    !path.includes(
+      '..',
+    ) &&
+    !path.includes(
+      '\\',
+    ) &&
+    !path.startsWith(
+      '/',
+    ) &&
+    !/^[A-Za-z]:/.test(
+      path,
+    )
+  );
+}
+
 function normalize(
   value:
     string,
@@ -97,6 +158,60 @@ export function assertValidSamiModuleManifests(
       );
     }
 
+    if (
+      !MODULE_KEY_PATTERN.test(
+        moduleKey,
+      )
+    ) {
+      throw new Error(
+        `SaMi module key "${manifest.key}" is invalid. Use lowercase snake_case identifiers.`,
+      );
+    }
+
+    if (
+      !VERSION_PATTERN.test(
+        manifest.version
+          .trim(),
+      )
+    ) {
+      throw new Error(
+        `SaMi module ${moduleKey} must use semantic x.y.z versions.`,
+      );
+    }
+
+    if (
+      !isSafeModuleRoute(
+        manifest.route,
+      )
+    ) {
+      throw new Error(
+        `SaMi module ${moduleKey} declares an unsafe application route.`,
+      );
+    }
+
+    if (
+      !MIGRATION_NAMESPACE_PATTERN.test(
+        manifest
+          .migrationNamespace
+          .trim(),
+      )
+    ) {
+      throw new Error(
+        `SaMi module ${moduleKey} declares an invalid migration namespace.`,
+      );
+    }
+
+    if (
+      manifest.schemaPath &&
+      !isSafeSchemaPath(
+        manifest.schemaPath,
+      )
+    ) {
+      throw new Error(
+        `SaMi module ${moduleKey} declares an unsafe schema path.`,
+      );
+    }
+
     for (
       const extensionKey
       of [
@@ -153,6 +268,35 @@ export function assertValidSamiModuleManifests(
       ) {
         throw new Error(
           `SaMi module ${moduleKey} depends on unknown module "${dependency}".`,
+        );
+      }
+    }
+
+    for (
+      const dependency
+      of manifest.optionalDepends
+    ) {
+      const key =
+        normalize(
+          dependency,
+        );
+
+      if (
+        key ===
+        moduleKey
+      ) {
+        throw new Error(
+          `SaMi module ${moduleKey} cannot optionally depend on itself.`,
+        );
+      }
+
+      if (
+        !moduleKeys.has(
+          key,
+        )
+      ) {
+        throw new Error(
+          `SaMi module ${moduleKey} optionally depends on unknown module "${dependency}".`,
         );
       }
     }
@@ -516,4 +660,90 @@ export function assertValidSamiModuleManifests(
       }
     }
   }
+
+  const byKey =
+    new Map(
+      manifests.map(
+        manifest => [
+          normalize(
+            manifest.key,
+          ),
+          manifest,
+        ],
+      ),
+    );
+
+  const visited =
+    new Set<string>();
+
+  const visiting =
+    new Set<string>();
+
+  const visit =
+    (
+      key:
+        string,
+    ) => {
+      if (
+        visited.has(
+          key,
+        )
+      ) {
+        return;
+      }
+
+      if (
+        visiting.has(
+          key,
+        )
+      ) {
+        throw new Error(
+          `SaMi module dependency cycle detected at ${key}.`,
+        );
+      }
+
+      const manifest =
+        byKey.get(
+          key,
+        );
+
+      if (
+        !manifest
+      ) {
+        return;
+      }
+
+      visiting.add(
+        key,
+      );
+
+      for (
+        const dependency
+        of manifest.depends
+      ) {
+        visit(
+          normalize(
+            dependency,
+          ),
+        );
+      }
+
+      visiting.delete(
+        key,
+      );
+
+      visited.add(
+        key,
+      );
+    };
+
+  for (
+    const key
+    of byKey.keys()
+  ) {
+    visit(
+      key,
+    );
+  }
+
 }
