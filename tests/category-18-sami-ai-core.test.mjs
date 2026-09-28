@@ -61,6 +61,12 @@ test(
       /AND user_id = \$2[\s\S]*AND company_id = \$3/s,
       'The action claim must remain bound to the current user and company.',
     );
+
+    assert.match(
+      block,
+      /expires_at[\s\S]*IS NOT NULL[\s\S]*expires_at >[\s\S]*NOW\(\)/s,
+      'The database claim itself must reject an action that expired between the initial read and execution.',
+    );
   },
 );
 
