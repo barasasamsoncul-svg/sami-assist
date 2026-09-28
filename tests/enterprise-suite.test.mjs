@@ -654,7 +654,7 @@ test('enterprise search providers cover the code-owned module catalog', async ()
   const [
     enterpriseSearch,
     registry,
-    runtimeRegistry,
+    runtimeSearch,
   ] = await Promise.all([
     source(
       'lib/apps/enterprise/search.ts',
@@ -663,7 +663,7 @@ test('enterprise search providers cover the code-owned module catalog', async ()
       'lib/search/registry.ts',
     ),
     source(
-      'lib/apps/runtime-registry.ts',
+      'lib/apps/runtime-search.ts',
     ),
   ]);
 
@@ -683,7 +683,7 @@ test('enterprise search providers cover the code-owned module catalog', async ()
   );
 
   assert.match(
-    runtimeRegistry,
+    runtimeSearch,
     /ENTERPRISE_MODULE_SEARCH_PROVIDERS/,
   );
 });
@@ -693,7 +693,7 @@ test('SaMi AI has a bounded suite-wide read bridge instead of raw database acces
   const [
     enterpriseAi,
     registry,
-    runtimeRegistry,
+    runtimeAi,
   ] = await Promise.all([
     source(
       'lib/apps/enterprise/ai-tools.ts',
@@ -702,7 +702,7 @@ test('SaMi AI has a bounded suite-wide read bridge instead of raw database acces
       'lib/ai/tool-registry.ts',
     ),
     source(
-      'lib/apps/runtime-registry.ts',
+      'lib/apps/runtime-ai.ts',
     ),
   ]);
 
@@ -737,7 +737,7 @@ test('SaMi AI has a bounded suite-wide read bridge instead of raw database acces
   );
 
   assert.match(
-    runtimeRegistry,
+    runtimeAi,
     /ENTERPRISE_SUITE_AI_TOOLS/,
   );
 
@@ -796,7 +796,7 @@ test('enterprise v2 hardening adds company and audit boundaries to legacy app sc
       'lib/services/workspace-app-lifecycle.ts',
     ),
     source(
-      'lib/apps/runtime-registry.ts',
+      'lib/apps/runtime-migrations.ts',
     ),
   ]);
 
@@ -2484,7 +2484,7 @@ test('enterprise suite registers company-scoped business automation triggers and
   const [
     contract,
     registry,
-    runtimeRegistry,
+    runtimeAutomation,
     automation,
   ] = await Promise.all([
     source(
@@ -2494,7 +2494,7 @@ test('enterprise suite registers company-scoped business automation triggers and
       'lib/automation/registry.ts',
     ),
     source(
-      'lib/apps/runtime-registry.ts',
+      'lib/apps/runtime-automation.ts',
     ),
     source(
       'lib/apps/enterprise/automation.ts',
@@ -2527,17 +2527,17 @@ test('enterprise suite registers company-scoped business automation triggers and
   );
 
   assert.match(
-    runtimeRegistry,
+    runtimeAutomation,
     /ENTERPRISE_AUTOMATION_TRIGGERS/,
   );
 
   assert.match(
-    runtimeRegistry,
+    runtimeAutomation,
     /ENTERPRISE_AUTOMATION_ACTIONS/,
   );
 
   assert.match(
-    runtimeRegistry,
+    runtimeAutomation,
     /ENTERPRISE_AUTOMATION_ACTION_HANDLERS/,
   );
 
