@@ -540,6 +540,7 @@ CREATE TABLE IF NOT EXISTS public.invoicing_recurring_templates (
   last_run_at TIMESTAMPTZ,
   last_success_at TIMESTAMPTZ,
   last_failure_at TIMESTAMPTZ,
+  retry_after TIMESTAMPTZ,
   last_error_code VARCHAR(120),
   last_error_message TEXT,
   paused_at TIMESTAMPTZ,
