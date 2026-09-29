@@ -1657,7 +1657,6 @@ test('Invoicing rejects stale master-data references and preserves a draft invoi
     composer,
   ] = await Promise.all([
     source('lib/apps/invoicing/commands.ts'),
-    source('lib/apps/invoicing/credit-notes.ts'),
     source('lib/apps/invoicing/queries.ts'),
     source('lib/apps/invoicing/types.ts'),
     source('app/apps/invoicing/InvoiceComposer.tsx'),
@@ -4293,7 +4292,7 @@ test('Invoicing Part 11 deepens credit notes into reusable customer credits and 
     'Reverse application',
     'Reverse refund',
     'Apply credit',
-    'Refund remaining credit',
+    'Refund available credit',
   ]) {
     assert.ok(
       lifecyclePanel.includes(
