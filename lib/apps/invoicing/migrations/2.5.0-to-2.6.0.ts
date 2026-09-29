@@ -11,10 +11,21 @@ const SQL = `
   ALTER TABLE public.invoicing_payments
     ADD COLUMN IF NOT EXISTS exchange_rate NUMERIC(19,8) NOT NULL DEFAULT 1,
     ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(160),
+    ADD COLUMN IF NOT EXISTS accounting_model VARCHAR(30) NOT NULL DEFAULT 'legacy_direct_ar',
     ADD COLUMN IF NOT EXISTS reconciled_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS reconciled_by UUID,
     ADD COLUMN IF NOT EXISTS reconciliation_reference VARCHAR(255),
     ADD COLUMN IF NOT EXISTS reconciliation_notes TEXT;
+
+  ALTER TABLE public.invoicing_payments
+    ALTER COLUMN accounting_model SET DEFAULT 'customer_credit';
+
+  ALTER TABLE public.invoicing_payments
+    DROP CONSTRAINT IF EXISTS invoicing_payments_accounting_model_check;
+
+  ALTER TABLE public.invoicing_payments
+    ADD CONSTRAINT invoicing_payments_accounting_model_check
+    CHECK (accounting_model IN ('legacy_direct_ar','customer_credit'));
 
   CREATE UNIQUE INDEX IF NOT EXISTS uq_invoicing_payments_idempotency
     ON public.invoicing_payments(company_id, idempotency_key)
@@ -81,6 +92,68 @@ const SQL = `
   CREATE UNIQUE INDEX IF NOT EXISTS uq_invoicing_payment_refunds_idempotency
     ON public.invoicing_payment_refunds(company_id, idempotency_key)
     WHERE idempotency_key IS NOT NULL;
+
+  CREATE OR REPLACE FUNCTION public.validate_invoice_status_transition()
+  RETURNS TRIGGER
+  LANGUAGE plpgsql
+  AS $
+  BEGIN
+    IF TG_OP = 'INSERT' THEN
+      RETURN NEW;
+    END IF;
+
+    IF NEW.status = OLD.status THEN
+      RETURN NEW;
+    END IF;
+
+    IF OLD.status = 'draft'
+      AND NEW.status IN ('pending_approval','confirmed','cancelled','void')
+      THEN RETURN NEW;
+    END IF;
+
+    IF OLD.status = 'pending_approval'
+      AND NEW.status IN ('confirmed','rejected','cancelled','void')
+      THEN RETURN NEW;
+    END IF;
+
+    IF OLD.status = 'rejected'
+      AND NEW.status IN ('draft','pending_approval','cancelled','void')
+      THEN RETURN NEW;
+    END IF;
+
+    IF OLD.status = 'confirmed'
+      AND NEW.status IN ('sent','partially_paid','paid','overdue','cancelled','void','written_off')
+      THEN RETURN NEW;
+    END IF;
+
+    IF OLD.status = 'sent'
+      AND NEW.status IN ('viewed','partially_paid','paid','overdue','cancelled','void','written_off')
+      THEN RETURN NEW;
+    END IF;
+
+    IF OLD.status = 'viewed'
+      AND NEW.status IN ('partially_paid','paid','overdue','cancelled','void','written_off')
+      THEN RETURN NEW;
+    END IF;
+
+    IF OLD.status = 'overdue'
+      AND NEW.status IN ('partially_paid','paid','cancelled','void','written_off')
+      THEN RETURN NEW;
+    END IF;
+
+    IF OLD.status = 'partially_paid'
+      AND NEW.status IN ('confirmed','sent','viewed','paid','overdue','written_off')
+      THEN RETURN NEW;
+    END IF;
+
+    IF OLD.status = 'paid'
+      AND NEW.status IN ('confirmed','sent','viewed','partially_paid','overdue')
+      THEN RETURN NEW;
+    END IF;
+
+    RAISE EXCEPTION 'Invalid invoice status transition from % to %', OLD.status, NEW.status;
+  END;
+  $;
 
   CREATE OR REPLACE VIEW public.invoicing_payment_balances AS
   SELECT

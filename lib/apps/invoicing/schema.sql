@@ -336,6 +336,8 @@ CREATE TABLE IF NOT EXISTS public.invoicing_payments (
   method VARCHAR(50) NOT NULL DEFAULT 'other',
   reference VARCHAR(255),
   idempotency_key VARCHAR(160),
+  accounting_model VARCHAR(30) NOT NULL DEFAULT 'customer_credit'
+    CHECK (accounting_model IN ('legacy_direct_ar','customer_credit')),
   status VARCHAR(30) NOT NULL DEFAULT 'posted'
     CHECK (status IN ('draft','posted','reversed')),
   reconciled_at TIMESTAMPTZ,
@@ -656,7 +658,12 @@ BEGIN
   END IF;
 
   IF OLD.status = 'partially_paid'
-    AND NEW.status IN ('paid','overdue','written_off')
+    AND NEW.status IN ('confirmed','sent','viewed','paid','overdue','written_off')
+    THEN RETURN NEW;
+  END IF;
+
+  IF OLD.status = 'paid'
+    AND NEW.status IN ('confirmed','sent','viewed','partially_paid','overdue')
     THEN RETURN NEW;
   END IF;
 
