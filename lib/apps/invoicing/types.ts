@@ -19,6 +19,7 @@ export type InvoicingInvoiceSummary = {
   status: string;
   invoiceDate: string;
   dueDate: string;
+  serviceDate: string | null;
   currency: string;
   totalAmount: number;
   paidAmount: number;
@@ -174,6 +175,7 @@ export type InvoicingInvoiceDetail = {
     email: string | null;
     phone: string | null;
     billingAddress: string | null;
+    shippingAddress: string | null;
     taxId: string | null;
     paymentTermsName: string | null;
   };
@@ -309,11 +311,13 @@ export type CreateInvoiceInput = {
   customerId?: unknown;
   invoiceDate?: unknown;
   dueDate?: unknown;
+  serviceDate?: unknown;
   currency?: unknown;
   exchangeRate?: unknown;
   templateId?: unknown;
   reference?: unknown;
   purchaseOrderNumber?: unknown;
+  shippingAddress?: unknown;
   notes?: unknown;
   terms?: unknown;
   shippingTotal?: unknown;

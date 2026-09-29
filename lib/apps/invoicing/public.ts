@@ -79,6 +79,8 @@ export async function getPublicInvoice(
           i.currency,
           i.reference,
           i.purchase_order_number,
+          i.service_date,
+          i.ship_to_address,
           i.payment_terms_name_snapshot,
           i.tax_calculation,
           i.subtotal,
@@ -331,6 +333,12 @@ export async function getPublicInvoice(
       String(
         invoice.due_date,
       ),
+    serviceDate:
+      invoice.service_date
+        ? String(
+            invoice.service_date,
+          )
+        : null,
     currency:
       String(
         invoice.currency,
@@ -453,6 +461,12 @@ export async function getPublicInvoice(
         invoice.billing_address
           ? String(
               invoice.billing_address,
+            )
+          : null,
+      shippingAddress:
+        invoice.ship_to_address
+          ? String(
+              invoice.ship_to_address,
             )
           : null,
     },

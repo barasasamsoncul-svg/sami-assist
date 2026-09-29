@@ -2514,6 +2514,7 @@ export async function createInvoice(
             c.email,
             c.phone,
             c.billing_address,
+            c.shipping_address,
             c.tax_id,
             c.currency,
             c.payment_terms_id,
@@ -2631,6 +2632,26 @@ export async function createInvoice(
         'Due date cannot be before invoice date.',
       );
     }
+
+    const serviceDate =
+      input.serviceDate
+        ? isoDate(
+            input.serviceDate,
+          )
+        : null;
+
+    const shipToAddress =
+      typeof input.shippingAddress ===
+        'string'
+        ? nullableText(
+            input.shippingAddress,
+            4000,
+          )
+        : nullableText(
+            customerResult.rows[0]
+              .shipping_address,
+            4000,
+          );
 
     const lines =
       await normalizeInvoicingLines(
@@ -2823,6 +2844,8 @@ export async function createInvoice(
             currency,
             reference,
             purchase_order_number,
+            service_date,
+            ship_to_address,
             subtotal,
             discount_total,
             tax_total,
@@ -2838,15 +2861,15 @@ export async function createInvoice(
           )
           VALUES (
             $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
-            $12::varchar(30),$13,$14,$15,$16,$17,$18,$19,$20,
-            $21,$22,$23,$24,$25,$26,
+            $12::varchar(30),$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,
+            $23,$24,$25,$26,$27,$28,
             CASE
               WHEN $12::varchar(30) =
                    'confirmed'
               THEN NOW()
               ELSE NULL
             END,
-            $27,$27
+            $29,$29
           )
           RETURNING
             id,
@@ -2895,6 +2918,8 @@ export async function createInvoice(
             input.purchaseOrderNumber,
             180,
           ),
+          serviceDate,
+          shipToAddress,
           subtotal,
           discountTotal,
           taxTotal,
@@ -3154,6 +3179,8 @@ export async function duplicateInvoice(
           i.currency,
           i.reference,
           i.purchase_order_number,
+          i.service_date,
+          i.ship_to_address,
           i.shipping_total,
           i.rounding_adjustment,
           i.notes,
@@ -3249,6 +3276,12 @@ export async function duplicateInvoice(
     purchaseOrderNumber:
       source.rows[0]
         .purchase_order_number,
+    serviceDate:
+      source.rows[0]
+        .service_date,
+    shippingAddress:
+      source.rows[0]
+        .ship_to_address,
     shippingTotal:
       source.rows[0]
         .shipping_total,
@@ -3402,6 +3435,7 @@ export async function updateInvoiceDraft(
             c.email,
             c.phone,
             c.billing_address,
+            c.shipping_address,
             c.tax_id,
             c.currency,
             c.payment_terms_id,
@@ -3509,6 +3543,26 @@ export async function updateInvoiceDraft(
         'Due date cannot be before invoice date.',
       );
     }
+
+    const serviceDate =
+      input.serviceDate
+        ? isoDate(
+            input.serviceDate,
+          )
+        : null;
+
+    const shipToAddress =
+      typeof input.shippingAddress ===
+        'string'
+        ? nullableText(
+            input.shippingAddress,
+            4000,
+          )
+        : nullableText(
+            customerResult.rows[0]
+              .shipping_address,
+            4000,
+          );
 
     const lines =
       await normalizeInvoicingLines(
@@ -3686,26 +3740,30 @@ export async function updateInvoiceDraft(
             $15,
           purchase_order_number =
             $16,
-          subtotal =
+          service_date =
             $17,
-          discount_total =
+          ship_to_address =
             $18,
-          tax_total =
+          subtotal =
             $19,
-          shipping_total =
+          discount_total =
             $20,
-          rounding_adjustment =
+          tax_total =
             $21,
-          total_amount =
+          shipping_total =
             $22,
-          notes =
+          rounding_adjustment =
             $23,
-          terms =
+          total_amount =
             $24,
-          payment_instructions =
+          notes =
             $25,
-          updated_by =
+          terms =
             $26,
+          payment_instructions =
+            $27,
+          updated_by =
+            $28,
           updated_at =
             NOW()
         WHERE id =
@@ -3756,6 +3814,8 @@ export async function updateInvoiceDraft(
           input.purchaseOrderNumber,
           180,
         ),
+        serviceDate,
+        shipToAddress,
         subtotal,
         discountTotal,
         taxTotal,

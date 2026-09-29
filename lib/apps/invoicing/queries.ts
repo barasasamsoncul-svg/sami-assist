@@ -1653,6 +1653,8 @@ export async function getInvoicingInvoiceDetail(
             i.exchange_rate,
             i.reference,
             i.purchase_order_number,
+            i.service_date,
+            i.ship_to_address,
             i.subtotal,
             i.discount_total,
             i.tax_total,
@@ -1941,6 +1943,12 @@ export async function getInvoicingInvoiceDetail(
       String(
         row.due_date,
       ),
+    serviceDate:
+      row.service_date
+        ? String(
+            row.service_date,
+          )
+        : null,
     currency:
       String(
         row.currency,
@@ -2062,6 +2070,12 @@ export async function getInvoicingInvoiceDetail(
         row.billing_address
           ? String(
               row.billing_address,
+            )
+          : null,
+      shippingAddress:
+        row.ship_to_address
+          ? String(
+              row.ship_to_address,
             )
           : null,
       taxId:
