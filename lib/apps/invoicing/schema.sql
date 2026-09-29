@@ -730,6 +730,7 @@ CREATE TABLE IF NOT EXISTS public.invoicing_delivery_log (
   destination_fingerprint VARCHAR(128),
   provider VARCHAR(80),
   provider_message_id VARCHAR(255),
+  document_snapshot_id UUID REFERENCES public.invoicing_document_snapshots(id) ON DELETE SET NULL,
   status VARCHAR(30) NOT NULL,
   error_code VARCHAR(120),
   created_by UUID,
@@ -737,6 +738,9 @@ CREATE TABLE IF NOT EXISTS public.invoicing_delivery_log (
 );
 CREATE INDEX IF NOT EXISTS idx_invoicing_delivery_invoice
   ON public.invoicing_delivery_log(invoice_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_invoicing_delivery_snapshot
+  ON public.invoicing_delivery_log(document_snapshot_id)
+  WHERE document_snapshot_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS public.invoicing_portal_access (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
