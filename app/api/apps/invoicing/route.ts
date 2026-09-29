@@ -35,6 +35,10 @@ import {
   reverseInvoicePayment,
   reverseInvoicePaymentAllocation,
   reverseInvoicePaymentRefund,
+  issueCustomerPortalAccess,
+  replyCustomerPortalMessage,
+  resolveCustomerPortalMessage,
+  revokeCustomerPortalAccess,
   saveDunningPolicy,
   saveInvoicingTemplate,
   sendInvoiceReminder,
@@ -577,6 +581,34 @@ export async function POST(
       case 'save_dunning_policy':
         result =
           await saveDunningPolicy(
+            payload,
+          );
+        break;
+
+      case 'issue_customer_portal':
+        result =
+          await issueCustomerPortalAccess(
+            payload,
+          );
+        break;
+
+      case 'revoke_customer_portal':
+        result =
+          await revokeCustomerPortalAccess(
+            payload,
+          );
+        break;
+
+      case 'resolve_customer_portal_message':
+        result =
+          await resolveCustomerPortalMessage(
+            payload,
+          );
+        break;
+
+      case 'reply_customer_portal_message':
+        result =
+          await replyCustomerPortalMessage(
             payload,
           );
         break;
