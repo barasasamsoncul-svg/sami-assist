@@ -647,6 +647,36 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
     /INVOICING_2_2_0_TO_2_3_0/,
   );
 
+  const builderSnapshotMigration =
+    await source(
+      'lib/apps/invoicing/migrations/2.3.0-to-2.4.0.ts',
+    );
+
+  assert.match(
+    builderSnapshotMigration,
+    /fromVersion:\s*['"]2\.3\.0['"]/,
+  );
+
+  assert.match(
+    builderSnapshotMigration,
+    /toVersion:\s*['"]2\.4\.0['"]/,
+  );
+
+  assert.match(
+    builderSnapshotMigration,
+    /service_date/,
+  );
+
+  assert.match(
+    builderSnapshotMigration,
+    /ship_to_address/,
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /INVOICING_2_3_0_TO_2_4_0/,
+  );
+
   const accounting =
     await source(
       'lib/apps/invoicing/accounting.ts',
@@ -1941,4 +1971,51 @@ test('Invoicing invoice lifecycle blocks draft delivery and exposes authenticate
     /FOR UPDATE/,
     'Invoice state transitions must lock the document before changing lifecycle state.',
   );
+});
+
+
+test('Invoicing builder persists service and shipping snapshots across internal, public and PDF views', async () => {
+  const [
+    composer,
+    commands,
+    queries,
+    types,
+    publicInvoice,
+    publicPage,
+    pdf,
+    pdfRoute,
+  ] = await Promise.all([
+    source('app/apps/invoicing/InvoiceComposer.tsx'),
+    source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/types.ts'),
+    source('lib/apps/invoicing/public.ts'),
+    source('app/i/[tenantId]/[token]/page.tsx'),
+    source('lib/apps/invoicing/pdf.ts'),
+    source('app/api/apps/invoicing/[invoiceId]/pdf/route.ts'),
+  ]);
+
+  assert.match(composer, /Service \/ supply date/);
+  assert.match(composer, /Ship-to address/);
+  assert.match(composer, /shippingAddress/);
+  assert.match(composer, /serviceDate/);
+
+  assert.match(commands, /service_date/);
+  assert.match(commands, /ship_to_address/);
+  assert.match(commands, /shipping_address/);
+
+  assert.match(queries, /i\.service_date/);
+  assert.match(queries, /i\.ship_to_address/);
+  assert.match(types, /serviceDate: string \| null;/);
+  assert.match(types, /shippingAddress: string \| null;/);
+
+  assert.match(publicInvoice, /i\.service_date/);
+  assert.match(publicInvoice, /i\.ship_to_address/);
+  assert.match(publicPage, /Service \/ supply date/);
+  assert.match(publicPage, /Ship to/);
+
+  assert.match(pdf, /Service date/);
+  assert.match(pdf, /shippingAddress/);
+  assert.match(pdfRoute, /serviceDate:/);
+  assert.match(pdfRoute, /shippingAddress:/);
 });

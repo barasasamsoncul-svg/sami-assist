@@ -6,6 +6,7 @@ type PdfInvoice = {
   status: string;
   invoiceDate: string;
   dueDate: string;
+  serviceDate: string | null;
   currency: string;
   reference: string | null;
   purchaseOrderNumber: string | null;
@@ -43,6 +44,7 @@ type PdfInvoice = {
     phone: string | null;
     taxId: string | null;
     billingAddress: string | null;
+    shippingAddress: string | null;
   };
   company: {
     name: string;
@@ -945,6 +947,15 @@ function documentHeader(
       [
         'Due',
         invoice.dueDate,
+      ],
+      [
+        'Service date',
+        invoice.serviceDate,
+      ],
+      [
+        'Ship to',
+        invoice.customer
+          .shippingAddress,
       ],
       [
         'Currency',

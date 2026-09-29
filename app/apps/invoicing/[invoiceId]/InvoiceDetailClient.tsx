@@ -876,6 +876,26 @@ export default function InvoiceDetailClient({
                     </p>
                   )
                 }
+
+                {
+                  invoice
+                    .customer
+                    .shippingAddress &&
+                  (
+                    <div className="mt-4 rounded-2xl bg-[var(--sami-surface-soft)] p-3">
+                      <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+                        Ship to
+                      </p>
+                      <p className="mt-1 whitespace-pre-line text-sm leading-6 text-slate-600 dark:text-slate-300">
+                        {
+                          invoice
+                            .customer
+                            .shippingAddress
+                        }
+                      </p>
+                    </div>
+                  )
+                }
               </div>
 
               <div className="md:text-right">
@@ -949,6 +969,24 @@ export default function InvoiceDetailClient({
                         {
                           invoice
                             .purchaseOrderNumber
+                        }
+                      </strong>
+                    </p>
+                  )
+                }
+
+                {
+                  invoice
+                    .serviceDate &&
+                  (
+                    <p className="mt-1 text-sm">
+                      <span className="text-slate-400">
+                        Service / supply date:
+                      </span>{' '}
+                      <strong>
+                        {
+                          invoice
+                            .serviceDate
                         }
                       </strong>
                     </p>

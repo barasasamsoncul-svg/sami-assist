@@ -225,6 +225,24 @@ export default function InvoiceComposer({
   );
 
   const [
+    serviceDate,
+    setServiceDate,
+  ] = useState(
+    invoice?.serviceDate || '',
+  );
+
+  const [
+    shippingAddress,
+    setShippingAddress,
+  ] = useState(
+    invoice?.customer
+      .shippingAddress ||
+    initialCustomer
+      ?.shippingAddress ||
+    '',
+  );
+
+  const [
     shippingTotal,
     setShippingTotal,
   ] = useState(
@@ -518,6 +536,11 @@ export default function InvoiceComposer({
           data.settings.defaultDueDays,
       ),
     );
+
+    setShippingAddress(
+      customer.shippingAddress ||
+      '',
+    );
   }
 
   function changeInvoiceDate(
@@ -556,6 +579,10 @@ export default function InvoiceComposer({
       templateId,
       reference,
       purchaseOrderNumber,
+      serviceDate:
+        serviceDate ||
+        undefined,
+      shippingAddress,
       shippingTotal,
       roundingAdjustment,
       notes,
@@ -646,6 +673,12 @@ export default function InvoiceComposer({
         '',
       );
       setPurchaseOrderNumber(
+        '',
+      );
+      setServiceDate(
+        '',
+      );
+      setShippingAddress(
         '',
       );
       setShippingTotal(
@@ -926,6 +959,46 @@ export default function InvoiceComposer({
                       )
                   }
                   className="h-12 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                />
+              </label>
+            </div>
+
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <label className="block space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                  Service / supply date
+                </span>
+
+                <input
+                  type="date"
+                  value={serviceDate}
+                  onChange={
+                    event =>
+                      setServiceDate(
+                        event.target.value,
+                      )
+                  }
+                  className="h-12 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                />
+              </label>
+
+              <label className="block space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                  Ship-to address
+                </span>
+
+                <textarea
+                  value={shippingAddress}
+                  onChange={
+                    event =>
+                      setShippingAddress(
+                        event.target.value,
+                      )
+                  }
+                  rows={3}
+                  maxLength={4000}
+                  placeholder="Defaults from the customer shipping address"
+                  className="min-h-12 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 py-2.5 text-sm"
                 />
               </label>
             </div>

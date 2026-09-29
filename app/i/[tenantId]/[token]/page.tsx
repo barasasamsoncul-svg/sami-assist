@@ -375,6 +375,26 @@ export default async function PublicInvoicePage({
                   </p>
                 )
               }
+
+              {
+                invoice
+                  .customer
+                  .shippingAddress &&
+                (
+                  <div className="mt-4">
+                    <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+                      Ship to
+                    </p>
+                    <p className="mt-1 whitespace-pre-line text-sm leading-6 text-slate-500">
+                      {
+                        invoice
+                          .customer
+                          .shippingAddress
+                      }
+                    </p>
+                  </div>
+                )
+              }
             </div>
 
             <div className="sm:text-right">
@@ -408,6 +428,24 @@ export default async function PublicInvoicePage({
                       {
                         invoice
                           .purchaseOrderNumber
+                      }
+                    </strong>
+                  </p>
+                )
+              }
+
+              {
+                invoice
+                  .serviceDate &&
+                (
+                  <p className="mt-1 text-sm">
+                    <span className="text-slate-400">
+                      Service / supply date:
+                    </span>{' '}
+                    <strong>
+                      {
+                        invoice
+                          .serviceDate
                       }
                     </strong>
                   </p>

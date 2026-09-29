@@ -144,6 +144,8 @@ export async function GET(
           invoice.invoiceDate,
         dueDate:
           invoice.dueDate,
+        serviceDate:
+          invoice.serviceDate,
         currency:
           invoice.currency,
         reference:
@@ -247,6 +249,9 @@ export async function GET(
           billingAddress:
             invoice.customer
               .billingAddress,
+          shippingAddress:
+            invoice.customer
+              .shippingAddress,
         },
         company: {
           name:
