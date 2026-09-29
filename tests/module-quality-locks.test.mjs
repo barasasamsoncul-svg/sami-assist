@@ -56,7 +56,7 @@ test(
 
     assert.equal(
       lock.moduleVersion,
-      '2.5.0',
+      '2.6.0',
     );
 
     assert.equal(
@@ -66,7 +66,7 @@ test(
 
     assert.equal(
       lock.baselineCommit,
-      'f52d1e97b72127bffb2a6826b42548c861f7e96b',
+      '60aaed1fd0626d723ddc585db8afea5f852cb0c7',
     );
 
     assert.equal(
