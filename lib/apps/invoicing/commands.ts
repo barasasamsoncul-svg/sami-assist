@@ -2815,13 +2815,18 @@ export async function createInvoice(
       settings.require_approval ===
         true;
 
-    const status =
+    const wantsPosting =
       input.confirm ===
-        true &&
-      confirmAllowed &&
-      !requiresApproval
-        ? 'confirmed'
-        : 'draft';
+        true;
+
+    const status =
+      wantsPosting &&
+      requiresApproval
+        ? 'pending_approval'
+        : wantsPosting &&
+            confirmAllowed
+          ? 'confirmed'
+          : 'draft';
 
     const invoiceResult =
       await client.query(
@@ -2952,7 +2957,27 @@ export async function createInvoice(
       `
         UPDATE invoicing_invoices
         SET
-          exchange_rate = $3
+          exchange_rate = $3,
+          submitted_at =
+            CASE
+              WHEN $4::varchar(30) =
+                   'pending_approval'
+              THEN COALESCE(
+                submitted_at,
+                NOW()
+              )
+              ELSE submitted_at
+            END,
+          submitted_by =
+            CASE
+              WHEN $4::varchar(30) =
+                   'pending_approval'
+              THEN COALESCE(
+                submitted_by,
+                $5::uuid
+              )
+              ELSE submitted_by
+            END
         WHERE id = $1
           AND company_id = $2
       `,
@@ -2960,6 +2985,8 @@ export async function createInvoice(
         invoiceId,
         context.companyId,
         exchangeRate,
+        status,
+        context.userId,
       ],
     );
 
@@ -3028,15 +3055,20 @@ export async function createInvoice(
           changed_by
         )
         VALUES (
-          $1,$2,NULL,$3,
-          'Invoice created',
-          $4
+          $1,$2,NULL,$3,$4,$5
         )
       `,
       [
         invoiceId,
         context.companyId,
         status,
+        status ===
+          'pending_approval'
+          ? 'Invoice created and submitted for approval'
+          : status ===
+              'confirmed'
+            ? 'Invoice created and confirmed'
+            : 'Invoice created',
         context.userId,
       ],
     );
@@ -3120,6 +3152,31 @@ export async function createInvoice(
             invoiceId,
           idempotencySeed:
             'confirmed:' +
+            invoiceId,
+          payload: {
+            invoiceNumber,
+            totalAmount,
+            currency,
+          },
+        },
+      );
+    }
+
+    if (
+      status ===
+        'pending_approval'
+    ) {
+      await emitInvoicingAutomationEvent(
+        context,
+        {
+          triggerKey:
+            'invoicing.invoice.approval_submitted',
+          recordType:
+            'invoice',
+          recordId:
+            invoiceId,
+          idempotencySeed:
+            'approval-submitted:' +
             invoiceId,
           payload: {
             invoiceNumber,
@@ -4250,7 +4307,20 @@ const ALLOWED_MANUAL_TRANSITIONS:
     string[]
   > = {
     draft: [
+      'pending_approval',
       'confirmed',
+      'cancelled',
+      'void',
+    ],
+    pending_approval: [
+      'confirmed',
+      'rejected',
+      'cancelled',
+      'void',
+    ],
+    rejected: [
+      'draft',
+      'pending_approval',
       'cancelled',
       'void',
     ],
@@ -4291,12 +4361,24 @@ export async function changeInvoiceStatus(
     );
 
   const permission =
-    next ===
-      'confirmed'
+    [
+      'pending_approval',
+      'draft',
+    ].includes(
+      next,
+    )
       ? INVOICING_PERMISSIONS
-          .INVOICE_CONFIRM
-      : INVOICING_PERMISSIONS
-          .INVOICE_CANCEL;
+          .INVOICE_EDIT
+      : [
+          'confirmed',
+          'rejected',
+        ].includes(
+          next,
+        )
+        ? INVOICING_PERMISSIONS
+            .INVOICE_CONFIRM
+        : INVOICING_PERMISSIONS
+            .INVOICE_CANCEL;
 
   const reason =
     nullableText(
@@ -4305,13 +4387,22 @@ export async function changeInvoiceStatus(
     );
 
   if (
-    next !==
-      'confirmed' &&
+    [
+      'rejected',
+      'cancelled',
+      'void',
+      'written_off',
+    ].includes(
+      next,
+    ) &&
     !reason
   ) {
     throw new InvoicingError(
       'INVALID_INPUT',
-      'A reason is required to cancel, void or write off an invoice.',
+      next ===
+        'rejected'
+        ? 'A rejection reason is required.'
+        : 'A reason is required to cancel, void or write off an invoice.',
     );
   }
 
@@ -4334,23 +4425,41 @@ export async function changeInvoiceStatus(
       'BEGIN',
     );
 
-    const current =
-      await client.query(
-        `
-          SELECT
-            status,
-            invoice_number
-          FROM invoicing_invoices
-          WHERE id = $1
-            AND company_id = $2
-            AND deleted_at IS NULL
-          FOR UPDATE
-        `,
-        [
-          invoiceId,
-          context.companyId,
-        ],
-      );
+    const [
+      current,
+      settingsResult,
+    ] =
+      await Promise.all([
+        client.query(
+          `
+            SELECT
+              status,
+              invoice_number
+            FROM invoicing_invoices
+            WHERE id = $1
+              AND company_id = $2
+              AND deleted_at IS NULL
+            FOR UPDATE
+          `,
+          [
+            invoiceId,
+            context.companyId,
+          ],
+        ),
+
+        client.query(
+          `
+            SELECT
+              require_approval
+            FROM invoicing_settings
+            WHERE company_id = $1
+            LIMIT 1
+          `,
+          [
+            context.companyId,
+          ],
+        ),
+      ]);
 
     if (
       current.rows.length !==
@@ -4366,6 +4475,11 @@ export async function changeInvoiceStatus(
       String(
         current.rows[0].status,
       );
+
+    const requiresApproval =
+      settingsResult.rows[0]
+        ?.require_approval ===
+      true;
 
     if (
       !(
@@ -4385,46 +4499,41 @@ export async function changeInvoiceStatus(
 
     if (
       next ===
-        'confirmed'
+        'pending_approval' &&
+      !requiresApproval
     ) {
-      const settings =
-        await client.query(
-          `
-            SELECT
-              require_approval
-            FROM invoicing_settings
-            WHERE company_id = $1
-            LIMIT 1
-          `,
-          [
-            context.companyId,
-          ],
-        );
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Invoice approval is not enabled for this company.',
+      );
+    }
 
-      if (
-        settings.rows[0]
-          ?.require_approval ===
-          true &&
-        !(
-          context.permissions
-            .isOwner ||
-          permissionContextHas(
-            context.permissions,
-            INVOICING_PERMISSIONS
-              .INVOICE_CONFIRM,
-          )
-        )
-      ) {
-        throw new InvoicingError(
-          'INVOICING_PERMISSION_REQUIRED',
-          'Invoice approval is required before this document can be confirmed.',
-          {
-            permission:
-              INVOICING_PERMISSIONS
-                .INVOICE_CONFIRM,
-          },
-        );
-      }
+    if (
+      next ===
+        'confirmed' &&
+      requiresApproval &&
+      oldStatus !==
+        'pending_approval'
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Submit this invoice for approval before it can be posted.',
+      );
+    }
+
+    if (
+      next ===
+        'rejected' &&
+      (
+        !requiresApproval ||
+        oldStatus !==
+          'pending_approval'
+      )
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Only an invoice waiting for approval can be rejected.',
+      );
     }
 
     await client.query(
@@ -4433,6 +4542,52 @@ export async function changeInvoiceStatus(
         SET
           status =
             $3::varchar(30),
+          submitted_at =
+            CASE
+              WHEN $3::varchar(30) =
+                   'pending_approval'
+              THEN NOW()
+              ELSE submitted_at
+            END,
+          submitted_by =
+            CASE
+              WHEN $3::varchar(30) =
+                   'pending_approval'
+              THEN $4::uuid
+              ELSE submitted_by
+            END,
+          approved_at =
+            CASE
+              WHEN $3::varchar(30) =
+                   'confirmed'
+                AND $5::varchar(30) =
+                    'pending_approval'
+              THEN NOW()
+              ELSE approved_at
+            END,
+          approved_by =
+            CASE
+              WHEN $3::varchar(30) =
+                   'confirmed'
+                AND $5::varchar(30) =
+                    'pending_approval'
+              THEN $4::uuid
+              ELSE approved_by
+            END,
+          rejected_at =
+            CASE
+              WHEN $3::varchar(30) =
+                   'rejected'
+              THEN NOW()
+              ELSE rejected_at
+            END,
+          rejected_by =
+            CASE
+              WHEN $3::varchar(30) =
+                   'rejected'
+              THEN $4::uuid
+              ELSE rejected_by
+            END,
           confirmed_at =
             CASE
               WHEN $3::varchar(30) =
@@ -4453,7 +4608,7 @@ export async function changeInvoiceStatus(
               ELSE cancelled_at
             END,
           updated_by =
-            $4,
+            $4::uuid,
           updated_at =
             NOW()
         WHERE id =
@@ -4466,6 +4621,7 @@ export async function changeInvoiceStatus(
         context.companyId,
         next,
         context.userId,
+        oldStatus,
       ],
     );
 
@@ -4488,7 +4644,22 @@ export async function changeInvoiceStatus(
         context.companyId,
         oldStatus,
         next,
-        reason,
+        reason ||
+          (
+            next ===
+              'pending_approval'
+              ? 'Submitted for approval'
+              : next ===
+                  'confirmed'
+                ? oldStatus ===
+                    'pending_approval'
+                  ? 'Approved and posted'
+                  : 'Confirmed and posted'
+                : next ===
+                    'draft'
+                  ? 'Returned to draft for rework'
+                  : null
+          ),
         context.userId,
       ],
     );
@@ -4573,7 +4744,18 @@ export async function changeInvoiceStatus(
           context.userId,
         invoiceId,
         type:
-          'invoice.status_changed',
+          next ===
+            'pending_approval'
+            ? 'invoice.approval_submitted'
+            : next ===
+                'rejected'
+              ? 'invoice.approval_rejected'
+              : next ===
+                  'confirmed' &&
+                oldStatus ===
+                  'pending_approval'
+                ? 'invoice.approved'
+                : 'invoice.status_changed',
         content:
           'Invoice status changed from ' +
           oldStatus +
@@ -4594,31 +4776,52 @@ export async function changeInvoiceStatus(
       'COMMIT',
     );
 
-    await emitInvoicingAutomationEvent(
-      context,
-      {
-        triggerKey:
-          next ===
-            'confirmed'
-            ? 'invoicing.invoice.confirmed'
-            : 'invoicing.invoice.corrected',
-        recordType:
-          'invoice',
-        recordId:
-          invoiceId,
-        idempotencySeed:
-          next +
-          ':' +
-          invoiceId,
-        payload: {
-          fromStatus:
-            oldStatus,
-          status:
-            next,
-          reason,
+    const automationTrigger =
+      next ===
+        'confirmed'
+        ? 'invoicing.invoice.confirmed'
+        : next ===
+            'pending_approval'
+          ? 'invoicing.invoice.approval_submitted'
+          : next ===
+              'rejected'
+            ? 'invoicing.invoice.approval_rejected'
+            : [
+                'cancelled',
+                'void',
+                'written_off',
+              ].includes(
+                next,
+              )
+              ? 'invoicing.invoice.corrected'
+              : null;
+
+    if (
+      automationTrigger
+    ) {
+      await emitInvoicingAutomationEvent(
+        context,
+        {
+          triggerKey:
+            automationTrigger,
+          recordType:
+            'invoice',
+          recordId:
+            invoiceId,
+          idempotencySeed:
+            next +
+            ':' +
+            invoiceId,
+          payload: {
+            fromStatus:
+              oldStatus,
+            status:
+              next,
+            reason,
+          },
         },
-      },
-    );
+      );
+    }
 
     return {
       id:
@@ -4747,6 +4950,8 @@ export async function recordInvoicePayment(
     if (
       [
         'draft',
+        'pending_approval',
+        'rejected',
         'cancelled',
         'void',
         'written_off',
@@ -5605,6 +5810,8 @@ export async function issueInvoiceCreditNote(
     if (
       [
         'draft',
+        'pending_approval',
+        'rejected',
         'cancelled',
         'void',
         'written_off',

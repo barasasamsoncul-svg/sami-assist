@@ -46,6 +46,46 @@ export const INVOICING_AUTOMATION_TRIGGERS:
     },
     {
       key:
+        'invoicing.invoice.approval_submitted',
+      name:
+        'Invoice submitted for approval',
+      description:
+        'Run after a draft invoice enters the approval queue.',
+      type:
+        'event',
+      moduleKey:
+        'invoicing',
+      resourceKey:
+        'invoice',
+      requiredPermissions: [
+        INVOICING_PERMISSIONS
+          .INVOICE_VIEW,
+      ],
+      companyScoped:
+        true,
+    },
+    {
+      key:
+        'invoicing.invoice.approval_rejected',
+      name:
+        'Invoice approval rejected',
+      description:
+        'Run after an approver rejects an invoice for rework.',
+      type:
+        'event',
+      moduleKey:
+        'invoicing',
+      resourceKey:
+        'invoice',
+      requiredPermissions: [
+        INVOICING_PERMISSIONS
+          .INVOICE_VIEW,
+      ],
+      companyScoped:
+        true,
+    },
+    {
+      key:
         'invoicing.invoice.confirmed',
       name:
         'Invoice confirmed',
