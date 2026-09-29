@@ -1581,8 +1581,8 @@ test('Invoicing SQL explicitly types reused status parameters to prevent Postgre
 
   assert.match(
     worker,
-    /status =\s*\$4::varchar\(30\)[\s\S]*WHEN \$4::varchar\(30\) =[\s\S]*'sent'/,
-    'Reminder delivery status must not rely on conflicting inferred parameter types.',
+    /status =\s*CASE[\s\S]*WHEN \$4::boolean[\s\S]*THEN 'sent'[\s\S]*ELSE 'failed'/,
+    'Reminder delivery status must use one explicit boolean outcome across sent/failed branches.',
   );
 });
 
