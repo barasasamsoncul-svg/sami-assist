@@ -498,11 +498,30 @@ test(
 test(
   'SaMi design system enforces readable foregrounds across every app surface',
   async () => {
-    const globals =
-      await readFile(
-        'app/globals.css',
-        'utf8',
-      );
+    const [
+      globals,
+      workspaceShell,
+      appShell,
+      enterpriseWorkspace,
+    ] =
+      await Promise.all([
+        readFile(
+          'app/globals.css',
+          'utf8',
+        ),
+        readFile(
+          'app/components/workspace/WorkspaceShell.tsx',
+          'utf8',
+        ),
+        readFile(
+          'app/components/apps/AppSurfaceShell.tsx',
+          'utf8',
+        ),
+        readFile(
+          'app/apps/_shared/EnterpriseDataWorkspaceClient.tsx',
+          'utf8',
+        ),
+      ]);
 
     assert.match(
       globals,
@@ -512,14 +531,14 @@ test(
 
     assert.match(
       globals,
-      /\.text-slate-300,[\s\S]*\.text-slate-400[\s\S]*color:\s*#64748b;/,
-      'Light-mode muted text must meet the shared visibility floor.',
+      /--sami-muted:\s*#475569;/,
+      'Light-mode secondary copy must use a readable muted token.',
     );
 
     assert.match(
       globals,
-      /\.dark \.text-slate-400,[\s\S]*\.dark \.dark\\:text-slate-400[\s\S]*color:\s*#c0cad8;/,
-      'Dark-mode muted text must remain readable without hover.',
+      /\.dark[\s\S]*--sami-muted:\s*#cbd5e1;/,
+      'Dark-mode secondary copy must use a readable muted token.',
     );
 
     assert.match(
@@ -530,8 +549,20 @@ test(
 
     assert.match(
       globals,
-      /\.sami-surface,[\s\S]*\.sami-canvas[\s\S]*color:\s*var\(--foreground\);/,
+      /\.sami-surface,[\s\S]*\.sami-soft-surface[\s\S]*color:\s*var\(--foreground\);/,
       'Shared SaMi surfaces must establish a safe foreground color.',
     );
+
+    for (const sourceText of [
+      workspaceShell,
+      appShell,
+      enterpriseWorkspace,
+    ]) {
+      assert.match(
+        sourceText,
+        /text-slate-600[\s\S]*dark:text-slate-300/,
+        'Shared application chrome must use explicit readable light/dark secondary text.',
+      );
+    }
   },
 );
