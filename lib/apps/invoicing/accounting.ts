@@ -896,6 +896,82 @@ export async function postInvoicePaymentAllocationToAccounting(
 }
 
 
+export async function postInvoicePaymentRefundToAccounting(
+  client:
+    PoolClient,
+  input: {
+    companyId:
+      string;
+    userId:
+      string;
+    refundId:
+      string;
+    refundNumber:
+      string;
+    refundDate:
+      string;
+    amount:
+      number;
+    exchangeRate?:
+      number;
+  },
+) {
+  const amount =
+    money(
+      input.amount *
+      (
+        input.exchangeRate ||
+        1
+      ),
+    );
+
+  return postJournal(
+    client,
+    {
+      companyId:
+        input.companyId,
+      userId:
+        input.userId,
+      eventKey:
+        'payment-refund:' +
+        input.refundId,
+      sourceType:
+        'payment_refund',
+      sourceId:
+        input.refundId,
+      journalDate:
+        input.refundDate,
+      description:
+        'Refund ' +
+        input.refundNumber +
+        ' posted',
+      lines: [
+        {
+          account:
+            'customer_credit',
+          description:
+            'Release unapplied customer credit',
+          debit:
+            amount,
+          credit:
+            0,
+        },
+        {
+          account:
+            'cash',
+          description:
+            'Cash / bank refund',
+          debit:
+            0,
+          credit:
+            amount,
+        },
+      ],
+    },
+  );
+}
+
+
 export async function postInvoiceCreditToAccounting(
   client:
     PoolClient,
