@@ -68,6 +68,7 @@ type ViewKey =
   | 'items'
   | 'payments'
   | 'recurring'
+  | 'reminders'
   | 'reports'
   | 'settings';
 
@@ -127,6 +128,14 @@ const NAV:
         'Recurring',
       icon:
         Repeat2,
+    },
+    {
+      key:
+        'reminders',
+      label:
+        'Reminders',
+      icon:
+        BellRing,
     },
     {
       key:
@@ -190,6 +199,12 @@ const VIEW_COPY:
         'Recurring billing',
       description:
         'Automate repeat invoices, schedules and delivery channels using a source invoice as the commercial template.',
+    },
+    reminders: {
+      title:
+        'Reminders & dunning',
+      description:
+        'Control payment follow-up stages, collection pauses, retries and delivery history without losing the audit trail.',
     },
     reports: {
       title:
@@ -1038,6 +1053,15 @@ export default function InvoicingWorkspaceClient({
 
             if (
               item.key ===
+                'reminders'
+            ) {
+              return initialData
+                .capabilities
+                .canSend;
+            }
+
+            if (
+              item.key ===
                 'reports'
             ) {
               return initialData
@@ -1545,6 +1569,27 @@ export default function InvoicingWorkspaceClient({
           .canManageRecurring &&
         (
           <Recurring
+            data={
+              initialData
+            }
+            pending={
+              busy
+            }
+            run={
+              run
+            }
+          />
+        )
+      }
+
+      {
+        view ===
+          'reminders' &&
+        initialData
+          .capabilities
+          .canSend &&
+        (
+          <RemindersAndDunning
             data={
               initialData
             }
@@ -8748,6 +8793,1136 @@ function Recurring({
     </div>
   );
 }
+
+function RemindersAndDunning({
+  data,
+  pending,
+  run,
+}: {
+  data:
+    InvoicingWorkspaceData;
+  pending:
+    boolean;
+  run:
+    (
+      payload:
+        Record<
+          string,
+          unknown
+        >,
+      message:
+        string,
+    ) =>
+      Promise<boolean>;
+}) {
+  const defaultPolicy =
+    data.dunningPolicies.find(
+      policy =>
+        policy.isDefault,
+    ) ||
+    data.dunningPolicies[0] ||
+    null;
+
+  const initialStages =
+    defaultPolicy
+      ?.stages.length
+      ? defaultPolicy.stages.map(
+          stage => ({
+            name:
+              stage.name,
+            offsetDays:
+              stage.offsetDays,
+            severity:
+              stage.severity,
+            channels:
+              [
+                ...stage.channels,
+              ],
+            autoSend:
+              stage.autoSend,
+            retryLimit:
+              stage.retryLimit,
+            retryDelayMinutes:
+              stage.retryDelayMinutes,
+          }),
+        )
+      : [
+          {
+            name:
+              '3 days before due',
+            offsetDays:
+              -3,
+            severity:
+              'friendly',
+            channels: [
+              'email',
+            ],
+            autoSend:
+              true,
+            retryLimit:
+              3,
+            retryDelayMinutes:
+              60,
+          },
+          {
+            name:
+              '1 day overdue',
+            offsetDays:
+              1,
+            severity:
+              'friendly',
+            channels: [
+              'email',
+            ],
+            autoSend:
+              true,
+            retryLimit:
+              3,
+            retryDelayMinutes:
+              60,
+          },
+          {
+            name:
+              '7 days overdue',
+            offsetDays:
+              7,
+            severity:
+              'firm',
+            channels: [
+              'email',
+            ],
+            autoSend:
+              true,
+            retryLimit:
+              3,
+            retryDelayMinutes:
+              60,
+          },
+          {
+            name:
+              '14 days overdue',
+            offsetDays:
+              14,
+            severity:
+              'final',
+            channels: [
+              'email',
+            ],
+            autoSend:
+              true,
+            retryLimit:
+              3,
+            retryDelayMinutes:
+              60,
+          },
+        ];
+
+  const [
+    policyName,
+    setPolicyName,
+  ] =
+    useState(
+      defaultPolicy?.name ||
+      'Standard payment follow-up',
+    );
+
+  const [
+    stages,
+    setStages,
+  ] =
+    useState(
+      initialStages,
+    );
+
+  useEffect(
+    () => {
+      setPolicyName(
+        defaultPolicy?.name ||
+        'Standard payment follow-up',
+      );
+
+      setStages(
+        defaultPolicy
+          ?.stages.length
+          ? defaultPolicy.stages.map(
+              stage => ({
+                name:
+                  stage.name,
+                offsetDays:
+                  stage.offsetDays,
+                severity:
+                  stage.severity,
+                channels: [
+                  ...stage.channels,
+                ],
+                autoSend:
+                  stage.autoSend,
+                retryLimit:
+                  stage.retryLimit,
+                retryDelayMinutes:
+                  stage.retryDelayMinutes,
+              }),
+            )
+          : initialStages,
+      );
+    },
+    [
+      defaultPolicy?.id,
+    ],
+  );
+
+  const failed =
+    data.reminders.filter(
+      reminder =>
+        reminder.status ===
+        'failed',
+    ).length;
+
+  const pendingReminders =
+    data.reminders.filter(
+      reminder =>
+        reminder.status ===
+          'scheduled' ||
+        reminder.status ===
+          'sending',
+    ).length;
+
+  const sent =
+    data.reminders.filter(
+      reminder =>
+        reminder.status ===
+        'sent',
+    ).length;
+
+  const overdueInvoices =
+    data.invoices.filter(
+      invoice =>
+        invoice.balanceDue >
+          0 &&
+        (
+          invoice.daysOverdue >
+            0 ||
+          invoice.status ===
+            'overdue'
+        ),
+    );
+
+  const customersWithBalance =
+    data.customers.filter(
+      customer =>
+        customer.outstandingTotal >
+        0,
+    );
+
+  function updateStage(
+    index:
+      number,
+    patch:
+      Record<
+        string,
+        unknown
+      >,
+  ) {
+    setStages(
+      current =>
+        current.map(
+          (
+            stage,
+            stageIndex,
+          ) =>
+            stageIndex ===
+              index
+              ? {
+                  ...stage,
+                  ...patch,
+                }
+              : stage,
+        ),
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="sami-surface rounded-[20px] p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 dark:text-slate-300">
+            Overdue invoices
+          </p>
+          <p className="mt-2 text-2xl font-black">
+            {
+              overdueInvoices.length
+            }
+          </p>
+        </div>
+
+        <div className="sami-surface rounded-[20px] p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 dark:text-slate-300">
+            Reminders sent
+          </p>
+          <p className="mt-2 text-2xl font-black">
+            {
+              sent
+            }
+          </p>
+        </div>
+
+        <div className="sami-surface rounded-[20px] p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 dark:text-slate-300">
+            Pending / retrying
+          </p>
+          <p className="mt-2 text-2xl font-black">
+            {
+              pendingReminders
+            }
+          </p>
+        </div>
+
+        <div className="sami-surface rounded-[20px] p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 dark:text-slate-300">
+            Failed
+          </p>
+          <p className="mt-2 text-2xl font-black">
+            {
+              failed
+            }
+          </p>
+        </div>
+      </div>
+
+      {
+        data.capabilities
+          .canManageSettings &&
+        (
+          <section className="sami-surface rounded-[24px] p-4 sm:p-5">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-sm font-black">
+                  Dunning policy
+                </p>
+                <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600 dark:text-slate-300">
+                  SaMi selects the latest eligible stage for each unpaid invoice. Failed channel deliveries retry independently and never create duplicate stage sends.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                disabled={
+                  pending
+                }
+                onClick={
+                  async () => {
+                    await run(
+                      {
+                        action:
+                          'save_dunning_policy',
+                        policyId:
+                          defaultPolicy?.id ||
+                          undefined,
+                        name:
+                          policyName,
+                        stages,
+                      },
+                      'Dunning policy saved.',
+                    );
+                  }
+                }
+                className="h-10 rounded-xl bg-blue-600 px-4 text-xs font-black text-white disabled:cursor-not-allowed"
+              >
+                Save dunning policy
+              </button>
+            </div>
+
+            <div className="mt-4 max-w-xl">
+              <label className="block space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-600 dark:text-slate-300">
+                  Policy name
+                </span>
+                <input
+                  value={
+                    policyName
+                  }
+                  onChange={
+                    event =>
+                      setPolicyName(
+                        event.target
+                          .value,
+                      )
+                  }
+                  className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-sm"
+                />
+              </label>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {
+                stages.map(
+                  (
+                    stage,
+                    index,
+                  ) => (
+                    <div
+                      key={
+                        String(
+                          index,
+                        ) +
+                        ':' +
+                        stage.offsetDays
+                      }
+                      className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface-soft)] p-3"
+                    >
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+                        <label className="block space-y-1 xl:col-span-2">
+                          <span className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
+                            Stage name
+                          </span>
+                          <input
+                            value={
+                              stage.name
+                            }
+                            onChange={
+                              event =>
+                                updateStage(
+                                  index,
+                                  {
+                                    name:
+                                      event.target
+                                        .value,
+                                  },
+                                )
+                            }
+                            className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs"
+                          />
+                        </label>
+
+                        <label className="block space-y-1">
+                          <span className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
+                            Due offset
+                          </span>
+                          <input
+                            type="number"
+                            min="-365"
+                            max="3650"
+                            value={
+                              stage.offsetDays
+                            }
+                            onChange={
+                              event =>
+                                updateStage(
+                                  index,
+                                  {
+                                    offsetDays:
+                                      Number(
+                                        event.target
+                                          .value,
+                                      ),
+                                  },
+                                )
+                            }
+                            className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs"
+                          />
+                        </label>
+
+                        <label className="block space-y-1">
+                          <span className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
+                            Tone
+                          </span>
+                          <select
+                            value={
+                              stage.severity
+                            }
+                            onChange={
+                              event =>
+                                updateStage(
+                                  index,
+                                  {
+                                    severity:
+                                      event.target
+                                        .value,
+                                  },
+                                )
+                            }
+                            className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs"
+                          >
+                            <option value="friendly">
+                              Friendly
+                            </option>
+                            <option value="firm">
+                              Firm
+                            </option>
+                            <option value="final">
+                              Final
+                            </option>
+                          </select>
+                        </label>
+
+                        <label className="block space-y-1">
+                          <span className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
+                            Retry limit
+                          </span>
+                          <input
+                            type="number"
+                            min="1"
+                            max="20"
+                            value={
+                              stage.retryLimit
+                            }
+                            onChange={
+                              event =>
+                                updateStage(
+                                  index,
+                                  {
+                                    retryLimit:
+                                      Number(
+                                        event.target
+                                          .value,
+                                      ),
+                                  },
+                                )
+                            }
+                            className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs"
+                          />
+                        </label>
+
+                        <label className="block space-y-1">
+                          <span className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
+                            Retry delay min
+                          </span>
+                          <input
+                            type="number"
+                            min="5"
+                            max="10080"
+                            value={
+                              stage.retryDelayMinutes
+                            }
+                            onChange={
+                              event =>
+                                updateStage(
+                                  index,
+                                  {
+                                    retryDelayMinutes:
+                                      Number(
+                                        event.target
+                                          .value,
+                                      ),
+                                  },
+                                )
+                            }
+                            className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs"
+                          />
+                        </label>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        {
+                          [
+                            'email',
+                            'whatsapp',
+                            'sms',
+                          ].map(
+                            channel => {
+                              const checked =
+                                stage.channels
+                                  .includes(
+                                    channel,
+                                  );
+
+                              return (
+                                <label
+                                  key={
+                                    channel
+                                  }
+                                  className="flex items-center gap-2 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 py-2 text-[10px] font-black"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={
+                                      checked
+                                    }
+                                    onChange={
+                                      event => {
+                                        const channels =
+                                          event.target
+                                            .checked
+                                            ? [
+                                                ...stage.channels,
+                                                channel,
+                                              ]
+                                            : stage.channels
+                                                .filter(
+                                                  value =>
+                                                    value !==
+                                                    channel,
+                                                );
+
+                                        updateStage(
+                                          index,
+                                          {
+                                            channels,
+                                          },
+                                        );
+                                      }
+                                    }
+                                  />
+                                  {
+                                    channel
+                                  }
+                                </label>
+                              );
+                            },
+                          )
+                        }
+
+                        <label className="flex items-center gap-2 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 py-2 text-[10px] font-black">
+                          <input
+                            type="checkbox"
+                            checked={
+                              stage.autoSend
+                            }
+                            onChange={
+                              event =>
+                                updateStage(
+                                  index,
+                                  {
+                                    autoSend:
+                                      event.target
+                                        .checked,
+                                  },
+                                )
+                            }
+                          />
+                          Auto-send
+                        </label>
+
+                        <button
+                          type="button"
+                          disabled={
+                            stages.length <=
+                            1
+                          }
+                          onClick={
+                            () =>
+                              setStages(
+                                current =>
+                                  current.filter(
+                                    (
+                                      _,
+                                      stageIndex,
+                                    ) =>
+                                      stageIndex !==
+                                      index,
+                                  ),
+                              )
+                          }
+                          className="ml-auto h-9 rounded-xl border border-red-500/30 px-3 text-[10px] font-black text-red-700 disabled:opacity-50 dark:text-red-300"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ),
+                )
+              }
+            </div>
+
+            <button
+              type="button"
+              onClick={
+                () => {
+                  const lastOffset =
+                    stages[
+                      stages.length -
+                      1
+                    ]?.offsetDays ||
+                    0;
+
+                  setStages(
+                    current => [
+                      ...current,
+                      {
+                        name:
+                          'Next collection stage',
+                        offsetDays:
+                          Math.max(
+                            1,
+                            lastOffset +
+                            7,
+                          ),
+                        severity:
+                          'firm',
+                        channels: [
+                          'email',
+                        ],
+                        autoSend:
+                          true,
+                        retryLimit:
+                          3,
+                        retryDelayMinutes:
+                          60,
+                      },
+                    ],
+                  );
+                }
+              }
+              className="mt-3 h-9 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-[10px] font-black"
+            >
+              Add stage
+            </button>
+          </section>
+        )
+      }
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <section className="sami-surface rounded-[24px] p-4 sm:p-5">
+          <p className="text-sm font-black">
+            Invoice collection controls
+          </p>
+          <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+            Pause one invoice without silencing the customer&apos;s other invoices.
+          </p>
+
+          <div className="mt-3 max-h-[520px] space-y-2 overflow-auto pr-1">
+            {
+              overdueInvoices
+                .slice(
+                  0,
+                  50,
+                )
+                .map(
+                  invoice => (
+                    <form
+                      key={
+                        invoice.id
+                      }
+                      className="rounded-2xl border border-[var(--sami-border)] p-3"
+                      onSubmit={
+                        async event => {
+                          event.preventDefault();
+                          const form =
+                            new FormData(
+                              event.currentTarget,
+                            );
+
+                          await run(
+                            {
+                              action:
+                                'set_invoice_reminder_control',
+                              invoiceId:
+                                invoice.id,
+                              mode:
+                                form.get(
+                                  'mode',
+                                ),
+                              pauseUntil:
+                                form.get(
+                                  'pauseUntil',
+                                ),
+                              reason:
+                                form.get(
+                                  'reason',
+                                ),
+                            },
+                            'Invoice reminder control updated.',
+                          );
+                        }
+                      }
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <Link
+                            href={
+                              '/apps/invoicing/' +
+                              invoice.id
+                            }
+                            className="text-xs font-black text-blue-700 hover:underline dark:text-blue-300"
+                          >
+                            {
+                              invoice.invoiceNumber
+                            }
+                          </Link>
+                          <p className="mt-1 text-[10px] text-slate-600 dark:text-slate-300">
+                            {
+                              invoice.customerName
+                            } · {
+                              invoice.daysOverdue
+                            } days overdue · {
+                              formatMoney(
+                                invoice.balanceDue,
+                                invoice.currency,
+                              )
+                            }
+                          </p>
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={
+                            pending
+                          }
+                          className="h-8 rounded-lg bg-blue-600 px-2.5 text-[9px] font-black text-white"
+                        >
+                          Save
+                        </button>
+                      </div>
+
+                      <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                        <select
+                          name="mode"
+                          defaultValue={
+                            invoice.reminderMode
+                          }
+                          className="h-9 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-2 text-[10px] font-bold"
+                        >
+                          <option value="inherit">Inherit</option>
+                          <option value="enabled">Enabled</option>
+                          <option value="paused">Paused</option>
+                          <option value="disabled">Disabled</option>
+                        </select>
+                        <input
+                          type="datetime-local"
+                          name="pauseUntil"
+                          defaultValue={
+                            invoice.reminderPauseUntil
+                              ?.slice(
+                                0,
+                                16,
+                              ) ||
+                            ''
+                          }
+                          className="h-9 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-2 text-[10px]"
+                        />
+                        <input
+                          name="reason"
+                          defaultValue={
+                            invoice.reminderPauseReason ||
+                            ''
+                          }
+                          placeholder="Pause/disable reason"
+                          className="h-9 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-2 text-[10px]"
+                        />
+                      </div>
+                    </form>
+                  ),
+                )
+            }
+
+            {
+              overdueInvoices.length ===
+                0 &&
+              (
+                <p className="py-8 text-center text-xs text-slate-600 dark:text-slate-300">
+                  No overdue invoices need collection controls.
+                </p>
+              )
+            }
+          </div>
+        </section>
+
+        <section className="sami-surface rounded-[24px] p-4 sm:p-5">
+          <p className="text-sm font-black">
+            Customer reminder controls
+          </p>
+          <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+            Apply a collection hold across all invoices for one customer.
+          </p>
+
+          <div className="mt-3 max-h-[520px] space-y-2 overflow-auto pr-1">
+            {
+              customersWithBalance
+                .slice(
+                  0,
+                  50,
+                )
+                .map(
+                  customer => (
+                    <form
+                      key={
+                        customer.id
+                      }
+                      className="rounded-2xl border border-[var(--sami-border)] p-3"
+                      onSubmit={
+                        async event => {
+                          event.preventDefault();
+                          const form =
+                            new FormData(
+                              event.currentTarget,
+                            );
+
+                          await run(
+                            {
+                              action:
+                                'set_customer_reminder_control',
+                              customerId:
+                                customer.id,
+                              mode:
+                                form.get(
+                                  'mode',
+                                ),
+                              pauseUntil:
+                                form.get(
+                                  'pauseUntil',
+                                ),
+                              reason:
+                                form.get(
+                                  'reason',
+                                ),
+                            },
+                            'Customer reminder control updated.',
+                          );
+                        }
+                      }
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-black">
+                            {
+                              customer.name
+                            }
+                          </p>
+                          <p className="mt-1 text-[10px] text-slate-600 dark:text-slate-300">
+                            Outstanding {
+                              formatMoney(
+                                customer.outstandingTotal,
+                                customer.currency,
+                              )
+                            }
+                          </p>
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={
+                            pending
+                          }
+                          className="h-8 rounded-lg bg-blue-600 px-2.5 text-[9px] font-black text-white"
+                        >
+                          Save
+                        </button>
+                      </div>
+
+                      <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                        <select
+                          name="mode"
+                          defaultValue={
+                            customer.reminderMode
+                          }
+                          className="h-9 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-2 text-[10px] font-bold"
+                        >
+                          <option value="inherit">Inherit</option>
+                          <option value="enabled">Enabled</option>
+                          <option value="paused">Paused</option>
+                          <option value="disabled">Disabled</option>
+                        </select>
+                        <input
+                          type="datetime-local"
+                          name="pauseUntil"
+                          defaultValue={
+                            customer.reminderPauseUntil
+                              ?.slice(
+                                0,
+                                16,
+                              ) ||
+                            ''
+                          }
+                          className="h-9 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-2 text-[10px]"
+                        />
+                        <input
+                          name="reason"
+                          defaultValue={
+                            customer.reminderPauseReason ||
+                            ''
+                          }
+                          placeholder="Pause/disable reason"
+                          className="h-9 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-2 text-[10px]"
+                        />
+                      </div>
+                    </form>
+                  ),
+                )
+            }
+          </div>
+        </section>
+      </div>
+
+      <section className="sami-surface overflow-hidden rounded-[24px]">
+        <div className="border-b border-[var(--sami-border)] p-4 sm:p-5">
+          <p className="text-sm font-black">
+            Reminder delivery history
+          </p>
+          <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+            Every automatic, manual and retried reminder is retained with its stage, channel, attempt count and failure outcome.
+          </p>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[920px] text-left text-xs">
+            <thead className="bg-[var(--sami-surface-soft)] text-[9px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
+              <tr>
+                <th className="px-4 py-3">Invoice</th>
+                <th className="px-4 py-3">Stage</th>
+                <th className="px-4 py-3">Channel</th>
+                <th className="px-4 py-3">Attempts</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Last / next</th>
+                <th className="px-4 py-3">Failure</th>
+                <th className="px-4 py-3">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--sami-border)]">
+              {
+                data.reminders.map(
+                  reminder => (
+                    <tr
+                      key={
+                        reminder.id
+                      }
+                    >
+                      <td className="px-4 py-3">
+                        <Link
+                          href={
+                            '/apps/invoicing/' +
+                            reminder.invoiceId
+                          }
+                          className="font-black text-blue-700 hover:underline dark:text-blue-300"
+                        >
+                          {
+                            reminder.invoiceNumber
+                          }
+                        </Link>
+                        <p className="mt-1 text-[10px] text-slate-600 dark:text-slate-300">
+                          {
+                            reminder.customerName
+                          }
+                        </p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-bold">
+                          {
+                            reminder.stageName
+                          }
+                        </p>
+                        <p className="mt-1 text-[9px] uppercase text-slate-600 dark:text-slate-300">
+                          {
+                            reminder.severity
+                          } · {
+                            reminder.source
+                          }
+                        </p>
+                      </td>
+                      <td className="px-4 py-3 font-bold">
+                        {
+                          reminder.channel
+                        }
+                      </td>
+                      <td className="px-4 py-3 font-bold">
+                        {
+                          reminder.attemptCount
+                        } / {
+                          reminder.maxAttempts
+                        }
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusPill
+                          value={
+                            reminder.status
+                          }
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-semibold">
+                          {
+                            displayDateTime(
+                              reminder.lastAttemptAt ||
+                              reminder.scheduledFor,
+                            )
+                          }
+                        </p>
+                        {
+                          reminder.nextAttemptAt &&
+                          (
+                            <p className="mt-1 text-[10px] text-slate-600 dark:text-slate-300">
+                              Retry {
+                                displayDateTime(
+                                  reminder.nextAttemptAt,
+                                )
+                              }
+                            </p>
+                          )
+                        }
+                      </td>
+                      <td className="max-w-[260px] px-4 py-3">
+                        <p className="truncate font-semibold">
+                          {
+                            reminder.failureCode ||
+                            reminder.failureMessage ||
+                            '—'
+                          }
+                        </p>
+                      </td>
+                      <td className="px-4 py-3">
+                        {
+                          reminder.status ===
+                            'failed' &&
+                          reminder.attemptCount <
+                            reminder.maxAttempts
+                            ? (
+                                <button
+                                  type="button"
+                                  disabled={
+                                    pending
+                                  }
+                                  onClick={
+                                    () =>
+                                      run(
+                                        {
+                                          action:
+                                            'retry_reminder',
+                                          reminderId:
+                                            reminder.id,
+                                        },
+                                        'Reminder retry queued.',
+                                      )
+                                  }
+                                  className="h-8 rounded-lg border border-amber-500/30 bg-amber-500/[0.08] px-2.5 text-[9px] font-black text-amber-800 dark:text-amber-200"
+                                >
+                                  Retry
+                                </button>
+                              )
+                            : (
+                                <span className="text-[10px] text-slate-600 dark:text-slate-300">
+                                  —
+                                </span>
+                              )
+                        }
+                      </td>
+                    </tr>
+                  ),
+                )
+              }
+
+              {
+                data.reminders.length ===
+                  0 &&
+                (
+                  <tr>
+                    <td
+                      colSpan={
+                        8
+                      }
+                      className="px-4 py-10 text-center text-xs text-slate-600 dark:text-slate-300"
+                    >
+                      No reminder attempts have been recorded yet.
+                    </td>
+                  </tr>
+                )
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 
 function Reports({
   data,

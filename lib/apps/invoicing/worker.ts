@@ -1871,23 +1871,77 @@ async function processRemindersForTenant(
           a.days_overdue,
           i.created_by,
           i.updated_by,
+          i.reminder_mode
+            AS invoice_reminder_mode,
+          i.reminder_pause_until
+            AS invoice_pause_until,
+          c.reminder_mode
+            AS customer_reminder_mode,
+          c.reminder_pause_until
+            AS customer_pause_until,
           company.name
             AS company_name,
           s.updated_by
             AS settings_updated_by,
-          s.reminder_days_before,
-          s.reminder_days_after,
-          s.reminder_channels
+          p.id
+            AS policy_id,
+          p.name
+            AS policy_name,
+          stage.id
+            AS stage_id,
+          stage.stage_key,
+          stage.name
+            AS stage_name,
+          stage.offset_days,
+          stage.severity,
+          stage.channels,
+          stage.retry_limit,
+          stage.retry_delay_minutes
         FROM invoicing_aging a
         INNER JOIN invoicing_invoices i
           ON i.id =
              a.invoice_id
+        INNER JOIN invoicing_customers c
+          ON c.id =
+             a.customer_id
         INNER JOIN invoicing_settings s
           ON s.company_id =
              a.company_id
         INNER JOIN companies company
           ON company.id =
              a.company_id
+        INNER JOIN invoicing_dunning_policies p
+          ON p.company_id =
+             a.company_id
+         AND p.is_default =
+             TRUE
+         AND p.is_active =
+             TRUE
+         AND p.deleted_at
+             IS NULL
+        INNER JOIN LATERAL (
+          SELECT
+            ds.*
+          FROM invoicing_dunning_stages ds
+          WHERE ds.policy_id =
+                p.id
+            AND ds.company_id =
+                a.company_id
+            AND ds.auto_send =
+                TRUE
+            AND ds.deleted_at
+                IS NULL
+            AND (
+              a.due_date +
+              ds.offset_days
+            ) <=
+            CURRENT_DATE
+          ORDER BY
+            ds.offset_days DESC,
+            ds.sequence_no DESC
+          LIMIT 1
+        ) stage
+          ON TRUE
         WHERE s.reminder_enabled =
               TRUE
           AND a.balance_due >
@@ -1902,18 +1956,6 @@ async function processRemindersForTenant(
                 'void',
                 'written_off'
               )
-          AND (
-            (
-              a.days_overdue =
-                0
-              AND a.due_date -
-                  CURRENT_DATE =
-                  s.reminder_days_before
-            )
-            OR
-            a.days_overdue >
-              0
-          )
         ORDER BY
           a.due_date,
           a.invoice_id
@@ -1933,90 +1975,88 @@ async function processRemindersForTenant(
   let skipped =
     0;
 
+  let suppressed =
+    0;
+
+  let retried =
+    0;
+
   for (
     const row
     of result.rows
   ) {
-    const daysOverdue =
-      Number(
-        row.days_overdue ||
-        0,
+    const invoiceMode =
+      String(
+        row.invoice_reminder_mode ||
+        'inherit',
       );
 
-    let reminderType =
-      '';
+    const customerMode =
+      String(
+        row.customer_reminder_mode ||
+        'inherit',
+      );
+
+    const effectiveMode =
+      invoiceMode !==
+        'inherit'
+        ? invoiceMode
+        : customerMode !==
+            'inherit'
+          ? customerMode
+          : 'enabled';
+
+    const pauseUntil =
+      invoiceMode ===
+        'paused'
+        ? row.invoice_pause_until
+        : (
+            invoiceMode ===
+              'inherit' &&
+            customerMode ===
+              'paused'
+          )
+          ? row.customer_pause_until
+          : null;
+
+    const pauseActive =
+      effectiveMode ===
+        'paused' &&
+      (
+        !pauseUntil ||
+        new Date(
+          pauseUntil,
+        ).getTime() >
+        Date.now()
+      );
 
     if (
-      daysOverdue >
-        0
+      effectiveMode ===
+        'disabled' ||
+      pauseActive
     ) {
-      const thresholds =
-        Array.isArray(
-          row.reminder_days_after,
-        )
-          ? row.reminder_days_after
-              .map(
-                (
-                  value:
-                    unknown,
-                ) =>
-                  Number(
-                    value,
-                  ),
-              )
-              .filter(
-                (
-                  value:
-                    number,
-                ) =>
-                  Number.isInteger(
-                    value,
-                  ) &&
-                  value >=
-                    0 &&
-                  value <=
-                    daysOverdue,
-              )
-              .sort(
-                (
-                  left:
-                    number,
-                  right:
-                    number,
-                ) =>
-                  right -
-                  left,
-              )
-          : [];
+      suppressed +=
+        1;
 
-      if (
-        thresholds.length ===
-          0
-      ) {
-        skipped +=
-          1;
-
-        continue;
-      }
-
-      reminderType =
-        'overdue_' +
-        thresholds[0];
-    } else {
-      reminderType =
-        'before_due_' +
-        Number(
-          row.reminder_days_before ||
-          0,
-        );
+      continue;
     }
 
     const channels =
       normalizeInvoiceDeliveryChannels(
-        row.reminder_channels,
+        row.channels,
       );
 
-    const pendingChannels:
+    if (
+      channels.length ===
+        0
+    ) {
+      skipped +=
+        1;
+
+      continue;
+    }
+
+    const actionable:
       typeof channels =
         [];
 
@@ -2027,7 +2067,12 @@ async function processRemindersForTenant(
       const existing =
         await pool.query(
           `
-            SELECT 1
+            SELECT
+              id,
+              status,
+              attempt_count,
+              max_attempts,
+              next_attempt_at
             FROM invoicing_reminders
             WHERE invoice_id =
                   $1
@@ -2039,23 +2084,142 @@ async function processRemindersForTenant(
           `,
           [
             row.invoice_id,
-            reminderType,
+            row.stage_key,
             channel,
           ],
         );
 
+      const prior =
+        existing.rows[0];
+
       if (
-        existing.rows.length ===
-          0
+        !prior
       ) {
-        pendingChannels.push(
+        await pool.query(
+          `
+            INSERT INTO invoicing_reminders (
+              company_id,
+              invoice_id,
+              dunning_policy_id,
+              dunning_stage_id,
+              reminder_type,
+              scheduled_for,
+              status,
+              channel,
+              source,
+              attempt_count,
+              max_attempts,
+              next_attempt_at,
+              metadata
+            )
+            VALUES (
+              $1,$2,$3,$4,$5,
+              NOW(),
+              'scheduled',
+              $6,
+              'worker',
+              0,
+              $7,
+              NOW(),
+              jsonb_build_object(
+                'daysOverdue',
+                $8::int,
+                'stageName',
+                $9::text,
+                'severity',
+                $10::text,
+                'worker',
+                'invoicing_tick'
+              )
+            )
+            ON CONFLICT (
+              invoice_id,
+              reminder_type,
+              channel
+            )
+            DO NOTHING
+          `,
+          [
+            row.company_id,
+            row.invoice_id,
+            row.policy_id,
+            row.stage_id,
+            row.stage_key,
+            channel,
+            Number(
+              row.retry_limit ||
+              3,
+            ),
+            Number(
+              row.days_overdue ||
+              0,
+            ),
+            row.stage_name,
+            row.severity,
+          ],
+        );
+
+        actionable.push(
           channel,
         );
+
+        continue;
       }
+
+      const status =
+        String(
+          prior.status,
+        );
+
+      const attempts =
+        Number(
+          prior.attempt_count ||
+          0,
+        );
+
+      const maxAttempts =
+        Number(
+          prior.max_attempts ||
+          row.retry_limit ||
+          3,
+        );
+
+      const retryDue =
+        !prior.next_attempt_at ||
+        new Date(
+          prior.next_attempt_at,
+        ).getTime() <=
+        Date.now();
+
+      if (
+        status ===
+          'sent' ||
+        status ===
+          'cancelled' ||
+        status ===
+          'suppressed' ||
+        attempts >=
+          maxAttempts ||
+        !retryDue
+      ) {
+        continue;
+      }
+
+      if (
+        status ===
+          'failed'
+      ) {
+        retried +=
+          1;
+      }
+
+      actionable.push(
+        channel,
+      );
     }
 
     if (
-      pendingChannels.length ===
+      actionable.length ===
         0
     ) {
       skipped +=
@@ -2064,47 +2228,38 @@ async function processRemindersForTenant(
       continue;
     }
 
-    for (
-      const channel
-      of pendingChannels
-    ) {
-      await pool.query(
-        `
-          INSERT INTO invoicing_reminders (
-            company_id,
-            invoice_id,
-            reminder_type,
-            scheduled_for,
-            status,
-            channel,
-            metadata
+    await pool.query(
+      `
+        UPDATE invoicing_reminders
+        SET
+          status =
+            'sending',
+          attempt_count =
+            attempt_count +
+            1,
+          last_attempt_at =
+            NOW(),
+          next_attempt_at =
+            NULL,
+          updated_at =
+            NOW()
+        WHERE invoice_id =
+              $1
+          AND reminder_type =
+              $2
+          AND channel =
+              ANY($3::varchar[])
+          AND status IN (
+            'scheduled',
+            'failed'
           )
-          VALUES (
-            $1,$2,$3,NOW(),
-            'scheduled',$4,
-            jsonb_build_object(
-              'daysOverdue',
-              $5::int,
-              'worker',
-              'invoicing_tick'
-            )
-          )
-          ON CONFLICT (
-            invoice_id,
-            reminder_type,
-            channel
-          )
-          DO NOTHING
-        `,
-        [
-          row.company_id,
-          row.invoice_id,
-          reminderType,
-          channel,
-          daysOverdue,
-        ],
-      );
-    }
+      `,
+      [
+        row.invoice_id,
+        row.stage_key,
+        actionable,
+      ],
+    );
 
     const userId =
       row.updated_by
@@ -2140,7 +2295,7 @@ async function processRemindersForTenant(
               row.invoice_id,
             ),
           channels:
-            pendingChannels,
+            actionable,
           purpose:
             'reminder',
         });
@@ -2154,16 +2309,55 @@ async function processRemindersForTenant(
             UPDATE invoicing_reminders
             SET
               status =
-                $4::varchar(30),
+                CASE
+                  WHEN $4::boolean
+                  THEN 'sent'
+                  ELSE 'failed'
+                END,
               sent_at =
                 CASE
-                  WHEN $4::varchar(30) =
-                       'sent'
+                  WHEN $4::boolean
                   THEN NOW()
                   ELSE sent_at
                 END,
+              completed_at =
+                CASE
+                  WHEN $4::boolean
+                  THEN NOW()
+                  WHEN attempt_count >=
+                       max_attempts
+                  THEN NOW()
+                  ELSE NULL
+                END,
+              next_attempt_at =
+                CASE
+                  WHEN $4::boolean
+                    OR attempt_count >=
+                       max_attempts
+                  THEN NULL
+                  ELSE
+                    NOW() +
+                    (
+                      $6::int *
+                      INTERVAL '1 minute'
+                    )
+                END,
               failure_code =
-                $5
+                CASE
+                  WHEN $4::boolean
+                  THEN NULL
+                  ELSE $5
+                END,
+              failure_message =
+                CASE
+                  WHEN $4::boolean
+                  THEN NULL
+                  ELSE 'Reminder delivery failed through ' ||
+                       $3::text ||
+                       '.'
+                END,
+              updated_at =
+                NOW()
             WHERE invoice_id =
                   $1
               AND reminder_type =
@@ -2173,13 +2367,15 @@ async function processRemindersForTenant(
           `,
           [
             row.invoice_id,
-            reminderType,
+            row.stage_key,
             deliveryResult.channel,
-            deliveryResult.success
-              ? 'sent'
-              : 'failed',
+            deliveryResult.success,
             deliveryResult.errorCode ||
-            null,
+            'DELIVERY_FAILED',
+            Number(
+              row.retry_delay_minutes ||
+              60,
+            ),
           ],
         );
 
@@ -2188,6 +2384,25 @@ async function processRemindersForTenant(
         ) {
           sent +=
             1;
+
+          await pool.query(
+            `
+              UPDATE invoicing_invoices
+              SET
+                reminder_last_sent_at =
+                  NOW(),
+                updated_at =
+                  NOW()
+              WHERE id =
+                    $1
+                AND company_id =
+                    $2
+            `,
+            [
+              row.invoice_id,
+              row.company_id,
+            ],
+          );
         } else {
           failed +=
             1;
@@ -2197,7 +2412,25 @@ async function processRemindersForTenant(
       error
     ) {
       failed +=
-        pendingChannels.length;
+        actionable.length;
+
+      const errorCode =
+        databaseCode(
+          error,
+        ) ||
+        'DELIVERY_FAILED';
+
+      const errorMessage =
+        (
+          error instanceof
+            Error
+            ? error.message
+            : 'Reminder delivery failed.'
+        )
+          .slice(
+            0,
+            1000,
+          );
 
       await pool.query(
         `
@@ -2205,8 +2438,31 @@ async function processRemindersForTenant(
           SET
             status =
               'failed',
+            completed_at =
+              CASE
+                WHEN attempt_count >=
+                     max_attempts
+                THEN NOW()
+                ELSE NULL
+              END,
+            next_attempt_at =
+              CASE
+                WHEN attempt_count >=
+                     max_attempts
+                THEN NULL
+                ELSE
+                  NOW() +
+                  (
+                    $4::int *
+                    INTERVAL '1 minute'
+                  )
+              END,
             failure_code =
-              'DELIVERY_FAILED'
+              $5,
+            failure_message =
+              $6,
+            updated_at =
+              NOW()
           WHERE invoice_id =
                 $1
             AND reminder_type =
@@ -2214,28 +2470,35 @@ async function processRemindersForTenant(
             AND channel =
                 ANY($3::varchar[])
             AND status =
-                'scheduled'
+                'sending'
         `,
         [
           row.invoice_id,
-          reminderType,
-          pendingChannels,
+          row.stage_key,
+          actionable,
+          Number(
+            row.retry_delay_minutes ||
+            60,
+          ),
+          errorCode,
+          errorMessage,
         ],
       );
 
       console.error(
-        '[SaMi Invoicing] Reminder delivery failed:',
+        '[SaMi Invoicing] Dunning reminder delivery failed:',
         {
           tenantId,
           invoiceId:
             String(
               row.invoice_id,
             ),
+          stage:
+            String(
+              row.stage_key,
+            ),
           error:
-            error instanceof
-              Error
-              ? error.message
-              : 'unknown_error',
+            errorMessage,
         },
       );
     }
@@ -2247,9 +2510,10 @@ async function processRemindersForTenant(
     sent,
     failed,
     skipped,
+    suppressed,
+    retried,
   };
 }
-
 
 export async function runInvoicingWorkerTick() {
   const tenantIds =
@@ -2276,6 +2540,10 @@ export async function runInvoicingWorkerTick() {
       failed:
         0,
       skipped:
+        0,
+      suppressed:
+        0,
+      retried:
         0,
     },
   };
@@ -2338,6 +2606,14 @@ export async function runInvoicingWorkerTick() {
       summary.reminders
         .skipped +=
         reminders.skipped;
+
+      summary.reminders
+        .suppressed +=
+        reminders.suppressed;
+
+      summary.reminders
+        .retried +=
+        reminders.retried;
     } catch (
       error
     ) {

@@ -725,6 +725,134 @@ export async function ensureCompanyDefaults(
       userId,
     ],
   );
+
+
+  await pool.query(
+    `
+      INSERT INTO invoicing_dunning_policies (
+        company_id,
+        name,
+        is_default,
+        is_active,
+        created_by,
+        updated_by,
+        metadata
+      )
+      SELECT
+        $1,
+        'Standard payment follow-up',
+        TRUE,
+        TRUE,
+        $2,
+        $2,
+        jsonb_build_object(
+          'createdByDefaults',
+          TRUE
+        )
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM invoicing_dunning_policies p
+        WHERE p.company_id =
+              $1
+          AND p.is_default =
+              TRUE
+          AND p.deleted_at
+              IS NULL
+      )
+      ON CONFLICT DO NOTHING
+    `,
+    [
+      companyId,
+      userId,
+    ],
+  );
+
+  await pool.query(
+    `
+      INSERT INTO invoicing_dunning_stages (
+        company_id,
+        policy_id,
+        stage_key,
+        name,
+        sequence_no,
+        offset_days,
+        severity,
+        channels,
+        auto_send,
+        retry_limit,
+        retry_delay_minutes,
+        created_by,
+        updated_by
+      )
+      SELECT
+        $1,
+        p.id,
+        seed.stage_key,
+        seed.name,
+        seed.sequence_no,
+        seed.offset_days,
+        seed.severity,
+        '["email"]'::jsonb,
+        TRUE,
+        3,
+        60,
+        $2,
+        $2
+      FROM invoicing_dunning_policies p
+      CROSS JOIN (
+        VALUES
+          (
+            'before_due_3',
+            '3 days before due',
+            1,
+            -3,
+            'friendly'
+          ),
+          (
+            'overdue_1',
+            '1 day overdue',
+            2,
+            1,
+            'friendly'
+          ),
+          (
+            'overdue_7',
+            '7 days overdue',
+            3,
+            7,
+            'firm'
+          ),
+          (
+            'overdue_14',
+            '14 days overdue',
+            4,
+            14,
+            'final'
+          )
+      ) AS seed(
+        stage_key,
+        name,
+        sequence_no,
+        offset_days,
+        severity
+      )
+      WHERE p.company_id =
+            $1
+        AND p.is_default =
+            TRUE
+        AND p.deleted_at
+            IS NULL
+      ON CONFLICT (
+        policy_id,
+        stage_key
+      )
+      DO NOTHING
+    `,
+    [
+      companyId,
+      userId,
+    ],
+  );
 }
 
 
