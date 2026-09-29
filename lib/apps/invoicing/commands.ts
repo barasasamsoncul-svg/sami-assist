@@ -6488,10 +6488,18 @@ export async function reverseInvoicePaymentAllocation(
       );
     }
 
+    if (
+      !allocation.operation_key
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'This legacy payment allocation must be corrected by reversing the original payment.',
+      );
+    }
+
     const operationKey =
       String(
-        allocation.operation_key ||
-        allocation.id,
+        allocation.operation_key,
       );
 
     await client.query(
