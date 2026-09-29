@@ -41,6 +41,7 @@ export {
   sendInvoiceToCustomer,
   setRecurringInvoiceTemplateStatus,
   updateRecurringInvoiceTemplate,
+  unreconcileInvoicePayment,
   updateInvoiceDraft,
   updateInvoicingSettings,
 } from '@/lib/apps/invoicing/commands';
