@@ -228,6 +228,7 @@ export async function getInvoicingWorkspaceData():
     invoices,
     customers,
     payments,
+    retainers,
     recurring,
     templates,
     paymentTerms,
@@ -701,6 +702,92 @@ export async function getInvoicingWorkspaceData():
             p.payment_date DESC,
             p.created_at DESC
           LIMIT 200
+        `,
+        [
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            b.retainer_id,
+            b.retainer_number,
+            b.retainer_type,
+            b.customer_id,
+            customer.name
+              AS customer_name,
+            b.payment_id,
+            b.payment_number,
+            b.received_date,
+            b.amount,
+            b.currency,
+            b.exchange_rate,
+            b.method,
+            b.reference,
+            b.purpose,
+            b.expected_use_date,
+            b.effective_status,
+            b.allocated_amount,
+            b.refunded_amount,
+            b.available_amount,
+            b.reconciled_at,
+            b.created_at,
+            COALESCE(
+              (
+                SELECT JSONB_AGG(
+                  JSONB_BUILD_OBJECT(
+                    'id', allocation.id,
+                    'invoiceId', allocation.invoice_id,
+                    'invoiceNumber', invoice.invoice_number,
+                    'amount', allocation.amount,
+                    'status', allocation.status,
+                    'operationKey', allocation.operation_key
+                  )
+                  ORDER BY
+                    allocation.created_at,
+                    allocation.id
+                )
+                FROM invoicing_payment_allocations allocation
+                INNER JOIN invoicing_invoices invoice
+                  ON invoice.id = allocation.invoice_id
+                 AND invoice.company_id = allocation.company_id
+                WHERE allocation.payment_id = b.payment_id
+                  AND allocation.company_id = b.company_id
+              ),
+              '[]'::jsonb
+            ) AS allocations,
+            COALESCE(
+              (
+                SELECT JSONB_AGG(
+                  JSONB_BUILD_OBJECT(
+                    'id', refund.id,
+                    'refundNumber', refund.refund_number,
+                    'refundDate', refund.refund_date,
+                    'amount', refund.amount,
+                    'status', refund.status,
+                    'reason', refund.reason
+                  )
+                  ORDER BY
+                    refund.refund_date,
+                    refund.id
+                )
+                FROM invoicing_payment_refunds refund
+                WHERE refund.payment_id = b.payment_id
+                  AND refund.company_id = b.company_id
+              ),
+              '[]'::jsonb
+            ) AS refunds
+          FROM invoicing_retainer_balances b
+          INNER JOIN invoicing_customers customer
+            ON customer.id = b.customer_id
+           AND customer.company_id = b.company_id
+          WHERE b.company_id = $1
+          ORDER BY
+            b.received_date DESC,
+            b.created_at DESC,
+            b.retainer_id DESC
+          LIMIT 300
         `,
         [
           context.companyId,
@@ -1811,6 +1898,71 @@ export async function getInvoicingWorkspaceData():
               : [],
         }),
       )
+        : [],
+
+    retainers:
+      access.canViewPayments
+        ? retainers.rows.map(
+            row => ({
+              id: String(row.retainer_id),
+              retainerNumber: String(row.retainer_number),
+              retainerType: String(row.retainer_type),
+              customerId: String(row.customer_id),
+              customerName: String(row.customer_name),
+              paymentId: String(row.payment_id),
+              paymentNumber: String(row.payment_number),
+              receivedDate: String(row.received_date),
+              amount: money(row.amount),
+              currency: String(row.currency),
+              exchangeRate: Number(row.exchange_rate || 1),
+              method: String(row.method),
+              reference: row.reference ? String(row.reference) : null,
+              purpose: row.purpose ? String(row.purpose) : null,
+              expectedUseDate: row.expected_use_date
+                ? String(row.expected_use_date)
+                : null,
+              status: String(row.effective_status),
+              allocatedAmount: money(row.allocated_amount),
+              refundedAmount: money(row.refunded_amount),
+              availableAmount: money(row.available_amount),
+              reconciledAt: row.reconciled_at
+                ? new Date(row.reconciled_at).toISOString()
+                : null,
+              createdAt: new Date(row.created_at).toISOString(),
+              allocations: Array.isArray(row.allocations)
+                ? row.allocations.map(
+                    (
+                      item:
+                        Record<string, unknown>,
+                    ) => ({
+                      id: String(item.id),
+                      invoiceId: String(item.invoiceId),
+                      invoiceNumber: String(item.invoiceNumber),
+                      amount: money(item.amount),
+                      status: String(item.status),
+                      operationKey: item.operationKey
+                        ? String(item.operationKey)
+                        : null,
+                    }),
+                  )
+                : [],
+              refunds: Array.isArray(row.refunds)
+                ? row.refunds.map(
+                    (
+                      item:
+                        Record<string, unknown>,
+                    ) => ({
+                      id: String(item.id),
+                      refundNumber: String(item.refundNumber),
+                      refundDate: String(item.refundDate),
+                      amount: money(item.amount),
+                      status: String(item.status),
+                      reason: String(item.reason),
+                    }),
+                  )
+                : [],
+            }),
+          )
         : [],
 
     recurring:
