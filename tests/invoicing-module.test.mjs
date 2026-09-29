@@ -2867,7 +2867,7 @@ test('Invoicing v2.7 turns recurring invoices into an observable retry-safe bill
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.9\.0['"]/ss,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.9\.0['"]/s,
   );
 
   assert.match(
@@ -3067,7 +3067,7 @@ test('Invoicing v2.8 turns reminders into a staged auditable dunning engine', as
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.9\.0['"]/ss,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.9\.0['"]/s,
   );
 
   assert.match(
