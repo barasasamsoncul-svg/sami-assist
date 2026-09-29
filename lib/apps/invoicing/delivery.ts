@@ -210,21 +210,28 @@ export async function deliverInvoice(
   const invoice =
     result.rows[0];
 
+  const invoiceStatus =
+    String(
+      invoice.status,
+    );
+
   if (
-    [
-      'paid',
-      'cancelled',
-      'void',
-      'written_off',
+    ![
+      'confirmed',
+      'sent',
+      'viewed',
+      'partially_paid',
+      'overdue',
     ].includes(
-      String(
-        invoice.status,
-      ),
+      invoiceStatus,
     )
   ) {
     throw new InvoicingError(
       'INVOICE_STATE_INVALID',
-      'This invoice cannot be sent in its current state.',
+      invoiceStatus ===
+        'draft'
+        ? 'Confirm the invoice before sending it to the customer.'
+        : 'This invoice cannot be sent in its current state.',
     );
   }
 
@@ -594,10 +601,8 @@ export async function deliverInvoice(
           SET
             status =
               CASE
-                WHEN status IN (
-                  'draft',
+                WHEN status =
                   'confirmed'
-                )
                 THEN 'sent'
                 ELSE status
               END,
@@ -655,12 +660,8 @@ export async function deliverInvoice(
     if (
       successful.length >
         0 &&
-      [
-        'draft',
-        'confirmed',
-      ].includes(
-        oldStatus,
-      )
+      oldStatus ===
+        'confirmed'
     ) {
       await client.query(
         `
