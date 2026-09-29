@@ -1066,7 +1066,7 @@ export async function postInvoiceCreditToAccounting(
   }
 
   const lines:
-    JournalLineInput[] =
+    AccountingLine[] =
       [
         {
           account:
