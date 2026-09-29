@@ -66,12 +66,12 @@ test(
 
     assert.equal(
       lock.baselineCommit,
-      '100a0eec3976c978b79fd977fbdf8c3e684444d5',
+      '16e29e2d62cb62b468b33ebf792ee6b038d485b3',
     );
 
     assert.equal(
       lock.baselineBranch,
-      'main',
+      'feat/invoicing-payments-2-6',
     );
 
     for (

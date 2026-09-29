@@ -5,14 +5,14 @@
       "status": "locked",
       "moduleVersion": "2.6.0",
       "referenceStandard": true,
-      "baselineCommit": "100a0eec3976c978b79fd977fbdf8c3e684444d5",
-      "baselineBranch": "main",
+      "baselineCommit": "16e29e2d62cb62b468b33ebf792ee6b038d485b3",
+      "baselineBranch": "feat/invoicing-payments-2-6",
       "lockedAt": "2026-09-29",
-      "policy": "Invoicing 2.6.0 adds customer-level receipts, invoice overpayments and unapplied customer credit, later allocation and unallocation, reconciliation, refund/refund reversal ledgers, idempotency, allocation-aware accounting, paid-invoice reopening, and rolling-deployment-safe legacy direct-AR compatibility. Upgrade migrations preserve the legacy accounting default until 2.6 application code explicitly writes customer_credit. Future changes must keep Invoicing, ERP integration, platform closure, app-surface, core-hardening, TypeScript, migration dry-run and production deployment gates green.",
+      "policy": "Invoicing 2.6.0 adds customer-level receipts, invoice overpayments and unapplied customer credit, later allocation and immutable unallocation, reconciliation with an explicit reasoned unreconciliation gate, refund/refund-reversal ledgers, idempotent receipt posting, granular payment automation events, allocation-aware accounting, paid-invoice reopening, and rolling-deployment-safe legacy direct-AR compatibility. Upgrade migrations preserve historical legacy accounting while 2.6 application code explicitly writes customer_credit for new receipts. Future changes must keep Invoicing, ERP integration, platform closure, app-surface, core-hardening, TypeScript, migration dry-run and production deployment gates green.",
       "protectedTrees": {
-        "lib/apps/invoicing": "484d5c4c49f6575a38a18c3ce09c64af24353155",
-        "app/apps/invoicing": "d752a09d9f97d8055c6d7f7b4b505901ba0d3831",
-        "app/api/apps/invoicing": "6f49edfbaa680be53bbe5f5468b28f18c4e4c342",
+        "lib/apps/invoicing": "22da6394c241b2865f0e68f63bda6228c062db57",
+        "app/apps/invoicing": "35748d0ba898ca8265a8d58e8a614c2440c380d4",
+        "app/api/apps/invoicing": "8bba23f41ae2b5d060353dec1f7523830f1518be",
         "app/api/internal/invoicing": "b2b22efc33d3b038495ccdd343845257789334a1",
         "app/i/[tenantId]/[token]": "756a44ab2c2bc0c64bbb50721f003c19d2bf19ca"
       }
