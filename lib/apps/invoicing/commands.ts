@@ -21,6 +21,8 @@ import type {
 import {
   postInvoiceConfirmationToAccounting,
   postInvoiceCreditToAccounting,
+  postInvoicePaymentAllocationToAccounting,
+  postInvoicePaymentRefundToAccounting,
   postInvoicePaymentToAccounting,
   postInvoiceWriteOffToAccounting,
   reverseInvoicingAccountingEvent,
@@ -4064,6 +4066,7 @@ async function reconcileInvoiceSettlementStatus(
                 ON p.id = a.payment_id
               WHERE a.invoice_id = i.id
                 AND a.company_id = i.company_id
+                AND a.status = 'posted'
                 AND p.status = 'posted'
                 AND p.deleted_at IS NULL
             ),
