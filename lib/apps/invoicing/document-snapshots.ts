@@ -10,6 +10,7 @@ import type {
 import {
   InvoicingError,
   money,
+  recordInvoicingActivity,
 } from '@/lib/apps/invoicing/context';
 
 import {
@@ -945,9 +946,44 @@ export async function createPrimaryInvoiceDocumentSnapshot(
       ],
     );
 
-  return snapshotFromRow(
-    inserted.rows[0],
+  const snapshot =
+    snapshotFromRow(
+      inserted.rows[0],
+    );
+
+  await recordInvoicingActivity(
+    client,
+    {
+      companyId:
+        input.companyId,
+      userId:
+        input.userId,
+      invoiceId:
+        input.invoiceId,
+      type:
+        'invoice.document_snapshot_created',
+      content:
+        'Immutable invoice document snapshot v' +
+        snapshot.versionNo +
+        ' created.',
+      metadata: {
+        snapshotId:
+          snapshot.id,
+        reason:
+          snapshot.reason,
+        pdfSha256:
+          snapshot.pdfSha256,
+        payloadSha256:
+          snapshot.payloadSha256,
+        rendererVersion:
+          snapshot.rendererVersion,
+        pdfSizeBytes:
+          snapshot.pdfSizeBytes,
+      },
+    },
   );
+
+  return snapshot;
 }
 
 
