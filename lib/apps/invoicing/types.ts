@@ -25,6 +25,9 @@ export type InvoicingInvoiceSummary = {
   creditedAmount: number;
   balanceDue: number;
   daysOverdue: number;
+  reminderMode: string;
+  reminderPauseUntil: string | null;
+  reminderPauseReason: string | null;
   createdAt: string | null;
 };
 
@@ -50,6 +53,9 @@ export type InvoicingCustomerSummary = {
   paymentTermsName: string | null;
   dueDays: number | null;
   creditLimit: number | null;
+  reminderMode: string;
+  reminderPauseUntil: string | null;
+  reminderPauseReason: string | null;
   notes: string | null;
   status: string;
   invoiceCount: number;
@@ -128,6 +134,58 @@ export type InvoicingPaymentSummary = {
     status: string;
     reason: string;
   }>;
+};
+
+export type InvoicingDunningStageSummary = {
+  id: string;
+  stageKey: string;
+  name: string;
+  sequenceNo: number;
+  offsetDays: number;
+  severity: string;
+  channels: Array<
+    'email' |
+    'whatsapp' |
+    'sms'
+  >;
+  autoSend: boolean;
+  retryLimit: number;
+  retryDelayMinutes: number;
+  subjectTemplate: string | null;
+  messageTemplate: string | null;
+};
+
+export type InvoicingDunningPolicySummary = {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  isActive: boolean;
+  stages: InvoicingDunningStageSummary[];
+};
+
+export type InvoicingReminderSummary = {
+  id: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  customerName: string;
+  policyId: string | null;
+  stageId: string | null;
+  stageName: string;
+  severity: string;
+  reminderType: string;
+  channel: string;
+  source: string;
+  status: string;
+  attemptCount: number;
+  maxAttempts: number;
+  scheduledFor: string | null;
+  lastAttemptAt: string | null;
+  nextAttemptAt: string | null;
+  sentAt: string | null;
+  completedAt: string | null;
+  failureCode: string | null;
+  failureMessage: string | null;
+  createdAt: string;
 };
 
 export type InvoicingRecurringRunSummary = {
@@ -312,6 +370,8 @@ export type InvoicingWorkspaceData = {
   customers: InvoicingCustomerSummary[];
   payments: InvoicingPaymentSummary[];
   recurring: InvoicingRecurringSummary[];
+  dunningPolicies: InvoicingDunningPolicySummary[];
+  reminders: InvoicingReminderSummary[];
   templates: InvoicingTemplateSummary[];
   paymentTerms: Array<{
     id: string;
