@@ -5928,6 +5928,7 @@ export async function allocateInvoicePayment(
             p.currency,
             p.exchange_rate,
             p.status,
+            p.reconciled_at,
             b.unapplied_amount
           FROM invoicing_payments p
           INNER JOIN invoicing_payment_balances b
@@ -5966,6 +5967,15 @@ export async function allocateInvoicePayment(
       throw new InvoicingError(
         'INVOICE_STATE_INVALID',
         'Only a posted payment can be allocated.',
+      );
+    }
+
+    if (
+      payment.reconciled_at
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Unreconcile this payment before changing its invoice allocations.',
       );
     }
 
@@ -6449,6 +6459,7 @@ export async function reverseInvoicePaymentAllocation(
             a.status,
             a.operation_key,
             p.payment_number,
+            p.reconciled_at,
             i.invoice_number
           FROM invoicing_payment_allocations a
           INNER JOIN invoicing_payments p
@@ -6489,6 +6500,15 @@ export async function reverseInvoicePaymentAllocation(
       throw new InvoicingError(
         'INVOICE_STATE_INVALID',
         'Only a posted allocation can be reversed.',
+      );
+    }
+
+    if (
+      allocation.reconciled_at
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Unreconcile this payment before reversing an allocation.',
       );
     }
 
@@ -6821,6 +6841,221 @@ export async function reconcileInvoicePayment(
 }
 
 
+export async function unreconcileInvoicePayment(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .PAYMENT_RECORD,
+    );
+
+  const paymentId =
+    requireUuid(
+      input.paymentId,
+      'Payment',
+    );
+
+  const reason =
+    cleanText(
+      input.reason,
+      2000,
+    );
+
+  if (
+    !reason
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'An unreconciliation reason is required.',
+    );
+  }
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const result =
+      await client.query(
+        `
+          SELECT
+            payment_number,
+            status,
+            reconciled_at,
+            reconciliation_reference,
+            reconciliation_notes
+          FROM invoicing_payments
+          WHERE id = $1
+            AND company_id = $2
+            AND deleted_at IS NULL
+          FOR UPDATE
+        `,
+        [
+          paymentId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      result.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'PAYMENT_NOT_FOUND',
+        'Payment was not found.',
+      );
+    }
+
+    const payment =
+      result.rows[0];
+
+    if (
+      String(
+        payment.status,
+      ) !==
+        'posted'
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Only a posted payment can be unreconciled.',
+      );
+    }
+
+    if (
+      !payment.reconciled_at
+    ) {
+      await client.query(
+        'COMMIT',
+      );
+
+      return {
+        paymentId,
+        paymentNumber:
+          String(
+            payment.payment_number,
+          ),
+        reconciled:
+          false,
+        reused:
+          true,
+      };
+    }
+
+    await client.query(
+      `
+        UPDATE invoicing_payments
+        SET
+          reconciled_at = NULL,
+          reconciled_by = NULL,
+          reconciliation_reference = NULL,
+          reconciliation_notes = NULL,
+          metadata =
+            COALESCE(
+              metadata,
+              '{}'::jsonb
+            ) ||
+            jsonb_build_object(
+              'lastUnreconciledAt',
+              NOW(),
+              'lastUnreconciledBy',
+              ($3::uuid)::text,
+              'lastUnreconciliationReason',
+              $4::text,
+              'previousReconciliationReference',
+              $5::text,
+              'previousReconciliationNotes',
+              $6::text
+            ),
+          updated_by = $3,
+          updated_at = NOW()
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [
+        paymentId,
+        context.companyId,
+        context.userId,
+        reason,
+        payment.reconciliation_reference ||
+          '',
+        payment.reconciliation_notes ||
+          '',
+      ],
+    );
+
+    await recordMasterDataActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        model:
+          'invoicing.payment',
+        recordId:
+          paymentId,
+        type:
+          'invoicing.payment_unreconciled',
+        content:
+          'Payment ' +
+          String(
+            payment.payment_number,
+          ) +
+          ' unreconciled.',
+        metadata: {
+          reason,
+          previousReconciledAt:
+            payment.reconciled_at
+              ? new Date(
+                  payment.reconciled_at,
+                ).toISOString()
+              : null,
+          previousReference:
+            payment.reconciliation_reference ||
+            null,
+          previousNotes:
+            payment.reconciliation_notes ||
+            null,
+        },
+      },
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return {
+      paymentId,
+      paymentNumber:
+        String(
+          payment.payment_number,
+        ),
+      reconciled:
+        false,
+      reused:
+        false,
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
 export async function refundInvoicePayment(
   input:
     Record<string, unknown>,
@@ -6878,6 +7113,7 @@ export async function refundInvoicePayment(
             p.currency,
             p.exchange_rate,
             p.method,
+            p.reconciled_at,
             b.unapplied_amount
           FROM invoicing_payments p
           INNER JOIN invoicing_payment_balances b
@@ -6916,6 +7152,15 @@ export async function refundInvoicePayment(
       throw new InvoicingError(
         'INVOICE_STATE_INVALID',
         'Only a posted payment can be refunded.',
+      );
+    }
+
+    if (
+      payment.reconciled_at
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Unreconcile this payment before refunding any unapplied amount.',
       );
     }
 
@@ -7134,7 +7379,8 @@ export async function reverseInvoicePaymentRefund(
             r.payment_id,
             r.refund_number,
             r.status,
-            p.payment_number
+            p.payment_number,
+            p.reconciled_at
           FROM invoicing_payment_refunds r
           INNER JOIN invoicing_payments p
             ON p.id = r.payment_id
@@ -7171,6 +7417,15 @@ export async function reverseInvoicePaymentRefund(
       throw new InvoicingError(
         'INVOICE_STATE_INVALID',
         'Only a posted refund can be reversed.',
+      );
+    }
+
+    if (
+      refund.reconciled_at
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Unreconcile the original payment before reversing its refund.',
       );
     }
 
@@ -7366,6 +7621,15 @@ export async function reverseInvoicePayment(
       throw new InvoicingError(
         'INVOICE_STATE_INVALID',
         'Only a posted payment can be reversed.',
+      );
+    }
+
+    if (
+      payment.reconciled_at
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Unreconcile this payment before reversing the receipt.',
       );
     }
 
