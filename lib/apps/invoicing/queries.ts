@@ -2676,6 +2676,23 @@ export async function getInvoicingWorkspaceData():
               7,
               14,
             ],
+      portalEnabled:
+        setting.portal_enabled !==
+        false,
+      portalAccessDays:
+        Number(
+          setting.portal_access_days ||
+          90,
+        ),
+      portalAllowMessages:
+        setting.portal_allow_messages !==
+        false,
+      portalShowPaymentHistory:
+        setting.portal_show_payment_history !==
+        false,
+      portalShowCreditNotes:
+        setting.portal_show_credit_notes !==
+        false,
       paymentInstructions:
         setting.payment_instructions
           ? String(
