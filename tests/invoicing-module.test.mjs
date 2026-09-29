@@ -1878,7 +1878,7 @@ test('Invoicing invoice lifecycle blocks draft delivery and exposes authenticate
 
   assert.match(
     detail,
-    /View PDF/,
+    /Print \/ PDF/,
   );
 
   assert.match(
