@@ -45,6 +45,7 @@ test('Invoicing v2 schema is non-destructive, company-scoped and collision-safe'
       'invoicing_invoice_items',
       'invoicing_payments',
       'invoicing_payment_allocations',
+      'invoicing_payment_refunds',
       'invoicing_credit_notes',
       'invoicing_recurring_templates',
       'invoicing_settings',
@@ -113,7 +114,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
 
   assert.match(
     invoicing,
-    /version:\s*['"]2\.5\.0['"]/,
+    /version:\s*['"]2\.6\.0['"]/,
   );
 
   assert.match(
@@ -738,6 +739,57 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
   assert.match(
     runtimeMigrations,
     /INVOICING_2_4_0_TO_2_5_0/,
+  );
+
+  const paymentMigration =
+    await source(
+      'lib/apps/invoicing/migrations/2.5.0-to-2.6.0.ts',
+    );
+
+  assert.match(
+    paymentMigration,
+    /fromVersion:\s*['"]2\.5\.0['"]/,
+  );
+
+  assert.match(
+    paymentMigration,
+    /toVersion:\s*['"]2\.6\.0['"]/,
+  );
+
+  assert.match(
+    paymentMigration,
+    /accounting_model/,
+  );
+
+  assert.match(
+    paymentMigration,
+    /legacy_direct_ar/,
+  );
+
+  assert.match(
+    paymentMigration,
+    /customer_credit/,
+  );
+
+  assert.match(
+    paymentMigration,
+    /invoicing_payment_refunds/,
+  );
+
+  assert.match(
+    paymentMigration,
+    /invoicing_payment_balances/,
+  );
+
+  assert.match(
+    paymentMigration,
+    /AS \$invoice_payment_lifecycle\$[\s\S]*\$invoice_payment_lifecycle\$;/s,
+    'The 2.6 lifecycle function must use a valid tagged PostgreSQL dollar quote.',
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /INVOICING_2_5_0_TO_2_6_0/,
   );
 
   const accounting =
@@ -2300,5 +2352,261 @@ test('Invoicing v2.5 enforces a real approval and posting lifecycle', async () =
     aiTools,
     /Post or approve invoice/,
     'SaMi AI invoice wording must respect the approval-aware lifecycle.',
+  );
+});
+
+
+test('Invoicing v2.6 separates cash receipts from allocation and reconciliation', async () => {
+  const [
+    schema,
+    migration,
+    commands,
+    accounting,
+    queries,
+    types,
+    workspace,
+    detail,
+    route,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/schema.sql'),
+    source('lib/apps/invoicing/migrations/2.5.0-to-2.6.0.ts'),
+    source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/invoicing/accounting.ts'),
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/types.ts'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('app/apps/invoicing/[invoiceId]/InvoiceDetailClient.tsx'),
+    source('app/api/apps/invoicing/route.ts'),
+  ]);
+
+  for (const field of [
+    'idempotency_key',
+    'accounting_model',
+    'reconciled_at',
+    'reconciliation_reference',
+    'operation_key',
+    'reversal_reason',
+  ]) {
+    assert.match(
+      schema,
+      new RegExp(field),
+      'Payment schema must include ' + field + '.',
+    );
+  }
+
+  assert.match(
+    schema,
+    /accounting_model[\s\S]*legacy_direct_ar[\s\S]*customer_credit/s,
+    'The schema must preserve legacy receipt accounting while defaulting new receipts to customer credit.',
+  );
+
+  assert.match(
+    migration,
+    /ADD COLUMN IF NOT EXISTS accounting_model[\s\S]*DEFAULT 'legacy_direct_ar'/s,
+    'Existing receipts must be marked as legacy direct-AR during migration.',
+  );
+
+  assert.match(
+    migration,
+    /ALTER COLUMN accounting_model SET DEFAULT 'customer_credit'/,
+    'New receipts must use the customer-credit accounting model.',
+  );
+
+  assert.match(
+    schema,
+    /CREATE TABLE IF NOT EXISTS public\.invoicing_payment_refunds/,
+  );
+
+  assert.match(
+    schema,
+    /CREATE OR REPLACE VIEW public\.invoicing_payment_balances/,
+  );
+
+  assert.match(
+    schema,
+    /a\.status = 'posted'[\s\S]*p\.status = 'posted'/s,
+    'Receivable views must ignore reversed payment allocations.',
+  );
+
+  for (const command of [
+    'recordCustomerPayment',
+    'recordInvoicePayment',
+    'allocateInvoicePayment',
+    'reverseInvoicePaymentAllocation',
+    'reconcileInvoicePayment',
+    'refundInvoicePayment',
+    'reverseInvoicePaymentRefund',
+    'reverseInvoicePayment',
+  ]) {
+    assert.match(
+      commands,
+      new RegExp('export async function ' + command),
+      command + ' must be implemented by the Invoicing payment authority.',
+    );
+  }
+
+  assert.match(
+    commands,
+    /Math\.min\([\s\S]*paymentAmount[\s\S]*balance/s,
+    'Invoice-level receipt entry must allocate only the invoice balance and preserve any overpayment.',
+  );
+
+  assert.match(
+    commands,
+    /unappliedAmount[\s\S]*paymentAmount[\s\S]*allocationAmount/s,
+    'Overpayment must remain visible as unapplied customer credit.',
+  );
+
+  assert.match(
+    commands,
+    /Allocation exceeds the unapplied payment balance\./,
+  );
+
+  assert.match(
+    commands,
+    /This payment belongs to a different customer\./,
+    'A customer receipt must never be allocated across customer boundaries.',
+  );
+
+  assert.match(
+    commands,
+    /Payment currency must match the invoice currency\./,
+  );
+
+  assert.match(
+    commands,
+    /This legacy payment allocation must be corrected by reversing the original payment\./,
+    'Legacy direct-AR allocations must not be individually unallocated.',
+  );
+
+  assert.match(
+    commands,
+    /Only the unapplied portion of a payment can be refunded\./,
+  );
+
+  assert.match(
+    commands,
+    /Reverse posted refunds before reversing the original payment\.|Reverse or settle posted refunds before reversing the original payment\./,
+    'Whole-receipt reversal must not bypass posted refunds.',
+  );
+
+  assert.match(
+    accounting,
+    /customer_credit/,
+  );
+
+  assert.match(
+    accounting,
+    /postInvoicePaymentAllocationToAccounting/,
+  );
+
+  assert.match(
+    accounting,
+    /postInvoicePaymentRefundToAccounting/,
+  );
+
+  assert.match(
+    accounting,
+    /Unapplied customer receipt/,
+  );
+
+  assert.match(
+    queries,
+    /allocated_amount/,
+  );
+
+  assert.match(
+    queries,
+    /refunded_amount/,
+  );
+
+  assert.match(
+    queries,
+    /unapplied_amount/,
+  );
+
+  assert.match(
+    queries,
+    /reconciled_at/,
+  );
+
+  assert.match(
+    queries,
+    /JSONB_AGG[\s\S]*invoicing_payment_allocations/s,
+    'Payment register must return allocation detail, not only invoice labels.',
+  );
+
+  assert.match(
+    queries,
+    /JSONB_AGG[\s\S]*invoicing_payment_refunds/s,
+    'Payment register must return refund detail.',
+  );
+
+  assert.match(
+    types,
+    /allocatedAmount: number;/,
+  );
+
+  assert.match(
+    types,
+    /unappliedAmount: number;/,
+  );
+
+  assert.match(
+    types,
+    /reconciledAt: string \| null;/,
+  );
+
+  for (const action of [
+    'record_customer_payment',
+    'allocate_payment',
+    'reverse_payment_allocation',
+    'reconcile_payment',
+    'refund_payment',
+    'reverse_payment_refund',
+    'reverse_payment',
+  ]) {
+    assert.match(
+      route,
+      new RegExp("case '" + action + "'"),
+      action + ' must be exposed through the authoritative Invoicing API route.',
+    );
+  }
+
+  assert.match(
+    workspace,
+    /Receive customer payment/,
+  );
+
+  assert.match(
+    workspace,
+    /Allocate balance/,
+  );
+
+  assert.match(
+    workspace,
+    /Refund unapplied money/,
+  );
+
+  assert.match(
+    workspace,
+    /Reconcile receipt/,
+  );
+
+  assert.match(
+    workspace,
+    /Reverse entire receipt/,
+  );
+
+  assert.match(
+    detail,
+    /reverse_payment_allocation/,
+    'Invoice detail may reverse its allocation but must not silently reverse a multi-invoice receipt.',
+  );
+
+  assert.match(
+    detail,
+    /excess as unapplied customer credit/,
+    'Invoice-level overpayments must be explained to the operator.',
   );
 });
