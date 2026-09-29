@@ -30,14 +30,18 @@ import WorkspaceTutorial, {
 import {
   AlertTriangle,
   ArrowRight,
+  ArrowUpDown,
   BadgeCheck,
+  BellRing,
   BarChart3,
   CalendarClock,
   BookOpenCheck,
   ChevronDown,
   CircleDollarSign,
+  CopyPlus,
   CreditCard,
   Download,
+  Filter,
   LayoutDashboard,
   Package,
   Plus,
@@ -48,6 +52,7 @@ import {
   Send,
   Settings2,
   Users,
+  X,
 } from 'lucide-react';
 
 import type {
@@ -3077,25 +3082,287 @@ function Invoices({
     ) =>
       Promise<boolean>;
 }) {
+  const [
+    statusFilter,
+    setStatusFilter,
+  ] =
+    useState(
+      'all',
+    );
+
+  const [
+    receivableFilter,
+    setReceivableFilter,
+  ] =
+    useState(
+      'all',
+    );
+
+  const [
+    sortBy,
+    setSortBy,
+  ] =
+    useState(
+      'newest',
+    );
+
+  const displayInvoices =
+    useMemo(
+      () => {
+        const next =
+          invoices.filter(
+            invoice => {
+              if (
+                statusFilter !==
+                  'all' &&
+                invoice.status !==
+                  statusFilter
+              ) {
+                return false;
+              }
+
+              if (
+                receivableFilter ===
+                  'open' &&
+                invoice.balanceDue <=
+                  0
+              ) {
+                return false;
+              }
+
+              if (
+                receivableFilter ===
+                  'overdue' &&
+                !(
+                  invoice.balanceDue >
+                    0 &&
+                  (
+                    invoice
+                      .daysOverdue >
+                      0 ||
+                    invoice.status ===
+                      'overdue'
+                  )
+                )
+              ) {
+                return false;
+              }
+
+              if (
+                receivableFilter ===
+                  'settled' &&
+                invoice.balanceDue >
+                  0
+              ) {
+                return false;
+              }
+
+              return true;
+            },
+          );
+
+        next.sort(
+          (
+            left,
+            right,
+          ) => {
+            if (
+              sortBy ===
+                'oldest'
+            ) {
+              return (
+                (
+                  left.createdAt ||
+                  left.invoiceDate
+                )
+                  .localeCompare(
+                    right.createdAt ||
+                    right.invoiceDate,
+                  )
+              );
+            }
+
+            if (
+              sortBy ===
+                'due'
+            ) {
+              return left.dueDate
+                .localeCompare(
+                  right.dueDate,
+                );
+            }
+
+            if (
+              sortBy ===
+                'balance'
+            ) {
+              return (
+                right.balanceDue -
+                left.balanceDue
+              );
+            }
+
+            if (
+              sortBy ===
+                'total'
+            ) {
+              return (
+                right.totalAmount -
+                left.totalAmount
+              );
+            }
+
+            if (
+              sortBy ===
+                'customer'
+            ) {
+              return left.customerName
+                .localeCompare(
+                  right.customerName,
+                );
+            }
+
+            return (
+              right.createdAt ||
+              right.invoiceDate
+            )
+              .localeCompare(
+                left.createdAt ||
+                left.invoiceDate,
+              );
+          },
+        );
+
+        return next;
+      },
+      [
+        invoices,
+        receivableFilter,
+        sortBy,
+        statusFilter,
+      ],
+    );
+
+  const lifecycle = {
+    all:
+      data.invoices.length,
+    draft:
+      data.invoices.filter(
+        invoice =>
+          invoice.status ===
+            'draft',
+      ).length,
+    open:
+      data.invoices.filter(
+        invoice =>
+          invoice.balanceDue >
+            0 &&
+          ![
+            'cancelled',
+            'void',
+            'written_off',
+          ].includes(
+            invoice.status,
+          ),
+      ).length,
+    overdue:
+      data.invoices.filter(
+        invoice =>
+          invoice.balanceDue >
+            0 &&
+          (
+            invoice.daysOverdue >
+              0 ||
+            invoice.status ===
+              'overdue'
+          ),
+      ).length,
+    paid:
+      data.invoices.filter(
+        invoice =>
+          invoice.status ===
+            'paid',
+      ).length,
+  };
+
+  const visibleTotal =
+    displayInvoices.reduce(
+      (
+        total,
+        invoice,
+      ) =>
+        total +
+        invoice.totalAmount,
+      0,
+    );
+
+  const visibleBalance =
+    displayInvoices.reduce(
+      (
+        total,
+        invoice,
+      ) =>
+        total +
+        invoice.balanceDue,
+      0,
+    );
+
+  const hasFilters =
+    Boolean(
+      search.trim(),
+    ) ||
+    statusFilter !==
+      'all' ||
+    receivableFilter !==
+      'all' ||
+    sortBy !==
+      'newest';
+
+  function clearFilters() {
+    setSearch(
+      '',
+    );
+
+    setStatusFilter(
+      'all',
+    );
+
+    setReceivableFilter(
+      'all',
+    );
+
+    setSortBy(
+      'newest',
+    );
+  }
+
   return (
     <div className="space-y-4">
       {
         data.capabilities
           .canCreate &&
         (
-          <details className="sami-surface rounded-[24px]">
+          <details className="sami-surface overflow-hidden rounded-[24px] border border-[var(--sami-border)]">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 sm:p-5">
               <div>
-                <p className="text-sm font-black">
-                  Create invoice
-                </p>
+                <div className="flex items-center gap-2">
+                  <div className="rounded-xl bg-blue-500/10 p-2 text-blue-700 dark:text-blue-300">
+                    <Plus className="h-4 w-4" />
+                  </div>
 
-                <p className="mt-1 text-xs text-slate-500">
-                  Choose a customer and real products/services, then review live totals before saving or confirming.
+                  <p className="text-sm font-black">
+                    Create invoice
+                  </p>
+                </div>
+
+                <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500">
+                  Start a new draft using a real customer and catalog items, review the totals, then save or confirm according to your permissions.
                 </p>
               </div>
 
-              <Plus className="h-5 w-5 text-blue-600" />
+              <span className="rounded-full border border-[var(--sami-border)] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">
+                New
+              </span>
             </summary>
 
             <div className="border-t border-[var(--sami-border)] p-3 sm:p-5">
@@ -3115,71 +3382,404 @@ function Invoices({
         )
       }
 
-      <div className="sami-surface overflow-hidden rounded-[24px]">
-        <div className="flex flex-col gap-3 border-b border-[var(--sami-border)] p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-black">
-              Invoices
-            </p>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {
+          [
+            {
+              key:
+                'all',
+              label:
+                'All invoices',
+              count:
+                lifecycle.all,
+              action:
+                () => {
+                  setStatusFilter(
+                    'all',
+                  );
+                  setReceivableFilter(
+                    'all',
+                  );
+                },
+            },
+            {
+              key:
+                'draft',
+              label:
+                'Drafts',
+              count:
+                lifecycle.draft,
+              action:
+                () => {
+                  setStatusFilter(
+                    'draft',
+                  );
+                  setReceivableFilter(
+                    'all',
+                  );
+                },
+            },
+            {
+              key:
+                'open',
+              label:
+                'Open',
+              count:
+                lifecycle.open,
+              action:
+                () => {
+                  setStatusFilter(
+                    'all',
+                  );
+                  setReceivableFilter(
+                    'open',
+                  );
+                },
+            },
+            {
+              key:
+                'overdue',
+              label:
+                'Overdue',
+              count:
+                lifecycle.overdue,
+              action:
+                () => {
+                  setStatusFilter(
+                    'all',
+                  );
+                  setReceivableFilter(
+                    'overdue',
+                  );
+                },
+            },
+            {
+              key:
+                'paid',
+              label:
+                'Paid',
+              count:
+                lifecycle.paid,
+              action:
+                () => {
+                  setStatusFilter(
+                    'paid',
+                  );
+                  setReceivableFilter(
+                    'all',
+                  );
+                },
+            },
+          ].map(
+            item => (
+              <button
+                key={
+                  item.key
+                }
+                type="button"
+                onClick={
+                  item.action
+                }
+                className={[
+                  'sami-surface rounded-[18px] border p-3 text-left transition hover:-translate-y-0.5 hover:shadow-sm',
+                  (
+                    item.key ===
+                      'draft' &&
+                    statusFilter ===
+                      'draft'
+                  ) ||
+                  (
+                    item.key ===
+                      'paid' &&
+                    statusFilter ===
+                      'paid'
+                  ) ||
+                  (
+                    item.key ===
+                      'open' &&
+                    receivableFilter ===
+                      'open'
+                  ) ||
+                  (
+                    item.key ===
+                      'overdue' &&
+                    receivableFilter ===
+                      'overdue'
+                  ) ||
+                  (
+                    item.key ===
+                      'all' &&
+                    statusFilter ===
+                      'all' &&
+                    receivableFilter ===
+                      'all'
+                  )
+                    ? 'border-blue-500/40 ring-2 ring-blue-500/10'
+                    : 'border-[var(--sami-border)]',
+                ].join(
+                  ' ',
+                )}
+              >
+                <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  {
+                    item.label
+                  }
+                </p>
 
-            <p className="mt-1 text-xs text-slate-500">
-              {
-                data.invoices
-                  .length
-              } records in the current company
-            </p>
+                <p className="mt-1.5 text-xl font-black tracking-[-0.04em]">
+                  {
+                    item.count
+                  }
+                </p>
+              </button>
+            ),
+          )
+        }
+      </div>
+
+      <section className="sami-surface overflow-hidden rounded-[24px] border border-[var(--sami-border)]">
+        <div className="border-b border-[var(--sami-border)] p-4 sm:p-5">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+            <div>
+              <p className="text-sm font-black text-slate-950 dark:text-white">
+                Invoice register
+              </p>
+
+              <p className="mt-1 text-xs text-slate-500">
+                {
+                  displayInvoices.length
+                } shown of {
+                  data.invoices.length
+                } · {
+                  formatMoney(
+                    visibleBalance,
+                    data.company
+                      .currency,
+                  )
+                } outstanding in this view
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-right sm:flex sm:items-center">
+              <div className="rounded-xl bg-[var(--sami-surface-soft)] px-3 py-2">
+                <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-400">
+                  Visible total
+                </p>
+                <p className="mt-0.5 text-xs font-black">
+                  {
+                    formatMoney(
+                      visibleTotal,
+                      data.company
+                        .currency,
+                    )
+                  }
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-[var(--sami-surface-soft)] px-3 py-2">
+                <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-400">
+                  Visible balance
+                </p>
+                <p className="mt-0.5 text-xs font-black text-amber-700 dark:text-amber-300">
+                  {
+                    formatMoney(
+                      visibleBalance,
+                      data.company
+                        .currency,
+                    )
+                  }
+                </p>
+              </div>
+            </div>
           </div>
 
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-            <button
-              type="button"
-              disabled={
-                invoices.length ===
-                  0
-              }
-              onClick={
-                () =>
-                  exportInvoiceRegister(
-                    invoices,
-                  )
-              }
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black disabled:opacity-40"
-            >
-              <Download className="h-4 w-4" />
-              Export CSV
-            </button>
-
-            <div className="relative w-full sm:w-72">
+          <div className="mt-4 grid gap-2 lg:grid-cols-[minmax(250px,1fr)_170px_170px_180px_auto]">
+            <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
-            <input
+              <input
+                value={
+                  search
+                }
+                onChange={
+                  event =>
+                    setSearch(
+                      event
+                        .target
+                        .value,
+                    )
+                }
+                placeholder="Search invoice, customer or status"
+                className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent pl-9 pr-3 text-sm outline-none transition focus:border-blue-500"
+              />
+            </div>
+
+            <label className="relative">
+              <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+              <select
+                value={
+                  statusFilter
+                }
+                onChange={
+                  event =>
+                    setStatusFilter(
+                      event
+                        .target
+                        .value,
+                    )
+                }
+                className="h-11 w-full appearance-none rounded-xl border border-[var(--sami-border)] bg-transparent pl-9 pr-3 text-xs font-bold"
+              >
+                <option value="all">
+                  All statuses
+                </option>
+                <option value="draft">
+                  Draft
+                </option>
+                <option value="confirmed">
+                  Confirmed
+                </option>
+                <option value="sent">
+                  Sent
+                </option>
+                <option value="viewed">
+                  Viewed
+                </option>
+                <option value="partially_paid">
+                  Partially paid
+                </option>
+                <option value="overdue">
+                  Overdue
+                </option>
+                <option value="paid">
+                  Paid
+                </option>
+                <option value="cancelled">
+                  Cancelled
+                </option>
+                <option value="void">
+                  Void
+                </option>
+                <option value="written_off">
+                  Written off
+                </option>
+              </select>
+            </label>
+
+            <select
               value={
-                search
+                receivableFilter
               }
               onChange={
                 event =>
-                  setSearch(
+                  setReceivableFilter(
                     event
                       .target
                       .value,
                   )
               }
-              placeholder="Search invoice or customer"
-              className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent pl-9 pr-3 text-sm"
-              />
+              className="h-11 rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-xs font-bold"
+            >
+              <option value="all">
+                All balances
+              </option>
+              <option value="open">
+                Open balance
+              </option>
+              <option value="overdue">
+                Overdue balance
+              </option>
+              <option value="settled">
+                Settled / zero balance
+              </option>
+            </select>
+
+            <label className="relative">
+              <ArrowUpDown className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+              <select
+                value={
+                  sortBy
+                }
+                onChange={
+                  event =>
+                    setSortBy(
+                      event
+                        .target
+                        .value,
+                    )
+                }
+                className="h-11 w-full appearance-none rounded-xl border border-[var(--sami-border)] bg-transparent pl-9 pr-3 text-xs font-bold"
+              >
+                <option value="newest">
+                  Newest first
+                </option>
+                <option value="oldest">
+                  Oldest first
+                </option>
+                <option value="due">
+                  Due date
+                </option>
+                <option value="balance">
+                  Highest balance
+                </option>
+                <option value="total">
+                  Highest total
+                </option>
+                <option value="customer">
+                  Customer A–Z
+                </option>
+              </select>
+            </label>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={
+                  displayInvoices.length ===
+                    0
+                }
+                onClick={
+                  () =>
+                    exportInvoiceRegister(
+                      displayInvoices,
+                    )
+                }
+                className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black disabled:opacity-40"
+              >
+                <Download className="h-4 w-4" />
+                CSV
+              </button>
+
+              {
+                hasFilters &&
+                (
+                  <button
+                    type="button"
+                    onClick={
+                      clearFilters
+                    }
+                    title="Clear filters"
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--sami-border)] text-slate-500 transition hover:bg-[var(--sami-surface-soft)]"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )
+              }
             </div>
           </div>
         </div>
 
         <div className="space-y-3 p-3 sm:hidden">
           {
-            invoices.map(
+            displayInvoices.map(
               invoice => (
                 <article
                   key={
                     invoice.id
                   }
-                  className="rounded-2xl border border-[var(--sami-border)] p-3"
+                  className="rounded-[20px] border border-[var(--sami-border)] bg-[var(--sami-surface)] p-3.5"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -3202,13 +3802,6 @@ function Invoices({
                             .customerName
                         }
                       </p>
-
-                      <p className="mt-1 text-[11px] text-slate-500">
-                        Due {
-                          invoice
-                            .dueDate
-                        }
-                      </p>
                     </div>
 
                     <StatusPill
@@ -3219,13 +3812,13 @@ function Invoices({
                     />
                   </div>
 
-                  <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-3 dark:bg-white/[0.03]">
+                  <div className="mt-3 grid grid-cols-3 gap-2 rounded-2xl bg-[var(--sami-surface-soft)] p-3">
                     <div>
-                      <p className="text-[9px] font-black uppercase tracking-wide text-slate-400">
+                      <p className="text-[8px] font-black uppercase tracking-wide text-slate-400">
                         Total
                       </p>
 
-                      <p className="mt-1 text-sm font-black">
+                      <p className="mt-1 truncate text-xs font-black">
                         {
                           formatMoney(
                             invoice
@@ -3238,11 +3831,28 @@ function Invoices({
                     </div>
 
                     <div>
-                      <p className="text-[9px] font-black uppercase tracking-wide text-slate-400">
+                      <p className="text-[8px] font-black uppercase tracking-wide text-slate-400">
+                        Paid
+                      </p>
+
+                      <p className="mt-1 truncate text-xs font-black text-emerald-700 dark:text-emerald-300">
+                        {
+                          formatMoney(
+                            invoice
+                              .paidAmount,
+                            invoice
+                              .currency,
+                          )
+                        }
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-[8px] font-black uppercase tracking-wide text-slate-400">
                         Balance
                       </p>
 
-                      <p className="mt-1 text-sm font-black">
+                      <p className="mt-1 truncate text-xs font-black text-amber-700 dark:text-amber-300">
                         {
                           formatMoney(
                             invoice
@@ -3255,36 +3865,68 @@ function Invoices({
                     </div>
                   </div>
 
-                  <div className="mt-3 flex items-center justify-between gap-2">
-                    {
-                      invoice
-                        .daysOverdue >
-                        0 &&
-                      invoice
-                        .balanceDue >
-                        0
-                        ? (
-                          <p className="text-[10px] font-bold text-red-600">
-                            {
-                              invoice
-                                .daysOverdue
-                            } days overdue
-                          </p>
-                        )
-                        : (
-                          <span />
-                        )
-                    }
+                  <div className="mt-3 flex items-end justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400">
+                        Issued {
+                          invoice
+                            .invoiceDate
+                        }
+                      </p>
 
-                    <Link
-                      href={
-                        '/apps/invoicing/' +
-                        invoice.id
-                      }
-                      className="inline-flex h-10 items-center justify-center rounded-xl bg-blue-600 px-3 text-xs font-black text-white"
-                    >
-                      Open invoice
-                    </Link>
+                      <p
+                        className={[
+                          'mt-1 text-[10px] font-bold',
+                          invoice.daysOverdue >
+                            0 &&
+                          invoice.balanceDue >
+                            0
+                            ? 'text-rose-600 dark:text-rose-300'
+                            : 'text-slate-500',
+                        ].join(
+                          ' ',
+                        )}
+                      >
+                        Due {
+                          invoice
+                            .dueDate
+                        }{
+                          invoice.daysOverdue >
+                            0 &&
+                          invoice.balanceDue >
+                            0
+                            ? ' · ' +
+                              invoice.daysOverdue +
+                              'd overdue'
+                            : ''
+                        }
+                      </p>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <a
+                        href={
+                          '/api/apps/invoicing/' +
+                          invoice.id +
+                          '/pdf'
+                        }
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex h-10 items-center justify-center rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black"
+                      >
+                        PDF
+                      </a>
+
+                      <Link
+                        href={
+                          '/apps/invoicing/' +
+                          invoice.id
+                        }
+                        className="inline-flex h-10 items-center justify-center rounded-xl bg-blue-600 px-3 text-xs font-black text-white"
+                      >
+                        Open
+                      </Link>
+                    </div>
                   </div>
                 </article>
               ),
@@ -3292,19 +3934,25 @@ function Invoices({
           }
 
           {
-            invoices.length ===
+            displayInvoices.length ===
               0 &&
             (
-              <p className="py-8 text-center text-sm text-slate-500">
-                No invoices match this view.
-              </p>
+              <div className="py-10 text-center">
+                <Receipt className="mx-auto h-8 w-8 text-slate-300" />
+                <p className="mt-3 text-sm font-black">
+                  No invoices match these filters
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Change the search, status or balance filter to widen the register.
+                </p>
+              </div>
             )
           }
         </div>
 
         <div className="hidden overflow-x-auto sm:block">
-          <table className="w-full min-w-[1080px] text-left">
-            <thead className="bg-slate-50/70 text-[10px] uppercase tracking-[0.1em] text-slate-400 dark:bg-white/[0.02]">
+          <table className="w-full min-w-[1180px] text-left">
+            <thead className="bg-[var(--sami-surface-soft)] text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
               <tr>
                 <th className="px-4 py-3">
                   Invoice
@@ -3319,11 +3967,15 @@ function Invoices({
                 </th>
 
                 <th className="px-4 py-3">
-                  Due
+                  Dates
                 </th>
 
                 <th className="px-4 py-3 text-right">
                   Total
+                </th>
+
+                <th className="px-4 py-3 text-right">
+                  Paid / credits
                 </th>
 
                 <th className="px-4 py-3 text-right">
@@ -3336,17 +3988,17 @@ function Invoices({
               </tr>
             </thead>
 
-            <tbody>
+            <tbody className="divide-y divide-[var(--sami-border)]">
               {
-                invoices.map(
+                displayInvoices.map(
                   invoice => (
                     <tr
                       key={
                         invoice.id
                       }
-                      className="border-t border-[var(--sami-border)] text-sm"
+                      className="text-sm transition hover:bg-[var(--sami-surface-soft)]"
                     >
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3.5">
                         <Link
                           href={
                             '/apps/invoicing/' +
@@ -3360,32 +4012,32 @@ function Invoices({
                           }
                         </Link>
 
-                        <p className="mt-1 text-[11px] text-slate-500">
+                        <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">
                           {
                             invoice
-                              .invoiceDate
+                              .currency
                           }
                         </p>
                       </td>
 
-                      <td className="px-4 py-3">
-                        <p className="font-bold">
+                      <td className="max-w-[230px] px-4 py-3.5">
+                        <p className="truncate font-bold">
                           {
                             invoice
                               .customerName
                           }
                         </p>
 
-                        <p className="mt-1 text-[11px] text-slate-500">
+                        <p className="mt-1 truncate text-[11px] text-slate-500">
                           {
                             invoice
                               .customerEmail ||
-                            'No email'
+                            'No email on billing snapshot'
                           }
                         </p>
                       </td>
 
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3.5">
                         <StatusPill
                           value={
                             invoice
@@ -3394,33 +4046,44 @@ function Invoices({
                         />
                       </td>
 
-                      <td className="px-4 py-3">
-                        <p className="font-semibold">
-                          {
+                      <td className="px-4 py-3.5">
+                        <p className="text-xs font-bold">
+                          Issued {
                             invoice
-                              .dueDate
+                              .invoiceDate
                           }
                         </p>
 
-                        {
-                          invoice
-                            .daysOverdue >
-                            0 &&
-                          invoice
-                            .balanceDue >
-                            0 &&
-                          (
-                            <p className="mt-1 text-[10px] font-bold text-red-600">
-                              {
-                                invoice
-                                  .daysOverdue
-                              } days overdue
-                            </p>
-                          )
-                        }
+                        <p
+                          className={[
+                            'mt-1 text-[10px] font-bold',
+                            invoice.daysOverdue >
+                              0 &&
+                            invoice.balanceDue >
+                              0
+                              ? 'text-rose-600 dark:text-rose-300'
+                              : 'text-slate-400',
+                          ].join(
+                            ' ',
+                          )}
+                        >
+                          Due {
+                            invoice
+                              .dueDate
+                          }{
+                            invoice.daysOverdue >
+                              0 &&
+                            invoice.balanceDue >
+                              0
+                              ? ' · ' +
+                                invoice.daysOverdue +
+                                'd overdue'
+                              : ''
+                          }
+                        </p>
                       </td>
 
-                      <td className="px-4 py-3 text-right font-black">
+                      <td className="px-4 py-3.5 text-right font-black">
                         {
                           formatMoney(
                             invoice
@@ -3431,8 +4094,48 @@ function Invoices({
                         }
                       </td>
 
-                      <td className="px-4 py-3 text-right">
-                        <p className="font-black">
+                      <td className="px-4 py-3.5 text-right">
+                        <p className="text-xs font-black text-emerald-700 dark:text-emerald-300">
+                          {
+                            formatMoney(
+                              invoice
+                                .paidAmount,
+                              invoice
+                                .currency,
+                            )
+                          }
+                        </p>
+
+                        {
+                          invoice.creditedAmount >
+                            0 &&
+                          (
+                            <p className="mt-1 text-[10px] font-bold text-violet-600 dark:text-violet-300">
+                              + {
+                                formatMoney(
+                                  invoice
+                                    .creditedAmount,
+                                  invoice
+                                    .currency,
+                                )
+                              } credit
+                            </p>
+                          )
+                        }
+                      </td>
+
+                      <td className="px-4 py-3.5 text-right">
+                        <p
+                          className={[
+                            'font-black',
+                            invoice.balanceDue >
+                              0
+                              ? 'text-amber-700 dark:text-amber-300'
+                              : 'text-emerald-700 dark:text-emerald-300',
+                          ].join(
+                            ' ',
+                          )}
+                        >
                           {
                             formatMoney(
                               invoice
@@ -3444,7 +4147,7 @@ function Invoices({
                         </p>
                       </td>
 
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3.5">
                         <div className="flex items-center gap-2">
                           <Link
                             href={
@@ -3455,6 +4158,19 @@ function Invoices({
                           >
                             Open
                           </Link>
+
+                          <a
+                            href={
+                              '/api/apps/invoicing/' +
+                              invoice.id +
+                              '/pdf'
+                            }
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-xl border border-[var(--sami-border)] px-2.5 py-2 text-xs font-black"
+                          >
+                            PDF
+                          </a>
 
                           <InvoiceActions
                             invoice={
@@ -3478,17 +4194,23 @@ function Invoices({
               }
 
               {
-                invoices.length ===
+                displayInvoices.length ===
                   0 &&
                 (
                   <tr>
                     <td
                       colSpan={
-                        7
+                        8
                       }
-                      className="px-4 py-10 text-center text-sm text-slate-500"
+                      className="px-4 py-12 text-center"
                     >
-                      No invoices match this view.
+                      <Receipt className="mx-auto h-8 w-8 text-slate-300" />
+                      <p className="mt-3 text-sm font-black">
+                        No invoices match these filters
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Clear the filters to return to the full register.
+                      </p>
                     </td>
                   </tr>
                 )
@@ -3496,11 +4218,10 @@ function Invoices({
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
     </div>
   );
 }
-
 
 function InvoiceActions({
   invoice,
