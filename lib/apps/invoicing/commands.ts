@@ -5038,6 +5038,96 @@ export async function recordInvoicePayment(
         255,
       );
 
+    const idempotencyKey =
+      cleanText(
+        input.idempotencyKey,
+        160,
+      ) ||
+      null;
+
+    if (
+      idempotencyKey
+    ) {
+      await lockMasterIdentity(
+        client,
+        [
+          'invoicing-payment-idempotency',
+          context.companyId,
+          idempotencyKey,
+        ].join(
+          ':',
+        ),
+      );
+
+      const previous =
+        await client.query(
+          `
+            SELECT
+              p.id,
+              p.payment_number,
+              p.status,
+              b.allocated_amount,
+              b.refunded_amount,
+              b.unapplied_amount
+            FROM invoicing_payments p
+            INNER JOIN invoicing_payment_balances b
+              ON b.payment_id = p.id
+             AND b.company_id = p.company_id
+            WHERE p.company_id = $1
+              AND p.idempotency_key = $2
+              AND p.deleted_at IS NULL
+            LIMIT 1
+          `,
+          [
+            context.companyId,
+            idempotencyKey,
+          ],
+        );
+
+      if (
+        previous.rows.length >
+          0
+      ) {
+        await client.query(
+          'COMMIT',
+        );
+
+        return {
+          paymentId:
+            String(
+              previous.rows[0].id,
+            ),
+          paymentNumber:
+            String(
+              previous.rows[0]
+                .payment_number,
+            ),
+          invoiceId,
+          status:
+            String(
+              previous.rows[0].status,
+            ),
+          allocatedAmount:
+            money(
+              previous.rows[0]
+                .allocated_amount,
+            ),
+          refundedAmount:
+            money(
+              previous.rows[0]
+                .refunded_amount,
+            ),
+          unappliedAmount:
+            money(
+              previous.rows[0]
+                .unapplied_amount,
+            ),
+          reused:
+            true,
+        };
+      }
+    }
+
     if (
       paymentReference
     ) {
@@ -5137,6 +5227,7 @@ export async function recordInvoicePayment(
             exchange_rate,
             method,
             reference,
+            idempotency_key,
             accounting_model,
             status,
             notes,
@@ -5144,10 +5235,10 @@ export async function recordInvoicePayment(
             updated_by
           )
           VALUES (
-            $1,$2,$3,$4,$5,$6,$7,$8,$9,
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
             'customer_credit',
             'posted',
-            $10,$11,$11
+            $11,$12,$12
           )
           RETURNING
             id
@@ -5171,6 +5262,7 @@ export async function recordInvoicePayment(
           paymentMethod,
           paymentReference ||
             null,
+          idempotencyKey,
           nullableText(
             input.notes,
             3000,
@@ -5426,6 +5518,8 @@ export async function recordInvoicePayment(
       allocatedAmount:
         allocationAmount,
       unappliedAmount,
+      reused:
+        false,
     };
   } catch (
     error
