@@ -19,12 +19,8 @@ import {
 } from '@/lib/services/whatsapp';
 
 import {
-  getPublicInvoice,
-} from '@/lib/apps/invoicing/public';
-
-import {
-  renderInvoicePdf,
-} from '@/lib/apps/invoicing/pdf';
+  ensurePrimaryInvoiceDocumentSnapshot,
+} from '@/lib/apps/invoicing/document-snapshots';
 
 import {
   InvoicingError,
@@ -295,21 +291,30 @@ export async function deliverInvoice(
   let pdf:
     Buffer;
 
+  let documentSnapshotId:
+    string;
+
   try {
-    const publicInvoice =
-      await getPublicInvoice(
-        input.tenantId,
-        token,
+    const snapshot =
+      await ensurePrimaryInvoiceDocumentSnapshot(
+        input.pool,
         {
-          markViewed:
-            false,
+          companyId:
+            input.companyId,
+          invoiceId:
+            input.invoiceId,
+          userId:
+            input.userId,
+          reason:
+            'delivery',
         },
       );
 
     pdf =
-      renderInvoicePdf(
-        publicInvoice,
-      );
+      snapshot.pdf;
+
+    documentSnapshotId =
+      snapshot.id;
   } catch (
     error
   ) {
@@ -702,12 +707,13 @@ export async function deliverInvoice(
             destination_fingerprint,
             provider,
             provider_message_id,
+            document_snapshot_id,
             status,
             error_code,
             created_by
           )
           VALUES (
-            $1,$2,$3,$4,$5,$6,$7,$8,$9
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10
           )
         `,
         [
@@ -719,6 +725,7 @@ export async function deliverInvoice(
           null,
           delivery.messageId ||
           null,
+          documentSnapshotId,
           delivery.success
             ? 'sent'
             : 'failed',
