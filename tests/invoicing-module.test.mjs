@@ -2237,4 +2237,62 @@ test('Invoicing v2.5 enforces a real approval and posting lifecycle', async () =
     /invoicing_customer_balances[\s\S]*'draft','pending_approval','rejected','cancelled','void'/s,
     'Customer balances must exclude documents that have never been posted.',
   );
+
+  const [
+    queries,
+    worker,
+    aiTools,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/worker.ts'),
+    source('lib/apps/invoicing/ai-tools.ts'),
+  ]);
+
+  assert.match(
+    queries,
+    /AS invoiced_total[\s\S]*pending_approval|pending_approval[\s\S]*AS invoiced_total/s,
+    'Dashboard invoiced totals must exclude unposted approval documents.',
+  );
+
+  assert.match(
+    queries,
+    /AS paid_total[\s\S]*pending_approval|pending_approval[\s\S]*AS paid_total/s,
+    'Dashboard collected totals must exclude unposted approval documents.',
+  );
+
+  assert.match(
+    worker,
+    /s\.require_approval/,
+    'Recurring generation must read the company approval policy.',
+  );
+
+  assert.match(
+    worker,
+    /recurringInvoiceStatus[\s\S]*pending_approval[\s\S]*confirmed/s,
+    'Recurring invoices must enter approval instead of posting automatically when approval is enabled.',
+  );
+
+  assert.match(
+    worker,
+    /postInvoiceConfirmationToAccounting/,
+    'A recurring invoice that is posted must use the normal accounting posting bridge.',
+  );
+
+  assert.match(
+    worker,
+    /recurringInvoiceStatus ===[\s\S]*'confirmed'[\s\S]*autoSend|autoSend:[\s\S]*recurringInvoiceStatus[\s\S]*'confirmed'/s,
+    'Recurring auto-delivery must not send documents still awaiting approval.',
+  );
+
+  assert.match(
+    worker,
+    /'draft',[\s\S]*'pending_approval',[\s\S]*'rejected',[\s\S]*'paid'/s,
+    'Reminder jobs must explicitly exclude unposted approval states.',
+  );
+
+  assert.match(
+    aiTools,
+    /Post or approve invoice/,
+    'SaMi AI invoice wording must respect the approval-aware lifecycle.',
+  );
 });
