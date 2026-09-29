@@ -3583,9 +3583,29 @@ export async function getInvoicingInvoiceDetail(
             String(
               credit.status,
             ),
+          subtotal:
+            money(
+              credit.subtotal,
+            ),
+          taxTotal:
+            money(
+              credit.tax_total,
+            ),
           amount:
             money(
               credit.total_amount,
+            ),
+          appliedAmount:
+            money(
+              credit.applied_amount,
+            ),
+          refundedAmount:
+            money(
+              credit.refunded_amount,
+            ),
+          availableAmount:
+            money(
+              credit.available_amount,
             ),
           reason:
             String(
