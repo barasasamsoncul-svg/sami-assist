@@ -3,15 +3,15 @@
   "locks": {
     "invoicing": {
       "status": "locked",
-      "moduleVersion": "2.4.0",
+      "moduleVersion": "2.5.0",
       "referenceStandard": true,
-      "baselineCommit": "3836e3891db03553206570a9b909f0dc970633d8",
+      "baselineCommit": "0342069e3e06be372c9af0b0e763ef9f90adf53e",
       "baselineBranch": "main",
       "lockedAt": "2026-09-29",
-      "policy": "Invoicing 2.4.0 deliberately deepens the production invoice register, lifecycle protections, authenticated PDF workflow, and document snapshots for service/supply date and ship-to address. Future changes must keep the Invoicing regression suite, ERP integration, platform closure, app-surface, core-hardening, TypeScript and production deployment gates green.",
+      "policy": "Invoicing 2.5.0 adds an explicit approval/posting lifecycle, permission-separated submit/approve/reject/rework actions, serialized state transitions, and correct receivables semantics so unposted drafts and approval documents cannot age or inflate customer balances. Future changes must keep Invoicing, ERP integration, platform closure, app-surface, core-hardening, TypeScript and production deployment gates green.",
       "protectedTrees": {
-        "lib/apps/invoicing": "fca3dd8772922353f1f5a629be281c88c929bc59",
-        "app/apps/invoicing": "b89b69d37a03c441a07c4a32dfe989d82de22f04",
+        "lib/apps/invoicing": "5c7cbd5a0876c01fc369f0e6a1b090a19d126933",
+        "app/apps/invoicing": "15148a59a1210c3bdb70fb32164cb9b5013e1fcc",
         "app/api/apps/invoicing": "17ddda0c9d471bb134212dae88474e0523db2843",
         "app/api/internal/invoicing": "b2b22efc33d3b038495ccdd343845257789334a1",
         "app/i/[tenantId]/[token]": "756a44ab2c2bc0c64bbb50721f003c19d2bf19ca"
