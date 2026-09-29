@@ -8,6 +8,10 @@ import type {
 } from 'pg';
 
 import {
+  getTenantPoolByTenantId,
+} from '@/lib/db/tenant';
+
+import {
   InvoicingError,
   money,
   recordInvoicingActivity,
@@ -1115,4 +1119,69 @@ export async function getInvoiceDocumentSnapshot(
         result.rows[0],
       )
     : null;
+}
+
+
+
+export async function ensureTenantInvoiceDocumentSnapshot(
+  input: {
+    tenantId:
+      string;
+    invoiceId:
+      string;
+    userId:
+      string |
+      null;
+    reason:
+      InvoiceSnapshotReason;
+  },
+) {
+  const pool =
+    await getTenantPoolByTenantId(
+      input.tenantId,
+    );
+
+  const invoice =
+    await pool.query(
+      `
+        SELECT
+          company_id
+        FROM invoicing_invoices
+        WHERE id =
+              $1
+          AND deleted_at
+              IS NULL
+        LIMIT 1
+      `,
+      [
+        input.invoiceId,
+      ],
+    );
+
+  if (
+    invoice.rows.length !==
+      1
+  ) {
+    throw new InvoicingError(
+      'INVOICE_NOT_FOUND',
+      'Invoice was not found.',
+    );
+  }
+
+  return ensurePrimaryInvoiceDocumentSnapshot(
+    pool,
+    {
+      companyId:
+        String(
+          invoice.rows[0]
+            .company_id,
+        ),
+      invoiceId:
+        input.invoiceId,
+      userId:
+        input.userId,
+      reason:
+        input.reason,
+    },
+  );
 }
