@@ -3,16 +3,16 @@
   "locks": {
     "invoicing": {
       "status": "locked",
-      "moduleVersion": "2.7.0",
+      "moduleVersion": "2.8.0",
       "referenceStandard": true,
-      "baselineCommit": "43216b9c2c0f8f5d30bb1ed86d23dcd29424b3ae",
+      "baselineCommit": "e1b25a6db85e597fc201b9bdda20b7866866487d",
       "baselineBranch": "main",
       "lockedAt": "2026-09-29",
-      "policy": "Invoicing 2.7.0 retains the complete 2.6 customer-credit payment baseline and deepens recurring billing with per-occurrence run ledgers, idempotent generated invoices, schedule start/end and maximum-occurrence controls, retry backoff, failure telemetry, automatic pause after configurable retry exhaustion, manual retry, terminal completion/cancellation semantics, approval-aware posting, generated-invoice links, delivery outcome history, and a production operator UI. Future changes must keep Invoicing, ERP integration, platform closure, app-surface, visibility, core-hardening, TypeScript, migration dry-run and production deployment gates green.",
+      "policy": "Invoicing 2.8.0 preserves the locked 2.7 recurring engine and deepens payment reminders into staged dunning: company-scoped policies and ordered stages, migrated legacy reminder thresholds, default policy seeding for fresh workspaces, invoice/customer reminder pause-disable controls, per-channel claim/send/fail state, bounded retries with retry scheduling, manual reminder audit entries, dedicated operator history and retry controls, and first-class dunning/reminder module resources. Future changes must keep Invoicing, ERP integration, platform closure, app-surface, visibility, core-hardening, TypeScript, migration dry-run and production deployment gates green.",
       "protectedTrees": {
-        "lib/apps/invoicing": "be472172b1b616e5b0ec7893e7d6e87d6d5254ec",
-        "app/apps/invoicing": "1d79393143dabf6b90a3cd83a50548f454aadaff",
-        "app/api/apps/invoicing": "599741ce974cd99689d8dff8268b6b19b8fb0849",
+        "lib/apps/invoicing": "4ad404a09c39d229dc0e41af5cfa91dc0af54721",
+        "app/apps/invoicing": "84500e275b39a34743cbbda85ad6915c18b4baae",
+        "app/api/apps/invoicing": "53aa02ba5b3883551da5b46666efd0abcb3b76fa",
         "app/api/internal/invoicing": "b2b22efc33d3b038495ccdd343845257789334a1",
         "app/i/[tenantId]/[token]": "756a44ab2c2bc0c64bbb50721f003c19d2bf19ca"
       }
