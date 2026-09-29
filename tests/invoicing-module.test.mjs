@@ -904,23 +904,23 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
     /INVOICING_2_8_0_TO_2_9_0/,
   );
 
-  const snapshotMigration =
+  const documentSnapshotMigration =
     await source(
       'lib/apps/invoicing/migrations/2.9.0-to-2.10.0.ts',
     );
 
   assert.match(
-    snapshotMigration,
+    documentSnapshotMigration,
     /fromVersion:\s*['"]2\.9\.0['"]/,
   );
 
   assert.match(
-    snapshotMigration,
+    documentSnapshotMigration,
     /toVersion:\s*['"]2\.10\.0['"]/,
   );
 
   assert.match(
-    snapshotMigration,
+    documentSnapshotMigration,
     /CREATE TABLE IF NOT EXISTS public\.invoicing_document_snapshots/,
   );
 
