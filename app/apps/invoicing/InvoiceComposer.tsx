@@ -623,7 +623,10 @@ export default function InvoiceComposer({
         editing
           ? 'Invoice draft updated.'
           : confirm
-            ? 'Invoice created and confirmed.'
+            ? data.settings
+                .requireApproval
+              ? 'Invoice created and submitted for approval.'
+              : 'Invoice created and confirmed.'
             : 'Invoice draft created.',
       );
 
@@ -1601,7 +1604,11 @@ export default function InvoiceComposer({
             </p>
 
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
-              Drafts remain editable. Confirming locks the commercial document for normal editing and moves changes into auditable actions such as payments and credit notes.
+              Drafts remain editable. {
+                data.settings.requireApproval
+                  ? 'Submitting sends the document to an approver; only approval posts the receivable.'
+                  : 'Confirming posts and locks the commercial document for normal editing.'
+              } Payments and credit notes remain auditable after posting.
             </p>
 
             <div className="mt-4 grid gap-2">
@@ -1624,6 +1631,29 @@ export default function InvoiceComposer({
                     : 'Save as draft'
                 }
               </button>
+
+              {
+                !editing &&
+                data.settings.requireApproval &&
+                data.capabilities.canCreate &&
+                (
+                  <button
+                    type="button"
+                    disabled={
+                      invalid ||
+                      pending
+                    }
+                    onClick={
+                      () =>
+                        submit(true)
+                    }
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-amber-500 text-xs font-black text-slate-950 disabled:opacity-40"
+                  >
+                    <Receipt className="h-4 w-4" />
+                    Save & submit for approval
+                  </button>
+                )
+              }
 
               {
                 data.capabilities.canConfirm &&
@@ -1669,6 +1699,29 @@ export default function InvoiceComposer({
             <Save className="h-4 w-4" />
             Draft
           </button>
+
+          {
+            !editing &&
+            data.settings.requireApproval &&
+            data.capabilities.canCreate &&
+            (
+              <button
+                type="button"
+                disabled={
+                  invalid ||
+                  pending
+                }
+                onClick={
+                  () =>
+                    submit(true)
+                }
+                className="inline-flex h-12 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-amber-500 px-3 text-xs font-black text-slate-950 disabled:opacity-40"
+              >
+                <Receipt className="h-4 w-4" />
+                Submit
+              </button>
+            )
+          }
 
           {
             data.capabilities.canConfirm &&
