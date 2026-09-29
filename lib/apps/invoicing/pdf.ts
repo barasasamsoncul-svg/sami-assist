@@ -1817,7 +1817,7 @@ function supplementaryEntries(
       (
         invoice.template
           .paymentLabel ||
-        'Payment instructions'
+        'PAYMENT INSTRUCTIONS'
       )
         .toUpperCase(),
       invoice
@@ -1829,7 +1829,7 @@ function supplementaryEntries(
     (
       invoice.template
         .notesLabel ||
-      'Notes'
+      'NOTES'
     )
       .toUpperCase(),
     invoice.notes,
@@ -1839,7 +1839,7 @@ function supplementaryEntries(
     (
       invoice.template
         .termsLabel ||
-      'Terms'
+      'TERMS & CONDITIONS'
     )
       .toUpperCase(),
     invoice.template
