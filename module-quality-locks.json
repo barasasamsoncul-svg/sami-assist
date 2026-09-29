@@ -6,7 +6,7 @@
       "moduleVersion": "2.7.0",
       "referenceStandard": true,
       "baselineCommit": "43216b9c2c0f8f5d30bb1ed86d23dcd29424b3ae",
-      "baselineBranch": "feat/invoicing-2.7-recurring-depth",
+      "baselineBranch": "main",
       "lockedAt": "2026-09-29",
       "policy": "Invoicing 2.7.0 retains the complete 2.6 customer-credit payment baseline and deepens recurring billing with per-occurrence run ledgers, idempotent generated invoices, schedule start/end and maximum-occurrence controls, retry backoff, failure telemetry, automatic pause after configurable retry exhaustion, manual retry, terminal completion/cancellation semantics, approval-aware posting, generated-invoice links, delivery outcome history, and a production operator UI. Future changes must keep Invoicing, ERP integration, platform closure, app-surface, visibility, core-hardening, TypeScript, migration dry-run and production deployment gates green.",
       "protectedTrees": {
