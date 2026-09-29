@@ -97,13 +97,37 @@ export type InvoicingPaymentSummary = {
   id: string;
   paymentNumber: string;
   status: string;
+  customerId: string | null;
   customerName: string | null;
   paymentDate: string;
   amount: number;
   currency: string;
+  exchangeRate: number;
   method: string;
   reference: string | null;
+  allocatedAmount: number;
+  refundedAmount: number;
+  unappliedAmount: number;
+  reconciledAt: string | null;
+  reconciliationReference: string | null;
+  reconciliationNotes: string | null;
   invoiceNumbers: string[];
+  allocations: Array<{
+    id: string;
+    invoiceId: string;
+    invoiceNumber: string;
+    amount: number;
+    status: string;
+    operationKey: string | null;
+  }>;
+  refunds: Array<{
+    id: string;
+    refundNumber: string;
+    refundDate: string;
+    amount: number;
+    status: string;
+    reason: string;
+  }>;
 };
 
 export type InvoicingRecurringSummary = {
@@ -188,6 +212,8 @@ export type InvoicingInvoiceDetail = {
     amount: number;
     method: string;
     reference: string | null;
+    allocationId: string;
+    allocationStatus: string;
   }>;
   creditNotes: Array<{
     id: string;
