@@ -7124,7 +7124,8 @@ export async function reverseInvoicePayment(
             payment_number,
             amount,
             currency,
-            status
+            status,
+            reconciled_at
           FROM invoicing_payments
           WHERE id = $1
             AND company_id = $2
@@ -7162,24 +7163,127 @@ export async function reverseInvoicePayment(
       );
     }
 
-    const allocations =
+    const refundCheck =
       await client.query(
         `
-          SELECT
-            invoice_id,
-            amount
-          FROM invoicing_payment_allocations
+          SELECT COUNT(*)::int AS count
+          FROM invoicing_payment_refunds
           WHERE payment_id = $1
             AND company_id = $2
-          ORDER BY
-            created_at,
-            id
+            AND status = 'posted'
         `,
         [
           paymentId,
           context.companyId,
         ],
       );
+
+    if (
+      Number(
+        refundCheck.rows[0]
+          ?.count ||
+        0,
+      ) >
+        0
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Reverse or settle posted refunds before reversing the original payment.',
+      );
+    }
+
+    const allocations =
+      await client.query(
+        `
+          SELECT
+            a.id,
+            a.invoice_id,
+            a.amount,
+            a.operation_key,
+            i.invoice_number
+          FROM invoicing_payment_allocations a
+          INNER JOIN invoicing_invoices i
+            ON i.id = a.invoice_id
+           AND i.company_id = a.company_id
+          WHERE a.payment_id = $1
+            AND a.company_id = $2
+            AND a.status = 'posted'
+          ORDER BY
+            a.created_at,
+            a.id
+          FOR UPDATE OF a
+        `,
+        [
+          paymentId,
+          context.companyId,
+        ],
+      );
+
+    for (
+      const allocation
+      of allocations.rows
+    ) {
+      const allocationId =
+        String(
+          allocation.id,
+        );
+
+      const operationKey =
+        String(
+          allocation.operation_key ||
+          allocationId,
+        );
+
+      await client.query(
+        `
+          UPDATE invoicing_payment_allocations
+          SET
+            status = 'reversed',
+            reversed_at = NOW(),
+            reversed_by = $3,
+            reversal_reason = $4
+          WHERE id = $1
+            AND company_id = $2
+        `,
+        [
+          allocationId,
+          context.companyId,
+          context.userId,
+          'Payment reversal: ' +
+          reason,
+        ],
+      );
+
+      await reverseInvoicingAccountingEvent(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          originalEventKey:
+            'payment-allocation:' +
+            allocationId +
+            ':' +
+            operationKey,
+          reversalEventKey:
+            'payment-allocation-reversal:' +
+            allocationId +
+            ':' +
+            operationKey,
+          sourceType:
+            'payment_allocation_reversal',
+          sourceId:
+            allocationId,
+          description:
+            'Payment ' +
+            String(
+              payment.payment_number,
+            ) +
+            ' allocation reversed',
+        },
+      );
+    }
 
     await client.query(
       `
@@ -7197,7 +7301,9 @@ export async function reverseInvoicePayment(
               'reversedBy',
               ($3::uuid)::text,
               'reversalReason',
-              $4::text
+              $4::text,
+              'wasReconciled',
+              reconciled_at IS NOT NULL
             ),
           updated_by = $3::uuid,
           updated_at = NOW()
@@ -7319,39 +7425,39 @@ export async function reverseInvoicePayment(
       );
     }
 
-    if (
-      invoiceIds.length ===
-        0
-    ) {
-      await recordMasterDataActivity(
-        client,
-        {
-          companyId:
-            context.companyId,
-          userId:
-            context.userId,
-          model:
-            'invoicing.payment',
-          recordId:
-            paymentId,
-          type:
-            'invoicing.payment_reversed',
-          content:
-            'Payment ' +
-            String(
-              payment.payment_number,
-            ) +
-            ' reversed.',
-          metadata: {
-            amount:
-              money(
-                payment.amount,
-              ),
-            reason,
-          },
+    await recordMasterDataActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        model:
+          'invoicing.payment',
+        recordId:
+          paymentId,
+        type:
+          'invoicing.payment_reversed',
+        content:
+          'Payment ' +
+          String(
+            payment.payment_number,
+          ) +
+          ' reversed.',
+        metadata: {
+          amount:
+            money(
+              payment.amount,
+            ),
+          reason,
+          settlements,
+          wasReconciled:
+            Boolean(
+              payment.reconciled_at,
+            ),
         },
-      );
-    }
+      },
+    );
 
     await client.query(
       'COMMIT',
