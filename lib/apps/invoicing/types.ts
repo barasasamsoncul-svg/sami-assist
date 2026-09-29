@@ -155,6 +155,46 @@ export type InvoicingPaymentSummary = {
   }>;
 };
 
+export type InvoicingRetainerSummary = {
+  id: string;
+  retainerNumber: string;
+  retainerType: string;
+  customerId: string;
+  customerName: string;
+  paymentId: string;
+  paymentNumber: string;
+  receivedDate: string;
+  amount: number;
+  currency: string;
+  exchangeRate: number;
+  method: string;
+  reference: string | null;
+  purpose: string | null;
+  expectedUseDate: string | null;
+  status: string;
+  allocatedAmount: number;
+  refundedAmount: number;
+  availableAmount: number;
+  reconciledAt: string | null;
+  createdAt: string;
+  allocations: Array<{
+    id: string;
+    invoiceId: string;
+    invoiceNumber: string;
+    amount: number;
+    status: string;
+    operationKey: string | null;
+  }>;
+  refunds: Array<{
+    id: string;
+    refundNumber: string;
+    refundDate: string;
+    amount: number;
+    status: string;
+    reason: string;
+  }>;
+};
+
 export type InvoicingDunningStageSummary = {
   id: string;
   stageKey: string;
@@ -458,6 +498,7 @@ export type InvoicingWorkspaceData = {
   invoices: InvoicingInvoiceSummary[];
   customers: InvoicingCustomerSummary[];
   payments: InvoicingPaymentSummary[];
+  retainers: InvoicingRetainerSummary[];
   recurring: InvoicingRecurringSummary[];
   dunningPolicies: InvoicingDunningPolicySummary[];
   reminders: InvoicingReminderSummary[];
