@@ -2443,6 +2443,7 @@ test('Invoicing v2.6 separates cash receipts from allocation and reconciliation'
     'allocateInvoicePayment',
     'reverseInvoicePaymentAllocation',
     'reconcileInvoicePayment',
+    'unreconcileInvoicePayment',
     'refundInvoicePayment',
     'reverseInvoicePaymentRefund',
     'reverseInvoicePayment',
@@ -2491,6 +2492,27 @@ test('Invoicing v2.6 separates cash receipts from allocation and reconciliation'
   assert.match(
     commands,
     /Only the unapplied portion of a payment can be refunded\./,
+  );
+
+  for (const reconciliationFreeze of [
+    'Unreconcile this payment before changing its invoice allocations.',
+    'Unreconcile this payment before reversing an allocation.',
+    'Unreconcile this payment before refunding any unapplied amount.',
+    'Unreconcile this payment before reversing the receipt.',
+    'Unreconcile the original payment before reversing its refund.',
+  ]) {
+    assert.ok(
+      commands.includes(
+        reconciliationFreeze,
+      ),
+      reconciliationFreeze,
+    );
+  }
+
+  assert.match(
+    commands,
+    /An unreconciliation reason is required\./,
+    'Reconciliation must be explicitly undone with an auditable reason before financial corrections.',
   );
 
   assert.match(
@@ -2571,6 +2593,7 @@ test('Invoicing v2.6 separates cash receipts from allocation and reconciliation'
     'allocate_payment',
     'reverse_payment_allocation',
     'reconcile_payment',
+    'unreconcile_payment',
     'refund_payment',
     'reverse_payment_refund',
     'reverse_payment',
@@ -2600,6 +2623,18 @@ test('Invoicing v2.6 separates cash receipts from allocation and reconciliation'
   assert.match(
     workspace,
     /Reconcile receipt/,
+  );
+
+  assert.match(
+    workspace,
+    /financial edits locked/,
+    'The payment operator must explain that reconciliation freezes allocation, refund and reversal changes.',
+  );
+
+  assert.match(
+    workspace,
+    /Unreconcile/,
+    'The payment operator must expose a reasoned unreconciliation workflow.',
   );
 
   assert.match(
