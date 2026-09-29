@@ -230,7 +230,7 @@ export default function WorkspaceShell({
                         <span className="hidden text-slate-300 md:inline dark:text-slate-700">
                           /
                         </span>
-                        <p className="hidden max-w-[220px] truncate text-[11px] font-semibold text-slate-400 md:block">
+                        <p className="hidden max-w-[220px] truncate text-[11px] font-semibold text-slate-600 dark:text-slate-300 md:block">
                           {contextLabel ||
                             tenant?.name}
                         </p>
@@ -239,7 +239,7 @@ export default function WorkspaceShell({
                   </div>
 
                   {description && (
-                    <p className="mt-0.5 hidden max-w-[660px] truncate text-[10px] text-slate-400 sm:block">
+                    <p className="mt-0.5 hidden max-w-[660px] truncate text-[10px] text-slate-600 dark:text-slate-300 sm:block">
                       {description}
                     </p>
                   )}
@@ -375,7 +375,7 @@ export default function WorkspaceShell({
 
                     <div className="mt-5 grid gap-3 sm:grid-cols-2">
                       <div className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
-                        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 dark:text-slate-300">
                           Data
                         </p>
                         <p className="mt-2 text-xs font-semibold text-slate-700 dark:text-slate-200">
@@ -384,7 +384,7 @@ export default function WorkspaceShell({
                       </div>
 
                       <div className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
-                        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 dark:text-slate-300">
                           Restoration
                         </p>
                         <p className="mt-2 text-xs font-semibold text-slate-700 dark:text-slate-200">

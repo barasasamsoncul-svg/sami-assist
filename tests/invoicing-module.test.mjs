@@ -116,7 +116,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
 
   assert.match(
     invoicing,
-    /version:\s*['"]2\.6\.0['"]/,
+    /version:\s*['"]2\.7\.0['"]/,
   );
 
   assert.match(
@@ -792,6 +792,51 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
   assert.match(
     runtimeMigrations,
     /INVOICING_2_5_0_TO_2_6_0/,
+  );
+
+  const recurringMigration =
+    await source(
+      'lib/apps/invoicing/migrations/2.6.0-to-2.7.0.ts',
+    );
+
+  assert.match(
+    recurringMigration,
+    /fromVersion:\s*['"]2\.6\.0['"]/,
+  );
+
+  assert.match(
+    recurringMigration,
+    /toVersion:\s*['"]2\.7\.0['"]/,
+  );
+
+  assert.match(
+    recurringMigration,
+    /CREATE TABLE IF NOT EXISTS public\.invoicing_recurring_runs/,
+  );
+
+  assert.match(
+    recurringMigration,
+    /max_occurrences/,
+  );
+
+  assert.match(
+    recurringMigration,
+    /consecutive_failures/,
+  );
+
+  assert.match(
+    recurringMigration,
+    /retry_after/,
+  );
+
+  assert.match(
+    recurringMigration,
+    /uq_invoicing_recurring_generated_invoice/,
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /INVOICING_2_6_0_TO_2_7_0/,
   );
 
   const accounting =
@@ -2723,5 +2768,203 @@ test('Invoicing v2.6 separates cash receipts from allocation and reconciliation'
     detail,
     /excess as unapplied customer credit/,
     'Invoice-level overpayments must be explained to the operator.',
+  );
+});
+
+
+
+test('Invoicing v2.7 turns recurring invoices into an observable retry-safe billing engine', async () => {
+  const [
+    schema,
+    migration,
+    commands,
+    worker,
+    queries,
+    types,
+    service,
+    route,
+    workspace,
+    runtimeMigrations,
+    manifest,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/schema.sql'),
+    source('lib/apps/invoicing/migrations/2.6.0-to-2.7.0.ts'),
+    source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/invoicing/worker.ts'),
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/types.ts'),
+    source('lib/apps/invoicing/service.ts'),
+    source('app/api/apps/invoicing/route.ts'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+  ]);
+
+  assert.match(
+    manifest,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.7\.0['"]/s,
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /INVOICING_2_6_0_TO_2_7_0/,
+  );
+
+  assert.match(
+    migration,
+    /CREATE TABLE IF NOT EXISTS public\.invoicing_recurring_runs/,
+  );
+
+  for (const field of [
+    'max_occurrences',
+    'run_count',
+    'consecutive_failures',
+    'max_retry_attempts',
+    'last_success_at',
+    'last_failure_at',
+    'retry_after',
+    'last_error_code',
+    'completion_reason',
+  ]) {
+    assert.match(
+      schema,
+      new RegExp(field),
+      'Recurring schema must include ' + field + '.',
+    );
+  }
+
+  assert.match(
+    schema,
+    /UNIQUE\(recurring_template_id, scheduled_for\)/,
+    'Each schedule occurrence must have one canonical run ledger record.',
+  );
+
+  assert.match(
+    schema,
+    /uq_invoicing_recurring_generated_invoice/,
+    'Generated recurring invoices must be idempotent per run key.',
+  );
+
+  for (const command of [
+    'createRecurringInvoiceTemplate',
+    'updateRecurringInvoiceTemplate',
+    'setRecurringInvoiceTemplateStatus',
+    'retryRecurringInvoiceTemplate',
+  ]) {
+    assert.match(
+      commands,
+      new RegExp('export async function ' + command),
+      command + ' must be owned by the Invoicing recurring authority.',
+    );
+  }
+
+  assert.match(
+    commands,
+    /Maximum occurrences cannot be lower than invoices already generated\./,
+  );
+
+  assert.match(
+    commands,
+    /Completed or cancelled recurring schedules are final\./,
+  );
+
+  assert.match(
+    commands,
+    /recurring\.retry_requested/,
+  );
+
+  assert.match(
+    worker,
+    /invoicing_recurring_runs/,
+  );
+
+  assert.match(
+    worker,
+    /recurringRunKey/,
+  );
+
+  assert.match(
+    worker,
+    /retry_after[\s\S]*NOW\(\)/s,
+  );
+
+  assert.match(
+    worker,
+    /MAX_RETRY_ATTEMPTS/,
+  );
+
+  assert.match(
+    worker,
+    /max_occurrences_reached/,
+    'Recovered successful recurring runs must still complete schedules that reached their occurrence limit.',
+  );
+
+  assert.match(
+    worker,
+    /end_date_reached/,
+    'Recovered successful recurring runs must still honor schedule end dates.',
+  );
+
+  assert.match(
+    worker,
+    /continue;/,
+    'One failed recurring schedule must not block the remaining tenant schedules.',
+  );
+
+  assert.match(
+    worker,
+    /delivery_status[\s\S]*'sent'/s,
+  );
+
+  assert.match(
+    queries,
+    /recent_runs/,
+  );
+
+  assert.match(
+    queries,
+    /last_invoice_number/,
+  );
+
+  assert.match(
+    types,
+    /InvoicingRecurringRunSummary/,
+  );
+
+  assert.match(
+    types,
+    /consecutiveFailures/,
+  );
+
+  assert.match(
+    service,
+    /retryRecurringInvoiceTemplate/,
+  );
+
+  assert.match(
+    route,
+    /case 'retry_recurring'/,
+  );
+
+  for (const visibleControl of [
+    'Maximum invoices',
+    'Retry attempts before auto-pause',
+    'Schedules needing attention',
+    'Recent runs',
+    'Retry failed run',
+    'Latest recurring error',
+  ]) {
+    assert.ok(
+      workspace.includes(
+        visibleControl,
+      ),
+      visibleControl + ' must be visible in the recurring workspace.',
+    );
+  }
+
+  assert.match(
+    workspace,
+    /\/apps\/invoicing\/['"]?\s*\+/,
+    'Recurring run history must link generated invoices back to their documents.',
   );
 });

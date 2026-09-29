@@ -493,3 +493,76 @@ test(
     }
   },
 );
+
+
+test(
+  'SaMi design system enforces readable foregrounds across every app surface',
+  async () => {
+    const [
+      globals,
+      workspaceShell,
+      appShell,
+      enterpriseWorkspace,
+    ] =
+      await Promise.all([
+        readFile(
+          'app/globals.css',
+          'utf8',
+        ),
+        readFile(
+          'app/components/workspace/WorkspaceShell.tsx',
+          'utf8',
+        ),
+        readFile(
+          'app/components/apps/AppSurfaceShell.tsx',
+          'utf8',
+        ),
+        readFile(
+          'app/apps/_shared/EnterpriseDataWorkspaceClient.tsx',
+          'utf8',
+        ),
+      ]);
+
+    assert.match(
+      globals,
+      /select option,[\s\S]*background:\s*var\(--sami-surface-raised\);[\s\S]*color:\s*var\(--foreground\);/,
+      'Native dropdown options must never depend on hover for readable text.',
+    );
+
+    assert.match(
+      globals,
+      /--sami-muted:\s*#475569;/,
+      'Light-mode secondary copy must use a readable muted token.',
+    );
+
+    assert.match(
+      globals,
+      /\.dark[\s\S]*--sami-muted:\s*#cbd5e1;/,
+      'Dark-mode secondary copy must use a readable muted token.',
+    );
+
+    assert.match(
+      globals,
+      /button:disabled\[class\][\s\S]*opacity:\s*0\.65;/,
+      'Disabled controls must remain visibly legible.',
+    );
+
+    assert.match(
+      globals,
+      /\.sami-surface,[\s\S]*\.sami-soft-surface[\s\S]*color:\s*var\(--foreground\);/,
+      'Shared SaMi surfaces must establish a safe foreground color.',
+    );
+
+    for (const sourceText of [
+      workspaceShell,
+      appShell,
+      enterpriseWorkspace,
+    ]) {
+      assert.match(
+        sourceText,
+        /text-slate-600[\s\S]*dark:text-slate-300/,
+        'Shared application chrome must use explicit readable light/dark secondary text.',
+      );
+    }
+  },
+);

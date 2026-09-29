@@ -92,7 +92,7 @@ export default function WorkspaceCompanyIdentity() {
         <p className="max-w-[190px] truncate text-[10px] font-black text-slate-700 dark:text-slate-200">
           {company.name}
         </p>
-        <p className="text-[8px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+        <p className="text-[8px] font-semibold uppercase tracking-[0.12em] text-slate-600 dark:text-slate-300">
           Company context
         </p>
       </div>

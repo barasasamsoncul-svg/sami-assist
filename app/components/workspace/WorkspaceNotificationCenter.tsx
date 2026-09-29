@@ -1473,7 +1473,7 @@ export default function WorkspaceNotificationCenter({
                 false,
               )
             }
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-white/10 dark:hover:text-white"
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-600 dark:text-slate-300 transition hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-white/10 dark:hover:text-white"
           >
             <X className="h-4 w-4" />
           </button>
@@ -1526,7 +1526,7 @@ export default function WorkspaceNotificationCenter({
             tab ===
               'preferences'
               ? 'bg-slate-950 text-white dark:bg-white dark:text-slate-950'
-              : 'text-slate-400 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-white/10 dark:hover:text-white',
+              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-white/10 dark:hover:text-white',
           ].join(' ')}
         >
           <Settings2 className="h-4 w-4" />
@@ -1541,7 +1541,7 @@ export default function WorkspaceNotificationCenter({
 
       {loading ? (
         <div className="flex min-h-[320px] flex-1 items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+          <Loader2 className="h-6 w-6 animate-spin text-slate-600 dark:text-slate-300" />
         </div>
       ) : tab === 'alerts' ? (
         <div className="flex min-h-0 flex-1 flex-col">
@@ -1620,7 +1620,7 @@ export default function WorkspaceNotificationCenter({
                           <p className="text-xs font-bold leading-5">
                             {item.title}
                           </p>
-                          <span className="shrink-0 text-[10px] text-slate-400">
+                          <span className="shrink-0 text-[10px] text-slate-600 dark:text-slate-300">
                             {when(
                               item.createdAt,
                             )}
@@ -1694,7 +1694,7 @@ export default function WorkspaceNotificationCenter({
                               busy ===
                               item.id
                             }
-                            className="inline-flex h-7 items-center gap-1 rounded-lg px-2.5 text-[10px] font-bold text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/10 dark:hover:text-white"
+                            className="inline-flex h-7 items-center gap-1 rounded-lg px-2.5 text-[10px] font-bold text-slate-600 dark:text-slate-300 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/10 dark:hover:text-white"
                           >
                             <Archive className="h-3 w-3" />
                             Archive
@@ -1783,7 +1783,7 @@ export default function WorkspaceNotificationCenter({
                       false,
                     )
                   }
-                  className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10"
+                  className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -1981,7 +1981,7 @@ export default function WorkspaceNotificationCenter({
                               <p className="truncate text-xs font-bold">
                                 {label}
                               </p>
-                              <span className="shrink-0 text-[10px] text-slate-400">
+                              <span className="shrink-0 text-[10px] text-slate-600 dark:text-slate-300">
                                 {when(
                                   conversation.updatedAt,
                                 )}
@@ -2051,7 +2051,7 @@ export default function WorkspaceNotificationCenter({
                             .join(', ') ||
                           'Conversation'}
                       </p>
-                      <p className="mt-0.5 text-[10px] text-slate-400">
+                      <p className="mt-0.5 text-[10px] text-slate-600 dark:text-slate-300">
                         {selected?.type ===
                           'announcement'
                           ? 'Company announcement'
@@ -2066,7 +2066,7 @@ export default function WorkspaceNotificationCenter({
                     messages.length ===
                       0 ? (
                       <div className="flex min-h-[220px] items-center justify-center">
-                        <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+                        <Loader2 className="h-5 w-5 animate-spin text-slate-600 dark:text-slate-300" />
                       </div>
                     ) : (
                       messages.map(
@@ -2100,7 +2100,7 @@ export default function WorkspaceNotificationCenter({
                                   'mt-1 text-[9px]',
                                   mine
                                     ? 'text-blue-100'
-                                    : 'text-slate-400',
+                                    : 'text-slate-600 dark:text-slate-300',
                                 ].join(' ')}>
                                   {when(
                                     message.createdAt,
@@ -2374,7 +2374,7 @@ export default function WorkspaceNotificationCenter({
                       null,
                     )
                   }
-                  className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-white/10 dark:hover:text-white"
+                  className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-slate-600 dark:text-slate-300 transition hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-white/10 dark:hover:text-white"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -2554,7 +2554,7 @@ function EmptyState({
 }) {
   return (
     <div className="flex min-h-[260px] flex-col items-center justify-center px-6 text-center">
-      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 dark:bg-white/10 dark:text-slate-500">
+      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-600 dark:text-slate-300 dark:bg-white/10 dark:text-slate-500">
         <Icon className="h-5 w-5" />
       </div>
       <p className="mt-3 text-sm font-bold">

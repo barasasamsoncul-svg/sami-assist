@@ -30,6 +30,7 @@ import {
   recordCustomerPayment,
   recordInvoicePayment,
   refundInvoicePayment,
+  retryRecurringInvoiceTemplate,
   reverseInvoicePayment,
   reverseInvoicePaymentAllocation,
   reverseInvoicePaymentRefund,
@@ -565,6 +566,13 @@ export async function POST(
       case 'set_recurring_status':
         result =
           await setRecurringInvoiceTemplateStatus(
+            payload,
+          );
+        break;
+
+      case 'retry_recurring':
+        result =
+          await retryRecurringInvoiceTemplate(
             payload,
           );
         break;

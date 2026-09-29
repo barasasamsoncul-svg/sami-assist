@@ -115,7 +115,7 @@ export default function SaMiOverlay({
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="absolute right-4 top-4 rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-white"
+          className="absolute right-4 top-4 rounded-xl p-2 text-slate-600 dark:text-slate-300 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-white"
         >
           <X className="h-5 w-5" />
         </button>

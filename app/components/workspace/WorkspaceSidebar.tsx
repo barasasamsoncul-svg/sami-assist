@@ -2580,7 +2580,7 @@ export default function WorkspaceSidebar({
             onClick={
               onClose
             }
-            className="ml-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white lg:hidden"
+            className="ml-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-600 dark:text-slate-300 transition hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white lg:hidden"
           >
             <X className="h-5 w-5" />
           </button>
@@ -2640,7 +2640,7 @@ export default function WorkspaceSidebar({
               </p>
 
 
-              <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-400">
+              <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-600 dark:text-slate-300">
                 {roleName}
 
                 {planName && (
@@ -2655,11 +2655,11 @@ export default function WorkspaceSidebar({
 
 
             {workspacesLoading ? (
-              <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-400" />
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-600 dark:text-slate-300" />
             ) : hasMultipleWorkspaces ? (
               <ChevronDown
                 className={[
-                  'h-4 w-4 shrink-0 text-slate-400 transition-transform',
+                  'h-4 w-4 shrink-0 text-slate-600 dark:text-slate-300 transition-transform',
 
                   workspaceMenuOpen
                     ? 'rotate-180'
@@ -2677,7 +2677,7 @@ export default function WorkspaceSidebar({
             hasMultipleWorkspaces && (
               <div className="absolute left-4 right-4 top-[72px] z-[90] overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
 
-                <p className="px-2 pb-2 pt-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
+                <p className="px-2 pb-2 pt-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-600 dark:text-slate-300">
                   Switch workspace
                 </p>
 
@@ -2749,7 +2749,7 @@ export default function WorkspaceSidebar({
                               {workspace.name}
                             </p>
 
-                            <p className="mt-0.5 truncate text-[9px] font-semibold text-slate-400">
+                            <p className="mt-0.5 truncate text-[9px] font-semibold text-slate-600 dark:text-slate-300">
                               {workspace.accessLevel ===
                                 'owner'
                                 ? 'Workspace Owner'
@@ -2855,7 +2855,7 @@ export default function WorkspaceSidebar({
               </p>
 
 
-              <p className="mt-0.5 truncate text-[9px] font-semibold text-slate-400">
+              <p className="mt-0.5 truncate text-[9px] font-semibold text-slate-600 dark:text-slate-300">
                 {companySelector
                   ? companyCount >
                       1
@@ -2870,7 +2870,7 @@ export default function WorkspaceSidebar({
 
 
             {companyLoading ? (
-              <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-400" />
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-600 dark:text-slate-300" />
             ) : companySelector &&
               companySelector
                 .companies
@@ -2878,7 +2878,7 @@ export default function WorkspaceSidebar({
                 1 ? (
               <ChevronDown
                 className={[
-                  'h-4 w-4 shrink-0 text-slate-400 transition-transform',
+                  'h-4 w-4 shrink-0 text-slate-600 dark:text-slate-300 transition-transform',
 
                   companyMenuOpen
                     ? 'rotate-180'
@@ -2902,7 +2902,7 @@ export default function WorkspaceSidebar({
 
                 <div className="border-b border-slate-100 px-3 py-3 dark:border-slate-800">
 
-                  <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-600 dark:text-slate-300">
                     My companies
                   </p>
 
@@ -3074,7 +3074,7 @@ export default function WorkspaceSidebar({
                                   )}
 
 
-                                  <span className="truncate text-[8px] font-semibold text-slate-400">
+                                  <span className="truncate text-[8px] font-semibold text-slate-600 dark:text-slate-300">
                                     {company.currency}
                                     {' · '}
                                     {company.timezone}
@@ -3544,7 +3544,7 @@ export default function WorkspaceSidebar({
                 {adminSettingsChildren.length >
                   0 && (
                   <>
-                    <p className="mb-1 mt-4 px-3 text-[8px] font-black uppercase tracking-[0.13em] text-slate-400">
+                    <p className="mb-1 mt-4 px-3 text-[8px] font-black uppercase tracking-[0.13em] text-slate-600 dark:text-slate-300">
                       Administration
                     </p>
 
@@ -3649,7 +3649,7 @@ export default function WorkspaceSidebar({
                   {displayName}
                 </p>
 
-                <p className="mt-0.5 truncate text-[10px] text-slate-400">
+                <p className="mt-0.5 truncate text-[10px] text-slate-600 dark:text-slate-300">
                   Profile & account
                 </p>
 
@@ -3735,7 +3735,7 @@ function NavSectionLabel({
     ReactNode;
 }) {
   return (
-    <p className="mb-2 px-3 text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400 dark:text-slate-500">
+    <p className="mb-2 px-3 text-[9px] font-bold uppercase tracking-[0.15em] text-slate-600 dark:text-slate-300 dark:text-slate-500">
       {children}
     </p>
   );
@@ -3803,7 +3803,7 @@ function NavLink({
 
           active
             ? 'text-blue-600 dark:text-blue-300'
-            : 'text-slate-400',
+            : 'text-slate-600 dark:text-slate-300',
         ].join(
           ' ',
         )}
@@ -3883,7 +3883,7 @@ function DropdownButton({
 
           active
             ? 'text-blue-600 dark:text-blue-300'
-            : 'text-slate-400',
+            : 'text-slate-600 dark:text-slate-300',
         ].join(
           ' ',
         )}
@@ -3996,7 +3996,7 @@ function ChildNavLink({
 
             active
               ? 'text-[var(--sami-brand)]'
-              : 'text-slate-400',
+              : 'text-slate-600 dark:text-slate-300',
           ].join(
             ' ',
           )}

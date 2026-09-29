@@ -15,8 +15,8 @@
 
   --sami-border: #e3e6eb;
   --sami-border-strong: #d4d9e1;
-  --sami-muted: #667085;
-  --sami-subtle: #98a2b3;
+  --sami-muted: #475569;
+  --sami-subtle: #64748b;
 
   --sami-brand: #3157d5;
   --sami-brand-strong: #2346bd;
@@ -47,8 +47,8 @@
 
   --sami-border: rgba(255, 255, 255, 0.08);
   --sami-border-strong: rgba(255, 255, 255, 0.14);
-  --sami-muted: #a6adbb;
-  --sami-subtle: #737b8c;
+  --sami-muted: #cbd5e1;
+  --sami-subtle: #a8b3c7;
 
   --sami-brand: #6f8cff;
   --sami-brand-strong: #89a0ff;
@@ -106,7 +106,56 @@ input,
 select,
 textarea {
   font: inherit;
+  color: inherit;
 }
+
+/*
+ * Native select menus are rendered by the browser/OS rather than Tailwind.
+ * Keep their foreground and popup option surfaces explicit so dark-mode text
+ * never becomes white-on-white (or light-mode text dark-on-dark) until hover.
+ */
+select {
+  color: var(--foreground);
+  color-scheme: light;
+}
+
+select option,
+select optgroup {
+  background: var(--sami-surface-raised);
+  color: var(--foreground);
+}
+
+.dark select {
+  color-scheme: dark;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--sami-muted);
+  opacity: 1;
+}
+
+.sami-surface,
+.sami-surface-raised,
+.sami-soft-surface,
+.sami-canvas {
+  color: var(--foreground);
+}
+
+/*
+ * SaMi visibility contract.
+ * Native controls and shared surfaces establish explicit foregrounds. Page
+ * components use the stronger SaMi muted tokens below rather than relying on
+ * hover to reveal labels or values.
+ */
+button:disabled[class],
+input:disabled[class],
+select:disabled[class],
+textarea:disabled[class],
+[aria-disabled='true'][class] {
+  opacity: 0.65;
+}
+
 
 button,
 a {

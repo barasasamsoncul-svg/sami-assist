@@ -2677,7 +2677,7 @@ function Overview({
                                               table.label
                                             }
                                           </span>
-                                          <span className="shrink-0 text-[10px] font-black text-slate-400">
+                                          <span className="shrink-0 text-[10px] font-black text-slate-600 dark:text-slate-300">
                                             {
                                               table.count
                                             }
@@ -2696,7 +2696,7 @@ function Overview({
               </div>
 
               <div className="border-t border-[var(--sami-border)] bg-slate-500/[0.025] p-4 sm:p-5 lg:p-6 xl:border-l xl:border-t-0">
-                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 dark:text-slate-300">
                   ERP chain
                 </p>
                 <p className="mt-2 text-sm font-black">
@@ -2864,7 +2864,7 @@ function Overview({
                                               table.label
                                             }
                                           </span>
-                                          <span className="text-[10px] text-slate-400">
+                                          <span className="text-[10px] text-slate-600 dark:text-slate-300">
                                             {
                                               table.count
                                             }
@@ -2886,7 +2886,7 @@ function Overview({
             <div className="sami-soft-surface rounded-[26px] p-4 sm:p-5">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 dark:text-slate-300">
                     Connected apps
                   </p>
                   <h2 className="mt-1 text-sm font-black">
@@ -3016,7 +3016,7 @@ function Overview({
               0 &&
             (
               <div className="mt-5 border-t border-[var(--sami-border)] pt-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+                <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
                   Quick start
                 </p>
 
@@ -3072,7 +3072,7 @@ function Overview({
         </div>
 
         <div className="sami-soft-surface rounded-[24px] p-4 sm:p-5">
-          <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+          <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
             Operating health
           </p>
 
@@ -3167,7 +3167,7 @@ function Overview({
                           table.label
                         }
                       </p>
-                      <p className="mt-1 text-[10px] text-slate-400">
+                      <p className="mt-1 text-[10px] text-slate-600 dark:text-slate-300">
                         {
                           table.companyScoped
                             ? 'Current company'
@@ -3683,7 +3683,7 @@ function Records({
                 >
                   <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+                      <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
                         {
                           group.label
                         }
@@ -3694,7 +3694,7 @@ function Records({
                         }
                       </p>
                     </div>
-                    <span className="text-[10px] font-black text-slate-400">
+                    <span className="text-[10px] font-black text-slate-600 dark:text-slate-300">
                       {
                         group.tables
                           .length
@@ -4119,7 +4119,7 @@ function Records({
             </div>
 
             <label className="relative block">
-              <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
+              <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-600 dark:text-slate-300" />
               <input
                 value={
                   search
@@ -4218,7 +4218,7 @@ function Records({
                     <div className="sami-surface overflow-hidden rounded-[24px]">
                       <div className="overflow-x-auto">
                         <table className="w-full min-w-[820px] text-left text-sm">
-                          <thead className="border-b border-[var(--sami-border)] bg-slate-500/[0.04] text-[10px] font-black uppercase tracking-[0.09em] text-slate-400">
+                          <thead className="border-b border-[var(--sami-border)] bg-slate-500/[0.04] text-[10px] font-black uppercase tracking-[0.09em] text-slate-600 dark:text-slate-300">
                             <tr>
                               {
                                 selected
@@ -4613,7 +4613,7 @@ function Records({
                                                     }
                                                     className="mb-1 last:mb-0"
                                                   >
-                                                    <p className="text-[9px] font-black uppercase tracking-[0.08em] text-slate-400">
+                                                    <p className="text-[9px] font-black uppercase tracking-[0.08em] text-slate-600 dark:text-slate-300">
                                                       {
                                                         selected.fields.find(
                                                           item =>
@@ -5017,7 +5017,7 @@ function ModuleActivity({
                           )
                         }
 
-                        <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">
+                        <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-600 dark:text-slate-300">
                           {
                             item.entity
                               .type ||
@@ -5032,7 +5032,7 @@ function ModuleActivity({
                         </p>
                       </div>
 
-                      <time className="shrink-0 text-[10px] font-semibold text-slate-400">
+                      <time className="shrink-0 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
                         {
                           new Date(
                             item.createdAt,
@@ -5213,7 +5213,7 @@ function Reports({
 
         <div className="space-y-4">
           <div className="sami-soft-surface rounded-[22px] p-4">
-            <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+            <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
               Operating model
             </p>
             <p className="mt-2 text-sm font-black">
@@ -5231,7 +5231,7 @@ function Reports({
           </div>
 
           <div className="sami-soft-surface rounded-[22px] p-4">
-            <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+            <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
               Security scope
             </p>
             <p className="mt-2 text-sm font-black">
@@ -5274,7 +5274,7 @@ function Reports({
                           }
                           className="rounded-2xl border border-[var(--sami-border)] p-4"
                         >
-                          <p className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
+                          <p className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-600 dark:text-slate-300">
                             {
                               table.label
                             }
@@ -5287,7 +5287,7 @@ function Reports({
 
                           <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
                             <div className="rounded-xl bg-slate-500/[0.05] p-2">
-                              <p className="text-[9px] font-black uppercase text-slate-400">
+                              <p className="text-[9px] font-black uppercase text-slate-600 dark:text-slate-300">
                                 Sum
                               </p>
                               <p className="mt-1 font-black">
@@ -5297,7 +5297,7 @@ function Reports({
                               </p>
                             </div>
                             <div className="rounded-xl bg-slate-500/[0.05] p-2">
-                              <p className="text-[9px] font-black uppercase text-slate-400">
+                              <p className="text-[9px] font-black uppercase text-slate-600 dark:text-slate-300">
                                 Average
                               </p>
                               <p className="mt-1 font-black">
@@ -5307,7 +5307,7 @@ function Reports({
                               </p>
                             </div>
                             <div className="rounded-xl bg-slate-500/[0.05] p-2">
-                              <p className="text-[9px] font-black uppercase text-slate-400">
+                              <p className="text-[9px] font-black uppercase text-slate-600 dark:text-slate-300">
                                 Minimum
                               </p>
                               <p className="mt-1 font-black">
@@ -5317,7 +5317,7 @@ function Reports({
                               </p>
                             </div>
                             <div className="rounded-xl bg-slate-500/[0.05] p-2">
-                              <p className="text-[9px] font-black uppercase text-slate-400">
+                              <p className="text-[9px] font-black uppercase text-slate-600 dark:text-slate-300">
                                 Maximum
                               </p>
                               <p className="mt-1 font-black">
@@ -5396,7 +5396,7 @@ function Reports({
                                 table.label
                               }
                             </p>
-                            <p className="mt-1 text-[10px] text-slate-400">
+                            <p className="mt-1 text-[10px] text-slate-600 dark:text-slate-300">
                               {
                                 workflow.label
                               }
@@ -5426,7 +5426,7 @@ function Reports({
                             entries.length ===
                               0
                               ? (
-                                  <span className="text-[11px] text-slate-400">
+                                  <span className="text-[11px] text-slate-600 dark:text-slate-300">
                                     No workflow states yet
                                   </span>
                                 )
@@ -6278,7 +6278,7 @@ function RelationField({
 
       <div className="mt-1 grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.8fr)]">
         <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
+          <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-600 dark:text-slate-300" />
 
           <input
             type="search"
@@ -6371,7 +6371,7 @@ function RelationField({
         'mt-1 text-[10px]',
         failed
           ? 'text-red-500'
-          : 'text-slate-400',
+          : 'text-slate-600 dark:text-slate-300',
       ].join(
         ' ',
       )}>
@@ -6393,7 +6393,7 @@ function FieldLabel({
     EnterpriseField;
 }) {
   return (
-    <span className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+    <span className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
       {
         field.label
       }
@@ -6427,7 +6427,7 @@ function Metric({
     <div className="sami-surface rounded-[22px] p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+          <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
             {
               label
             }

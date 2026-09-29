@@ -478,7 +478,7 @@ export default function WorkspaceTenantSwitcher({
 
         <ChevronDown
           className={[
-            'hidden h-3.5 w-3.5 shrink-0 text-slate-400 transition sm:block',
+            'hidden h-3.5 w-3.5 shrink-0 text-slate-600 dark:text-slate-300 transition sm:block',
             open
               ? 'rotate-180'
               : '',
@@ -494,7 +494,7 @@ export default function WorkspaceTenantSwitcher({
           className="absolute right-0 z-[90] mt-2 w-[min(92vw,340px)] overflow-hidden rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] shadow-[0_24px_70px_rgba(15,23,42,0.18)] dark:shadow-[0_24px_70px_rgba(0,0,0,0.45)]"
         >
           <div className="border-b border-[var(--sami-border)] px-4 py-3">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 dark:text-slate-300">
               Workspaces
             </p>
 
@@ -589,7 +589,7 @@ export default function WorkspaceTenantSwitcher({
                           {workspace.name}
                         </span>
 
-                        <span className="mt-0.5 block truncate text-[9px] font-bold uppercase tracking-wide text-slate-400">
+                        <span className="mt-0.5 block truncate text-[9px] font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">
                           {accessLabel(
                             workspace.accessLevel,
                           )}

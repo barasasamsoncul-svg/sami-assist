@@ -446,6 +446,61 @@ function exportInvoiceRegister(
 }
 
 
+function displayDateTime(
+  value:
+    string |
+    null |
+    undefined,
+) {
+  if (!value) {
+    return '—';
+  }
+
+  const raw =
+    String(
+      value,
+    );
+
+  const candidate =
+    /^\d{4}-\d{2}-\d{2}$/.test(
+      raw,
+    )
+      ? raw +
+        'T00:00:00Z'
+      : raw;
+
+  const parsed =
+    new Date(
+      candidate,
+    );
+
+  if (
+    Number.isNaN(
+      parsed.getTime(),
+    )
+  ) {
+    return raw;
+  }
+
+  return new Intl
+    .DateTimeFormat(
+      'en-KE',
+      {
+        dateStyle:
+          'medium',
+        timeStyle:
+          raw.length >
+            10
+            ? 'short'
+            : undefined,
+      },
+    )
+    .format(
+      parsed,
+    );
+}
+
+
 function monthLabel(
   value:
     string,
@@ -7662,584 +7717,1037 @@ function Recurring({
     ) =>
       Promise<boolean>;
 }) {
+  const activeSchedules =
+    data.recurring.filter(
+      item =>
+        item.status ===
+        'active',
+    ).length;
+
+  const failedSchedules =
+    data.recurring.filter(
+      item =>
+        item.consecutiveFailures >
+        0,
+    ).length;
+
+  const generatedInvoices =
+    data.recurring.reduce(
+      (
+        total,
+        item,
+      ) =>
+        total +
+        item.runCount,
+      0,
+    );
+
   return (
-    <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-      {
-        data.capabilities
-          .canManageRecurring &&
-        (
-          <form
-            className="sami-surface h-fit rounded-[24px] p-4 sm:p-5"
-            onSubmit={
-              async event => {
-                event
-                  .preventDefault();
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="sami-surface rounded-[20px] p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+            Active schedules
+          </p>
+          <p className="mt-2 text-2xl font-black">
+            {
+              activeSchedules
+            }
+          </p>
+        </div>
 
-                const element =
-                  event.currentTarget;
+        <div className="sami-surface rounded-[20px] p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+            Generated invoices
+          </p>
+          <p className="mt-2 text-2xl font-black">
+            {
+              generatedInvoices
+            }
+          </p>
+        </div>
 
-                const form =
-                  new FormData(
-                    element,
-                  );
+        <div className="sami-surface rounded-[20px] p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+            Schedules needing attention
+          </p>
+          <p className="mt-2 text-2xl font-black">
+            {
+              failedSchedules
+            }
+          </p>
+        </div>
+      </div>
 
-                const saved =
-                  await run(
-                  {
-                    action:
-                      'create_recurring',
-                    name:
-                      form.get(
-                        'name',
-                      ),
-                    sourceInvoiceId:
-                      form.get(
-                        'sourceInvoiceId',
-                      ),
-                    intervalUnit:
-                      form.get(
-                        'intervalUnit',
-                      ),
-                    intervalCount:
-                      form.get(
-                        'intervalCount',
-                      ),
-                    nextRunAt:
-                      form.get(
-                        'nextRunAt',
-                      ),
-                    autoSend:
-                      form.get(
-                        'autoSend',
-                      ) ===
-                      'on',
-                    deliveryChannels: [
-                      form.get(
-                        'deliveryEmail',
-                      ) ===
-                        'on'
-                        ? 'email'
-                        : null,
-                      form.get(
-                        'deliveryWhatsApp',
-                      ) ===
-                        'on'
-                        ? 'whatsapp'
-                        : null,
-                      form.get(
-                        'deliverySms',
-                      ) ===
-                        'on'
-                        ? 'sms'
-                        : null,
-                    ].filter(
-                      Boolean,
-                    ),
+      <div className="grid gap-4 xl:grid-cols-[390px_minmax(0,1fr)]">
+        {
+          data.capabilities
+            .canManageRecurring &&
+          (
+            <form
+              className="sami-surface h-fit rounded-[24px] p-4 sm:p-5"
+              onSubmit={
+                async event => {
+                  event
+                    .preventDefault();
 
-                  },
-                  'Recurring schedule created.',
-                );
+                  const element =
+                    event.currentTarget;
 
-                if (
-                  saved
-                ) {
-                  element.reset();
+                  const form =
+                    new FormData(
+                      element,
+                    );
+
+                  const saved =
+                    await run(
+                      {
+                        action:
+                          'create_recurring',
+                        name:
+                          form.get(
+                            'name',
+                          ),
+                        sourceInvoiceId:
+                          form.get(
+                            'sourceInvoiceId',
+                          ),
+                        intervalUnit:
+                          form.get(
+                            'intervalUnit',
+                          ),
+                        intervalCount:
+                          form.get(
+                            'intervalCount',
+                          ),
+                        startDate:
+                          form.get(
+                            'startDate',
+                          ),
+                        nextRunAt:
+                          form.get(
+                            'nextRunAt',
+                          ),
+                        endDate:
+                          form.get(
+                            'endDate',
+                          ),
+                        maxOccurrences:
+                          form.get(
+                            'maxOccurrences',
+                          ),
+                        maxRetryAttempts:
+                          form.get(
+                            'maxRetryAttempts',
+                          ),
+                        autoSend:
+                          form.get(
+                            'autoSend',
+                          ) ===
+                          'on',
+                        deliveryChannels: [
+                          form.get(
+                            'deliveryEmail',
+                          ) ===
+                            'on'
+                            ? 'email'
+                            : null,
+                          form.get(
+                            'deliveryWhatsApp',
+                          ) ===
+                            'on'
+                            ? 'whatsapp'
+                            : null,
+                          form.get(
+                            'deliverySms',
+                          ) ===
+                            'on'
+                            ? 'sms'
+                            : null,
+                        ].filter(
+                          Boolean,
+                        ),
+                      },
+                      'Recurring schedule created.',
+                    );
+
+                  if (
+                    saved
+                  ) {
+                    element.reset();
+                  }
                 }
               }
-            }
-          >
-            <p className="text-sm font-black">
-              New recurring schedule
-            </p>
+            >
+              <p className="text-sm font-black">
+                New recurring schedule
+              </p>
 
-            <p className="mt-1 text-xs text-slate-500">
-              Choose an existing invoice as the commercial template. SaMi reuses its customer, items, prices, discounts, taxes and terms for every scheduled invoice.
-            </p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                Use an existing invoice as the commercial template. SaMi snapshots its customer, lines, pricing, taxes and terms, then creates each occurrence through the normal approval and accounting lifecycle.
+              </p>
 
-            <div className="mt-4 space-y-3">
-              <Field
-                label="Schedule name"
-                name="name"
-                required
-              />
-
-              <label className="block space-y-1">
-                <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
-                  Source invoice
-                </span>
-
-                <select
-                  name="sourceInvoiceId"
-                  required
-                  className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
-                >
-                  <option value="">
-                    Choose invoice template
-                  </option>
-
-                  {
-                    data.invoices
-                      .filter(
-                        invoice =>
-                          ![
-                            'cancelled',
-                            'void',
-                            'written_off',
-                          ].includes(
-                            invoice.status,
-                          ),
-                      )
-                      .map(
-                        invoice => (
-                          <option
-                            key={
-                              invoice.id
-                            }
-                            value={
-                              invoice.id
-                            }
-                          >
-                            {
-                              invoice.invoiceNumber
-                            } · {
-                              invoice.customerName
-                            } · {
-                              formatMoney(
-                                invoice.totalAmount,
-                                invoice.currency,
-                              )
-                            }
-                          </option>
-                        ),
-                      )
-                  }
-                </select>
-              </label>
-
-              <div className="grid grid-cols-2 gap-2">
+              <div className="mt-4 space-y-3">
                 <Field
-                  label="Every"
-                  name="intervalCount"
-                  type="number"
-                  min="1"
-                  max="120"
-                  defaultValue="1"
+                  label="Schedule name"
+                  name="name"
+                  required
                 />
 
                 <label className="block space-y-1">
                   <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
-                    Period
+                    Source invoice
                   </span>
 
                   <select
-                    name="intervalUnit"
-                    className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                    name="sourceInvoiceId"
+                    required
+                    className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-sm"
                   >
-                    <option value="month">
-                      Month
+                    <option value="">
+                      Choose invoice template
                     </option>
-
-                    <option value="week">
-                      Week
-                    </option>
-
-                    <option value="quarter">
-                      Quarter
-                    </option>
-
-                    <option value="year">
-                      Year
-                    </option>
-                  </select>
-                </label>
-              </div>
-
-              <Field
-                label="Next run"
-                name="nextRunAt"
-                type="date"
-                required
-              />
-
-              <label className="flex items-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 py-3 text-xs font-semibold">
-                <input
-                  type="checkbox"
-                  name="autoSend"
-                />
-                Auto-send generated invoices
-              </label>
-
-              <div className="rounded-xl border border-[var(--sami-border)] p-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
-                  Auto-send channels
-                </p>
-
-                <div className="mt-2 grid gap-2 sm:grid-cols-3">
-                  <Toggle
-                    name="deliveryEmail"
-                    label="Email PDF"
-                    defaultChecked={
-                      true
-                    }
-                  />
-                  <Toggle
-                    name="deliveryWhatsApp"
-                    label="WhatsApp PDF"
-                    defaultChecked={
-                      false
-                    }
-                  />
-                  <Toggle
-                    name="deliverySms"
-                    label="SMS link"
-                    defaultChecked={
-                      false
-                    }
-                  />
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={
-                pending
-              }
-              className="mt-4 h-10 w-full rounded-xl bg-blue-600 text-xs font-black text-white"
-            >
-              Save schedule
-            </button>
-          </form>
-        )
-      }
-
-      <div className="sami-surface rounded-[24px] p-4 sm:p-5">
-        <p className="text-sm font-black">
-          Recurring invoices
-        </p>
-
-        <div className="mt-3 divide-y divide-[var(--sami-border)]">
-          {
-            data.recurring
-              .map(
-                item => (
-                  <details
-                    key={
-                      item.id
-                    }
-                    className="group"
-                  >
-                    <summary className="cursor-pointer list-none py-3">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <div className="min-w-0 flex-1">
-                          <p className="font-black">
-                            {
-                              item.name
-                            }
-                          </p>
-
-                          <p className="mt-1 text-xs text-slate-500">
-                            {
-                              item.customerName
-                            } · {
-                              item.sourceInvoiceNumber ||
-                              'invoice template'
-                            } · every {
-                              item.intervalCount
-                            } {
-                              item.intervalUnit
-                            }
-                          </p>
-                        </div>
-
-                        <div className="flex shrink-0 items-center gap-3 sm:justify-end">
-                          <div className="sm:text-right">
-                            <StatusPill
-                              value={
-                                item.status
-                              }
-                            />
-
-                            <p className="mt-1 text-[11px] text-slate-500">
-                              Next {
-                                item.nextRunAt
-                              }
-                            </p>
-                          </div>
-
-                          <ChevronDown className="h-4 w-4 text-slate-400 transition group-open:rotate-180" />
-                        </div>
-                      </div>
-                    </summary>
 
                     {
-                      data.capabilities
-                        .canManageRecurring &&
-                      item.status !==
-                        'cancelled' &&
-                      item.status !==
-                        'completed' &&
-                      (
-                        <form
-                          className="mb-3 rounded-2xl border border-[var(--sami-border)] bg-slate-50/40 p-3 dark:bg-white/[0.02]"
-                          onSubmit={
-                            async event => {
-                              event.preventDefault();
-
-                              const form =
-                                new FormData(
-                                  event.currentTarget,
-                                );
-
-                              await run(
-                                {
-                                  action:
-                                    'update_recurring',
-                                  recurringId:
-                                    item.id,
-                                  name:
-                                    form.get(
-                                      'name',
-                                    ),
-                                  intervalUnit:
-                                    form.get(
-                                      'intervalUnit',
-                                    ),
-                                  intervalCount:
-                                    form.get(
-                                      'intervalCount',
-                                    ),
-                                  nextRunAt:
-                                    form.get(
-                                      'nextRunAt',
-                                    ),
-                                  autoSend:
-                                    form.get(
-                                      'autoSend',
-                                    ) ===
-                                    'on',
-                                  deliveryChannels: [
-                                    form.get(
-                                      'deliveryEmail',
-                                    ) ===
-                                      'on'
-                                      ? 'email'
-                                      : null,
-                                    form.get(
-                                      'deliveryWhatsApp',
-                                    ) ===
-                                      'on'
-                                      ? 'whatsapp'
-                                      : null,
-                                    form.get(
-                                      'deliverySms',
-                                    ) ===
-                                      'on'
-                                      ? 'sms'
-                                      : null,
-                                  ].filter(
-                                    Boolean,
-                                  ),
-                                },
-                                'Recurring schedule updated.',
-                              );
-                            }
-                          }
-                        >
-                          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                            <Field
-                              label="Schedule name"
-                              name="name"
-                              required
-                              defaultValue={
-                                item.name
+                      data.invoices
+                        .filter(
+                          invoice =>
+                            ![
+                              'cancelled',
+                              'void',
+                              'written_off',
+                            ].includes(
+                              invoice.status,
+                            ),
+                        )
+                        .map(
+                          invoice => (
+                            <option
+                              key={
+                                invoice.id
                               }
-                            />
-
-                            <Field
-                              label="Every"
-                              name="intervalCount"
-                              type="number"
-                              min="1"
-                              max="120"
-                              required
-                              defaultValue={
-                                String(
-                                  item.intervalCount,
+                              value={
+                                invoice.id
+                              }
+                            >
+                              {
+                                invoice.invoiceNumber
+                              } · {
+                                invoice.customerName
+                              } · {
+                                formatMoney(
+                                  invoice.totalAmount,
+                                  invoice.currency,
                                 )
                               }
-                            />
+                            </option>
+                          ),
+                        )
+                    }
+                  </select>
+                </label>
 
-                            <label className="block space-y-1">
-                              <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
-                                Period
-                              </span>
-                              <select
-                                name="intervalUnit"
-                                defaultValue={
+                <div className="grid grid-cols-2 gap-2">
+                  <Field
+                    label="Every"
+                    name="intervalCount"
+                    type="number"
+                    min="1"
+                    max="120"
+                    defaultValue="1"
+                    required
+                  />
+
+                  <label className="block space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                      Period
+                    </span>
+
+                    <select
+                      name="intervalUnit"
+                      defaultValue="month"
+                      className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-sm"
+                    >
+                      <option value="day">
+                        Day
+                      </option>
+                      <option value="week">
+                        Week
+                      </option>
+                      <option value="month">
+                        Month
+                      </option>
+                      <option value="quarter">
+                        Quarter
+                      </option>
+                      <option value="year">
+                        Year
+                      </option>
+                    </select>
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <Field
+                    label="Start date"
+                    name="startDate"
+                    type="date"
+                  />
+
+                  <Field
+                    label="First run"
+                    name="nextRunAt"
+                    type="date"
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <Field
+                    label="End date"
+                    name="endDate"
+                    type="date"
+                  />
+
+                  <Field
+                    label="Maximum invoices"
+                    name="maxOccurrences"
+                    type="number"
+                    min="1"
+                    max="10000"
+                  />
+                </div>
+
+                <Field
+                  label="Retry attempts before auto-pause"
+                  name="maxRetryAttempts"
+                  type="number"
+                  min="1"
+                  max="20"
+                  defaultValue="3"
+                  required
+                />
+
+                <label className="flex items-center gap-2 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface-soft)] px-3 py-3 text-xs font-semibold">
+                  <input
+                    type="checkbox"
+                    name="autoSend"
+                  />
+                  Auto-send generated invoices after posting
+                </label>
+
+                <div className="rounded-xl border border-[var(--sami-border)] p-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+                    Delivery channels
+                  </p>
+
+                  <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                    <Toggle
+                      name="deliveryEmail"
+                      label="Email PDF"
+                      defaultChecked={
+                        true
+                      }
+                    />
+                    <Toggle
+                      name="deliveryWhatsApp"
+                      label="WhatsApp PDF"
+                      defaultChecked={
+                        false
+                      }
+                    />
+                    <Toggle
+                      name="deliverySms"
+                      label="SMS link"
+                      defaultChecked={
+                        false
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={
+                  pending
+                }
+                className="mt-4 h-10 w-full rounded-xl bg-blue-600 px-4 text-xs font-black text-white disabled:cursor-not-allowed"
+              >
+                Save schedule
+              </button>
+            </form>
+          )
+        }
+
+        <div className="sami-surface rounded-[24px] p-4 sm:p-5">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-black">
+                Recurring invoices
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Schedule health, generated documents, delivery state and recent worker runs.
+              </p>
+            </div>
+
+            <span className="mt-2 w-fit rounded-full border border-[var(--sami-border)] bg-[var(--sami-surface-soft)] px-3 py-1 text-[10px] font-black sm:mt-0">
+              {
+                data.recurring.length
+              } schedules
+            </span>
+          </div>
+
+          <div className="mt-3 divide-y divide-[var(--sami-border)]">
+            {
+              data.recurring
+                .map(
+                  item => {
+                    const hasFailedRun =
+                      item.runs.some(
+                        recurringRun =>
+                          recurringRun.status ===
+                          'failed',
+                      );
+
+                    return (
+                      <details
+                        key={
+                          item.id
+                        }
+                        className="group"
+                      >
+                        <summary className="cursor-pointer list-none py-4">
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-black">
+                                  {
+                                    item.name
+                                  }
+                                </p>
+
+                                <StatusPill
+                                  value={
+                                    item.status
+                                  }
+                                />
+                              </div>
+
+                              <p className="mt-1 text-xs text-slate-500">
+                                {
+                                  item.customerName
+                                } · {
+                                  item.sourceInvoiceNumber ||
+                                  'invoice template'
+                                } · every {
+                                  item.intervalCount
+                                } {
                                   item.intervalUnit
                                 }
-                                className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
-                              >
-                                <option value="day">Day</option>
-                                <option value="week">Week</option>
-                                <option value="month">Month</option>
-                                <option value="quarter">Quarter</option>
-                                <option value="year">Year</option>
-                              </select>
-                            </label>
+                              </p>
 
-                            <Field
-                              label="Next run"
-                              name="nextRunAt"
-                              type="date"
-                              required
-                              defaultValue={
-                                item.nextRunAt
-                                  .slice(
-                                    0,
-                                    10,
-                                  )
-                              }
-                            />
-                          </div>
-
-                          <div className="mt-3 grid gap-2 sm:grid-cols-4">
-                            <Toggle
-                              name="autoSend"
-                              label="Auto-send"
-                              defaultChecked={
-                                item.autoSend
-                              }
-                            />
-                            <Toggle
-                              name="deliveryEmail"
-                              label="Email"
-                              defaultChecked={
-                                item.deliveryChannels
-                                  .includes(
-                                    'email',
-                                  )
-                              }
-                            />
-                            <Toggle
-                              name="deliveryWhatsApp"
-                              label="WhatsApp"
-                              defaultChecked={
-                                item.deliveryChannels
-                                  .includes(
-                                    'whatsapp',
-                                  )
-                              }
-                            />
-                            <Toggle
-                              name="deliverySms"
-                              label="SMS"
-                              defaultChecked={
-                                item.deliveryChannels
-                                  .includes(
-                                    'sms',
-                                  )
-                              }
-                            />
-                          </div>
-
-                          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex gap-2">
-                              <button
-                                type="button"
-                                disabled={
-                                  pending
-                                }
-                                onClick={
-                                  () =>
-                                    run(
-                                      {
-                                        action:
-                                          'set_recurring_status',
-                                        recurringId:
-                                          item.id,
-                                        status:
-                                          item.status ===
-                                            'active'
-                                            ? 'paused'
-                                            : 'active',
-                                      },
-                                      item.status ===
-                                        'active'
-                                        ? 'Recurring schedule paused.'
-                                        : 'Recurring schedule resumed.',
+                              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-semibold text-slate-500">
+                                <span>
+                                  Next: {
+                                    displayDateTime(
+                                      item.nextRunAt,
                                     )
-                                }
-                                className="h-9 rounded-xl border border-[var(--sami-border)] px-3 text-[10px] font-black disabled:opacity-50"
-                              >
+                                  }
+                                </span>
+                                <span>
+                                  Generated: {
+                                    item.runCount
+                                  }{
+                                    item.maxOccurrences
+                                      ? ' / ' +
+                                        item.maxOccurrences
+                                      : ''
+                                  }
+                                </span>
                                 {
-                                  item.status ===
-                                    'active'
-                                    ? 'Pause'
-                                    : 'Resume'
+                                  item.endDate &&
+                                  (
+                                    <span>
+                                      Ends: {
+                                        displayDateTime(
+                                          item.endDate,
+                                        )
+                                      }
+                                    </span>
+                                  )
                                 }
-                              </button>
-
-                              <button
-                                type="button"
-                                disabled={
-                                  pending
-                                }
-                                onClick={
-                                  () =>
-                                    run(
-                                      {
-                                        action:
-                                          'set_recurring_status',
-                                        recurringId:
-                                          item.id,
-                                        status:
-                                          'cancelled',
-                                      },
-                                      'Recurring schedule cancelled.',
-                                    )
-                                }
-                                className="h-9 rounded-xl border border-red-500/30 px-3 text-[10px] font-black text-red-600 disabled:opacity-50"
-                              >
-                                Cancel
-                              </button>
+                              </div>
                             </div>
 
-                            <button
-                              type="submit"
-                              disabled={
-                                pending
+                            <div className="flex shrink-0 items-center gap-3">
+                              {
+                                item.lastInvoiceId &&
+                                item.lastInvoiceNumber &&
+                                (
+                                  <Link
+                                    href={
+                                      '/apps/invoicing/' +
+                                      item.lastInvoiceId
+                                    }
+                                    className="rounded-xl border border-[var(--sami-border)] px-3 py-2 text-[10px] font-black text-blue-700 transition hover:bg-[var(--sami-surface-soft)] dark:text-blue-300"
+                                  >
+                                    {
+                                      item.lastInvoiceNumber
+                                    }
+                                  </Link>
+                                )
                               }
-                              className="h-9 rounded-xl bg-blue-600 px-3 text-[10px] font-black text-white disabled:opacity-60"
-                            >
-                              Save schedule
-                            </button>
-                          </div>
-                        </form>
-                      )
-                    }
-                  </details>
-                ),
-              )
-          }
 
-          {
-            data.recurring
-              .length ===
-              0 &&
-            (
-              <p className="py-8 text-center text-sm text-slate-500">
-                No recurring schedules yet.
-              </p>
-            )
-          }
+                              <ChevronDown className="h-4 w-4 text-slate-400 transition group-open:rotate-180" />
+                            </div>
+                          </div>
+                        </summary>
+
+                        <div className="mb-4 space-y-3">
+                          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                            <div className="rounded-xl bg-[var(--sami-surface-soft)] p-3">
+                              <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-400">
+                                Last success
+                              </p>
+                              <p className="mt-1 text-xs font-bold">
+                                {
+                                  displayDateTime(
+                                    item.lastSuccessAt,
+                                  )
+                                }
+                              </p>
+                            </div>
+
+                            <div className="rounded-xl bg-[var(--sami-surface-soft)] p-3">
+                              <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-400">
+                                Failures
+                              </p>
+                              <p className="mt-1 text-xs font-bold">
+                                {
+                                  item.consecutiveFailures
+                                } / {
+                                  item.maxRetryAttempts
+                                }
+                              </p>
+                            </div>
+
+                            <div className="rounded-xl bg-[var(--sami-surface-soft)] p-3">
+                              <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-400">
+                                Retry after
+                              </p>
+                              <p className="mt-1 text-xs font-bold">
+                                {
+                                  displayDateTime(
+                                    item.retryAfter,
+                                  )
+                                }
+                              </p>
+                            </div>
+
+                            <div className="rounded-xl bg-[var(--sami-surface-soft)] p-3">
+                              <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-400">
+                                Completion
+                              </p>
+                              <p className="mt-1 text-xs font-bold">
+                                {
+                                  item.completionReason ||
+                                  'Running'
+                                }
+                              </p>
+                            </div>
+                          </div>
+
+                          {
+                            (
+                              item.lastErrorCode ||
+                              item.lastErrorMessage
+                            ) &&
+                            (
+                              <div className="rounded-2xl border border-rose-500/20 bg-rose-500/[0.06] p-3">
+                                <p className="text-[10px] font-black uppercase tracking-[0.1em] text-rose-700 dark:text-rose-300">
+                                  Latest recurring error
+                                </p>
+                                <p className="mt-1 text-xs font-bold text-rose-900 dark:text-rose-100">
+                                  {
+                                    item.lastErrorCode ||
+                                    'RECURRING_GENERATION_FAILED'
+                                  }
+                                </p>
+                                {
+                                  item.lastErrorMessage &&
+                                  (
+                                    <p className="mt-1 text-xs leading-5 text-rose-800 dark:text-rose-200">
+                                      {
+                                        item.lastErrorMessage
+                                      }
+                                    </p>
+                                  )
+                                }
+                              </div>
+                            )
+                          }
+
+                          {
+                            data.capabilities
+                              .canManageRecurring &&
+                            item.status !==
+                              'cancelled' &&
+                            item.status !==
+                              'completed' &&
+                            (
+                              <form
+                                className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface-soft)] p-3"
+                                onSubmit={
+                                  async event => {
+                                    event.preventDefault();
+
+                                    const form =
+                                      new FormData(
+                                        event.currentTarget,
+                                      );
+
+                                    await run(
+                                      {
+                                        action:
+                                          'update_recurring',
+                                        recurringId:
+                                          item.id,
+                                        name:
+                                          form.get(
+                                            'name',
+                                          ),
+                                        intervalUnit:
+                                          form.get(
+                                            'intervalUnit',
+                                          ),
+                                        intervalCount:
+                                          form.get(
+                                            'intervalCount',
+                                          ),
+                                        nextRunAt:
+                                          form.get(
+                                            'nextRunAt',
+                                          ),
+                                        endDate:
+                                          form.get(
+                                            'endDate',
+                                          ),
+                                        maxOccurrences:
+                                          form.get(
+                                            'maxOccurrences',
+                                          ),
+                                        maxRetryAttempts:
+                                          form.get(
+                                            'maxRetryAttempts',
+                                          ),
+                                        autoSend:
+                                          form.get(
+                                            'autoSend',
+                                          ) ===
+                                          'on',
+                                        deliveryChannels: [
+                                          form.get(
+                                            'deliveryEmail',
+                                          ) ===
+                                            'on'
+                                            ? 'email'
+                                            : null,
+                                          form.get(
+                                            'deliveryWhatsApp',
+                                          ) ===
+                                            'on'
+                                            ? 'whatsapp'
+                                            : null,
+                                          form.get(
+                                            'deliverySms',
+                                          ) ===
+                                            'on'
+                                            ? 'sms'
+                                            : null,
+                                        ].filter(
+                                          Boolean,
+                                        ),
+                                      },
+                                      'Recurring schedule updated.',
+                                    );
+                                  }
+                                }
+                              >
+                                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                                  <Field
+                                    label="Schedule name"
+                                    name="name"
+                                    required
+                                    defaultValue={
+                                      item.name
+                                    }
+                                  />
+
+                                  <Field
+                                    label="Every"
+                                    name="intervalCount"
+                                    type="number"
+                                    min="1"
+                                    max="120"
+                                    required
+                                    defaultValue={
+                                      String(
+                                        item.intervalCount,
+                                      )
+                                    }
+                                  />
+
+                                  <label className="block space-y-1">
+                                    <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                                      Period
+                                    </span>
+                                    <select
+                                      name="intervalUnit"
+                                      defaultValue={
+                                        item.intervalUnit
+                                      }
+                                      className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-sm"
+                                    >
+                                      <option value="day">Day</option>
+                                      <option value="week">Week</option>
+                                      <option value="month">Month</option>
+                                      <option value="quarter">Quarter</option>
+                                      <option value="year">Year</option>
+                                    </select>
+                                  </label>
+
+                                  <Field
+                                    label="Next run"
+                                    name="nextRunAt"
+                                    type="date"
+                                    required
+                                    defaultValue={
+                                      item.nextRunAt
+                                        .slice(
+                                          0,
+                                          10,
+                                        )
+                                    }
+                                  />
+
+                                  <Field
+                                    label="End date"
+                                    name="endDate"
+                                    type="date"
+                                    defaultValue={
+                                      item.endDate
+                                        ?.slice(
+                                          0,
+                                          10,
+                                        ) ||
+                                      ''
+                                    }
+                                  />
+
+                                  <Field
+                                    label="Maximum invoices"
+                                    name="maxOccurrences"
+                                    type="number"
+                                    min="1"
+                                    max="10000"
+                                    defaultValue={
+                                      item.maxOccurrences ===
+                                        null
+                                        ? ''
+                                        : String(
+                                            item.maxOccurrences,
+                                          )
+                                    }
+                                  />
+
+                                  <Field
+                                    label="Retry attempts"
+                                    name="maxRetryAttempts"
+                                    type="number"
+                                    min="1"
+                                    max="20"
+                                    required
+                                    defaultValue={
+                                      String(
+                                        item.maxRetryAttempts,
+                                      )
+                                    }
+                                  />
+                                </div>
+
+                                <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                                  <Toggle
+                                    name="autoSend"
+                                    label="Auto-send"
+                                    defaultChecked={
+                                      item.autoSend
+                                    }
+                                  />
+                                  <Toggle
+                                    name="deliveryEmail"
+                                    label="Email"
+                                    defaultChecked={
+                                      item.deliveryChannels
+                                        .includes(
+                                          'email',
+                                        )
+                                    }
+                                  />
+                                  <Toggle
+                                    name="deliveryWhatsApp"
+                                    label="WhatsApp"
+                                    defaultChecked={
+                                      item.deliveryChannels
+                                        .includes(
+                                          'whatsapp',
+                                        )
+                                    }
+                                  />
+                                  <Toggle
+                                    name="deliverySms"
+                                    label="SMS"
+                                    defaultChecked={
+                                      item.deliveryChannels
+                                        .includes(
+                                          'sms',
+                                        )
+                                    }
+                                  />
+                                </div>
+
+                                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                                  <div className="flex flex-wrap gap-2">
+                                    <button
+                                      type="button"
+                                      disabled={
+                                        pending
+                                      }
+                                      onClick={
+                                        () =>
+                                          run(
+                                            {
+                                              action:
+                                                'set_recurring_status',
+                                              recurringId:
+                                                item.id,
+                                              status:
+                                                item.status ===
+                                                  'active'
+                                                  ? 'paused'
+                                                  : 'active',
+                                            },
+                                            item.status ===
+                                              'active'
+                                              ? 'Recurring schedule paused.'
+                                              : 'Recurring schedule resumed.',
+                                          )
+                                      }
+                                      className="h-9 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-[10px] font-black disabled:cursor-not-allowed"
+                                    >
+                                      {
+                                        item.status ===
+                                          'active'
+                                          ? 'Pause'
+                                          : 'Resume'
+                                      }
+                                    </button>
+
+                                    {
+                                      hasFailedRun &&
+                                      (
+                                        <button
+                                          type="button"
+                                          disabled={
+                                            pending
+                                          }
+                                          onClick={
+                                            () =>
+                                              run(
+                                                {
+                                                  action:
+                                                    'retry_recurring',
+                                                  recurringId:
+                                                    item.id,
+                                                },
+                                                'Recurring retry queued.',
+                                              )
+                                          }
+                                          className="h-9 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-3 text-[10px] font-black text-amber-800 disabled:cursor-not-allowed dark:text-amber-200"
+                                        >
+                                          Retry failed run
+                                        </button>
+                                      )
+                                    }
+
+                                    <button
+                                      type="button"
+                                      disabled={
+                                        pending
+                                      }
+                                      onClick={
+                                        () =>
+                                          run(
+                                            {
+                                              action:
+                                                'set_recurring_status',
+                                              recurringId:
+                                                item.id,
+                                              status:
+                                                'cancelled',
+                                            },
+                                            'Recurring schedule cancelled.',
+                                          )
+                                      }
+                                      className="h-9 rounded-xl border border-red-500/30 bg-red-500/[0.04] px-3 text-[10px] font-black text-red-700 disabled:cursor-not-allowed dark:text-red-300"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+
+                                  <button
+                                    type="submit"
+                                    disabled={
+                                      pending
+                                    }
+                                    className="h-9 rounded-xl bg-blue-600 px-3 text-[10px] font-black text-white disabled:cursor-not-allowed"
+                                  >
+                                    Save schedule
+                                  </button>
+                                </div>
+                              </form>
+                            )
+                          }
+
+                          <div className="overflow-hidden rounded-2xl border border-[var(--sami-border)]">
+                            <div className="flex items-center justify-between gap-2 border-b border-[var(--sami-border)] bg-[var(--sami-surface-soft)] px-3 py-2.5">
+                              <p className="text-[10px] font-black uppercase tracking-[0.1em]">
+                                Recent runs
+                              </p>
+                              <p className="text-[10px] font-semibold text-slate-500">
+                                Latest {
+                                  item.runs.length
+                                }
+                              </p>
+                            </div>
+
+                            <div className="divide-y divide-[var(--sami-border)]">
+                              {
+                                item.runs.map(
+                                  recurringRun => (
+                                    <div
+                                      key={
+                                        recurringRun.id
+                                      }
+                                      className="grid gap-2 px-3 py-3 text-xs sm:grid-cols-[130px_100px_minmax(0,1fr)_130px]"
+                                    >
+                                      <div>
+                                        <p className="text-[9px] font-black uppercase tracking-[0.08em] text-slate-400">
+                                          Scheduled
+                                        </p>
+                                        <p className="mt-1 font-bold">
+                                          {
+                                            displayDateTime(
+                                              recurringRun.scheduledFor,
+                                            )
+                                          }
+                                        </p>
+                                      </div>
+
+                                      <div>
+                                        <p className="text-[9px] font-black uppercase tracking-[0.08em] text-slate-400">
+                                          Run
+                                        </p>
+                                        <p className="mt-1 font-bold">
+                                          {
+                                            recurringRun.status
+                                          } · try {
+                                            recurringRun.attemptCount
+                                          }
+                                        </p>
+                                      </div>
+
+                                      <div className="min-w-0">
+                                        <p className="text-[9px] font-black uppercase tracking-[0.08em] text-slate-400">
+                                          Result
+                                        </p>
+                                        {
+                                          recurringRun.invoiceId &&
+                                          recurringRun.invoiceNumber
+                                            ? (
+                                                <Link
+                                                  href={
+                                                    '/apps/invoicing/' +
+                                                    recurringRun.invoiceId
+                                                  }
+                                                  className="mt-1 inline-block truncate font-black text-blue-700 hover:underline dark:text-blue-300"
+                                                >
+                                                  {
+                                                    recurringRun.invoiceNumber
+                                                  }
+                                                </Link>
+                                              )
+                                            : (
+                                                <p className="mt-1 truncate font-semibold">
+                                                  {
+                                                    recurringRun.errorCode ||
+                                                    recurringRun.errorMessage ||
+                                                    'No invoice generated'
+                                                  }
+                                                </p>
+                                              )
+                                        }
+                                      </div>
+
+                                      <div>
+                                        <p className="text-[9px] font-black uppercase tracking-[0.08em] text-slate-400">
+                                          Delivery
+                                        </p>
+                                        <p className="mt-1 font-bold">
+                                          {
+                                            recurringRun.deliveryStatus
+                                          }
+                                        </p>
+                                      </div>
+                                    </div>
+                                  ),
+                                )
+                              }
+
+                              {
+                                item.runs.length ===
+                                  0 &&
+                                (
+                                  <p className="px-4 py-6 text-center text-xs text-slate-500">
+                                    No recurring runs have executed yet.
+                                  </p>
+                                )
+                              }
+                            </div>
+                          </div>
+                        </div>
+                      </details>
+                    );
+                  },
+                )
+            }
+
+            {
+              data.recurring
+                .length ===
+                0 &&
+              (
+                <p className="py-8 text-center text-sm text-slate-500">
+                  No recurring schedules yet.
+                </p>
+              )
+            }
+          </div>
         </div>
       </div>
     </div>
   );
 }
-
 
 function Reports({
   data,

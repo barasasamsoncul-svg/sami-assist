@@ -33,6 +33,7 @@ export {
   recordCustomerPayment,
   recordInvoicePayment,
   refundInvoicePayment,
+  retryRecurringInvoiceTemplate,
   reverseInvoicePayment,
   reverseInvoicePaymentAllocation,
   reverseInvoicePaymentRefund,

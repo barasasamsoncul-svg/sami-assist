@@ -301,6 +301,8 @@ async function generateOneRecurringInvoice(
     {
       invoiceId:
         string;
+      recurringRunId:
+        string;
       companyId:
         string;
       companyName:
@@ -314,6 +316,20 @@ async function generateOneRecurringInvoice(
         ReturnType<
           typeof normalizeInvoiceDeliveryChannels
         >;
+    } |
+    null =
+      null;
+
+  let failedContext:
+    {
+      recurringId:
+        string;
+      companyId:
+        string;
+      scheduledFor:
+        string;
+      runKey:
+        string;
     } |
     null =
       null;
@@ -335,6 +351,11 @@ async function generateOneRecurringInvoice(
             r.interval_count,
             r.end_date,
             r.next_run_at,
+            r.max_occurrences,
+            r.run_count,
+            r.consecutive_failures,
+            r.max_retry_attempts,
+            r.retry_after,
             r.auto_send,
             r.currency,
             r.invoice_payload,
@@ -395,10 +416,22 @@ async function generateOneRecurringInvoice(
             AND r.next_run_at <=
                 CURRENT_DATE
             AND (
+              r.retry_after
+                IS NULL
+              OR r.retry_after <=
+                 NOW()
+            )
+            AND (
               r.end_date
                 IS NULL
               OR r.next_run_at <=
                  r.end_date
+            )
+            AND (
+              r.max_occurrences
+                IS NULL
+              OR r.run_count <
+                 r.max_occurrences
             )
           ORDER BY
             r.next_run_at,
@@ -428,6 +461,30 @@ async function generateOneRecurringInvoice(
         row.id,
       );
 
+    const scheduledFor =
+      dateString(
+        row.next_run_at,
+      );
+
+    const runKey =
+      [
+        'recurring',
+        recurringId,
+        scheduledFor,
+      ].join(
+        ':',
+      );
+
+    failedContext = {
+      recurringId,
+      companyId:
+        String(
+          row.company_id,
+        ),
+      scheduledFor,
+      runKey,
+    };
+
     if (
       row.customer_status !==
         'active'
@@ -438,6 +495,12 @@ async function generateOneRecurringInvoice(
           SET
             status =
               'paused',
+            paused_at =
+              NOW(),
+            paused_by =
+              NULL,
+            completion_reason =
+              NULL,
             metadata =
               COALESCE(
                 metadata,
@@ -467,6 +530,305 @@ async function generateOneRecurringInvoice(
         paused:
           true,
       };
+    }
+
+    const actorUserId =
+      row.actor_user_id
+        ? String(
+            row.actor_user_id,
+          )
+        : null;
+
+    if (
+      !actorUserId
+    ) {
+      await client.query(
+        `
+          UPDATE invoicing_recurring_templates
+          SET
+            status =
+              'paused',
+            paused_at =
+              NOW(),
+            paused_by =
+              NULL,
+            completion_reason =
+              NULL,
+            metadata =
+              COALESCE(
+                metadata,
+                '{}'::jsonb
+              ) ||
+              jsonb_build_object(
+                'workerPauseReason',
+                'RUN_AS_USER_UNAVAILABLE',
+                'workerPausedAt',
+                NOW()
+              ),
+            updated_at =
+              NOW()
+          WHERE id =
+                $1
+        `,
+        [
+          recurringId,
+        ],
+      );
+
+      await client.query(
+        'COMMIT',
+      );
+
+      return {
+        paused:
+          true,
+      };
+    }
+
+    const existingRun =
+      await client.query(
+        `
+          SELECT
+            id,
+            status,
+            attempt_count,
+            invoice_id
+          FROM invoicing_recurring_runs
+          WHERE recurring_template_id =
+                $1
+            AND scheduled_for =
+                $2::date
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [
+          recurringId,
+          scheduledFor,
+        ],
+      );
+
+    if (
+      existingRun.rows[0]
+        ?.status ===
+        'succeeded' &&
+      existingRun.rows[0]
+        ?.invoice_id
+    ) {
+      const nextRunAt =
+        advanceDate(
+          scheduledFor,
+          String(
+            row.interval_unit,
+          ),
+          Number(
+            row.interval_count,
+          ),
+        );
+
+      await client.query(
+        `
+          UPDATE invoicing_recurring_templates
+          SET
+            last_invoice_id =
+              $2,
+            last_success_at =
+              COALESCE(
+                last_success_at,
+                NOW()
+              ),
+            run_count =
+              GREATEST(
+                run_count,
+                (
+                  SELECT
+                    COUNT(*)::int
+                  FROM
+                    invoicing_recurring_runs rr
+                  WHERE
+                    rr.recurring_template_id =
+                      $1
+                    AND rr.status =
+                      'succeeded'
+                )
+              ),
+            next_run_at =
+              $3::date,
+            retry_after =
+              NULL,
+            completion_reason =
+              CASE
+                WHEN
+                  max_occurrences
+                    IS NOT NULL
+                  AND
+                  (
+                    SELECT
+                      COUNT(*)::int
+                    FROM
+                      invoicing_recurring_runs rr
+                    WHERE
+                      rr.recurring_template_id =
+                        $1
+                      AND rr.status =
+                        'succeeded'
+                  ) >=
+                  max_occurrences
+                THEN
+                  'max_occurrences_reached'
+                WHEN
+                  end_date
+                    IS NOT NULL
+                  AND $3::date >
+                      end_date
+                THEN
+                  'end_date_reached'
+                ELSE
+                  completion_reason
+              END,
+            status =
+              CASE
+                WHEN
+                  (
+                    max_occurrences
+                      IS NOT NULL
+                    AND
+                    (
+                      SELECT
+                        COUNT(*)::int
+                      FROM
+                        invoicing_recurring_runs rr
+                      WHERE
+                        rr.recurring_template_id =
+                          $1
+                        AND rr.status =
+                          'succeeded'
+                    ) >=
+                    max_occurrences
+                  )
+                  OR
+                  (
+                    end_date
+                      IS NOT NULL
+                    AND $3::date >
+                        end_date
+                  )
+                THEN
+                  'completed'
+                ELSE
+                  status
+              END,
+            updated_at =
+              NOW()
+          WHERE id =
+                $1
+        `,
+        [
+          recurringId,
+          existingRun.rows[0]
+            .invoice_id,
+          nextRunAt,
+        ],
+      );
+
+      await client.query(
+        'COMMIT',
+      );
+
+      return {
+        skipped:
+          true,
+        invoiceId:
+          String(
+            existingRun.rows[0]
+              .invoice_id,
+          ),
+      };
+    }
+
+    let recurringRunId:
+      string;
+
+    if (
+      existingRun.rows.length >
+        0
+    ) {
+      const retried =
+        await client.query(
+          `
+            UPDATE invoicing_recurring_runs
+            SET
+              status =
+                'processing',
+              attempt_count =
+                attempt_count +
+                1,
+              started_at =
+                NOW(),
+              last_attempt_at =
+                NOW(),
+              completed_at =
+                NULL,
+              error_code =
+                NULL,
+              error_message =
+                NULL,
+              delivery_status =
+                'not_requested',
+              delivery_error_code =
+                NULL,
+              updated_at =
+                NOW()
+            WHERE id =
+                  $1
+            RETURNING
+              id
+          `,
+          [
+            existingRun.rows[0]
+              .id,
+          ],
+        );
+
+      recurringRunId =
+        String(
+          retried.rows[0].id,
+        );
+    } else {
+      const started =
+        await client.query(
+          `
+            INSERT INTO invoicing_recurring_runs (
+              company_id,
+              recurring_template_id,
+              scheduled_for,
+              run_key,
+              status,
+              attempt_count,
+              started_at,
+              last_attempt_at
+            )
+            VALUES (
+              $1,$2,$3::date,$4,
+              'processing',
+              1,
+              NOW(),
+              NOW()
+            )
+            RETURNING
+              id
+          `,
+          [
+            row.company_id,
+            recurringId,
+            scheduledFor,
+            runKey,
+          ],
+        );
+
+      recurringRunId =
+        String(
+          started.rows[0].id,
+        );
     }
 
     const payload =
@@ -559,53 +921,6 @@ async function generateOneRecurringInvoice(
         roundingAdjustment,
       );
 
-    const actorUserId =
-      row.actor_user_id
-        ? String(
-            row.actor_user_id,
-          )
-        : null;
-
-    if (
-      !actorUserId
-    ) {
-      await client.query(
-        `
-          UPDATE invoicing_recurring_templates
-          SET
-            status =
-              'paused',
-            metadata =
-              COALESCE(
-                metadata,
-                '{}'::jsonb
-              ) ||
-              jsonb_build_object(
-                'workerPauseReason',
-                'RUN_AS_USER_UNAVAILABLE',
-                'workerPausedAt',
-                NOW()
-              ),
-            updated_at =
-              NOW()
-          WHERE id =
-                $1
-        `,
-        [
-          recurringId,
-        ],
-      );
-
-      await client.query(
-        'COMMIT',
-      );
-
-      return {
-        paused:
-          true,
-      };
-    }
-
     const invoiceNumber =
       await nextDocumentNumber(
         client,
@@ -617,9 +932,7 @@ async function generateOneRecurringInvoice(
       );
 
     const invoiceDate =
-      dateString(
-        row.next_run_at,
-      );
+      scheduledFor;
 
     const dueDays =
       Math.max(
@@ -771,7 +1084,13 @@ async function generateOneRecurringInvoice(
               'recurringTemplateId',
               $27::text,
               'generatedBy',
-              'invoicing_worker'
+              'invoicing_worker',
+              'recurringRunKey',
+              $29::text,
+              'recurringRunId',
+              $30::text,
+              'recurringScheduledFor',
+              $31::text
             )
           )
           RETURNING
@@ -813,6 +1132,9 @@ async function generateOneRecurringInvoice(
           actorUserId,
           recurringId,
           recurringInvoiceStatus,
+          runKey,
+          recurringRunId,
+          scheduledFor,
         ],
       );
 
@@ -942,6 +1264,8 @@ async function generateOneRecurringInvoice(
         metadata: {
           recurringTemplateId:
             recurringId,
+          recurringRunId,
+          scheduledFor,
           status:
             recurringInvoiceStatus,
         },
@@ -959,13 +1283,60 @@ async function generateOneRecurringInvoice(
         ),
       );
 
-    const completed =
+    const nextRunCount =
+      Number(
+        row.run_count ||
+        0,
+      ) +
+      1;
+
+    const maxOccurrences =
+      row.max_occurrences ===
+        null ||
+      row.max_occurrences ===
+        undefined
+        ? null
+        : Math.max(
+            1,
+            Number(
+              row.max_occurrences,
+            ),
+          );
+
+    const completedByOccurrences =
+      maxOccurrences !==
+        null &&
+      nextRunCount >=
+        maxOccurrences;
+
+    const completedByEndDate =
       Boolean(
         row.end_date &&
         nextRunAt >
           dateString(
             row.end_date,
           ),
+      );
+
+    const completed =
+      completedByOccurrences ||
+      completedByEndDate;
+
+    const completionReason =
+      completedByOccurrences
+        ? 'max_occurrences_reached'
+        : completedByEndDate
+          ? 'end_date_reached'
+          : null;
+
+    const shouldAutoSend =
+      recurringInvoiceStatus ===
+        'confirmed' &&
+      (
+        row.auto_send ===
+          true ||
+        row.auto_send_recurring ===
+          true
       );
 
     await client.query(
@@ -976,8 +1347,22 @@ async function generateOneRecurringInvoice(
             $2,
           last_run_at =
             NOW(),
+          last_success_at =
+            NOW(),
+          last_error_code =
+            NULL,
+          last_error_message =
+            NULL,
+          consecutive_failures =
+            0,
+          retry_after =
+            NULL,
+          run_count =
+            $5,
           next_run_at =
             $3,
+          completion_reason =
+            $6,
           status =
             CASE
               WHEN $4
@@ -994,6 +1379,38 @@ async function generateOneRecurringInvoice(
         invoiceId,
         nextRunAt,
         completed,
+        nextRunCount,
+        completionReason,
+      ],
+    );
+
+    await client.query(
+      `
+        UPDATE invoicing_recurring_runs
+        SET
+          status =
+            'succeeded',
+          invoice_id =
+            $2,
+          delivery_status =
+            $3,
+          completed_at =
+            NOW(),
+          error_code =
+            NULL,
+          error_message =
+            NULL,
+          updated_at =
+            NOW()
+        WHERE id =
+              $1
+      `,
+      [
+        recurringRunId,
+        invoiceId,
+        shouldAutoSend
+          ? 'pending'
+          : 'not_requested',
       ],
     );
 
@@ -1003,6 +1420,7 @@ async function generateOneRecurringInvoice(
 
     generated = {
       invoiceId,
+      recurringRunId,
       companyId:
         String(
           row.company_id,
@@ -1014,14 +1432,7 @@ async function generateOneRecurringInvoice(
       userId:
         actorUserId,
       autoSend:
-        recurringInvoiceStatus ===
-          'confirmed' &&
-        (
-          row.auto_send ===
-            true ||
-          row.auto_send_recurring ===
-            true
-        ),
+        shouldAutoSend,
       deliveryChannels:
         normalizeInvoiceDeliveryChannels(
           payload.deliveryChannels,
@@ -1036,6 +1447,205 @@ async function generateOneRecurringInvoice(
       );
     } catch {}
 
+    if (
+      failedContext
+    ) {
+      const errorCode =
+        databaseCode(
+          error,
+        ) ||
+        'RECURRING_GENERATION_FAILED';
+
+      const errorMessage =
+        (
+          error instanceof
+            Error
+            ? error.message
+            : 'Recurring invoice generation failed.'
+        )
+          .slice(
+            0,
+            2000,
+          );
+
+      try {
+        await client.query(
+          'BEGIN',
+        );
+
+        await client.query(
+          `
+            INSERT INTO invoicing_recurring_runs (
+              company_id,
+              recurring_template_id,
+              scheduled_for,
+              run_key,
+              status,
+              attempt_count,
+              error_code,
+              error_message,
+              started_at,
+              last_attempt_at,
+              completed_at
+            )
+            VALUES (
+              $1,$2,$3::date,$4,
+              'failed',
+              1,
+              $5,$6,
+              NOW(),
+              NOW(),
+              NOW()
+            )
+            ON CONFLICT (
+              recurring_template_id,
+              scheduled_for
+            )
+            DO UPDATE SET
+              status =
+                'failed',
+              attempt_count =
+                invoicing_recurring_runs.attempt_count +
+                1,
+              last_attempt_at =
+                NOW(),
+              completed_at =
+                NOW(),
+              error_code =
+                EXCLUDED.error_code,
+              error_message =
+                EXCLUDED.error_message,
+              updated_at =
+                NOW()
+          `,
+          [
+            failedContext
+              .companyId,
+            failedContext
+              .recurringId,
+            failedContext
+              .scheduledFor,
+            failedContext
+              .runKey,
+            errorCode,
+            errorMessage,
+          ],
+        );
+
+        await client.query(
+          `
+            UPDATE invoicing_recurring_templates
+            SET
+              consecutive_failures =
+                consecutive_failures +
+                1,
+              last_failure_at =
+                NOW(),
+              last_error_code =
+                $2,
+              last_error_message =
+                $3,
+              retry_after =
+                CASE
+                  WHEN
+                    consecutive_failures +
+                    1 >=
+                    max_retry_attempts
+                  THEN NULL
+                  ELSE
+                    NOW() +
+                    (
+                      LEAST(
+                        consecutive_failures +
+                        1,
+                        4
+                      ) *
+                      INTERVAL '15 minutes'
+                    )
+                END,
+              status =
+                CASE
+                  WHEN
+                    consecutive_failures +
+                    1 >=
+                    max_retry_attempts
+                  THEN 'paused'
+                  ELSE status
+                END,
+              paused_at =
+                CASE
+                  WHEN
+                    consecutive_failures +
+                    1 >=
+                    max_retry_attempts
+                  THEN NOW()
+                  ELSE paused_at
+                END,
+              metadata =
+                CASE
+                  WHEN
+                    consecutive_failures +
+                    1 >=
+                    max_retry_attempts
+                  THEN
+                    COALESCE(
+                      metadata,
+                      '{}'::jsonb
+                    ) ||
+                    jsonb_build_object(
+                      'workerPauseReason',
+                      'MAX_RETRY_ATTEMPTS',
+                      'workerPausedAt',
+                      NOW()
+                    )
+                  ELSE
+                    COALESCE(
+                      metadata,
+                      '{}'::jsonb
+                    )
+                END,
+              updated_at =
+                NOW()
+            WHERE id =
+                  $1
+          `,
+          [
+            failedContext
+              .recurringId,
+            errorCode,
+            errorMessage,
+          ],
+        );
+
+        await client.query(
+          'COMMIT',
+        );
+      } catch (
+        failureRecordError
+      ) {
+        try {
+          await client.query(
+            'ROLLBACK',
+          );
+        } catch {}
+
+        console.error(
+          '[SaMi Invoicing] Failed to persist recurring run failure:',
+          {
+            tenantId,
+            recurringId:
+              failedContext
+                .recurringId,
+            error:
+              failureRecordError instanceof
+                Error
+                ? failureRecordError.message
+                : 'unknown_error',
+          },
+        );
+      }
+    }
+
     throw error;
   } finally {
     client.release();
@@ -1046,30 +1656,88 @@ async function generateOneRecurringInvoice(
     generated.autoSend
   ) {
     try {
-      await deliverInvoice({
-        pool,
-        tenantId,
-        companyId:
-          generated.companyId,
-        companyName:
-          generated.companyName,
-        userId:
-          generated.userId,
-        invoiceId:
-          generated.invoiceId,
-        channels:
-          generated.deliveryChannels.length >
-            0
-            ? generated.deliveryChannels
-            : [
-                'email',
-              ],
-        purpose:
-          'recurring',
-      });
+      const delivery =
+        await deliverInvoice({
+          pool,
+          tenantId,
+          companyId:
+            generated.companyId,
+          companyName:
+            generated.companyName,
+          userId:
+            generated.userId,
+          invoiceId:
+            generated.invoiceId,
+          channels:
+            generated.deliveryChannels.length >
+              0
+              ? generated.deliveryChannels
+              : [
+                  'email',
+                ],
+          purpose:
+            'recurring',
+        });
+
+      await pool.query(
+        `
+          UPDATE invoicing_recurring_runs
+          SET
+            delivery_status =
+              'sent',
+            delivery_error_code =
+              NULL,
+            metadata =
+              COALESCE(
+                metadata,
+                '{}'::jsonb
+              ) ||
+              jsonb_build_object(
+                'deliveries',
+                $2::jsonb
+              ),
+            updated_at =
+              NOW()
+          WHERE id =
+                $1
+        `,
+        [
+          generated
+            .recurringRunId,
+          JSON.stringify(
+            delivery.deliveries,
+          ),
+        ],
+      );
     } catch (
       error
     ) {
+      const deliveryErrorCode =
+        databaseCode(
+          error,
+        ) ||
+        'DELIVERY_FAILED';
+
+      await pool.query(
+        `
+          UPDATE invoicing_recurring_runs
+          SET
+            delivery_status =
+              'failed',
+            delivery_error_code =
+              $2,
+            updated_at =
+              NOW()
+          WHERE id =
+                $1
+        `,
+        [
+          generated
+            .recurringRunId,
+          deliveryErrorCode,
+        ],
+      );
+
       console.error(
         '[SaMi Invoicing] Recurring invoice auto-delivery failed:',
         {
@@ -1095,7 +1763,6 @@ async function generateOneRecurringInvoice(
   };
 }
 
-
 async function processRecurringForTenant(
   tenantId:
     string,
@@ -1107,6 +1774,9 @@ async function processRecurringForTenant(
     0;
 
   let failed =
+    0;
+
+  let skipped =
     0;
 
   for (
@@ -1132,6 +1802,12 @@ async function processRecurringForTenant(
         result.paused
       ) {
         paused +=
+          1;
+      } else if (
+        'skipped' in result &&
+        result.skipped
+      ) {
+        skipped +=
           1;
       } else {
         generated +=
@@ -1163,7 +1839,7 @@ async function processRecurringForTenant(
         },
       );
 
-      break;
+      continue;
     }
   }
 
@@ -1171,6 +1847,7 @@ async function processRecurringForTenant(
     generated,
     paused,
     failed,
+    skipped,
   };
 }
 
@@ -1588,6 +2265,8 @@ export async function runInvoicingWorkerTick() {
         0,
       failed:
         0,
+      skipped:
+        0,
     },
     reminders: {
       candidates:
@@ -1634,6 +2313,10 @@ export async function runInvoicingWorkerTick() {
       summary.recurring
         .failed +=
         recurring.failed;
+
+      summary.recurring
+        .skipped +=
+        recurring.skipped;
 
       const reminders =
         await processRemindersForTenant(
