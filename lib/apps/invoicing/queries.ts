@@ -799,6 +799,24 @@ export async function getInvoicingWorkspaceData():
             accent_color,
             logo_url,
             font_family,
+            design_version,
+            density,
+            header_style,
+            document_title,
+            from_label,
+            bill_to_label,
+            notes_label,
+            terms_label,
+            payment_label,
+            footer_alignment,
+            show_status,
+            show_page_numbers,
+            show_sku,
+            show_unit,
+            show_quantity,
+            show_unit_price,
+            show_line_tax,
+            show_line_discount,
             show_company_logo,
             show_company_address,
             show_company_contact,
@@ -2404,6 +2422,80 @@ export async function getInvoicingWorkspaceData():
               row.font_family ||
               'Inter',
             ),
+          designVersion:
+            Number(
+              row.design_version ||
+              1,
+            ),
+          density:
+            String(
+              row.density ||
+              'comfortable',
+            ),
+          headerStyle:
+            String(
+              row.header_style ||
+              'band',
+            ),
+          documentTitle:
+            String(
+              row.document_title ||
+              'Invoice',
+            ),
+          fromLabel:
+            String(
+              row.from_label ||
+              'From',
+            ),
+          billToLabel:
+            String(
+              row.bill_to_label ||
+              'Bill to',
+            ),
+          notesLabel:
+            String(
+              row.notes_label ||
+              'Notes',
+            ),
+          termsLabel:
+            String(
+              row.terms_label ||
+              'Terms',
+            ),
+          paymentLabel:
+            String(
+              row.payment_label ||
+              'Payment instructions',
+            ),
+          footerAlignment:
+            String(
+              row.footer_alignment ||
+              'left',
+            ),
+          showStatus:
+            row.show_status !==
+            false,
+          showPageNumbers:
+            row.show_page_numbers !==
+            false,
+          showSku:
+            row.show_sku !==
+            false,
+          showUnit:
+            row.show_unit !==
+            false,
+          showQuantity:
+            row.show_quantity !==
+            false,
+          showUnitPrice:
+            row.show_unit_price !==
+            false,
+          showLineTax:
+            row.show_line_tax !==
+            false,
+          showLineDiscount:
+            row.show_line_discount !==
+            false,
           showCompanyLogo:
             row.show_company_logo !==
             false,

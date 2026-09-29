@@ -195,6 +195,24 @@ export async function GET(
               primary_color,
               secondary_color,
               font_family,
+              design_version,
+              density,
+              header_style,
+              document_title,
+              from_label,
+              bill_to_label,
+              notes_label,
+              terms_label,
+              payment_label,
+              footer_alignment,
+              show_status,
+              show_page_numbers,
+              show_sku,
+              show_unit,
+              show_quantity,
+              show_unit_price,
+              show_line_tax,
+              show_line_discount,
               show_company_address,
               show_company_contact,
               show_tax_id,
@@ -301,6 +319,80 @@ export async function GET(
               template.font_family ||
               'Inter',
             ),
+          designVersion:
+            Number(
+              template.design_version ||
+              1,
+            ),
+          density:
+            String(
+              template.density ||
+              'comfortable',
+            ),
+          headerStyle:
+            String(
+              template.header_style ||
+              'band',
+            ),
+          documentTitle:
+            String(
+              template.document_title ||
+              'Invoice',
+            ),
+          fromLabel:
+            String(
+              template.from_label ||
+              'From',
+            ),
+          billToLabel:
+            String(
+              template.bill_to_label ||
+              'Bill to',
+            ),
+          notesLabel:
+            String(
+              template.notes_label ||
+              'Notes',
+            ),
+          termsLabel:
+            String(
+              template.terms_label ||
+              'Terms',
+            ),
+          paymentLabel:
+            String(
+              template.payment_label ||
+              'Payment instructions',
+            ),
+          footerAlignment:
+            String(
+              template.footer_alignment ||
+              'left',
+            ),
+          showStatus:
+            template.show_status !==
+            false,
+          showPageNumbers:
+            template.show_page_numbers !==
+            false,
+          showSku:
+            template.show_sku !==
+            false,
+          showUnit:
+            template.show_unit !==
+            false,
+          showQuantity:
+            template.show_quantity !==
+            false,
+          showUnitPrice:
+            template.show_unit_price !==
+            false,
+          showLineTax:
+            template.show_line_tax !==
+            false,
+          showLineDiscount:
+            template.show_line_discount !==
+            false,
           showCompanyAddress:
             template.show_company_address !==
               false,

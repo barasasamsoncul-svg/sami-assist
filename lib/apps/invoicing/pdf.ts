@@ -2,7 +2,7 @@ import 'server-only';
 
 
 export const INVOICE_PDF_RENDERER_VERSION =
-  'invoice-pdf-v1';
+  'invoice-pdf-v2';
 
 
 export type PdfInvoice = {
@@ -33,6 +33,24 @@ export type PdfInvoice = {
     primaryColor: string;
     secondaryColor: string;
     fontFamily: string;
+    designVersion: number;
+    density: string;
+    headerStyle: string;
+    documentTitle: string;
+    fromLabel: string;
+    billToLabel: string;
+    notesLabel: string;
+    termsLabel: string;
+    paymentLabel: string;
+    footerAlignment: string;
+    showStatus: boolean;
+    showPageNumbers: boolean;
+    showSku: boolean;
+    showUnit: boolean;
+    showQuantity: boolean;
+    showUnitPrice: boolean;
+    showLineTax: boolean;
+    showLineDiscount: boolean;
     showCompanyAddress: boolean;
     showCompanyContact: boolean;
     showTaxId: boolean;
@@ -571,14 +589,24 @@ function documentHeader(
   let content =
     '';
 
-  content +=
-    rectCommand(
-      0,
-      742,
-      595,
-      100,
-      primary,
-    );
+  if (
+    invoice.template
+      .headerStyle !==
+      'minimal'
+  ) {
+    content +=
+      rectCommand(
+        0,
+        742,
+        595,
+        invoice.template
+          .headerStyle ===
+          'split'
+          ? 72
+          : 100,
+        primary,
+      );
+  }
 
   content +=
     textCommand(
@@ -598,11 +626,16 @@ function documentHeader(
             : 20,
         bold:
           true,
-        color: [
-          1,
-          1,
-          1,
-        ],
+        color:
+          invoice.template
+            .headerStyle ===
+            'minimal'
+            ? secondary
+            : [
+                1,
+                1,
+                1,
+              ],
       },
     );
 
@@ -610,17 +643,28 @@ function documentHeader(
     textCommand(
       36,
       777,
-      'INVOICE',
+      truncate(
+        invoice.template
+          .documentTitle ||
+        'Invoice',
+        28,
+      )
+        .toUpperCase(),
       {
         size:
           9,
         bold:
           true,
-        color: [
-          1,
-          1,
-          1,
-        ],
+        color:
+          invoice.template
+            .headerStyle ===
+            'minimal'
+            ? primary
+            : [
+                1,
+                1,
+                1,
+              ],
       },
     );
 
@@ -645,52 +689,78 @@ function documentHeader(
       },
     );
 
-  content +=
-    textCommand(
-      390,
-      780,
-      statusLabel(
-        invoice.status,
-      ),
-      {
-        size:
-          8,
-        bold:
-          true,
-        color: [
-          1,
-          1,
-          1,
-        ],
-      },
-    );
+  if (
+    invoice.template
+      .showStatus
+  ) {
+    content +=
+      textCommand(
+        390,
+        780,
+        statusLabel(
+          invoice.status,
+        ),
+        {
+          size:
+            8,
+          bold:
+            true,
+          color:
+            invoice.template
+              .headerStyle ===
+              'minimal'
+              ? secondary
+              : [
+                  1,
+                  1,
+                  1,
+                ],
+        },
+      );
+  }
 
-  content +=
-    textCommand(
-      510,
-      758,
-      (
-        pageIndex +
-        1
-      ) +
-      ' / ' +
-      pageCount,
-      {
-        size:
-          6.5,
-        color: [
-          1,
-          1,
-          1,
-        ],
-      },
-    );
+  if (
+    invoice.template
+      .showPageNumbers
+  ) {
+    content +=
+      textCommand(
+        510,
+        758,
+        (
+          pageIndex +
+          1
+        ) +
+        ' / ' +
+        pageCount,
+        {
+          size:
+            6.5,
+          color:
+            invoice.template
+              .headerStyle ===
+              'minimal'
+              ? secondary
+              : [
+                  1,
+                  1,
+                  1,
+                ],
+        },
+      );
+  }
 
   content +=
     textCommand(
       36,
       719,
-      'FROM',
+      truncate(
+        invoice.template
+          .fromLabel ||
+        'From',
+        24,
+      )
+        .toUpperCase(),
       {
         size:
           7,
@@ -824,7 +894,13 @@ function documentHeader(
     textCommand(
       36,
       645,
-      'BILL TO',
+      truncate(
+        invoice.template
+          .billToLabel ||
+        'BILL TO',
+        24,
+      )
+        .toUpperCase(),
       {
         size:
           7,
@@ -1083,23 +1159,38 @@ function tableHeader(
       ],
       [
         282,
-        'Qty',
+        invoice.template
+          .showQuantity
+          ? 'Qty'
+          : '',
       ],
       [
         314,
-        'Unit',
+        invoice.template
+          .showUnit
+          ? 'Unit'
+          : '',
       ],
       [
         351,
-        'Price',
+        invoice.template
+          .showUnitPrice
+          ? 'Price'
+          : '',
       ],
       [
         407,
-        'Disc.',
+        invoice.template
+          .showLineDiscount
+          ? 'Disc.'
+          : '',
       ],
       [
         454,
-        'Tax',
+        invoice.template
+          .showLineTax
+          ? 'Tax'
+          : '',
       ],
       [
         505,
@@ -1209,9 +1300,12 @@ function renderItemPage(
       textCommand(
         282,
         y,
-        amount(
-          line.quantity,
-        ),
+        invoice.template
+        .showQuantity
+        ? amount(
+            line.quantity,
+          )
+        : '',
         {
           size:
             6.8,
@@ -1222,10 +1316,13 @@ function renderItemPage(
       textCommand(
         314,
         y,
-        truncate(
-          line.unit,
-          8,
-        ),
+        invoice.template
+        .showUnit
+        ? truncate(
+            line.unit,
+            8,
+          )
+        : '',
         {
           size:
             6.8,
@@ -1236,9 +1333,12 @@ function renderItemPage(
       textCommand(
         351,
         y,
-        amount(
-          line.unitPrice,
-        ),
+        invoice.template
+        .showUnitPrice
+        ? amount(
+            line.unitPrice,
+          )
+        : '',
         {
           size:
             6.8,
@@ -1249,12 +1349,17 @@ function renderItemPage(
       textCommand(
         407,
         y,
-        line.discountAmount >
-          0
-          ? amount(
-              line.discountAmount,
-            )
-          : '-',
+        invoice.template
+        .showLineDiscount
+        ? (
+            line.discountAmount >
+              0
+              ? amount(
+                  line.discountAmount,
+                )
+              : '-'
+          )
+        : '',
         {
           size:
             6.8,
@@ -1265,13 +1370,18 @@ function renderItemPage(
       textCommand(
         454,
         y,
-        line.taxRate >
-          0
-          ? amount(
-              line.taxRate,
-            ) +
-            '%'
-          : '-',
+        invoice.template
+        .showLineTax
+        ? (
+            line.taxRate >
+              0
+              ? amount(
+                  line.taxRate,
+                ) +
+                '%'
+              : '-'
+          )
+        : '',
         {
           size:
             6.8,
@@ -1295,7 +1405,11 @@ function renderItemPage(
 
     const subline =
       [
-        line.sku
+        (
+          invoice.template
+            .showSku &&
+          line.sku
+        )
           ? 'SKU ' +
             line.sku
           : '',
@@ -1355,7 +1469,15 @@ function renderItemPage(
       );
 
     y -=
-      31;
+      invoice.template
+        .density ===
+        'compact'
+        ? 25
+        : invoice.template
+            .density ===
+            'spacious'
+          ? 37
+          : 31;
   }
 
   if (
@@ -1623,7 +1745,15 @@ function renderItemPage(
 
   content +=
     textCommand(
-      36,
+      invoice.template
+        .footerAlignment ===
+        'center'
+        ? 210
+        : invoice.template
+            .footerAlignment ===
+            'right'
+          ? 390
+          : 36,
       24,
       truncate(
         footer,
@@ -1684,19 +1814,34 @@ function supplementaryEntries(
       .showPaymentInstructions
   ) {
     add(
-      'PAYMENT INSTRUCTIONS',
+      (
+        invoice.template
+          .paymentLabel ||
+        'PAYMENT INSTRUCTIONS'
+      )
+        .toUpperCase(),
       invoice
         .paymentInstructions,
     );
   }
 
   add(
-    'NOTES',
+    (
+      invoice.template
+        .notesLabel ||
+      'NOTES'
+    )
+      .toUpperCase(),
     invoice.notes,
   );
 
   add(
-    'TERMS & CONDITIONS',
+    (
+      invoice.template
+        .termsLabel ||
+      'TERMS & CONDITIONS'
+    )
+      .toUpperCase(),
     invoice.template
       .termsText ||
     invoice.terms,
@@ -1796,7 +1941,15 @@ function renderSupplementPage(
 
   content +=
     textCommand(
-      36,
+      invoice.template
+        .footerAlignment ===
+        'center'
+        ? 210
+        : invoice.template
+            .footerAlignment ===
+            'right'
+          ? 390
+          : 36,
       24,
       truncate(
         invoice.template
@@ -1830,7 +1983,15 @@ export function renderInvoicePdf(
       [];
 
   const perPage =
-    8;
+    invoice.template
+      .density ===
+      'compact'
+      ? 10
+      : invoice.template
+          .density ===
+          'spacious'
+        ? 6
+        : 8;
 
   for (
     let index =

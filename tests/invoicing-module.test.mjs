@@ -116,7 +116,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
 
   assert.match(
     invoicing,
-    /version:\s*['"]2\.10\.0['"]/,
+    /version:\s*['"]2\.11\.0['"]/,
   );
 
   assert.match(
@@ -2899,7 +2899,7 @@ test('Invoicing v2.7 turns recurring invoices into an observable retry-safe bill
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.10\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.11\.0['"]/s,
   );
 
   assert.match(
@@ -3099,7 +3099,7 @@ test('Invoicing v2.8 turns reminders into a staged auditable dunning engine', as
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.10\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.11\.0['"]/s,
   );
 
   assert.match(
@@ -3319,7 +3319,7 @@ test('Invoicing Part 8 builds a customer-scoped secure portal', async () => {
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.10\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.11\.0['"]/s,
   );
 
   assert.match(
@@ -3663,7 +3663,7 @@ test('Invoicing Part 9 freezes issued invoice PDFs as immutable document snapsho
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.10\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.11\.0['"]/s,
   );
 
   assert.match(
@@ -3738,7 +3738,7 @@ test('Invoicing Part 9 freezes issued invoice PDFs as immutable document snapsho
 
   assert.match(
     pdf,
-    /invoice-pdf-v1/,
+    /invoice-pdf-v2/,
   );
 
   assert.match(
@@ -3906,4 +3906,187 @@ test('Invoicing Part 9 freezes issued invoice PDFs as immutable document snapsho
     /key:\s*"invoicing\.document_snapshot\.company"[\s\S]*operations:\s*\["read"\]/s,
     'The record policy must keep archived snapshots read-only.',
   );
+});
+
+
+
+test('Invoicing Part 10 provides a live renderer-backed invoice template designer', async () => {
+  const [
+    schema,
+    migration,
+    commands,
+    queries,
+    types,
+    pdf,
+    snapshots,
+    draftPdf,
+    designer,
+    runtimeMigrations,
+    manifest,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/schema.sql'),
+    source('lib/apps/invoicing/migrations/2.10.0-to-2.11.0.ts'),
+    source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/types.ts'),
+    source('lib/apps/invoicing/pdf.ts'),
+    source('lib/apps/invoicing/document-snapshots.ts'),
+    source('app/api/apps/invoicing/[invoiceId]/pdf/route.ts'),
+    source('app/apps/invoicing/InvoiceAppearanceSettings.tsx'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+  ]);
+
+  assert.match(
+    manifest,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.11\.0['"]/s,
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /INVOICING_2_10_0_TO_2_11_0/,
+  );
+
+  assert.match(
+    migration,
+    /fromVersion:\s*['"]2\.10\.0['"]/,
+  );
+
+  assert.match(
+    migration,
+    /toVersion:\s*['"]2\.11\.0['"]/,
+  );
+
+  for (const field of [
+    'design_version',
+    'density',
+    'header_style',
+    'document_title',
+    'from_label',
+    'bill_to_label',
+    'notes_label',
+    'terms_label',
+    'payment_label',
+    'footer_alignment',
+    'show_status',
+    'show_page_numbers',
+    'show_sku',
+    'show_unit',
+    'show_quantity',
+    'show_unit_price',
+    'show_line_tax',
+    'show_line_discount',
+  ]) {
+    assert.match(
+      migration,
+      new RegExp(field),
+      'Template designer migration must include ' + field + '.',
+    );
+  }
+
+  assert.match(
+    commands,
+    /design_version\s*=\s*design_version\s*\+\s*1/,
+    'Saving an existing template must increment its design version.',
+  );
+
+  for (const control of [
+    'density',
+    'headerStyle',
+    'documentTitle',
+    'fromLabel',
+    'billToLabel',
+    'notesLabel',
+    'termsLabel',
+    'paymentLabel',
+    'footerAlignment',
+    'showPageNumbers',
+    'showSku',
+    'showUnit',
+    'showQuantity',
+    'showUnitPrice',
+    'showLineTax',
+    'showLineDiscount',
+  ]) {
+    assert.match(
+      commands,
+      new RegExp(control),
+      control + ' must be persisted by the template command.',
+    );
+    assert.match(
+      types,
+      new RegExp(control),
+      control + ' must be exposed by the workspace type.',
+    );
+  }
+
+  assert.match(
+    queries,
+    /designVersion:/,
+  );
+
+  assert.match(
+    queries,
+    /headerStyle:/,
+  );
+
+  assert.match(
+    pdf,
+    /invoice-pdf-v2/,
+  );
+
+  assert.match(
+    pdf,
+    /headerStyle/,
+  );
+
+  assert.match(
+    pdf,
+    /showPageNumbers/,
+  );
+
+  assert.match(
+    pdf,
+    /showLineDiscount/,
+  );
+
+  assert.match(
+    pdf,
+    /showLineTax/,
+  );
+
+  assert.match(
+    pdf,
+    /density ===/,
+  );
+
+  assert.match(
+    snapshots,
+    /designVersion:/,
+    'Immutable document payloads must retain the template design version.',
+  );
+
+  assert.match(
+    draftPdf,
+    /designVersion:/,
+    'Draft PDF previews must use the same template design version contract.',
+  );
+
+  for (const visibleSurface of [
+    'Invoice template designer',
+    'Live preview',
+    'Row density',
+    'Header style',
+    'Document title',
+    'Line-item columns',
+    'Design v',
+    'Save design',
+  ]) {
+    assert.ok(
+      designer.includes(
+        visibleSurface,
+      ),
+      visibleSurface + ' must be visible in the live designer.',
+    );
+  }
 });

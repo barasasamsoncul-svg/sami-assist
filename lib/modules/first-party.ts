@@ -96,8 +96,8 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
   defineSamiModule({
     key: "invoicing",
     name: "Invoicing",
-    version: '2.10.0',
-    description: "Create invoices, collect payments, manage receivables, recurring billing, dunning, customer portal access and immutable issued-document snapshots.",
+    version: '2.11.0',
+    description: "Create invoices, collect payments, manage receivables, recurring billing, dunning, customer portal access, immutable document snapshots and a live invoice template designer.",
     category: "finance",
     icon: "receipt",
     route: "apps/invoicing",
