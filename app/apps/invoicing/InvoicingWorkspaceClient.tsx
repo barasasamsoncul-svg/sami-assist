@@ -446,6 +446,58 @@ function exportInvoiceRegister(
 }
 
 
+function monthLabel(
+  value:
+    string,
+) {
+  const text =
+    value
+      ?.trim();
+
+  if (
+    !text
+  ) {
+    return '—';
+  }
+
+  const candidate =
+    /^\d{4}-\d{2}-\d{2}$/.test(
+      text,
+    )
+      ? text +
+        'T00:00:00Z'
+      : text;
+
+  const parsed =
+    new Date(
+      candidate,
+    );
+
+  if (
+    Number.isNaN(
+      parsed.getTime(),
+    )
+  ) {
+    return text.slice(
+      0,
+      7,
+    );
+  }
+
+  return new Intl
+    .DateTimeFormat(
+      'en-KE',
+      {
+        month:
+          'short',
+      },
+    )
+    .format(
+      parsed,
+    );
+}
+
+
 function statusClass(
   status:
     string,
@@ -2040,20 +2092,9 @@ function Dashboard({
                               );
 
                             const month =
-                              new Intl
-                                .DateTimeFormat(
-                                  'en-KE',
-                                  {
-                                    month:
-                                      'short',
-                                  },
-                                )
-                                .format(
-                                  new Date(
-                                    item.month +
-                                    'T00:00:00Z',
-                                  ),
-                                );
+                              monthLabel(
+                                item.month,
+                              );
 
                             return (
                               <div
