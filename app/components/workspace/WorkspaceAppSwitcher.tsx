@@ -259,7 +259,7 @@ export default function WorkspaceAppSwitcher({
                 <p className="text-sm font-bold tracking-tight">
                   Apps
                 </p>
-                <p className="mt-0.5 text-[10px] text-slate-400">
+                <p className="mt-0.5 text-[10px] text-slate-600 dark:text-slate-300">
                   Switch business tools without leaving your workspace context.
                 </p>
               </div>
@@ -268,7 +268,7 @@ export default function WorkspaceAppSwitcher({
                 type="button"
                 aria-label="Close app launcher"
                 onClick={close}
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-[var(--sami-surface-soft)] hover:text-slate-900 dark:hover:text-white"
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-600 dark:text-slate-300 transition hover:bg-[var(--sami-surface-soft)] hover:text-slate-900 dark:hover:text-white"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -276,7 +276,7 @@ export default function WorkspaceAppSwitcher({
 
             <div className="border-b border-[var(--sami-border)] px-4 py-3 sm:px-5">
               <label className="sami-soft-surface flex h-10 items-center gap-2 rounded-xl px-3">
-                <Search className="h-4 w-4 shrink-0 text-slate-400" />
+                <Search className="h-4 w-4 shrink-0 text-slate-600 dark:text-slate-300" />
                 <input
                   value={search}
                   onChange={event =>
@@ -285,7 +285,7 @@ export default function WorkspaceAppSwitcher({
                     )
                   }
                   placeholder="Search installed apps"
-                  className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400"
+                  className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-slate-600 dark:text-slate-300"
                 />
               </label>
             </div>
@@ -358,7 +358,7 @@ export default function WorkspaceAppSwitcher({
                           {app.name}
                         </span>
 
-                        <span className="mt-0.5 text-[8px] font-black uppercase tracking-wide text-slate-400">
+                        <span className="mt-0.5 text-[8px] font-black uppercase tracking-wide text-slate-600 dark:text-slate-300">
                           External
                         </span>
                       </a>
@@ -371,7 +371,7 @@ export default function WorkspaceAppSwitcher({
                   <p className="mt-3 text-sm font-bold">
                     No matching apps
                   </p>
-                  <p className="mt-1 text-xs text-slate-400">
+                  <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
                     Try another app name or category.
                   </p>
                 </div>
@@ -379,7 +379,7 @@ export default function WorkspaceAppSwitcher({
             </div>
 
             <div className="flex items-center justify-between gap-3 border-t border-[var(--sami-border)] px-4 py-3 sm:px-5">
-              <p className="text-[10px] text-slate-400">
+              <p className="text-[10px] text-slate-600 dark:text-slate-300">
                 {modules.length +
                   externalApps.length}{' '}
                 {modules.length +
