@@ -106,6 +106,39 @@ input,
 select,
 textarea {
   font: inherit;
+  color: inherit;
+}
+
+/*
+ * Native select menus are rendered by the browser/OS rather than Tailwind.
+ * Keep their foreground and popup option surfaces explicit so dark-mode text
+ * never becomes white-on-white (or light-mode text dark-on-dark) until hover.
+ */
+select {
+  color: var(--foreground);
+  color-scheme: light;
+}
+
+select option,
+select optgroup {
+  background: var(--sami-surface-raised);
+  color: var(--foreground);
+}
+
+.dark select {
+  color-scheme: dark;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--sami-muted);
+  opacity: 1;
+}
+
+.sami-surface,
+.sami-surface-raised,
+.sami-soft-surface {
+  color: var(--foreground);
 }
 
 button,
