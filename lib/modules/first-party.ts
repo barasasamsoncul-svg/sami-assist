@@ -402,6 +402,30 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
         },
       },
       {
+        key: "portal_access",
+        label: "Customer portal access",
+        table: "invoicing_portal_access",
+        companyScoped: true,
+        ownerField: "created_by",
+        permissions: {
+          read: ["invoicing.customer.view"],
+          create: ["invoicing.customer.manage"],
+          write: ["invoicing.customer.manage"],
+        },
+      },
+      {
+        key: "portal_message",
+        label: "Customer portal message",
+        table: "invoicing_portal_messages",
+        companyScoped: true,
+        ownerField: "resolved_by",
+        permissions: {
+          read: ["invoicing.customer.view"],
+          create: ["invoicing.customer.manage"],
+          write: ["invoicing.customer.manage"],
+        },
+      },
+      {
         key: "settings",
         label: "Invoicing settings",
         table: "invoicing_settings",
@@ -441,6 +465,8 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
         { key: "invoicing.recurring.company", name: "Recurring invoices in current company", resourceKey: "recurring", operations: ["read","create","write"], scope: "company" },
         { key: "invoicing.dunning.company", name: "Dunning policies in current company", resourceKey: "dunning_policy", operations: ["read","create","write"], scope: "company" },
         { key: "invoicing.reminder.company", name: "Payment reminders in current company", resourceKey: "reminder", operations: ["read","create","write"], scope: "company" },
+        { key: "invoicing.portal_access.company", name: "Customer portal access in current company", resourceKey: "portal_access", operations: ["read","create","write"], scope: "company" },
+        { key: "invoicing.portal_message.company", name: "Customer portal messages in current company", resourceKey: "portal_message", operations: ["read","create","write"], scope: "company" },
         { key: "invoicing.settings.company", name: "Invoicing settings in current company", resourceKey: "settings", operations: ["read","write"], scope: "company" },
       ],
       fieldPolicies: [],
@@ -455,6 +481,7 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
       "delivery",
       "reminders",
       "recurring",
+      "customer_portal",
       "approvals",
     ],
     extensions: {
