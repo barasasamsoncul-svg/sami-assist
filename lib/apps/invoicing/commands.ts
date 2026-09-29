@@ -4974,6 +4974,23 @@ export async function recordInvoicePayment(
         invoice.balance_due,
       );
 
+    const allocationAmount =
+      money(
+        Math.min(
+          paymentAmount,
+          balance,
+        ),
+      );
+
+    const unappliedAmount =
+      money(
+        Math.max(
+          paymentAmount -
+          allocationAmount,
+          0,
+        ),
+      );
+
     const paymentSettings =
       await client.query(
         `
@@ -4995,27 +5012,13 @@ export async function recordInvoicePayment(
 
     if (
       !allowPartialPayments &&
-      paymentAmount <
+      allocationAmount <
         balance -
           0.0001
     ) {
       throw new InvoicingError(
         'INVALID_INPUT',
         'Partial payments are disabled for this company. Record the full outstanding balance.',
-        {
-          balance,
-        },
-      );
-    }
-
-    if (
-      paymentAmount >
-      balance +
-      0.0001
-    ) {
-      throw new InvoicingError(
-        'PAYMENT_EXCEEDS_BALANCE',
-        'Payment exceeds the invoice balance.',
         {
           balance,
         },
@@ -5131,6 +5134,7 @@ export async function recordInvoicePayment(
             payment_date,
             amount,
             currency,
+            exchange_rate,
             method,
             reference,
             status,
@@ -5139,9 +5143,9 @@ export async function recordInvoicePayment(
             updated_by
           )
           VALUES (
-            $1,$2,$3,$4,$5,$6,$7,$8,
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,
             'posted',
-            $9,$10,$10
+            $10,$11,$11
           )
           RETURNING
             id
@@ -5157,6 +5161,10 @@ export async function recordInvoicePayment(
           paymentAmount,
           String(
             invoice.currency,
+          ),
+          Number(
+            invoice.exchange_rate ||
+            1,
           ),
           paymentMethod,
           paymentReference ||
@@ -5174,32 +5182,53 @@ export async function recordInvoicePayment(
         payment.rows[0].id,
       );
 
-    await client.query(
+    const allocation =
+      await client.query(
       `
         INSERT INTO invoicing_payment_allocations (
           company_id,
           payment_id,
           invoice_id,
           amount,
+          status,
+          operation_key,
           created_by
         )
         VALUES (
-          $1,$2,$3,$4,$5
+          $1,$2,$3,$4,
+          'posted',
+          'initial:' ||
+          gen_random_uuid()::text,
+          $5
         )
+        RETURNING
+          id,
+          operation_key
       `,
       [
         context.companyId,
         paymentId,
         invoiceId,
-        paymentAmount,
+        allocationAmount,
         context.userId,
       ],
     );
 
+    const allocationId =
+      String(
+        allocation.rows[0].id,
+      );
+
+    const operationKey =
+      String(
+        allocation.rows[0]
+          .operation_key,
+      );
+
     const remaining =
       money(
         balance -
-        paymentAmount,
+        allocationAmount,
       );
 
     const nextStatus =
@@ -5291,6 +5320,37 @@ export async function recordInvoicePayment(
       },
     );
 
+    await postInvoicePaymentAllocationToAccounting(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        allocationId,
+        operationKey,
+        paymentId,
+        paymentNumber,
+        invoiceId,
+        invoiceNumber:
+          String(
+            invoice.invoice_number,
+          ),
+        allocationDate:
+          isoDate(
+            input.paymentDate,
+            new Date(),
+          ),
+        amount:
+          allocationAmount,
+        exchangeRate:
+          Number(
+            invoice.exchange_rate ||
+            1,
+          ),
+      },
+    );
+
     await recordInvoicingActivity(
       client,
       {
@@ -5314,6 +5374,9 @@ export async function recordInvoicePayment(
           paymentNumber,
           amount:
             paymentAmount,
+          allocatedAmount:
+            allocationAmount,
+          unappliedAmount,
           remainingBalance:
             remaining,
         },
@@ -5341,6 +5404,9 @@ export async function recordInvoicePayment(
           paymentNumber,
           amount:
             paymentAmount,
+          allocatedAmount:
+            allocationAmount,
+          unappliedAmount,
           invoiceStatus:
             nextStatus,
         },
@@ -5355,6 +5421,9 @@ export async function recordInvoicePayment(
         nextStatus,
       remainingBalance:
         remaining,
+      allocatedAmount:
+        allocationAmount,
+      unappliedAmount,
     };
   } catch (
     error
