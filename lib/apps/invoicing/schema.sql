@@ -812,6 +812,7 @@ LEFT JOIN LATERAL (
   FROM public.invoicing_payment_allocations a
   INNER JOIN public.invoicing_payments p ON p.id = a.payment_id
   WHERE a.invoice_id = i.id
+    AND a.status = 'posted'
     AND p.status = 'posted'
     AND p.deleted_at IS NULL
 ) pa ON TRUE
@@ -873,6 +874,7 @@ LEFT JOIN LATERAL (
   FROM public.invoicing_payment_allocations a
   INNER JOIN public.invoicing_payments p ON p.id = a.payment_id
   WHERE a.invoice_id = i.id
+    AND a.status = 'posted'
     AND p.status = 'posted'
     AND p.deleted_at IS NULL
 ) pa ON TRUE
