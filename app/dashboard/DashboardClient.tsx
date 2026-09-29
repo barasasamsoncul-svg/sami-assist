@@ -371,7 +371,7 @@ export default function DashboardClient({
                     <span className="block truncate text-xs font-black text-slate-800 dark:text-slate-100">
                       Ask SaMi anything about your business
                     </span>
-                    <span className="mt-0.5 block truncate text-[10px] text-slate-400">
+                    <span className="mt-0.5 block truncate text-[10px] text-slate-600 dark:text-slate-300">
                       Works across the apps and records your permissions allow
                     </span>
                   </span>
@@ -394,7 +394,7 @@ export default function DashboardClient({
         <section>
           <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 dark:text-slate-300">
                 Workspace
               </p>
 
@@ -402,7 +402,7 @@ export default function DashboardClient({
                 Apps
               </h2>
 
-              <p className="mt-1 text-[11px] text-slate-400">
+              <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-300">
                 Only apps available to your role and current workspace are shown.
               </p>
             </div>
@@ -632,7 +632,7 @@ export default function DashboardClient({
                               <p className="truncate text-xs font-bold">
                                 {item.label}
                               </p>
-                              <p className="mt-1 truncate text-[10px] text-slate-400">
+                              <p className="mt-1 truncate text-[10px] text-slate-600 dark:text-slate-300">
                                 {relativeTime(
                                   item.createdAt,
                                 )}
@@ -683,7 +683,7 @@ export default function DashboardClient({
                       'Workspace'}
                     </p>
 
-                    <p className="mt-0.5 truncate text-[10px] text-slate-400">
+                    <p className="mt-0.5 truncate text-[10px] text-slate-600 dark:text-slate-300">
                       Current company context
                     </p>
                   </div>
@@ -712,7 +712,7 @@ export default function DashboardClient({
                 </div>
 
                 {activitySummary && (
-                  <div className="mt-3 flex items-center gap-2 border-t border-[var(--sami-border)] pt-3 text-[9px] font-semibold text-slate-400">
+                  <div className="mt-3 flex items-center gap-2 border-t border-[var(--sami-border)] pt-3 text-[9px] font-semibold text-slate-600 dark:text-slate-300">
                     <span>
                       {activitySummary.todayCount} of your actions today
                     </span>
@@ -782,7 +782,7 @@ function EmptyState({
         {title}
       </p>
 
-      <p className="mx-auto mt-1 max-w-sm text-[10px] leading-5 text-slate-400">
+      <p className="mx-auto mt-1 max-w-sm text-[10px] leading-5 text-slate-600 dark:text-slate-300">
         {description}
       </p>
     </div>
@@ -797,7 +797,7 @@ function MetricCard({
 }) {
   return (
     <div className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
-      <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
+      <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-600 dark:text-slate-300">
         {metric.label}
       </p>
 
@@ -806,7 +806,7 @@ function MetricCard({
       </p>
 
       {metric.description && (
-        <p className="mt-1 text-[10px] leading-5 text-slate-400">
+        <p className="mt-1 text-[10px] leading-5 text-slate-600 dark:text-slate-300">
           {metric.description}
         </p>
       )}
@@ -859,7 +859,7 @@ function WorkRow({
         {item.title}
       </p>
 
-      <div className="mt-1 flex flex-wrap items-center gap-2 text-[9px] text-slate-400">
+      <div className="mt-1 flex flex-wrap items-center gap-2 text-[9px] text-slate-600 dark:text-slate-300">
         {item.status && (
           <span>
             {item.status}
@@ -903,7 +903,7 @@ function RecentRow({
         {item.title}
       </p>
 
-      <p className="mt-1 text-[9px] text-slate-400">
+      <p className="mt-1 text-[9px] text-slate-600 dark:text-slate-300">
         {relativeTime(
           item.occurredAt,
         )}
