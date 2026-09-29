@@ -2020,10 +2020,20 @@ export default function InvoiceDetailClient({
                         }
 
                         {
+                          payment.reconciledAt &&
+                          (
+                            <p className="mt-2 text-[10px] leading-4 text-emerald-700 dark:text-emerald-300">
+                              Reconciled receipt: financial corrections are locked. Unreconcile it from the Payments workspace first.
+                            </p>
+                          )
+                        }
+
+                        {
                           data.capabilities
                             .canRecordPayment &&
                           payment.status ===
                             'posted' &&
+                          !payment.reconciledAt &&
                           payment.allocationStatus ===
                             'posted' &&
                           payment.operationKey &&
