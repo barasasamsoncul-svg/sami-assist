@@ -520,6 +520,32 @@ export default function InvoiceDetailClient({
               rel="noreferrer"
               className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black"
             >
+              <FileText className="h-4 w-4 text-blue-600" />
+              View PDF
+            </a>
+
+            <a
+              href={
+                '/api/apps/invoicing/' +
+                invoice.id +
+                '/pdf?download=1'
+              }
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black"
+            >
+              <Download className="h-4 w-4 text-blue-600" />
+              Download
+            </a>
+
+            <a
+              href={
+                '/api/apps/invoicing/' +
+                invoice.id +
+                '/pdf'
+              }
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black"
+            >
               <Printer className="h-4 w-4" />
               Print / PDF
             </a>
@@ -678,6 +704,7 @@ export default function InvoiceDetailClient({
               data.capabilities
                 .canSend &&
               ![
+                'draft',
                 'paid',
                 'cancelled',
                 'void',
