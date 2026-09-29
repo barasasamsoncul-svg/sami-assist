@@ -362,31 +362,25 @@ const SQL = `
   ) ca ON TRUE
   WHERE i.deleted_at IS NULL;
 
-  DO $$
-  BEGIN
-    IF NOT EXISTS (
-      SELECT 1
-      FROM pg_trigger
-      WHERE tgname = 'trg_invoicing_credit_note_applications_updated_at'
-    ) THEN
-      CREATE TRIGGER trg_invoicing_credit_note_applications_updated_at
-      BEFORE UPDATE ON public.invoicing_credit_note_applications
-      FOR EACH ROW
-      EXECUTE FUNCTION public.invoicing_touch_updated_at();
-    END IF;
+  DROP TRIGGER IF EXISTS
+    trg_invoicing_credit_note_applications_updated_at
+    ON public.invoicing_credit_note_applications;
 
-    IF NOT EXISTS (
-      SELECT 1
-      FROM pg_trigger
-      WHERE tgname = 'trg_invoicing_credit_note_refunds_updated_at'
-    ) THEN
-      CREATE TRIGGER trg_invoicing_credit_note_refunds_updated_at
-      BEFORE UPDATE ON public.invoicing_credit_note_refunds
-      FOR EACH ROW
-      EXECUTE FUNCTION public.invoicing_touch_updated_at();
-    END IF;
-  END
-  $$;
+  CREATE TRIGGER trg_invoicing_credit_note_applications_updated_at
+    BEFORE UPDATE
+    ON public.invoicing_credit_note_applications
+    FOR EACH ROW
+    EXECUTE FUNCTION public.invoicing_touch_updated_at();
+
+  DROP TRIGGER IF EXISTS
+    trg_invoicing_credit_note_refunds_updated_at
+    ON public.invoicing_credit_note_refunds;
+
+  CREATE TRIGGER trg_invoicing_credit_note_refunds_updated_at
+    BEFORE UPDATE
+    ON public.invoicing_credit_note_refunds
+    FOR EACH ROW
+    EXECUTE FUNCTION public.invoicing_touch_updated_at();
 `;
 
 
