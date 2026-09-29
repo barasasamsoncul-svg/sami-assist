@@ -3749,7 +3749,7 @@ function Invoices({
                 className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black disabled:opacity-40"
               >
                 <Download className="h-4 w-4" />
-                CSV
+                Export CSV
               </button>
 
               {
@@ -3905,11 +3905,7 @@ function Invoices({
 
                     <div className="flex gap-2">
                       <a
-                        href={
-                          '/api/apps/invoicing/' +
-                          invoice.id +
-                          '/pdf'
-                        }
+                        href={`/api/apps/invoicing/${invoice.id}/pdf`}
                         target="_blank"
                         rel="noreferrer"
                         className="inline-flex h-10 items-center justify-center rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black"
@@ -4160,11 +4156,7 @@ function Invoices({
                           </Link>
 
                           <a
-                            href={
-                              '/api/apps/invoicing/' +
-                              invoice.id +
-                              '/pdf'
-                            }
+                            href={`/api/apps/invoicing/${invoice.id}/pdf`}
                             target="_blank"
                             rel="noreferrer"
                             className="rounded-xl border border-[var(--sami-border)] px-2.5 py-2 text-xs font-black"

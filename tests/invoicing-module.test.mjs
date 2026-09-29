@@ -113,7 +113,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
 
   assert.match(
     invoicing,
-    /version:\s*['"]2\.3\.0['"]/,
+    /version:\s*['"]2\.4\.0['"]/,
   );
 
   assert.match(

@@ -19,7 +19,6 @@ export type InvoicingInvoiceSummary = {
   status: string;
   invoiceDate: string;
   dueDate: string;
-  serviceDate: string | null;
   currency: string;
   totalAmount: number;
   paidAmount: number;
@@ -151,6 +150,7 @@ export type InvoicingInvoiceDetail = {
   status: string;
   invoiceDate: string;
   dueDate: string;
+  serviceDate: string | null;
   currency: string;
   exchangeRate: number;
   reference: string | null;

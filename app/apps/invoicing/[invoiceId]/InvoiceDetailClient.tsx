@@ -511,11 +511,7 @@ export default function InvoiceDetailClient({
             </button>
 
             <a
-              href={
-                '/api/apps/invoicing/' +
-                invoice.id +
-                '/pdf'
-              }
+              href={`/api/apps/invoicing/${invoice.id}/pdf`}
               target="_blank"
               rel="noreferrer"
               className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black"
@@ -525,11 +521,7 @@ export default function InvoiceDetailClient({
             </a>
 
             <a
-              href={
-                '/api/apps/invoicing/' +
-                invoice.id +
-                '/pdf?download=1'
-              }
+              href={`/api/apps/invoicing/${invoice.id}/pdf?download=1`}
               className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black"
             >
               <Download className="h-4 w-4 text-blue-600" />
