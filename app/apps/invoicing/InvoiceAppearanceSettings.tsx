@@ -1540,7 +1540,7 @@ export default function InvoiceAppearanceSettings({
 
       <details className="mt-4 rounded-2xl border border-dashed border-[var(--sami-border)]">
         <summary className="cursor-pointer list-none px-4 py-3 text-xs font-black text-blue-600">
-          + Create invoice design
+          + Create appearance template
         </summary>
 
         <form
@@ -1549,11 +1549,21 @@ export default function InvoiceAppearanceSettings({
             async event => {
               event.preventDefault();
 
-              await submitTemplate(
-                event.currentTarget,
-                run,
-                null,
-              );
+              const element =
+                event.currentTarget;
+
+              const saved =
+                await submitTemplate(
+                  element,
+                  run,
+                  null,
+                );
+
+              if (
+                saved
+              ) {
+                element.reset();
+              }
             }
           }
         >
