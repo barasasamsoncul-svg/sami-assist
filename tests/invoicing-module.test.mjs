@@ -4190,7 +4190,7 @@ test('Invoicing Part 11 deepens credit notes into reusable customer credits and 
   );
 
   for (const command of [
-    'issueInvoiceCreditNoteDeep',
+    'issueInvoiceCreditNote',
     'applyInvoiceCreditNote',
     'reverseInvoiceCreditApplication',
     'refundInvoiceCreditNote',
