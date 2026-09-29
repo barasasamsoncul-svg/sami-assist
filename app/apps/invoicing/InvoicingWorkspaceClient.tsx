@@ -6851,6 +6851,7 @@ function Payments({
                                         .canRecordPayment &&
                                       payment.status ===
                                         'posted' &&
+                                      !payment.reconciledAt &&
                                       allocation.status ===
                                         'posted' &&
                                       allocation.operationKey &&
@@ -6964,6 +6965,7 @@ function Payments({
                                     {
                                       data.capabilities
                                         .canRecordPayment &&
+                                      !payment.reconciledAt &&
                                       refund.status ===
                                         'posted' &&
                                       (
@@ -7040,6 +7042,7 @@ function Payments({
                       (
                         <div className="mt-4 grid gap-3 xl:grid-cols-3">
                           {
+                            !payment.reconciledAt &&
                             payment.unappliedAmount >
                               0 &&
                             eligibleInvoices.length >
@@ -7153,6 +7156,7 @@ function Payments({
                           }
 
                           {
+                            !payment.reconciledAt &&
                             payment.unappliedAmount >
                               0 &&
                             (
@@ -7359,6 +7363,7 @@ function Payments({
                         .canRecordPayment &&
                       payment.status ===
                         'posted' &&
+                      !payment.reconciledAt &&
                       (
                         <details className="mt-3 rounded-xl border border-red-500/15 p-3">
                           <summary className="cursor-pointer text-xs font-black text-red-700 dark:text-red-300">
@@ -7447,21 +7452,91 @@ function Payments({
                     {
                       payment.reconciledAt &&
                       (
-                        <p className="mt-3 text-[10px] text-slate-400">
-                          Reconciled {
-                            payment.reconciledAt
-                          }{
-                            payment.reconciliationReference
-                              ? ' · ' +
-                                payment.reconciliationReference
-                              : ''
-                          }{
-                            payment.reconciliationNotes
-                              ? ' · ' +
-                                payment.reconciliationNotes
-                              : ''
+                        <div className="mt-3 rounded-2xl border border-emerald-500/15 bg-emerald-500/[0.04] p-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.1em] text-emerald-700 dark:text-emerald-300">
+                            Reconciled receipt · financial edits locked
+                          </p>
+
+                          <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                            Reconciled {
+                              payment.reconciledAt
+                            }{
+                              payment.reconciliationReference
+                                ? ' · ' +
+                                  payment.reconciliationReference
+                                : ''
+                            }{
+                              payment.reconciliationNotes
+                                ? ' · ' +
+                                  payment.reconciliationNotes
+                                : ''
+                            }
+                          </p>
+
+                          {
+                            data.capabilities
+                              .canRecordPayment &&
+                            payment.status ===
+                              'posted' &&
+                            (
+                              <form
+                                className="mt-3 flex flex-col gap-2 sm:flex-row"
+                                onSubmit={
+                                  async event => {
+                                    event.preventDefault();
+
+                                    const element =
+                                      event.currentTarget;
+
+                                    const form =
+                                      new FormData(
+                                        element,
+                                      );
+
+                                    const saved =
+                                      await run(
+                                        {
+                                          action:
+                                            'unreconcile_payment',
+                                          paymentId:
+                                            payment.id,
+                                          reason:
+                                            form.get(
+                                              'reason',
+                                            ),
+                                        },
+                                        'Payment unreconciled. Financial corrections are available again.',
+                                      );
+
+                                    if (
+                                      saved
+                                    ) {
+                                      element.reset();
+                                    }
+                                  }
+                                }
+                              >
+                                <input
+                                  name="reason"
+                                  required
+                                  maxLength={2000}
+                                  placeholder="Reason for unreconciling"
+                                  className="h-10 min-w-0 flex-1 rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-xs"
+                                />
+
+                                <button
+                                  type="submit"
+                                  disabled={
+                                    pending
+                                  }
+                                  className="h-10 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 text-xs font-black text-emerald-700 disabled:opacity-60 dark:text-emerald-300"
+                                >
+                                  Unreconcile
+                                </button>
+                              </form>
+                            )
                           }
-                        </p>
+                        </div>
                       )
                     }
                   </div>
