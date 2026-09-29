@@ -6626,6 +6626,457 @@ export async function reverseInvoicePaymentAllocation(
 }
 
 
+export async function reconcileInvoicePayment(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .PAYMENT_RECORD,
+    );
+
+  const paymentId =
+    requireUuid(
+      input.paymentId,
+      'Payment',
+    );
+
+  const reference =
+    cleanText(
+      input.reference,
+      255,
+    );
+
+  const notes =
+    nullableText(
+      input.notes,
+      3000,
+    );
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const result =
+      await client.query(
+        `
+          SELECT
+            payment_number,
+            status,
+            reconciled_at
+          FROM invoicing_payments
+          WHERE id = $1
+            AND company_id = $2
+            AND deleted_at IS NULL
+          FOR UPDATE
+        `,
+        [
+          paymentId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      result.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'PAYMENT_NOT_FOUND',
+        'Payment was not found.',
+      );
+    }
+
+    if (
+      String(
+        result.rows[0].status,
+      ) !==
+        'posted'
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Only a posted payment can be reconciled.',
+      );
+    }
+
+    if (
+      result.rows[0]
+        .reconciled_at
+    ) {
+      await client.query(
+        'COMMIT',
+      );
+
+      return {
+        paymentId,
+        paymentNumber:
+          String(
+            result.rows[0]
+              .payment_number,
+          ),
+        reconciled:
+          true,
+        reused:
+          true,
+      };
+    }
+
+    await client.query(
+      `
+        UPDATE invoicing_payments
+        SET
+          reconciled_at = NOW(),
+          reconciled_by = $3,
+          reconciliation_reference = $4,
+          reconciliation_notes = $5,
+          updated_by = $3,
+          updated_at = NOW()
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [
+        paymentId,
+        context.companyId,
+        context.userId,
+        reference ||
+          null,
+        notes,
+      ],
+    );
+
+    await recordMasterDataActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        model:
+          'invoicing.payment',
+        recordId:
+          paymentId,
+        type:
+          'invoicing.payment_reconciled',
+        content:
+          'Payment ' +
+          String(
+            result.rows[0]
+              .payment_number,
+          ) +
+          ' reconciled.',
+        metadata: {
+          reference:
+            reference ||
+            null,
+          notes,
+        },
+      },
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return {
+      paymentId,
+      paymentNumber:
+        String(
+          result.rows[0]
+            .payment_number,
+        ),
+      reconciled:
+        true,
+      reused:
+        false,
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
+export async function refundInvoicePayment(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .PAYMENT_RECORD,
+    );
+
+  const paymentId =
+    requireUuid(
+      input.paymentId,
+      'Payment',
+    );
+
+  const amount =
+    numberInput(
+      input.amount,
+      'Refund amount',
+      {
+        min:
+          0.0001,
+      },
+    );
+
+  const reason =
+    cleanText(
+      input.reason,
+      2000,
+    );
+
+  if (!reason) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'A refund reason is required.',
+    );
+  }
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const paymentResult =
+      await client.query(
+        `
+          SELECT
+            p.id,
+            p.payment_number,
+            p.status,
+            p.currency,
+            p.exchange_rate,
+            p.method,
+            b.unapplied_amount
+          FROM invoicing_payments p
+          INNER JOIN invoicing_payment_balances b
+            ON b.payment_id = p.id
+           AND b.company_id = p.company_id
+          WHERE p.id = $1
+            AND p.company_id = $2
+            AND p.deleted_at IS NULL
+          FOR UPDATE OF p
+        `,
+        [
+          paymentId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      paymentResult.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'PAYMENT_NOT_FOUND',
+        'Payment was not found.',
+      );
+    }
+
+    const payment =
+      paymentResult.rows[0];
+
+    if (
+      String(
+        payment.status,
+      ) !==
+        'posted'
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Only a posted payment can be refunded.',
+      );
+    }
+
+    const unapplied =
+      money(
+        payment.unapplied_amount,
+      );
+
+    if (
+      amount >
+      unapplied +
+        0.0001
+    ) {
+      throw new InvoicingError(
+        'PAYMENT_EXCEEDS_BALANCE',
+        'Only the unapplied portion of a payment can be refunded.',
+        {
+          unapplied,
+        },
+      );
+    }
+
+    const refundNumber =
+      await nextDocumentNumber(
+        client,
+        context.companyId,
+        context.userId,
+        'payment',
+      );
+
+    const refundDate =
+      isoDate(
+        input.refundDate,
+        new Date(),
+      );
+
+    const created =
+      await client.query(
+        `
+          INSERT INTO invoicing_payment_refunds (
+            company_id,
+            payment_id,
+            refund_number,
+            refund_date,
+            amount,
+            currency,
+            method,
+            reference,
+            reason,
+            status,
+            created_by,
+            updated_by
+          )
+          VALUES (
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,
+            'posted',
+            $10,$10
+          )
+          RETURNING id
+        `,
+        [
+          context.companyId,
+          paymentId,
+          refundNumber,
+          refundDate,
+          amount,
+          String(
+            payment.currency,
+          ),
+          cleanText(
+            input.method,
+            50,
+          ) ||
+          String(
+            payment.method ||
+            'other',
+          ),
+          cleanText(
+            input.reference,
+            255,
+          ) ||
+          null,
+          reason,
+          context.userId,
+        ],
+      );
+
+    const refundId =
+      String(
+        created.rows[0].id,
+      );
+
+    await postInvoicePaymentRefundToAccounting(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        refundId,
+        refundNumber,
+        refundDate,
+        amount,
+        exchangeRate:
+          Number(
+            payment.exchange_rate ||
+            1,
+          ),
+      },
+    );
+
+    await recordMasterDataActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        model:
+          'invoicing.payment_refund',
+        recordId:
+          refundId,
+        type:
+          'invoicing.payment_refunded',
+        content:
+          'Refund ' +
+          refundNumber +
+          ' posted against payment ' +
+          String(
+            payment.payment_number,
+          ) +
+          '.',
+        metadata: {
+          paymentId,
+          amount,
+          reason,
+        },
+      },
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return {
+      refundId,
+      refundNumber,
+      paymentId,
+      status:
+        'posted',
+      amount,
+      unappliedAmount:
+        money(
+          unapplied -
+          amount,
+        ),
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
 export async function reverseInvoicePayment(
   input:
     Record<string, unknown>,
