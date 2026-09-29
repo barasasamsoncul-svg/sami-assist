@@ -10296,47 +10296,47 @@ export async function revokeCustomerPortalAccess(
       'Customer',
     );
 
-  const result =
-    await context.pool.query(
-      `
-        UPDATE invoicing_portal_access
-        SET
-          status =
-            'revoked',
-          revoked_by =
-            $3,
-          revoked_at =
-            NOW(),
-          updated_at =
-            NOW()
-        WHERE company_id =
-              $1
-          AND customer_id =
-              $2
-          AND status =
-              'active'
-        RETURNING
-          id
-      `,
-      [
-        context.companyId,
-        customerId,
-        context.userId,
-      ],
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
     );
 
-  if (
-    result.rows.length >
-      0
-  ) {
-    const client =
-      await context.pool.connect();
-
-    try {
+    const result =
       await client.query(
-        'BEGIN',
+        `
+          UPDATE invoicing_portal_access
+          SET
+            status =
+              'revoked',
+            revoked_by =
+              $3,
+            revoked_at =
+              NOW(),
+            updated_at =
+              NOW()
+          WHERE company_id =
+                $1
+            AND customer_id =
+                $2
+            AND status =
+                'active'
+          RETURNING
+            id
+        `,
+        [
+          context.companyId,
+          customerId,
+          context.userId,
+        ],
       );
 
+    if (
+      result.rows.length >
+        0
+    ) {
       await recordMasterDataActivity(
         client,
         {
@@ -10358,30 +10358,30 @@ export async function revokeCustomerPortalAccess(
           },
         },
       );
-
-      await client.query(
-        'COMMIT',
-      );
-    } catch (
-      error
-    ) {
-      try {
-        await client.query(
-          'ROLLBACK',
-        );
-      } catch {}
-
-      throw error;
-    } finally {
-      client.release();
     }
-  }
 
-  return {
-    customerId,
-    revoked:
-      result.rows.length,
-  };
+    await client.query(
+      'COMMIT',
+    );
+
+    return {
+      customerId,
+      revoked:
+        result.rows.length,
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 
@@ -10401,52 +10401,110 @@ export async function resolveCustomerPortalMessage(
       'Portal message',
     );
 
-  const result =
-    await context.pool.query(
-      `
-        UPDATE invoicing_portal_messages
-        SET
-          status =
-            'resolved',
-          resolved_by =
-            $3,
-          resolved_at =
-            NOW(),
-          updated_at =
-            NOW()
-        WHERE id =
-              $1
-          AND company_id =
-              $2
-          AND status =
-              'open'
-        RETURNING
-          id,
-          customer_id,
-          invoice_id
-      `,
-      [
-        messageId,
-        context.companyId,
-        context.userId,
-      ],
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
     );
 
-  if (
-    result.rows.length !==
-      1
+    const result =
+      await client.query(
+        `
+          UPDATE invoicing_portal_messages
+          SET
+            status =
+              'resolved',
+            resolved_by =
+              $3,
+            resolved_at =
+              NOW(),
+            updated_at =
+              NOW()
+          WHERE id =
+                $1
+            AND company_id =
+                $2
+            AND status =
+                'open'
+          RETURNING
+            id,
+            customer_id,
+            invoice_id
+        `,
+        [
+          messageId,
+          context.companyId,
+          context.userId,
+        ],
+      );
+
+    if (
+      result.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'Open customer portal message was not found.',
+      );
+    }
+
+    await recordMasterDataActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        model:
+          'invoicing.customer_portal_message',
+        recordId:
+          messageId,
+        type:
+          'customer.portal_message_resolved',
+        content:
+          'Customer portal message resolved.',
+        metadata: {
+          customerId:
+            String(
+              result.rows[0]
+                .customer_id,
+            ),
+          invoiceId:
+            result.rows[0]
+              .invoice_id
+              ? String(
+                  result.rows[0]
+                    .invoice_id,
+                )
+              : null,
+        },
+      },
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return {
+      messageId,
+      status:
+        'resolved',
+    };
+  } catch (
+    error
   ) {
-    throw new InvoicingError(
-      'INVALID_INPUT',
-      'Open customer portal message was not found.',
-    );
-  }
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
 
-  return {
-    messageId,
-    status:
-      'resolved',
-  };
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 
