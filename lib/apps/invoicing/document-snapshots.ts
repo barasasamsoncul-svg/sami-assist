@@ -315,6 +315,11 @@ async function loadIssuedInvoicePayload(
           )
             AS font_family,
           COALESCE(
+            template.design_version,
+            1
+          )
+            AS design_version,
+          COALESCE(
             template.density,
             'comfortable'
           )
@@ -638,6 +643,11 @@ async function loadIssuedInvoicePayload(
         fontFamily:
           String(
             row.font_family,
+          ),
+        designVersion:
+          Number(
+            row.design_version ||
+            1,
           ),
         density:
           String(
