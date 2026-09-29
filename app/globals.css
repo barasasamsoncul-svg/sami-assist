@@ -144,53 +144,10 @@ textarea::placeholder {
 
 /*
  * SaMi visibility contract.
- * Several pages use Tailwind's light slate utilities for metadata, labels and
- * secondary values. Those colors are too faint on white surfaces, while the
- * darker slate utilities can disappear on dark surfaces. These late global
- * overrides establish a readable minimum without changing semantic colors
- * such as blue, emerald, amber or red.
+ * Native controls and shared surfaces establish explicit foregrounds. Page
+ * components use the stronger SaMi muted tokens below rather than relying on
+ * hover to reveal labels or values.
  */
-.text-slate-300,
-.text-slate-400 {
-  color: #64748b;
-}
-
-.text-slate-500 {
-  color: #475569;
-}
-
-.placeholder\:text-slate-300::placeholder,
-.placeholder\:text-slate-400::placeholder,
-.placeholder\:text-slate-500::placeholder {
-  color: var(--sami-muted);
-  opacity: 1;
-}
-
-.dark .text-slate-700,
-.dark .text-slate-600 {
-  color: #94a3b8;
-}
-
-.dark .text-slate-500,
-.dark .dark\:text-slate-500 {
-  color: #a8b3c7;
-}
-
-.dark .text-slate-400,
-.dark .dark\:text-slate-400 {
-  color: #c0cad8;
-}
-
-.dark .text-slate-300,
-.dark .dark\:text-slate-300 {
-  color: #d6dde8;
-}
-
-.dark .dark\:text-slate-700,
-.dark .dark\:text-slate-600 {
-  color: #94a3b8;
-}
-
 button:disabled[class],
 input:disabled[class],
 select:disabled[class],
