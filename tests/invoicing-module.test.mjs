@@ -1391,9 +1391,10 @@ test('Invoicing financial corrections are auditable and company settings are enf
   assert.match(route, /case 'cancel_credit_note'/);
   assert.match(queries, /p\.status/);
   assert.match(types, /paymentNumber: string;\n\s+status: string;/);
-  assert.match(workspace, /Reverse posted payment/);
+  assert.match(workspace, /Reverse entire receipt/);
+  assert.match(workspace, /reverse_payment_allocation/);
   assert.match(workspace, /payment\.status/);
-  assert.match(detail, /action:\s*'reverse_payment'/);
+  assert.match(detail, /action:\s*'reverse_payment_allocation'/);
   assert.match(detail, /action:\s*'cancel_credit_note'/);
   assert.match(detail, /allowCreditNotes/);
   assert.match(detail, /allowPartialPayments/);
