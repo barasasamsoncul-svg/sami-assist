@@ -2553,6 +2553,36 @@ test('Invoicing v2.6 separates cash receipts from allocation and reconciliation'
     /Unapplied customer receipt/,
   );
 
+  const automation =
+    await source(
+      'lib/apps/invoicing/automation.ts',
+    );
+
+  for (const paymentEvent of [
+    'invoicing.payment.allocated',
+    'invoicing.payment.allocation_reversed',
+    'invoicing.payment.reconciled',
+    'invoicing.payment.unreconciled',
+    'invoicing.payment.refunded',
+    'invoicing.payment.refund_reversed',
+  ]) {
+    assert.ok(
+      automation.includes(
+        paymentEvent,
+      ),
+      paymentEvent +
+      ' must be registered as an Invoicing automation trigger.',
+    );
+
+    assert.ok(
+      commands.includes(
+        paymentEvent,
+      ),
+      paymentEvent +
+      ' must be emitted by the authoritative payment command.',
+    );
+  }
+
   assert.match(
     queries,
     /allocated_amount/,
