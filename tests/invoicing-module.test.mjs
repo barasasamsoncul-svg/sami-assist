@@ -113,7 +113,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
 
   assert.match(
     invoicing,
-    /version:\s*['"]2\.4\.0['"]/,
+    /version:\s*['"]2\.5\.0['"]/,
   );
 
   assert.match(
@@ -675,6 +675,63 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
   assert.match(
     runtimeMigrations,
     /INVOICING_2_3_0_TO_2_4_0/,
+  );
+
+  const lifecycleMigration =
+    await source(
+      'lib/apps/invoicing/migrations/2.4.0-to-2.5.0.ts',
+    );
+
+  assert.match(
+    lifecycleMigration,
+    /fromVersion:\s*['"]2\.4\.0['"]/,
+  );
+
+  assert.match(
+    lifecycleMigration,
+    /toVersion:\s*['"]2\.5\.0['"]/,
+  );
+
+  for (const lifecycleField of [
+    'pending_approval',
+    'rejected',
+    'submitted_at',
+    'submitted_by',
+    'approved_at',
+    'approved_by',
+    'rejected_at',
+    'rejected_by',
+  ]) {
+    assert.match(
+      lifecycleMigration,
+      new RegExp(lifecycleField),
+      'Lifecycle migration must include ' + lifecycleField + '.',
+    );
+  }
+
+  assert.match(
+    lifecycleMigration,
+    /CREATE OR REPLACE FUNCTION public\.validate_invoice_status_transition/,
+  );
+
+  assert.match(
+    lifecycleMigration,
+    /CREATE OR REPLACE VIEW public\.invoicing_customer_balances/,
+  );
+
+  assert.match(
+    lifecycleMigration,
+    /CREATE OR REPLACE VIEW public\.invoicing_aging/,
+  );
+
+  assert.match(
+    lifecycleMigration,
+    /INVOICING_2_4_0_TO_2_5_0|invoicing-2\.4\.0-to-2\.5\.0/,
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /INVOICING_2_4_0_TO_2_5_0/,
   );
 
   const accounting =
@@ -2018,4 +2075,166 @@ test('Invoicing builder persists service and shipping snapshots across internal,
   assert.match(pdf, /shippingAddress/);
   assert.match(pdfRoute, /serviceDate:/);
   assert.match(pdfRoute, /shippingAddress:/);
+});
+
+
+test('Invoicing v2.5 enforces a real approval and posting lifecycle', async () => {
+  const [
+    schema,
+    migration,
+    commands,
+    composer,
+    detail,
+    workspace,
+    automation,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/schema.sql'),
+    source('lib/apps/invoicing/migrations/2.4.0-to-2.5.0.ts'),
+    source('lib/apps/invoicing/commands.ts'),
+    source('app/apps/invoicing/InvoiceComposer.tsx'),
+    source('app/apps/invoicing/[invoiceId]/InvoiceDetailClient.tsx'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('lib/apps/invoicing/automation.ts'),
+  ]);
+
+  for (const sourceText of [
+    schema,
+    migration,
+    commands,
+  ]) {
+    assert.match(
+      sourceText,
+      /pending_approval/,
+    );
+
+    assert.match(
+      sourceText,
+      /rejected/,
+    );
+  }
+
+  assert.match(
+    schema,
+    /OLD\.status = 'draft'[\s\S]*'pending_approval'[\s\S]*OLD\.status = 'pending_approval'[\s\S]*'confirmed'[\s\S]*'rejected'/s,
+    'Database status authority must understand approval submission and decisions.',
+  );
+
+  assert.match(
+    schema,
+    /OLD\.status = 'rejected'[\s\S]*'draft'[\s\S]*'pending_approval'/s,
+    'Rejected invoices must be able to return to rework and approval.',
+  );
+
+  assert.match(
+    commands,
+    /'pending_approval',[\s\S]*'draft'[\s\S]*INVOICE_EDIT/s,
+    'Submitting and returning an invoice for rework use invoice-edit authority.',
+  );
+
+  assert.match(
+    commands,
+    /'confirmed',[\s\S]*'rejected'[\s\S]*INVOICE_CONFIRM/s,
+    'Approval and rejection use invoice-confirm authority.',
+  );
+
+  assert.match(
+    commands,
+    /Submit this invoice for approval before it can be posted\./,
+  );
+
+  assert.match(
+    commands,
+    /A rejection reason is required\./,
+  );
+
+  assert.match(
+    commands,
+    /FOR UPDATE/,
+    'Lifecycle changes must remain serialized.',
+  );
+
+  assert.match(
+    commands,
+    /next ===[\s\S]*'confirmed'[\s\S]*postInvoiceConfirmationToAccounting/s,
+    'Accounting posting only occurs when the invoice reaches the posted state.',
+  );
+
+  assert.match(
+    commands,
+    /'draft',[\s\S]*'pending_approval',[\s\S]*'rejected',[\s\S]*'paid'/s,
+    'Payment posting must reject non-posted approval states.',
+  );
+
+  assert.match(
+    commands,
+    /A credit note cannot be issued for this invoice state\./,
+  );
+
+  assert.match(
+    composer,
+    /Save & submit for approval/,
+  );
+
+  assert.match(
+    detail,
+    /Submit for approval/,
+  );
+
+  assert.match(
+    detail,
+    /Approve & post/,
+  );
+
+  assert.match(
+    detail,
+    /Reject for rework/,
+  );
+
+  assert.match(
+    detail,
+    /Return to draft/,
+  );
+
+  assert.match(
+    workspace,
+    /Pending approval/,
+  );
+
+  assert.match(
+    workspace,
+    /Approve & post/,
+  );
+
+  assert.match(
+    workspace,
+    /Return to draft/,
+  );
+
+  assert.match(
+    automation,
+    /invoicing\.invoice\.approval_submitted/,
+  );
+
+  assert.match(
+    automation,
+    /invoicing\.invoice\.approval_rejected/,
+  );
+
+  assert.match(
+    schema,
+    /WHEN i\.status IN \('draft','pending_approval','rejected','cancelled','void','written_off'\)[\s\S]*THEN 0::numeric\(19,4\)/s,
+    'Unposted and terminal documents must not contribute a receivable balance.',
+  );
+
+  assert.match(
+    schema,
+    /status NOT IN \('draft','pending_approval','rejected','cancelled','void'\)/,
+    'Monthly billing must exclude documents that have never been posted.',
+  );
+
+  assert.match(
+    schema,
+    /invoicing_customer_balances[\s\S]*'draft','pending_approval','rejected','cancelled','void'/s,
+    'Customer balances must exclude documents that have never been posted.',
+  );
 });
