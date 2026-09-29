@@ -71,7 +71,7 @@ test(
 
     assert.equal(
       lock.baselineBranch,
-      'feat/invoicing-2.7-recurring-depth',
+      'main',
     );
 
     for (
