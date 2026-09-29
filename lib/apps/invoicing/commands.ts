@@ -8556,8 +8556,16 @@ export async function issueInvoiceCreditNote(
             result.rows[0].id,
           ),
         creditNoteNumber,
-        amount:
+        totalAmount:
           creditAmount,
+        subtotal:
+          creditAmount,
+        taxTotal:
+          0,
+        receivableAmount:
+          creditAmount,
+        customerCreditAmount:
+          0,
         exchangeRate:
           Number(
             locked.rows[0]
