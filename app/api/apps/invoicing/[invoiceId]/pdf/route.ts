@@ -118,8 +118,15 @@ export async function GET(
           },
         );
 
+      const pdfBody =
+        Uint8Array
+          .from(
+            snapshot.pdf,
+          )
+          .buffer;
+
       return new NextResponse(
-        snapshot.pdf,
+        pdfBody,
         {
           status:
             200,
