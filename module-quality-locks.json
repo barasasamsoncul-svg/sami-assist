@@ -3,19 +3,19 @@
   "locks": {
     "invoicing": {
       "status": "locked",
-      "moduleVersion": "2.9.0",
+      "moduleVersion": "2.10.0",
       "referenceStandard": true,
-      "baselineCommit": "0353a575e17f6ffb9cb746e2d02755aa5888e759",
+      "baselineCommit": "067ce0e9dcc8a6fa1faab6c7307fb6f6f4b2b674",
       "baselineBranch": "main",
       "lockedAt": "2026-09-29",
-      "policy": "Invoicing 2.9.0 preserves the locked Parts 1–7 baseline and completes Part 8 Customer Portal with customer-scoped expiring/revocable hashed access, customer invoice list/detail/PDF, payment and credit visibility, idempotent rate-limited customer messages and structured payment promises, operator invite/reissue/revoke/inbox workflows, portal settings, portal activity audit events, and isolated legacy single-invoice share links. Future changes must keep Invoicing, ERP integration, platform closure, app-surface, visibility, core-hardening, TypeScript, migration dry-run and production deployment gates green.",
+      "policy": "Invoicing 2.10.0 preserves the locked Parts 1–8 baseline and completes Part 9 PDF / Document Snapshots with immutable issued-invoice payload and PDF archives, SHA-256 integrity hashes, renderer versioning, confirmation-time transactional capture, delivery-to-snapshot lineage, frozen workspace/public/customer-portal PDF reuse, lazy archival for legacy issued invoices, exact-version secure downloads, visible document evidence history, and a read-only company-scoped snapshot resource. Future changes must keep Invoicing, ERP integration, platform closure, app-surface, visibility, core-hardening, TypeScript, migration dry-run and production deployment gates green.",
       "protectedTrees": {
-        "lib/apps/invoicing": "15d5b62137b1b6965840e4f10145e07b833f59fb",
-        "app/apps/invoicing": "e1198f74f1b8ac0320f866a01020b3a16aa77acb",
-        "app/api/apps/invoicing": "f805948ed10136438f5974292043009eb3d87bea",
+        "lib/apps/invoicing": "f4fbf9876a4aff69676f3f104c889851039daafe",
+        "app/apps/invoicing": "0abbeef99c2390e0d581584194757da154c7da59",
+        "app/api/apps/invoicing": "fdc9817e62db5c22a5f39fdabe21d231ac8bd1bd",
         "app/api/internal/invoicing": "b2b22efc33d3b038495ccdd343845257789334a1",
-        "app/i/[tenantId]/[token]": "756a44ab2c2bc0c64bbb50721f003c19d2bf19ca",
-        "app/p/[tenantId]/[token]": "4cab3ce190ee1de26507b433e89fb9b9d1ccd39b",
+        "app/i/[tenantId]/[token]": "62510a8ae454347c3d5e211895fdf27fb6a70bc7",
+        "app/p/[tenantId]/[token]": "752ed1f6b8eb62cb003e91f09ecbbbeba5f43a97",
         "app/api/public/invoicing": "b0440971da2a5047ab05a2c28c16fb422a9d0878"
       }
     }
