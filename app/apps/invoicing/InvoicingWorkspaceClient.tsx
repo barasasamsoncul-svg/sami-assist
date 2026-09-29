@@ -6390,7 +6390,9 @@ function Payments({
               postedPayments.length,
             )
           }
-          hint="Cash receipts still active"
+          note="Cash receipts still active"
+          icon={Receipt}
+          tone="blue"
         />
 
         <MetricCard
@@ -6400,7 +6402,9 @@ function Payments({
               unreconciledCount,
             )
           }
-          hint="Receipts awaiting bank / cash matching"
+          note="Receipts awaiting bank / cash matching"
+          icon={RefreshCw}
+          tone="amber"
         />
 
         <MetricCard
@@ -6411,10 +6415,12 @@ function Payments({
               data.company.currency,
             )
           }
-          hint={
+          note={
             data.company.currency +
             ' customer credit available'
           }
+          icon={CircleDollarSign}
+          tone="emerald"
         />
 
         <MetricCard
@@ -6428,7 +6434,9 @@ function Payments({
               ).length,
             )
           }
-          hint="Retained for audit"
+          note="Retained for audit"
+          icon={RefreshCw}
+          tone="rose"
         />
       </div>
 
