@@ -337,7 +337,8 @@ test('Invoicing server authority uses trusted workspace/company context and neve
 
   assert.match(
     delivery,
-    /markViewed:\s*false/,
+    /ensurePrimaryInvoiceDocumentSnapshot/,
+    'Delivery must resolve the immutable issued document directly without invoking a customer-view path.',
   );
 
   assert.doesNotMatch(
