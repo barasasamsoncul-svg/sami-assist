@@ -60,6 +60,9 @@ const SQL = `
       CHECK (category IN ('general','invoice_question','dispute','payment_promise')),
     subject VARCHAR(255),
     body TEXT NOT NULL,
+    idempotency_key VARCHAR(120),
+    promised_amount NUMERIC(19,4) CHECK (promised_amount IS NULL OR promised_amount > 0),
+    promised_date DATE,
     status VARCHAR(20) NOT NULL DEFAULT 'open'
       CHECK (status IN ('open','resolved','closed')),
     customer_name_snapshot VARCHAR(255),
@@ -77,6 +80,10 @@ const SQL = `
   CREATE INDEX IF NOT EXISTS idx_invoicing_portal_messages_inbox
     ON public.invoicing_portal_messages(company_id, status, created_at DESC)
     WHERE direction = 'customer_to_business';
+
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_invoicing_portal_message_idempotency
+    ON public.invoicing_portal_messages(portal_access_id, idempotency_key)
+    WHERE idempotency_key IS NOT NULL;
 
   CREATE TABLE IF NOT EXISTS public.invoicing_portal_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
