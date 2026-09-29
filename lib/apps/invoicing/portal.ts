@@ -986,6 +986,9 @@ export async function getCustomerPortalInvoice(
   options: {
     markViewed?:
       boolean;
+    eventType?:
+      'portal.invoice_viewed' |
+      'portal.pdf_downloaded';
   } = {},
 ) {
   const context =
@@ -1363,6 +1366,7 @@ export async function getCustomerPortalInvoice(
       context.accessId,
     invoiceId,
     eventType:
+      options.eventType ||
       'portal.invoice_viewed',
   });
 
