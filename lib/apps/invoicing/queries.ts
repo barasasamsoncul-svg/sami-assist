@@ -667,10 +667,80 @@ export async function getInvoicingWorkspaceData():
             r.status,
             r.interval_unit,
             r.interval_count,
+            r.start_date,
+            r.end_date,
             r.next_run_at,
+            r.max_occurrences,
+            r.run_count,
+            r.consecutive_failures,
+            r.max_retry_attempts,
+            r.last_invoice_id,
+            last_invoice.invoice_number
+              AS last_invoice_number,
+            r.last_run_at,
+            r.last_success_at,
+            r.last_failure_at,
+            r.retry_after,
+            r.last_error_code,
+            r.last_error_message,
+            r.completion_reason,
             r.auto_send,
             r.invoice_payload,
-            r.currency
+            r.currency,
+            COALESCE(
+              (
+                SELECT
+                  jsonb_agg(
+                    to_jsonb(recent_run)
+                  )
+                FROM (
+                  SELECT
+                    rr.id,
+                    rr.scheduled_for
+                      AS "scheduledFor",
+                    rr.status,
+                    rr.attempt_count
+                      AS "attemptCount",
+                    rr.invoice_id
+                      AS "invoiceId",
+                    generated.invoice_number
+                      AS "invoiceNumber",
+                    rr.delivery_status
+                      AS "deliveryStatus",
+                    rr.delivery_error_code
+                      AS "deliveryErrorCode",
+                    rr.started_at
+                      AS "startedAt",
+                    rr.last_attempt_at
+                      AS "lastAttemptAt",
+                    rr.completed_at
+                      AS "completedAt",
+                    rr.error_code
+                      AS "errorCode",
+                    rr.error_message
+                      AS "errorMessage"
+                  FROM
+                    invoicing_recurring_runs rr
+                  LEFT JOIN
+                    invoicing_invoices generated
+                    ON generated.id =
+                       rr.invoice_id
+                   AND generated.company_id =
+                       rr.company_id
+                  WHERE
+                    rr.recurring_template_id =
+                      r.id
+                    AND rr.company_id =
+                      r.company_id
+                  ORDER BY
+                    rr.scheduled_for DESC,
+                    rr.created_at DESC
+                  LIMIT 12
+                ) recent_run
+              ),
+              '[]'::jsonb
+            )
+              AS recent_runs
           FROM
             invoicing_recurring_templates r
           INNER JOIN invoicing_customers c
@@ -679,11 +749,25 @@ export async function getInvoicingWorkspaceData():
           LEFT JOIN invoicing_invoices source
             ON source.id =
                r.source_invoice_id
+          LEFT JOIN invoicing_invoices last_invoice
+            ON last_invoice.id =
+               r.last_invoice_id
+           AND last_invoice.company_id =
+               r.company_id
           WHERE r.company_id =
                 $1
             AND r.deleted_at
                 IS NULL
           ORDER BY
+            CASE
+              WHEN r.status =
+                   'active'
+              THEN 0
+              WHEN r.status =
+                   'paused'
+              THEN 1
+              ELSE 2
+            END,
             r.next_run_at ASC,
             r.created_at DESC
           LIMIT 200
@@ -1436,10 +1520,98 @@ export async function getInvoicingWorkspaceData():
               row.interval_count ||
               1,
             ),
+          startDate:
+            String(
+              row.start_date,
+            ),
+          endDate:
+            row.end_date
+              ? String(
+                  row.end_date,
+                )
+              : null,
           nextRunAt:
             String(
               row.next_run_at,
             ),
+          maxOccurrences:
+            row.max_occurrences ===
+              null ||
+            row.max_occurrences ===
+              undefined
+              ? null
+              : Number(
+                  row.max_occurrences,
+                ),
+          runCount:
+            Number(
+              row.run_count ||
+              0,
+            ),
+          consecutiveFailures:
+            Number(
+              row.consecutive_failures ||
+              0,
+            ),
+          maxRetryAttempts:
+            Number(
+              row.max_retry_attempts ||
+              3,
+            ),
+          lastInvoiceId:
+            row.last_invoice_id
+              ? String(
+                  row.last_invoice_id,
+                )
+              : null,
+          lastInvoiceNumber:
+            row.last_invoice_number
+              ? String(
+                  row.last_invoice_number,
+                )
+              : null,
+          lastRunAt:
+            row.last_run_at
+              ? String(
+                  row.last_run_at,
+                )
+              : null,
+          lastSuccessAt:
+            row.last_success_at
+              ? String(
+                  row.last_success_at,
+                )
+              : null,
+          lastFailureAt:
+            row.last_failure_at
+              ? String(
+                  row.last_failure_at,
+                )
+              : null,
+          retryAfter:
+            row.retry_after
+              ? String(
+                  row.retry_after,
+                )
+              : null,
+          lastErrorCode:
+            row.last_error_code
+              ? String(
+                  row.last_error_code,
+                )
+              : null,
+          lastErrorMessage:
+            row.last_error_message
+              ? String(
+                  row.last_error_message,
+                )
+              : null,
+          completionReason:
+            row.completion_reason
+              ? String(
+                  row.completion_reason,
+                )
+              : null,
           autoSend:
             row.auto_send ===
             true,
@@ -1485,6 +1657,87 @@ export async function getInvoicingWorkspaceData():
             String(
               row.currency,
             ),
+          runs:
+            Array.isArray(
+              row.recent_runs,
+            )
+              ? row.recent_runs.map(
+                  (
+                    item:
+                      Record<
+                        string,
+                        unknown
+                      >,
+                  ) => ({
+                    id:
+                      String(
+                        item.id,
+                      ),
+                    scheduledFor:
+                      String(
+                        item.scheduledFor,
+                      ),
+                    status:
+                      String(
+                        item.status,
+                      ),
+                    attemptCount:
+                      Number(
+                        item.attemptCount ||
+                        1,
+                      ),
+                    invoiceId:
+                      item.invoiceId
+                        ? String(
+                            item.invoiceId,
+                          )
+                        : null,
+                    invoiceNumber:
+                      item.invoiceNumber
+                        ? String(
+                            item.invoiceNumber,
+                          )
+                        : null,
+                    deliveryStatus:
+                      String(
+                        item.deliveryStatus ||
+                        'not_requested',
+                      ),
+                    deliveryErrorCode:
+                      item.deliveryErrorCode
+                        ? String(
+                            item.deliveryErrorCode,
+                          )
+                        : null,
+                    startedAt:
+                      String(
+                        item.startedAt,
+                      ),
+                    lastAttemptAt:
+                      String(
+                        item.lastAttemptAt,
+                      ),
+                    completedAt:
+                      item.completedAt
+                        ? String(
+                            item.completedAt,
+                          )
+                        : null,
+                    errorCode:
+                      item.errorCode
+                        ? String(
+                            item.errorCode,
+                          )
+                        : null,
+                    errorMessage:
+                      item.errorMessage
+                        ? String(
+                            item.errorMessage,
+                          )
+                        : null,
+                  }),
+                )
+              : [],
         }),
       )
         : [],
