@@ -668,7 +668,7 @@ function SearchSurface({
       }
     >
       <div className="flex items-center gap-3 border-b border-slate-200 p-3 dark:border-white/10 sm:p-4">
-        <Search className="h-5 w-5 shrink-0 text-slate-400" />
+        <Search className="h-5 w-5 shrink-0 text-slate-600 dark:text-slate-300" />
 
         <input
           ref={
@@ -689,11 +689,11 @@ function SearchSurface({
           }
           placeholder="Search apps, companies, people, files and workspace…"
           aria-label="Search workspace"
-          className="h-10 min-w-0 flex-1 bg-transparent text-sm font-medium outline-none placeholder:text-slate-400"
+          className="h-10 min-w-0 flex-1 bg-transparent text-sm font-medium outline-none placeholder:text-slate-600 dark:text-slate-300"
         />
 
         {loading && (
-          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-400" />
+          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-600 dark:text-slate-300" />
         )}
 
         {onClose && (
@@ -703,7 +703,7 @@ function SearchSurface({
             onClick={
               onClose
             }
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-white/10 dark:hover:text-white"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-600 dark:text-slate-300 transition hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-white/10 dark:hover:text-white"
           >
             <X className="h-4 w-4" />
           </button>
@@ -733,7 +733,7 @@ function SearchSurface({
         results.length ===
           0 ? (
           <div className="flex min-h-[300px] flex-col items-center justify-center px-6 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 dark:bg-white/10">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-600 dark:text-slate-300 dark:bg-white/10">
               <Search className="h-5 w-5" />
             </div>
 
@@ -758,7 +758,7 @@ function SearchSurface({
                     group.kind
                   }
                 >
-                  <p className="px-2 pb-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">
+                  <p className="px-2 pb-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-600 dark:text-slate-300">
                     {groupLabel(
                       group.kind,
                     )}
@@ -843,7 +843,7 @@ function SearchSurface({
                               )}
                             </div>
 
-                            <span className="hidden shrink-0 text-[9px] font-semibold text-slate-400 sm:block">
+                            <span className="hidden shrink-0 text-[9px] font-semibold text-slate-600 dark:text-slate-300 sm:block">
                               {result.action?.type ===
                                 'switch_company'
                                 ? 'Switch'
@@ -869,7 +869,7 @@ function SearchSurface({
 
       {mode ===
         'launcher' && (
-        <div className="hidden border-t border-slate-200 px-4 py-2.5 text-[9px] text-slate-400 sm:flex sm:items-center sm:justify-between dark:border-white/10">
+        <div className="hidden border-t border-slate-200 px-4 py-2.5 text-[9px] text-slate-600 dark:text-slate-300 sm:flex sm:items-center sm:justify-between dark:border-white/10">
           <span>
             ↑ ↓ navigate · Enter open · Esc close
           </span>
@@ -938,7 +938,7 @@ export default function WorkspaceSearchLauncher() {
             true,
           )
         }
-        className="hidden h-10 min-w-[190px] items-center gap-2 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-left text-xs font-semibold text-slate-400 shadow-[var(--sami-shadow-sm)] transition hover:-translate-y-px hover:border-[var(--sami-border-strong)] hover:text-slate-700 md:flex dark:hover:text-slate-200"
+        className="hidden h-10 min-w-[190px] items-center gap-2 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 shadow-[var(--sami-shadow-sm)] transition hover:-translate-y-px hover:border-[var(--sami-border-strong)] hover:text-slate-700 md:flex dark:hover:text-slate-200"
       >
         <Search className="h-4 w-4" />
 
