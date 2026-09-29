@@ -21,6 +21,10 @@ import type {
 } from '@/lib/apps/invoicing/types';
 
 import {
+  createPrimaryInvoiceDocumentSnapshot,
+} from '@/lib/apps/invoicing/document-snapshots';
+
+import {
   postInvoiceConfirmationToAccounting,
   postInvoiceCreditToAccounting,
   postInvoicePaymentAllocationToAccounting,
@@ -3115,6 +3119,19 @@ export async function createInvoice(
           invoiceId,
         },
       );
+
+      await createPrimaryInvoiceDocumentSnapshot(
+        client,
+        {
+          companyId:
+            context.companyId,
+          invoiceId,
+          userId:
+            context.userId,
+          reason:
+            'confirmed',
+        },
+      );
     }
 
     await recordInvoicingActivity(
@@ -4705,6 +4722,19 @@ export async function changeInvoiceStatus(
           userId:
             context.userId,
           invoiceId,
+        },
+      );
+
+      await createPrimaryInvoiceDocumentSnapshot(
+        client,
+        {
+          companyId:
+            context.companyId,
+          invoiceId,
+          userId:
+            context.userId,
+          reason:
+            'confirmed',
         },
       );
     }
