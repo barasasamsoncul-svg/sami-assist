@@ -29,6 +29,7 @@ import WorkspaceTutorial, {
 
 import {
   AlertTriangle,
+  ArrowRight,
   BadgeCheck,
   BarChart3,
   CalendarClock,
@@ -632,6 +633,9 @@ function MetricCard({
   note,
   icon:
     Icon,
+  tone =
+    'blue',
+  progress,
 }: {
   label:
     string;
@@ -641,38 +645,156 @@ function MetricCard({
     string;
   icon:
     typeof Receipt;
+  tone?:
+    'blue' |
+    'emerald' |
+    'amber' |
+    'rose';
+  progress?:
+    number;
 }) {
+  const palette = {
+    blue: {
+      icon:
+        'bg-blue-500/10 text-blue-700 ring-blue-500/15 dark:text-blue-300',
+      bar:
+        'bg-blue-600',
+      glow:
+        'bg-blue-500/10',
+    },
+    emerald: {
+      icon:
+        'bg-emerald-500/10 text-emerald-700 ring-emerald-500/15 dark:text-emerald-300',
+      bar:
+        'bg-emerald-500',
+      glow:
+        'bg-emerald-500/10',
+    },
+    amber: {
+      icon:
+        'bg-amber-500/10 text-amber-700 ring-amber-500/15 dark:text-amber-300',
+      bar:
+        'bg-amber-500',
+      glow:
+        'bg-amber-500/10',
+    },
+    rose: {
+      icon:
+        'bg-rose-500/10 text-rose-700 ring-rose-500/15 dark:text-rose-300',
+      bar:
+        'bg-rose-500',
+      glow:
+        'bg-rose-500/10',
+    },
+  }[
+    tone
+  ];
+
+  const safeProgress =
+    progress ===
+      undefined
+      ? null
+      : Math.max(
+          0,
+          Math.min(
+            100,
+            progress,
+          ),
+        );
+
   return (
-    <div className="sami-surface rounded-[22px] p-4 sm:p-5">
-      <div className="flex items-start justify-between gap-3">
+    <div className="sami-surface group relative overflow-hidden rounded-[22px] border border-[var(--sami-border)] p-4 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md sm:p-5">
+      <div
+        className={[
+          'pointer-events-none absolute -right-10 -top-12 h-28 w-28 rounded-full blur-2xl',
+          palette.glow,
+        ].join(
+          ' ',
+        )}
+      />
+
+      <div
+        className={[
+          'absolute inset-x-0 top-0 h-1',
+          palette.bar,
+        ].join(
+          ' ',
+        )}
+      />
+
+      <div className="relative flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
             {
               label
             }
           </p>
 
-          <p className="mt-2 truncate text-xl font-black tracking-[-0.03em] text-slate-950 dark:text-white">
+          <p className="mt-2 truncate text-[1.35rem] font-black tracking-[-0.04em] text-slate-950 dark:text-white sm:text-2xl">
             {
               value
             }
           </p>
-
-          <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-            {
-              note
-            }
-          </p>
         </div>
 
-        <div className="rounded-2xl bg-blue-500/10 p-2.5 text-blue-700 dark:text-blue-300">
+        <div
+          className={[
+            'rounded-2xl p-2.5 ring-1 ring-inset',
+            palette.icon,
+          ].join(
+            ' ',
+          )}
+        >
           <Icon className="h-5 w-5" />
         </div>
       </div>
+
+      <div className="relative mt-3 flex items-end justify-between gap-3">
+        <p className="min-w-0 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+          {
+            note
+          }
+        </p>
+
+        {
+          safeProgress !==
+            null &&
+          (
+            <span className="shrink-0 text-[11px] font-black text-slate-700 dark:text-slate-200">
+              {
+                Math.round(
+                  safeProgress,
+                )
+              }%
+            </span>
+          )
+        }
+      </div>
+
+      {
+        safeProgress !==
+          null &&
+        (
+          <div className="relative mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-white/5">
+            <div
+              className={[
+                'h-full rounded-full',
+                palette.bar,
+              ].join(
+                ' ',
+              )}
+              style={{
+                width:
+                  safeProgress +
+                  '%',
+              }}
+            />
+          </div>
+        )
+      }
     </div>
   );
 }
-
 
 export default function InvoicingWorkspaceClient({
   initialData,
@@ -1195,6 +1317,9 @@ export default function InvoicingWorkspaceClient({
             data={
               initialData
             }
+            onNavigate={
+              setView
+            }
           />
         )
       }
@@ -1353,12 +1478,403 @@ export default function InvoicingWorkspaceClient({
 
 function Dashboard({
   data,
+  onNavigate,
 }: {
   data:
     InvoicingWorkspaceData;
+  onNavigate:
+    (
+      view:
+        ViewKey,
+    ) =>
+      void;
 }) {
+  const collectionRate =
+    data.metrics
+      .invoicedTotal >
+    0
+      ? data.metrics
+          .paidTotal /
+        data.metrics
+          .invoicedTotal *
+        100
+      : 0;
+
+  const overdueShare =
+    data.metrics
+      .outstandingTotal >
+    0
+      ? data.metrics
+          .overdueTotal /
+        data.metrics
+          .outstandingTotal *
+        100
+      : 0;
+
+  const openInvoices =
+    data.invoices
+      .filter(
+        invoice =>
+          invoice
+            .balanceDue >
+            0 &&
+          ![
+            'cancelled',
+            'void',
+            'written_off',
+          ].includes(
+            invoice.status,
+          ),
+      );
+
+  const overdueInvoices =
+    openInvoices
+      .filter(
+        invoice =>
+          invoice
+            .daysOverdue >
+            0 ||
+          invoice.status ===
+            'overdue',
+      )
+      .sort(
+        (
+          left,
+          right,
+        ) =>
+          right.daysOverdue -
+            left.daysOverdue ||
+          right.balanceDue -
+            left.balanceDue,
+      );
+
+  const latestPayments =
+    [
+      ...data.payments,
+    ]
+      .filter(
+        payment =>
+          payment.status !==
+            'reversed',
+      )
+      .sort(
+        (
+          left,
+          right,
+        ) =>
+          right.paymentDate
+            .localeCompare(
+              left.paymentDate,
+            ),
+      )
+      .slice(
+        0,
+        5,
+      );
+
+  const topDebtors =
+    [
+      ...data.customers,
+    ]
+      .filter(
+        customer =>
+          customer
+            .outstandingTotal >
+          0,
+      )
+      .sort(
+        (
+          left,
+          right,
+        ) =>
+          right
+            .outstandingTotal -
+          left
+            .outstandingTotal,
+      )
+      .slice(
+        0,
+        5,
+      );
+
+  const activeRecurring =
+    data.recurring
+      .filter(
+        item =>
+          item.status ===
+            'active',
+      );
+
+  const nextRecurring =
+    [
+      ...activeRecurring,
+    ]
+      .sort(
+        (
+          left,
+          right,
+        ) =>
+          left.nextRunAt
+            .localeCompare(
+              right.nextRunAt,
+            ),
+      )
+      .slice(
+        0,
+        5,
+      );
+
+  const maxMonthly =
+    Math.max(
+      1,
+      ...data.monthly
+        .map(
+          item =>
+            item.amount,
+        ),
+    );
+
+  const maxAging =
+    Math.max(
+      1,
+      ...data.aging
+        .map(
+          item =>
+            item.amount,
+        ),
+    );
+
+  const highestExposure =
+    topDebtors[0]
+      ?.outstandingTotal ||
+    0;
+
+  const recurringAttention =
+    data.recurring
+      .filter(
+        item =>
+          ![
+            'active',
+            'completed',
+            'cancelled',
+          ].includes(
+            item.status,
+          ),
+      )
+      .length;
+
+  const statusTotal =
+    Math.max(
+      1,
+      data.statusCounts
+        .reduce(
+          (
+            total,
+            row,
+          ) =>
+            total +
+            row.count,
+          0,
+        ),
+    );
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 sm:space-y-5">
+      <section className="relative overflow-hidden rounded-[28px] border border-slate-900/10 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 p-5 text-white shadow-[0_18px_50px_rgba(15,23,42,0.16)] sm:p-6 lg:p-7">
+        <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-blue-500/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-28 left-1/3 h-56 w-56 rounded-full bg-cyan-400/10 blur-3xl" />
+
+        <div className="relative grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(290px,0.65fr)] lg:items-end">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-blue-100">
+                Receivables command center
+              </span>
+
+              <span className="text-xs font-bold text-slate-300">
+                {
+                  data.company
+                    .name
+                }
+              </span>
+            </div>
+
+            <p className="mt-5 text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
+              Total outstanding
+            </p>
+
+            <h2 className="mt-2 text-3xl font-black tracking-[-0.05em] sm:text-4xl lg:text-[2.7rem]">
+              {
+                formatMoney(
+                  data.metrics
+                    .outstandingTotal,
+                  data.company
+                    .currency,
+                )
+              }
+            </h2>
+
+            <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-300">
+              <span>
+                <strong className="text-white">
+                  {
+                    openInvoices
+                      .length
+                  }
+                </strong>{' '}
+                open invoices
+              </span>
+
+              <span>
+                <strong className="text-rose-300">
+                  {
+                    data.metrics
+                      .overdueCount
+                  }
+                </strong>{' '}
+                overdue
+              </span>
+
+              <span>
+                <strong className="text-emerald-300">
+                  {
+                    Math.round(
+                      collectionRate,
+                    )
+                  }%
+                </strong>{' '}
+                collection rate
+              </span>
+            </div>
+
+            <div className="mt-6 flex flex-wrap gap-2">
+              {
+                data.capabilities
+                  .canCreate &&
+                (
+                  <button
+                    type="button"
+                    onClick={
+                      () =>
+                        onNavigate(
+                          'invoices',
+                        )
+                    }
+                    className="inline-flex h-10 items-center gap-2 rounded-xl bg-white px-3.5 text-xs font-black text-slate-950 shadow-sm transition hover:bg-blue-50"
+                  >
+                    <Plus className="h-4 w-4" />
+                    New invoice
+                  </button>
+                )
+              }
+
+              <button
+                type="button"
+                onClick={
+                  () =>
+                    onNavigate(
+                      'invoices',
+                    )
+                }
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-3.5 text-xs font-black text-white transition hover:bg-white/10"
+              >
+                <Receipt className="h-4 w-4" />
+                Review invoices
+                <ArrowRight className="h-4 w-4" />
+              </button>
+
+              {
+                data.capabilities
+                  .canViewReports &&
+                (
+                  <button
+                    type="button"
+                    onClick={
+                      () =>
+                        onNavigate(
+                          'reports',
+                        )
+                    }
+                    className="inline-flex h-10 items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-3.5 text-xs font-black text-white transition hover:bg-white/10"
+                  >
+                    <BarChart3 className="h-4 w-4" />
+                    Reports
+                  </button>
+                )
+              }
+            </div>
+          </div>
+
+          <div className="rounded-[22px] border border-white/10 bg-white/[0.07] p-4 backdrop-blur">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+                  Collection health
+                </p>
+
+                <p className="mt-2 text-2xl font-black">
+                  {
+                    Math.round(
+                      collectionRate,
+                    )
+                  }%
+                </p>
+              </div>
+
+              <BadgeCheck className="h-7 w-7 text-emerald-300" />
+            </div>
+
+            <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full bg-emerald-400"
+                style={{
+                  width:
+                    Math.max(
+                      0,
+                      Math.min(
+                        100,
+                        collectionRate,
+                      ),
+                    ) +
+                    '%',
+                }}
+              />
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="rounded-2xl bg-black/10 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                  Collected
+                </p>
+                <p className="mt-1 truncate text-sm font-black">
+                  {
+                    formatMoney(
+                      data.metrics
+                        .paidTotal,
+                      data.company
+                        .currency,
+                    )
+                  }
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-black/10 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                  Overdue share
+                </p>
+                <p className="mt-1 text-sm font-black text-rose-200">
+                  {
+                    Math.round(
+                      overdueShare,
+                    )
+                  }%
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           label="Invoiced"
@@ -1373,11 +1889,12 @@ function Dashboard({
           note={
             data.metrics
               .invoiceCount +
-            ' invoices'
+            ' invoices issued'
           }
           icon={
             Receipt
           }
+          tone="blue"
         />
 
         <MetricCard
@@ -1393,15 +1910,19 @@ function Dashboard({
           note={
             data.metrics
               .paidCount +
-            ' paid'
+            ' fully paid invoices'
           }
           icon={
             BadgeCheck
           }
+          tone="emerald"
+          progress={
+            collectionRate
+          }
         />
 
         <MetricCard
-          label="Outstanding"
+          label="Open receivables"
           value={
             formatMoney(
               data.metrics
@@ -1410,10 +1931,15 @@ function Dashboard({
                 .currency,
             )
           }
-          note="Open receivables"
+          note={
+            openInvoices
+              .length +
+            ' invoices still open'
+          }
           icon={
             CircleDollarSign
           }
+          tone="amber"
         />
 
         <MetricCard
@@ -1429,117 +1955,165 @@ function Dashboard({
           note={
             data.metrics
               .overdueCount +
-            ' overdue'
+            ' invoices need attention'
           }
           icon={
             AlertTriangle
+          }
+          tone="rose"
+          progress={
+            overdueShare
           }
         />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
-        <div className="sami-surface rounded-[24px] p-4 sm:p-5">
-          <div className="flex items-center justify-between gap-3">
+        <section className="sami-surface overflow-hidden rounded-[24px] border border-[var(--sami-border)]">
+          <div className="flex flex-col gap-3 border-b border-[var(--sami-border)] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
             <div>
-              <p className="text-sm font-black">
-                Recent invoices
+              <p className="text-sm font-black text-slate-950 dark:text-white">
+                Billing trend
               </p>
 
-              <p className="mt-1 text-xs text-slate-500">
-                Latest billing activity in this company
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Invoiced value across the latest available months
               </p>
             </div>
 
-            <Receipt className="h-5 w-5 text-blue-600" />
-          </div>
-
-          <div className="mt-4 divide-y divide-[var(--sami-border)]">
             {
-              data.invoices
-                .slice(
-                  0,
-                  8,
-                )
-                .map(
-                  invoice => (
-                    <div
-                      key={
-                        invoice.id
-                      }
-                      className="flex items-center gap-3 py-3"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="truncate text-sm font-black">
-                            {
-                              invoice
-                                .invoiceNumber
-                            }
-                          </p>
-
-                          <StatusPill
-                            value={
-                              invoice
-                                .status
-                            }
-                          />
-                        </div>
-
-                        <p className="mt-1 truncate text-xs text-slate-500">
-                          {
-                            invoice
-                              .customerName
-                          } · due {
-                            invoice
-                              .dueDate
-                          }
-                        </p>
-                      </div>
-
-                      <p className="text-sm font-black">
-                        {
-                          formatMoney(
-                            invoice
-                              .totalAmount,
-                            invoice
-                              .currency,
-                          )
-                        }
-                      </p>
-                    </div>
-                  ),
-                )
-            }
-
-            {
-              data.invoices
-                .length ===
-                0 &&
+              data.capabilities
+                .canViewReports &&
               (
-                <p className="py-10 text-center text-sm text-slate-500">
-                  No invoices yet.
-                </p>
+                <button
+                  type="button"
+                  onClick={
+                    () =>
+                      onNavigate(
+                        'reports',
+                      )
+                  }
+                  className="inline-flex h-9 items-center gap-1.5 self-start rounded-xl border border-[var(--sami-border)] px-3 text-[11px] font-black sm:self-auto"
+                >
+                  Full reports
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
               )
             }
           </div>
-        </div>
 
-        <div className="sami-surface rounded-[24px] p-4 sm:p-5">
-          <div className="flex items-center justify-between gap-3">
+          <div className="p-4 sm:p-5">
+            {
+              data.monthly
+                .length >
+                0
+                ? (
+                  <div className="grid min-h-[220px] grid-cols-6 items-end gap-2 sm:grid-cols-12 sm:gap-3">
+                    {
+                      data.monthly
+                        .slice(
+                          -12,
+                        )
+                        .map(
+                          item => {
+                            const percent =
+                              Math.max(
+                                4,
+                                item.amount /
+                                  maxMonthly *
+                                  100,
+                              );
+
+                            const month =
+                              new Intl
+                                .DateTimeFormat(
+                                  'en-KE',
+                                  {
+                                    month:
+                                      'short',
+                                  },
+                                )
+                                .format(
+                                  new Date(
+                                    item.month +
+                                    'T00:00:00Z',
+                                  ),
+                                );
+
+                            return (
+                              <div
+                                key={
+                                  item.month
+                                }
+                                className="group flex min-w-0 flex-col items-center justify-end gap-2"
+                              >
+                                <div className="relative flex h-40 w-full items-end overflow-hidden rounded-xl bg-slate-100/80 p-1 dark:bg-white/5">
+                                  <div
+                                    className="w-full rounded-lg bg-gradient-to-t from-blue-700 to-blue-400 transition duration-200 group-hover:from-blue-600 group-hover:to-cyan-400"
+                                    style={{
+                                      height:
+                                        percent +
+                                        '%',
+                                    }}
+                                    title={
+                                      formatMoney(
+                                        item.amount,
+                                        data.company
+                                          .currency,
+                                      ) +
+                                      ' · ' +
+                                      item.invoiceCount +
+                                      ' invoices'
+                                    }
+                                  />
+                                </div>
+
+                                <span className="text-[9px] font-black uppercase tracking-[0.08em] text-slate-400">
+                                  {
+                                    month
+                                  }
+                                </span>
+                              </div>
+                            );
+                          },
+                        )
+                    }
+                  </div>
+                )
+                : (
+                  <div className="flex min-h-[220px] items-center justify-center rounded-2xl border border-dashed border-[var(--sami-border)] bg-[var(--sami-surface-soft)]">
+                    <div className="max-w-sm px-5 text-center">
+                      <BarChart3 className="mx-auto h-7 w-7 text-slate-300" />
+                      <p className="mt-3 text-sm font-black">
+                        No billing history yet
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                        Monthly billing activity will appear here after invoices are issued.
+                      </p>
+                    </div>
+                  </div>
+                )
+            }
+          </div>
+        </section>
+
+        <section className="sami-surface rounded-[24px] border border-[var(--sami-border)] p-4 sm:p-5">
+          <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-sm font-black">
+              <p className="text-sm font-black text-slate-950 dark:text-white">
                 Receivables aging
               </p>
 
-              <p className="mt-1 text-xs text-slate-500">
-                Open balance by overdue range
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Where unpaid balances are sitting
               </p>
             </div>
 
-            <CalendarClock className="h-5 w-5 text-blue-600" />
+            <div className="rounded-2xl bg-blue-500/10 p-2.5 text-blue-700 dark:text-blue-300">
+              <CalendarClock className="h-5 w-5" />
+            </div>
           </div>
 
-          <div className="mt-4 space-y-3">
+          <div className="mt-5 space-y-4">
             {
               [
                 'current',
@@ -1548,7 +2122,10 @@ function Dashboard({
                 '61-90',
                 '90+',
               ].map(
-                bucket => {
+                (
+                  bucket,
+                  index,
+                ) => {
                   const row =
                     data.aging
                       .find(
@@ -1561,23 +2138,22 @@ function Dashboard({
                     row?.amount ||
                     0;
 
-                  const maxAmount =
-                    Math.max(
-                      1,
-                      ...data.aging
-                        .map(
-                          item =>
-                            item.amount,
-                        ),
-                    );
-
                   const percent =
                     Math.min(
                       100,
                       amount /
-                      maxAmount *
-                      100,
+                        maxAging *
+                        100,
                     );
+
+                  const barClass =
+                    index === 0
+                      ? 'bg-emerald-500'
+                      : index === 1
+                        ? 'bg-amber-400'
+                        : index === 2
+                          ? 'bg-orange-500'
+                          : 'bg-rose-500';
 
                   return (
                     <div
@@ -1585,18 +2161,35 @@ function Dashboard({
                         bucket
                       }
                     >
-                      <div className="flex items-center justify-between gap-3 text-xs">
-                        <span className="font-bold">
-                          {
-                            bucket ===
-                              'current'
-                              ? 'Current'
-                              : bucket +
-                                ' days'
-                          }
-                        </span>
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-black">
+                            {
+                              bucket ===
+                                'current'
+                                ? 'Current'
+                                : bucket +
+                                  ' days'
+                            }
+                          </p>
 
-                        <span className="font-black">
+                          <p className="mt-0.5 text-[10px] text-slate-400">
+                            {
+                              row?.count ||
+                              0
+                            } invoice{
+                              (
+                                row?.count ||
+                                0
+                              ) ===
+                                1
+                                ? ''
+                                : 's'
+                            }
+                          </p>
+                        </div>
+
+                        <span className="text-xs font-black">
                           {
                             formatMoney(
                               amount,
@@ -1607,9 +2200,14 @@ function Dashboard({
                         </span>
                       </div>
 
-                      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-white/5">
+                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-white/5">
                         <div
-                          className="h-full rounded-full bg-blue-600"
+                          className={[
+                            'h-full rounded-full',
+                            barClass,
+                          ].join(
+                            ' ',
+                          )}
                           style={{
                             width:
                               percent +
@@ -1623,12 +2221,827 @@ function Dashboard({
               )
             }
           </div>
-        </div>
+
+          {
+            data.capabilities
+              .canViewReports &&
+            (
+              <button
+                type="button"
+                onClick={
+                  () =>
+                    onNavigate(
+                      'reports',
+                    )
+                }
+                className="mt-5 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-[var(--sami-border)] text-xs font-black transition hover:bg-[var(--sami-surface-soft)]"
+              >
+                Open aging report
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            )
+          }
+        </section>
       </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+        <section className="sami-surface overflow-hidden rounded-[24px] border border-[var(--sami-border)]">
+          <div className="flex items-center justify-between gap-3 border-b border-[var(--sami-border)] p-4 sm:p-5">
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-black text-slate-950 dark:text-white">
+                  Collection attention
+                </p>
+
+                {
+                  overdueInvoices
+                    .length >
+                    0 &&
+                  (
+                    <span className="rounded-full bg-rose-500/10 px-2 py-1 text-[10px] font-black text-rose-700 dark:text-rose-300">
+                      {
+                        overdueInvoices
+                          .length
+                      } overdue
+                    </span>
+                  )
+                }
+              </div>
+
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Highest-priority overdue invoices first
+              </p>
+            </div>
+
+            <AlertTriangle className="h-5 w-5 text-rose-500" />
+          </div>
+
+          <div className="divide-y divide-[var(--sami-border)]">
+            {
+              overdueInvoices
+                .slice(
+                  0,
+                  6,
+                )
+                .map(
+                  invoice => (
+                    <Link
+                      key={
+                        invoice.id
+                      }
+                      href={
+                        '/apps/invoicing/' +
+                        invoice.id
+                      }
+                      className="group flex items-center gap-3 px-4 py-3.5 transition hover:bg-[var(--sami-surface-soft)] sm:px-5"
+                    >
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-rose-500/10 text-rose-600 dark:text-rose-300">
+                        <Receipt className="h-4 w-4" />
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          <p className="truncate text-sm font-black">
+                            {
+                              invoice
+                                .invoiceNumber
+                            }
+                          </p>
+
+                          <span className="rounded-full bg-rose-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.08em] text-rose-700 dark:text-rose-300">
+                            {
+                              Math.max(
+                                0,
+                                invoice
+                                  .daysOverdue,
+                              )
+                            }d overdue
+                          </span>
+                        </div>
+
+                        <p className="mt-1 truncate text-xs text-slate-500">
+                          {
+                            invoice
+                              .customerName
+                          }
+                        </p>
+                      </div>
+
+                      <div className="shrink-0 text-right">
+                        <p className="text-sm font-black">
+                          {
+                            formatMoney(
+                              invoice
+                                .balanceDue,
+                              invoice
+                                .currency,
+                            )
+                          }
+                        </p>
+
+                        <p className="mt-1 text-[10px] font-bold text-slate-400">
+                          due {
+                            invoice
+                              .dueDate
+                          }
+                        </p>
+                      </div>
+
+                      <ArrowRight className="hidden h-4 w-4 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-blue-600 sm:block" />
+                    </Link>
+                  ),
+                )
+            }
+
+            {
+              overdueInvoices
+                .length ===
+                0 &&
+              (
+                <div className="px-5 py-10 text-center">
+                  <BadgeCheck className="mx-auto h-8 w-8 text-emerald-500" />
+                  <p className="mt-3 text-sm font-black">
+                    No overdue invoices
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Nothing currently requires overdue collection action.
+                  </p>
+                </div>
+              )
+            }
+          </div>
+
+          {
+            overdueInvoices
+              .length >
+              6 &&
+            (
+              <button
+                type="button"
+                onClick={
+                  () =>
+                    onNavigate(
+                      'invoices',
+                    )
+                }
+                className="flex h-11 w-full items-center justify-center gap-2 border-t border-[var(--sami-border)] text-xs font-black hover:bg-[var(--sami-surface-soft)]"
+              >
+                Review all overdue invoices
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            )
+          }
+        </section>
+
+        <section className="sami-surface overflow-hidden rounded-[24px] border border-[var(--sami-border)]">
+          <div className="flex items-center justify-between gap-3 border-b border-[var(--sami-border)] p-4 sm:p-5">
+            <div>
+              <p className="text-sm font-black text-slate-950 dark:text-white">
+                Recent collections
+              </p>
+
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Latest posted customer payments
+              </p>
+            </div>
+
+            <CreditCard className="h-5 w-5 text-emerald-600" />
+          </div>
+
+          <div className="divide-y divide-[var(--sami-border)]">
+            {
+              latestPayments
+                .map(
+                  payment => (
+                    <div
+                      key={
+                        payment.id
+                      }
+                      className="flex items-center gap-3 px-4 py-3.5 sm:px-5"
+                    >
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">
+                        <CircleDollarSign className="h-4 w-4" />
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-black">
+                          {
+                            payment
+                              .customerName ||
+                            'Customer payment'
+                          }
+                        </p>
+
+                        <p className="mt-1 truncate text-[10px] text-slate-400">
+                          {
+                            payment
+                              .paymentNumber
+                          } · {
+                            payment
+                              .method
+                              .replaceAll(
+                                '_',
+                                ' ',
+                              )
+                          } · {
+                            payment
+                              .paymentDate
+                          }
+                        </p>
+                      </div>
+
+                      <p className="shrink-0 text-xs font-black text-emerald-700 dark:text-emerald-300">
+                        +{
+                          formatMoney(
+                            payment
+                              .amount,
+                            payment
+                              .currency,
+                          )
+                        }
+                      </p>
+                    </div>
+                  ),
+                )
+            }
+
+            {
+              latestPayments
+                .length ===
+                0 &&
+              (
+                <div className="px-5 py-10 text-center">
+                  <CreditCard className="mx-auto h-7 w-7 text-slate-300" />
+                  <p className="mt-3 text-sm font-black">
+                    No payments posted yet
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Customer receipts will appear here once payments are recorded.
+                  </p>
+                </div>
+              )
+            }
+          </div>
+
+          {
+            data.capabilities
+              .canViewPayments &&
+            (
+              <button
+                type="button"
+                onClick={
+                  () =>
+                    onNavigate(
+                      'payments',
+                    )
+                }
+                className="flex h-11 w-full items-center justify-center gap-2 border-t border-[var(--sami-border)] text-xs font-black hover:bg-[var(--sami-surface-soft)]"
+              >
+                Open payment register
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            )
+          }
+        </section>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        <section className="sami-surface rounded-[24px] border border-[var(--sami-border)] p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-black text-slate-950 dark:text-white">
+                Customer exposure
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Largest outstanding balances
+              </p>
+            </div>
+
+            <Users className="h-5 w-5 text-blue-600" />
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {
+              topDebtors
+                .length >
+                0
+                ? topDebtors
+                    .map(
+                      customer => {
+                        const width =
+                          highestExposure >
+                          0
+                            ? customer
+                                .outstandingTotal /
+                              highestExposure *
+                              100
+                            : 0;
+
+                        return (
+                          <div
+                            key={
+                              customer.id
+                            }
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="truncate text-xs font-black">
+                                {
+                                  customer
+                                    .name
+                                }
+                              </p>
+                              <span className="shrink-0 text-xs font-black">
+                                {
+                                  formatMoney(
+                                    customer
+                                      .outstandingTotal,
+                                    customer
+                                      .currency,
+                                  )
+                                }
+                              </span>
+                            </div>
+
+                            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-white/5">
+                              <div
+                                className="h-full rounded-full bg-blue-600"
+                                style={{
+                                  width:
+                                    width +
+                                    '%',
+                                }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      },
+                    )
+                : (
+                  <p className="rounded-2xl bg-[var(--sami-surface-soft)] px-4 py-6 text-center text-xs text-slate-500">
+                    No customer balances are outstanding.
+                  </p>
+                )
+            }
+          </div>
+
+          {
+            data.capabilities
+              .canViewCustomers &&
+            (
+              <button
+                type="button"
+                onClick={
+                  () =>
+                    onNavigate(
+                      'customers',
+                    )
+                }
+                className="mt-5 inline-flex items-center gap-1.5 text-xs font-black text-blue-700 dark:text-blue-300"
+              >
+                View customers
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            )
+          }
+        </section>
+
+        <section className="sami-surface rounded-[24px] border border-[var(--sami-border)] p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-black text-slate-950 dark:text-white">
+                Recurring pipeline
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Upcoming automated billing runs
+              </p>
+            </div>
+
+            <Repeat2 className="h-5 w-5 text-violet-600" />
+          </div>
+
+          <div className="mt-4 space-y-2.5">
+            {
+              nextRecurring
+                .length >
+                0
+                ? nextRecurring
+                    .map(
+                      item => (
+                        <div
+                          key={
+                            item.id
+                          }
+                          className="flex items-center gap-3 rounded-2xl border border-[var(--sami-border)] p-3"
+                        >
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-300">
+                            <CalendarClock className="h-4 w-4" />
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-black">
+                              {
+                                item.name
+                              }
+                            </p>
+                            <p className="mt-1 truncate text-[10px] text-slate-400">
+                              {
+                                item
+                                  .customerName
+                              } · every {
+                                item
+                                  .intervalCount >
+                                  1
+                                  ? item
+                                      .intervalCount +
+                                    ' '
+                                  : ''
+                              }{
+                                item
+                                  .intervalUnit
+                              }
+                            </p>
+                          </div>
+
+                          <span className="shrink-0 text-[10px] font-black text-slate-500">
+                            {
+                              item
+                                .nextRunAt
+                            }
+                          </span>
+                        </div>
+                      ),
+                    )
+                : (
+                  <p className="rounded-2xl bg-[var(--sami-surface-soft)] px-4 py-6 text-center text-xs text-slate-500">
+                    No active recurring schedules.
+                  </p>
+                )
+            }
+          </div>
+
+          {
+            data.capabilities
+              .canManageRecurring &&
+            (
+              <button
+                type="button"
+                onClick={
+                  () =>
+                    onNavigate(
+                      'recurring',
+                    )
+                }
+                className="mt-5 inline-flex items-center gap-1.5 text-xs font-black text-blue-700 dark:text-blue-300"
+              >
+                Manage recurring billing
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            )
+          }
+        </section>
+
+        <section className="sami-surface rounded-[24px] border border-[var(--sami-border)] p-4 sm:p-5 lg:col-span-2 xl:col-span-1">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-black text-slate-950 dark:text-white">
+                Invoice status mix
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Current document lifecycle
+              </p>
+            </div>
+
+            <BarChart3 className="h-5 w-5 text-cyan-600" />
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {
+              data.statusCounts
+                .slice(
+                  0,
+                  6,
+                )
+                .map(
+                  row => {
+                    const percent =
+                      row.count /
+                      statusTotal *
+                      100;
+
+                    return (
+                      <div
+                        key={
+                          row.status
+                        }
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <StatusPill
+                              value={
+                                row.status
+                              }
+                            />
+                          </div>
+
+                          <span className="text-xs font-black">
+                            {
+                              row.count
+                            }
+                          </span>
+                        </div>
+
+                        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-white/5">
+                          <div
+                            className="h-full rounded-full bg-cyan-600"
+                            style={{
+                              width:
+                                percent +
+                                '%',
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  },
+                )
+            }
+
+            {
+              data.statusCounts
+                .length ===
+                0 &&
+              (
+                <p className="rounded-2xl bg-[var(--sami-surface-soft)] px-4 py-6 text-center text-xs text-slate-500">
+                  Invoice status analytics will appear after billing begins.
+                </p>
+              )
+            }
+          </div>
+
+          <div className="mt-5 grid grid-cols-2 gap-2">
+            <div className="rounded-2xl bg-[var(--sami-surface-soft)] p-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+                Drafts
+              </p>
+              <p className="mt-1 text-lg font-black">
+                {
+                  data.metrics
+                    .draftCount
+                }
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-[var(--sami-surface-soft)] p-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+                Recurring alerts
+              </p>
+              <p className="mt-1 text-lg font-black">
+                {
+                  recurringAttention
+                }
+              </p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <section className="sami-surface overflow-hidden rounded-[24px] border border-[var(--sami-border)]">
+        <div className="flex flex-col gap-3 border-b border-[var(--sami-border)] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+          <div>
+            <p className="text-sm font-black text-slate-950 dark:text-white">
+              Recent invoices
+            </p>
+
+            <p className="mt-1 text-xs text-slate-500">
+              Latest billing documents and collection position
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={
+              () =>
+                onNavigate(
+                  'invoices',
+                )
+            }
+            className="inline-flex h-9 items-center gap-1.5 self-start rounded-xl border border-[var(--sami-border)] px-3 text-[11px] font-black sm:self-auto"
+          >
+            View invoice register
+            <ArrowRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        <div className="hidden overflow-x-auto sm:block">
+          <table className="w-full min-w-[760px] text-left">
+            <thead className="bg-[var(--sami-surface-soft)] text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+              <tr>
+                <th className="px-5 py-3">
+                  Invoice
+                </th>
+                <th className="px-4 py-3">
+                  Customer
+                </th>
+                <th className="px-4 py-3">
+                  Status
+                </th>
+                <th className="px-4 py-3">
+                  Due
+                </th>
+                <th className="px-4 py-3 text-right">
+                  Total
+                </th>
+                <th className="px-5 py-3 text-right">
+                  Balance
+                </th>
+              </tr>
+            </thead>
+
+            <tbody className="divide-y divide-[var(--sami-border)]">
+              {
+                data.invoices
+                  .slice(
+                    0,
+                    8,
+                  )
+                  .map(
+                    invoice => (
+                      <tr
+                        key={
+                          invoice.id
+                        }
+                        className="transition hover:bg-[var(--sami-surface-soft)]"
+                      >
+                        <td className="px-5 py-3.5">
+                          <Link
+                            href={
+                              '/apps/invoicing/' +
+                              invoice.id
+                            }
+                            className="font-black text-blue-700 hover:underline dark:text-blue-300"
+                          >
+                            {
+                              invoice
+                                .invoiceNumber
+                            }
+                          </Link>
+                        </td>
+
+                        <td className="max-w-[220px] truncate px-4 py-3.5 text-xs font-bold">
+                          {
+                            invoice
+                              .customerName
+                          }
+                        </td>
+
+                        <td className="px-4 py-3.5">
+                          <StatusPill
+                            value={
+                              invoice
+                                .status
+                            }
+                          />
+                        </td>
+
+                        <td className="px-4 py-3.5 text-xs text-slate-500">
+                          {
+                            invoice
+                              .dueDate
+                          }
+                        </td>
+
+                        <td className="px-4 py-3.5 text-right text-xs font-black">
+                          {
+                            formatMoney(
+                              invoice
+                                .totalAmount,
+                              invoice
+                                .currency,
+                            )
+                          }
+                        </td>
+
+                        <td className="px-5 py-3.5 text-right text-xs font-black">
+                          <span
+                            className={
+                              invoice
+                                .balanceDue >
+                                0
+                                ? 'text-amber-700 dark:text-amber-300'
+                                : 'text-emerald-700 dark:text-emerald-300'
+                            }
+                          >
+                            {
+                              formatMoney(
+                                invoice
+                                  .balanceDue,
+                                invoice
+                                  .currency,
+                              )
+                            }
+                          </span>
+                        </td>
+                      </tr>
+                    ),
+                  )
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <div className="divide-y divide-[var(--sami-border)] sm:hidden">
+          {
+            data.invoices
+              .slice(
+                0,
+                8,
+              )
+              .map(
+                invoice => (
+                  <Link
+                    key={
+                      invoice.id
+                    }
+                    href={
+                      '/apps/invoicing/' +
+                      invoice.id
+                    }
+                    className="block p-4 transition hover:bg-[var(--sami-surface-soft)]"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-black">
+                          {
+                            invoice
+                              .invoiceNumber
+                          }
+                        </p>
+                        <p className="mt-1 truncate text-xs text-slate-500">
+                          {
+                            invoice
+                              .customerName
+                          }
+                        </p>
+                      </div>
+
+                      <StatusPill
+                        value={
+                          invoice
+                            .status
+                        }
+                      />
+                    </div>
+
+                    <div className="mt-3 flex items-end justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">
+                          Balance
+                        </p>
+                        <p className="mt-1 text-sm font-black">
+                          {
+                            formatMoney(
+                              invoice
+                                .balanceDue,
+                              invoice
+                                .currency,
+                            )
+                          }
+                        </p>
+                      </div>
+
+                      <p className="text-[10px] font-bold text-slate-400">
+                        Due {
+                          invoice
+                            .dueDate
+                        }
+                      </p>
+                    </div>
+                  </Link>
+                ),
+              )
+          }
+        </div>
+
+        {
+          data.invoices
+            .length ===
+            0 &&
+          (
+            <div className="px-5 py-12 text-center">
+              <Receipt className="mx-auto h-8 w-8 text-slate-300" />
+              <p className="mt-3 text-sm font-black">
+                No invoices yet
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Create your first invoice to start building the receivables dashboard.
+              </p>
+            </div>
+          )
+        }
+      </section>
     </div>
   );
 }
-
 
 function Invoices({
   data,
