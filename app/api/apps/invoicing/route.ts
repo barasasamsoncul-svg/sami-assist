@@ -30,12 +30,16 @@ import {
   recordCustomerPayment,
   recordInvoicePayment,
   refundInvoicePayment,
+  retryInvoiceReminder,
   retryRecurringInvoiceTemplate,
   reverseInvoicePayment,
   reverseInvoicePaymentAllocation,
   reverseInvoicePaymentRefund,
+  saveDunningPolicy,
   saveInvoicingTemplate,
   sendInvoiceReminder,
+  setCustomerReminderControl,
+  setInvoiceReminderControl,
   sendInvoiceToCustomer,
   setRecurringInvoiceTemplateStatus,
   updateRecurringInvoiceTemplate,
@@ -545,6 +549,34 @@ export async function POST(
       case 'send_reminder':
         result =
           await sendInvoiceReminder(
+            payload,
+          );
+        break;
+
+      case 'retry_reminder':
+        result =
+          await retryInvoiceReminder(
+            payload,
+          );
+        break;
+
+      case 'set_invoice_reminder_control':
+        result =
+          await setInvoiceReminderControl(
+            payload,
+          );
+        break;
+
+      case 'set_customer_reminder_control':
+        result =
+          await setCustomerReminderControl(
+            payload,
+          );
+        break;
+
+      case 'save_dunning_policy':
+        result =
+          await saveDunningPolicy(
             payload,
           );
         break;
