@@ -146,6 +146,126 @@ export const INVOICING_AUTOMATION_TRIGGERS:
     },
     {
       key:
+        'invoicing.payment.allocated',
+      name:
+        'Payment allocated',
+      description:
+        'Run after unapplied customer money is allocated to an invoice.',
+      type:
+        'event',
+      moduleKey:
+        'invoicing',
+      resourceKey:
+        'payment',
+      requiredPermissions: [
+        INVOICING_PERMISSIONS
+          .PAYMENT_VIEW,
+      ],
+      companyScoped:
+        true,
+    },
+    {
+      key:
+        'invoicing.payment.allocation_reversed',
+      name:
+        'Payment allocation reversed',
+      description:
+        'Run after an invoice allocation is reversed back to unapplied customer credit.',
+      type:
+        'event',
+      moduleKey:
+        'invoicing',
+      resourceKey:
+        'payment',
+      requiredPermissions: [
+        INVOICING_PERMISSIONS
+          .PAYMENT_VIEW,
+      ],
+      companyScoped:
+        true,
+    },
+    {
+      key:
+        'invoicing.payment.reconciled',
+      name:
+        'Payment reconciled',
+      description:
+        'Run after a receipt is matched and locked by the reconciliation workflow.',
+      type:
+        'event',
+      moduleKey:
+        'invoicing',
+      resourceKey:
+        'payment',
+      requiredPermissions: [
+        INVOICING_PERMISSIONS
+          .PAYMENT_VIEW,
+      ],
+      companyScoped:
+        true,
+    },
+    {
+      key:
+        'invoicing.payment.unreconciled',
+      name:
+        'Payment unreconciled',
+      description:
+        'Run after a reconciled receipt is explicitly reopened for correction.',
+      type:
+        'event',
+      moduleKey:
+        'invoicing',
+      resourceKey:
+        'payment',
+      requiredPermissions: [
+        INVOICING_PERMISSIONS
+          .PAYMENT_VIEW,
+      ],
+      companyScoped:
+        true,
+    },
+    {
+      key:
+        'invoicing.payment.refunded',
+      name:
+        'Payment credit refunded',
+      description:
+        'Run after unapplied customer credit is refunded.',
+      type:
+        'event',
+      moduleKey:
+        'invoicing',
+      resourceKey:
+        'payment',
+      requiredPermissions: [
+        INVOICING_PERMISSIONS
+          .PAYMENT_VIEW,
+      ],
+      companyScoped:
+        true,
+    },
+    {
+      key:
+        'invoicing.payment.refund_reversed',
+      name:
+        'Payment refund reversed',
+      description:
+        'Run after a posted customer-credit refund is reversed.',
+      type:
+        'event',
+      moduleKey:
+        'invoicing',
+      resourceKey:
+        'payment',
+      requiredPermissions: [
+        INVOICING_PERMISSIONS
+          .PAYMENT_VIEW,
+      ],
+      companyScoped:
+        true,
+    },
+    {
+      key:
         'invoicing.payment.reversed',
       name:
         'Invoice payment reversed',
