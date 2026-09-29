@@ -214,6 +214,7 @@ export type InvoicingInvoiceDetail = {
     reference: string | null;
     allocationId: string;
     allocationStatus: string;
+    operationKey: string | null;
   }>;
   creditNotes: Array<{
     id: string;

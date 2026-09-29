@@ -1992,7 +1992,8 @@ export async function getInvoicingInvoiceDetail(
                 p.method,
                 p.reference,
                 a.id AS allocation_id,
-                a.status AS allocation_status
+                a.status AS allocation_status,
+                a.operation_key
               FROM invoicing_payment_allocations a
               INNER JOIN invoicing_payments p
                 ON p.id =
@@ -2391,6 +2392,12 @@ export async function getInvoicingInvoiceDetail(
             String(
               payment.allocation_status,
             ),
+          operationKey:
+            payment.operation_key
+              ? String(
+                  payment.operation_key,
+                )
+              : null,
         }),
       ),
     creditNotes:
