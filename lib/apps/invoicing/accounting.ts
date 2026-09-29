@@ -67,6 +67,7 @@ type AccountingLine = {
     'revenue' |
     'tax' |
     'cash' |
+    'customer_credit' |
     'returns' |
     'bad_debt';
   description:
@@ -110,6 +111,14 @@ const ACCOUNT_BLUEPRINT = {
       'SaMi Cash and Bank',
     accountType:
       'asset_cash',
+  },
+  customer_credit: {
+    suffix:
+      'CREDIT',
+    name:
+      'SaMi Customer Credits',
+    accountType:
+      'liability_current',
   },
   returns: {
     suffix:
@@ -734,7 +743,7 @@ export async function postInvoicePaymentToAccounting(
       string;
     userId:
       string;
-    invoiceId:
+    invoiceId?:
       string;
     paymentId:
       string;
@@ -776,13 +785,96 @@ export async function postInvoicePaymentToAccounting(
       description:
         'Payment ' +
         input.paymentNumber +
-        ' posted',
+        ' received',
       lines: [
         {
           account:
             'cash',
           description:
             'Cash / bank',
+          debit:
+            amount,
+          credit:
+            0,
+        },
+        {
+          account:
+            'customer_credit',
+          description:
+            'Unapplied customer receipt',
+          debit:
+            0,
+          credit:
+            amount,
+        },
+      ],
+    },
+  );
+}
+
+
+export async function postInvoicePaymentAllocationToAccounting(
+  client:
+    PoolClient,
+  input: {
+    companyId:
+      string;
+    userId:
+      string;
+    allocationId:
+      string;
+    paymentId:
+      string;
+    paymentNumber:
+      string;
+    invoiceId:
+      string;
+    invoiceNumber:
+      string;
+    allocationDate:
+      string;
+    amount:
+      number;
+    exchangeRate?:
+      number;
+  },
+) {
+  const amount =
+    money(
+      input.amount *
+      (
+        input.exchangeRate ||
+        1
+      ),
+    );
+
+  return postJournal(
+    client,
+    {
+      companyId:
+        input.companyId,
+      userId:
+        input.userId,
+      eventKey:
+        'payment-allocation:' +
+        input.allocationId,
+      sourceType:
+        'payment_allocation',
+      sourceId:
+        input.allocationId,
+      journalDate:
+        input.allocationDate,
+      description:
+        'Payment ' +
+        input.paymentNumber +
+        ' allocated to invoice ' +
+        input.invoiceNumber,
+      lines: [
+        {
+          account:
+            'customer_credit',
+          description:
+            'Apply customer credit',
           debit:
             amount,
           credit:
