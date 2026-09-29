@@ -203,6 +203,12 @@ CREATE TABLE IF NOT EXISTS public.invoicing_settings (
   reminder_channels JSONB NOT NULL DEFAULT '["email"]'::jsonb,
   reminder_days_before INTEGER NOT NULL DEFAULT 3,
   reminder_days_after INTEGER[] NOT NULL DEFAULT ARRAY[1,7,14],
+  portal_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  portal_access_days INTEGER NOT NULL DEFAULT 90
+    CHECK (portal_access_days BETWEEN 1 AND 3650),
+  portal_allow_messages BOOLEAN NOT NULL DEFAULT TRUE,
+  portal_show_payment_history BOOLEAN NOT NULL DEFAULT TRUE,
+  portal_show_credit_notes BOOLEAN NOT NULL DEFAULT TRUE,
   payment_instructions TEXT,
   bank_details TEXT,
   terms_and_conditions TEXT,
@@ -700,6 +706,71 @@ CREATE TABLE IF NOT EXISTS public.invoicing_delivery_log (
 CREATE INDEX IF NOT EXISTS idx_invoicing_delivery_invoice
   ON public.invoicing_delivery_log(invoice_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS public.invoicing_portal_access (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  customer_id UUID NOT NULL REFERENCES public.invoicing_customers(id) ON DELETE CASCADE,
+  token_hash VARCHAR(64) NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'active'
+    CHECK (status IN ('active','revoked','expired')),
+  expires_at TIMESTAMPTZ NOT NULL,
+  last_used_at TIMESTAMPTZ,
+  created_by UUID,
+  revoked_by UUID,
+  revoked_at TIMESTAMPTZ,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(token_hash)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_invoicing_portal_access_customer_active
+  ON public.invoicing_portal_access(company_id, customer_id)
+  WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS idx_invoicing_portal_access_expiry
+  ON public.invoicing_portal_access(company_id, expires_at)
+  WHERE status = 'active';
+
+CREATE TABLE IF NOT EXISTS public.invoicing_portal_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  customer_id UUID NOT NULL REFERENCES public.invoicing_customers(id) ON DELETE CASCADE,
+  invoice_id UUID REFERENCES public.invoicing_invoices(id) ON DELETE SET NULL,
+  portal_access_id UUID REFERENCES public.invoicing_portal_access(id) ON DELETE SET NULL,
+  direction VARCHAR(30) NOT NULL
+    CHECK (direction IN ('customer_to_business','business_to_customer','system')),
+  category VARCHAR(30) NOT NULL DEFAULT 'general'
+    CHECK (category IN ('general','invoice_question','dispute','payment_promise')),
+  subject VARCHAR(255),
+  body TEXT NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'open'
+    CHECK (status IN ('open','resolved','closed')),
+  customer_name_snapshot VARCHAR(255),
+  customer_email_snapshot VARCHAR(255),
+  resolved_by UUID,
+  resolved_at TIMESTAMPTZ,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_invoicing_portal_messages_customer
+  ON public.invoicing_portal_messages(company_id, customer_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_invoicing_portal_messages_inbox
+  ON public.invoicing_portal_messages(company_id, status, created_at DESC)
+  WHERE direction = 'customer_to_business';
+
+CREATE TABLE IF NOT EXISTS public.invoicing_portal_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  customer_id UUID NOT NULL REFERENCES public.invoicing_customers(id) ON DELETE CASCADE,
+  portal_access_id UUID REFERENCES public.invoicing_portal_access(id) ON DELETE SET NULL,
+  invoice_id UUID REFERENCES public.invoicing_invoices(id) ON DELETE SET NULL,
+  event_type VARCHAR(60) NOT NULL,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_invoicing_portal_events_customer
+  ON public.invoicing_portal_events(company_id, customer_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS public.invoicing_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
@@ -817,7 +888,9 @@ BEGIN
     'invoicing_payments',
     'invoicing_credit_notes',
     'invoicing_recurring_templates',
-    'invoicing_recurring_runs'
+    'invoicing_recurring_runs',
+    'invoicing_portal_access',
+    'invoicing_portal_messages'
   ]
   LOOP
     IF NOT EXISTS (
