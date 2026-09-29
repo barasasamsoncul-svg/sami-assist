@@ -13666,6 +13666,27 @@ export async function updateInvoicingSettings(
       input.reminderChannels,
     );
 
+  const portalAccessDaysRaw =
+    Number(
+      input.portalAccessDays ??
+      90,
+    );
+
+  const portalAccessDays =
+    Number.isFinite(
+      portalAccessDaysRaw,
+    )
+      ? Math.max(
+          1,
+          Math.min(
+            3650,
+            Math.floor(
+              portalAccessDaysRaw,
+            ),
+          ),
+        )
+      : 90;
+
 
   await context.pool.query(
     `
@@ -13693,14 +13714,24 @@ export async function updateInvoicingSettings(
           $11,
         reminder_days_after =
           $12,
-        payment_instructions =
+        portal_enabled =
           $13,
-        bank_details =
+        portal_access_days =
           $14,
-        terms_and_conditions =
+        portal_allow_messages =
           $15,
-        updated_by =
+        portal_show_payment_history =
           $16,
+        portal_show_credit_notes =
+          $17,
+        payment_instructions =
+          $18,
+        bank_details =
+          $19,
+        terms_and_conditions =
+          $20,
+        updated_by =
+          $21,
         updated_at =
           NOW()
       WHERE company_id =
@@ -13741,6 +13772,15 @@ export async function updateInvoicingSettings(
             7,
             14,
           ],
+      input.portalEnabled !==
+        false,
+      portalAccessDays,
+      input.portalAllowMessages !==
+        false,
+      input.portalShowPaymentHistory !==
+        false,
+      input.portalShowCreditNotes !==
+        false,
       nullableText(
         input.paymentInstructions,
         10000,
