@@ -132,8 +132,15 @@ export async function GET(
     snapshot.versionNo +
     '.pdf';
 
+  const pdfBody =
+    Uint8Array
+      .from(
+        snapshot.pdf,
+      )
+      .buffer;
+
   return new NextResponse(
-    snapshot.pdf,
+    pdfBody,
     {
       status:
         200,
