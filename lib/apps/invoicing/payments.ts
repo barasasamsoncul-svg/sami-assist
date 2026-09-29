@@ -1713,3 +1713,989 @@ export async function allocateInvoicePayment(
     client.release();
   }
 }
+
+
+export async function reverseInvoicePaymentAllocation(
+  input: Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS.PAYMENT_RECORD,
+    );
+
+  const allocationId =
+    requireUuid(
+      input.allocationId,
+      'Payment allocation',
+    );
+
+  const reason =
+    cleanText(
+      input.reason,
+      2000,
+    );
+
+  if (
+    !reason
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'An allocation reversal reason is required.',
+    );
+  }
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const result =
+      await client.query(
+        [
+          'SELECT',
+          'a.id, a.payment_id, a.invoice_id, a.amount, a.status, a.operation_key,',
+          'p.payment_number, p.accounting_model,',
+          'i.invoice_number',
+          'FROM invoicing_payment_allocations a',
+          'INNER JOIN invoicing_payments p',
+          '  ON p.id = a.payment_id',
+          ' AND p.company_id = a.company_id',
+          'INNER JOIN invoicing_invoices i',
+          '  ON i.id = a.invoice_id',
+          ' AND i.company_id = a.company_id',
+          'WHERE a.id = $1',
+          '  AND a.company_id = $2',
+          'FOR UPDATE OF a',
+        ].join('\n'),
+        [
+          allocationId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      result.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'PAYMENT_NOT_FOUND',
+        'Payment allocation was not found.',
+      );
+    }
+
+    const allocation =
+      result.rows[0];
+
+    if (
+      String(
+        allocation.status,
+      ) !==
+        'posted'
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Only a posted allocation can be reversed.',
+      );
+    }
+
+    if (
+      String(
+        allocation.accounting_model,
+      ) !==
+        'customer_credit'
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'This legacy allocation cannot be changed independently. Reverse the original payment instead.',
+      );
+    }
+
+    const operationKey =
+      String(
+        allocation.operation_key ||
+        allocation.id,
+      );
+
+    await client.query(
+      [
+        'UPDATE invoicing_payment_allocations',
+        "SET status = 'reversed',",
+        '    reversed_at = NOW(),',
+        '    reversed_by = $3,',
+        '    reversal_reason = $4',
+        'WHERE id = $1',
+        '  AND company_id = $2',
+      ].join('\n'),
+      [
+        allocationId,
+        context.companyId,
+        context.userId,
+        reason,
+      ],
+    );
+
+    await reverseInvoicingAccountingEvent(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        originalEventKey:
+          'payment-allocation:' +
+          allocationId +
+          ':' +
+          operationKey,
+        reversalEventKey:
+          'payment-allocation-reversal:' +
+          allocationId +
+          ':' +
+          operationKey,
+        sourceType:
+          'payment_allocation_reversal',
+        sourceId:
+          allocationId,
+        description:
+          'Allocation of payment ' +
+          String(
+            allocation.payment_number,
+          ) +
+          ' to invoice ' +
+          String(
+            allocation.invoice_number,
+          ) +
+          ' reversed',
+      },
+    );
+
+    const settlement =
+      await reconcileInvoiceSettlement(
+        client,
+        context.companyId,
+        context.userId,
+        String(
+          allocation.invoice_id,
+        ),
+        'Payment allocation reversed: ' +
+        reason,
+      );
+
+    await recordInvoicingActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        invoiceId:
+          String(
+            allocation.invoice_id,
+          ),
+        type:
+          'invoice.payment_allocation_reversed',
+        content:
+          'Allocation from payment ' +
+          String(
+            allocation.payment_number,
+          ) +
+          ' reversed.',
+        metadata: {
+          allocationId,
+          paymentId:
+            String(
+              allocation.payment_id,
+            ),
+          amount:
+            money(
+              allocation.amount,
+            ),
+          reason,
+        },
+      },
+    );
+
+    await recordPaymentActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        paymentId:
+          String(
+            allocation.payment_id,
+          ),
+        type:
+          'invoicing.payment_allocation_reversed',
+        content:
+          'Allocation to invoice ' +
+          String(
+            allocation.invoice_number,
+          ) +
+          ' reversed.',
+        metadata: {
+          allocationId,
+          amount:
+            money(
+              allocation.amount,
+            ),
+          reason,
+        },
+      },
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return {
+      allocationId,
+      paymentId:
+        String(
+          allocation.payment_id,
+        ),
+      invoiceId:
+        String(
+          allocation.invoice_id,
+        ),
+      status:
+        'reversed',
+      invoiceStatus:
+        settlement.status,
+      remainingBalance:
+        settlement.balanceDue,
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
+export async function reconcileInvoicePayment(
+  input: Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS.PAYMENT_RECORD,
+    );
+
+  const paymentId =
+    requireUuid(
+      input.paymentId,
+      'Payment',
+    );
+
+  const reference =
+    cleanText(
+      input.reference,
+      255,
+    );
+
+  const notes =
+    nullableText(
+      input.notes,
+      3000,
+    );
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const result =
+      await client.query(
+        [
+          'SELECT payment_number, status, reconciled_at',
+          'FROM invoicing_payments',
+          'WHERE id = $1',
+          '  AND company_id = $2',
+          '  AND deleted_at IS NULL',
+          'FOR UPDATE',
+        ].join('\n'),
+        [
+          paymentId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      result.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'PAYMENT_NOT_FOUND',
+        'Payment was not found.',
+      );
+    }
+
+    if (
+      String(
+        result.rows[0].status,
+      ) !==
+        'posted'
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Only a posted payment can be reconciled.',
+      );
+    }
+
+    if (
+      result.rows[0].reconciled_at
+    ) {
+      await client.query(
+        'COMMIT',
+      );
+
+      return {
+        paymentId,
+        paymentNumber:
+          String(
+            result.rows[0].payment_number,
+          ),
+        reconciled:
+          true,
+        reused:
+          true,
+      };
+    }
+
+    await client.query(
+      [
+        'UPDATE invoicing_payments',
+        'SET reconciled_at = NOW(),',
+        '    reconciled_by = $3,',
+        '    reconciliation_reference = $4,',
+        '    reconciliation_notes = $5,',
+        '    updated_by = $3,',
+        '    updated_at = NOW()',
+        'WHERE id = $1',
+        '  AND company_id = $2',
+      ].join('\n'),
+      [
+        paymentId,
+        context.companyId,
+        context.userId,
+        reference ||
+          null,
+        notes,
+      ],
+    );
+
+    await recordPaymentActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        paymentId,
+        type:
+          'invoicing.payment_reconciled',
+        content:
+          'Payment ' +
+          String(
+            result.rows[0].payment_number,
+          ) +
+          ' reconciled.',
+        metadata: {
+          reference:
+            reference ||
+            null,
+          notes,
+        },
+      },
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    await emitPaymentEvent(
+      context,
+      {
+        triggerKey:
+          'invoicing.payment.reconciled',
+        recordId:
+          paymentId,
+        idempotencySeed:
+          'reconciled:' +
+          paymentId,
+        payload: {
+          reference:
+            reference ||
+            null,
+        },
+      },
+    );
+
+    return {
+      paymentId,
+      paymentNumber:
+        String(
+          result.rows[0].payment_number,
+        ),
+      reconciled:
+        true,
+      reused:
+        false,
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
+export async function refundInvoicePayment(
+  input: Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS.PAYMENT_RECORD,
+    );
+
+  const paymentId =
+    requireUuid(
+      input.paymentId,
+      'Payment',
+    );
+
+  const amount =
+    numberInput(
+      input.amount,
+      'Refund amount',
+      {
+        min:
+          0.0001,
+      },
+    );
+
+  const reason =
+    cleanText(
+      input.reason,
+      2000,
+    );
+
+  if (
+    !reason
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'A refund reason is required.',
+    );
+  }
+
+  const idempotencyKey =
+    cleanText(
+      input.idempotencyKey,
+      160,
+    ) ||
+    null;
+
+  const refundDate =
+    isoDate(
+      input.refundDate,
+      new Date(),
+    );
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const paymentResult =
+      await client.query(
+        [
+          'SELECT p.id, p.payment_number, p.status, p.currency, p.exchange_rate,',
+          'p.method, p.accounting_model, b.unapplied_amount',
+          'FROM invoicing_payments p',
+          'INNER JOIN invoicing_payment_balances b',
+          '  ON b.payment_id = p.id',
+          ' AND b.company_id = p.company_id',
+          'WHERE p.id = $1',
+          '  AND p.company_id = $2',
+          '  AND p.deleted_at IS NULL',
+          'FOR UPDATE OF p',
+        ].join('\n'),
+        [
+          paymentId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      paymentResult.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'PAYMENT_NOT_FOUND',
+        'Payment was not found.',
+      );
+    }
+
+    const payment =
+      paymentResult.rows[0];
+
+    if (
+      String(
+        payment.status,
+      ) !==
+        'posted'
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Only a posted payment can be refunded.',
+      );
+    }
+
+    if (
+      String(
+        payment.accounting_model,
+      ) !==
+        'customer_credit'
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'This legacy payment cannot use unapplied-balance refunds. Reverse and re-record the receipt first.',
+      );
+    }
+
+    if (
+      amount >
+      money(
+        payment.unapplied_amount,
+      ) +
+        0.0001
+    ) {
+      throw new InvoicingError(
+        'PAYMENT_EXCEEDS_BALANCE',
+        'Only the unapplied portion of a payment can be refunded.',
+        {
+          unapplied:
+            money(
+              payment.unapplied_amount,
+            ),
+        },
+      );
+    }
+
+    if (
+      idempotencyKey
+    ) {
+      await lockPaymentIdentity(
+        client,
+        [
+          'invoicing-payment-refund-idempotency',
+          context.companyId,
+          idempotencyKey,
+        ].join(':'),
+      );
+
+      const previous =
+        await client.query(
+          [
+            'SELECT id, refund_number, status',
+            'FROM invoicing_payment_refunds',
+            'WHERE company_id = $1',
+            '  AND idempotency_key = $2',
+            'LIMIT 1',
+          ].join('\n'),
+          [
+            context.companyId,
+            idempotencyKey,
+          ],
+        );
+
+      if (
+        previous.rows.length >
+          0
+      ) {
+        await client.query(
+          'COMMIT',
+        );
+
+        return {
+          refundId:
+            String(
+              previous.rows[0].id,
+            ),
+          refundNumber:
+            String(
+              previous.rows[0].refund_number,
+            ),
+          status:
+            String(
+              previous.rows[0].status,
+            ),
+          reused:
+            true,
+        };
+      }
+    }
+
+    const sequenceResult =
+      await client.query(
+        [
+          'SELECT COALESCE(MAX((',
+          "  regexp_replace(refund_number, '[^0-9]', '', 'g')",
+          ')::bigint),0) + 1 AS next_value',
+          'FROM invoicing_payment_refunds',
+          'WHERE company_id = $1',
+        ].join('\n'),
+        [
+          context.companyId,
+        ],
+      );
+
+    const refundNumber =
+      'REF-' +
+      String(
+        Number(
+          sequenceResult.rows[0]?.next_value ||
+          1,
+        ),
+      ).padStart(
+        6,
+        '0',
+      );
+
+    const refund =
+      await client.query(
+        [
+          'INSERT INTO invoicing_payment_refunds (',
+          'company_id, payment_id, refund_number, refund_date, amount, currency,',
+          'method, reference, reason, status, idempotency_key, created_by, updated_by',
+          ") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'posted',$10,$11,$11)",
+          'RETURNING id',
+        ].join('\n'),
+        [
+          context.companyId,
+          paymentId,
+          refundNumber,
+          refundDate,
+          amount,
+          String(
+            payment.currency,
+          ),
+          cleanText(
+            input.method,
+            50,
+          ) ||
+          String(
+            payment.method ||
+            'other',
+          ),
+          cleanText(
+            input.reference,
+            255,
+          ) ||
+          null,
+          reason,
+          idempotencyKey,
+          context.userId,
+        ],
+      );
+
+    const refundId =
+      String(
+        refund.rows[0].id,
+      );
+
+    await postInvoicePaymentRefundToAccounting(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        refundId,
+        refundNumber,
+        refundDate,
+        amount,
+        exchangeRate:
+          Number(
+            payment.exchange_rate ||
+            1,
+          ),
+      },
+    );
+
+    await recordPaymentActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        paymentId,
+        type:
+          'invoicing.payment_refunded',
+        content:
+          'Refund ' +
+          refundNumber +
+          ' posted.',
+        metadata: {
+          refundId,
+          amount,
+          reason,
+        },
+      },
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    await emitPaymentEvent(
+      context,
+      {
+        triggerKey:
+          'invoicing.payment.refunded',
+        recordId:
+          paymentId,
+        idempotencySeed:
+          'refund:' +
+          refundId,
+        payload: {
+          refundId,
+          refundNumber,
+          amount,
+        },
+      },
+    );
+
+    return {
+      refundId,
+      refundNumber,
+      paymentId,
+      status:
+        'posted',
+      amount,
+      reused:
+        false,
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
+export async function reverseInvoicePaymentRefund(
+  input: Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS.PAYMENT_RECORD,
+    );
+
+  const refundId =
+    requireUuid(
+      input.refundId,
+      'Payment refund',
+    );
+
+  const reason =
+    cleanText(
+      input.reason,
+      2000,
+    );
+
+  if (
+    !reason
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'A refund reversal reason is required.',
+    );
+  }
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const result =
+      await client.query(
+        [
+          'SELECT r.id, r.payment_id, r.refund_number, r.status,',
+          'p.payment_number',
+          'FROM invoicing_payment_refunds r',
+          'INNER JOIN invoicing_payments p',
+          '  ON p.id = r.payment_id',
+          ' AND p.company_id = r.company_id',
+          'WHERE r.id = $1',
+          '  AND r.company_id = $2',
+          'FOR UPDATE OF r',
+        ].join('\n'),
+        [
+          refundId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      result.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'PAYMENT_NOT_FOUND',
+        'Payment refund was not found.',
+      );
+    }
+
+    const refund =
+      result.rows[0];
+
+    if (
+      String(
+        refund.status,
+      ) !==
+        'posted'
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Only a posted refund can be reversed.',
+      );
+    }
+
+    await client.query(
+      [
+        'UPDATE invoicing_payment_refunds',
+        "SET status = 'reversed',",
+        '    reversed_at = NOW(),',
+        '    reversed_by = $3,',
+        '    reversal_reason = $4,',
+        '    updated_by = $3,',
+        '    updated_at = NOW()',
+        'WHERE id = $1',
+        '  AND company_id = $2',
+      ].join('\n'),
+      [
+        refundId,
+        context.companyId,
+        context.userId,
+        reason,
+      ],
+    );
+
+    await reverseInvoicingAccountingEvent(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        originalEventKey:
+          'payment-refund:' +
+          refundId,
+        reversalEventKey:
+          'payment-refund-reversal:' +
+          refundId,
+        sourceType:
+          'payment_refund_reversal',
+        sourceId:
+          refundId,
+        description:
+          'Refund ' +
+          String(
+            refund.refund_number,
+          ) +
+          ' reversed',
+      },
+    );
+
+    await recordPaymentActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        paymentId:
+          String(
+            refund.payment_id,
+          ),
+        type:
+          'invoicing.payment_refund_reversed',
+        content:
+          'Refund ' +
+          String(
+            refund.refund_number,
+          ) +
+          ' reversed.',
+        metadata: {
+          refundId,
+          reason,
+        },
+      },
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return {
+      refundId,
+      paymentId:
+        String(
+          refund.payment_id,
+        ),
+      status:
+        'reversed',
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
