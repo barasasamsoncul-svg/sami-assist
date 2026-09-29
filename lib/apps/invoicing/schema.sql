@@ -227,7 +227,7 @@ CREATE TABLE IF NOT EXISTS public.invoicing_invoices (
   external_sales_order_id UUID,
   invoice_number VARCHAR(140) NOT NULL,
   status VARCHAR(30) NOT NULL DEFAULT 'draft'
-    CHECK (status IN ('draft','confirmed','sent','viewed','partially_paid','paid','overdue','cancelled','void','written_off')),
+    CHECK (status IN ('draft','pending_approval','rejected','confirmed','sent','viewed','partially_paid','paid','overdue','cancelled','void','written_off')),
   invoice_date DATE NOT NULL DEFAULT CURRENT_DATE,
   due_date DATE NOT NULL,
   currency VARCHAR(3) NOT NULL DEFAULT 'KES',
@@ -248,6 +248,12 @@ CREATE TABLE IF NOT EXISTS public.invoicing_invoices (
   payment_instructions TEXT,
   public_token_hash VARCHAR(64),
   public_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  submitted_at TIMESTAMPTZ,
+  submitted_by UUID,
+  approved_at TIMESTAMPTZ,
+  approved_by UUID,
+  rejected_at TIMESTAMPTZ,
+  rejected_by UUID,
   confirmed_at TIMESTAMPTZ,
   sent_at TIMESTAMPTZ,
   viewed_at TIMESTAMPTZ,
@@ -657,14 +663,32 @@ SELECT
   i.due_date,
   i.currency,
   i.total_amount,
-  GREATEST(i.total_amount - COALESCE(pa.paid_amount,0) - COALESCE(cn.credited_amount,0),0)::numeric(19,4) AS balance_due,
   CASE
-    WHEN i.status IN ('paid','cancelled','void','written_off') THEN i.status
-    WHEN i.due_date < CURRENT_DATE THEN 'overdue'
+    WHEN i.status IN ('draft','pending_approval','rejected','cancelled','void','written_off')
+      THEN 0::numeric(19,4)
+    ELSE GREATEST(
+      i.total_amount -
+      COALESCE(pa.paid_amount,0) -
+      COALESCE(cn.credited_amount,0),
+      0
+    )::numeric(19,4)
+  END AS balance_due,
+  CASE
+    WHEN i.status IN ('draft','pending_approval','rejected','paid','cancelled','void','written_off')
+      THEN i.status
+    WHEN i.due_date < CURRENT_DATE
+      AND i.status IN ('confirmed','sent','viewed','partially_paid','overdue')
+      THEN 'overdue'
     ELSE i.status
   END AS effective_status,
-  GREATEST((CURRENT_DATE - i.due_date), 0) AS days_overdue,
   CASE
+    WHEN i.status IN ('draft','pending_approval','rejected')
+      THEN 0
+    ELSE GREATEST((CURRENT_DATE - i.due_date), 0)
+  END AS days_overdue,
+  CASE
+    WHEN i.status IN ('draft','pending_approval','rejected')
+      THEN 'not_posted'
     WHEN i.due_date >= CURRENT_DATE THEN 'current'
     WHEN CURRENT_DATE - i.due_date <= 30 THEN '1-30'
     WHEN CURRENT_DATE - i.due_date <= 60 THEN '31-60'
@@ -698,5 +722,5 @@ SELECT
   COALESCE(SUM(total_amount),0)::numeric(19,4) AS invoiced_total
 FROM public.invoicing_invoices
 WHERE deleted_at IS NULL
-  AND status NOT IN ('cancelled','void')
+  AND status NOT IN ('draft','pending_approval','rejected','cancelled','void')
 GROUP BY company_id, DATE_TRUNC('month', invoice_date), currency;
