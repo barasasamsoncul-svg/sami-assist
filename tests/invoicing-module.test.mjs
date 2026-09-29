@@ -2469,6 +2469,18 @@ test('Invoicing v2.6 separates cash receipts from allocation and reconciliation'
 
   assert.match(
     commands,
+    /recordInvoicePayment[\s\S]*idempotencyKey[\s\S]*invoicing-payment-idempotency/s,
+    'Invoice-specific payment posting must support idempotent API retries.',
+  );
+
+  assert.match(
+    commands,
+    /idempotency_key[\s\S]*'customer_credit'[\s\S]*'posted'/s,
+    'New invoice-level receipts must persist the idempotency key with the customer-credit accounting model.',
+  );
+
+  assert.match(
+    commands,
     /Allocation exceeds the unapplied payment balance\./,
   );
 
