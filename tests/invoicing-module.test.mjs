@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+
+// Invoicing 2.6 payment baseline validation marker.
 import {
   readFile,
 } from 'node:fs/promises';
