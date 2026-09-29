@@ -3,6 +3,7 @@
 import {
   useMemo,
   useState,
+  type FormEvent,
 } from 'react';
 
 
@@ -111,7 +112,7 @@ export default function CustomerPortalMessageForm({
 
   async function submit(
     event:
-      React.FormEvent<
+      FormEvent<
         HTMLFormElement
       >,
   ) {
