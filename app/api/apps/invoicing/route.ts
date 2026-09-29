@@ -38,6 +38,7 @@ import {
   sendInvoiceToCustomer,
   setRecurringInvoiceTemplateStatus,
   updateRecurringInvoiceTemplate,
+  unreconcileInvoicePayment,
   updateInvoiceDraft,
   updateInvoicingSettings,
 } from '@/lib/apps/invoicing/service';
@@ -487,6 +488,13 @@ export async function POST(
       case 'reconcile_payment':
         result =
           await reconcileInvoicePayment(
+            payload,
+          );
+        break;
+
+      case 'unreconcile_payment':
+        result =
+          await unreconcileInvoicePayment(
             payload,
           );
         break;
