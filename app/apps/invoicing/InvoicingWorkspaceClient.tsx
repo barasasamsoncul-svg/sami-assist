@@ -465,6 +465,7 @@ function statusClass(
   if (
     [
       'overdue',
+      'rejected',
       'cancelled',
       'void',
       'written_off',
@@ -490,6 +491,13 @@ function statusClass(
     return 'bg-blue-500/10 text-blue-700 ring-blue-500/20 dark:text-blue-300';
   }
 
+  if (
+    status ===
+      'pending_approval'
+  ) {
+    return 'bg-amber-500/10 text-amber-700 ring-amber-500/20 dark:text-amber-300';
+  }
+
   return 'bg-slate-500/10 text-slate-600 ring-slate-500/20 dark:text-slate-300';
 }
 
@@ -512,10 +520,13 @@ function StatusPill({
       )}
     >
       {
-        value.replaceAll(
-          '_',
-          ' ',
-        )
+        value ===
+          'confirmed'
+          ? 'posted'
+          : value.replaceAll(
+              '_',
+              ' ',
+            )
       }
     </span>
   );
@@ -3637,6 +3648,12 @@ function Invoices({
                 <option value="draft">
                   Draft
                 </option>
+                <option value="pending_approval">
+                  Pending approval
+                </option>
+                <option value="rejected">
+                  Rejected
+                </option>
                 <option value="confirmed">
                   Confirmed
                 </option>
@@ -4254,6 +4271,8 @@ function InvoiceActions({
       0 &&
     ![
       'draft',
+      'pending_approval',
+      'rejected',
       'paid',
       'cancelled',
       'void',
@@ -4316,6 +4335,42 @@ function InvoiceActions({
         {
           invoice.status ===
             'draft' &&
+          settings
+            .requireApproval &&
+          capabilities
+            .canEdit &&
+          (
+            <button
+              type="button"
+              disabled={
+                pending
+              }
+              onClick={
+                () =>
+                  run(
+                    {
+                      action:
+                        'change_status',
+                      invoiceId:
+                        invoice.id,
+                      status:
+                        'pending_approval',
+                    },
+                    'Invoice submitted for approval.',
+                  )
+              }
+              className="w-full rounded-xl bg-amber-500/10 px-3 py-2 text-left text-xs font-bold text-amber-700 disabled:opacity-50 dark:text-amber-300"
+            >
+              Submit for approval
+            </button>
+          )
+        }
+
+        {
+          invoice.status ===
+            'draft' &&
+          !settings
+            .requireApproval &&
           capabilities
             .canConfirm &&
           (
@@ -4335,12 +4390,76 @@ function InvoiceActions({
                       status:
                         'confirmed',
                     },
-                    'Invoice confirmed.',
+                    'Invoice posted.',
                   )
               }
               className="w-full rounded-xl px-3 py-2 text-left text-xs font-bold hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-white/5"
             >
-              Confirm invoice
+              Post invoice
+            </button>
+          )
+        }
+
+        {
+          invoice.status ===
+            'pending_approval' &&
+          capabilities
+            .canConfirm &&
+          (
+            <button
+              type="button"
+              disabled={
+                pending
+              }
+              onClick={
+                () =>
+                  run(
+                    {
+                      action:
+                        'change_status',
+                      invoiceId:
+                        invoice.id,
+                      status:
+                        'confirmed',
+                    },
+                    'Invoice approved and posted.',
+                  )
+              }
+              className="w-full rounded-xl bg-emerald-500/10 px-3 py-2 text-left text-xs font-bold text-emerald-700 disabled:opacity-50 dark:text-emerald-300"
+            >
+              Approve & post
+            </button>
+          )
+        }
+
+        {
+          invoice.status ===
+            'rejected' &&
+          capabilities
+            .canEdit &&
+          (
+            <button
+              type="button"
+              disabled={
+                pending
+              }
+              onClick={
+                () =>
+                  run(
+                    {
+                      action:
+                        'change_status',
+                      invoiceId:
+                        invoice.id,
+                      status:
+                        'draft',
+                    },
+                    'Invoice returned to draft for rework.',
+                  )
+              }
+              className="w-full rounded-xl px-3 py-2 text-left text-xs font-bold hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-white/5"
+            >
+              Return to draft
             </button>
           )
         }
@@ -4351,6 +4470,8 @@ function InvoiceActions({
           invoice.customerEmail &&
           ![
             'draft',
+            'pending_approval',
+            'rejected',
             'paid',
             'cancelled',
             'void',
