@@ -4179,6 +4179,9 @@ function Invoices({
                             capabilities={
                               data.capabilities
                             }
+                            settings={
+                              data.settings
+                            }
                             pending={
                               pending
                             }
@@ -4226,6 +4229,7 @@ function Invoices({
 function InvoiceActions({
   invoice,
   capabilities,
+  settings,
   pending,
   run,
 }: {
@@ -4234,6 +4238,10 @@ function InvoiceActions({
   capabilities:
     InvoicingWorkspaceData[
       'capabilities'
+    ];
+  settings:
+    InvoicingWorkspaceData[
+      'settings'
     ];
   pending:
     boolean;
@@ -4249,6 +4257,19 @@ function InvoiceActions({
     ) =>
       Promise<boolean>;
 }) {
+  const collectible =
+    invoice.balanceDue >
+      0 &&
+    ![
+      'draft',
+      'paid',
+      'cancelled',
+      'void',
+      'written_off',
+    ].includes(
+      invoice.status,
+    );
+
   return (
     <details className="relative">
       <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-xl border border-[var(--sami-border)] px-2.5 py-2 text-xs font-bold">
@@ -4256,7 +4277,50 @@ function InvoiceActions({
         <ChevronDown className="h-3.5 w-3.5" />
       </summary>
 
-      <div className="mt-2 min-w-[250px] space-y-2 rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-3 shadow-xl">
+      <div className="mt-2 min-w-[260px] space-y-2 rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-3 shadow-xl">
+        <a
+          href={
+            '/api/apps/invoicing/' +
+            invoice.id +
+            '/pdf'
+          }
+          target="_blank"
+          rel="noreferrer"
+          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold hover:bg-slate-100 dark:hover:bg-white/5"
+        >
+          <Download className="h-3.5 w-3.5" />
+          Open printable PDF
+        </a>
+
+        {
+          capabilities
+            .canCreate &&
+          (
+            <button
+              type="button"
+              disabled={
+                pending
+              }
+              onClick={
+                () =>
+                  run(
+                    {
+                      action:
+                        'duplicate_invoice',
+                      invoiceId:
+                        invoice.id,
+                    },
+                    'Duplicate invoice created as a new draft.',
+                  )
+              }
+              className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-white/5"
+            >
+              <CopyPlus className="h-3.5 w-3.5" />
+              Duplicate as draft
+            </button>
+          )
+        }
+
         {
           invoice.status ===
             'draft' &&
@@ -4282,7 +4346,7 @@ function InvoiceActions({
                     'Invoice confirmed.',
                   )
               }
-              className="w-full rounded-xl px-3 py-2 text-left text-xs font-bold hover:bg-slate-100 dark:hover:bg-white/5"
+              className="w-full rounded-xl px-3 py-2 text-left text-xs font-bold hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-white/5"
             >
               Confirm invoice
             </button>
@@ -4292,6 +4356,7 @@ function InvoiceActions({
         {
           capabilities
             .canSend &&
+          invoice.customerEmail &&
           ![
             'paid',
             'cancelled',
@@ -4321,7 +4386,7 @@ function InvoiceActions({
                     'Invoice sent to the customer.',
                   )
               }
-              className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold hover:bg-slate-100 dark:hover:bg-white/5"
+              className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-white/5"
             >
               <Send className="h-3.5 w-3.5" />
               Send by email
@@ -4331,19 +4396,48 @@ function InvoiceActions({
 
         {
           capabilities
-            .canRecordPayment &&
-          invoice
-            .balanceDue >
-            0 &&
-          ![
-            'draft',
-            'cancelled',
-            'void',
-            'written_off',
-            'paid',
-          ].includes(
-            invoice.status,
+            .canSend &&
+          invoice.customerEmail &&
+          collectible &&
+          (
+            invoice.daysOverdue >
+              0 ||
+            invoice.status ===
+              'overdue'
           ) &&
+          (
+            <button
+              type="button"
+              disabled={
+                pending
+              }
+              onClick={
+                () =>
+                  run(
+                    {
+                      action:
+                        'send_reminder',
+                      invoiceId:
+                        invoice.id,
+                      channels: [
+                        'email',
+                      ],
+                    },
+                    'Payment reminder sent.',
+                  )
+              }
+              className="flex w-full items-center gap-2 rounded-xl bg-amber-500/10 px-3 py-2 text-left text-xs font-bold text-amber-700 disabled:opacity-50 dark:text-amber-300"
+            >
+              <BellRing className="h-3.5 w-3.5" />
+              Send overdue reminder
+            </button>
+          )
+        }
+
+        {
+          capabilities
+            .canRecordPayment &&
+          collectible &&
           (
             <form
               className="space-y-2 rounded-xl bg-slate-50 p-2 dark:bg-white/[0.03]"
@@ -4352,33 +4446,42 @@ function InvoiceActions({
                   event
                     .preventDefault();
 
+                  const element =
+                    event.currentTarget;
+
                   const form =
                     new FormData(
-                      event
-                        .currentTarget,
+                      element,
                     );
 
-                  await run(
-                    {
-                      action:
-                        'record_payment',
-                      invoiceId:
-                        invoice.id,
-                      amount:
-                        form.get(
-                          'amount',
-                        ),
-                      method:
-                        form.get(
-                          'method',
-                        ),
-                      reference:
-                        form.get(
-                          'reference',
-                        ),
-                    },
-                    'Payment recorded.',
-                  );
+                  const saved =
+                    await run(
+                      {
+                        action:
+                          'record_payment',
+                        invoiceId:
+                          invoice.id,
+                        amount:
+                          form.get(
+                            'amount',
+                          ),
+                        method:
+                          form.get(
+                            'method',
+                          ),
+                        reference:
+                          form.get(
+                            'reference',
+                          ),
+                      },
+                      'Payment recorded.',
+                    );
+
+                  if (
+                    saved
+                  ) {
+                    element.reset();
+                  }
                 }
               }
             >
@@ -4389,7 +4492,12 @@ function InvoiceActions({
               <input
                 name="amount"
                 type="number"
-                min="0.01"
+                min={
+                  settings
+                    .allowPartialPayments
+                    ? 0.01
+                    : invoice.balanceDue
+                }
                 max={
                   invoice
                     .balanceDue
@@ -4426,7 +4534,7 @@ function InvoiceActions({
 
               <input
                 name="reference"
-                placeholder="Reference"
+                placeholder="Transaction reference"
                 className="h-9 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-2 text-xs"
               />
 
@@ -4435,9 +4543,9 @@ function InvoiceActions({
                 disabled={
                   pending
                 }
-                className="h-9 w-full rounded-lg bg-blue-600 text-xs font-black text-white"
+                className="h-9 w-full rounded-lg bg-blue-600 text-xs font-black text-white disabled:opacity-50"
               >
-                Save payment
+                Post payment
               </button>
             </form>
           )
@@ -4446,17 +4554,9 @@ function InvoiceActions({
         {
           capabilities
             .canCredit &&
-          invoice
-            .balanceDue >
-            0 &&
-          ![
-            'draft',
-            'cancelled',
-            'void',
-            'written_off',
-          ].includes(
-            invoice.status,
-          ) &&
+          settings
+            .allowCreditNotes &&
+          collectible &&
           (
             <form
               className="space-y-2 rounded-xl bg-slate-50 p-2 dark:bg-white/[0.03]"
@@ -4465,29 +4565,38 @@ function InvoiceActions({
                   event
                     .preventDefault();
 
+                  const element =
+                    event.currentTarget;
+
                   const form =
                     new FormData(
-                      event
-                        .currentTarget,
+                      element,
                     );
 
-                  await run(
-                    {
-                      action:
-                        'issue_credit_note',
-                      invoiceId:
-                        invoice.id,
-                      amount:
-                        form.get(
-                          'amount',
-                        ),
-                      reason:
-                        form.get(
-                          'reason',
-                        ),
-                    },
-                    'Credit note issued.',
-                  );
+                  const saved =
+                    await run(
+                      {
+                        action:
+                          'issue_credit_note',
+                        invoiceId:
+                          invoice.id,
+                        amount:
+                          form.get(
+                            'amount',
+                          ),
+                        reason:
+                          form.get(
+                            'reason',
+                          ),
+                      },
+                      'Credit note issued.',
+                    );
+
+                  if (
+                    saved
+                  ) {
+                    element.reset();
+                  }
                 }
               }
             >
@@ -4512,6 +4621,9 @@ function InvoiceActions({
               <input
                 name="reason"
                 required
+                maxLength={
+                  2000
+                }
                 placeholder="Reason"
                 className="h-9 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-2 text-xs"
               />
@@ -4521,7 +4633,7 @@ function InvoiceActions({
                 disabled={
                   pending
                 }
-                className="h-9 w-full rounded-lg border border-[var(--sami-border)] text-xs font-black"
+                className="h-9 w-full rounded-lg border border-[var(--sami-border)] text-xs font-black disabled:opacity-50"
               >
                 Issue credit
               </button>
@@ -4532,7 +4644,6 @@ function InvoiceActions({
     </details>
   );
 }
-
 
 function Customers({
   data,
