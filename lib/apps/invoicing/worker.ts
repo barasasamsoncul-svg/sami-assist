@@ -655,6 +655,68 @@ async function generateOneRecurringInvoice(
               $3::date,
             retry_after =
               NULL,
+            completion_reason =
+              CASE
+                WHEN
+                  max_occurrences
+                    IS NOT NULL
+                  AND
+                  (
+                    SELECT
+                      COUNT(*)::int
+                    FROM
+                      invoicing_recurring_runs rr
+                    WHERE
+                      rr.recurring_template_id =
+                        $1
+                      AND rr.status =
+                        'succeeded'
+                  ) >=
+                  max_occurrences
+                THEN
+                  'max_occurrences_reached'
+                WHEN
+                  end_date
+                    IS NOT NULL
+                  AND $3::date >
+                      end_date
+                THEN
+                  'end_date_reached'
+                ELSE
+                  completion_reason
+              END,
+            status =
+              CASE
+                WHEN
+                  (
+                    max_occurrences
+                      IS NOT NULL
+                    AND
+                    (
+                      SELECT
+                        COUNT(*)::int
+                      FROM
+                        invoicing_recurring_runs rr
+                      WHERE
+                        rr.recurring_template_id =
+                          $1
+                        AND rr.status =
+                          'succeeded'
+                    ) >=
+                    max_occurrences
+                  )
+                  OR
+                  (
+                    end_date
+                      IS NOT NULL
+                    AND $3::date >
+                        end_date
+                  )
+                THEN
+                  'completed'
+                ELSE
+                  status
+              END,
             updated_at =
               NOW()
           WHERE id =
