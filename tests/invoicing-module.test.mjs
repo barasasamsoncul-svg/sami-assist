@@ -716,6 +716,12 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
 
   assert.match(
     lifecycleMigration,
+    /AS \$invoice_lifecycle\$[\s\S]*\$invoice_lifecycle\$;/s,
+    'Lifecycle migration function body must use a valid PostgreSQL dollar-quote delimiter.',
+  );
+
+  assert.match(
+    lifecycleMigration,
     /CREATE OR REPLACE VIEW public\.invoicing_customer_balances/,
   );
 

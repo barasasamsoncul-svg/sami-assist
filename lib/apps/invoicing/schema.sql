@@ -499,7 +499,7 @@ CREATE INDEX IF NOT EXISTS idx_invoicing_accounting_links_source
 CREATE OR REPLACE FUNCTION public.validate_invoice_status_transition()
 RETURNS TRIGGER
 LANGUAGE plpgsql
-AS $
+AS $invoice_lifecycle$
 BEGIN
   IF TG_OP = 'INSERT' THEN
     RETURN NEW;
@@ -551,7 +551,7 @@ BEGIN
 
   RAISE EXCEPTION 'Invalid invoice status transition from % to %', OLD.status, NEW.status;
 END;
-$;
+$invoice_lifecycle$;
 
 DO $$
 BEGIN
