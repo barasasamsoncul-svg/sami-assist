@@ -823,6 +823,8 @@ export async function postInvoicePaymentAllocationToAccounting(
       string;
     allocationId:
       string;
+    operationKey:
+      string;
     paymentId:
       string;
     paymentNumber:
@@ -857,7 +859,9 @@ export async function postInvoicePaymentAllocationToAccounting(
         input.userId,
       eventKey:
         'payment-allocation:' +
-        input.allocationId,
+        input.allocationId +
+        ':' +
+        input.operationKey,
       sourceType:
         'payment_allocation',
       sourceId:
