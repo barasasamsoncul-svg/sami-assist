@@ -3611,6 +3611,41 @@ export async function getInvoicingInvoiceDetail(
             String(
               credit.reason,
             ),
+          applications:
+            Array.isArray(
+              credit.applications,
+            )
+              ? credit.applications.map(
+                  (
+                    item:
+                      Record<
+                        string,
+                        unknown
+                      >,
+                  ) => ({
+                    id:
+                      String(item.id),
+                    targetInvoiceId:
+                      String(item.targetInvoiceId),
+                    targetInvoiceNumber:
+                      String(item.targetInvoiceNumber),
+                    applicationType:
+                      String(item.applicationType),
+                    amount:
+                      money(item.amount),
+                    status:
+                      String(item.status),
+                    appliedAt:
+                      String(item.appliedAt),
+                    reversalReason:
+                      item.reversalReason
+                        ? String(item.reversalReason)
+                        : null,
+                  }),
+                )
+              : [],
+          refunds:
+            [],
         }),
       ),
     history:
