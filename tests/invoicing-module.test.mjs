@@ -978,6 +978,7 @@ test('professional invoice composer uses real customers and catalog products wit
     list,
     detail,
     commands,
+    creditNotes,
     queries,
   ] =
     await Promise.all([
@@ -1657,6 +1658,7 @@ test('Invoicing rejects stale master-data references and preserves a draft invoi
     composer,
   ] = await Promise.all([
     source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/invoicing/credit-notes.ts'),
     source('lib/apps/invoicing/queries.ts'),
     source('lib/apps/invoicing/types.ts'),
     source('app/apps/invoicing/InvoiceComposer.tsx'),
@@ -4180,8 +4182,14 @@ test('Invoicing Part 11 deepens credit notes into reusable customer credits and 
     'Part 11 must reserve a dedicated credit-refund numbering sequence.',
   );
 
+  assert.match(
+    commands,
+    /export async function issueInvoiceCreditNote/,
+    'The compatibility credit-note authority must remain available.',
+  );
+
   for (const command of [
-    'issueInvoiceCreditNote',
+    'issueInvoiceCreditNoteDeep',
     'applyInvoiceCreditNote',
     'reverseInvoiceCreditApplication',
     'refundInvoiceCreditNote',
@@ -4189,20 +4197,20 @@ test('Invoicing Part 11 deepens credit notes into reusable customer credits and 
     'cancelInvoiceCreditNote',
   ]) {
     assert.match(
-      commands,
+      creditNotes,
       new RegExp('export async function ' + command),
-      command + ' must be a real server authority.',
+      command + ' must be a real Part 11 server authority.',
     );
   }
 
   assert.match(
-    commands,
+    creditNotes,
     /idempotencyKey/,
     'Credit lifecycle mutations must support idempotent client retries.',
   );
 
   assert.match(
-    commands,
+    creditNotes,
     /FOR UPDATE/,
     'Credit lifecycle mutations must lock authoritative rows during balance changes.',
   );
