@@ -8945,24 +8945,896 @@ export async function sendInvoiceReminder(
       input.channels,
     );
 
-  return deliverInvoice({
-    pool:
-      context.pool,
-    tenantId:
-      context.tenantId,
-    companyId:
-      context.companyId,
-    companyName:
-      context.company
-        .currentCompany
-        .name,
-    userId:
-      context.userId,
+  const result =
+    await deliverInvoice({
+      pool:
+        context.pool,
+      tenantId:
+        context.tenantId,
+      companyId:
+        context.companyId,
+      companyName:
+        context.company
+          .currentCompany
+          .name,
+      userId:
+        context.userId,
+      invoiceId,
+      channels,
+      purpose:
+        'reminder',
+    });
+
+  const reminderType =
+    'manual_' +
+    Date.now();
+
+  for (
+    const delivery
+    of result.deliveries
+  ) {
+    await context.pool.query(
+      `
+        INSERT INTO invoicing_reminders (
+          company_id,
+          invoice_id,
+          reminder_type,
+          scheduled_for,
+          sent_at,
+          status,
+          channel,
+          source,
+          attempt_count,
+          max_attempts,
+          last_attempt_at,
+          completed_at,
+          sent_by,
+          failure_code,
+          failure_message,
+          metadata
+        )
+        VALUES (
+          $1,$2,$3,NOW(),
+          CASE
+            WHEN $5
+            THEN NOW()
+            ELSE NULL
+          END,
+          CASE
+            WHEN $5
+            THEN 'sent'
+            ELSE 'failed'
+          END,
+          $4,
+          'manual',
+          1,
+          1,
+          NOW(),
+          NOW(),
+          $6,
+          $7,
+          CASE
+            WHEN $5
+            THEN NULL
+            ELSE 'Manual reminder delivery failed.'
+          END,
+          jsonb_build_object(
+            'manual',
+            TRUE
+          )
+        )
+      `,
+      [
+        context.companyId,
+        invoiceId,
+        reminderType,
+        delivery.channel,
+        delivery.success,
+        context.userId,
+        delivery.errorCode ||
+        null,
+      ],
+    );
+  }
+
+  await emitInvoicingAutomationEvent(
+    context,
+    {
+      triggerKey:
+        'invoicing.reminder.sent',
+      recordType:
+        'invoice',
+      recordId:
+        invoiceId,
+      idempotencySeed:
+        reminderType,
+      payload: {
+        channels,
+        deliveries:
+          result.deliveries.map(
+            delivery => ({
+              channel:
+                delivery.channel,
+              success:
+                delivery.success,
+            }),
+          ),
+      },
+    },
+  );
+
+  return result;
+}
+
+
+function reminderMode(
+  value:
+    unknown,
+) {
+  const mode =
+    cleanText(
+      value,
+      20,
+    );
+
+  if (
+    ![
+      'inherit',
+      'enabled',
+      'paused',
+      'disabled',
+    ].includes(
+      mode,
+    )
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Choose inherit, enabled, paused or disabled for payment reminders.',
+    );
+  }
+
+  return mode;
+}
+
+
+export async function setInvoiceReminderControl(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .INVOICE_SEND,
+    );
+
+  const invoiceId =
+    requireUuid(
+      input.invoiceId,
+      'Invoice',
+    );
+
+  const mode =
+    reminderMode(
+      input.mode,
+    );
+
+  const pauseUntil =
+    mode ===
+      'paused' &&
+    input.pauseUntil
+      ? new Date(
+          String(
+            input.pauseUntil,
+          ),
+        )
+      : null;
+
+  if (
+    pauseUntil &&
+    Number.isNaN(
+      pauseUntil.getTime(),
+    )
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Choose a valid reminder pause date.',
+    );
+  }
+
+  const reason =
+    nullableText(
+      input.reason,
+      1000,
+    );
+
+  const result =
+    await context.pool.query(
+      `
+        UPDATE invoicing_invoices
+        SET
+          reminder_mode =
+            $3,
+          reminder_pause_until =
+            CASE
+              WHEN $3 =
+                   'paused'
+              THEN $4
+              ELSE NULL
+            END,
+          reminder_pause_reason =
+            CASE
+              WHEN $3 IN (
+                'paused',
+                'disabled'
+              )
+              THEN $5
+              ELSE NULL
+            END,
+          updated_by =
+            $6,
+          updated_at =
+            NOW()
+        WHERE id =
+              $1
+          AND company_id =
+              $2
+          AND deleted_at
+              IS NULL
+        RETURNING
+          id
+      `,
+      [
+        invoiceId,
+        context.companyId,
+        mode,
+        pauseUntil,
+        reason,
+        context.userId,
+      ],
+    );
+
+  if (
+    result.rows.length !==
+      1
+  ) {
+    throw new InvoicingError(
+      'INVOICE_NOT_FOUND',
+      'Invoice was not found.',
+    );
+  }
+
+  return {
     invoiceId,
-    channels,
-    purpose:
-      'reminder',
-  });
+    mode,
+    pauseUntil:
+      pauseUntil
+        ? pauseUntil
+            .toISOString()
+        : null,
+  };
+}
+
+
+export async function setCustomerReminderControl(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .CUSTOMER_MANAGE,
+    );
+
+  const customerId =
+    requireUuid(
+      input.customerId,
+      'Customer',
+    );
+
+  const mode =
+    reminderMode(
+      input.mode,
+    );
+
+  const pauseUntil =
+    mode ===
+      'paused' &&
+    input.pauseUntil
+      ? new Date(
+          String(
+            input.pauseUntil,
+          ),
+        )
+      : null;
+
+  if (
+    pauseUntil &&
+    Number.isNaN(
+      pauseUntil.getTime(),
+    )
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Choose a valid reminder pause date.',
+    );
+  }
+
+  const reason =
+    nullableText(
+      input.reason,
+      1000,
+    );
+
+  const result =
+    await context.pool.query(
+      `
+        UPDATE invoicing_customers
+        SET
+          reminder_mode =
+            $3,
+          reminder_pause_until =
+            CASE
+              WHEN $3 =
+                   'paused'
+              THEN $4
+              ELSE NULL
+            END,
+          reminder_pause_reason =
+            CASE
+              WHEN $3 IN (
+                'paused',
+                'disabled'
+              )
+              THEN $5
+              ELSE NULL
+            END,
+          updated_by =
+            $6,
+          updated_at =
+            NOW()
+        WHERE id =
+              $1
+          AND company_id =
+              $2
+          AND deleted_at
+              IS NULL
+        RETURNING
+          id
+      `,
+      [
+        customerId,
+        context.companyId,
+        mode,
+        pauseUntil,
+        reason,
+        context.userId,
+      ],
+    );
+
+  if (
+    result.rows.length !==
+      1
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Customer was not found.',
+    );
+  }
+
+  return {
+    customerId,
+    mode,
+    pauseUntil:
+      pauseUntil
+        ? pauseUntil
+            .toISOString()
+        : null,
+  };
+}
+
+
+export async function retryInvoiceReminder(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .INVOICE_SEND,
+    );
+
+  const reminderId =
+    requireUuid(
+      input.reminderId,
+      'Reminder',
+    );
+
+  const result =
+    await context.pool.query(
+      `
+        UPDATE invoicing_reminders
+        SET
+          status =
+            'scheduled',
+          source =
+            'retry',
+          next_attempt_at =
+            NOW(),
+          completed_at =
+            NULL,
+          failure_code =
+            NULL,
+          failure_message =
+            NULL,
+          updated_at =
+            NOW()
+        WHERE id =
+              $1
+          AND company_id =
+              $2
+          AND status =
+              'failed'
+          AND attempt_count <
+              max_attempts
+        RETURNING
+          id,
+          invoice_id
+      `,
+      [
+        reminderId,
+        context.companyId,
+      ],
+    );
+
+  if (
+    result.rows.length !==
+      1
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Failed reminder was not found or has exhausted its retry limit.',
+    );
+  }
+
+  return {
+    reminderId,
+    invoiceId:
+      String(
+        result.rows[0]
+          .invoice_id,
+      ),
+    status:
+      'scheduled',
+  };
+}
+
+
+export async function saveDunningPolicy(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .SETTINGS_MANAGE,
+    );
+
+  const policyId =
+    input.policyId
+      ? requireUuid(
+          input.policyId,
+          'Dunning policy',
+        )
+      : null;
+
+  const name =
+    cleanText(
+      input.name,
+      160,
+    );
+
+  if (
+    !name
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Dunning policy name is required.',
+    );
+  }
+
+  const rawStages =
+    Array.isArray(
+      input.stages,
+    )
+      ? input.stages
+      : [];
+
+  if (
+    rawStages.length ===
+      0 ||
+    rawStages.length >
+      20
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'A dunning policy requires between 1 and 20 stages.',
+    );
+  }
+
+  const stages =
+    rawStages.map(
+      (
+        raw,
+        index,
+      ) => {
+        const stage =
+          plainObject(
+            raw,
+          );
+
+        const offsetDays =
+          Math.floor(
+            numberInput(
+              stage.offsetDays,
+              'Dunning stage offset',
+              {
+                min:
+                  -365,
+                max:
+                  3650,
+              },
+            ),
+          );
+
+        const severityRaw =
+          cleanText(
+            stage.severity,
+            20,
+          );
+
+        const severity =
+          [
+            'friendly',
+            'firm',
+            'final',
+          ].includes(
+            severityRaw,
+          )
+            ? severityRaw
+            : 'friendly';
+
+        const channels =
+          normalizeInvoiceDeliveryChannels(
+            stage.channels,
+          );
+
+        if (
+          channels.length ===
+            0
+        ) {
+          throw new InvoicingError(
+            'INVALID_INPUT',
+            'Each dunning stage needs at least one delivery channel.',
+          );
+        }
+
+        const stageName =
+          cleanText(
+            stage.name,
+            180,
+          ) ||
+          (
+            offsetDays <
+              0
+              ? Math.abs(
+                  offsetDays,
+                ) +
+                ' days before due'
+              : offsetDays ===
+                  0
+                ? 'Due today'
+                : offsetDays +
+                  ' days overdue'
+          );
+
+        return {
+          stageKey:
+            'stage_' +
+            (
+              index +
+              1
+            ) +
+            '_' +
+            offsetDays,
+          name:
+            stageName,
+          sequenceNo:
+            index +
+            1,
+          offsetDays,
+          severity,
+          channels,
+          autoSend:
+            stage.autoSend !==
+              false,
+          retryLimit:
+            Math.floor(
+              numberInput(
+                stage.retryLimit ??
+                  3,
+                'Reminder retry limit',
+                {
+                  min:
+                    1,
+                  max:
+                    20,
+                },
+              ),
+            ),
+          retryDelayMinutes:
+            Math.floor(
+              numberInput(
+                stage.retryDelayMinutes ??
+                  60,
+                'Reminder retry delay',
+                {
+                  min:
+                    5,
+                  max:
+                    10080,
+                },
+              ),
+            ),
+          subjectTemplate:
+            nullableText(
+              stage.subjectTemplate,
+              255,
+            ),
+          messageTemplate:
+            nullableText(
+              stage.messageTemplate,
+              10000,
+            ),
+        };
+      },
+    );
+
+  const offsets =
+    new Set(
+      stages.map(
+        stage =>
+          stage.offsetDays,
+      ),
+    );
+
+  if (
+    offsets.size !==
+      stages.length
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Dunning stages cannot use the same due-date offset twice.',
+    );
+  }
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    await client.query(
+      `
+        UPDATE invoicing_dunning_policies
+        SET
+          is_default =
+            FALSE,
+          updated_by =
+            $2,
+          updated_at =
+            NOW()
+        WHERE company_id =
+              $1
+          AND deleted_at
+              IS NULL
+      `,
+      [
+        context.companyId,
+        context.userId,
+      ],
+    );
+
+    let savedId =
+      policyId;
+
+    if (
+      savedId
+    ) {
+      const updated =
+        await client.query(
+          `
+            UPDATE invoicing_dunning_policies
+            SET
+              name =
+                $3,
+              is_default =
+                TRUE,
+              is_active =
+                TRUE,
+              updated_by =
+                $4,
+              updated_at =
+                NOW()
+            WHERE id =
+                  $1
+              AND company_id =
+                  $2
+              AND deleted_at
+                  IS NULL
+            RETURNING
+              id
+          `,
+          [
+            savedId,
+            context.companyId,
+            name,
+            context.userId,
+          ],
+        );
+
+      if (
+        updated.rows.length !==
+          1
+      ) {
+        throw new InvoicingError(
+          'INVALID_INPUT',
+          'Dunning policy was not found.',
+        );
+      }
+    } else {
+      const inserted =
+        await client.query(
+          `
+            INSERT INTO invoicing_dunning_policies (
+              company_id,
+              name,
+              is_default,
+              is_active,
+              created_by,
+              updated_by
+            )
+            VALUES (
+              $1,$2,TRUE,TRUE,$3,$3
+            )
+            RETURNING
+              id
+          `,
+          [
+            context.companyId,
+            name,
+            context.userId,
+          ],
+        );
+
+      savedId =
+        String(
+          inserted.rows[0].id,
+        );
+    }
+
+    await client.query(
+      `
+        DELETE FROM invoicing_dunning_stages
+        WHERE policy_id =
+              $1
+          AND company_id =
+              $2
+      `,
+      [
+        savedId,
+        context.companyId,
+      ],
+    );
+
+    for (
+      const stage
+      of stages
+    ) {
+      await client.query(
+        `
+          INSERT INTO invoicing_dunning_stages (
+            company_id,
+            policy_id,
+            stage_key,
+            name,
+            sequence_no,
+            offset_days,
+            severity,
+            channels,
+            auto_send,
+            retry_limit,
+            retry_delay_minutes,
+            subject_template,
+            message_template,
+            created_by,
+            updated_by
+          )
+          VALUES (
+            $1,$2,$3,$4,$5,$6,$7,$8::jsonb,
+            $9,$10,$11,$12,$13,$14,$14
+          )
+        `,
+        [
+          context.companyId,
+          savedId,
+          stage.stageKey,
+          stage.name,
+          stage.sequenceNo,
+          stage.offsetDays,
+          stage.severity,
+          JSON.stringify(
+            stage.channels,
+          ),
+          stage.autoSend,
+          stage.retryLimit,
+          stage.retryDelayMinutes,
+          stage.subjectTemplate,
+          stage.messageTemplate,
+          context.userId,
+        ],
+      );
+    }
+
+    await recordMasterDataActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        model:
+          'invoicing.dunning_policy',
+        recordId:
+          savedId!,
+        type:
+          'dunning.policy_saved',
+        content:
+          'Payment reminder policy ' +
+          name +
+          ' saved.',
+        metadata: {
+          stages:
+            stages.length,
+        },
+      },
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return {
+      id:
+        savedId,
+      name,
+      stages:
+        stages.length,
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 
