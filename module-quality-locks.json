@@ -6,7 +6,7 @@
       "moduleVersion": "2.6.0",
       "referenceStandard": true,
       "baselineCommit": "16e29e2d62cb62b468b33ebf792ee6b038d485b3",
-      "baselineBranch": "feat/invoicing-payments-2-6",
+      "baselineBranch": "main",
       "lockedAt": "2026-09-29",
       "policy": "Invoicing 2.6.0 adds customer-level receipts, invoice overpayments and unapplied customer credit, later allocation and immutable unallocation, reconciliation with an explicit reasoned unreconciliation gate, refund/refund-reversal ledgers, idempotent receipt posting, granular payment automation events, allocation-aware accounting, paid-invoice reopening, and rolling-deployment-safe legacy direct-AR compatibility. Upgrade migrations preserve historical legacy accounting while 2.6 application code explicitly writes customer_credit for new receipts. Future changes must keep Invoicing, ERP integration, platform closure, app-surface, core-hardening, TypeScript, migration dry-run and production deployment gates green.",
       "protectedTrees": {
