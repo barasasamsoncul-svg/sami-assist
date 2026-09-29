@@ -18,9 +18,6 @@ const SQL = `
     ADD COLUMN IF NOT EXISTS reconciliation_notes TEXT;
 
   ALTER TABLE public.invoicing_payments
-    ALTER COLUMN accounting_model SET DEFAULT 'customer_credit';
-
-  ALTER TABLE public.invoicing_payments
     DROP CONSTRAINT IF EXISTS invoicing_payments_accounting_model_check;
 
   ALTER TABLE public.invoicing_payments

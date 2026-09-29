@@ -5137,6 +5137,7 @@ export async function recordInvoicePayment(
             exchange_rate,
             method,
             reference,
+            accounting_model,
             status,
             notes,
             created_by,
@@ -5144,6 +5145,7 @@ export async function recordInvoicePayment(
           )
           VALUES (
             $1,$2,$3,$4,$5,$6,$7,$8,$9,
+            'customer_credit',
             'posted',
             $10,$11,$11
           )
@@ -5734,6 +5736,7 @@ export async function recordCustomerPayment(
             method,
             reference,
             idempotency_key,
+            accounting_model,
             status,
             notes,
             created_by,
@@ -5741,6 +5744,7 @@ export async function recordCustomerPayment(
           )
           VALUES (
             $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+            'customer_credit',
             'posted',
             $11,$12,$12
           )

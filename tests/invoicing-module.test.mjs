@@ -2409,10 +2409,16 @@ test('Invoicing v2.6 separates cash receipts from allocation and reconciliation'
     'Existing receipts must be marked as legacy direct-AR during migration.',
   );
 
-  assert.match(
+  assert.doesNotMatch(
     migration,
     /ALTER COLUMN accounting_model SET DEFAULT 'customer_credit'/,
-    'New receipts must use the customer-credit accounting model.',
+    'The upgrade must leave the database default on legacy_direct_ar until the 2.6 application code is live.',
+  );
+
+  assert.match(
+    commands,
+    /accounting_model[\s\S]*'customer_credit'[\s\S]*'posted'/s,
+    'The 2.6 payment authority must explicitly tag new receipts as customer_credit so migration-before-deploy is safe.',
   );
 
   assert.match(
