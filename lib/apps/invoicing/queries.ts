@@ -429,31 +429,74 @@ export async function getInvoicingWorkspaceData():
             a.due_date,
             a.currency,
             a.total_amount,
-            (
-              a.total_amount -
-              a.balance_due
+            COALESCE(
+              (
+                SELECT
+                  SUM(
+                    allocation.amount
+                  )
+                FROM invoicing_payment_allocations allocation
+                INNER JOIN invoicing_payments payment
+                  ON payment.id =
+                     allocation.payment_id
+                 AND payment.company_id =
+                     allocation.company_id
+                WHERE allocation.invoice_id =
+                      a.invoice_id
+                  AND allocation.company_id =
+                      a.company_id
+                  AND allocation.status =
+                      'posted'
+                  AND payment.status =
+                      'posted'
+                  AND payment.deleted_at
+                      IS NULL
+              ),
+              0
             )
               AS paid_amount,
             COALESCE(
               (
                 SELECT
                   SUM(
-                    cn.total_amount
+                    application.amount
                   )
-                FROM invoicing_credit_notes cn
-                WHERE cn.invoice_id =
+                FROM invoicing_credit_note_applications application
+                INNER JOIN invoicing_credit_notes note
+                  ON note.id =
+                     application.credit_note_id
+                 AND note.company_id =
+                     application.company_id
+                WHERE application.target_invoice_id =
                       a.invoice_id
-                  AND cn.status IN (
-                    'issued',
-                    'applied',
-                    'refunded'
-                  )
-                  AND cn.deleted_at
+                  AND application.company_id =
+                      a.company_id
+                  AND application.status =
+                      'posted'
+                  AND note.status <>
+                      'cancelled'
+                  AND note.deleted_at
                       IS NULL
               ),
               0
             )
               AS credited_amount,
+            COALESCE(
+              (
+                SELECT
+                  available_credit
+                FROM invoicing_customer_credit_balances credit_balance
+                WHERE credit_balance.company_id =
+                      a.company_id
+                  AND credit_balance.customer_id =
+                      a.customer_id
+                  AND credit_balance.currency =
+                      a.currency
+                LIMIT 1
+              ),
+              0
+            )
+              AS customer_available_credit,
             a.balance_due,
             a.days_overdue,
             i.reminder_mode,
@@ -1369,6 +1412,10 @@ export async function getInvoicingWorkspaceData():
           creditedAmount:
             money(
               row.credited_amount,
+            ),
+          customerAvailableCredit:
+            money(
+              row.customer_available_credit,
             ),
           balanceDue:
             money(
