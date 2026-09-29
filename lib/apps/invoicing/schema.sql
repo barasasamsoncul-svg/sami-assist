@@ -234,6 +234,8 @@ CREATE TABLE IF NOT EXISTS public.invoicing_invoices (
   exchange_rate NUMERIC(19,8) NOT NULL DEFAULT 1 CHECK (exchange_rate > 0),
   reference VARCHAR(255),
   purchase_order_number VARCHAR(180),
+  service_date DATE,
+  ship_to_address TEXT,
   salesperson_user_id UUID,
   subtotal NUMERIC(19,4) NOT NULL DEFAULT 0,
   discount_total NUMERIC(19,4) NOT NULL DEFAULT 0,

@@ -96,7 +96,7 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
   defineSamiModule({
     key: "invoicing",
     name: "Invoicing",
-    version: '2.3.0',
+    version: '2.4.0',
     description: "Create invoices, collect payments, manage receivables, credit notes and recurring billing.",
     category: "finance",
     icon: "receipt",
