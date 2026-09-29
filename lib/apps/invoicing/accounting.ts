@@ -990,20 +990,143 @@ export async function postInvoiceCreditToAccounting(
       string;
     creditNoteNumber:
       string;
-    amount:
+    totalAmount:
+      number;
+    subtotal?:
+      number;
+    taxTotal?:
+      number;
+    receivableAmount:
+      number;
+    customerCreditAmount:
       number;
     exchangeRate?:
       number;
   },
 ) {
-  const amount =
+  const rate =
+    input.exchangeRate ||
+    1;
+
+  const totalAmount =
     money(
-      input.amount *
-      (
-        input.exchangeRate ||
-        1
-      ),
+      input.totalAmount *
+      rate,
     );
+
+  const taxTotal =
+    money(
+      (
+        input.taxTotal ||
+        0
+      ) *
+      rate,
+    );
+
+  const subtotal =
+    money(
+      (
+        input.subtotal ??
+        (
+          input.totalAmount -
+          (
+            input.taxTotal ||
+            0
+          )
+        )
+      ) *
+      rate,
+    );
+
+  const receivableAmount =
+    money(
+      input.receivableAmount *
+      rate,
+    );
+
+  const customerCreditAmount =
+    money(
+      input.customerCreditAmount *
+      rate,
+    );
+
+  if (
+    Math.abs(
+      totalAmount -
+      (
+        receivableAmount +
+        customerCreditAmount
+      ),
+    ) >
+      0.01
+  ) {
+    throw new Error(
+      'Credit-note accounting split does not match the credit total.',
+    );
+  }
+
+  const lines:
+    JournalLineInput[] =
+      [
+        {
+          account:
+            'returns',
+          description:
+            'Sales returns',
+          debit:
+            subtotal,
+          credit:
+            0,
+        },
+      ];
+
+  if (
+    taxTotal >
+      0
+  ) {
+    lines.push({
+      account:
+        'tax',
+      description:
+        'Tax reversal',
+      debit:
+        taxTotal,
+      credit:
+        0,
+    });
+  }
+
+  if (
+    receivableAmount >
+      0
+  ) {
+    lines.push({
+      account:
+        'receivable',
+      description:
+        'Accounts receivable offset',
+      debit:
+        0,
+      credit:
+        receivableAmount,
+    });
+  }
+
+  if (
+    customerCreditAmount >
+      0
+  ) {
+    lines.push({
+      account:
+        'customer_credit',
+      description:
+        'Customer credit created',
+      debit:
+        0,
+      credit:
+        customerCreditAmount,
+    });
+  }
 
   return postJournal(
     client,
@@ -1030,12 +1153,75 @@ export async function postInvoiceCreditToAccounting(
         'Credit note ' +
         input.creditNoteNumber +
         ' issued',
+      lines,
+    },
+  );
+}
+
+
+export async function postCreditNoteApplicationToAccounting(
+  client:
+    PoolClient,
+  input: {
+    companyId:
+      string;
+    userId:
+      string;
+    creditNoteId:
+      string;
+    applicationId:
+      string;
+    creditNoteNumber:
+      string;
+    invoiceNumber:
+      string;
+    amount:
+      number;
+    exchangeRate?:
+      number;
+  },
+) {
+  const amount =
+    money(
+      input.amount *
+      (
+        input.exchangeRate ||
+        1
+      ),
+    );
+
+  return postJournal(
+    client,
+    {
+      companyId:
+        input.companyId,
+      userId:
+        input.userId,
+      eventKey:
+        'credit-application:' +
+        input.applicationId,
+      sourceType:
+        'credit_note_application',
+      sourceId:
+        input.applicationId,
+      journalDate:
+        new Date()
+          .toISOString()
+          .slice(
+            0,
+            10,
+          ),
+      description:
+        'Apply credit note ' +
+        input.creditNoteNumber +
+        ' to invoice ' +
+        input.invoiceNumber,
       lines: [
         {
           account:
-            'returns',
+            'customer_credit',
           description:
-            'Sales returns',
+            'Use customer credit',
           debit:
             amount,
           credit:
@@ -1046,6 +1232,84 @@ export async function postInvoiceCreditToAccounting(
             'receivable',
           description:
             'Accounts receivable',
+          debit:
+            0,
+          credit:
+            amount,
+        },
+      ],
+    },
+  );
+}
+
+
+export async function postCreditNoteRefundToAccounting(
+  client:
+    PoolClient,
+  input: {
+    companyId:
+      string;
+    userId:
+      string;
+    creditNoteId:
+      string;
+    refundId:
+      string;
+    refundNumber:
+      string;
+    refundDate:
+      string;
+    amount:
+      number;
+    exchangeRate?:
+      number;
+  },
+) {
+  const amount =
+    money(
+      input.amount *
+      (
+        input.exchangeRate ||
+        1
+      ),
+    );
+
+  return postJournal(
+    client,
+    {
+      companyId:
+        input.companyId,
+      userId:
+        input.userId,
+      eventKey:
+        'credit-refund:' +
+        input.refundId,
+      sourceType:
+        'credit_note_refund',
+      sourceId:
+        input.refundId,
+      journalDate:
+        input.refundDate,
+      description:
+        'Refund ' +
+        input.refundNumber +
+        ' from customer credit',
+      lines: [
+        {
+          account:
+            'customer_credit',
+          description:
+            'Release customer credit',
+          debit:
+            amount,
+          credit:
+            0,
+        },
+        {
+          account:
+            'cash',
+          description:
+            'Cash / bank refund',
           debit:
             0,
           credit:
