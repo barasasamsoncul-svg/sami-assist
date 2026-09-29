@@ -978,7 +978,6 @@ test('professional invoice composer uses real customers and catalog products wit
     list,
     detail,
     commands,
-    creditNotes,
     queries,
   ] =
     await Promise.all([
@@ -4100,6 +4099,7 @@ test('Invoicing Part 11 deepens credit notes into reusable customer credits and 
     schema,
     migration,
     commands,
+    creditNotes,
     queries,
     types,
     service,
@@ -4113,6 +4113,7 @@ test('Invoicing Part 11 deepens credit notes into reusable customer credits and 
     source('lib/apps/invoicing/schema.sql'),
     source('lib/apps/invoicing/migrations/2.11.0-to-2.12.0.ts'),
     source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/invoicing/credit-notes.ts'),
     source('lib/apps/invoicing/queries.ts'),
     source('lib/apps/invoicing/types.ts'),
     source('lib/apps/invoicing/service.ts'),
