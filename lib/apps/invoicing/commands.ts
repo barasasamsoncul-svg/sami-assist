@@ -4083,7 +4083,7 @@ export async function updateInvoiceDraft(
 
 
 
-async function reconcileInvoiceSettlementStatus(
+export async function reconcileInvoiceSettlementStatus(
   client:
     PoolClient,
   companyId:
@@ -4117,15 +4117,15 @@ async function reconcileInvoiceSettlementStatus(
           ) AS paid_amount,
           COALESCE(
             (
-              SELECT SUM(cn.total_amount)
-              FROM invoicing_credit_notes cn
-              WHERE cn.invoice_id = i.id
-                AND cn.company_id = i.company_id
-                AND cn.status IN (
-                  'issued',
-                  'applied',
-                  'refunded'
-                )
+              SELECT SUM(app.amount)
+              FROM invoicing_credit_note_applications app
+              INNER JOIN invoicing_credit_notes cn
+                ON cn.id = app.credit_note_id
+               AND cn.company_id = app.company_id
+              WHERE app.target_invoice_id = i.id
+                AND app.company_id = i.company_id
+                AND app.status = 'posted'
+                AND cn.status <> 'cancelled'
                 AND cn.deleted_at IS NULL
             ),
             0
