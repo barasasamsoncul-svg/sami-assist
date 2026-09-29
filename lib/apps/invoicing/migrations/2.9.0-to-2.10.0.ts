@@ -49,6 +49,14 @@ const SQL = `
       company_id,
       pdf_sha256
     );
+
+  ALTER TABLE public.invoicing_delivery_log
+    ADD COLUMN IF NOT EXISTS document_snapshot_id UUID
+      REFERENCES public.invoicing_document_snapshots(id) ON DELETE SET NULL;
+
+  CREATE INDEX IF NOT EXISTS idx_invoicing_delivery_snapshot
+    ON public.invoicing_delivery_log(document_snapshot_id)
+    WHERE document_snapshot_id IS NOT NULL;
 `;
 
 
