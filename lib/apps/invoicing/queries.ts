@@ -233,6 +233,8 @@ export async function getInvoicingWorkspaceData():
     paymentTerms,
     taxRates,
     catalogItems,
+    dunningPolicies,
+    reminders,
     settings,
   ] =
     await Promise.all([
@@ -452,6 +454,9 @@ export async function getInvoicingWorkspaceData():
               AS credited_amount,
             a.balance_due,
             a.days_overdue,
+            i.reminder_mode,
+            i.reminder_pause_until,
+            i.reminder_pause_reason,
             i.created_at
           FROM invoicing_aging a
           INNER JOIN invoicing_invoices i
@@ -494,6 +499,9 @@ export async function getInvoicingWorkspaceData():
             c.currency,
             c.payment_terms_id,
             c.credit_limit,
+            c.reminder_mode,
+            c.reminder_pause_until,
+            c.reminder_pause_reason,
             c.notes,
             pt.name
               AS payment_terms_name,
@@ -905,6 +913,136 @@ export async function getInvoicingWorkspaceData():
       context.pool.query(
         `
           SELECT
+            p.id,
+            p.name,
+            p.is_default,
+            p.is_active,
+            COALESCE(
+              jsonb_agg(
+                jsonb_build_object(
+                  'id',
+                  s.id,
+                  'stageKey',
+                  s.stage_key,
+                  'name',
+                  s.name,
+                  'sequenceNo',
+                  s.sequence_no,
+                  'offsetDays',
+                  s.offset_days,
+                  'severity',
+                  s.severity,
+                  'channels',
+                  s.channels,
+                  'autoSend',
+                  s.auto_send,
+                  'retryLimit',
+                  s.retry_limit,
+                  'retryDelayMinutes',
+                  s.retry_delay_minutes,
+                  'subjectTemplate',
+                  s.subject_template,
+                  'messageTemplate',
+                  s.message_template
+                )
+                ORDER BY
+                  s.sequence_no
+              )
+                FILTER (
+                  WHERE s.id
+                        IS NOT NULL
+                ),
+              '[]'::jsonb
+            )
+              AS stages
+          FROM invoicing_dunning_policies p
+          LEFT JOIN invoicing_dunning_stages s
+            ON s.policy_id =
+               p.id
+           AND s.company_id =
+               p.company_id
+           AND s.deleted_at
+               IS NULL
+          WHERE p.company_id =
+                $1
+            AND p.deleted_at
+                IS NULL
+          GROUP BY
+            p.id
+          ORDER BY
+            p.is_default DESC,
+            LOWER(p.name)
+          LIMIT 50
+        `,
+        [
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            r.id,
+            r.invoice_id,
+            i.invoice_number,
+            COALESCE(
+              i.bill_to_name,
+              c.name
+            )
+              AS customer_name,
+            r.dunning_policy_id,
+            r.dunning_stage_id,
+            COALESCE(
+              stage.name,
+              r.reminder_type
+            )
+              AS stage_name,
+            COALESCE(
+              stage.severity,
+              'friendly'
+            )
+              AS severity,
+            r.reminder_type,
+            r.channel,
+            r.source,
+            r.status,
+            r.attempt_count,
+            r.max_attempts,
+            r.scheduled_for,
+            r.last_attempt_at,
+            r.next_attempt_at,
+            r.sent_at,
+            r.completed_at,
+            r.failure_code,
+            r.failure_message,
+            r.created_at
+          FROM invoicing_reminders r
+          INNER JOIN invoicing_invoices i
+            ON i.id =
+               r.invoice_id
+           AND i.company_id =
+               r.company_id
+          INNER JOIN invoicing_customers c
+            ON c.id =
+               i.customer_id
+          LEFT JOIN invoicing_dunning_stages stage
+            ON stage.id =
+               r.dunning_stage_id
+          WHERE r.company_id =
+                $1
+          ORDER BY
+            r.created_at DESC,
+            r.id DESC
+          LIMIT 300
+        `,
+        [
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
             default_currency,
             default_due_days,
             default_template_id,
@@ -1126,6 +1264,23 @@ export async function getInvoicingWorkspaceData():
               row.days_overdue ||
               0,
             ),
+          reminderMode:
+            String(
+              row.reminder_mode ||
+              'inherit',
+            ),
+          reminderPauseUntil:
+            row.reminder_pause_until
+              ? String(
+                  row.reminder_pause_until,
+                )
+              : null,
+          reminderPauseReason:
+            row.reminder_pause_reason
+              ? String(
+                  row.reminder_pause_reason,
+                )
+              : null,
           createdAt:
             row.created_at
               ? new Date(
@@ -1264,6 +1419,23 @@ export async function getInvoicingWorkspaceData():
               : money(
                   row.credit_limit,
                 ),
+          reminderMode:
+            String(
+              row.reminder_mode ||
+              'inherit',
+            ),
+          reminderPauseUntil:
+            row.reminder_pause_until
+              ? String(
+                  row.reminder_pause_until,
+                )
+              : null,
+          reminderPauseReason:
+            row.reminder_pause_reason
+              ? String(
+                  row.reminder_pause_reason,
+                )
+              : null,
           notes:
             row.notes
               ? String(
@@ -1741,6 +1913,230 @@ export async function getInvoicingWorkspaceData():
         }),
       )
         : [],
+
+    dunningPolicies:
+      dunningPolicies.rows.map(
+        row => ({
+          id:
+            String(
+              row.id,
+            ),
+          name:
+            String(
+              row.name,
+            ),
+          isDefault:
+            row.is_default ===
+            true,
+          isActive:
+            row.is_active !==
+            false,
+          stages:
+            Array.isArray(
+              row.stages,
+            )
+              ? row.stages.map(
+                  (
+                    stage:
+                      Record<
+                        string,
+                        unknown
+                      >,
+                  ) => ({
+                    id:
+                      String(
+                        stage.id,
+                      ),
+                    stageKey:
+                      String(
+                        stage.stageKey,
+                      ),
+                    name:
+                      String(
+                        stage.name,
+                      ),
+                    sequenceNo:
+                      Number(
+                        stage.sequenceNo,
+                      ),
+                    offsetDays:
+                      Number(
+                        stage.offsetDays,
+                      ),
+                    severity:
+                      String(
+                        stage.severity,
+                      ),
+                    channels:
+                      Array.isArray(
+                        stage.channels,
+                      )
+                        ? stage.channels
+                            .map(
+                              channel =>
+                                String(
+                                  channel,
+                                ),
+                            )
+                            .filter(
+                              (
+                                channel,
+                              ): channel is
+                                | 'email'
+                                | 'whatsapp'
+                                | 'sms' =>
+                                  channel ===
+                                    'email' ||
+                                  channel ===
+                                    'whatsapp' ||
+                                  channel ===
+                                    'sms',
+                            )
+                        : [],
+                    autoSend:
+                      stage.autoSend !==
+                      false,
+                    retryLimit:
+                      Number(
+                        stage.retryLimit ||
+                        3,
+                      ),
+                    retryDelayMinutes:
+                      Number(
+                        stage.retryDelayMinutes ||
+                        60,
+                      ),
+                    subjectTemplate:
+                      stage.subjectTemplate
+                        ? String(
+                            stage.subjectTemplate,
+                          )
+                        : null,
+                    messageTemplate:
+                      stage.messageTemplate
+                        ? String(
+                            stage.messageTemplate,
+                          )
+                        : null,
+                  }),
+                )
+              : [],
+        }),
+      ),
+
+    reminders:
+      reminders.rows.map(
+        row => ({
+          id:
+            String(
+              row.id,
+            ),
+          invoiceId:
+            String(
+              row.invoice_id,
+            ),
+          invoiceNumber:
+            String(
+              row.invoice_number,
+            ),
+          customerName:
+            String(
+              row.customer_name,
+            ),
+          policyId:
+            row.dunning_policy_id
+              ? String(
+                  row.dunning_policy_id,
+                )
+              : null,
+          stageId:
+            row.dunning_stage_id
+              ? String(
+                  row.dunning_stage_id,
+                )
+              : null,
+          stageName:
+            String(
+              row.stage_name,
+            ),
+          severity:
+            String(
+              row.severity,
+            ),
+          reminderType:
+            String(
+              row.reminder_type,
+            ),
+          channel:
+            String(
+              row.channel,
+            ),
+          source:
+            String(
+              row.source,
+            ),
+          status:
+            String(
+              row.status,
+            ),
+          attemptCount:
+            Number(
+              row.attempt_count ||
+              0,
+            ),
+          maxAttempts:
+            Number(
+              row.max_attempts ||
+              1,
+            ),
+          scheduledFor:
+            row.scheduled_for
+              ? String(
+                  row.scheduled_for,
+                )
+              : null,
+          lastAttemptAt:
+            row.last_attempt_at
+              ? String(
+                  row.last_attempt_at,
+                )
+              : null,
+          nextAttemptAt:
+            row.next_attempt_at
+              ? String(
+                  row.next_attempt_at,
+                )
+              : null,
+          sentAt:
+            row.sent_at
+              ? String(
+                  row.sent_at,
+                )
+              : null,
+          completedAt:
+            row.completed_at
+              ? String(
+                  row.completed_at,
+                )
+              : null,
+          failureCode:
+            row.failure_code
+              ? String(
+                  row.failure_code,
+                )
+              : null,
+          failureMessage:
+            row.failure_message
+              ? String(
+                  row.failure_message,
+                )
+              : null,
+          createdAt:
+            String(
+              row.created_at,
+            ),
+        }),
+      ),
 
     templates:
       templates.rows.map(
