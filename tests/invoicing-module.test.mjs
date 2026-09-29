@@ -2895,6 +2895,18 @@ test('Invoicing v2.7 turns recurring invoices into an observable retry-safe bill
 
   assert.match(
     worker,
+    /max_occurrences_reached/,
+    'Recovered successful recurring runs must still complete schedules that reached their occurrence limit.',
+  );
+
+  assert.match(
+    worker,
+    /end_date_reached/,
+    'Recovered successful recurring runs must still honor schedule end dates.',
+  );
+
+  assert.match(
+    worker,
     /continue;/,
     'One failed recurring schedule must not block the remaining tenant schedules.',
   );
