@@ -41,7 +41,7 @@ const SQL = `
   CREATE OR REPLACE FUNCTION public.validate_invoice_status_transition()
   RETURNS TRIGGER
   LANGUAGE plpgsql
-  AS $invoice_lifecycle$
+  AS $$
   BEGIN
     IF TG_OP = 'INSERT' THEN
       RETURN NEW;
@@ -93,7 +93,7 @@ const SQL = `
 
     RAISE EXCEPTION 'Invalid invoice status transition from % to %', OLD.status, NEW.status;
   END;
-  $invoice_lifecycle$;
+  $$;
 
   CREATE OR REPLACE VIEW public.invoicing_customer_balances AS
   SELECT
