@@ -130,6 +130,22 @@ export type InvoicingPaymentSummary = {
   }>;
 };
 
+export type InvoicingRecurringRunSummary = {
+  id: string;
+  scheduledFor: string;
+  status: string;
+  attemptCount: number;
+  invoiceId: string | null;
+  invoiceNumber: string | null;
+  deliveryStatus: string;
+  deliveryErrorCode: string | null;
+  startedAt: string;
+  lastAttemptAt: string;
+  completedAt: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+};
+
 export type InvoicingRecurringSummary = {
   id: string;
   name: string;
@@ -139,7 +155,22 @@ export type InvoicingRecurringSummary = {
   status: string;
   intervalUnit: string;
   intervalCount: number;
+  startDate: string;
+  endDate: string | null;
   nextRunAt: string;
+  maxOccurrences: number | null;
+  runCount: number;
+  consecutiveFailures: number;
+  maxRetryAttempts: number;
+  lastInvoiceId: string | null;
+  lastInvoiceNumber: string | null;
+  lastRunAt: string | null;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  retryAfter: string | null;
+  lastErrorCode: string | null;
+  lastErrorMessage: string | null;
+  completionReason: string | null;
   autoSend: boolean;
   deliveryChannels: Array<
     'email' |
@@ -147,6 +178,7 @@ export type InvoicingRecurringSummary = {
     'sms'
   >;
   currency: string;
+  runs: InvoicingRecurringRunSummary[];
 };
 
 export type InvoicingInvoiceLine = {
