@@ -3,18 +3,18 @@
   "locks": {
     "invoicing": {
       "status": "locked",
-      "moduleVersion": "2.3.0",
+      "moduleVersion": "2.4.0",
       "referenceStandard": true,
-      "baselineCommit": "15074a731c00ae85a37d1c933c3031ffaba76c6e",
-      "baselineBranch": "feat/platform-kernel-closure",
-      "lockedAt": "2026-09-28",
-      "policy": "Platform-kernel closure deliberately moved Invoicing migration definitions off the migration executor and onto stable migration type/safety contracts to eliminate initialization cycles. SQL and business behavior are unchanged; the Invoicing regression suite, ERP integration, platform closure, app-surface, Category 24/25, core-hardening and TypeScript gates must remain green for future changes.",
+      "baselineCommit": "3836e3891db03553206570a9b909f0dc970633d8",
+      "baselineBranch": "main",
+      "lockedAt": "2026-09-29",
+      "policy": "Invoicing 2.4.0 deliberately deepens the production invoice register, lifecycle protections, authenticated PDF workflow, and document snapshots for service/supply date and ship-to address. Future changes must keep the Invoicing regression suite, ERP integration, platform closure, app-surface, core-hardening, TypeScript and production deployment gates green.",
       "protectedTrees": {
-        "lib/apps/invoicing": "73aa7235bed19b0ff9cb840494ca22356c450520",
-        "app/apps/invoicing": "2ee271000caf232015c2b9d2ebcb15e0e43667a9",
-        "app/api/apps/invoicing": "5e32397bc589025fc657b7366616f5b483ddb09f",
+        "lib/apps/invoicing": "fca3dd8772922353f1f5a629be281c88c929bc59",
+        "app/apps/invoicing": "b89b69d37a03c441a07c4a32dfe989d82de22f04",
+        "app/api/apps/invoicing": "17ddda0c9d471bb134212dae88474e0523db2843",
         "app/api/internal/invoicing": "b2b22efc33d3b038495ccdd343845257789334a1",
-        "app/i/[tenantId]/[token]": "885f2fea649181b8f816593462acfe1ec714e789"
+        "app/i/[tenantId]/[token]": "756a44ab2c2bc0c64bbb50721f003c19d2bf19ca"
       }
     }
   }

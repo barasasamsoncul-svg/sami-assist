@@ -56,7 +56,7 @@ test(
 
     assert.equal(
       lock.moduleVersion,
-      '2.3.0',
+      '2.4.0',
     );
 
     assert.equal(
@@ -66,12 +66,12 @@ test(
 
     assert.equal(
       lock.baselineCommit,
-      '15074a731c00ae85a37d1c933c3031ffaba76c6e',
+      '3836e3891db03553206570a9b909f0dc970633d8',
     );
 
     assert.equal(
       lock.baselineBranch,
-      'feat/platform-kernel-closure',
+      'main',
     );
 
     for (
