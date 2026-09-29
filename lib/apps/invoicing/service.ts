@@ -11,7 +11,6 @@ export {
 
 export {
   allocateInvoicePayment,
-  cancelInvoiceCreditNote,
   changeInvoiceStatus,
   createInvoice,
   createInvoicingCatalogItem,
@@ -28,7 +27,6 @@ export {
   updateInvoicingTaxRate,
   createRecurringInvoiceTemplate,
   duplicateInvoice,
-  issueInvoiceCreditNote,
   reconcileInvoicePayment,
   recordCustomerPayment,
   recordInvoicePayment,
@@ -64,3 +62,12 @@ export {
   getCustomerPortalInvoice,
   submitCustomerPortalMessage,
 } from '@/lib/apps/invoicing/portal';
+
+export {
+  applyInvoiceCreditNote,
+  cancelInvoiceCreditNote,
+  issueInvoiceCreditNote,
+  refundInvoiceCreditNote,
+  reverseInvoiceCreditApplication,
+  reverseInvoiceCreditNoteRefund,
+} from '@/lib/apps/invoicing/credit-notes';
