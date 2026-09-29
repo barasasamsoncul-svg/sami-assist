@@ -71,7 +71,7 @@ test(
 
     assert.equal(
       lock.baselineBranch,
-      'feat/invoicing-payments-2-6',
+      'main',
     );
 
     for (
