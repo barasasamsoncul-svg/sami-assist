@@ -4358,6 +4358,7 @@ function InvoiceActions({
             .canSend &&
           invoice.customerEmail &&
           ![
+            'draft',
             'paid',
             'cancelled',
             'void',
