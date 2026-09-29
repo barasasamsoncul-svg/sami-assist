@@ -3051,22 +3051,114 @@ export async function getInvoicingInvoiceDetail(
       context.pool.query(
         `
           SELECT
-            id,
-            credit_note_number,
-            issue_date,
-            status,
-            total_amount,
-            reason
-          FROM invoicing_credit_notes
-          WHERE invoice_id =
+            note.id,
+            note.credit_note_number,
+            note.issue_date,
+            note.status,
+            note.subtotal,
+            note.tax_total,
+            note.total_amount,
+            note.reason,
+            COALESCE(
+              balance.applied_amount,
+              0
+            ) AS applied_amount,
+            COALESCE(
+              balance.refunded_amount,
+              0
+            ) AS refunded_amount,
+            COALESCE(
+              balance.available_amount,
+              0
+            ) AS available_amount,
+            COALESCE(
+              (
+                SELECT JSONB_AGG(
+                  JSONB_BUILD_OBJECT(
+                    'id',
+                    app.id,
+                    'targetInvoiceId',
+                    app.target_invoice_id,
+                    'targetInvoiceNumber',
+                    target.invoice_number,
+                    'applicationType',
+                    app.application_type,
+                    'amount',
+                    app.amount,
+                    'status',
+                    app.status,
+                    'appliedAt',
+                    app.applied_at,
+                    'reversalReason',
+                    app.reversal_reason
+                  )
+                  ORDER BY
+                    app.applied_at DESC,
+                    app.id DESC
+                )
+                FROM invoicing_credit_note_applications app
+                INNER JOIN invoicing_invoices target
+                  ON target.id =
+                     app.target_invoice_id
+                 AND target.company_id =
+                     app.company_id
+                WHERE app.credit_note_id =
+                      note.id
+                  AND app.company_id =
+                      note.company_id
+              ),
+              '[]'::jsonb
+            ) AS applications,
+            COALESCE(
+              (
+                SELECT JSONB_AGG(
+                  JSONB_BUILD_OBJECT(
+                    'id',
+                    refund.id,
+                    'refundNumber',
+                    refund.refund_number,
+                    'refundDate',
+                    refund.refund_date,
+                    'amount',
+                    refund.amount,
+                    'method',
+                    refund.method,
+                    'reference',
+                    refund.reference,
+                    'reason',
+                    refund.reason,
+                    'status',
+                    refund.status,
+                    'reversalReason',
+                    refund.reversal_reason
+                  )
+                  ORDER BY
+                    refund.refund_date DESC,
+                    refund.id DESC
+                )
+                FROM invoicing_credit_note_refunds refund
+                WHERE refund.credit_note_id =
+                      note.id
+                  AND refund.company_id =
+                      note.company_id
+              ),
+              '[]'::jsonb
+            ) AS refunds
+          FROM invoicing_credit_notes note
+          LEFT JOIN invoicing_credit_note_balances balance
+            ON balance.credit_note_id =
+               note.id
+           AND balance.company_id =
+               note.company_id
+          WHERE note.invoice_id =
                 $1
-            AND company_id =
+            AND note.company_id =
                 $2
-            AND deleted_at
+            AND note.deleted_at
                 IS NULL
           ORDER BY
-            issue_date DESC,
-            created_at DESC
+            note.issue_date DESC,
+            note.created_at DESC
         `,
         [
           invoiceId,
