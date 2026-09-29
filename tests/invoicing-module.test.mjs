@@ -2432,6 +2432,18 @@ test('Invoicing v2.6 separates cash receipts from allocation and reconciliation'
   );
 
   assert.match(
+    queries,
+    /dateOnlyValue\([\s\S]*row\.month/s,
+    'Monthly dashboard dates must be serialized as stable date-only values before crossing the server/client boundary.',
+  );
+
+  assert.match(
+    workspace,
+    /function monthLabel\([\s\S]*Number\.isNaN\([\s\S]*parsed\.getTime\(\)/s,
+    'The Invoicing dashboard must defensively handle malformed monthly date values instead of crashing the Apps route.',
+  );
+
+  assert.match(
     schema,
     /a\.status = 'posted'[\s\S]*p\.status = 'posted'/s,
     'Receivable views must ignore reversed payment allocations.',
