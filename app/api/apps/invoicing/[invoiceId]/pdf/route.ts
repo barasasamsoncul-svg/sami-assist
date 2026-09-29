@@ -195,6 +195,7 @@ export async function GET(
               primary_color,
               secondary_color,
               font_family,
+              design_version,
               density,
               header_style,
               document_title,
@@ -317,6 +318,11 @@ export async function GET(
             String(
               template.font_family ||
               'Inter',
+            ),
+          designVersion:
+            Number(
+              template.design_version ||
+              1,
             ),
           density:
             String(
