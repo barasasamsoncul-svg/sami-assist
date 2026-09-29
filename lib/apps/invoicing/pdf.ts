@@ -897,7 +897,7 @@ function documentHeader(
       truncate(
         invoice.template
           .billToLabel ||
-        'Bill to',
+        'BILL TO',
         24,
       )
         .toUpperCase(),
