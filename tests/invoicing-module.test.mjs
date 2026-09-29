@@ -1744,3 +1744,106 @@ test('Invoicing payment history and customer search respect dedicated read permi
     /name: 'Create invoice draft'[\s\S]*INVOICE_CREATE[\s\S]*CUSTOMER_VIEW/s,
   );
 });
+
+
+test('Invoicing invoice register provides deep operator controls and authenticated PDF access', async () => {
+  const [
+    workspace,
+    detail,
+    pdfRoute,
+  ] = await Promise.all([
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('app/apps/invoicing/[invoiceId]/InvoiceDetailClient.tsx'),
+    source('app/api/apps/invoicing/[invoiceId]/pdf/route.ts'),
+  ]);
+
+  assert.match(
+    workspace,
+    /Invoice register/,
+  );
+
+  assert.match(
+    workspace,
+    /statusFilter/,
+  );
+
+  assert.match(
+    workspace,
+    /receivableFilter/,
+  );
+
+  assert.match(
+    workspace,
+    /sortBy/,
+  );
+
+  assert.match(
+    workspace,
+    /Highest balance/,
+  );
+
+  assert.match(
+    workspace,
+    /Duplicate as draft/,
+  );
+
+  assert.match(
+    workspace,
+    /Send overdue reminder/,
+  );
+
+  assert.match(
+    workspace,
+    /\/api\/apps\/invoicing\/.*\/pdf/,
+  );
+
+  assert.match(
+    workspace,
+    /allowPartialPayments/,
+  );
+
+  assert.match(
+    workspace,
+    /allowCreditNotes/,
+  );
+
+  assert.match(
+    detail,
+    /Print \/ PDF/,
+  );
+
+  assert.match(
+    detail,
+    /\/pdf\?download=1/,
+  );
+
+  assert.match(
+    pdfRoute,
+    /requireInvoicingContext/,
+  );
+
+  assert.match(
+    pdfRoute,
+    /INVOICE_VIEW/,
+  );
+
+  assert.match(
+    pdfRoute,
+    /renderInvoicePdf/,
+  );
+
+  assert.match(
+    pdfRoute,
+    /Content-Disposition/,
+  );
+
+  assert.match(
+    pdfRoute,
+    /attachment/,
+  );
+
+  assert.match(
+    pdfRoute,
+    /private, no-store, no-cache, must-revalidate/,
+  );
+});
