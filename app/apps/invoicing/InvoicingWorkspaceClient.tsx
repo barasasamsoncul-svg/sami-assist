@@ -10935,6 +10935,30 @@ function Settings({
                   form.get(
                     'reminderDaysAfter',
                   ),
+                portalEnabled:
+                  form.get(
+                    'portalEnabled',
+                  ) ===
+                  'on',
+                portalAccessDays:
+                  form.get(
+                    'portalAccessDays',
+                  ),
+                portalAllowMessages:
+                  form.get(
+                    'portalAllowMessages',
+                  ) ===
+                  'on',
+                portalShowPaymentHistory:
+                  form.get(
+                    'portalShowPaymentHistory',
+                  ) ===
+                  'on',
+                portalShowCreditNotes:
+                  form.get(
+                    'portalShowCreditNotes',
+                  ) ===
+                  'on',
                 paymentInstructions:
                   form.get(
                     'paymentInstructions',
@@ -11087,7 +11111,72 @@ function Settings({
         </div>
 
         <div className="mt-4 rounded-2xl border border-[var(--sami-border)] p-3">
-          <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
+                Customer portal
+              </p>
+              <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
+                Control secure customer access, account history and billing messages. Portal tokens remain customer-scoped and revocable.
+              </p>
+            </div>
+
+            <div className="w-full max-w-[220px]">
+              <Field
+                label="Access days"
+                name="portalAccessDays"
+                type="number"
+                min="1"
+                max="3650"
+                required
+                defaultValue={
+                  String(
+                    data.settings
+                      .portalAccessDays,
+                  )
+                }
+              />
+            </div>
+          </div>
+
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <Toggle
+              name="portalEnabled"
+              label="Enable customer portal"
+              defaultChecked={
+                data.settings
+                  .portalEnabled
+              }
+            />
+            <Toggle
+              name="portalAllowMessages"
+              label="Customer messages"
+              defaultChecked={
+                data.settings
+                  .portalAllowMessages
+              }
+            />
+            <Toggle
+              name="portalShowPaymentHistory"
+              label="Show payments"
+              defaultChecked={
+                data.settings
+                  .portalShowPaymentHistory
+              }
+            />
+            <Toggle
+              name="portalShowCreditNotes"
+              label="Show credits"
+              defaultChecked={
+                data.settings
+                  .portalShowCreditNotes
+              }
+            />
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-[var(--sami-border)] p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
             Reminder delivery channels
           </p>
 
