@@ -1504,6 +1504,7 @@ test('Invoicing financial corrections are auditable and company settings are enf
     types,
     workspace,
     detail,
+    creditLifecycle,
     composer,
   ] = await Promise.all([
     source('lib/apps/invoicing/context.ts'),
@@ -1514,6 +1515,7 @@ test('Invoicing financial corrections are auditable and company settings are enf
     source('lib/apps/invoicing/types.ts'),
     source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
     source('app/apps/invoicing/[invoiceId]/InvoiceDetailClient.tsx'),
+    source('app/apps/invoicing/[invoiceId]/CreditNoteLifecyclePanel.tsx'),
     source('app/apps/invoicing/InvoiceComposer.tsx'),
   ]);
 
@@ -1539,7 +1541,8 @@ test('Invoicing financial corrections are auditable and company settings are enf
   assert.match(workspace, /reverse_payment_allocation/);
   assert.match(workspace, /payment\.status/);
   assert.match(detail, /action:\s*'reverse_payment_allocation'/);
-  assert.match(detail, /action:\s*'cancel_credit_note'/);
+  assert.match(detail, /CreditNoteLifecyclePanel/);
+  assert.match(creditLifecycle, /action:\s*'cancel_credit_note'/);
   assert.match(detail, /allowCreditNotes/);
   assert.match(detail, /allowPartialPayments/);
   assert.match(composer, /!data\.settings\.requireApproval/);
