@@ -839,6 +839,41 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
     /INVOICING_2_6_0_TO_2_7_0/,
   );
 
+  const dunningMigration =
+    await source(
+      'lib/apps/invoicing/migrations/2.7.0-to-2.8.0.ts',
+    );
+
+  assert.match(
+    dunningMigration,
+    /fromVersion:\s*['"]2\.7\.0['"]/,
+  );
+
+  assert.match(
+    dunningMigration,
+    /toVersion:\s*['"]2\.8\.0['"]/,
+  );
+
+  assert.match(
+    dunningMigration,
+    /CREATE TABLE IF NOT EXISTS public\.invoicing_dunning_policies/,
+  );
+
+  assert.match(
+    dunningMigration,
+    /CREATE TABLE IF NOT EXISTS public\.invoicing_dunning_stages/,
+  );
+
+  assert.match(
+    dunningMigration,
+    /retry_delay_minutes/,
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /INVOICING_2_7_0_TO_2_8_0/,
+  );
+
   const accounting =
     await source(
       'lib/apps/invoicing/accounting.ts',
@@ -2802,7 +2837,7 @@ test('Invoicing v2.7 turns recurring invoices into an observable retry-safe bill
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.7\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.8\.0['"]/s,
   );
 
   assert.match(
@@ -2966,5 +3001,217 @@ test('Invoicing v2.7 turns recurring invoices into an observable retry-safe bill
     workspace,
     /\/apps\/invoicing\/['"]?\s*\+/,
     'Recurring run history must link generated invoices back to their documents.',
+  );
+});
+
+
+
+test('Invoicing v2.8 turns reminders into a staged auditable dunning engine', async () => {
+  const [
+    schema,
+    migration,
+    context,
+    commands,
+    worker,
+    queries,
+    types,
+    service,
+    route,
+    workspace,
+    runtimeMigrations,
+    manifest,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/schema.sql'),
+    source('lib/apps/invoicing/migrations/2.7.0-to-2.8.0.ts'),
+    source('lib/apps/invoicing/context.ts'),
+    source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/invoicing/worker.ts'),
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/types.ts'),
+    source('lib/apps/invoicing/service.ts'),
+    source('app/api/apps/invoicing/route.ts'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+  ]);
+
+  assert.match(
+    manifest,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.8\.0['"]/s,
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /INVOICING_2_7_0_TO_2_8_0/,
+  );
+
+  for (const table of [
+    'invoicing_dunning_policies',
+    'invoicing_dunning_stages',
+    'invoicing_reminders',
+  ]) {
+    assert.match(
+      schema,
+      new RegExp(table),
+      table + ' must be owned by Invoicing 2.8.',
+    );
+  }
+
+  for (const field of [
+    'reminder_mode',
+    'reminder_pause_until',
+    'dunning_policy_id',
+    'dunning_stage_id',
+    'attempt_count',
+    'max_attempts',
+    'next_attempt_at',
+    'failure_message',
+  ]) {
+    assert.match(
+      migration,
+      new RegExp(field),
+      'Dunning migration must include ' + field + '.',
+    );
+  }
+
+  assert.match(
+    migration,
+    /migratedFromLegacyReminderSettings/,
+    'Existing reminder settings must seed the default 2.8 policy.',
+  );
+
+  assert.match(
+    context,
+    /Standard payment follow-up/,
+    'Fresh workspaces must receive a default dunning policy.',
+  );
+
+  assert.match(
+    context,
+    /overdue_14/,
+    'Fresh workspaces must receive the standard staged collection sequence.',
+  );
+
+  for (const command of [
+    'sendInvoiceReminder',
+    'setInvoiceReminderControl',
+    'setCustomerReminderControl',
+    'retryInvoiceReminder',
+    'saveDunningPolicy',
+  ]) {
+    assert.match(
+      commands,
+      new RegExp('export async function ' + command),
+      command + ' must be a real Invoicing command.',
+    );
+  }
+
+  assert.match(
+    commands,
+    /source[\s\S]*'manual'/s,
+    'Manual reminders must enter the same audit ledger.',
+  );
+
+  assert.match(
+    worker,
+    /invoicing_dunning_policies/,
+  );
+
+  assert.match(
+    worker,
+    /invoicing_dunning_stages/,
+  );
+
+  assert.match(
+    worker,
+    /retry_delay_minutes/,
+  );
+
+  assert.match(
+    worker,
+    /effectiveMode/,
+    'Worker must honor invoice/customer reminder controls.',
+  );
+
+  assert.match(
+    worker,
+    /status[\s\S]*'sending'/s,
+    'Reminder attempts must claim work before delivery.',
+  );
+
+  assert.match(
+    worker,
+    /next_attempt_at/,
+    'Failed reminders must have a retry schedule.',
+  );
+
+  assert.match(
+    queries,
+    /dunningPolicies/,
+  );
+
+  assert.match(
+    queries,
+    /reminders:/,
+  );
+
+  assert.match(
+    types,
+    /InvoicingDunningPolicySummary/,
+  );
+
+  assert.match(
+    types,
+    /InvoicingReminderSummary/,
+  );
+
+  for (const exported of [
+    'saveDunningPolicy',
+    'retryInvoiceReminder',
+    'setCustomerReminderControl',
+    'setInvoiceReminderControl',
+  ]) {
+    assert.match(
+      service,
+      new RegExp(exported),
+    );
+  }
+
+  for (const action of [
+    'retry_reminder',
+    'set_invoice_reminder_control',
+    'set_customer_reminder_control',
+    'save_dunning_policy',
+  ]) {
+    assert.match(
+      route,
+      new RegExp("case '" + action + "'"),
+    );
+  }
+
+  for (const visibleControl of [
+    'Reminders & dunning',
+    'Dunning policy',
+    'Invoice collection controls',
+    'Customer reminder controls',
+    'Reminder delivery history',
+    'Retry delay min',
+  ]) {
+    assert.ok(
+      workspace.includes(
+        visibleControl,
+      ),
+      visibleControl + ' must be visible in the dunning workspace.',
+    );
+  }
+
+  assert.match(
+    manifest,
+    /key:\s*"dunning_policy"[\s\S]*table:\s*"invoicing_dunning_policies"/s,
+  );
+
+  assert.match(
+    manifest,
+    /key:\s*"reminder"[\s\S]*table:\s*"invoicing_reminders"/s,
   );
 });
