@@ -213,6 +213,9 @@ export async function getInvoicingWorkspaceData():
                 FILTER (
                   WHERE effective_status
                         NOT IN (
+                          'draft',
+                          'pending_approval',
+                          'rejected',
                           'cancelled',
                           'void'
                         )
@@ -228,6 +231,9 @@ export async function getInvoicingWorkspaceData():
                 FILTER (
                   WHERE effective_status
                         NOT IN (
+                          'draft',
+                          'pending_approval',
+                          'rejected',
                           'cancelled',
                           'void'
                         )

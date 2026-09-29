@@ -24,6 +24,10 @@ import {
 } from '@/lib/apps/invoicing/commands';
 
 import {
+  postInvoiceConfirmationToAccounting,
+} from '@/lib/apps/invoicing/accounting';
+
+import {
   deliverInvoice,
   normalizeInvoiceDeliveryChannels,
 } from '@/lib/apps/invoicing/delivery';
@@ -362,6 +366,7 @@ async function generateOneRecurringInvoice(
             s.payment_instructions,
             s.terms_and_conditions,
             s.auto_send_recurring,
+            s.require_approval,
             company.name
               AS company_name
           FROM invoicing_recurring_templates r
@@ -696,6 +701,12 @@ async function generateOneRecurringInvoice(
           3,
         );
 
+    const recurringInvoiceStatus =
+      row.require_approval ===
+        true
+        ? 'pending_approval'
+        : 'confirmed';
+
     const invoiceResult =
       await client.query(
         `
@@ -726,6 +737,8 @@ async function generateOneRecurringInvoice(
             notes,
             terms,
             payment_instructions,
+            submitted_at,
+            submitted_by,
             confirmed_at,
             created_by,
             updated_by,
@@ -733,8 +746,27 @@ async function generateOneRecurringInvoice(
           )
           VALUES (
             $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-            $11,'confirmed',$12,$13,$14,$15,$16,$17,$18,$19,
-            $20,$21,$22,$23,$24,$25,NOW(),$26,$26,
+            $11,$28::varchar(30),$12,$13,$14,$15,$16,$17,$18,$19,
+            $20,$21,$22,$23,$24,$25,
+            CASE
+              WHEN $28::varchar(30) =
+                   'pending_approval'
+              THEN NOW()
+              ELSE NULL
+            END,
+            CASE
+              WHEN $28::varchar(30) =
+                   'pending_approval'
+              THEN $26::uuid
+              ELSE NULL
+            END,
+            CASE
+              WHEN $28::varchar(30) =
+                   'confirmed'
+              THEN NOW()
+              ELSE NULL
+            END,
+            $26,$26,
             jsonb_build_object(
               'recurringTemplateId',
               $27::text,
@@ -780,6 +812,7 @@ async function generateOneRecurringInvoice(
           null,
           actorUserId,
           recurringId,
+          recurringInvoiceStatus,
         ],
       );
 
@@ -853,18 +886,38 @@ async function generateOneRecurringInvoice(
           changed_by
         )
         VALUES (
-          $1,$2,NULL,
-          'confirmed',
-          'Generated from recurring invoice schedule',
-          $3
+          $1,$2,NULL,$3,$4,$5
         )
       `,
       [
         invoiceId,
         row.company_id,
+        recurringInvoiceStatus,
+        recurringInvoiceStatus ===
+          'pending_approval'
+          ? 'Generated from recurring invoice schedule and submitted for approval'
+          : 'Generated and posted from recurring invoice schedule',
         actorUserId,
       ],
     );
+
+    if (
+      recurringInvoiceStatus ===
+        'confirmed'
+    ) {
+      await postInvoiceConfirmationToAccounting(
+        client,
+        {
+          companyId:
+            String(
+              row.company_id,
+            ),
+          userId:
+            actorUserId,
+          invoiceId,
+        },
+      );
+    }
 
     await recordInvoicingActivity(
       client,
@@ -889,6 +942,8 @@ async function generateOneRecurringInvoice(
         metadata: {
           recurringTemplateId:
             recurringId,
+          status:
+            recurringInvoiceStatus,
         },
       },
     );
@@ -959,10 +1014,14 @@ async function generateOneRecurringInvoice(
       userId:
         actorUserId,
       autoSend:
-        row.auto_send ===
-          true ||
-        row.auto_send_recurring ===
-          true,
+        recurringInvoiceStatus ===
+          'confirmed' &&
+        (
+          row.auto_send ===
+            true ||
+          row.auto_send_recurring ===
+            true
+        ),
       deliveryChannels:
         normalizeInvoiceDeliveryChannels(
           payload.deliveryChannels,
@@ -1159,6 +1218,8 @@ async function processRemindersForTenant(
           AND a.effective_status
               NOT IN (
                 'draft',
+                'pending_approval',
+                'rejected',
                 'paid',
                 'cancelled',
                 'void',

@@ -208,9 +208,9 @@ export const INVOICING_AI_TOOLS:
 
     {
       key: 'invoicing_confirm_invoice',
-      name: 'Confirm invoice',
+      name: 'Post or approve invoice',
       description:
-        'Confirm a draft invoice using the same auditable invoice lifecycle as the Invoicing workspace.',
+        'Post a draft invoice when approvals are disabled, or approve and post an invoice already waiting for approval. The same auditable lifecycle rules as the Invoicing workspace apply.',
       moduleKey: 'invoicing',
       operation: 'write',
       riskLevel: 'high',
