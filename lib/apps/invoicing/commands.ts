@@ -6465,6 +6465,36 @@ export async function allocateInvoicePayment(
       'COMMIT',
     );
 
+    await emitInvoicingAutomationEvent(
+      context,
+      {
+        triggerKey:
+          'invoicing.payment.allocated',
+        recordType:
+          'payment',
+        recordId:
+          paymentId,
+        idempotencySeed:
+          'allocated:' +
+          allocationId +
+          ':' +
+          operationKey,
+        payload: {
+          invoiceId,
+          allocationId,
+          amount,
+          paymentNumber:
+            String(
+              payment.payment_number,
+            ),
+          invoiceStatus:
+            settlement.status,
+          remainingBalance:
+            settlement.balanceDue,
+        },
+      },
+    );
+
     return {
       allocationId,
       paymentId,
@@ -6719,6 +6749,43 @@ export async function reverseInvoicePaymentAllocation(
       'COMMIT',
     );
 
+    await emitInvoicingAutomationEvent(
+      context,
+      {
+        triggerKey:
+          'invoicing.payment.allocation_reversed',
+        recordType:
+          'payment',
+        recordId:
+          String(
+            allocation.payment_id,
+          ),
+        idempotencySeed:
+          'allocation-reversed:' +
+          allocationId +
+          ':' +
+          operationKey,
+        payload: {
+          allocationId,
+          invoiceId:
+            String(
+              allocation.invoice_id,
+            ),
+          amount:
+            money(
+              allocation.amount,
+            ),
+          paymentNumber:
+            String(
+              allocation.payment_number,
+            ),
+          reason,
+          invoiceStatus:
+            settlement.status,
+        },
+      },
+    );
+
     return {
       allocationId,
       paymentId:
@@ -6905,6 +6972,31 @@ export async function reconcileInvoicePayment(
 
     await client.query(
       'COMMIT',
+    );
+
+    await emitInvoicingAutomationEvent(
+      context,
+      {
+        triggerKey:
+          'invoicing.payment.reconciled',
+        recordType:
+          'payment',
+        recordId:
+          paymentId,
+        idempotencySeed:
+          'reconciled:' +
+          paymentId,
+        payload: {
+          paymentNumber:
+            String(
+              result.rows[0]
+                .payment_number,
+            ),
+          reference:
+            reference ||
+            null,
+        },
+      },
     );
 
     return {
@@ -7121,6 +7213,35 @@ export async function unreconcileInvoicePayment(
 
     await client.query(
       'COMMIT',
+    );
+
+    await emitInvoicingAutomationEvent(
+      context,
+      {
+        triggerKey:
+          'invoicing.payment.unreconciled',
+        recordType:
+          'payment',
+        recordId:
+          paymentId,
+        idempotencySeed:
+          'unreconciled:' +
+          paymentId +
+          ':' +
+          String(
+            payment.reconciled_at,
+          ),
+        payload: {
+          paymentNumber:
+            String(
+              payment.payment_number,
+            ),
+          reason,
+          previousReference:
+            payment.reconciliation_reference ||
+            null,
+        },
+      },
     );
 
     return {
@@ -7399,6 +7520,31 @@ export async function refundInvoicePayment(
       'COMMIT',
     );
 
+    await emitInvoicingAutomationEvent(
+      context,
+      {
+        triggerKey:
+          'invoicing.payment.refunded',
+        recordType:
+          'payment',
+        recordId:
+          paymentId,
+        idempotencySeed:
+          'refunded:' +
+          refundId,
+        payload: {
+          refundId,
+          refundNumber,
+          paymentNumber:
+            String(
+              payment.payment_number,
+            ),
+          amount,
+          reason,
+        },
+      },
+    );
+
     return {
       refundId,
       refundNumber,
@@ -7605,6 +7751,35 @@ export async function reverseInvoicePaymentRefund(
 
     await client.query(
       'COMMIT',
+    );
+
+    await emitInvoicingAutomationEvent(
+      context,
+      {
+        triggerKey:
+          'invoicing.payment.refund_reversed',
+        recordType:
+          'payment',
+        recordId:
+          String(
+            refund.payment_id,
+          ),
+        idempotencySeed:
+          'refund-reversed:' +
+          refundId,
+        payload: {
+          refundId,
+          refundNumber:
+            String(
+              refund.refund_number,
+            ),
+          paymentNumber:
+            String(
+              refund.payment_number,
+            ),
+          reason,
+        },
+      },
     );
 
     return {
