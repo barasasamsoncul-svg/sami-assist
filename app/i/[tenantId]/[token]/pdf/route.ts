@@ -81,8 +81,15 @@ export async function GET(
         ) +
       '.pdf';
 
-    return new NextResponse(
-      pdf,
+  const pdfBody =
+    Uint8Array
+      .from(
+        pdf,
+      )
+      .buffer;
+
+  return new NextResponse(
+    pdfBody,
       {
         status:
           200,
