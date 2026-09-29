@@ -10,6 +10,7 @@ export {
 } from '@/lib/apps/invoicing/queries';
 
 export {
+  allocateInvoicePayment,
   cancelInvoiceCreditNote,
   changeInvoiceStatus,
   createInvoice,
@@ -28,8 +29,13 @@ export {
   createRecurringInvoiceTemplate,
   duplicateInvoice,
   issueInvoiceCreditNote,
+  reconcileInvoicePayment,
+  recordCustomerPayment,
   recordInvoicePayment,
+  refundInvoicePayment,
   reverseInvoicePayment,
+  reverseInvoicePaymentAllocation,
+  reverseInvoicePaymentRefund,
   saveInvoicingTemplate,
   sendInvoiceReminder,
   sendInvoiceToCustomer,

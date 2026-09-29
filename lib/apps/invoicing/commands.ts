@@ -21,6 +21,8 @@ import type {
 import {
   postInvoiceConfirmationToAccounting,
   postInvoiceCreditToAccounting,
+  postInvoicePaymentAllocationToAccounting,
+  postInvoicePaymentRefundToAccounting,
   postInvoicePaymentToAccounting,
   postInvoiceWriteOffToAccounting,
   reverseInvoicingAccountingEvent,
@@ -4064,6 +4066,7 @@ async function reconcileInvoiceSettlementStatus(
                 ON p.id = a.payment_id
               WHERE a.invoice_id = i.id
                 AND a.company_id = i.company_id
+                AND a.status = 'posted'
                 AND p.status = 'posted'
                 AND p.deleted_at IS NULL
             ),
@@ -4971,6 +4974,23 @@ export async function recordInvoicePayment(
         invoice.balance_due,
       );
 
+    const allocationAmount =
+      money(
+        Math.min(
+          paymentAmount,
+          balance,
+        ),
+      );
+
+    const unappliedAmount =
+      money(
+        Math.max(
+          paymentAmount -
+          allocationAmount,
+          0,
+        ),
+      );
+
     const paymentSettings =
       await client.query(
         `
@@ -4992,27 +5012,13 @@ export async function recordInvoicePayment(
 
     if (
       !allowPartialPayments &&
-      paymentAmount <
+      allocationAmount <
         balance -
           0.0001
     ) {
       throw new InvoicingError(
         'INVALID_INPUT',
         'Partial payments are disabled for this company. Record the full outstanding balance.',
-        {
-          balance,
-        },
-      );
-    }
-
-    if (
-      paymentAmount >
-      balance +
-      0.0001
-    ) {
-      throw new InvoicingError(
-        'PAYMENT_EXCEEDS_BALANCE',
-        'Payment exceeds the invoice balance.',
         {
           balance,
         },
@@ -5128,6 +5134,7 @@ export async function recordInvoicePayment(
             payment_date,
             amount,
             currency,
+            exchange_rate,
             method,
             reference,
             status,
@@ -5136,9 +5143,9 @@ export async function recordInvoicePayment(
             updated_by
           )
           VALUES (
-            $1,$2,$3,$4,$5,$6,$7,$8,
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,
             'posted',
-            $9,$10,$10
+            $10,$11,$11
           )
           RETURNING
             id
@@ -5154,6 +5161,10 @@ export async function recordInvoicePayment(
           paymentAmount,
           String(
             invoice.currency,
+          ),
+          Number(
+            invoice.exchange_rate ||
+            1,
           ),
           paymentMethod,
           paymentReference ||
@@ -5171,32 +5182,53 @@ export async function recordInvoicePayment(
         payment.rows[0].id,
       );
 
-    await client.query(
+    const allocation =
+      await client.query(
       `
         INSERT INTO invoicing_payment_allocations (
           company_id,
           payment_id,
           invoice_id,
           amount,
+          status,
+          operation_key,
           created_by
         )
         VALUES (
-          $1,$2,$3,$4,$5
+          $1,$2,$3,$4,
+          'posted',
+          'initial:' ||
+          gen_random_uuid()::text,
+          $5
         )
+        RETURNING
+          id,
+          operation_key
       `,
       [
         context.companyId,
         paymentId,
         invoiceId,
-        paymentAmount,
+        allocationAmount,
         context.userId,
       ],
     );
 
+    const allocationId =
+      String(
+        allocation.rows[0].id,
+      );
+
+    const operationKey =
+      String(
+        allocation.rows[0]
+          .operation_key,
+      );
+
     const remaining =
       money(
         balance -
-        paymentAmount,
+        allocationAmount,
       );
 
     const nextStatus =
@@ -5288,6 +5320,37 @@ export async function recordInvoicePayment(
       },
     );
 
+    await postInvoicePaymentAllocationToAccounting(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        allocationId,
+        operationKey,
+        paymentId,
+        paymentNumber,
+        invoiceId,
+        invoiceNumber:
+          String(
+            invoice.invoice_number,
+          ),
+        allocationDate:
+          isoDate(
+            input.paymentDate,
+            new Date(),
+          ),
+        amount:
+          allocationAmount,
+        exchangeRate:
+          Number(
+            invoice.exchange_rate ||
+            1,
+          ),
+      },
+    );
+
     await recordInvoicingActivity(
       client,
       {
@@ -5311,6 +5374,9 @@ export async function recordInvoicePayment(
           paymentNumber,
           amount:
             paymentAmount,
+          allocatedAmount:
+            allocationAmount,
+          unappliedAmount,
           remainingBalance:
             remaining,
         },
@@ -5338,6 +5404,9 @@ export async function recordInvoicePayment(
           paymentNumber,
           amount:
             paymentAmount,
+          allocatedAmount:
+            allocationAmount,
+          unappliedAmount,
           invoiceStatus:
             nextStatus,
         },
@@ -5352,6 +5421,9 @@ export async function recordInvoicePayment(
         nextStatus,
       remainingBalance:
         remaining,
+      allocatedAmount:
+        allocationAmount,
+      unappliedAmount,
     };
   } catch (
     error
@@ -5368,6 +5440,1843 @@ export async function recordInvoicePayment(
   }
 }
 
+
+
+export async function recordCustomerPayment(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .PAYMENT_RECORD,
+    );
+
+  const customerId =
+    requireUuid(
+      input.customerId,
+      'Customer',
+    );
+
+  const paymentAmount =
+    numberInput(
+      input.amount,
+      'Payment amount',
+      {
+        min:
+          0.0001,
+      },
+    );
+
+  const paymentMethod =
+    cleanText(
+      input.method,
+      50,
+    ) ||
+    'other';
+
+  const paymentReference =
+    cleanText(
+      input.reference,
+      255,
+    );
+
+  const idempotencyKey =
+    cleanText(
+      input.idempotencyKey,
+      160,
+    ) ||
+    null;
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const customer =
+      await client.query(
+        `
+          SELECT
+            id,
+            currency,
+            status
+          FROM invoicing_customers
+          WHERE id = $1
+            AND company_id = $2
+            AND deleted_at IS NULL
+          FOR UPDATE
+        `,
+        [
+          customerId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      customer.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'Choose a valid customer for this company.',
+      );
+    }
+
+    if (
+      String(
+        customer.rows[0].status,
+      ) !==
+        'active'
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'Payments cannot be recorded for an inactive customer.',
+      );
+    }
+
+    const currency =
+      (
+        cleanText(
+          input.currency,
+          3,
+        ) ||
+        String(
+          customer.rows[0]
+            .currency ||
+          context.company
+            .currentCompany
+            .currency ||
+          'KES',
+        )
+      )
+        .toUpperCase()
+        .slice(
+          0,
+          3,
+        );
+
+    const exchangeRate =
+      numberInput(
+        input.exchangeRate ===
+          undefined ||
+        input.exchangeRate ===
+          null ||
+        input.exchangeRate ===
+          ''
+          ? 1
+          : input.exchangeRate,
+        'Payment exchange rate',
+        {
+          min:
+            0.00000001,
+        },
+      );
+
+    if (
+      idempotencyKey
+    ) {
+      await lockMasterIdentity(
+        client,
+        [
+          'invoicing-payment-idempotency',
+          context.companyId,
+          idempotencyKey,
+        ].join(
+          ':',
+        ),
+      );
+
+      const prior =
+        await client.query(
+          `
+            SELECT
+              p.id,
+              p.payment_number,
+              p.status
+            FROM invoicing_payments p
+            WHERE p.company_id = $1
+              AND p.idempotency_key = $2
+              AND p.deleted_at IS NULL
+            LIMIT 1
+          `,
+          [
+            context.companyId,
+            idempotencyKey,
+          ],
+        );
+
+      if (
+        prior.rows.length >
+          0
+      ) {
+        await client.query(
+          'COMMIT',
+        );
+
+        return {
+          paymentId:
+            String(
+              prior.rows[0].id,
+            ),
+          paymentNumber:
+            String(
+              prior.rows[0]
+                .payment_number,
+            ),
+          status:
+            String(
+              prior.rows[0].status,
+            ),
+          reused:
+            true,
+        };
+      }
+    }
+
+    if (
+      paymentReference
+    ) {
+      await lockMasterIdentity(
+        client,
+        [
+          'invoicing-payment-reference',
+          context.companyId,
+          paymentMethod
+            .toLowerCase(),
+          paymentReference
+            .toLowerCase(),
+        ].join(
+          ':',
+        ),
+      );
+
+      const duplicate =
+        await client.query(
+          `
+            SELECT
+              id,
+              payment_number
+            FROM invoicing_payments
+            WHERE company_id = $1
+              AND deleted_at IS NULL
+              AND status <> 'reversed'
+              AND LOWER(
+                BTRIM(
+                  COALESCE(
+                    method,
+                    ''
+                  )
+                )
+              ) = $2
+              AND LOWER(
+                BTRIM(
+                  COALESCE(
+                    reference,
+                    ''
+                  )
+                )
+              ) = $3
+            LIMIT 1
+          `,
+          [
+            context.companyId,
+            paymentMethod
+              .toLowerCase(),
+            paymentReference
+              .toLowerCase(),
+          ],
+        );
+
+      if (
+        duplicate.rows.length >
+          0
+      ) {
+        throw new InvoicingError(
+          'INVALID_INPUT',
+          'This payment reference has already been posted as ' +
+          String(
+            duplicate.rows[0]
+              .payment_number,
+          ) +
+          '.',
+        );
+      }
+    }
+
+    const paymentNumber =
+      await nextDocumentNumber(
+        client,
+        context.companyId,
+        context.userId,
+        'payment',
+      );
+
+    const paymentDate =
+      isoDate(
+        input.paymentDate,
+        new Date(),
+      );
+
+    const created =
+      await client.query(
+        `
+          INSERT INTO invoicing_payments (
+            company_id,
+            payment_number,
+            customer_id,
+            payment_date,
+            amount,
+            currency,
+            exchange_rate,
+            method,
+            reference,
+            idempotency_key,
+            status,
+            notes,
+            created_by,
+            updated_by
+          )
+          VALUES (
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+            'posted',
+            $11,$12,$12
+          )
+          RETURNING id
+        `,
+        [
+          context.companyId,
+          paymentNumber,
+          customerId,
+          paymentDate,
+          paymentAmount,
+          currency,
+          exchangeRate,
+          paymentMethod,
+          paymentReference ||
+            null,
+          idempotencyKey,
+          nullableText(
+            input.notes,
+            3000,
+          ),
+          context.userId,
+        ],
+      );
+
+    const paymentId =
+      String(
+        created.rows[0].id,
+      );
+
+    await postInvoicePaymentToAccounting(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        paymentId,
+        paymentNumber,
+        paymentDate,
+        amount:
+          paymentAmount,
+        exchangeRate,
+      },
+    );
+
+    await recordMasterDataActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        model:
+          'invoicing.payment',
+        recordId:
+          paymentId,
+        type:
+          'invoicing.payment_received',
+        content:
+          'Payment ' +
+          paymentNumber +
+          ' received and left unapplied.',
+        metadata: {
+          customerId,
+          amount:
+            paymentAmount,
+          currency,
+          method:
+            paymentMethod,
+        },
+      },
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    await emitInvoicingAutomationEvent(
+      context,
+      {
+        triggerKey:
+          'invoicing.payment.posted',
+        recordType:
+          'payment',
+        recordId:
+          paymentId,
+        idempotencySeed:
+          'posted:' +
+          paymentId,
+        payload: {
+          paymentNumber,
+          amount:
+            paymentAmount,
+          allocatedAmount:
+            0,
+          unappliedAmount:
+            paymentAmount,
+        },
+      },
+    );
+
+    return {
+      paymentId,
+      paymentNumber,
+      status:
+        'posted',
+      amount:
+        paymentAmount,
+      allocatedAmount:
+        0,
+      unappliedAmount:
+        paymentAmount,
+      reused:
+        false,
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
+export async function allocateInvoicePayment(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .PAYMENT_RECORD,
+    );
+
+  const paymentId =
+    requireUuid(
+      input.paymentId,
+      'Payment',
+    );
+
+  const invoiceId =
+    requireUuid(
+      input.invoiceId,
+      'Invoice',
+    );
+
+  const amount =
+    numberInput(
+      input.amount,
+      'Allocation amount',
+      {
+        min:
+          0.0001,
+      },
+    );
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const paymentResult =
+      await client.query(
+        `
+          SELECT
+            p.id,
+            p.payment_number,
+            p.customer_id,
+            p.payment_date,
+            p.currency,
+            p.exchange_rate,
+            p.status,
+            b.unapplied_amount
+          FROM invoicing_payments p
+          INNER JOIN invoicing_payment_balances b
+            ON b.payment_id = p.id
+           AND b.company_id = p.company_id
+          WHERE p.id = $1
+            AND p.company_id = $2
+            AND p.deleted_at IS NULL
+          FOR UPDATE OF p
+        `,
+        [
+          paymentId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      paymentResult.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'PAYMENT_NOT_FOUND',
+        'Payment was not found.',
+      );
+    }
+
+    const payment =
+      paymentResult.rows[0];
+
+    if (
+      String(
+        payment.status,
+      ) !==
+        'posted'
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Only a posted payment can be allocated.',
+      );
+    }
+
+    const unapplied =
+      money(
+        payment.unapplied_amount,
+      );
+
+    if (
+      amount >
+      unapplied +
+        0.0001
+    ) {
+      throw new InvoicingError(
+        'PAYMENT_EXCEEDS_BALANCE',
+        'Allocation exceeds the unapplied payment balance.',
+        {
+          unapplied,
+        },
+      );
+    }
+
+    const invoiceResult =
+      await client.query(
+        `
+          SELECT
+            i.id,
+            i.invoice_number,
+            i.customer_id,
+            i.currency,
+            i.exchange_rate,
+            i.status,
+            a.balance_due,
+            a.effective_status
+          FROM invoicing_invoices i
+          INNER JOIN invoicing_aging a
+            ON a.invoice_id = i.id
+           AND a.company_id = i.company_id
+          WHERE i.id = $1
+            AND i.company_id = $2
+            AND i.deleted_at IS NULL
+          FOR UPDATE OF i
+        `,
+        [
+          invoiceId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      invoiceResult.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'INVOICE_NOT_FOUND',
+        'Invoice was not found.',
+      );
+    }
+
+    const invoice =
+      invoiceResult.rows[0];
+
+    const effectiveStatus =
+      String(
+        invoice.effective_status ||
+        invoice.status,
+      );
+
+    if (
+      [
+        'draft',
+        'pending_approval',
+        'rejected',
+        'paid',
+        'cancelled',
+        'void',
+        'written_off',
+      ].includes(
+        effectiveStatus,
+      )
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Payments can only be allocated to an open posted invoice.',
+      );
+    }
+
+    if (
+      String(
+        invoice.customer_id,
+      ) !==
+      String(
+        payment.customer_id,
+      )
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'This payment belongs to a different customer.',
+      );
+    }
+
+    if (
+      String(
+        invoice.currency,
+      ) !==
+      String(
+        payment.currency,
+      )
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'Payment currency must match the invoice currency.',
+      );
+    }
+
+    if (
+      Math.abs(
+        Number(
+          invoice.exchange_rate ||
+          1,
+        ) -
+        Number(
+          payment.exchange_rate ||
+          1,
+        ),
+      ) >
+        0.0000001
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'This invoice uses a different exchange rate. Multi-rate allocation is handled by the Multi-currency workflow.',
+      );
+    }
+
+    const balance =
+      money(
+        invoice.balance_due,
+      );
+
+    if (
+      amount >
+      balance +
+        0.0001
+    ) {
+      throw new InvoicingError(
+        'PAYMENT_EXCEEDS_BALANCE',
+        'Allocation exceeds the remaining invoice balance.',
+        {
+          balance,
+        },
+      );
+    }
+
+    const settings =
+      await client.query(
+        `
+          SELECT
+            allow_partial_payments
+          FROM invoicing_settings
+          WHERE company_id = $1
+          LIMIT 1
+        `,
+        [
+          context.companyId,
+        ],
+      );
+
+    if (
+      settings.rows[0]
+        ?.allow_partial_payments ===
+          false &&
+      amount <
+        balance -
+          0.0001
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'Partial payments are disabled for this company. Allocate the full remaining balance.',
+      );
+    }
+
+    const existing =
+      await client.query(
+        `
+          SELECT
+            id,
+            status
+          FROM invoicing_payment_allocations
+          WHERE company_id = $1
+            AND payment_id = $2
+            AND invoice_id = $3
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [
+          context.companyId,
+          paymentId,
+          invoiceId,
+        ],
+      );
+
+    const operationKey =
+      (
+        cleanText(
+          input.operationKey,
+          160,
+        ) ||
+        (
+          'allocate:' +
+          crypto.randomUUID()
+        )
+      ).slice(
+        0,
+        160,
+      );
+
+    let allocationId =
+      '';
+
+    if (
+      existing.rows.length >
+        0
+    ) {
+      if (
+        String(
+          existing.rows[0].status,
+        ) !==
+          'reversed'
+      ) {
+        throw new InvoicingError(
+          'INVALID_INPUT',
+          'This payment is already allocated to that invoice.',
+        );
+      }
+
+      allocationId =
+        String(
+          existing.rows[0].id,
+        );
+
+      await client.query(
+        `
+          UPDATE invoicing_payment_allocations
+          SET
+            amount = $4,
+            status = 'posted',
+            operation_key = $5,
+            created_by = $6,
+            reversed_at = NULL,
+            reversed_by = NULL,
+            reversal_reason = NULL,
+            created_at = NOW()
+          WHERE id = $1
+            AND company_id = $2
+            AND payment_id = $3
+        `,
+        [
+          allocationId,
+          context.companyId,
+          paymentId,
+          amount,
+          operationKey,
+          context.userId,
+        ],
+      );
+    } else {
+      const created =
+        await client.query(
+          `
+            INSERT INTO invoicing_payment_allocations (
+              company_id,
+              payment_id,
+              invoice_id,
+              amount,
+              status,
+              operation_key,
+              created_by
+            )
+            VALUES (
+              $1,$2,$3,$4,
+              'posted',
+              $5,$6
+            )
+            RETURNING id
+          `,
+          [
+            context.companyId,
+            paymentId,
+            invoiceId,
+            amount,
+            operationKey,
+            context.userId,
+          ],
+        );
+
+      allocationId =
+        String(
+          created.rows[0].id,
+        );
+    }
+
+    await postInvoicePaymentAllocationToAccounting(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        allocationId,
+        operationKey,
+        paymentId,
+        paymentNumber:
+          String(
+            payment.payment_number,
+          ),
+        invoiceId,
+        invoiceNumber:
+          String(
+            invoice.invoice_number,
+          ),
+        allocationDate:
+          String(
+            payment.payment_date,
+          ),
+        amount,
+        exchangeRate:
+          Number(
+            invoice.exchange_rate ||
+            1,
+          ),
+      },
+    );
+
+    const settlement =
+      await reconcileInvoiceSettlementStatus(
+        client,
+        context.companyId,
+        context.userId,
+        invoiceId,
+        'Payment ' +
+        String(
+          payment.payment_number,
+        ) +
+        ' allocated.',
+      );
+
+    await recordInvoicingActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        invoiceId,
+        type:
+          'invoice.payment_allocated',
+        content:
+          'Payment ' +
+          String(
+            payment.payment_number,
+          ) +
+          ' allocated.',
+        metadata: {
+          paymentId,
+          allocationId,
+          amount,
+          operationKey,
+          remainingBalance:
+            settlement.balanceDue,
+        },
+      },
+    );
+
+    const paymentBalance =
+      await client.query(
+        `
+          SELECT
+            allocated_amount,
+            refunded_amount,
+            unapplied_amount
+          FROM invoicing_payment_balances
+          WHERE payment_id = $1
+            AND company_id = $2
+          LIMIT 1
+        `,
+        [
+          paymentId,
+          context.companyId,
+        ],
+      );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return {
+      allocationId,
+      paymentId,
+      invoiceId,
+      invoiceStatus:
+        settlement.status,
+      remainingBalance:
+        settlement.balanceDue,
+      allocatedAmount:
+        money(
+          paymentBalance.rows[0]
+            ?.allocated_amount,
+        ),
+      refundedAmount:
+        money(
+          paymentBalance.rows[0]
+            ?.refunded_amount,
+        ),
+      unappliedAmount:
+        money(
+          paymentBalance.rows[0]
+            ?.unapplied_amount,
+        ),
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
+export async function reverseInvoicePaymentAllocation(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .PAYMENT_RECORD,
+    );
+
+  const allocationId =
+    requireUuid(
+      input.allocationId,
+      'Payment allocation',
+    );
+
+  const reason =
+    cleanText(
+      input.reason,
+      2000,
+    );
+
+  if (!reason) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'An allocation reversal reason is required.',
+    );
+  }
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const result =
+      await client.query(
+        `
+          SELECT
+            a.id,
+            a.payment_id,
+            a.invoice_id,
+            a.amount,
+            a.status,
+            a.operation_key,
+            p.payment_number,
+            i.invoice_number
+          FROM invoicing_payment_allocations a
+          INNER JOIN invoicing_payments p
+            ON p.id = a.payment_id
+           AND p.company_id = a.company_id
+          INNER JOIN invoicing_invoices i
+            ON i.id = a.invoice_id
+           AND i.company_id = a.company_id
+          WHERE a.id = $1
+            AND a.company_id = $2
+          FOR UPDATE OF a
+        `,
+        [
+          allocationId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      result.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'PAYMENT_NOT_FOUND',
+        'Payment allocation was not found.',
+      );
+    }
+
+    const allocation =
+      result.rows[0];
+
+    if (
+      String(
+        allocation.status,
+      ) !==
+        'posted'
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Only a posted allocation can be reversed.',
+      );
+    }
+
+    if (
+      !allocation.operation_key
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'This legacy payment allocation must be corrected by reversing the original payment.',
+      );
+    }
+
+    const operationKey =
+      String(
+        allocation.operation_key,
+      );
+
+    await client.query(
+      `
+        UPDATE invoicing_payment_allocations
+        SET
+          status = 'reversed',
+          reversed_at = NOW(),
+          reversed_by = $3,
+          reversal_reason = $4
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [
+        allocationId,
+        context.companyId,
+        context.userId,
+        reason,
+      ],
+    );
+
+    await reverseInvoicingAccountingEvent(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        originalEventKey:
+          'payment-allocation:' +
+          allocationId +
+          ':' +
+          operationKey,
+        reversalEventKey:
+          'payment-allocation-reversal:' +
+          allocationId +
+          ':' +
+          operationKey,
+        sourceType:
+          'payment_allocation_reversal',
+        sourceId:
+          allocationId,
+        description:
+          'Payment ' +
+          String(
+            allocation.payment_number,
+          ) +
+          ' allocation reversed',
+      },
+    );
+
+    const settlement =
+      await reconcileInvoiceSettlementStatus(
+        client,
+        context.companyId,
+        context.userId,
+        String(
+          allocation.invoice_id,
+        ),
+        'Payment allocation reversed: ' +
+        reason,
+      );
+
+    await recordInvoicingActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        invoiceId:
+          String(
+            allocation.invoice_id,
+          ),
+        type:
+          'invoice.payment_allocation_reversed',
+        content:
+          'Allocation from payment ' +
+          String(
+            allocation.payment_number,
+          ) +
+          ' reversed.',
+        metadata: {
+          allocationId,
+          paymentId:
+            String(
+              allocation.payment_id,
+            ),
+          amount:
+            money(
+              allocation.amount,
+            ),
+          reason,
+        },
+      },
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return {
+      allocationId,
+      paymentId:
+        String(
+          allocation.payment_id,
+        ),
+      invoiceId:
+        String(
+          allocation.invoice_id,
+        ),
+      status:
+        'reversed',
+      invoiceStatus:
+        settlement.status,
+      remainingBalance:
+        settlement.balanceDue,
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
+export async function reconcileInvoicePayment(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .PAYMENT_RECORD,
+    );
+
+  const paymentId =
+    requireUuid(
+      input.paymentId,
+      'Payment',
+    );
+
+  const reference =
+    cleanText(
+      input.reference,
+      255,
+    );
+
+  const notes =
+    nullableText(
+      input.notes,
+      3000,
+    );
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const result =
+      await client.query(
+        `
+          SELECT
+            payment_number,
+            status,
+            reconciled_at
+          FROM invoicing_payments
+          WHERE id = $1
+            AND company_id = $2
+            AND deleted_at IS NULL
+          FOR UPDATE
+        `,
+        [
+          paymentId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      result.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'PAYMENT_NOT_FOUND',
+        'Payment was not found.',
+      );
+    }
+
+    if (
+      String(
+        result.rows[0].status,
+      ) !==
+        'posted'
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Only a posted payment can be reconciled.',
+      );
+    }
+
+    if (
+      result.rows[0]
+        .reconciled_at
+    ) {
+      await client.query(
+        'COMMIT',
+      );
+
+      return {
+        paymentId,
+        paymentNumber:
+          String(
+            result.rows[0]
+              .payment_number,
+          ),
+        reconciled:
+          true,
+        reused:
+          true,
+      };
+    }
+
+    await client.query(
+      `
+        UPDATE invoicing_payments
+        SET
+          reconciled_at = NOW(),
+          reconciled_by = $3,
+          reconciliation_reference = $4,
+          reconciliation_notes = $5,
+          updated_by = $3,
+          updated_at = NOW()
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [
+        paymentId,
+        context.companyId,
+        context.userId,
+        reference ||
+          null,
+        notes,
+      ],
+    );
+
+    await recordMasterDataActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        model:
+          'invoicing.payment',
+        recordId:
+          paymentId,
+        type:
+          'invoicing.payment_reconciled',
+        content:
+          'Payment ' +
+          String(
+            result.rows[0]
+              .payment_number,
+          ) +
+          ' reconciled.',
+        metadata: {
+          reference:
+            reference ||
+            null,
+          notes,
+        },
+      },
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return {
+      paymentId,
+      paymentNumber:
+        String(
+          result.rows[0]
+            .payment_number,
+        ),
+      reconciled:
+        true,
+      reused:
+        false,
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
+export async function refundInvoicePayment(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .PAYMENT_RECORD,
+    );
+
+  const paymentId =
+    requireUuid(
+      input.paymentId,
+      'Payment',
+    );
+
+  const amount =
+    numberInput(
+      input.amount,
+      'Refund amount',
+      {
+        min:
+          0.0001,
+      },
+    );
+
+  const reason =
+    cleanText(
+      input.reason,
+      2000,
+    );
+
+  if (!reason) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'A refund reason is required.',
+    );
+  }
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const paymentResult =
+      await client.query(
+        `
+          SELECT
+            p.id,
+            p.payment_number,
+            p.status,
+            p.currency,
+            p.exchange_rate,
+            p.method,
+            b.unapplied_amount
+          FROM invoicing_payments p
+          INNER JOIN invoicing_payment_balances b
+            ON b.payment_id = p.id
+           AND b.company_id = p.company_id
+          WHERE p.id = $1
+            AND p.company_id = $2
+            AND p.deleted_at IS NULL
+          FOR UPDATE OF p
+        `,
+        [
+          paymentId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      paymentResult.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'PAYMENT_NOT_FOUND',
+        'Payment was not found.',
+      );
+    }
+
+    const payment =
+      paymentResult.rows[0];
+
+    if (
+      String(
+        payment.status,
+      ) !==
+        'posted'
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Only a posted payment can be refunded.',
+      );
+    }
+
+    const unapplied =
+      money(
+        payment.unapplied_amount,
+      );
+
+    if (
+      amount >
+      unapplied +
+        0.0001
+    ) {
+      throw new InvoicingError(
+        'PAYMENT_EXCEEDS_BALANCE',
+        'Only the unapplied portion of a payment can be refunded.',
+        {
+          unapplied,
+        },
+      );
+    }
+
+    const refundNumber =
+      await nextDocumentNumber(
+        client,
+        context.companyId,
+        context.userId,
+        'payment',
+      );
+
+    const refundDate =
+      isoDate(
+        input.refundDate,
+        new Date(),
+      );
+
+    const created =
+      await client.query(
+        `
+          INSERT INTO invoicing_payment_refunds (
+            company_id,
+            payment_id,
+            refund_number,
+            refund_date,
+            amount,
+            currency,
+            method,
+            reference,
+            reason,
+            status,
+            created_by,
+            updated_by
+          )
+          VALUES (
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,
+            'posted',
+            $10,$10
+          )
+          RETURNING id
+        `,
+        [
+          context.companyId,
+          paymentId,
+          refundNumber,
+          refundDate,
+          amount,
+          String(
+            payment.currency,
+          ),
+          cleanText(
+            input.method,
+            50,
+          ) ||
+          String(
+            payment.method ||
+            'other',
+          ),
+          cleanText(
+            input.reference,
+            255,
+          ) ||
+          null,
+          reason,
+          context.userId,
+        ],
+      );
+
+    const refundId =
+      String(
+        created.rows[0].id,
+      );
+
+    await postInvoicePaymentRefundToAccounting(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        refundId,
+        refundNumber,
+        refundDate,
+        amount,
+        exchangeRate:
+          Number(
+            payment.exchange_rate ||
+            1,
+          ),
+      },
+    );
+
+    await recordMasterDataActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        model:
+          'invoicing.payment_refund',
+        recordId:
+          refundId,
+        type:
+          'invoicing.payment_refunded',
+        content:
+          'Refund ' +
+          refundNumber +
+          ' posted against payment ' +
+          String(
+            payment.payment_number,
+          ) +
+          '.',
+        metadata: {
+          paymentId,
+          amount,
+          reason,
+        },
+      },
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return {
+      refundId,
+      refundNumber,
+      paymentId,
+      status:
+        'posted',
+      amount,
+      unappliedAmount:
+        money(
+          unapplied -
+          amount,
+        ),
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
+export async function reverseInvoicePaymentRefund(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .PAYMENT_RECORD,
+    );
+
+  const refundId =
+    requireUuid(
+      input.refundId,
+      'Payment refund',
+    );
+
+  const reason =
+    cleanText(
+      input.reason,
+      2000,
+    );
+
+  if (!reason) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'A refund reversal reason is required.',
+    );
+  }
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const result =
+      await client.query(
+        `
+          SELECT
+            r.id,
+            r.payment_id,
+            r.refund_number,
+            r.status,
+            p.payment_number
+          FROM invoicing_payment_refunds r
+          INNER JOIN invoicing_payments p
+            ON p.id = r.payment_id
+           AND p.company_id = r.company_id
+          WHERE r.id = $1
+            AND r.company_id = $2
+          FOR UPDATE OF r
+        `,
+        [
+          refundId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      result.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'PAYMENT_NOT_FOUND',
+        'Payment refund was not found.',
+      );
+    }
+
+    const refund =
+      result.rows[0];
+
+    if (
+      String(
+        refund.status,
+      ) !==
+        'posted'
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Only a posted refund can be reversed.',
+      );
+    }
+
+    await client.query(
+      `
+        UPDATE invoicing_payment_refunds
+        SET
+          status = 'reversed',
+          reversed_at = NOW(),
+          reversed_by = $3,
+          reversal_reason = $4,
+          updated_by = $3,
+          updated_at = NOW()
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [
+        refundId,
+        context.companyId,
+        context.userId,
+        reason,
+      ],
+    );
+
+    await reverseInvoicingAccountingEvent(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        originalEventKey:
+          'payment-refund:' +
+          refundId,
+        reversalEventKey:
+          'payment-refund-reversal:' +
+          refundId,
+        sourceType:
+          'payment_refund_reversal',
+        sourceId:
+          refundId,
+        description:
+          'Refund ' +
+          String(
+            refund.refund_number,
+          ) +
+          ' reversed',
+      },
+    );
+
+    await recordMasterDataActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        model:
+          'invoicing.payment_refund',
+        recordId:
+          refundId,
+        type:
+          'invoicing.payment_refund_reversed',
+        content:
+          'Refund ' +
+          String(
+            refund.refund_number,
+          ) +
+          ' reversed.',
+        metadata: {
+          paymentId:
+            String(
+              refund.payment_id,
+            ),
+          paymentNumber:
+            String(
+              refund.payment_number,
+            ),
+          reason,
+        },
+      },
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return {
+      refundId,
+      paymentId:
+        String(
+          refund.payment_id,
+        ),
+      status:
+        'reversed',
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
 
 
 export async function reverseInvoicePayment(
@@ -5417,7 +7326,8 @@ export async function reverseInvoicePayment(
             payment_number,
             amount,
             currency,
-            status
+            status,
+            reconciled_at
           FROM invoicing_payments
           WHERE id = $1
             AND company_id = $2
@@ -5455,24 +7365,127 @@ export async function reverseInvoicePayment(
       );
     }
 
-    const allocations =
+    const refundCheck =
       await client.query(
         `
-          SELECT
-            invoice_id,
-            amount
-          FROM invoicing_payment_allocations
+          SELECT COUNT(*)::int AS count
+          FROM invoicing_payment_refunds
           WHERE payment_id = $1
             AND company_id = $2
-          ORDER BY
-            created_at,
-            id
+            AND status = 'posted'
         `,
         [
           paymentId,
           context.companyId,
         ],
       );
+
+    if (
+      Number(
+        refundCheck.rows[0]
+          ?.count ||
+        0,
+      ) >
+        0
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Reverse or settle posted refunds before reversing the original payment.',
+      );
+    }
+
+    const allocations =
+      await client.query(
+        `
+          SELECT
+            a.id,
+            a.invoice_id,
+            a.amount,
+            a.operation_key,
+            i.invoice_number
+          FROM invoicing_payment_allocations a
+          INNER JOIN invoicing_invoices i
+            ON i.id = a.invoice_id
+           AND i.company_id = a.company_id
+          WHERE a.payment_id = $1
+            AND a.company_id = $2
+            AND a.status = 'posted'
+          ORDER BY
+            a.created_at,
+            a.id
+          FOR UPDATE OF a
+        `,
+        [
+          paymentId,
+          context.companyId,
+        ],
+      );
+
+    for (
+      const allocation
+      of allocations.rows
+    ) {
+      const allocationId =
+        String(
+          allocation.id,
+        );
+
+      const operationKey =
+        String(
+          allocation.operation_key ||
+          allocationId,
+        );
+
+      await client.query(
+        `
+          UPDATE invoicing_payment_allocations
+          SET
+            status = 'reversed',
+            reversed_at = NOW(),
+            reversed_by = $3,
+            reversal_reason = $4
+          WHERE id = $1
+            AND company_id = $2
+        `,
+        [
+          allocationId,
+          context.companyId,
+          context.userId,
+          'Payment reversal: ' +
+          reason,
+        ],
+      );
+
+      await reverseInvoicingAccountingEvent(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          originalEventKey:
+            'payment-allocation:' +
+            allocationId +
+            ':' +
+            operationKey,
+          reversalEventKey:
+            'payment-allocation-reversal:' +
+            allocationId +
+            ':' +
+            operationKey,
+          sourceType:
+            'payment_allocation_reversal',
+          sourceId:
+            allocationId,
+          description:
+            'Payment ' +
+            String(
+              payment.payment_number,
+            ) +
+            ' allocation reversed',
+        },
+      );
+    }
 
     await client.query(
       `
@@ -5490,7 +7503,9 @@ export async function reverseInvoicePayment(
               'reversedBy',
               ($3::uuid)::text,
               'reversalReason',
-              $4::text
+              $4::text,
+              'wasReconciled',
+              reconciled_at IS NOT NULL
             ),
           updated_by = $3::uuid,
           updated_at = NOW()
@@ -5612,39 +7627,39 @@ export async function reverseInvoicePayment(
       );
     }
 
-    if (
-      invoiceIds.length ===
-        0
-    ) {
-      await recordMasterDataActivity(
-        client,
-        {
-          companyId:
-            context.companyId,
-          userId:
-            context.userId,
-          model:
-            'invoicing.payment',
-          recordId:
-            paymentId,
-          type:
-            'invoicing.payment_reversed',
-          content:
-            'Payment ' +
-            String(
-              payment.payment_number,
-            ) +
-            ' reversed.',
-          metadata: {
-            amount:
-              money(
-                payment.amount,
-              ),
-            reason,
-          },
+    await recordMasterDataActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        model:
+          'invoicing.payment',
+        recordId:
+          paymentId,
+        type:
+          'invoicing.payment_reversed',
+        content:
+          'Payment ' +
+          String(
+            payment.payment_number,
+          ) +
+          ' reversed.',
+        metadata: {
+          amount:
+            money(
+              payment.amount,
+            ),
+          reason,
+          settlements,
+          wasReconciled:
+            Boolean(
+              payment.reconciled_at,
+            ),
         },
-      );
-    }
+      },
+    );
 
     await client.query(
       'COMMIT',

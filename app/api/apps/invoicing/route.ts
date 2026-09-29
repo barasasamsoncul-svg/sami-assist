@@ -5,6 +5,7 @@ import {
 
 import {
   InvoicingError,
+  allocateInvoicePayment,
   cancelInvoiceCreditNote,
   changeInvoiceStatus,
   createInvoice,
@@ -25,8 +26,13 @@ import {
   getInvoicingInvoiceDetail,
   getInvoicingWorkspaceData,
   issueInvoiceCreditNote,
+  reconcileInvoicePayment,
+  recordCustomerPayment,
   recordInvoicePayment,
+  refundInvoicePayment,
   reverseInvoicePayment,
+  reverseInvoicePaymentAllocation,
+  reverseInvoicePaymentRefund,
   saveInvoicingTemplate,
   sendInvoiceReminder,
   sendInvoiceToCustomer,
@@ -453,6 +459,48 @@ export async function POST(
       case 'record_payment':
         result =
           await recordInvoicePayment(
+            payload,
+          );
+        break;
+
+      case 'record_customer_payment':
+        result =
+          await recordCustomerPayment(
+            payload,
+          );
+        break;
+
+      case 'allocate_payment':
+        result =
+          await allocateInvoicePayment(
+            payload,
+          );
+        break;
+
+      case 'reverse_payment_allocation':
+        result =
+          await reverseInvoicePaymentAllocation(
+            payload,
+          );
+        break;
+
+      case 'reconcile_payment':
+        result =
+          await reconcileInvoicePayment(
+            payload,
+          );
+        break;
+
+      case 'refund_payment':
+        result =
+          await refundInvoicePayment(
+            payload,
+          );
+        break;
+
+      case 'reverse_payment_refund':
+        result =
+          await reverseInvoicePaymentRefund(
             payload,
           );
         break;

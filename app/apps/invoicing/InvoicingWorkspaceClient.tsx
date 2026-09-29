@@ -6349,189 +6349,1181 @@ function Payments({
     ) =>
       Promise<boolean>;
 }) {
-  return (
-    <div className="sami-surface overflow-hidden rounded-[24px]">
-      <div className="border-b border-[var(--sami-border)] p-4 sm:p-5">
-        <p className="text-sm font-black">
-          Payment register
-        </p>
+  const postedPayments =
+    data.payments.filter(
+      payment =>
+        payment.status ===
+          'posted',
+    );
 
-        <p className="mt-1 text-xs text-slate-500">
-          Posted and reversed payments remain visible so the receivables ledger keeps a complete audit trail.
-        </p>
+  const companyCurrencyPayments =
+    postedPayments.filter(
+      payment =>
+        payment.currency ===
+          data.company.currency,
+    );
+
+  const companyCurrencyUnapplied =
+    companyCurrencyPayments.reduce(
+      (
+        total,
+        payment,
+      ) =>
+        total +
+        payment.unappliedAmount,
+      0,
+    );
+
+  const unreconciledCount =
+    postedPayments.filter(
+      payment =>
+        !payment.reconciledAt,
+    ).length;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard
+          label="Posted receipts"
+          value={
+            String(
+              postedPayments.length,
+            )
+          }
+          note="Cash receipts still active"
+          icon={Receipt}
+          tone="blue"
+        />
+
+        <MetricCard
+          label="Unreconciled"
+          value={
+            String(
+              unreconciledCount,
+            )
+          }
+          note="Receipts awaiting bank / cash matching"
+          icon={RefreshCw}
+          tone="amber"
+        />
+
+        <MetricCard
+          label="Unapplied"
+          value={
+            formatMoney(
+              companyCurrencyUnapplied,
+              data.company.currency,
+            )
+          }
+          note={
+            data.company.currency +
+            ' customer credit available'
+          }
+          icon={CircleDollarSign}
+          tone="emerald"
+        />
+
+        <MetricCard
+          label="Reversed"
+          value={
+            String(
+              data.payments.filter(
+                payment =>
+                  payment.status ===
+                    'reversed',
+              ).length,
+            )
+          }
+          note="Retained for audit"
+          icon={RefreshCw}
+          tone="rose"
+        />
       </div>
 
-      <div className="divide-y divide-[var(--sami-border)]">
-        {
-          data.payments.map(
-            payment => (
-              <div
-                key={
-                  payment.id
-                }
-                className="p-4"
-              >
-                <div className="grid gap-3 md:grid-cols-[150px_minmax(0,1fr)_160px_160px]">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-black">
-                        {
-                          payment
-                            .paymentNumber
-                        }
-                      </p>
+      {
+        data.capabilities
+          .canRecordPayment &&
+        (
+          <form
+            className="sami-surface rounded-[24px] p-4 sm:p-5"
+            onSubmit={
+              async event => {
+                event.preventDefault();
 
-                      <StatusPill
-                        value={
-                          payment.status
-                        }
-                      />
+                const element =
+                  event.currentTarget;
+
+                const form =
+                  new FormData(
+                    element,
+                  );
+
+                const saved =
+                  await run(
+                    {
+                      action:
+                        'record_customer_payment',
+                      customerId:
+                        form.get(
+                          'customerId',
+                        ),
+                      amount:
+                        form.get(
+                          'amount',
+                        ),
+                      paymentDate:
+                        form.get(
+                          'paymentDate',
+                        ),
+                      method:
+                        form.get(
+                          'method',
+                        ),
+                      reference:
+                        form.get(
+                          'reference',
+                        ),
+                      notes:
+                        form.get(
+                          'notes',
+                        ),
+                    },
+                    'Payment received. Allocate it to invoices when ready.',
+                  );
+
+                if (
+                  saved
+                ) {
+                  element.reset();
+                }
+              }
+            }
+          >
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-sm font-black">
+                  Receive customer payment
+                </p>
+                <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
+                  Record the money first. SaMi keeps it as unapplied customer credit until you allocate it to one or more invoices.
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-blue-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-blue-700 dark:text-blue-300">
+                Cash receipt → customer credit
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+              <label className="xl:col-span-2">
+                <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                  Customer
+                </span>
+                <select
+                  name="customerId"
+                  required
+                  defaultValue=""
+                  className="mt-1 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                >
+                  <option
+                    value=""
+                    disabled
+                  >
+                    Choose customer
+                  </option>
+                  {
+                    data.customers
+                      .filter(
+                        customer =>
+                          customer.status ===
+                            'active',
+                      )
+                      .map(
+                        customer => (
+                          <option
+                            key={
+                              customer.id
+                            }
+                            value={
+                              customer.id
+                            }
+                          >
+                            {
+                              customer.name
+                            } · {
+                              customer.currency
+                            }
+                          </option>
+                        ),
+                      )
+                  }
+                </select>
+              </label>
+
+              <label>
+                <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                  Amount
+                </span>
+                <input
+                  name="amount"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  required
+                  placeholder="0.00"
+                  className="mt-1 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                />
+              </label>
+
+              <label>
+                <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                  Date
+                </span>
+                <input
+                  name="paymentDate"
+                  type="date"
+                  className="mt-1 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                />
+              </label>
+
+              <label>
+                <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                  Method
+                </span>
+                <select
+                  name="method"
+                  defaultValue="mpesa"
+                  className="mt-1 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                >
+                  <option value="mpesa">
+                    M-Pesa
+                  </option>
+                  <option value="bank">
+                    Bank
+                  </option>
+                  <option value="cash">
+                    Cash
+                  </option>
+                  <option value="card">
+                    Card
+                  </option>
+                  <option value="other">
+                    Other
+                  </option>
+                </select>
+              </label>
+
+              <label>
+                <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                  Reference
+                </span>
+                <input
+                  name="reference"
+                  maxLength={255}
+                  placeholder="Txn / bank reference"
+                  className="mt-1 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                />
+              </label>
+            </div>
+
+            <div className="mt-3 flex flex-col gap-3 lg:flex-row">
+              <textarea
+                name="notes"
+                rows={2}
+                maxLength={3000}
+                placeholder="Receipt notes (optional)"
+                className="min-h-[44px] flex-1 rounded-xl border border-[var(--sami-border)] bg-transparent px-3 py-2.5 text-sm"
+              />
+
+              <button
+                type="submit"
+                disabled={
+                  pending
+                }
+                className="h-11 rounded-xl bg-blue-600 px-5 text-xs font-black text-white disabled:opacity-60"
+              >
+                Receive payment
+              </button>
+            </div>
+          </form>
+        )
+      }
+
+      <div className="sami-surface overflow-hidden rounded-[24px]">
+        <div className="border-b border-[var(--sami-border)] p-4 sm:p-5">
+          <p className="text-sm font-black">
+            Payment register
+          </p>
+
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            Receipts, allocations, refunds, reconciliation and reversals remain visible as one audit trail.
+          </p>
+        </div>
+
+        <div className="divide-y divide-[var(--sami-border)]">
+          {
+            data.payments.map(
+              payment => {
+                const eligibleInvoices =
+                  data.invoices.filter(
+                    invoice =>
+                      invoice.customerId ===
+                        payment.customerId &&
+                      invoice.currency ===
+                        payment.currency &&
+                      invoice.balanceDue >
+                        0 &&
+                      ![
+                        'draft',
+                        'pending_approval',
+                        'rejected',
+                        'paid',
+                        'cancelled',
+                        'void',
+                        'written_off',
+                      ].includes(
+                        invoice.status,
+                      ),
+                  );
+
+                const postedRefunds =
+                  payment.refunds.filter(
+                    refund =>
+                      refund.status ===
+                        'posted',
+                  );
+
+                return (
+                  <div
+                    key={
+                      payment.id
+                    }
+                    className="p-4 sm:p-5"
+                  >
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-black">
+                            {
+                              payment
+                                .paymentNumber
+                            }
+                          </p>
+
+                          <StatusPill
+                            value={
+                              payment.status
+                            }
+                          />
+
+                          {
+                            payment.reconciledAt
+                              ? (
+                                <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                                  Reconciled
+                                </span>
+                              )
+                              : payment.status ===
+                                  'posted'
+                                ? (
+                                  <span className="rounded-full bg-amber-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                                    Unreconciled
+                                  </span>
+                                )
+                                : null
+                          }
+                        </div>
+
+                        <p className="mt-1 text-xs text-slate-500">
+                          {
+                            payment
+                              .customerName ||
+                            'Customer'
+                          } · {
+                            payment.paymentDate
+                          } · {
+                            payment.method
+                          }
+                          {
+                            payment.reference
+                              ? ' · ' +
+                                payment.reference
+                              : ''
+                          }
+                        </p>
+
+                        <p className="mt-1 text-[11px] text-slate-400">
+                          {
+                            payment.invoiceNumbers.length >
+                              0
+                              ? 'Applied to ' +
+                                payment.invoiceNumbers.join(
+                                  ', ',
+                                )
+                              : 'No active invoice allocations yet'
+                          }
+                        </p>
+                      </div>
+
+                      <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-4 xl:min-w-[520px]">
+                        <PaymentAmount
+                          label="Received"
+                          value={
+                            formatMoney(
+                              payment.amount,
+                              payment.currency,
+                            )
+                          }
+                        />
+                        <PaymentAmount
+                          label="Allocated"
+                          value={
+                            formatMoney(
+                              payment.allocatedAmount,
+                              payment.currency,
+                            )
+                          }
+                        />
+                        <PaymentAmount
+                          label="Unapplied"
+                          value={
+                            formatMoney(
+                              payment.unappliedAmount,
+                              payment.currency,
+                            )
+                          }
+                          emphasis={
+                            payment.unappliedAmount >
+                              0
+                          }
+                        />
+                        <PaymentAmount
+                          label="Refunded"
+                          value={
+                            formatMoney(
+                              payment.refundedAmount,
+                              payment.currency,
+                            )
+                          }
+                        />
+                      </div>
                     </div>
 
-                    <p className="mt-1 text-xs text-slate-500">
-                      {
-                        payment
-                          .paymentDate
-                      }
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="font-bold">
-                      {
-                        payment
-                          .customerName ||
-                        'Customer'
-                      }
-                    </p>
-
-                    <p className="mt-1 text-xs text-slate-500">
-                      {
-                        payment
-                          .invoiceNumbers
-                          .join(
-                            ', ',
-                          ) ||
-                        'Unallocated'
-                      }
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-sm font-black">
-                      {
-                        formatMoney(
-                          payment.amount,
-                          payment.currency,
-                        )
-                      }
-                    </p>
-
-                    <p className="mt-1 text-xs capitalize text-slate-500">
-                      {
-                        payment.method
-                      }
-                    </p>
-                  </div>
-
-                  <div className="text-xs text-slate-500">
                     {
-                      payment.reference ||
-                      'No reference'
+                      payment.allocations.length >
+                        0 &&
+                      (
+                        <div className="mt-4 rounded-2xl border border-[var(--sami-border)] p-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                            Allocations
+                          </p>
+
+                          <div className="mt-2 space-y-2">
+                            {
+                              payment.allocations.map(
+                                allocation => (
+                                  <div
+                                    key={
+                                      allocation.id
+                                    }
+                                    className="flex flex-col gap-2 rounded-xl bg-[var(--sami-surface-soft)] p-3 sm:flex-row sm:items-center sm:justify-between"
+                                  >
+                                    <div>
+                                      <p className="text-xs font-black">
+                                        {
+                                          allocation.invoiceNumber
+                                        } · {
+                                          formatMoney(
+                                            allocation.amount,
+                                            payment.currency,
+                                          )
+                                        }
+                                      </p>
+                                      <p className="mt-1 text-[10px] uppercase tracking-wide text-slate-400">
+                                        {
+                                          allocation.status
+                                        }
+                                      </p>
+                                    </div>
+
+                                    {
+                                      data.capabilities
+                                        .canRecordPayment &&
+                                      payment.status ===
+                                        'posted' &&
+                                      allocation.status ===
+                                        'posted' &&
+                                      allocation.operationKey &&
+                                      (
+                                        <form
+                                          className="flex gap-2"
+                                          onSubmit={
+                                            async event => {
+                                              event.preventDefault();
+
+                                              const element =
+                                                event.currentTarget;
+
+                                              const form =
+                                                new FormData(
+                                                  element,
+                                                );
+
+                                              const saved =
+                                                await run(
+                                                  {
+                                                    action:
+                                                      'reverse_payment_allocation',
+                                                    allocationId:
+                                                      allocation.id,
+                                                    reason:
+                                                      form.get(
+                                                        'reason',
+                                                      ),
+                                                  },
+                                                  'Allocation reversed. The amount is unapplied again.',
+                                                );
+
+                                              if (
+                                                saved
+                                              ) {
+                                                element.reset();
+                                              }
+                                            }
+                                          }
+                                        >
+                                          <input
+                                            name="reason"
+                                            required
+                                            maxLength={2000}
+                                            placeholder="Reason"
+                                            className="h-9 min-w-0 rounded-lg border border-[var(--sami-border)] bg-transparent px-2 text-[11px]"
+                                          />
+                                          <button
+                                            type="submit"
+                                            disabled={
+                                              pending
+                                            }
+                                            className="h-9 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 text-[10px] font-black text-amber-700 disabled:opacity-60 dark:text-amber-300"
+                                          >
+                                            Unallocate
+                                          </button>
+                                        </form>
+                                      )
+                                    }
+                                  </div>
+                                ),
+                              )
+                            }
+                          </div>
+                        </div>
+                      )
+                    }
+
+                    {
+                      payment.refunds.length >
+                        0 &&
+                      (
+                        <div className="mt-3 rounded-2xl border border-[var(--sami-border)] p-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                            Refunds
+                          </p>
+
+                          <div className="mt-2 space-y-2">
+                            {
+                              payment.refunds.map(
+                                refund => (
+                                  <div
+                                    key={
+                                      refund.id
+                                    }
+                                    className="flex flex-col gap-2 rounded-xl bg-[var(--sami-surface-soft)] p-3 sm:flex-row sm:items-center sm:justify-between"
+                                  >
+                                    <div>
+                                      <p className="text-xs font-black">
+                                        {
+                                          refund.refundNumber
+                                        } · {
+                                          formatMoney(
+                                            refund.amount,
+                                            payment.currency,
+                                          )
+                                        }
+                                      </p>
+                                      <p className="mt-1 text-[10px] text-slate-400">
+                                        {
+                                          refund.refundDate
+                                        } · {
+                                          refund.status
+                                        } · {
+                                          refund.reason
+                                        }
+                                      </p>
+                                    </div>
+
+                                    {
+                                      data.capabilities
+                                        .canRecordPayment &&
+                                      refund.status ===
+                                        'posted' &&
+                                      (
+                                        <form
+                                          className="flex gap-2"
+                                          onSubmit={
+                                            async event => {
+                                              event.preventDefault();
+
+                                              const element =
+                                                event.currentTarget;
+
+                                              const form =
+                                                new FormData(
+                                                  element,
+                                                );
+
+                                              const saved =
+                                                await run(
+                                                  {
+                                                    action:
+                                                      'reverse_payment_refund',
+                                                    refundId:
+                                                      refund.id,
+                                                    reason:
+                                                      form.get(
+                                                        'reason',
+                                                      ),
+                                                  },
+                                                  'Refund reversed.',
+                                                );
+
+                                              if (
+                                                saved
+                                              ) {
+                                                element.reset();
+                                              }
+                                            }
+                                          }
+                                        >
+                                          <input
+                                            name="reason"
+                                            required
+                                            maxLength={2000}
+                                            placeholder="Reason"
+                                            className="h-9 min-w-0 rounded-lg border border-[var(--sami-border)] bg-transparent px-2 text-[11px]"
+                                          />
+                                          <button
+                                            type="submit"
+                                            disabled={
+                                              pending
+                                            }
+                                            className="h-9 rounded-lg border border-[var(--sami-border)] px-3 text-[10px] font-black disabled:opacity-60"
+                                          >
+                                            Reverse refund
+                                          </button>
+                                        </form>
+                                      )
+                                    }
+                                  </div>
+                                ),
+                              )
+                            }
+                          </div>
+                        </div>
+                      )
+                    }
+
+                    {
+                      data.capabilities
+                        .canRecordPayment &&
+                      payment.status ===
+                        'posted' &&
+                      (
+                        <div className="mt-4 grid gap-3 xl:grid-cols-3">
+                          {
+                            payment.unappliedAmount >
+                              0 &&
+                            eligibleInvoices.length >
+                              0 &&
+                            (
+                              <form
+                                className="rounded-2xl border border-blue-500/15 bg-blue-500/[0.04] p-3"
+                                onSubmit={
+                                  async event => {
+                                    event.preventDefault();
+
+                                    const element =
+                                      event.currentTarget;
+
+                                    const form =
+                                      new FormData(
+                                        element,
+                                      );
+
+                                    const saved =
+                                      await run(
+                                        {
+                                          action:
+                                            'allocate_payment',
+                                          paymentId:
+                                            payment.id,
+                                          invoiceId:
+                                            form.get(
+                                              'invoiceId',
+                                            ),
+                                          amount:
+                                            form.get(
+                                              'amount',
+                                            ),
+                                        },
+                                        'Payment allocated to invoice.',
+                                      );
+
+                                    if (
+                                      saved
+                                    ) {
+                                      element.reset();
+                                    }
+                                  }
+                                }
+                              >
+                                <p className="text-xs font-black text-blue-700 dark:text-blue-300">
+                                  Allocate balance
+                                </p>
+                                <select
+                                  name="invoiceId"
+                                  required
+                                  defaultValue=""
+                                  className="mt-2 h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-2 text-xs"
+                                >
+                                  <option
+                                    value=""
+                                    disabled
+                                  >
+                                    Choose invoice
+                                  </option>
+                                  {
+                                    eligibleInvoices.map(
+                                      invoice => (
+                                        <option
+                                          key={
+                                            invoice.id
+                                          }
+                                          value={
+                                            invoice.id
+                                          }
+                                        >
+                                          {
+                                            invoice.invoiceNumber
+                                          } · {
+                                            formatMoney(
+                                              invoice.balanceDue,
+                                              invoice.currency,
+                                            )
+                                          }
+                                        </option>
+                                      ),
+                                    )
+                                  }
+                                </select>
+                                <div className="mt-2 flex gap-2">
+                                  <input
+                                    name="amount"
+                                    type="number"
+                                    min="0.01"
+                                    max={
+                                      payment.unappliedAmount
+                                    }
+                                    step="0.01"
+                                    required
+                                    placeholder="Amount"
+                                    className="h-10 min-w-0 flex-1 rounded-xl border border-[var(--sami-border)] bg-transparent px-2 text-xs"
+                                  />
+                                  <button
+                                    type="submit"
+                                    disabled={
+                                      pending
+                                    }
+                                    className="h-10 rounded-xl bg-blue-600 px-3 text-[10px] font-black text-white disabled:opacity-60"
+                                  >
+                                    Allocate
+                                  </button>
+                                </div>
+                              </form>
+                            )
+                          }
+
+                          {
+                            payment.unappliedAmount >
+                              0 &&
+                            (
+                              <form
+                                className="rounded-2xl border border-amber-500/15 bg-amber-500/[0.04] p-3"
+                                onSubmit={
+                                  async event => {
+                                    event.preventDefault();
+
+                                    const element =
+                                      event.currentTarget;
+
+                                    const form =
+                                      new FormData(
+                                        element,
+                                      );
+
+                                    const saved =
+                                      await run(
+                                        {
+                                          action:
+                                            'refund_payment',
+                                          paymentId:
+                                            payment.id,
+                                          amount:
+                                            form.get(
+                                              'amount',
+                                            ),
+                                          method:
+                                            form.get(
+                                              'method',
+                                            ),
+                                          reference:
+                                            form.get(
+                                              'reference',
+                                            ),
+                                          reason:
+                                            form.get(
+                                              'reason',
+                                            ),
+                                        },
+                                        'Unapplied payment amount refunded.',
+                                      );
+
+                                    if (
+                                      saved
+                                    ) {
+                                      element.reset();
+                                    }
+                                  }
+                                }
+                              >
+                                <p className="text-xs font-black text-amber-700 dark:text-amber-300">
+                                  Refund unapplied money
+                                </p>
+                                <div className="mt-2 grid grid-cols-2 gap-2">
+                                  <input
+                                    name="amount"
+                                    type="number"
+                                    min="0.01"
+                                    max={
+                                      payment.unappliedAmount
+                                    }
+                                    step="0.01"
+                                    required
+                                    placeholder="Amount"
+                                    className="h-10 rounded-xl border border-[var(--sami-border)] bg-transparent px-2 text-xs"
+                                  />
+                                  <select
+                                    name="method"
+                                    defaultValue={
+                                      payment.method
+                                    }
+                                    className="h-10 rounded-xl border border-[var(--sami-border)] bg-transparent px-2 text-xs"
+                                  >
+                                    <option value="mpesa">
+                                      M-Pesa
+                                    </option>
+                                    <option value="bank">
+                                      Bank
+                                    </option>
+                                    <option value="cash">
+                                      Cash
+                                    </option>
+                                    <option value="card">
+                                      Card
+                                    </option>
+                                    <option value="other">
+                                      Other
+                                    </option>
+                                  </select>
+                                </div>
+                                <input
+                                  name="reference"
+                                  maxLength={255}
+                                  placeholder="Refund reference"
+                                  className="mt-2 h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-2 text-xs"
+                                />
+                                <div className="mt-2 flex gap-2">
+                                  <input
+                                    name="reason"
+                                    required
+                                    maxLength={2000}
+                                    placeholder="Reason"
+                                    className="h-10 min-w-0 flex-1 rounded-xl border border-[var(--sami-border)] bg-transparent px-2 text-xs"
+                                  />
+                                  <button
+                                    type="submit"
+                                    disabled={
+                                      pending
+                                    }
+                                    className="h-10 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 text-[10px] font-black text-amber-700 disabled:opacity-60 dark:text-amber-300"
+                                  >
+                                    Refund
+                                  </button>
+                                </div>
+                              </form>
+                            )
+                          }
+
+                          {
+                            !payment.reconciledAt &&
+                            (
+                              <form
+                                className="rounded-2xl border border-emerald-500/15 bg-emerald-500/[0.04] p-3"
+                                onSubmit={
+                                  async event => {
+                                    event.preventDefault();
+
+                                    const element =
+                                      event.currentTarget;
+
+                                    const form =
+                                      new FormData(
+                                        element,
+                                      );
+
+                                    const saved =
+                                      await run(
+                                        {
+                                          action:
+                                            'reconcile_payment',
+                                          paymentId:
+                                            payment.id,
+                                          reference:
+                                            form.get(
+                                              'reference',
+                                            ),
+                                          notes:
+                                            form.get(
+                                              'notes',
+                                            ),
+                                        },
+                                        'Payment reconciled.',
+                                      );
+
+                                    if (
+                                      saved
+                                    ) {
+                                      element.reset();
+                                    }
+                                  }
+                                }
+                              >
+                                <p className="text-xs font-black text-emerald-700 dark:text-emerald-300">
+                                  Reconcile receipt
+                                </p>
+                                <input
+                                  name="reference"
+                                  maxLength={255}
+                                  defaultValue={
+                                    payment.reference ||
+                                    ''
+                                  }
+                                  placeholder="Statement / cash-up reference"
+                                  className="mt-2 h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-2 text-xs"
+                                />
+                                <div className="mt-2 flex gap-2">
+                                  <input
+                                    name="notes"
+                                    maxLength={3000}
+                                    placeholder="Reconciliation notes"
+                                    className="h-10 min-w-0 flex-1 rounded-xl border border-[var(--sami-border)] bg-transparent px-2 text-xs"
+                                  />
+                                  <button
+                                    type="submit"
+                                    disabled={
+                                      pending
+                                    }
+                                    className="h-10 rounded-xl bg-emerald-600 px-3 text-[10px] font-black text-white disabled:opacity-60"
+                                  >
+                                    Reconcile
+                                  </button>
+                                </div>
+                              </form>
+                            )
+                          }
+                        </div>
+                      )
+                    }
+
+                    {
+                      data.capabilities
+                        .canRecordPayment &&
+                      payment.status ===
+                        'posted' &&
+                      (
+                        <details className="mt-3 rounded-xl border border-red-500/15 p-3">
+                          <summary className="cursor-pointer text-xs font-black text-red-700 dark:text-red-300">
+                            Reverse entire receipt
+                          </summary>
+
+                          <p className="mt-2 text-[11px] leading-5 text-slate-500">
+                            SaMi reverses every active allocation first, restores affected invoice balances, then reverses the cash receipt. Posted refunds must be reversed first.
+                          </p>
+
+                          {
+                            postedRefunds.length >
+                              0
+                              ? (
+                                <p className="mt-2 text-[11px] font-bold text-amber-700 dark:text-amber-300">
+                                  Reverse the posted refund{
+                                    postedRefunds.length ===
+                                      1
+                                      ? ''
+                                      : 's'
+                                  } above before reversing this receipt.
+                                </p>
+                              )
+                              : (
+                                <form
+                                  className="mt-3 flex flex-col gap-2 sm:flex-row"
+                                  onSubmit={
+                                    async event => {
+                                      event.preventDefault();
+
+                                      const element =
+                                        event.currentTarget;
+
+                                      const form =
+                                        new FormData(
+                                          element,
+                                        );
+
+                                      const saved =
+                                        await run(
+                                          {
+                                            action:
+                                              'reverse_payment',
+                                            paymentId:
+                                              payment.id,
+                                            reason:
+                                              form.get(
+                                                'reason',
+                                              ),
+                                          },
+                                          'Payment receipt and active allocations reversed.',
+                                        );
+
+                                      if (
+                                        saved
+                                      ) {
+                                        element.reset();
+                                      }
+                                    }
+                                  }
+                                >
+                                  <input
+                                    name="reason"
+                                    required
+                                    maxLength={2000}
+                                    placeholder="Reason for reversal"
+                                    className="h-10 min-w-0 flex-1 rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-xs"
+                                  />
+
+                                  <button
+                                    type="submit"
+                                    disabled={
+                                      pending
+                                    }
+                                    className="h-10 rounded-xl border border-red-500/30 bg-red-500/10 px-4 text-xs font-black text-red-700 disabled:opacity-60 dark:text-red-300"
+                                  >
+                                    Reverse receipt
+                                  </button>
+                                </form>
+                              )
+                          }
+                        </details>
+                      )
+                    }
+
+                    {
+                      payment.reconciledAt &&
+                      (
+                        <p className="mt-3 text-[10px] text-slate-400">
+                          Reconciled {
+                            payment.reconciledAt
+                          }{
+                            payment.reconciliationReference
+                              ? ' · ' +
+                                payment.reconciliationReference
+                              : ''
+                          }{
+                            payment.reconciliationNotes
+                              ? ' · ' +
+                                payment.reconciliationNotes
+                              : ''
+                          }
+                        </p>
+                      )
                     }
                   </div>
-                </div>
+                );
+              },
+            )
+          }
 
-                {
-                  data.capabilities
-                    .canRecordPayment &&
-                  payment.status ===
-                    'posted' &&
-                  (
-                    <details className="mt-3 rounded-xl border border-[var(--sami-border)] p-3">
-                      <summary className="cursor-pointer text-xs font-black text-red-700 dark:text-red-300">
-                        Reverse payment
-                      </summary>
-
-                      <form
-                        className="mt-3 flex flex-col gap-2 sm:flex-row"
-                        onSubmit={
-                          async event => {
-                            event
-                              .preventDefault();
-
-                            const element =
-                              event.currentTarget;
-
-                            const form =
-                              new FormData(
-                                element,
-                              );
-
-                            const saved =
-                              await run(
-                                {
-                                  action:
-                                    'reverse_payment',
-                                  paymentId:
-                                    payment.id,
-                                  reason:
-                                    form.get(
-                                      'reason',
-                                    ),
-                                },
-                                'Payment reversed and invoice balances recalculated.',
-                              );
-
-                            if (
-                              saved
-                            ) {
-                              element.reset();
-                            }
-                          }
-                        }
-                      >
-                        <input
-                          name="reason"
-                          required
-                          maxLength={
-                            2000
-                          }
-                          placeholder="Reason for reversal"
-                          className="h-10 min-w-0 flex-1 rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-xs"
-                        />
-
-                        <button
-                          type="submit"
-                          disabled={
-                            pending
-                          }
-                          className="h-10 rounded-xl border border-red-500/30 bg-red-500/10 px-4 text-xs font-black text-red-700 disabled:opacity-60 dark:text-red-300"
-                        >
-                          Reverse posted payment
-                        </button>
-                      </form>
-                    </details>
-                  )
-                }
-              </div>
-            ),
-          )
-        }
-
-        {
-          data.payments.length ===
-            0 &&
-          (
-            <p className="p-8 text-center text-sm text-slate-500">
-              No payments recorded yet.
-            </p>
-          )
-        }
+          {
+            data.payments.length ===
+              0 &&
+            (
+              <p className="p-8 text-center text-sm text-slate-500">
+                No payments recorded yet.
+              </p>
+            )
+          }
+        </div>
       </div>
     </div>
   );
 }
+
+
+function PaymentAmount({
+  label,
+  value,
+  emphasis =
+    false,
+}: {
+  label:
+    string;
+  value:
+    string;
+  emphasis?:
+    boolean;
+}) {
+  return (
+    <div
+      className={
+        'rounded-xl border p-2.5 ' +
+        (
+          emphasis
+            ? 'border-amber-500/20 bg-amber-500/[0.06]'
+            : 'border-[var(--sami-border)]'
+        )
+      }
+    >
+      <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-400">
+        {
+          label
+        }
+      </p>
+      <p className="mt-1 truncate text-xs font-black">
+        {
+          value
+        }
+      </p>
+    </div>
+  );
+}
+
 
 function Recurring({
   data,

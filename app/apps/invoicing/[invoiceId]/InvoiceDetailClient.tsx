@@ -1797,9 +1797,6 @@ export default function InvoiceDetailClient({
                         ? 0.01
                         : invoice.balanceDue
                     }
-                    max={
-                      invoice.balanceDue
-                    }
                     step="0.01"
                     defaultValue={
                       invoice.balanceDue
@@ -1807,6 +1804,10 @@ export default function InvoiceDetailClient({
                     required
                     className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
                   />
+
+                  <p className="-mt-1 text-[10px] leading-4 text-slate-400">
+                    If the receipt is larger than this invoice balance, SaMi allocates only what is due and keeps the excess as unapplied customer credit.
+                  </p>
 
                   <select
                     name="method"
@@ -1984,7 +1985,7 @@ export default function InvoiceDetailClient({
 
                           <StatusPill
                             value={
-                              payment.status
+                              payment.allocationStatus
                             }
                           />
                         </div>
@@ -2008,10 +2009,24 @@ export default function InvoiceDetailClient({
                         </p>
 
                         {
+                          payment.allocationStatus ===
+                            'posted' &&
+                          !payment.operationKey &&
+                          (
+                            <p className="mt-2 text-[10px] leading-4 text-amber-700 dark:text-amber-300">
+                              Legacy allocation: use the Payments workspace to reverse the original receipt safely.
+                            </p>
+                          )
+                        }
+
+                        {
                           data.capabilities
                             .canRecordPayment &&
                           payment.status ===
                             'posted' &&
+                          payment.allocationStatus ===
+                            'posted' &&
+                          payment.operationKey &&
                           (
                             <form
                               className="mt-3 flex flex-col gap-2"
@@ -2028,15 +2043,15 @@ export default function InvoiceDetailClient({
                                     await run(
                                       {
                                         action:
-                                          'reverse_payment',
-                                        paymentId:
-                                          payment.id,
+                                          'reverse_payment_allocation',
+                                        allocationId:
+                                          payment.allocationId,
                                         reason:
                                           form.get(
                                             'reason',
                                           ),
                                       },
-                                      'Payment reversed and invoice balance recalculated.',
+                                      'Payment allocation reversed and invoice balance recalculated.',
                                     );
 
                                   if (
@@ -2064,7 +2079,7 @@ export default function InvoiceDetailClient({
                                 }
                                 className="h-10 rounded-xl border border-red-500/30 bg-red-500/10 px-3 text-xs font-black text-red-700 disabled:opacity-60 dark:text-red-300"
                               >
-                                Reverse payment
+                                Reverse allocation
                               </button>
                             </form>
                           )
