@@ -76,6 +76,51 @@ function formatMoney(
 }
 
 
+function formatBytes(
+  value:
+    number,
+) {
+  if (
+    value <
+      1024
+  ) {
+    return value +
+      ' B';
+  }
+
+  if (
+    value <
+      1024 *
+      1024
+  ) {
+    return (
+      (
+        value /
+        1024
+      )
+        .toFixed(
+          1,
+        ) +
+      ' KB'
+    );
+  }
+
+  return (
+    (
+      value /
+      (
+        1024 *
+        1024
+      )
+    )
+      .toFixed(
+        1,
+      ) +
+    ' MB'
+  );
+}
+
+
 const INVOICE_DETAIL_TUTORIAL_STEPS:
   WorkspaceTutorialStep[] = [
     {
@@ -132,7 +177,7 @@ const INVOICE_DETAIL_TUTORIAL_STEPS:
       title:
         'Use the audit trail',
       description:
-        'Status history, payment corrections, credit actions and delivery history provide the evidence needed to understand how the invoice reached its current state.',
+        'Status history, payment corrections, credit actions, delivery history and immutable document snapshots provide the evidence needed to understand exactly how the invoice was issued and handled.',
     },
   ];
 
@@ -1380,9 +1425,38 @@ export default function InvoiceDetailClient({
                             item.status
                           }
                           subtitle={
-                            item.provider ||
-                            item.errorCode ||
-                            'SaMi delivery'
+                            (
+                              item.provider ||
+                              item.errorCode ||
+                              'SaMi delivery'
+                            ) +
+                            (
+                              item.documentSnapshotId
+                                ? ' · document snapshot ' +
+                                  (
+                                    invoice.documentSnapshots
+                                      .find(
+                                        snapshot =>
+                                          snapshot.id ===
+                                          item.documentSnapshotId,
+                                      )
+                                      ?.versionNo
+                                      ? 'v' +
+                                        invoice.documentSnapshots
+                                          .find(
+                                            snapshot =>
+                                              snapshot.id ===
+                                              item.documentSnapshotId,
+                                          )!
+                                          .versionNo
+                                      : item.documentSnapshotId
+                                          .slice(
+                                            0,
+                                            8,
+                                          )
+                                  )
+                                : ''
+                            )
                           }
                           date={
                             item.createdAt
@@ -1392,6 +1466,185 @@ export default function InvoiceDetailClient({
                     )
               }
             </ActivityCard>
+          </section>
+
+          <section className="sami-surface rounded-[24px] p-4 sm:p-5">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-sm font-black">
+                  Document snapshots
+                </p>
+                <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600 dark:text-slate-300">
+                  Issued invoices are frozen as immutable PDF artifacts. The payload hash proves the document data; the PDF hash identifies the exact file delivered or downloaded.
+                </p>
+              </div>
+
+              {
+                invoice.documentSnapshots
+                  .some(
+                    snapshot =>
+                      snapshot.isPrimary,
+                  ) &&
+                (
+                  <span className="inline-flex w-fit rounded-full bg-emerald-500/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.08em] text-emerald-700 dark:text-emerald-300">
+                    Issued document locked
+                  </span>
+                )
+              }
+            </div>
+
+            {
+              invoice.documentSnapshots.length ===
+                0
+                ? (
+                    <p className="mt-4 rounded-2xl border border-dashed border-[var(--sami-border)] px-4 py-7 text-center text-xs text-slate-600 dark:text-slate-300">
+                      {
+                        [
+                          'draft',
+                          'pending_approval',
+                          'rejected',
+                        ].includes(
+                          invoice.status,
+                        )
+                          ? 'A permanent document snapshot will be created when this invoice is confirmed.'
+                          : 'This older invoice will be snapshotted automatically on its next PDF view or delivery.'
+                      }
+                    </p>
+                  )
+                : (
+                    <div className="mt-4 overflow-x-auto">
+                      <table className="w-full min-w-[940px] text-left text-xs">
+                        <thead className="bg-[var(--sami-surface-soft)] text-[9px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
+                          <tr>
+                            <th className="rounded-l-xl px-3 py-3">
+                              Version
+                            </th>
+                            <th className="px-3 py-3">
+                              Reason
+                            </th>
+                            <th className="px-3 py-3">
+                              Renderer
+                            </th>
+                            <th className="px-3 py-3">
+                              File
+                            </th>
+                            <th className="px-3 py-3">
+                              PDF SHA-256
+                            </th>
+                            <th className="px-3 py-3">
+                              Created
+                            </th>
+                            <th className="rounded-r-xl px-3 py-3 text-right">
+                              Artifact
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[var(--sami-border)]">
+                          {
+                            invoice.documentSnapshots.map(
+                              snapshot => (
+                                <tr
+                                  key={
+                                    snapshot.id
+                                  }
+                                >
+                                  <td className="px-3 py-3">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-black">
+                                        v{
+                                          snapshot.versionNo
+                                        }
+                                      </span>
+                                      {
+                                        snapshot.isPrimary &&
+                                        (
+                                          <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[8px] font-black uppercase text-blue-700 dark:text-blue-300">
+                                            Primary
+                                          </span>
+                                        )
+                                      }
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-3 capitalize">
+                                    {
+                                      snapshot.reason
+                                        .replaceAll(
+                                          '_',
+                                          ' ',
+                                        )
+                                    }
+                                  </td>
+                                  <td className="px-3 py-3 font-semibold">
+                                    {
+                                      snapshot.rendererVersion
+                                    }
+                                  </td>
+                                  <td className="px-3 py-3">
+                                    {
+                                      formatBytes(
+                                        snapshot.pdfSizeBytes,
+                                      )
+                                    }
+                                  </td>
+                                  <td className="px-3 py-3 font-mono text-[10px]">
+                                    <span
+                                      title={
+                                        snapshot.pdfSha256
+                                      }
+                                    >
+                                      {
+                                        snapshot.pdfSha256
+                                          .slice(
+                                            0,
+                                            18,
+                                          )
+                                      }…
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-3">
+                                    {
+                                      snapshot.createdAt
+                                    }
+                                  </td>
+                                  <td className="px-3 py-3 text-right">
+                                    <div className="flex justify-end gap-2">
+                                      <a
+                                        href={
+                                          '/api/apps/invoicing/' +
+                                          invoice.id +
+                                          '/snapshots/' +
+                                          snapshot.id +
+                                          '/pdf'
+                                        }
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex h-8 items-center rounded-lg border border-[var(--sami-border)] px-2.5 text-[9px] font-black"
+                                      >
+                                        View
+                                      </a>
+                                      <a
+                                        href={
+                                          '/api/apps/invoicing/' +
+                                          invoice.id +
+                                          '/snapshots/' +
+                                          snapshot.id +
+                                          '/pdf?download=1'
+                                        }
+                                        className="inline-flex h-8 items-center rounded-lg border border-[var(--sami-border)] px-2.5 text-[9px] font-black"
+                                      >
+                                        Download
+                                      </a>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ),
+                            )
+                          }
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+            }
           </section>
         </div>
 

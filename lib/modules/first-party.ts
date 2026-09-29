@@ -96,8 +96,8 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
   defineSamiModule({
     key: "invoicing",
     name: "Invoicing",
-    version: '2.9.0',
-    description: "Create invoices, collect payments, manage receivables, recurring billing, dunning and secure customer portal access.",
+    version: '2.10.0',
+    description: "Create invoices, collect payments, manage receivables, recurring billing, dunning, customer portal access and immutable issued-document snapshots.",
     category: "finance",
     icon: "receipt",
     route: "apps/invoicing",
@@ -426,6 +426,16 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
         },
       },
       {
+        key: "document_snapshot",
+        label: "Issued invoice document snapshot",
+        table: "invoicing_document_snapshots",
+        companyScoped: true,
+        ownerField: "created_by",
+        permissions: {
+          read: ["invoicing.invoice.view"],
+        },
+      },
+      {
         key: "settings",
         label: "Invoicing settings",
         table: "invoicing_settings",
@@ -467,6 +477,7 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
         { key: "invoicing.reminder.company", name: "Payment reminders in current company", resourceKey: "reminder", operations: ["read","create","write"], scope: "company" },
         { key: "invoicing.portal_access.company", name: "Customer portal access in current company", resourceKey: "portal_access", operations: ["read","create","write"], scope: "company" },
         { key: "invoicing.portal_message.company", name: "Customer portal messages in current company", resourceKey: "portal_message", operations: ["read","create","write"], scope: "company" },
+        { key: "invoicing.document_snapshot.company", name: "Issued invoice snapshots in current company", resourceKey: "document_snapshot", operations: ["read"], scope: "company" },
         { key: "invoicing.settings.company", name: "Invoicing settings in current company", resourceKey: "settings", operations: ["read","write"], scope: "company" },
       ],
       fieldPolicies: [],
@@ -482,6 +493,7 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
       "reminders",
       "recurring",
       "customer_portal",
+      "document_snapshots",
       "approvals",
     ],
     extensions: {

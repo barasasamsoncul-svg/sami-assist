@@ -16,6 +16,10 @@ import {
   renderInvoicePdf,
 } from '@/lib/apps/invoicing/pdf';
 
+import {
+  ensurePrimaryInvoiceDocumentSnapshot,
+} from '@/lib/apps/invoicing/document-snapshots';
+
 
 export const runtime =
   'nodejs';
@@ -62,6 +66,101 @@ export async function GET(
         {
           status:
             404,
+        },
+      );
+    }
+
+    const url =
+      new URL(
+        request.url,
+      );
+
+    const download =
+      url.searchParams
+        .get(
+          'download',
+        ) ===
+      '1';
+
+    const filename =
+      invoice.invoiceNumber
+        .replace(
+          /[^a-z0-9._-]+/gi,
+          '-',
+        )
+        .slice(
+          0,
+          120,
+        ) +
+      '.pdf';
+
+    if (
+      ![
+        'draft',
+        'pending_approval',
+        'rejected',
+      ].includes(
+        invoice.status,
+      )
+    ) {
+      const snapshot =
+        await ensurePrimaryInvoiceDocumentSnapshot(
+          context.pool,
+          {
+            companyId:
+              context.companyId,
+            invoiceId:
+              invoice.id,
+            userId:
+              context.userId,
+            reason:
+              'legacy_backfill',
+          },
+        );
+
+      const pdfBody =
+        Uint8Array
+          .from(
+            snapshot.pdf,
+          )
+          .buffer;
+
+      return new NextResponse(
+        pdfBody,
+        {
+          status:
+            200,
+          headers: {
+            'Content-Type':
+              'application/pdf',
+            'Content-Disposition':
+              (
+                download
+                  ? 'attachment'
+                  : 'inline'
+              ) +
+              '; filename="' +
+              filename +
+              '"',
+            'Cache-Control':
+              'private, no-store, no-cache, must-revalidate',
+            Pragma:
+              'no-cache',
+            'X-Content-Type-Options':
+              'nosniff',
+            'Referrer-Policy':
+              'no-referrer',
+            ETag:
+              '"' +
+              snapshot.pdfSha256 +
+              '"',
+            'Content-Length':
+              String(
+                snapshot.pdfSizeBytes,
+              ),
+            'X-SaMi-Document-Snapshot':
+              snapshot.id,
+          },
         },
       );
     }
@@ -318,30 +417,6 @@ export async function GET(
             }),
           ),
       });
-
-    const url =
-      new URL(
-        request.url,
-      );
-
-    const download =
-      url.searchParams
-        .get(
-          'download',
-        ) ===
-      '1';
-
-    const filename =
-      invoice.invoiceNumber
-        .replace(
-          /[^a-z0-9._-]+/gi,
-          '-',
-        )
-        .slice(
-          0,
-          120,
-        ) +
-      '.pdf';
 
     return new NextResponse(
       pdf,

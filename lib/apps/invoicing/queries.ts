@@ -2758,6 +2758,7 @@ export async function getInvoicingInvoiceDetail(
     creditsResult,
     historyResult,
     deliveriesResult,
+    snapshotsResult,
   ] =
     await Promise.all([
       context.pool.query(
@@ -3016,6 +3017,7 @@ export async function getInvoicingInvoiceDetail(
             id,
             channel,
             provider,
+            document_snapshot_id,
             status,
             error_code,
             created_at
@@ -3027,6 +3029,36 @@ export async function getInvoicingInvoiceDetail(
           ORDER BY
             created_at DESC,
             id DESC
+          LIMIT 100
+        `,
+        [
+          invoiceId,
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            id,
+            version_no,
+            is_primary,
+            snapshot_reason,
+            invoice_status,
+            renderer_version,
+            payload_sha256,
+            pdf_sha256,
+            pdf_size_bytes,
+            created_by,
+            created_at
+          FROM invoicing_document_snapshots
+          WHERE invoice_id =
+                $1
+            AND company_id =
+                $2
+          ORDER BY
+            version_no DESC,
+            created_at DESC
           LIMIT 100
         `,
         [
@@ -3434,9 +3466,65 @@ export async function getInvoicingInvoiceDetail(
                   delivery.error_code,
                 )
               : null,
+          documentSnapshotId:
+            delivery.document_snapshot_id
+              ? String(
+                  delivery.document_snapshot_id,
+                )
+              : null,
           createdAt:
             new Date(
               delivery.created_at,
+            ).toISOString(),
+        }),
+      ),
+    documentSnapshots:
+      snapshotsResult.rows.map(
+        snapshot => ({
+          id:
+            String(
+              snapshot.id,
+            ),
+          versionNo:
+            Number(
+              snapshot.version_no,
+            ),
+          isPrimary:
+            snapshot.is_primary ===
+            true,
+          reason:
+            String(
+              snapshot.snapshot_reason,
+            ),
+          sourceStatus:
+            String(
+              snapshot.invoice_status,
+            ),
+          rendererVersion:
+            String(
+              snapshot.renderer_version,
+            ),
+          payloadSha256:
+            String(
+              snapshot.payload_sha256,
+            ),
+          pdfSha256:
+            String(
+              snapshot.pdf_sha256,
+            ),
+          pdfSizeBytes:
+            Number(
+              snapshot.pdf_size_bytes,
+            ),
+          createdBy:
+            snapshot.created_by
+              ? String(
+                  snapshot.created_by,
+                )
+              : null,
+          createdAt:
+            new Date(
+              snapshot.created_at,
             ).toISOString(),
         }),
       ),

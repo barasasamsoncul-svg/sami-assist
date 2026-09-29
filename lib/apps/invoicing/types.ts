@@ -286,6 +286,20 @@ export type InvoicingInvoiceLine = {
   lineTotal: number;
 };
 
+export type InvoicingDocumentSnapshotSummary = {
+  id: string;
+  versionNo: number;
+  isPrimary: boolean;
+  reason: string;
+  sourceStatus: string;
+  rendererVersion: string;
+  payloadSha256: string;
+  pdfSha256: string;
+  pdfSizeBytes: number;
+  createdAt: string;
+  createdBy: string | null;
+};
+
 export type InvoicingInvoiceDetail = {
   id: string;
   invoiceNumber: string;
@@ -356,8 +370,10 @@ export type InvoicingInvoiceDetail = {
     provider: string | null;
     status: string;
     errorCode: string | null;
+    documentSnapshotId: string | null;
     createdAt: string;
   }>;
+  documentSnapshots: InvoicingDocumentSnapshotSummary[];
 };
 
 export type InvoicingWorkspaceData = {

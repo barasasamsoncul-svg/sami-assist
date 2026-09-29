@@ -45,6 +45,10 @@ import {
 } from '@/lib/apps/invoicing/migrations/2.8.0-to-2.9.0';
 
 import {
+  INVOICING_2_9_0_TO_2_10_0,
+} from '@/lib/apps/invoicing/migrations/2.9.0-to-2.10.0';
+
+import {
   SALES_1_0_0_TO_2_0_0,
 } from '@/lib/apps/sales/migrations/1.0.0-to-2.0.0';
 
@@ -101,6 +105,7 @@ export const INVOICING_RUNTIME_MIGRATIONS:
     INVOICING_2_6_0_TO_2_7_0,
     INVOICING_2_7_0_TO_2_8_0,
     INVOICING_2_8_0_TO_2_9_0,
+    INVOICING_2_9_0_TO_2_10_0,
   ];
 
 export const APP_RUNTIME_MODULE_MIGRATIONS:
