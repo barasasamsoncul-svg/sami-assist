@@ -315,6 +315,91 @@ async function loadIssuedInvoicePayload(
           )
             AS font_family,
           COALESCE(
+            template.density,
+            'comfortable'
+          )
+            AS density,
+          COALESCE(
+            template.header_style,
+            'band'
+          )
+            AS header_style,
+          COALESCE(
+            template.document_title,
+            'Invoice'
+          )
+            AS document_title,
+          COALESCE(
+            template.from_label,
+            'From'
+          )
+            AS from_label,
+          COALESCE(
+            template.bill_to_label,
+            'Bill to'
+          )
+            AS bill_to_label,
+          COALESCE(
+            template.notes_label,
+            'Notes'
+          )
+            AS notes_label,
+          COALESCE(
+            template.terms_label,
+            'Terms'
+          )
+            AS terms_label,
+          COALESCE(
+            template.payment_label,
+            'Payment instructions'
+          )
+            AS payment_label,
+          COALESCE(
+            template.footer_alignment,
+            'left'
+          )
+            AS footer_alignment,
+          COALESCE(
+            template.show_status,
+            TRUE
+          )
+            AS show_status,
+          COALESCE(
+            template.show_page_numbers,
+            TRUE
+          )
+            AS show_page_numbers,
+          COALESCE(
+            template.show_sku,
+            TRUE
+          )
+            AS show_sku,
+          COALESCE(
+            template.show_unit,
+            TRUE
+          )
+            AS show_unit,
+          COALESCE(
+            template.show_quantity,
+            TRUE
+          )
+            AS show_quantity,
+          COALESCE(
+            template.show_unit_price,
+            TRUE
+          )
+            AS show_unit_price,
+          COALESCE(
+            template.show_line_tax,
+            TRUE
+          )
+            AS show_line_tax,
+          COALESCE(
+            template.show_line_discount,
+            TRUE
+          )
+            AS show_line_discount,
+          COALESCE(
             template.show_company_address,
             TRUE
           )
@@ -554,6 +639,75 @@ async function loadIssuedInvoicePayload(
           String(
             row.font_family,
           ),
+        density:
+          String(
+            row.density ||
+            'comfortable',
+          ),
+        headerStyle:
+          String(
+            row.header_style ||
+            'band',
+          ),
+        documentTitle:
+          String(
+            row.document_title ||
+            'Invoice',
+          ),
+        fromLabel:
+          String(
+            row.from_label ||
+            'From',
+          ),
+        billToLabel:
+          String(
+            row.bill_to_label ||
+            'Bill to',
+          ),
+        notesLabel:
+          String(
+            row.notes_label ||
+            'Notes',
+          ),
+        termsLabel:
+          String(
+            row.terms_label ||
+            'Terms',
+          ),
+        paymentLabel:
+          String(
+            row.payment_label ||
+            'Payment instructions',
+          ),
+        footerAlignment:
+          String(
+            row.footer_alignment ||
+            'left',
+          ),
+        showStatus:
+          row.show_status !==
+          false,
+        showPageNumbers:
+          row.show_page_numbers !==
+          false,
+        showSku:
+          row.show_sku !==
+          false,
+        showUnit:
+          row.show_unit !==
+          false,
+        showQuantity:
+          row.show_quantity !==
+          false,
+        showUnitPrice:
+          row.show_unit_price !==
+          false,
+        showLineTax:
+          row.show_line_tax !==
+          false,
+        showLineDiscount:
+          row.show_line_discount !==
+          false,
         showCompanyAddress:
           row.show_company_address !==
           false,
