@@ -1163,10 +1163,16 @@ test('Invoicing v2.2 owns professional document appearance and delivery without 
     /whatsapp/,
   );
 
+  assert.doesNotMatch(
+    delivery,
+    /getPublicInvoice/,
+    'Provider-side delivery must not reopen the public invoice view just to render a PDF.',
+  );
+
   assert.match(
     delivery,
-    /markViewed:\s*false/,
-    'Provider-side PDF rendering must not mark a customer invoice as viewed.',
+    /ensurePrimaryInvoiceDocumentSnapshot/,
+    'Provider-side delivery must use the immutable issued document without customer-view side effects.',
   );
 
   assert.match(
@@ -3832,7 +3838,7 @@ test('Invoicing Part 9 freezes issued invoice PDFs as immutable document snapsho
 
   assert.match(
     workspacePdf,
-    /\['draft',[\s\S]*'pending_approval',[\s\S]*'rejected'/s,
+    /\[\s*'draft',[\s\S]*'pending_approval',[\s\S]*'rejected'/s,
     'Draft-like PDFs must remain live previews.',
   );
 
