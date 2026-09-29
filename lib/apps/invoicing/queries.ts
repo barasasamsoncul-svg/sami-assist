@@ -1991,6 +1991,7 @@ export async function getInvoicingInvoiceDetail(
                 a.amount,
                 p.method,
                 p.reference,
+                p.reconciled_at,
                 a.id AS allocation_id,
                 a.status AS allocation_status,
                 a.operation_key
@@ -2397,6 +2398,12 @@ export async function getInvoicingInvoiceDetail(
               ? String(
                   payment.operation_key,
                 )
+              : null,
+          reconciledAt:
+            payment.reconciled_at
+              ? new Date(
+                  payment.reconciled_at,
+                ).toISOString()
               : null,
         }),
       ),
