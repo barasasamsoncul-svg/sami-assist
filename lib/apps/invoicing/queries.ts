@@ -18,6 +18,62 @@ import {
 } from '@/lib/db/tenant';
 
 
+function dateOnlyValue(
+  value:
+    unknown,
+) {
+  if (
+    value instanceof
+      Date
+  ) {
+    return Number.isNaN(
+      value.getTime(),
+    )
+      ? ''
+      : value
+          .toISOString()
+          .slice(
+            0,
+            10,
+          );
+  }
+
+  const text =
+    String(
+      value ||
+      '',
+    )
+      .trim();
+
+  if (
+    /^\d{4}-\d{2}-\d{2}/.test(
+      text,
+    )
+  ) {
+    return text.slice(
+      0,
+      10,
+    );
+  }
+
+  const parsed =
+    new Date(
+      text,
+    );
+
+  return Number.isNaN(
+    parsed.getTime(),
+  )
+    ? ''
+    : parsed
+        .toISOString()
+        .slice(
+          0,
+          10,
+        );
+}
+
+
 function capabilities(
   isOwner:
     boolean,
@@ -907,7 +963,7 @@ export async function getInvoicingWorkspaceData():
         .map(
           row => ({
             month:
-              String(
+              dateOnlyValue(
                 row.month,
               ),
             invoiceCount:
