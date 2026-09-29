@@ -33,6 +33,7 @@ export type PdfInvoice = {
     primaryColor: string;
     secondaryColor: string;
     fontFamily: string;
+    designVersion: number;
     density: string;
     headerStyle: string;
     documentTitle: string;
