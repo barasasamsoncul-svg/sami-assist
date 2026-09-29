@@ -493,3 +493,45 @@ test(
     }
   },
 );
+
+
+test(
+  'SaMi design system enforces readable foregrounds across every app surface',
+  async () => {
+    const globals =
+      await readFile(
+        'app/globals.css',
+        'utf8',
+      );
+
+    assert.match(
+      globals,
+      /select option,[\s\S]*background:\s*var\(--sami-surface-raised\);[\s\S]*color:\s*var\(--foreground\);/,
+      'Native dropdown options must never depend on hover for readable text.',
+    );
+
+    assert.match(
+      globals,
+      /\.text-slate-300,[\s\S]*\.text-slate-400[\s\S]*color:\s*#64748b;/,
+      'Light-mode muted text must meet the shared visibility floor.',
+    );
+
+    assert.match(
+      globals,
+      /\.dark \.text-slate-400,[\s\S]*\.dark \.dark\\:text-slate-400[\s\S]*color:\s*#c0cad8;/,
+      'Dark-mode muted text must remain readable without hover.',
+    );
+
+    assert.match(
+      globals,
+      /button:disabled\[class\][\s\S]*opacity:\s*0\.65;/,
+      'Disabled controls must remain visibly legible.',
+    );
+
+    assert.match(
+      globals,
+      /\.sami-surface,[\s\S]*\.sami-canvas[\s\S]*color:\s*var\(--foreground\);/,
+      'Shared SaMi surfaces must establish a safe foreground color.',
+    );
+  },
+);
