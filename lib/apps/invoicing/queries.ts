@@ -3245,6 +3245,10 @@ export async function getInvoicingInvoiceDetail(
       money(
         row.credited_amount,
       ),
+    customerAvailableCredit:
+      money(
+        row.customer_available_credit,
+      ),
     balanceDue:
       [
         'cancelled',
