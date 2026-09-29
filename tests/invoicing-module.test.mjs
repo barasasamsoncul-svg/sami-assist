@@ -2662,6 +2662,23 @@ test('Invoicing v2.6 separates cash receipts from allocation and reconciliation'
 
   assert.match(
     detail,
+    /Reconciled receipt: financial corrections are locked\./,
+    'Invoice detail must surface the same reconciliation lock as the Payments workspace.',
+  );
+
+  assert.match(
+    queries,
+    /p\.reconciled_at[\s\S]*allocation_id/s,
+    'Invoice detail payment history must carry reconciliation state from the authoritative receipt.',
+  );
+
+  assert.match(
+    types,
+    /reconciledAt: string \| null;/,
+  );
+
+  assert.match(
+    detail,
     /excess as unapplied customer credit/,
     'Invoice-level overpayments must be explained to the operator.',
   );
