@@ -23,6 +23,7 @@ export type InvoicingInvoiceSummary = {
   totalAmount: number;
   paidAmount: number;
   creditedAmount: number;
+  customerAvailableCredit: number;
   balanceDue: number;
   daysOverdue: number;
   reminderMode: string;
@@ -372,8 +373,34 @@ export type InvoicingInvoiceDetail = {
     creditNoteNumber: string;
     issueDate: string;
     status: string;
+    subtotal: number;
+    taxTotal: number;
     amount: number;
+    appliedAmount: number;
+    refundedAmount: number;
+    availableAmount: number;
     reason: string;
+    applications: Array<{
+      id: string;
+      targetInvoiceId: string;
+      targetInvoiceNumber: string;
+      applicationType: string;
+      amount: number;
+      status: string;
+      appliedAt: string;
+      reversalReason: string | null;
+    }>;
+    refunds: Array<{
+      id: string;
+      refundNumber: string;
+      refundDate: string;
+      amount: number;
+      method: string;
+      reference: string | null;
+      reason: string;
+      status: string;
+      reversalReason: string | null;
+    }>;
   }>;
   history: Array<{
     id: string;

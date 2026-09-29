@@ -3,16 +3,16 @@
   "locks": {
     "invoicing": {
       "status": "locked",
-      "moduleVersion": "2.11.0",
+      "moduleVersion": "2.12.0",
       "referenceStandard": true,
-      "baselineCommit": "a74831c089eadea2c13abd43c8f8cadc1845f321",
+      "baselineCommit": "7d09a7815a9030d496ebdcf59de3d1e625516a51",
       "baselineBranch": "main",
       "lockedAt": "2026-09-29",
-      "policy": "Invoicing 2.11.0 preserves the locked Parts 1–9 baseline and completes Part 10 Invoice Template Designer with versioned design revisions, live preview, renderer-backed header/density/label/column controls, renderer v2 semantics, full designer settings in workspace data, and immutable snapshot traceability through the originating template design version. Future changes must keep Invoicing, ERP integration, platform closure, app-surface, visibility, core-hardening, TypeScript, migration dry-run and production deployment gates green.",
+      "policy": "Invoicing 2.12.0 preserves the locked Parts 1–10 baseline and completes Part 11 Credit Notes & Refunds with line-level and quick credit-note issuance, source-invoice offsets, reusable customer credit balances, application to other invoices, cash/bank refunds, reversal-safe application/refund ledgers, idempotent credit operations, dedicated credit-refund numbering, accounting postings, cancellation safeguards, operator lifecycle history, and separate cash-payment versus credit settlement reporting. Future changes must keep Invoicing, ERP integration, platform closure, app-surface, visibility, core-hardening, TypeScript, migration dry-run and production deployment gates green.",
       "protectedTrees": {
-        "lib/apps/invoicing": "658da817cbb6cb63ae5d4dd3bc4421287afdcce5",
-        "app/apps/invoicing": "e72181e3eea8a76dfe11af1a60a63667e3808912",
-        "app/api/apps/invoicing": "0c22cea66df0141e88069e085e7d2a727af25c67",
+        "lib/apps/invoicing": "7b6ed03f75f619a3aaf469fe3b86c070d5f910fe",
+        "app/apps/invoicing": "cd3acd8fa2fc5ecb0a91eef312d474141f2ccc7a",
+        "app/api/apps/invoicing": "5ce668d2a566e3c85ea2c1f4d470c150a3a6aa11",
         "app/api/internal/invoicing": "b2b22efc33d3b038495ccdd343845257789334a1",
         "app/i/[tenantId]/[token]": "62510a8ae454347c3d5e211895fdf27fb6a70bc7",
         "app/p/[tenantId]/[token]": "752ed1f6b8eb62cb003e91f09ecbbbeba5f43a97",

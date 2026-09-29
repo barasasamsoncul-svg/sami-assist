@@ -116,7 +116,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
 
   assert.match(
     invoicing,
-    /version:\s*['"]2\.11\.0['"]/,
+    /version:\s*['"]2\.12\.0['"]/,
   );
 
   assert.match(
@@ -1504,6 +1504,7 @@ test('Invoicing financial corrections are auditable and company settings are enf
     types,
     workspace,
     detail,
+    creditLifecycle,
     composer,
   ] = await Promise.all([
     source('lib/apps/invoicing/context.ts'),
@@ -1514,6 +1515,7 @@ test('Invoicing financial corrections are auditable and company settings are enf
     source('lib/apps/invoicing/types.ts'),
     source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
     source('app/apps/invoicing/[invoiceId]/InvoiceDetailClient.tsx'),
+    source('app/apps/invoicing/[invoiceId]/CreditNoteLifecyclePanel.tsx'),
     source('app/apps/invoicing/InvoiceComposer.tsx'),
   ]);
 
@@ -1539,7 +1541,8 @@ test('Invoicing financial corrections are auditable and company settings are enf
   assert.match(workspace, /reverse_payment_allocation/);
   assert.match(workspace, /payment\.status/);
   assert.match(detail, /action:\s*'reverse_payment_allocation'/);
-  assert.match(detail, /action:\s*'cancel_credit_note'/);
+  assert.match(detail, /CreditNoteLifecyclePanel/);
+  assert.match(creditLifecycle, /action:\s*'cancel_credit_note'/);
   assert.match(detail, /allowCreditNotes/);
   assert.match(detail, /allowPartialPayments/);
   assert.match(composer, /!data\.settings\.requireApproval/);
@@ -2899,7 +2902,7 @@ test('Invoicing v2.7 turns recurring invoices into an observable retry-safe bill
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.11\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.12\.0['"]/s,
   );
 
   assert.match(
@@ -3099,7 +3102,7 @@ test('Invoicing v2.8 turns reminders into a staged auditable dunning engine', as
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.11\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.12\.0['"]/s,
   );
 
   assert.match(
@@ -3319,7 +3322,7 @@ test('Invoicing Part 8 builds a customer-scoped secure portal', async () => {
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.11\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.12\.0['"]/s,
   );
 
   assert.match(
@@ -3663,7 +3666,7 @@ test('Invoicing Part 9 freezes issued invoice PDFs as immutable document snapsho
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.11\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.12\.0['"]/s,
   );
 
   assert.match(
@@ -3939,7 +3942,7 @@ test('Invoicing Part 10 provides a live renderer-backed invoice template designe
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.11\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.12\.0['"]/s,
   );
 
   assert.match(
@@ -4089,4 +4092,231 @@ test('Invoicing Part 10 provides a live renderer-backed invoice template designe
       visibleSurface + ' must be visible in the live designer.',
     );
   }
+});
+
+
+
+test('Invoicing Part 11 deepens credit notes into reusable customer credits and refunds', async () => {
+  const [
+    schema,
+    migration,
+    commands,
+    creditNotes,
+    queries,
+    types,
+    service,
+    route,
+    detail,
+    lifecyclePanel,
+    runtimeMigrations,
+    manifest,
+    accounting,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/schema.sql'),
+    source('lib/apps/invoicing/migrations/2.11.0-to-2.12.0.ts'),
+    source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/invoicing/credit-notes.ts'),
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/types.ts'),
+    source('lib/apps/invoicing/service.ts'),
+    source('app/api/apps/invoicing/route.ts'),
+    source('app/apps/invoicing/[invoiceId]/InvoiceDetailClient.tsx'),
+    source('app/apps/invoicing/[invoiceId]/CreditNoteLifecyclePanel.tsx'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/invoicing/accounting.ts'),
+  ]);
+
+  assert.match(
+    manifest,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.12\.0['"]/s,
+  );
+
+  assert.match(
+    migration,
+    /fromVersion:\s*['"]2\.11\.0['"]/,
+  );
+
+  assert.match(
+    migration,
+    /toVersion:\s*['"]2\.12\.0['"]/,
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /INVOICING_2_11_0_TO_2_12_0/,
+  );
+
+  for (const table of [
+    'invoicing_credit_note_applications',
+    'invoicing_credit_note_refunds',
+  ]) {
+    assert.match(
+      schema,
+      new RegExp(table),
+      table + ' must be owned by Invoicing Part 11.',
+    );
+    assert.match(
+      migration,
+      new RegExp(table),
+      table + ' must be created by the Part 11 migration.',
+    );
+  }
+
+  assert.match(
+    migration,
+    /invoicing_credit_note_balances/,
+  );
+
+  assert.match(
+    migration,
+    /invoicing_customer_credit_balances/,
+  );
+
+  assert.match(
+    migration,
+    /legacy-source-offset/,
+    'Existing issued credits must be backfilled into the new application ledger.',
+  );
+
+  assert.match(
+    migration,
+    /credit_refund/,
+    'Part 11 must reserve a dedicated credit-refund numbering sequence.',
+  );
+
+  assert.match(
+    commands,
+    /export async function issueInvoiceCreditNote/,
+    'The compatibility credit-note authority must remain available.',
+  );
+
+  for (const command of [
+    'issueInvoiceCreditNote',
+    'applyInvoiceCreditNote',
+    'reverseInvoiceCreditApplication',
+    'refundInvoiceCreditNote',
+    'reverseInvoiceCreditNoteRefund',
+    'cancelInvoiceCreditNote',
+  ]) {
+    assert.match(
+      creditNotes,
+      new RegExp('export async function ' + command),
+      command + ' must be a real Part 11 server authority.',
+    );
+  }
+
+  assert.match(
+    creditNotes,
+    /idempotencyKey/,
+    'Credit lifecycle mutations must support idempotent client retries.',
+  );
+
+  assert.match(
+    creditNotes,
+    /FOR UPDATE/,
+    'Credit lifecycle mutations must lock authoritative rows during balance changes.',
+  );
+
+  assert.match(
+    accounting,
+    /postInvoiceCreditToAccounting/,
+  );
+
+  assert.match(
+    accounting,
+    /postCreditNoteRefundToAccounting/,
+  );
+
+  assert.match(
+    accounting,
+    /credit_note_application/,
+  );
+
+  for (const exported of [
+    'applyInvoiceCreditNote',
+    'reverseInvoiceCreditApplication',
+    'refundInvoiceCreditNote',
+    'reverseInvoiceCreditNoteRefund',
+  ]) {
+    assert.match(
+      service,
+      new RegExp(exported),
+    );
+  }
+
+  for (const action of [
+    'apply_credit_note',
+    'reverse_credit_application',
+    'refund_credit_note',
+    'reverse_credit_refund',
+    'cancel_credit_note',
+  ]) {
+    assert.match(
+      route,
+      new RegExp("case '" + action + "'"),
+    );
+  }
+
+  assert.match(
+    queries,
+    /availableAmount:/,
+  );
+
+  assert.match(
+    queries,
+    /applications:/,
+  );
+
+  assert.match(
+    queries,
+    /refunds:/,
+  );
+
+  assert.match(
+    types,
+    /availableAmount: number/,
+  );
+
+  assert.match(
+    types,
+    /applicationType: string/,
+  );
+
+  assert.match(
+    types,
+    /refundNumber: string/,
+  );
+
+  for (const visibleControl of [
+    'Available credit',
+    'Applications',
+    'Refunds',
+    'Reverse application',
+    'Reverse refund',
+    'Apply credit',
+    'Refund available credit',
+  ]) {
+    assert.ok(
+      lifecyclePanel.includes(
+        visibleControl,
+      ),
+      visibleControl + ' must be visible in the Part 11 lifecycle UI.',
+    );
+  }
+
+  assert.match(
+    detail,
+    /CreditNoteLifecyclePanel/,
+  );
+
+  assert.match(
+    manifest,
+    /key:\s*"credit_application"[\s\S]*table:\s*"invoicing_credit_note_applications"/s,
+  );
+
+  assert.match(
+    manifest,
+    /key:\s*"credit_refund"[\s\S]*table:\s*"invoicing_credit_note_refunds"/s,
+  );
 });

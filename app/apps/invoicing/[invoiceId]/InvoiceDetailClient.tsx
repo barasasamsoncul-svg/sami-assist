@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 
 import InvoiceComposer from '@/app/apps/invoicing/InvoiceComposer';
+import CreditNoteLifecyclePanel from '@/app/apps/invoicing/[invoiceId]/CreditNoteLifecyclePanel';
 import SaMiOverlay from '@/app/components/SaMiOverlay';
 import {
   useSaMiOverlay,
@@ -2408,67 +2409,27 @@ export default function InvoiceDetailClient({
                         {
                           data.capabilities
                             .canCredit &&
-                          [
-                            'issued',
-                            'applied',
-                          ].includes(
-                            credit.status,
-                          ) &&
                           (
-                            <form
-                              className="mt-3 flex flex-col gap-2"
-                              onSubmit={
-                                async event => {
-                                  event.preventDefault();
-                                  const element =
-                                    event.currentTarget;
-                                  const form =
-                                    new FormData(
-                                      element,
-                                    );
-                                  const saved =
-                                    await run(
-                                      {
-                                        action:
-                                          'cancel_credit_note',
-                                        creditNoteId:
-                                          credit.id,
-                                        reason:
-                                          form.get(
-                                            'reason',
-                                          ),
-                                      },
-                                      'Credit note cancelled and invoice balance recalculated.',
-                                    );
-
-                                  if (
-                                    saved
-                                  ) {
-                                    element.reset();
-                                  }
-                                }
+                            <CreditNoteLifecyclePanel
+                              credit={
+                                credit
                               }
-                            >
-                              <input
-                                name="reason"
-                                required
-                                maxLength={
-                                  2000
-                                }
-                                placeholder="Reason for cancellation"
-                                className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-xs"
-                              />
-
-                              <button
-                                type="submit"
-                                disabled={
-                                  busy
-                                }
-                                className="h-10 rounded-xl border border-red-500/30 bg-red-500/10 px-3 text-xs font-black text-red-700 disabled:opacity-60 dark:text-red-300"
-                              >
-                                Cancel credit note
-                              </button>
-                            </form>
+                              customerId={
+                                invoice.customer.id
+                              }
+                              currency={
+                                invoice.currency
+                              }
+                              invoices={
+                                data.invoices
+                              }
+                              busy={
+                                busy
+                              }
+                              run={
+                                run
+                              }
+                            />
                           )
                         }
                       </div>

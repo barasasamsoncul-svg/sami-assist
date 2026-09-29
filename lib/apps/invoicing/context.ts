@@ -620,6 +620,10 @@ export async function ensureCompanyDefaults(
         'credit_note',
         'CN-',
       ],
+      [
+        'credit_refund',
+        'CRF-',
+      ],
     ] as const
   ) {
     await pool.query(
@@ -867,7 +871,8 @@ export async function nextDocumentNumber(
   documentType:
     'invoice' |
     'payment' |
-    'credit_note',
+    'credit_note' |
+    'credit_refund',
 ) {
   const result =
     await client.query(

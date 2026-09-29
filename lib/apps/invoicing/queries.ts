@@ -429,31 +429,74 @@ export async function getInvoicingWorkspaceData():
             a.due_date,
             a.currency,
             a.total_amount,
-            (
-              a.total_amount -
-              a.balance_due
+            COALESCE(
+              (
+                SELECT
+                  SUM(
+                    allocation.amount
+                  )
+                FROM invoicing_payment_allocations allocation
+                INNER JOIN invoicing_payments payment
+                  ON payment.id =
+                     allocation.payment_id
+                 AND payment.company_id =
+                     allocation.company_id
+                WHERE allocation.invoice_id =
+                      a.invoice_id
+                  AND allocation.company_id =
+                      a.company_id
+                  AND allocation.status =
+                      'posted'
+                  AND payment.status =
+                      'posted'
+                  AND payment.deleted_at
+                      IS NULL
+              ),
+              0
             )
               AS paid_amount,
             COALESCE(
               (
                 SELECT
                   SUM(
-                    cn.total_amount
+                    application.amount
                   )
-                FROM invoicing_credit_notes cn
-                WHERE cn.invoice_id =
+                FROM invoicing_credit_note_applications application
+                INNER JOIN invoicing_credit_notes note
+                  ON note.id =
+                     application.credit_note_id
+                 AND note.company_id =
+                     application.company_id
+                WHERE application.target_invoice_id =
                       a.invoice_id
-                  AND cn.status IN (
-                    'issued',
-                    'applied',
-                    'refunded'
-                  )
-                  AND cn.deleted_at
+                  AND application.company_id =
+                      a.company_id
+                  AND application.status =
+                      'posted'
+                  AND note.status <>
+                      'cancelled'
+                  AND note.deleted_at
                       IS NULL
               ),
               0
             )
               AS credited_amount,
+            COALESCE(
+              (
+                SELECT
+                  available_credit
+                FROM invoicing_customer_credit_balances credit_balance
+                WHERE credit_balance.company_id =
+                      a.company_id
+                  AND credit_balance.customer_id =
+                      a.customer_id
+                  AND credit_balance.currency =
+                      a.currency
+                LIMIT 1
+              ),
+              0
+            )
+              AS customer_available_credit,
             a.balance_due,
             a.days_overdue,
             i.reminder_mode,
@@ -1369,6 +1412,10 @@ export async function getInvoicingWorkspaceData():
           creditedAmount:
             money(
               row.credited_amount,
+            ),
+          customerAvailableCredit:
+            money(
+              row.customer_available_credit,
             ),
           balanceDue:
             money(
@@ -2875,51 +2922,46 @@ export async function getInvoicingInvoiceDetail(
             i.rounding_adjustment,
             i.total_amount,
             a.balance_due,
-            GREATEST(
-              i.total_amount -
-              a.balance_due -
-              COALESCE(
-                (
-                  SELECT
-                    SUM(
-                      cn.total_amount
-                    )
-                  FROM invoicing_credit_notes cn
-                  WHERE cn.invoice_id =
-                        i.id
-                    AND cn.status IN (
-                      'issued',
-                      'applied',
-                      'refunded'
-                    )
-                    AND cn.deleted_at
-                        IS NULL
-                ),
-                0
-              ),
-              0
-            )
-              AS paid_amount,
             COALESCE(
               (
-                SELECT
-                  SUM(
-                    cn.total_amount
-                  )
-                FROM invoicing_credit_notes cn
-                WHERE cn.invoice_id =
-                      i.id
-                  AND cn.status IN (
-                    'issued',
-                    'applied',
-                    'refunded'
-                  )
-                  AND cn.deleted_at
-                      IS NULL
+                SELECT SUM(allocation.amount)
+                FROM invoicing_payment_allocations allocation
+                INNER JOIN invoicing_payments payment
+                  ON payment.id = allocation.payment_id
+                WHERE allocation.invoice_id = i.id
+                  AND allocation.company_id = i.company_id
+                  AND allocation.status = 'posted'
+                  AND payment.status = 'posted'
+                  AND payment.deleted_at IS NULL
               ),
               0
-            )
-              AS credited_amount,
+            ) AS paid_amount,
+            COALESCE(
+              (
+                SELECT SUM(application.amount)
+                FROM invoicing_credit_note_applications application
+                INNER JOIN invoicing_credit_notes note
+                  ON note.id = application.credit_note_id
+                 AND note.company_id = application.company_id
+                WHERE application.target_invoice_id = i.id
+                  AND application.company_id = i.company_id
+                  AND application.status = 'posted'
+                  AND note.status <> 'cancelled'
+                  AND note.deleted_at IS NULL
+              ),
+              0
+            ) AS credited_amount,
+            COALESCE(
+              (
+                SELECT available_credit
+                FROM invoicing_customer_credit_balances credit_balance
+                WHERE credit_balance.company_id = i.company_id
+                  AND credit_balance.customer_id = i.customer_id
+                  AND credit_balance.currency = i.currency
+                LIMIT 1
+              ),
+              0
+            ) AS customer_available_credit,
             i.tax_calculation,
             i.template_id,
             i.notes,
@@ -3056,22 +3098,114 @@ export async function getInvoicingInvoiceDetail(
       context.pool.query(
         `
           SELECT
-            id,
-            credit_note_number,
-            issue_date,
-            status,
-            total_amount,
-            reason
-          FROM invoicing_credit_notes
-          WHERE invoice_id =
+            note.id,
+            note.credit_note_number,
+            note.issue_date,
+            note.status,
+            note.subtotal,
+            note.tax_total,
+            note.total_amount,
+            note.reason,
+            COALESCE(
+              balance.applied_amount,
+              0
+            ) AS applied_amount,
+            COALESCE(
+              balance.refunded_amount,
+              0
+            ) AS refunded_amount,
+            COALESCE(
+              balance.available_amount,
+              0
+            ) AS available_amount,
+            COALESCE(
+              (
+                SELECT JSONB_AGG(
+                  JSONB_BUILD_OBJECT(
+                    'id',
+                    app.id,
+                    'targetInvoiceId',
+                    app.target_invoice_id,
+                    'targetInvoiceNumber',
+                    target.invoice_number,
+                    'applicationType',
+                    app.application_type,
+                    'amount',
+                    app.amount,
+                    'status',
+                    app.status,
+                    'appliedAt',
+                    app.applied_at,
+                    'reversalReason',
+                    app.reversal_reason
+                  )
+                  ORDER BY
+                    app.applied_at DESC,
+                    app.id DESC
+                )
+                FROM invoicing_credit_note_applications app
+                INNER JOIN invoicing_invoices target
+                  ON target.id =
+                     app.target_invoice_id
+                 AND target.company_id =
+                     app.company_id
+                WHERE app.credit_note_id =
+                      note.id
+                  AND app.company_id =
+                      note.company_id
+              ),
+              '[]'::jsonb
+            ) AS applications,
+            COALESCE(
+              (
+                SELECT JSONB_AGG(
+                  JSONB_BUILD_OBJECT(
+                    'id',
+                    refund.id,
+                    'refundNumber',
+                    refund.refund_number,
+                    'refundDate',
+                    refund.refund_date,
+                    'amount',
+                    refund.amount,
+                    'method',
+                    refund.method,
+                    'reference',
+                    refund.reference,
+                    'reason',
+                    refund.reason,
+                    'status',
+                    refund.status,
+                    'reversalReason',
+                    refund.reversal_reason
+                  )
+                  ORDER BY
+                    refund.refund_date DESC,
+                    refund.id DESC
+                )
+                FROM invoicing_credit_note_refunds refund
+                WHERE refund.credit_note_id =
+                      note.id
+                  AND refund.company_id =
+                      note.company_id
+              ),
+              '[]'::jsonb
+            ) AS refunds
+          FROM invoicing_credit_notes note
+          LEFT JOIN invoicing_credit_note_balances balance
+            ON balance.credit_note_id =
+               note.id
+           AND balance.company_id =
+               note.company_id
+          WHERE note.invoice_id =
                 $1
-            AND company_id =
+            AND note.company_id =
                 $2
-            AND deleted_at
+            AND note.deleted_at
                 IS NULL
           ORDER BY
-            issue_date DESC,
-            created_at DESC
+            note.issue_date DESC,
+            note.created_at DESC
         `,
         [
           invoiceId,
@@ -3249,6 +3383,10 @@ export async function getInvoicingInvoiceDetail(
     creditedAmount:
       money(
         row.credited_amount,
+      ),
+    customerAvailableCredit:
+      money(
+        row.customer_available_credit,
       ),
     balanceDue:
       [
@@ -3492,14 +3630,104 @@ export async function getInvoicingInvoiceDetail(
             String(
               credit.status,
             ),
+          subtotal:
+            money(
+              credit.subtotal,
+            ),
+          taxTotal:
+            money(
+              credit.tax_total,
+            ),
           amount:
             money(
               credit.total_amount,
+            ),
+          appliedAmount:
+            money(
+              credit.applied_amount,
+            ),
+          refundedAmount:
+            money(
+              credit.refunded_amount,
+            ),
+          availableAmount:
+            money(
+              credit.available_amount,
             ),
           reason:
             String(
               credit.reason,
             ),
+          applications:
+            Array.isArray(
+              credit.applications,
+            )
+              ? credit.applications.map(
+                  (
+                    item:
+                      Record<
+                        string,
+                        unknown
+                      >,
+                  ) => ({
+                    id:
+                      String(item.id),
+                    targetInvoiceId:
+                      String(item.targetInvoiceId),
+                    targetInvoiceNumber:
+                      String(item.targetInvoiceNumber),
+                    applicationType:
+                      String(item.applicationType),
+                    amount:
+                      money(item.amount),
+                    status:
+                      String(item.status),
+                    appliedAt:
+                      String(item.appliedAt),
+                    reversalReason:
+                      item.reversalReason
+                        ? String(item.reversalReason)
+                        : null,
+                  }),
+                )
+              : [],
+          refunds:
+            Array.isArray(
+              credit.refunds,
+            )
+              ? credit.refunds.map(
+                  (
+                    item:
+                      Record<
+                        string,
+                        unknown
+                      >,
+                  ) => ({
+                    id:
+                      String(item.id),
+                    refundNumber:
+                      String(item.refundNumber),
+                    refundDate:
+                      String(item.refundDate),
+                    amount:
+                      money(item.amount),
+                    method:
+                      String(item.method),
+                    reference:
+                      item.reference
+                        ? String(item.reference)
+                        : null,
+                    reason:
+                      String(item.reason),
+                    status:
+                      String(item.status),
+                    reversalReason:
+                      item.reversalReason
+                        ? String(item.reversalReason)
+                        : null,
+                  }),
+                )
+              : [],
         }),
       ),
     history:

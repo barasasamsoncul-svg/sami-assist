@@ -545,13 +545,29 @@ CREATE TABLE IF NOT EXISTS public.invoicing_credit_notes (
   customer_id UUID NOT NULL REFERENCES public.invoicing_customers(id) ON DELETE RESTRICT,
   credit_note_number VARCHAR(140) NOT NULL,
   status VARCHAR(30) NOT NULL DEFAULT 'issued'
-    CHECK (status IN ('draft','issued','applied','refunded','cancelled')),
+    CHECK (
+      status IN (
+        'draft',
+        'issued',
+        'partially_applied',
+        'applied',
+        'partially_refunded',
+        'refunded',
+        'cancelled'
+      )
+    ),
   issue_date DATE NOT NULL DEFAULT CURRENT_DATE,
   currency VARCHAR(3) NOT NULL DEFAULT 'KES',
   reason TEXT NOT NULL,
   subtotal NUMERIC(19,4) NOT NULL DEFAULT 0,
   tax_total NUMERIC(19,4) NOT NULL DEFAULT 0,
   total_amount NUMERIC(19,4) NOT NULL CHECK (total_amount > 0),
+  idempotency_key VARCHAR(120),
+  issued_at TIMESTAMPTZ,
+  issued_by UUID,
+  cancelled_at TIMESTAMPTZ,
+  cancelled_by UUID,
+  cancellation_reason TEXT,
   created_by UUID,
   updated_by UUID,
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -563,6 +579,9 @@ CREATE TABLE IF NOT EXISTS public.invoicing_credit_notes (
 CREATE INDEX IF NOT EXISTS idx_invoicing_credit_notes_invoice
   ON public.invoicing_credit_notes(invoice_id, issue_date DESC)
   WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_invoicing_credit_notes_idempotency
+  ON public.invoicing_credit_notes(company_id, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS public.invoicing_credit_note_items (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -573,10 +592,66 @@ CREATE TABLE IF NOT EXISTS public.invoicing_credit_note_items (
   quantity NUMERIC(19,4) NOT NULL DEFAULT 1 CHECK (quantity > 0),
   unit_price NUMERIC(19,4) NOT NULL DEFAULT 0 CHECK (unit_price >= 0),
   tax_rate NUMERIC(9,4) NOT NULL DEFAULT 0 CHECK (tax_rate BETWEEN 0 AND 100),
+  subtotal NUMERIC(19,4) NOT NULL DEFAULT 0,
+  discount_amount NUMERIC(19,4) NOT NULL DEFAULT 0,
   tax_amount NUMERIC(19,4) NOT NULL DEFAULT 0,
   line_total NUMERIC(19,4) NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS public.invoicing_credit_note_applications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  credit_note_id UUID NOT NULL REFERENCES public.invoicing_credit_notes(id) ON DELETE RESTRICT,
+  target_invoice_id UUID NOT NULL REFERENCES public.invoicing_invoices(id) ON DELETE RESTRICT,
+  application_type VARCHAR(30) NOT NULL DEFAULT 'customer_credit'
+    CHECK (application_type IN ('source_offset','customer_credit')),
+  amount NUMERIC(19,4) NOT NULL CHECK (amount > 0),
+  status VARCHAR(20) NOT NULL DEFAULT 'posted'
+    CHECK (status IN ('posted','reversed')),
+  operation_key VARCHAR(160) NOT NULL,
+  applied_by UUID,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  reversed_by UUID,
+  reversed_at TIMESTAMPTZ,
+  reversal_reason TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(company_id, operation_key)
+);
+CREATE INDEX IF NOT EXISTS idx_invoicing_credit_applications_credit
+  ON public.invoicing_credit_note_applications(credit_note_id, status, applied_at DESC);
+CREATE INDEX IF NOT EXISTS idx_invoicing_credit_applications_invoice
+  ON public.invoicing_credit_note_applications(target_invoice_id, status, applied_at DESC);
+
+CREATE TABLE IF NOT EXISTS public.invoicing_credit_note_refunds (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  credit_note_id UUID NOT NULL REFERENCES public.invoicing_credit_notes(id) ON DELETE RESTRICT,
+  refund_number VARCHAR(140) NOT NULL,
+  refund_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  amount NUMERIC(19,4) NOT NULL CHECK (amount > 0),
+  method VARCHAR(40) NOT NULL DEFAULT 'bank',
+  reference VARCHAR(255),
+  reason TEXT NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'posted'
+    CHECK (status IN ('posted','reversed')),
+  idempotency_key VARCHAR(120),
+  created_by UUID,
+  reversed_by UUID,
+  reversed_at TIMESTAMPTZ,
+  reversal_reason TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(company_id, refund_number)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_invoicing_credit_refunds_idempotency
+  ON public.invoicing_credit_note_refunds(company_id, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_invoicing_credit_refunds_credit
+  ON public.invoicing_credit_note_refunds(credit_note_id, status, refund_date DESC, id DESC);
 
 CREATE TABLE IF NOT EXISTS public.invoicing_recurring_templates (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -950,6 +1025,8 @@ BEGIN
     'invoicing_invoice_items',
     'invoicing_payments',
     'invoicing_credit_notes',
+    'invoicing_credit_note_applications',
+    'invoicing_credit_note_refunds',
     'invoicing_recurring_templates',
     'invoicing_recurring_runs',
     'invoicing_portal_access',
@@ -1008,6 +1085,12 @@ ON CONFLICT (company_id, document_type) DO NOTHING;
 
 INSERT INTO public.invoicing_sequences (company_id, document_type, prefix, next_number, padding, format)
 SELECT c.id, 'credit_note', 'CN-', 1, 6, '{prefix}{number}'
+FROM public.companies c
+WHERE c.is_active = TRUE
+ON CONFLICT (company_id, document_type) DO NOTHING;
+
+INSERT INTO public.invoicing_sequences (company_id, document_type, prefix, next_number, padding, format)
+SELECT c.id, 'credit_refund', 'CRF-', 1, 6, '{prefix}{number}'
 FROM public.companies c
 WHERE c.is_active = TRUE
 ON CONFLICT (company_id, document_type) DO NOTHING;
@@ -1078,11 +1161,15 @@ LEFT JOIN LATERAL (
     AND p.deleted_at IS NULL
 ) pa ON TRUE
 LEFT JOIN LATERAL (
-  SELECT COALESCE(SUM(c.total_amount),0)::numeric(19,4) AS credited_amount
-  FROM public.invoicing_credit_notes c
-  WHERE c.invoice_id = i.id
-    AND c.status IN ('issued','applied','refunded')
-    AND c.deleted_at IS NULL
+  SELECT COALESCE(SUM(a.amount),0)::numeric(19,4) AS credited_amount
+  FROM public.invoicing_credit_note_applications a
+  INNER JOIN public.invoicing_credit_notes cn
+    ON cn.id = a.credit_note_id
+   AND cn.company_id = a.company_id
+  WHERE a.target_invoice_id = i.id
+    AND a.status = 'posted'
+    AND cn.status <> 'cancelled'
+    AND cn.deleted_at IS NULL
 ) cn ON TRUE
 WHERE i.deleted_at IS NULL
 GROUP BY i.company_id, i.customer_id;
@@ -1140,13 +1227,62 @@ LEFT JOIN LATERAL (
     AND p.deleted_at IS NULL
 ) pa ON TRUE
 LEFT JOIN LATERAL (
-  SELECT COALESCE(SUM(c.total_amount),0)::numeric(19,4) AS credited_amount
-  FROM public.invoicing_credit_notes c
-  WHERE c.invoice_id = i.id
-    AND c.status IN ('issued','applied','refunded')
-    AND c.deleted_at IS NULL
+  SELECT COALESCE(SUM(a.amount),0)::numeric(19,4) AS credited_amount
+  FROM public.invoicing_credit_note_applications a
+  INNER JOIN public.invoicing_credit_notes cn
+    ON cn.id = a.credit_note_id
+   AND cn.company_id = a.company_id
+  WHERE a.target_invoice_id = i.id
+    AND a.status = 'posted'
+    AND cn.status <> 'cancelled'
+    AND cn.deleted_at IS NULL
 ) cn ON TRUE
 WHERE i.deleted_at IS NULL;
+
+CREATE OR REPLACE VIEW public.invoicing_credit_note_balances AS
+SELECT
+  cn.company_id,
+  cn.id AS credit_note_id,
+  cn.customer_id,
+  cn.invoice_id AS source_invoice_id,
+  cn.credit_note_number,
+  cn.currency,
+  cn.status,
+  cn.total_amount,
+  COALESCE(app.applied_amount,0)::numeric(19,4) AS applied_amount,
+  COALESCE(ref.refunded_amount,0)::numeric(19,4) AS refunded_amount,
+  GREATEST(
+    cn.total_amount -
+    COALESCE(app.applied_amount,0) -
+    COALESCE(ref.refunded_amount,0),
+    0
+  )::numeric(19,4) AS available_amount
+FROM public.invoicing_credit_notes cn
+LEFT JOIN LATERAL (
+  SELECT COALESCE(SUM(a.amount),0)::numeric(19,4) AS applied_amount
+  FROM public.invoicing_credit_note_applications a
+  WHERE a.credit_note_id = cn.id
+    AND a.company_id = cn.company_id
+    AND a.status = 'posted'
+) app ON TRUE
+LEFT JOIN LATERAL (
+  SELECT COALESCE(SUM(r.amount),0)::numeric(19,4) AS refunded_amount
+  FROM public.invoicing_credit_note_refunds r
+  WHERE r.credit_note_id = cn.id
+    AND r.company_id = cn.company_id
+    AND r.status = 'posted'
+) ref ON TRUE
+WHERE cn.deleted_at IS NULL
+  AND cn.status <> 'cancelled';
+
+CREATE OR REPLACE VIEW public.invoicing_customer_credit_balances AS
+SELECT
+  company_id,
+  customer_id,
+  currency,
+  COALESCE(SUM(available_amount),0)::numeric(19,4) AS available_credit
+FROM public.invoicing_credit_note_balances
+GROUP BY company_id, customer_id, currency;
 
 CREATE OR REPLACE VIEW public.invoicing_monthly_summary AS
 SELECT
