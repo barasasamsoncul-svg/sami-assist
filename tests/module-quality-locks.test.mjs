@@ -56,7 +56,7 @@ test(
 
     assert.equal(
       lock.moduleVersion,
-      '2.6.0',
+      '2.7.0',
     );
 
     assert.equal(
@@ -66,12 +66,12 @@ test(
 
     assert.equal(
       lock.baselineCommit,
-      '1f974f379c4a29abf1b69c9ad7c8cd5c64ebcced',
+      '5e1e6181a26e79453200c1786786534b6ec6fbb8',
     );
 
     assert.equal(
       lock.baselineBranch,
-      'main',
+      'feat/invoicing-2.7-recurring-depth',
     );
 
     for (
