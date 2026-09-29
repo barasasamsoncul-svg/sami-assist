@@ -116,7 +116,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
 
   assert.match(
     invoicing,
-    /version:\s*['"]2\.9\.0['"]/,
+    /version:\s*['"]2\.10\.0['"]/,
   );
 
   assert.match(
@@ -902,6 +902,31 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
   assert.match(
     runtimeMigrations,
     /INVOICING_2_8_0_TO_2_9_0/,
+  );
+
+  const snapshotMigration =
+    await source(
+      'lib/apps/invoicing/migrations/2.9.0-to-2.10.0.ts',
+    );
+
+  assert.match(
+    snapshotMigration,
+    /fromVersion:\s*['"]2\.9\.0['"]/,
+  );
+
+  assert.match(
+    snapshotMigration,
+    /toVersion:\s*['"]2\.10\.0['"]/,
+  );
+
+  assert.match(
+    snapshotMigration,
+    /CREATE TABLE IF NOT EXISTS public\.invoicing_document_snapshots/,
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /INVOICING_2_9_0_TO_2_10_0/,
   );
 
   const accounting =
@@ -2867,7 +2892,7 @@ test('Invoicing v2.7 turns recurring invoices into an observable retry-safe bill
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.9\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.10\.0['"]/s,
   );
 
   assert.match(
@@ -3067,7 +3092,7 @@ test('Invoicing v2.8 turns reminders into a staged auditable dunning engine', as
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.9\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.10\.0['"]/s,
   );
 
   assert.match(
@@ -3287,7 +3312,7 @@ test('Invoicing Part 8 builds a customer-scoped secure portal', async () => {
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.9\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.10\.0['"]/s,
   );
 
   assert.match(
@@ -3589,5 +3614,289 @@ test('Invoicing Part 8 builds a customer-scoped secure portal', async () => {
   assert.match(
     manifest,
     /key:\s*"portal_message"[\s\S]*table:\s*"invoicing_portal_messages"/s,
+  );
+});
+
+
+
+test('Invoicing Part 9 freezes issued invoice PDFs as immutable document snapshots', async () => {
+  const [
+    schema,
+    migration,
+    commands,
+    delivery,
+    snapshots,
+    pdf,
+    queries,
+    types,
+    workspacePdf,
+    publicPdf,
+    portalPdf,
+    exactSnapshotPdf,
+    detail,
+    runtimeMigrations,
+    manifest,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/schema.sql'),
+    source('lib/apps/invoicing/migrations/2.9.0-to-2.10.0.ts'),
+    source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/invoicing/delivery.ts'),
+    source('lib/apps/invoicing/document-snapshots.ts'),
+    source('lib/apps/invoicing/pdf.ts'),
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/types.ts'),
+    source('app/api/apps/invoicing/[invoiceId]/pdf/route.ts'),
+    source('app/i/[tenantId]/[token]/pdf/route.ts'),
+    source('app/p/[tenantId]/[token]/invoices/[invoiceId]/pdf/route.ts'),
+    source('app/api/apps/invoicing/[invoiceId]/snapshots/[snapshotId]/pdf/route.ts'),
+    source('app/apps/invoicing/[invoiceId]/InvoiceDetailClient.tsx'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+  ]);
+
+  assert.match(
+    manifest,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.10\.0['"]/s,
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /INVOICING_2_9_0_TO_2_10_0/,
+  );
+
+  assert.match(
+    migration,
+    /fromVersion:\s*['"]2\.9\.0['"]/,
+  );
+
+  assert.match(
+    migration,
+    /toVersion:\s*['"]2\.10\.0['"]/,
+  );
+
+  assert.match(
+    schema,
+    /CREATE TABLE IF NOT EXISTS public\.invoicing_document_snapshots/,
+  );
+
+  for (const field of [
+    'version_no',
+    'is_primary',
+    'snapshot_reason',
+    'renderer_version',
+    'payload_sha256',
+    'pdf_bytes',
+    'pdf_sha256',
+    'pdf_size_bytes',
+  ]) {
+    assert.match(
+      migration,
+      new RegExp(field),
+      'Document snapshot migration must include ' + field + '.',
+    );
+  }
+
+  assert.match(
+    migration,
+    /invoice_id UUID NOT NULL REFERENCES public\.invoicing_invoices\(id\) ON DELETE RESTRICT/,
+    'Issued document retention must prevent invoice deletion from silently removing archived PDFs.',
+  );
+
+  assert.match(
+    migration,
+    /UNIQUE\(invoice_id, version_no\)/,
+  );
+
+  assert.match(
+    migration,
+    /UNIQUE\(invoice_id, pdf_sha256\)/,
+  );
+
+  assert.match(
+    migration,
+    /uq_invoicing_document_snapshot_primary/,
+    'Each invoice must have one canonical primary issued document.',
+  );
+
+  assert.match(
+    migration,
+    /document_snapshot_id UUID[\s\S]*REFERENCES public\.invoicing_document_snapshots\(id\)/s,
+    'Delivery history must identify the exact immutable document that was sent.',
+  );
+
+  assert.match(
+    pdf,
+    /INVOICE_PDF_RENDERER_VERSION/,
+  );
+
+  assert.match(
+    pdf,
+    /invoice-pdf-v1/,
+  );
+
+  assert.match(
+    snapshots,
+    /createHash[\s\S]*sha256/s,
+    'Snapshot payload and PDF bytes must be independently hashed.',
+  );
+
+  assert.match(
+    snapshots,
+    /payload_sha256/,
+  );
+
+  assert.match(
+    snapshots,
+    /pdf_sha256/,
+  );
+
+  assert.match(
+    snapshots,
+    /pdf_bytes/,
+  );
+
+  assert.match(
+    snapshots,
+    /pg_advisory_xact_lock/,
+    'Snapshot creation must be serialized per invoice.',
+  );
+
+  assert.match(
+    snapshots,
+    /MAX\(version_no\)[\s\S]*\+ 1/s,
+    'Snapshot versions must be monotonic per invoice.',
+  );
+
+  assert.match(
+    snapshots,
+    /is_primary[\s\S]*TRUE/s,
+  );
+
+  assert.doesNotMatch(
+    snapshots,
+    /UPDATE\s+invoicing_document_snapshots/i,
+    'Application snapshot authority must never mutate an archived snapshot.',
+  );
+
+  assert.doesNotMatch(
+    snapshots,
+    /DELETE\s+FROM\s+invoicing_document_snapshots/i,
+    'Application snapshot authority must never delete an archived snapshot.',
+  );
+
+  assert.match(
+    snapshots,
+    /invoice\.document_snapshot_created/,
+    'Snapshot creation must enter the invoice audit trail.',
+  );
+
+  assert.match(
+    commands,
+    /postInvoiceConfirmationToAccounting[\s\S]*createPrimaryInvoiceDocumentSnapshot[\s\S]*COMMIT/s,
+    'A confirmed invoice must be snapshotted before its posting transaction commits.',
+  );
+
+  assert.match(
+    delivery,
+    /ensurePrimaryInvoiceDocumentSnapshot/,
+  );
+
+  assert.doesNotMatch(
+    delivery,
+    /renderInvoicePdf/,
+    'Outbound delivery must use the frozen document instead of regenerating a live PDF.',
+  );
+
+  assert.match(
+    delivery,
+    /document_snapshot_id/,
+  );
+
+  for (const routeSource of [
+    publicPdf,
+    portalPdf,
+  ]) {
+    assert.match(
+      routeSource,
+      /ensureTenantInvoiceDocumentSnapshot/,
+    );
+    assert.match(
+      routeSource,
+      /X-SaMi-Document-Snapshot/,
+    );
+    assert.match(
+      routeSource,
+      /ETag/,
+    );
+  }
+
+  assert.match(
+    workspacePdf,
+    /\['draft',[\s\S]*'pending_approval',[\s\S]*'rejected'/s,
+    'Draft-like PDFs must remain live previews.',
+  );
+
+  assert.match(
+    workspacePdf,
+    /ensurePrimaryInvoiceDocumentSnapshot/,
+    'Issued workspace PDFs must use an immutable snapshot.',
+  );
+
+  assert.match(
+    workspacePdf,
+    /legacy_backfill/,
+    'Legacy issued invoices must be archived lazily without changing their business state.',
+  );
+
+  assert.match(
+    exactSnapshotPdf,
+    /getInvoiceDocumentSnapshot/,
+  );
+
+  assert.match(
+    exactSnapshotPdf,
+    /X-SaMi-Document-Version/,
+  );
+
+  assert.match(
+    queries,
+    /documentSnapshots:/,
+  );
+
+  assert.match(
+    queries,
+    /document_snapshot_id/,
+  );
+
+  assert.match(
+    types,
+    /InvoicingDocumentSnapshotSummary/,
+  );
+
+  for (const visibleEvidence of [
+    'Document snapshots',
+    'Issued document locked',
+    'PDF SHA-256',
+    'View',
+    'Download',
+  ]) {
+    assert.ok(
+      detail.includes(
+        visibleEvidence,
+      ),
+      visibleEvidence + ' must be visible in the invoice document evidence surface.',
+    );
+  }
+
+  assert.match(
+    manifest,
+    /key:\s*"document_snapshot"[\s\S]*table:\s*"invoicing_document_snapshots"[\s\S]*permissions:\s*\{[\s\S]*read:\s*\["invoicing\.invoice\.view"\][\s\S]*\}/s,
+    'Document snapshots must be a first-class read-only Invoicing resource.',
+  );
+
+  assert.match(
+    manifest,
+    /key:\s*"invoicing\.document_snapshot\.company"[\s\S]*operations:\s*\["read"\]/s,
+    'The record policy must keep archived snapshots read-only.',
   );
 });
