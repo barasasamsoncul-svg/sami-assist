@@ -6397,6 +6397,235 @@ export async function allocateInvoicePayment(
 }
 
 
+export async function reverseInvoicePaymentAllocation(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .PAYMENT_RECORD,
+    );
+
+  const allocationId =
+    requireUuid(
+      input.allocationId,
+      'Payment allocation',
+    );
+
+  const reason =
+    cleanText(
+      input.reason,
+      2000,
+    );
+
+  if (!reason) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'An allocation reversal reason is required.',
+    );
+  }
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const result =
+      await client.query(
+        `
+          SELECT
+            a.id,
+            a.payment_id,
+            a.invoice_id,
+            a.amount,
+            a.status,
+            a.operation_key,
+            p.payment_number,
+            i.invoice_number
+          FROM invoicing_payment_allocations a
+          INNER JOIN invoicing_payments p
+            ON p.id = a.payment_id
+           AND p.company_id = a.company_id
+          INNER JOIN invoicing_invoices i
+            ON i.id = a.invoice_id
+           AND i.company_id = a.company_id
+          WHERE a.id = $1
+            AND a.company_id = $2
+          FOR UPDATE OF a
+        `,
+        [
+          allocationId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      result.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'PAYMENT_NOT_FOUND',
+        'Payment allocation was not found.',
+      );
+    }
+
+    const allocation =
+      result.rows[0];
+
+    if (
+      String(
+        allocation.status,
+      ) !==
+        'posted'
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Only a posted allocation can be reversed.',
+      );
+    }
+
+    const operationKey =
+      String(
+        allocation.operation_key ||
+        allocation.id,
+      );
+
+    await client.query(
+      `
+        UPDATE invoicing_payment_allocations
+        SET
+          status = 'reversed',
+          reversed_at = NOW(),
+          reversed_by = $3,
+          reversal_reason = $4
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [
+        allocationId,
+        context.companyId,
+        context.userId,
+        reason,
+      ],
+    );
+
+    await reverseInvoicingAccountingEvent(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        originalEventKey:
+          'payment-allocation:' +
+          allocationId +
+          ':' +
+          operationKey,
+        reversalEventKey:
+          'payment-allocation-reversal:' +
+          allocationId +
+          ':' +
+          operationKey,
+        sourceType:
+          'payment_allocation_reversal',
+        sourceId:
+          allocationId,
+        description:
+          'Payment ' +
+          String(
+            allocation.payment_number,
+          ) +
+          ' allocation reversed',
+      },
+    );
+
+    const settlement =
+      await reconcileInvoiceSettlementStatus(
+        client,
+        context.companyId,
+        context.userId,
+        String(
+          allocation.invoice_id,
+        ),
+        'Payment allocation reversed: ' +
+        reason,
+      );
+
+    await recordInvoicingActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        invoiceId:
+          String(
+            allocation.invoice_id,
+          ),
+        type:
+          'invoice.payment_allocation_reversed',
+        content:
+          'Allocation from payment ' +
+          String(
+            allocation.payment_number,
+          ) +
+          ' reversed.',
+        metadata: {
+          allocationId,
+          paymentId:
+            String(
+              allocation.payment_id,
+            ),
+          amount:
+            money(
+              allocation.amount,
+            ),
+          reason,
+        },
+      },
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return {
+      allocationId,
+      paymentId:
+        String(
+          allocation.payment_id,
+        ),
+      invoiceId:
+        String(
+          allocation.invoice_id,
+        ),
+      status:
+        'reversed',
+      invoiceStatus:
+        settlement.status,
+      remainingBalance:
+        settlement.balanceDue,
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
 export async function reverseInvoicePayment(
   input:
     Record<string, unknown>,
