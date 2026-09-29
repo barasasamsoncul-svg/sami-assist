@@ -1,5 +1,9 @@
 import 'server-only';
 
+import type {
+  PoolClient,
+} from 'pg';
+
 import {
   cleanText,
   INVOICING_PERMISSIONS,
@@ -19,15 +23,7 @@ import {
 
 async function recordRetainerActivity(
   client:
-    Awaited<
-      ReturnType<
-        Awaited<
-          ReturnType<
-            typeof requireInvoicingContext
-          >
-        >['pool']['connect']
-      >
-    >,
+    PoolClient,
   input: {
     companyId:
       string;
