@@ -71,3 +71,7 @@ export {
   reverseInvoiceCreditApplication,
   reverseInvoiceCreditNoteRefund,
 } from '@/lib/apps/invoicing/credit-notes';
+
+export {
+  recordCustomerRetainer,
+} from '@/lib/apps/invoicing/retainers';
