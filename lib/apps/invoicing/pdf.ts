@@ -1,7 +1,11 @@
 import 'server-only';
 
 
-type PdfInvoice = {
+export const INVOICE_PDF_RENDERER_VERSION =
+  'invoice-pdf-v1';
+
+
+export type PdfInvoice = {
   invoiceNumber: string;
   status: string;
   invoiceDate: string;
