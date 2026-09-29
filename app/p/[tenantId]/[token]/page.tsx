@@ -470,7 +470,12 @@ export default async function CustomerPortalPage({
                             Applied to {
                               payment.invoices
                                 .map(
-                                  invoice =>
+                                  (
+                                    invoice: {
+                                      invoiceNumber:
+                                        string;
+                                    },
+                                  ) =>
                                     invoice.invoiceNumber,
                                 )
                                 .join(
