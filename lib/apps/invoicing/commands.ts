@@ -7077,6 +7077,200 @@ export async function refundInvoicePayment(
 }
 
 
+export async function reverseInvoicePaymentRefund(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .PAYMENT_RECORD,
+    );
+
+  const refundId =
+    requireUuid(
+      input.refundId,
+      'Payment refund',
+    );
+
+  const reason =
+    cleanText(
+      input.reason,
+      2000,
+    );
+
+  if (!reason) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'A refund reversal reason is required.',
+    );
+  }
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const result =
+      await client.query(
+        `
+          SELECT
+            r.id,
+            r.payment_id,
+            r.refund_number,
+            r.status,
+            p.payment_number
+          FROM invoicing_payment_refunds r
+          INNER JOIN invoicing_payments p
+            ON p.id = r.payment_id
+           AND p.company_id = r.company_id
+          WHERE r.id = $1
+            AND r.company_id = $2
+          FOR UPDATE OF r
+        `,
+        [
+          refundId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      result.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'PAYMENT_NOT_FOUND',
+        'Payment refund was not found.',
+      );
+    }
+
+    const refund =
+      result.rows[0];
+
+    if (
+      String(
+        refund.status,
+      ) !==
+        'posted'
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Only a posted refund can be reversed.',
+      );
+    }
+
+    await client.query(
+      `
+        UPDATE invoicing_payment_refunds
+        SET
+          status = 'reversed',
+          reversed_at = NOW(),
+          reversed_by = $3,
+          reversal_reason = $4,
+          updated_by = $3,
+          updated_at = NOW()
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [
+        refundId,
+        context.companyId,
+        context.userId,
+        reason,
+      ],
+    );
+
+    await reverseInvoicingAccountingEvent(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        originalEventKey:
+          'payment-refund:' +
+          refundId,
+        reversalEventKey:
+          'payment-refund-reversal:' +
+          refundId,
+        sourceType:
+          'payment_refund_reversal',
+        sourceId:
+          refundId,
+        description:
+          'Refund ' +
+          String(
+            refund.refund_number,
+          ) +
+          ' reversed',
+      },
+    );
+
+    await recordMasterDataActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        model:
+          'invoicing.payment_refund',
+        recordId:
+          refundId,
+        type:
+          'invoicing.payment_refund_reversed',
+        content:
+          'Refund ' +
+          String(
+            refund.refund_number,
+          ) +
+          ' reversed.',
+        metadata: {
+          paymentId:
+            String(
+              refund.payment_id,
+            ),
+          paymentNumber:
+            String(
+              refund.payment_number,
+            ),
+          reason,
+        },
+      },
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return {
+      refundId,
+      paymentId:
+        String(
+          refund.payment_id,
+        ),
+      status:
+        'reversed',
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
 export async function reverseInvoicePayment(
   input:
     Record<string, unknown>,
