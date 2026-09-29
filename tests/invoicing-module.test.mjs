@@ -1847,3 +1847,98 @@ test('Invoicing invoice register provides deep operator controls and authenticat
     /private, no-store, no-cache, must-revalidate/,
   );
 });
+
+
+test('Invoicing invoice lifecycle blocks draft delivery and exposes authenticated operator PDF controls', async () => {
+  const [
+    delivery,
+    detail,
+    workspace,
+    pdfRoute,
+    commands,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/delivery.ts'),
+    source('app/apps/invoicing/[invoiceId]/InvoiceDetailClient.tsx'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('app/api/apps/invoicing/[invoiceId]/pdf/route.ts'),
+    source('lib/apps/invoicing/commands.ts'),
+  ]);
+
+  assert.match(
+    delivery,
+    /Confirm the invoice before sending it to the customer\./,
+    'Draft invoices must never be promoted to sent through the delivery path.',
+  );
+
+  assert.doesNotMatch(
+    delivery,
+    /WHEN status IN \(\s*'draft',\s*'confirmed'/,
+    'Delivery must not convert draft invoices directly to sent.',
+  );
+
+  assert.match(
+    detail,
+    /View PDF/,
+  );
+
+  assert.match(
+    detail,
+    /Download/,
+  );
+
+  assert.match(
+    detail,
+    /\/api\/apps\/invoicing\/.*\/pdf/,
+  );
+
+  assert.match(
+    workspace,
+    /Invoice register/,
+  );
+
+  assert.match(
+    workspace,
+    /All statuses/,
+  );
+
+  assert.match(
+    workspace,
+    /All balances/,
+  );
+
+  assert.match(
+    workspace,
+    /Highest balance/,
+  );
+
+  assert.match(
+    workspace,
+    /Duplicate as draft/,
+  );
+
+  assert.match(
+    workspace,
+    /Send overdue reminder/,
+  );
+
+  assert.match(
+    pdfRoute,
+    /INVOICE_VIEW/,
+  );
+
+  assert.match(
+    pdfRoute,
+    /renderInvoicePdf/,
+  );
+
+  assert.match(
+    pdfRoute,
+    /download/,
+  );
+
+  assert.match(
+    commands,
+    /FOR UPDATE/,
+    'Invoice state transitions must lock the document before changing lifecycle state.',
+  );
+});
