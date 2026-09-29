@@ -151,6 +151,7 @@ function statusClass(
   if (
     [
       'overdue',
+      'rejected',
       'cancelled',
       'void',
       'written_off',
@@ -175,6 +176,13 @@ function statusClass(
     return 'bg-blue-500/10 text-blue-700 ring-blue-500/20 dark:text-blue-300';
   }
 
+  if (
+    status ===
+      'pending_approval'
+  ) {
+    return 'bg-amber-500/10 text-amber-700 ring-amber-500/20 dark:text-amber-300';
+  }
+
   return 'bg-slate-500/10 text-slate-600 ring-slate-500/20 dark:text-slate-300';
 }
 
@@ -197,10 +205,13 @@ function StatusPill({
       )}
     >
       {
-        value.replaceAll(
-          '_',
-          ' ',
-        )
+        value ===
+          'confirmed'
+          ? 'posted'
+          : value.replaceAll(
+              '_',
+              ' ',
+            )
       }
     </span>
   );
@@ -470,11 +481,14 @@ export default function InvoiceDetailClient({
                 )}
               >
                 {
-                  invoice.status
-                    .replaceAll(
-                      '_',
-                      ' ',
-                    )
+                  invoice.status ===
+                    'confirmed'
+                    ? 'posted'
+                    : invoice.status
+                        .replaceAll(
+                          '_',
+                          ' ',
+                        )
                 }
               </span>
             </div>
@@ -590,6 +604,8 @@ export default function InvoiceDetailClient({
                 0 &&
               ![
                 'draft',
+                'pending_approval',
+                'rejected',
                 'paid',
                 'cancelled',
                 'void',
@@ -662,6 +678,43 @@ export default function InvoiceDetailClient({
             {
               invoice.status ===
                 'draft' &&
+              data.settings
+                .requireApproval &&
+              data.capabilities
+                .canEdit &&
+              (
+                <button
+                  type="button"
+                  disabled={
+                    busy
+                  }
+                  onClick={
+                    () =>
+                      run(
+                        {
+                          action:
+                            'change_status',
+                          invoiceId:
+                            invoice.id,
+                          status:
+                            'pending_approval',
+                        },
+                        'Invoice submitted for approval.',
+                      )
+                  }
+                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-amber-500 px-3 text-xs font-black text-slate-950 disabled:opacity-60"
+                >
+                  <BadgeCheck className="h-4 w-4" />
+                  Submit for approval
+                </button>
+              )
+            }
+
+            {
+              invoice.status ===
+                'draft' &&
+              !data.settings
+                .requireApproval &&
               data.capabilities
                 .canConfirm &&
               (
@@ -681,13 +734,79 @@ export default function InvoiceDetailClient({
                           status:
                             'confirmed',
                         },
-                        'Invoice confirmed.',
+                        'Invoice posted.',
                       )
                   }
-                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-950 px-3 text-xs font-black text-white dark:bg-white dark:text-slate-950"
+                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-950 px-3 text-xs font-black text-white disabled:opacity-60 dark:bg-white dark:text-slate-950"
                 >
                   <BadgeCheck className="h-4 w-4" />
-                  Confirm
+                  Post invoice
+                </button>
+              )
+            }
+
+            {
+              invoice.status ===
+                'pending_approval' &&
+              data.capabilities
+                .canConfirm &&
+              (
+                <button
+                  type="button"
+                  disabled={
+                    busy
+                  }
+                  onClick={
+                    () =>
+                      run(
+                        {
+                          action:
+                            'change_status',
+                          invoiceId:
+                            invoice.id,
+                          status:
+                            'confirmed',
+                        },
+                        'Invoice approved and posted.',
+                      )
+                  }
+                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-3 text-xs font-black text-white disabled:opacity-60"
+                >
+                  <BadgeCheck className="h-4 w-4" />
+                  Approve & post
+                </button>
+              )
+            }
+
+            {
+              invoice.status ===
+                'rejected' &&
+              data.capabilities
+                .canEdit &&
+              (
+                <button
+                  type="button"
+                  disabled={
+                    busy
+                  }
+                  onClick={
+                    () =>
+                      run(
+                        {
+                          action:
+                            'change_status',
+                          invoiceId:
+                            invoice.id,
+                          status:
+                            'draft',
+                        },
+                        'Invoice returned to draft for rework.',
+                      )
+                  }
+                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black disabled:opacity-60"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Return to draft
                 </button>
               )
             }
@@ -697,6 +816,8 @@ export default function InvoiceDetailClient({
                 .canSend &&
               ![
                 'draft',
+                'pending_approval',
+                'rejected',
                 'paid',
                 'cancelled',
                 'void',
@@ -1275,6 +1396,81 @@ export default function InvoiceDetailClient({
         </div>
 
         <aside className="space-y-4 xl:sticky xl:top-4 xl:h-fit">
+          {
+            invoice.status ===
+              'pending_approval' &&
+            data.capabilities
+              .canConfirm &&
+            (
+              <form
+                className="sami-surface rounded-[24px] border border-rose-500/15 p-4"
+                onSubmit={
+                  async event => {
+                    event.preventDefault();
+
+                    const element =
+                      event.currentTarget;
+
+                    const form =
+                      new FormData(
+                        element,
+                      );
+
+                    const saved =
+                      await run(
+                        {
+                          action:
+                            'change_status',
+                          invoiceId:
+                            invoice.id,
+                          status:
+                            'rejected',
+                          reason:
+                            form.get(
+                              'reason',
+                            ),
+                        },
+                        'Invoice rejected and returned for rework.',
+                      );
+
+                    if (
+                      saved
+                    ) {
+                      element.reset();
+                    }
+                  }
+                }
+              >
+                <p className="text-sm font-black text-rose-700 dark:text-rose-300">
+                  Approval decision
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Approval posts the receivable. Reject only when the creator must correct the commercial document first.
+                </p>
+
+                <textarea
+                  name="reason"
+                  required
+                  maxLength={2000}
+                  rows={3}
+                  placeholder="Reason for rejection"
+                  className="mt-3 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 py-2.5 text-sm"
+                />
+
+                <button
+                  type="submit"
+                  disabled={
+                    busy
+                  }
+                  className="mt-2 h-10 w-full rounded-xl border border-rose-500/30 bg-rose-500/10 text-xs font-black text-rose-700 disabled:opacity-60 dark:text-rose-300"
+                >
+                  Reject for rework
+                </button>
+              </form>
+            )
+          }
+
           <section className="sami-surface rounded-[24px] p-4">
             <p className="text-sm font-black">
               Financial summary
@@ -1371,6 +1567,8 @@ export default function InvoiceDetailClient({
               .canCancel &&
             [
               'draft',
+              'pending_approval',
+              'rejected',
               'confirmed',
               'sent',
               'viewed',
@@ -1475,8 +1673,15 @@ export default function InvoiceDetailClient({
                     }
 
                     {
-                      invoice.status !==
-                        'draft' &&
+                      [
+                        'confirmed',
+                        'sent',
+                        'viewed',
+                        'overdue',
+                        'partially_paid',
+                      ].includes(
+                        invoice.status,
+                      ) &&
                       (
                         <option value="written_off">
                           Write off remaining balance
@@ -1519,6 +1724,8 @@ export default function InvoiceDetailClient({
               0 &&
             ![
               'draft',
+              'pending_approval',
+              'rejected',
               'cancelled',
               'void',
               'written_off',
@@ -1651,6 +1858,8 @@ export default function InvoiceDetailClient({
               0 &&
             ![
               'draft',
+              'pending_approval',
+              'rejected',
               'cancelled',
               'void',
               'written_off',
