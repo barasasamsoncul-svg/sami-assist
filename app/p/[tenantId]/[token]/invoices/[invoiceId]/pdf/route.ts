@@ -12,8 +12,8 @@ import {
 } from '@/lib/apps/invoicing/context';
 
 import {
-  renderInvoicePdf,
-} from '@/lib/apps/invoicing/pdf';
+  ensureTenantInvoiceDocumentSnapshot,
+} from '@/lib/apps/invoicing/document-snapshots';
 
 
 export const runtime =
@@ -61,10 +61,19 @@ export async function GET(
         },
       );
 
+    const snapshot =
+      await ensureTenantInvoiceDocumentSnapshot({
+        tenantId,
+        invoiceId:
+          invoice.id,
+        userId:
+          null,
+        reason:
+          'legacy_backfill',
+      });
+
     const pdf =
-      renderInvoicePdf(
-        invoice,
-      );
+      snapshot.pdf;
 
     const filename =
       invoice.invoiceNumber
@@ -98,6 +107,16 @@ export async function GET(
             'nosniff',
           'Referrer-Policy':
             'no-referrer',
+          ETag:
+            '"' +
+            snapshot.pdfSha256 +
+            '"',
+          'Content-Length':
+            String(
+              snapshot.pdfSizeBytes,
+            ),
+          'X-SaMi-Document-Snapshot':
+            snapshot.id,
         },
       },
     );
