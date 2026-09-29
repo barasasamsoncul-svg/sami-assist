@@ -1,5 +1,7 @@
 import 'server-only';
 
+import crypto from 'crypto';
+
 import type {
   PoolClient,
 } from 'pg';
@@ -31,6 +33,11 @@ import {
 import {
   dispatchBusinessAutomationEventSafely,
 } from '@/lib/automation/business-events';
+
+import {
+  sendWorkspaceNotificationEmail,
+} from '@/lib/services/email';
+
 
 import {
   cleanText,
@@ -9854,6 +9861,842 @@ export async function saveDunningPolicy(
   } finally {
     client.release();
   }
+}
+
+
+function portalTokenHash(
+  value:
+    string,
+) {
+  return crypto
+    .createHash(
+      'sha256',
+    )
+    .update(
+      value,
+    )
+    .digest(
+      'hex',
+    );
+}
+
+
+function portalPublicUrl(
+  tenantId:
+    string,
+  token:
+    string,
+) {
+  const raw =
+    (
+      process.env.APP_URL ||
+      process.env
+        .NEXT_PUBLIC_APP_URL ||
+      ''
+    )
+      .trim()
+      .replace(
+        /\/+$/,
+        '',
+      );
+
+  if (
+    !raw
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'APP_URL is required before customer portal access can be issued.',
+    );
+  }
+
+  try {
+    const base =
+      new URL(
+        raw,
+      );
+
+    return (
+      base.origin +
+      '/p/' +
+      encodeURIComponent(
+        tenantId,
+      ) +
+      '/' +
+      encodeURIComponent(
+        token,
+      )
+    );
+  } catch {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'APP_URL must be a valid URL before customer portal access can be issued.',
+    );
+  }
+}
+
+
+export async function issueCustomerPortalAccess(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .CUSTOMER_MANAGE,
+    );
+
+  const customerId =
+    requireUuid(
+      input.customerId,
+      'Customer',
+    );
+
+  const client =
+    await context.pool.connect();
+
+  const token =
+    crypto
+      .randomBytes(
+        32,
+      )
+      .toString(
+        'base64url',
+      );
+
+  const tokenHash =
+    portalTokenHash(
+      token,
+    );
+
+  let customerName =
+    '';
+
+  let customerEmail =
+    '';
+
+  let expiresAt =
+    new Date();
+
+  let accessId =
+    '';
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const result =
+      await client.query(
+        `
+          SELECT
+            c.id,
+            c.name,
+            c.email,
+            c.status,
+            s.portal_enabled,
+            s.portal_access_days
+          FROM invoicing_customers c
+          INNER JOIN invoicing_settings s
+            ON s.company_id =
+               c.company_id
+          WHERE c.id =
+                $1
+            AND c.company_id =
+                $2
+            AND c.deleted_at
+                IS NULL
+          FOR UPDATE OF c
+        `,
+        [
+          customerId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      result.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'CUSTOMER_NOT_FOUND',
+        'Customer was not found.',
+      );
+    }
+
+    const customer =
+      result.rows[0];
+
+    if (
+      customer.status !==
+        'active'
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'Customer portal access can only be issued to an active customer.',
+      );
+    }
+
+    if (
+      customer.portal_enabled !==
+        true
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'Customer portal access is disabled in Invoicing settings.',
+      );
+    }
+
+    customerName =
+      String(
+        customer.name,
+      );
+
+    customerEmail =
+      normalizedEmail(
+        customer.email,
+      ) ||
+      '';
+
+    if (
+      !customerEmail
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'Add a valid customer email before issuing portal access.',
+      );
+    }
+
+    const configuredDays =
+      Math.floor(
+        Number(
+          customer.portal_access_days ||
+          90,
+        ),
+      );
+
+    const requestedDays =
+      input.expiresDays ===
+        null ||
+      input.expiresDays ===
+        undefined ||
+      input.expiresDays ===
+        ''
+        ? configuredDays
+        : Math.floor(
+            numberInput(
+              input.expiresDays,
+              'Portal access days',
+              {
+                min:
+                  1,
+                max:
+                  3650,
+              },
+            ),
+          );
+
+    expiresAt =
+      new Date(
+        Date.now() +
+        requestedDays *
+        24 *
+        60 *
+        60 *
+        1000,
+      );
+
+    await client.query(
+      `
+        UPDATE invoicing_portal_access
+        SET
+          status =
+            'revoked',
+          revoked_by =
+            $3,
+          revoked_at =
+            NOW(),
+          updated_at =
+            NOW()
+        WHERE company_id =
+              $1
+          AND customer_id =
+              $2
+          AND status =
+              'active'
+      `,
+      [
+        context.companyId,
+        customerId,
+        context.userId,
+      ],
+    );
+
+    const inserted =
+      await client.query(
+        `
+          INSERT INTO invoicing_portal_access (
+            company_id,
+            customer_id,
+            token_hash,
+            status,
+            expires_at,
+            created_by,
+            metadata
+          )
+          VALUES (
+            $1,$2,$3,
+            'active',
+            $4,
+            $5,
+            jsonb_build_object(
+              'issuedBy',
+              ($5::uuid)::text
+            )
+          )
+          RETURNING
+            id
+        `,
+        [
+          context.companyId,
+          customerId,
+          tokenHash,
+          expiresAt,
+          context.userId,
+        ],
+      );
+
+    accessId =
+      String(
+        inserted.rows[0].id,
+      );
+
+    await recordMasterDataActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        model:
+          'invoicing.customer_portal',
+        recordId:
+          customerId,
+        type:
+          'customer.portal_access_issued',
+        content:
+          'Customer portal access issued for ' +
+          customerName +
+          '.',
+        metadata: {
+          accessId,
+          expiresAt:
+            expiresAt
+              .toISOString(),
+        },
+      },
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  const portalUrl =
+    portalPublicUrl(
+      context.tenantId,
+      token,
+    );
+
+  let emailDelivered =
+    false;
+
+  try {
+    const delivery =
+      await sendWorkspaceNotificationEmail(
+        customerEmail,
+        customerName,
+        {
+          title:
+            context.company
+              .currentCompany
+              .name +
+            ' customer portal',
+          message:
+            'Your secure SaMi customer portal is ready. Review invoices, balances, payments and messages in one place. Access expires ' +
+            expiresAt
+              .toLocaleDateString(
+                'en-KE',
+              ) +
+            '.',
+          actionHref:
+            portalUrl,
+          actionLabel:
+            'Open customer portal',
+        },
+      );
+
+    emailDelivered =
+      delivery.success ===
+      true;
+  } catch (
+    error
+  ) {
+    console.error(
+      '[SaMi Invoicing] Customer portal invitation email failed:',
+      {
+        customerId,
+        error:
+          error instanceof
+            Error
+            ? error.message
+            : 'unknown_error',
+      },
+    );
+  }
+
+  return {
+    accessId,
+    customerId,
+    customerName,
+    customerEmail,
+    portalUrl,
+    expiresAt:
+      expiresAt
+        .toISOString(),
+    emailDelivered,
+  };
+}
+
+
+export async function revokeCustomerPortalAccess(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .CUSTOMER_MANAGE,
+    );
+
+  const customerId =
+    requireUuid(
+      input.customerId,
+      'Customer',
+    );
+
+  const result =
+    await context.pool.query(
+      `
+        UPDATE invoicing_portal_access
+        SET
+          status =
+            'revoked',
+          revoked_by =
+            $3,
+          revoked_at =
+            NOW(),
+          updated_at =
+            NOW()
+        WHERE company_id =
+              $1
+          AND customer_id =
+              $2
+          AND status =
+              'active'
+        RETURNING
+          id
+      `,
+      [
+        context.companyId,
+        customerId,
+        context.userId,
+      ],
+    );
+
+  if (
+    result.rows.length >
+      0
+  ) {
+    const client =
+      await context.pool.connect();
+
+    try {
+      await client.query(
+        'BEGIN',
+      );
+
+      await recordMasterDataActivity(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          model:
+            'invoicing.customer_portal',
+          recordId:
+            customerId,
+          type:
+            'customer.portal_access_revoked',
+          content:
+            'Customer portal access revoked.',
+          metadata: {
+            revokedAccessCount:
+              result.rows.length,
+          },
+        },
+      );
+
+      await client.query(
+        'COMMIT',
+      );
+    } catch (
+      error
+    ) {
+      try {
+        await client.query(
+          'ROLLBACK',
+        );
+      } catch {}
+
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  return {
+    customerId,
+    revoked:
+      result.rows.length,
+  };
+}
+
+
+export async function resolveCustomerPortalMessage(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .CUSTOMER_MANAGE,
+    );
+
+  const messageId =
+    requireUuid(
+      input.messageId,
+      'Portal message',
+    );
+
+  const result =
+    await context.pool.query(
+      `
+        UPDATE invoicing_portal_messages
+        SET
+          status =
+            'resolved',
+          resolved_by =
+            $3,
+          resolved_at =
+            NOW(),
+          updated_at =
+            NOW()
+        WHERE id =
+              $1
+          AND company_id =
+              $2
+          AND status =
+              'open'
+        RETURNING
+          id,
+          customer_id,
+          invoice_id
+      `,
+      [
+        messageId,
+        context.companyId,
+        context.userId,
+      ],
+    );
+
+  if (
+    result.rows.length !==
+      1
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Open customer portal message was not found.',
+    );
+  }
+
+  return {
+    messageId,
+    status:
+      'resolved',
+  };
+}
+
+
+export async function replyCustomerPortalMessage(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .CUSTOMER_MANAGE,
+    );
+
+  const messageId =
+    requireUuid(
+      input.messageId,
+      'Portal message',
+    );
+
+  const body =
+    cleanText(
+      input.body,
+      5000,
+    );
+
+  if (
+    !body
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Reply message is required.',
+    );
+  }
+
+  const client =
+    await context.pool.connect();
+
+  let customerEmail =
+    '';
+
+  let customerName =
+    '';
+
+  let replyId =
+    '';
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const original =
+      await client.query(
+        `
+          SELECT
+            m.id,
+            m.customer_id,
+            m.invoice_id,
+            m.category,
+            m.subject,
+            c.name
+              AS customer_name,
+            c.email
+              AS customer_email
+          FROM invoicing_portal_messages m
+          INNER JOIN invoicing_customers c
+            ON c.id =
+               m.customer_id
+           AND c.company_id =
+               m.company_id
+          WHERE m.id =
+                $1
+            AND m.company_id =
+                $2
+          LIMIT 1
+          FOR UPDATE OF m
+        `,
+        [
+          messageId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      original.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'Customer portal message was not found.',
+      );
+    }
+
+    const row =
+      original.rows[0];
+
+    customerName =
+      String(
+        row.customer_name,
+      );
+
+    customerEmail =
+      normalizedEmail(
+        row.customer_email,
+      ) ||
+      '';
+
+    const inserted =
+      await client.query(
+        `
+          INSERT INTO invoicing_portal_messages (
+            company_id,
+            customer_id,
+            invoice_id,
+            direction,
+            category,
+            subject,
+            body,
+            status,
+            customer_name_snapshot,
+            customer_email_snapshot,
+            metadata
+          )
+          VALUES (
+            $1,$2,$3,
+            'business_to_customer',
+            $4,$5,$6,
+            'closed',
+            $7,$8,
+            jsonb_build_object(
+              'replyToMessageId',
+              ($9::uuid)::text,
+              'repliedBy',
+              ($10::uuid)::text
+            )
+          )
+          RETURNING
+            id
+        `,
+        [
+          context.companyId,
+          row.customer_id,
+          row.invoice_id,
+          row.category,
+          row.subject,
+          body,
+          customerName,
+          customerEmail ||
+          null,
+          messageId,
+          context.userId,
+        ],
+      );
+
+    replyId =
+      String(
+        inserted.rows[0].id,
+      );
+
+    await client.query(
+      `
+        UPDATE invoicing_portal_messages
+        SET
+          status =
+            'resolved',
+          resolved_by =
+            $3,
+          resolved_at =
+            COALESCE(
+              resolved_at,
+              NOW()
+            ),
+          updated_at =
+            NOW()
+        WHERE id =
+              $1
+          AND company_id =
+              $2
+      `,
+      [
+        messageId,
+        context.companyId,
+        context.userId,
+      ],
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  let emailDelivered =
+    false;
+
+  if (
+    customerEmail
+  ) {
+    try {
+      const sent =
+        await sendWorkspaceNotificationEmail(
+          customerEmail,
+          customerName,
+          {
+            title:
+              context.company
+                .currentCompany
+                .name +
+              ' replied to your billing message',
+            message:
+              body,
+          },
+        );
+
+      emailDelivered =
+        sent.success ===
+        true;
+    } catch (
+      error
+    ) {
+      console.error(
+        '[SaMi Invoicing] Portal reply email failed:',
+        {
+          messageId,
+          error:
+            error instanceof
+              Error
+              ? error.message
+              : 'unknown_error',
+        },
+      );
+    }
+  }
+
+  return {
+    messageId,
+    replyId,
+    emailDelivered,
+  };
 }
 
 
