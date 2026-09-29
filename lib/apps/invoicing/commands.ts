@@ -4266,58 +4266,6 @@ export async function changeInvoiceStatus(
       'Invoice',
     );
 
-  const current =
-    await context.pool.query(
-      `
-        SELECT
-          status,
-          invoice_number
-        FROM invoicing_invoices
-        WHERE id =
-              $1
-          AND company_id =
-              $2
-          AND deleted_at
-              IS NULL
-        LIMIT 1
-      `,
-      [
-        invoiceId,
-        context.companyId,
-      ],
-    );
-
-  if (
-    current.rows.length !==
-      1
-  ) {
-    throw new InvoicingError(
-      'INVOICE_NOT_FOUND',
-      'Invoice was not found.',
-    );
-  }
-
-  const oldStatus =
-    String(
-      current.rows[0].status,
-    );
-
-  if (
-    !(
-      ALLOWED_MANUAL_TRANSITIONS[
-        oldStatus
-      ] ||
-      []
-    ).includes(
-      next,
-    )
-  ) {
-    throw new InvoicingError(
-      'INVOICE_STATE_INVALID',
-      'That invoice status change is not allowed.',
-    );
-  }
-
   const client =
     await context.pool.connect();
 
@@ -4325,6 +4273,99 @@ export async function changeInvoiceStatus(
     await client.query(
       'BEGIN',
     );
+
+    const current =
+      await client.query(
+        `
+          SELECT
+            status,
+            invoice_number
+          FROM invoicing_invoices
+          WHERE id = $1
+            AND company_id = $2
+            AND deleted_at IS NULL
+          FOR UPDATE
+        `,
+        [
+          invoiceId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      current.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'INVOICE_NOT_FOUND',
+        'Invoice was not found.',
+      );
+    }
+
+    const oldStatus =
+      String(
+        current.rows[0].status,
+      );
+
+    if (
+      !(
+        ALLOWED_MANUAL_TRANSITIONS[
+          oldStatus
+        ] ||
+        []
+      ).includes(
+        next,
+      )
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'That invoice status change is not allowed.',
+      );
+    }
+
+    if (
+      next ===
+        'confirmed'
+    ) {
+      const settings =
+        await client.query(
+          `
+            SELECT
+              require_approval
+            FROM invoicing_settings
+            WHERE company_id = $1
+            LIMIT 1
+          `,
+          [
+            context.companyId,
+          ],
+        );
+
+      if (
+        settings.rows[0]
+          ?.require_approval ===
+          true &&
+        !(
+          context.permissions
+            .isOwner ||
+          permissionContextHas(
+            context.permissions,
+            INVOICING_PERMISSIONS
+              .INVOICE_CONFIRM,
+          )
+        )
+      ) {
+        throw new InvoicingError(
+          'INVOICING_PERMISSION_REQUIRED',
+          'Invoice approval is required before this document can be confirmed.',
+          {
+            permission:
+              INVOICING_PERMISSIONS
+                .INVOICE_CONFIRM,
+          },
+        );
+      }
+    }
 
     await client.query(
       `
@@ -4484,6 +4525,7 @@ export async function changeInvoiceStatus(
             oldStatus,
           to:
             next,
+          reason,
         },
       },
     );
@@ -4513,6 +4555,7 @@ export async function changeInvoiceStatus(
             oldStatus,
           status:
             next,
+          reason,
         },
       },
     );
@@ -4537,7 +4580,6 @@ export async function changeInvoiceStatus(
     client.release();
   }
 }
-
 
 export async function recordInvoicePayment(
   input:
