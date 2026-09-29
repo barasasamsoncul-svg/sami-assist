@@ -499,44 +499,95 @@ export async function getInvoicingWorkspaceData():
             p.id,
             p.payment_number,
             p.status,
+            p.customer_id,
             c.name
               AS customer_name,
             p.payment_date,
             p.amount,
             p.currency,
+            p.exchange_rate,
             p.method,
             p.reference,
+            b.allocated_amount,
+            b.refunded_amount,
+            b.unapplied_amount,
+            p.reconciled_at,
+            p.reconciliation_reference,
+            p.reconciliation_notes,
             COALESCE(
-              ARRAY_AGG(
-                i.invoice_number
-                ORDER BY
+              (
+                SELECT ARRAY_AGG(
                   i.invoice_number
-              )
-                FILTER (
-                  WHERE i.invoice_number
-                        IS NOT NULL
-                ),
+                  ORDER BY
+                    i.invoice_number
+                )
+                FROM invoicing_payment_allocations a
+                INNER JOIN invoicing_invoices i
+                  ON i.id = a.invoice_id
+                 AND i.company_id = a.company_id
+                WHERE a.payment_id = p.id
+                  AND a.company_id = p.company_id
+                  AND a.status = 'posted'
+              ),
               ARRAY[]::varchar[]
             )
-              AS invoice_numbers
+              AS invoice_numbers,
+            COALESCE(
+              (
+                SELECT JSONB_AGG(
+                  JSONB_BUILD_OBJECT(
+                    'id', a.id,
+                    'invoiceId', a.invoice_id,
+                    'invoiceNumber', i.invoice_number,
+                    'amount', a.amount,
+                    'status', a.status,
+                    'operationKey', a.operation_key
+                  )
+                  ORDER BY
+                    a.created_at,
+                    a.id
+                )
+                FROM invoicing_payment_allocations a
+                INNER JOIN invoicing_invoices i
+                  ON i.id = a.invoice_id
+                 AND i.company_id = a.company_id
+                WHERE a.payment_id = p.id
+                  AND a.company_id = p.company_id
+              ),
+              '[]'::jsonb
+            )
+              AS allocations,
+            COALESCE(
+              (
+                SELECT JSONB_AGG(
+                  JSONB_BUILD_OBJECT(
+                    'id', r.id,
+                    'refundNumber', r.refund_number,
+                    'refundDate', r.refund_date,
+                    'amount', r.amount,
+                    'status', r.status,
+                    'reason', r.reason
+                  )
+                  ORDER BY
+                    r.refund_date,
+                    r.id
+                )
+                FROM invoicing_payment_refunds r
+                WHERE r.payment_id = p.id
+                  AND r.company_id = p.company_id
+              ),
+              '[]'::jsonb
+            )
+              AS refunds
           FROM invoicing_payments p
           LEFT JOIN invoicing_customers c
-            ON c.id =
-               p.customer_id
-          LEFT JOIN
-            invoicing_payment_allocations a
-            ON a.payment_id =
-               p.id
-          LEFT JOIN invoicing_invoices i
-            ON i.id =
-               a.invoice_id
-          WHERE p.company_id =
-                $1
-            AND p.deleted_at
-                IS NULL
-          GROUP BY
-            p.id,
-            c.name
+            ON c.id = p.customer_id
+           AND c.company_id = p.company_id
+          INNER JOIN invoicing_payment_balances b
+            ON b.payment_id = p.id
+           AND b.company_id = p.company_id
+          WHERE p.company_id = $1
+            AND p.deleted_at IS NULL
           ORDER BY
             p.payment_date DESC,
             p.created_at DESC
@@ -1120,6 +1171,12 @@ export async function getInvoicingWorkspaceData():
             String(
               row.status,
             ),
+          customerId:
+            row.customer_id
+              ? String(
+                  row.customer_id,
+                )
+              : null,
           customerName:
             row.customer_name
               ? String(
@@ -1138,6 +1195,11 @@ export async function getInvoicingWorkspaceData():
             String(
               row.currency,
             ),
+          exchangeRate:
+            Number(
+              row.exchange_rate ||
+              1,
+            ),
           method:
             String(
               row.method,
@@ -1146,6 +1208,36 @@ export async function getInvoicingWorkspaceData():
             row.reference
               ? String(
                   row.reference,
+                )
+              : null,
+          allocatedAmount:
+            money(
+              row.allocated_amount,
+            ),
+          refundedAmount:
+            money(
+              row.refunded_amount,
+            ),
+          unappliedAmount:
+            money(
+              row.unapplied_amount,
+            ),
+          reconciledAt:
+            row.reconciled_at
+              ? new Date(
+                  row.reconciled_at,
+                ).toISOString()
+              : null,
+          reconciliationReference:
+            row.reconciliation_reference
+              ? String(
+                  row.reconciliation_reference,
+                )
+              : null,
+          reconciliationNotes:
+            row.reconciliation_notes
+              ? String(
+                  row.reconciliation_notes,
                 )
               : null,
           invoiceNumbers:
@@ -1162,6 +1254,86 @@ export async function getInvoicingWorkspaceData():
                         item,
                       ),
                   )
+              : [],
+          allocations:
+            Array.isArray(
+              row.allocations,
+            )
+              ? row.allocations.map(
+                  (
+                    item:
+                      Record<
+                        string,
+                        unknown
+                      >,
+                  ) => ({
+                    id:
+                      String(
+                        item.id,
+                      ),
+                    invoiceId:
+                      String(
+                        item.invoiceId,
+                      ),
+                    invoiceNumber:
+                      String(
+                        item.invoiceNumber,
+                      ),
+                    amount:
+                      money(
+                        item.amount,
+                      ),
+                    status:
+                      String(
+                        item.status,
+                      ),
+                    operationKey:
+                      item.operationKey
+                        ? String(
+                            item.operationKey,
+                          )
+                        : null,
+                  }),
+                )
+              : [],
+          refunds:
+            Array.isArray(
+              row.refunds,
+            )
+              ? row.refunds.map(
+                  (
+                    item:
+                      Record<
+                        string,
+                        unknown
+                      >,
+                  ) => ({
+                    id:
+                      String(
+                        item.id,
+                      ),
+                    refundNumber:
+                      String(
+                        item.refundNumber,
+                      ),
+                    refundDate:
+                      String(
+                        item.refundDate,
+                      ),
+                    amount:
+                      money(
+                        item.amount,
+                      ),
+                    status:
+                      String(
+                        item.status,
+                      ),
+                    reason:
+                      String(
+                        item.reason,
+                      ),
+                  }),
+                )
               : [],
         }),
       )
@@ -1818,7 +1990,9 @@ export async function getInvoicingInvoiceDetail(
                 p.payment_date,
                 a.amount,
                 p.method,
-                p.reference
+                p.reference,
+                a.id AS allocation_id,
+                a.status AS allocation_status
               FROM invoicing_payment_allocations a
               INNER JOIN invoicing_payments p
                 ON p.id =
@@ -2209,6 +2383,14 @@ export async function getInvoicingInvoiceDetail(
                   payment.reference,
                 )
               : null,
+          allocationId:
+            String(
+              payment.allocation_id,
+            ),
+          allocationStatus:
+            String(
+              payment.allocation_status,
+            ),
         }),
       ),
     creditNotes:
