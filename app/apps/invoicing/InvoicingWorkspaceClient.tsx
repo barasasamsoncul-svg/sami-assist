@@ -69,6 +69,7 @@ type ViewKey =
   | 'payments'
   | 'recurring'
   | 'reminders'
+  | 'portal'
   | 'reports'
   | 'settings';
 
@@ -139,6 +140,14 @@ const NAV:
     },
     {
       key:
+        'portal',
+      label:
+        'Customer portal',
+      icon:
+        BookOpenCheck,
+    },
+    {
+      key:
         'reports',
       label:
         'Reports',
@@ -205,6 +214,12 @@ const VIEW_COPY:
         'Reminders & dunning',
       description:
         'Control payment follow-up stages, collection pauses, retries and delivery history without losing the audit trail.',
+    },
+    portal: {
+      title:
+        'Customer portal',
+      description:
+        'Issue secure customer access, review portal activity and work customer billing messages without exposing the internal workspace.',
     },
     reports: {
       title:
@@ -1062,6 +1077,15 @@ export default function InvoicingWorkspaceClient({
 
             if (
               item.key ===
+                'portal'
+            ) {
+              return initialData
+                .capabilities
+                .canViewCustomers;
+            }
+
+            if (
+              item.key ===
                 'reports'
             ) {
               return initialData
@@ -1574,6 +1598,30 @@ export default function InvoicingWorkspaceClient({
             }
             pending={
               busy
+            }
+            run={
+              run
+            }
+          />
+        )
+      }
+
+      {
+        view ===
+          'portal' &&
+        initialData
+          .capabilities
+          .canViewCustomers &&
+        (
+          <CustomerPortal
+            data={
+              initialData
+            }
+            pending={
+              busy
+            }
+            request={
+              request
             }
             run={
               run
@@ -8794,6 +8842,700 @@ function Recurring({
   );
 }
 
+function CustomerPortal({
+  data,
+  pending,
+  request,
+  run,
+}: {
+  data:
+    InvoicingWorkspaceData;
+  pending:
+    boolean;
+  request:
+    (
+      payload:
+        Record<
+          string,
+          unknown
+        >,
+    ) =>
+      Promise<
+        Record<
+          string,
+          unknown
+        >
+      >;
+  run:
+    (
+      payload:
+        Record<
+          string,
+          unknown
+        >,
+      message:
+        string,
+    ) =>
+      Promise<boolean>;
+}) {
+  const [
+    issuedLinks,
+    setIssuedLinks,
+  ] =
+    useState<
+      Record<
+        string,
+        string
+      >
+    >(
+      {},
+    );
+
+  const [
+    issueMessage,
+    setIssueMessage,
+  ] =
+    useState<
+      string |
+      null
+    >(
+      null,
+    );
+
+  const activeAccess =
+    data.portalAccess.filter(
+      access =>
+        access.status ===
+        'active',
+    );
+
+  const openMessages =
+    data.portalMessages.filter(
+      message =>
+        message.direction ===
+          'customer_to_business' &&
+        message.status ===
+          'open',
+    );
+
+  const portalCustomers =
+    data.customers
+      .filter(
+        customer =>
+          customer.status ===
+          'active',
+      )
+      .sort(
+        (
+          left,
+          right,
+        ) =>
+          right.outstandingTotal -
+          left.outstandingTotal,
+      );
+
+  async function issue(
+    customerId:
+      string,
+  ) {
+    setIssueMessage(
+      null,
+    );
+
+    try {
+      const result =
+        await request({
+          action:
+            'issue_customer_portal',
+          customerId,
+          expiresDays:
+            data.settings
+              .portalAccessDays,
+        });
+
+      const portalUrl =
+        typeof result
+          .portalUrl ===
+          'string'
+          ? result.portalUrl
+          : '';
+
+      if (
+        portalUrl
+      ) {
+        setIssuedLinks(
+          current => ({
+            ...current,
+            [customerId]:
+              portalUrl,
+          }),
+        );
+      }
+
+      setIssueMessage(
+        result
+          .emailDelivered ===
+          true
+          ? 'Portal access issued and invitation email sent.'
+          : 'Portal access issued. Email delivery was unavailable; copy the secure link below.',
+      );
+    } catch (
+      error
+    ) {
+      setIssueMessage(
+        error instanceof
+          Error
+          ? error.message
+          : 'Portal access could not be issued.',
+      );
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="sami-surface rounded-[20px] p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 dark:text-slate-300">
+            Active portal customers
+          </p>
+          <p className="mt-2 text-2xl font-black">
+            {
+              activeAccess.length
+            }
+          </p>
+        </div>
+
+        <div className="sami-surface rounded-[20px] p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 dark:text-slate-300">
+            Open customer messages
+          </p>
+          <p className="mt-2 text-2xl font-black">
+            {
+              openMessages.length
+            }
+          </p>
+        </div>
+
+        <div className="sami-surface rounded-[20px] p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 dark:text-slate-300">
+            Portal access period
+          </p>
+          <p className="mt-2 text-2xl font-black">
+            {
+              data.settings
+                .portalAccessDays
+            }d
+          </p>
+        </div>
+
+        <div className="sami-surface rounded-[20px] p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 dark:text-slate-300">
+            Portal status
+          </p>
+          <p className="mt-2 text-sm font-black">
+            {
+              data.settings
+                .portalEnabled
+                ? 'Enabled'
+                : 'Disabled'
+            }
+          </p>
+        </div>
+      </div>
+
+      {
+        issueMessage &&
+        (
+          <div className="rounded-2xl border border-blue-500/20 bg-blue-500/[0.07] px-4 py-3 text-xs font-semibold text-blue-900 dark:text-blue-100">
+            {
+              issueMessage
+            }
+          </div>
+        )
+      }
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.8fr)]">
+        <section className="sami-surface rounded-[24px] p-4 sm:p-5">
+          <div>
+            <p className="text-sm font-black">
+              Customer access
+            </p>
+            <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
+              Portal links are customer-scoped, expiring and revocable. Reissuing access immediately revokes the previous customer portal token.
+            </p>
+          </div>
+
+          <div className="mt-4 max-h-[720px] space-y-2 overflow-auto pr-1">
+            {
+              portalCustomers.map(
+                customer => {
+                  const access =
+                    data.portalAccess
+                      .find(
+                        item =>
+                          item.customerId ===
+                            customer.id &&
+                          item.status ===
+                            'active',
+                      );
+
+                  const issuedLink =
+                    issuedLinks[
+                      customer.id
+                    ];
+
+                  return (
+                    <div
+                      key={
+                        customer.id
+                      }
+                      className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface-soft)] p-3"
+                    >
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-black">
+                            {
+                              customer.name
+                            }
+                          </p>
+                          <p className="mt-1 truncate text-[10px] text-slate-600 dark:text-slate-300">
+                            {
+                              customer.email ||
+                              'No customer email'
+                            } · Outstanding {
+                              formatMoney(
+                                customer.outstandingTotal,
+                                customer.currency,
+                              )
+                            }
+                          </p>
+
+                          {
+                            access &&
+                            (
+                              <p className="mt-2 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                                Active until {
+                                  displayDateTime(
+                                    access.expiresAt,
+                                  )
+                                } · Last used {
+                                  displayDateTime(
+                                    access.lastUsedAt,
+                                  )
+                                }
+                              </p>
+                            )
+                          }
+                        </div>
+
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          {
+                            data.capabilities
+                              .canManageCustomers &&
+                            (
+                              <button
+                                type="button"
+                                disabled={
+                                  pending ||
+                                  !customer.email ||
+                                  !data.settings
+                                    .portalEnabled
+                                }
+                                onClick={
+                                  () =>
+                                    issue(
+                                      customer.id,
+                                    )
+                                }
+                                className="h-9 rounded-xl bg-blue-600 px-3 text-[10px] font-black text-white disabled:cursor-not-allowed"
+                              >
+                                {
+                                  access
+                                    ? 'Reissue access'
+                                    : 'Invite'
+                                }
+                              </button>
+                            )
+                          }
+
+                          {
+                            access &&
+                            data.capabilities
+                              .canManageCustomers &&
+                            (
+                              <button
+                                type="button"
+                                disabled={
+                                  pending
+                                }
+                                onClick={
+                                  () =>
+                                    run(
+                                      {
+                                        action:
+                                          'revoke_customer_portal',
+                                        customerId:
+                                          customer.id,
+                                      },
+                                      'Customer portal access revoked.',
+                                    )
+                                }
+                                className="h-9 rounded-xl border border-red-500/30 bg-red-500/[0.05] px-3 text-[10px] font-black text-red-700 dark:text-red-300"
+                              >
+                                Revoke
+                              </button>
+                            )
+                          }
+                        </div>
+                      </div>
+
+                      {
+                        issuedLink &&
+                        (
+                          <div className="mt-3 flex flex-col gap-2 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-2 sm:flex-row sm:items-center">
+                            <input
+                              readOnly
+                              value={
+                                issuedLink
+                              }
+                              className="h-9 min-w-0 flex-1 rounded-lg border border-[var(--sami-border)] bg-[var(--sami-surface-soft)] px-2 text-[10px]"
+                            />
+                            <button
+                              type="button"
+                              onClick={
+                                async () => {
+                                  try {
+                                    await navigator
+                                      .clipboard
+                                      .writeText(
+                                        issuedLink,
+                                      );
+
+                                    setIssueMessage(
+                                      'Secure portal link copied.',
+                                    );
+                                  } catch {
+                                    setIssueMessage(
+                                      'Copy the secure portal link manually.',
+                                    );
+                                  }
+                                }
+                              }
+                              className="h-9 rounded-lg border border-[var(--sami-border)] px-3 text-[10px] font-black"
+                            >
+                              Copy link
+                            </button>
+                          </div>
+                        )
+                      }
+                    </div>
+                  );
+                },
+              )
+            }
+          </div>
+        </section>
+
+        <section className="sami-surface rounded-[24px] p-4 sm:p-5">
+          <div>
+            <p className="text-sm font-black">
+              Customer message inbox
+            </p>
+            <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
+              Reply to invoice questions, disputes and payment promises. Replies are retained in the customer portal history.
+            </p>
+          </div>
+
+          <div className="mt-4 max-h-[720px] space-y-3 overflow-auto pr-1">
+            {
+              openMessages.map(
+                message => (
+                  <div
+                    key={
+                      message.id
+                    }
+                    className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface-soft)] p-3"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-black">
+                          {
+                            message.customerName
+                          }
+                        </p>
+                        <p className="mt-1 text-[9px] font-black uppercase tracking-[0.08em] text-slate-600 dark:text-slate-300">
+                          {
+                            message.category
+                              .replaceAll(
+                                '_',
+                                ' ',
+                              )
+                          }{
+                            message.invoiceNumber
+                              ? ' · ' +
+                                message.invoiceNumber
+                              : ''
+                          }
+                        </p>
+                      </div>
+
+                      <p className="text-[9px] font-semibold text-slate-600 dark:text-slate-300">
+                        {
+                          displayDateTime(
+                            message.createdAt,
+                          )
+                        }
+                      </p>
+                    </div>
+
+                    {
+                      message.subject &&
+                      (
+                        <p className="mt-3 text-xs font-black">
+                          {
+                            message.subject
+                          }
+                        </p>
+                      )
+                    }
+
+                    <p className="mt-1 whitespace-pre-line text-xs leading-5">
+                      {
+                        message.body
+                      }
+                    </p>
+
+                    {
+                      message.promisedAmount !==
+                        null &&
+                      (
+                        <p className="mt-2 rounded-xl bg-emerald-500/[0.08] px-3 py-2 text-[10px] font-black text-emerald-800 dark:text-emerald-200">
+                          Payment promise: {
+                            formatMoney(
+                              message.promisedAmount,
+                              data.company
+                                .currency,
+                            )
+                          } by {
+                            message.promisedDate ||
+                            'date not set'
+                          }
+                        </p>
+                      )
+                    }
+
+                    {
+                      data.capabilities
+                        .canManageCustomers &&
+                      (
+                        <form
+                          className="mt-3"
+                          onSubmit={
+                            async event => {
+                              event.preventDefault();
+
+                              const form =
+                                new FormData(
+                                  event.currentTarget,
+                                );
+
+                              const reply =
+                                String(
+                                  form.get(
+                                    'reply',
+                                  ) ||
+                                  '',
+                                )
+                                  .trim();
+
+                              if (
+                                !reply
+                              ) {
+                                return;
+                              }
+
+                              const saved =
+                                await run(
+                                  {
+                                    action:
+                                      'reply_customer_portal_message',
+                                    messageId:
+                                      message.id,
+                                    body:
+                                      reply,
+                                  },
+                                  'Portal reply sent.',
+                                );
+
+                              if (
+                                saved
+                              ) {
+                                event
+                                  .currentTarget
+                                  .reset();
+                              }
+                            }
+                          }
+                        >
+                          <textarea
+                            name="reply"
+                            rows={
+                              3
+                            }
+                            maxLength={
+                              5000
+                            }
+                            required
+                            placeholder="Write a reply…"
+                            className="w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 py-2 text-xs leading-5 placeholder:text-slate-500"
+                          />
+
+                          <div className="mt-2 flex flex-wrap justify-end gap-2">
+                            <button
+                              type="button"
+                              disabled={
+                                pending
+                              }
+                              onClick={
+                                () =>
+                                  run(
+                                    {
+                                      action:
+                                        'resolve_customer_portal_message',
+                                      messageId:
+                                        message.id,
+                                    },
+                                    'Portal message resolved.',
+                                  )
+                              }
+                              className="h-9 rounded-xl border border-[var(--sami-border)] px-3 text-[10px] font-black"
+                            >
+                              Resolve
+                            </button>
+
+                            <button
+                              type="submit"
+                              disabled={
+                                pending
+                              }
+                              className="h-9 rounded-xl bg-blue-600 px-3 text-[10px] font-black text-white"
+                            >
+                              Reply & resolve
+                            </button>
+                          </div>
+                        </form>
+                      )
+                    }
+                  </div>
+                ),
+              )
+            }
+
+            {
+              openMessages.length ===
+                0 &&
+              (
+                <p className="py-8 text-center text-xs text-slate-600 dark:text-slate-300">
+                  No open customer portal messages.
+                </p>
+              )
+            }
+          </div>
+        </section>
+      </div>
+
+      <section className="sami-surface overflow-hidden rounded-[24px]">
+        <div className="border-b border-[var(--sami-border)] px-4 py-4 sm:px-5">
+          <p className="text-sm font-black">
+            Portal message history
+          </p>
+          <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+            Customer messages and business replies stay visible for audit and follow-up.
+          </p>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[860px] text-left text-xs">
+            <thead className="bg-[var(--sami-surface-soft)] text-[9px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
+              <tr>
+                <th className="px-4 py-3">Customer</th>
+                <th className="px-4 py-3">Invoice</th>
+                <th className="px-4 py-3">Category</th>
+                <th className="px-4 py-3">Direction</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Created</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--sami-border)]">
+              {
+                data.portalMessages
+                  .slice(
+                    0,
+                    200,
+                  )
+                  .map(
+                    message => (
+                      <tr
+                        key={
+                          message.id
+                        }
+                      >
+                        <td className="px-4 py-3 font-bold">
+                          {
+                            message.customerName
+                          }
+                        </td>
+                        <td className="px-4 py-3">
+                          {
+                            message.invoiceNumber ||
+                            '—'
+                          }
+                        </td>
+                        <td className="px-4 py-3 capitalize">
+                          {
+                            message.category
+                              .replaceAll(
+                                '_',
+                                ' ',
+                              )
+                          }
+                        </td>
+                        <td className="px-4 py-3 capitalize">
+                          {
+                            message.direction
+                              .replaceAll(
+                                '_',
+                                ' ',
+                              )
+                          }
+                        </td>
+                        <td className="px-4 py-3">
+                          <StatusPill
+                            value={
+                              message.status
+                            }
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          {
+                            displayDateTime(
+                              message.createdAt,
+                            )
+                          }
+                        </td>
+                      </tr>
+                    ),
+                  )
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+
 function RemindersAndDunning({
   data,
   pending,
@@ -10193,6 +10935,30 @@ function Settings({
                   form.get(
                     'reminderDaysAfter',
                   ),
+                portalEnabled:
+                  form.get(
+                    'portalEnabled',
+                  ) ===
+                  'on',
+                portalAccessDays:
+                  form.get(
+                    'portalAccessDays',
+                  ),
+                portalAllowMessages:
+                  form.get(
+                    'portalAllowMessages',
+                  ) ===
+                  'on',
+                portalShowPaymentHistory:
+                  form.get(
+                    'portalShowPaymentHistory',
+                  ) ===
+                  'on',
+                portalShowCreditNotes:
+                  form.get(
+                    'portalShowCreditNotes',
+                  ) ===
+                  'on',
                 paymentInstructions:
                   form.get(
                     'paymentInstructions',
@@ -10345,7 +11111,72 @@ function Settings({
         </div>
 
         <div className="mt-4 rounded-2xl border border-[var(--sami-border)] p-3">
-          <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
+                Customer portal
+              </p>
+              <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
+                Control secure customer access, account history and billing messages. Portal tokens remain customer-scoped and revocable.
+              </p>
+            </div>
+
+            <div className="w-full max-w-[220px]">
+              <Field
+                label="Access days"
+                name="portalAccessDays"
+                type="number"
+                min="1"
+                max="3650"
+                required
+                defaultValue={
+                  String(
+                    data.settings
+                      .portalAccessDays,
+                  )
+                }
+              />
+            </div>
+          </div>
+
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <Toggle
+              name="portalEnabled"
+              label="Enable customer portal"
+              defaultChecked={
+                data.settings
+                  .portalEnabled
+              }
+            />
+            <Toggle
+              name="portalAllowMessages"
+              label="Customer messages"
+              defaultChecked={
+                data.settings
+                  .portalAllowMessages
+              }
+            />
+            <Toggle
+              name="portalShowPaymentHistory"
+              label="Show payments"
+              defaultChecked={
+                data.settings
+                  .portalShowPaymentHistory
+              }
+            />
+            <Toggle
+              name="portalShowCreditNotes"
+              label="Show credits"
+              defaultChecked={
+                data.settings
+                  .portalShowCreditNotes
+              }
+            />
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-[var(--sami-border)] p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
             Reminder delivery channels
           </p>
 

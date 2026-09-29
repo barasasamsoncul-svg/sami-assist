@@ -188,6 +188,34 @@ export type InvoicingReminderSummary = {
   createdAt: string;
 };
 
+export type InvoicingPortalAccessSummary = {
+  id: string;
+  customerId: string;
+  customerName: string;
+  customerEmail: string | null;
+  status: string;
+  expiresAt: string;
+  lastUsedAt: string | null;
+  createdAt: string;
+};
+
+export type InvoicingPortalMessageSummary = {
+  id: string;
+  customerId: string;
+  customerName: string;
+  customerEmail: string | null;
+  invoiceId: string | null;
+  invoiceNumber: string | null;
+  direction: string;
+  category: string;
+  subject: string | null;
+  body: string;
+  promisedAmount: number | null;
+  promisedDate: string | null;
+  status: string;
+  createdAt: string;
+};
+
 export type InvoicingRecurringRunSummary = {
   id: string;
   scheduledFor: string;
@@ -372,6 +400,8 @@ export type InvoicingWorkspaceData = {
   recurring: InvoicingRecurringSummary[];
   dunningPolicies: InvoicingDunningPolicySummary[];
   reminders: InvoicingReminderSummary[];
+  portalAccess: InvoicingPortalAccessSummary[];
+  portalMessages: InvoicingPortalMessageSummary[];
   templates: InvoicingTemplateSummary[];
   paymentTerms: Array<{
     id: string;
@@ -408,6 +438,11 @@ export type InvoicingWorkspaceData = {
     >;
     reminderDaysBefore: number;
     reminderDaysAfter: number[];
+    portalEnabled: boolean;
+    portalAccessDays: number;
+    portalAllowMessages: boolean;
+    portalShowPaymentHistory: boolean;
+    portalShowCreditNotes: boolean;
     paymentInstructions: string | null;
     bankDetails: string | null;
     termsAndConditions: string | null;

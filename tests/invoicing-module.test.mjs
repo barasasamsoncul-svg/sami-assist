@@ -116,7 +116,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
 
   assert.match(
     invoicing,
-    /version:\s*['"]2\.8\.0['"]/,
+    /version:\s*['"]2\.9\.0['"]/,
   );
 
   assert.match(
@@ -872,6 +872,36 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
   assert.match(
     runtimeMigrations,
     /INVOICING_2_7_0_TO_2_8_0/,
+  );
+
+  const portalMigration =
+    await source(
+      'lib/apps/invoicing/migrations/2.8.0-to-2.9.0.ts',
+    );
+
+  assert.match(
+    portalMigration,
+    /fromVersion:\s*['"]2\.8\.0['"]/,
+  );
+
+  assert.match(
+    portalMigration,
+    /toVersion:\s*['"]2\.9\.0['"]/,
+  );
+
+  assert.match(
+    portalMigration,
+    /CREATE TABLE IF NOT EXISTS public\.invoicing_portal_access/,
+  );
+
+  assert.match(
+    portalMigration,
+    /CREATE TABLE IF NOT EXISTS public\.invoicing_portal_messages/,
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /INVOICING_2_8_0_TO_2_9_0/,
   );
 
   const accounting =
@@ -2837,7 +2867,7 @@ test('Invoicing v2.7 turns recurring invoices into an observable retry-safe bill
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.8\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.9\.0['"]/s,
   );
 
   assert.match(
@@ -3037,7 +3067,7 @@ test('Invoicing v2.8 turns reminders into a staged auditable dunning engine', as
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.8\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.9\.0['"]/s,
   );
 
   assert.match(
@@ -3213,5 +3243,351 @@ test('Invoicing v2.8 turns reminders into a staged auditable dunning engine', as
   assert.match(
     manifest,
     /key:\s*"reminder"[\s\S]*table:\s*"invoicing_reminders"/s,
+  );
+});
+
+
+
+test('Invoicing Part 8 builds a customer-scoped secure portal', async () => {
+  const [
+    schema,
+    migration,
+    commands,
+    portal,
+    queries,
+    types,
+    service,
+    route,
+    publicRoute,
+    portalPage,
+    portalInvoice,
+    portalPdf,
+    portalForm,
+    workspace,
+    runtimeMigrations,
+    manifest,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/schema.sql'),
+    source('lib/apps/invoicing/migrations/2.8.0-to-2.9.0.ts'),
+    source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/invoicing/portal.ts'),
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/types.ts'),
+    source('lib/apps/invoicing/service.ts'),
+    source('app/api/apps/invoicing/route.ts'),
+    source('app/api/public/invoicing/portal/[tenantId]/[token]/route.ts'),
+    source('app/p/[tenantId]/[token]/page.tsx'),
+    source('app/p/[tenantId]/[token]/invoices/[invoiceId]/page.tsx'),
+    source('app/p/[tenantId]/[token]/invoices/[invoiceId]/pdf/route.ts'),
+    source('app/p/[tenantId]/[token]/CustomerPortalMessageForm.tsx'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+  ]);
+
+  assert.match(
+    manifest,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.9\.0['"]/s,
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /INVOICING_2_8_0_TO_2_9_0/,
+  );
+
+  for (const table of [
+    'invoicing_portal_access',
+    'invoicing_portal_messages',
+    'invoicing_portal_events',
+  ]) {
+    assert.match(
+      schema,
+      new RegExp(table),
+      table + ' must belong to the Invoicing customer portal boundary.',
+    );
+  }
+
+  for (const setting of [
+    'portal_enabled',
+    'portal_access_days',
+    'portal_allow_messages',
+    'portal_show_payment_history',
+    'portal_show_credit_notes',
+  ]) {
+    assert.match(
+      migration,
+      new RegExp(setting),
+      'Part 8 migration must include ' + setting + '.',
+    );
+  }
+
+  assert.match(
+    migration,
+    /UNIQUE\(token_hash\)/,
+    'Portal raw tokens must never be stored and hashed tokens must be unique.',
+  );
+
+  assert.match(
+    migration,
+    /uq_invoicing_portal_access_customer_active/,
+    'Each customer must have at most one active portal credential.',
+  );
+
+  assert.match(
+    migration,
+    /uq_invoicing_portal_message_idempotency/,
+    'Portal message retries must be idempotent.',
+  );
+
+  assert.match(
+    migration,
+    /promised_amount/,
+  );
+
+  assert.match(
+    migration,
+    /promised_date/,
+  );
+
+  for (const command of [
+    'issueCustomerPortalAccess',
+    'revokeCustomerPortalAccess',
+    'resolveCustomerPortalMessage',
+    'replyCustomerPortalMessage',
+  ]) {
+    assert.match(
+      commands,
+      new RegExp('export async function ' + command),
+      command + ' must be an authenticated operator command.',
+    );
+  }
+
+  assert.match(
+    commands,
+    /randomBytes[\s\S]*32[\s\S]*base64url/s,
+    'Portal access must use a high-entropy random credential.',
+  );
+
+  assert.match(
+    commands,
+    /createHash[\s\S]*sha256/s,
+    'Only a one-way portal token hash may be persisted.',
+  );
+
+  assert.match(
+    commands,
+    /UPDATE invoicing_portal_access[\s\S]*status =[\s\S]*'revoked'[\s\S]*INSERT INTO invoicing_portal_access/s,
+    'Reissuing access must revoke the previous active credential first.',
+  );
+
+  assert.match(
+    commands,
+    /sendWorkspaceNotificationEmail/,
+    'Portal access and staff replies must use the shared SaMi email transport.',
+  );
+
+  assert.match(
+    commands,
+    /portal_access_days/,
+    'Portal settings must control credential lifetime.',
+  );
+
+  for (const publicAuthority of [
+    'requirePortalAccess',
+    'getCustomerPortal',
+    'getCustomerPortalInvoice',
+    'submitCustomerPortalMessage',
+  ]) {
+    assert.match(
+      portal,
+      new RegExp(publicAuthority),
+    );
+  }
+
+  assert.match(
+    portal,
+    /token_hash[\s\S]*status =[\s\S]*'active'/s,
+    'Every portal request must authenticate against an active hashed credential.',
+  );
+
+  assert.match(
+    portal,
+    /expires_at/,
+    'Portal access must expire.',
+  );
+
+  assert.match(
+    portal,
+    /customer_id =[\s\S]*\$3[\s\S]*status =[\s\S]*ANY/s,
+    'Portal invoice reads must remain customer-scoped and state-scoped.',
+  );
+
+  for (const hiddenStatus of [
+    'draft',
+    'pending_approval',
+    'rejected',
+    'confirmed',
+  ]) {
+    assert.ok(
+      !portal
+        .match(
+          /CUSTOMER_VISIBLE_INVOICE_STATUSES = \[([\s\S]*?)\] as const/,
+        )?.[1]
+        .includes(
+          "'" + hiddenStatus + "'",
+        ),
+      hiddenStatus + ' must not be exposed by the customer portal invoice list.',
+    );
+  }
+
+  assert.match(
+    portal,
+    /INTERVAL '10 minutes'/,
+    'Public portal messaging must be rate limited.',
+  );
+
+  assert.match(
+    portal,
+    /idempotency_key/,
+    'Public portal messaging must deduplicate client retries.',
+  );
+
+  assert.match(
+    portal,
+    /payment_promise/,
+  );
+
+  assert.match(
+    portal,
+    /portal\.pdf_downloaded/,
+  );
+
+  assert.match(
+    queries,
+    /portalAccess:/,
+  );
+
+  assert.match(
+    queries,
+    /portalMessages:/,
+  );
+
+  assert.match(
+    types,
+    /InvoicingPortalAccessSummary/,
+  );
+
+  assert.match(
+    types,
+    /InvoicingPortalMessageSummary/,
+  );
+
+  for (const exported of [
+    'getCustomerPortal',
+    'getCustomerPortalInvoice',
+    'submitCustomerPortalMessage',
+    'issueCustomerPortalAccess',
+  ]) {
+    assert.match(
+      service,
+      new RegExp(exported),
+    );
+  }
+
+  for (const action of [
+    'issue_customer_portal',
+    'revoke_customer_portal',
+    'resolve_customer_portal_message',
+    'reply_customer_portal_message',
+  ]) {
+    assert.match(
+      route,
+      new RegExp("case '" + action + "'"),
+    );
+  }
+
+  assert.match(
+    publicRoute,
+    /submitCustomerPortalMessage/,
+  );
+
+  assert.match(
+    publicRoute,
+    /Cache-Control[\s\S]*no-store/s,
+  );
+
+  for (const visiblePortalSurface of [
+    'Customer portal',
+    'Outstanding',
+    'Payment history',
+    'Credits',
+    'Billing messages',
+  ]) {
+    assert.ok(
+      portalPage.includes(
+        visiblePortalSurface,
+      ),
+      visiblePortalSurface + ' must be visible in the public customer portal.',
+    );
+  }
+
+  assert.match(
+    portalInvoice,
+    /Back to customer portal/,
+  );
+
+  assert.match(
+    portalPdf,
+    /getCustomerPortalInvoice/,
+  );
+
+  assert.match(
+    portalPdf,
+    /portal\.pdf_downloaded/,
+  );
+
+  assert.match(
+    portalForm,
+    /payment_promise/,
+  );
+
+  assert.match(
+    portalForm,
+    /randomUUID/,
+  );
+
+  for (const operatorControl of [
+    'Customer access',
+    'Customer message inbox',
+    'Reissue access',
+    'Reply & resolve',
+    'Portal message history',
+  ]) {
+    assert.ok(
+      workspace.includes(
+        operatorControl,
+      ),
+      operatorControl + ' must be available to Invoicing operators.',
+    );
+  }
+
+  assert.match(
+    workspace,
+    /portalAccessDays/,
+  );
+
+  assert.match(
+    workspace,
+    /portalShowPaymentHistory/,
+  );
+
+  assert.match(
+    manifest,
+    /key:\s*"portal_access"[\s\S]*table:\s*"invoicing_portal_access"/s,
+  );
+
+  assert.match(
+    manifest,
+    /key:\s*"portal_message"[\s\S]*table:\s*"invoicing_portal_messages"/s,
   );
 });

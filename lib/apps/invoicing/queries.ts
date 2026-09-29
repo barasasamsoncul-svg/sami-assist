@@ -235,6 +235,8 @@ export async function getInvoicingWorkspaceData():
     catalogItems,
     dunningPolicies,
     reminders,
+    portalAccess,
+    portalMessages,
     settings,
   ] =
     await Promise.all([
@@ -1043,6 +1045,96 @@ export async function getInvoicingWorkspaceData():
       context.pool.query(
         `
           SELECT
+            access.id,
+            access.customer_id,
+            customer.name
+              AS customer_name,
+            customer.email
+              AS customer_email,
+            CASE
+              WHEN access.status =
+                   'active'
+               AND access.expires_at <=
+                   NOW()
+              THEN 'expired'
+              ELSE access.status
+            END
+              AS effective_status,
+            access.expires_at,
+            access.last_used_at,
+            access.created_at
+          FROM invoicing_portal_access access
+          INNER JOIN invoicing_customers customer
+            ON customer.id =
+               access.customer_id
+           AND customer.company_id =
+               access.company_id
+           AND customer.deleted_at
+               IS NULL
+          WHERE access.company_id =
+                $1
+          ORDER BY
+            CASE
+              WHEN access.status =
+                   'active'
+               AND access.expires_at >
+                   NOW()
+              THEN 0
+              ELSE 1
+            END,
+            access.created_at DESC
+          LIMIT 500
+        `,
+        [
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            message.id,
+            message.customer_id,
+            customer.name
+              AS customer_name,
+            customer.email
+              AS customer_email,
+            message.invoice_id,
+            invoice.invoice_number,
+            message.direction,
+            message.category,
+            message.subject,
+            message.body,
+            message.promised_amount,
+            message.promised_date,
+            message.status,
+            message.created_at
+          FROM invoicing_portal_messages message
+          INNER JOIN invoicing_customers customer
+            ON customer.id =
+               message.customer_id
+           AND customer.company_id =
+               message.company_id
+          LEFT JOIN invoicing_invoices invoice
+            ON invoice.id =
+               message.invoice_id
+           AND invoice.company_id =
+               message.company_id
+          WHERE message.company_id =
+                $1
+          ORDER BY
+            message.created_at DESC,
+            message.id DESC
+          LIMIT 500
+        `,
+        [
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
             default_currency,
             default_due_days,
             default_template_id,
@@ -1055,6 +1147,11 @@ export async function getInvoicingWorkspaceData():
             reminder_channels,
             reminder_days_before,
             reminder_days_after,
+            portal_enabled,
+            portal_access_days,
+            portal_allow_messages,
+            portal_show_payment_history,
+            portal_show_credit_notes,
             payment_instructions,
             bank_details,
             terms_and_conditions
@@ -2138,6 +2235,129 @@ export async function getInvoicingWorkspaceData():
         }),
       ),
 
+    portalAccess:
+      access.canViewCustomers
+        ? portalAccess.rows.map(
+            row => ({
+              id:
+                String(
+                  row.id,
+                ),
+              customerId:
+                String(
+                  row.customer_id,
+                ),
+              customerName:
+                String(
+                  row.customer_name,
+                ),
+              customerEmail:
+                row.customer_email
+                  ? String(
+                      row.customer_email,
+                    )
+                  : null,
+              status:
+                String(
+                  row.effective_status,
+                ),
+              expiresAt:
+                String(
+                  row.expires_at,
+                ),
+              lastUsedAt:
+                row.last_used_at
+                  ? String(
+                      row.last_used_at,
+                    )
+                  : null,
+              createdAt:
+                String(
+                  row.created_at,
+                ),
+            }),
+          )
+        : [],
+
+    portalMessages:
+      access.canViewCustomers
+        ? portalMessages.rows.map(
+            row => ({
+              id:
+                String(
+                  row.id,
+                ),
+              customerId:
+                String(
+                  row.customer_id,
+                ),
+              customerName:
+                String(
+                  row.customer_name,
+                ),
+              customerEmail:
+                row.customer_email
+                  ? String(
+                      row.customer_email,
+                    )
+                  : null,
+              invoiceId:
+                row.invoice_id
+                  ? String(
+                      row.invoice_id,
+                    )
+                  : null,
+              invoiceNumber:
+                row.invoice_number
+                  ? String(
+                      row.invoice_number,
+                    )
+                  : null,
+              direction:
+                String(
+                  row.direction,
+                ),
+              category:
+                String(
+                  row.category,
+                ),
+              subject:
+                row.subject
+                  ? String(
+                      row.subject,
+                    )
+                  : null,
+              body:
+                String(
+                  row.body,
+                ),
+              promisedAmount:
+                row.promised_amount ===
+                  null ||
+                row.promised_amount ===
+                  undefined
+                  ? null
+                  : money(
+                      row.promised_amount,
+                    ),
+              promisedDate:
+                row.promised_date
+                  ? dateOnlyValue(
+                      row.promised_date,
+                    )
+                  : null,
+              status:
+                String(
+                  row.status,
+                ),
+              createdAt:
+                String(
+                  row.created_at,
+                ),
+            }),
+          )
+        : [],
+
     templates:
       templates.rows.map(
         row => ({
@@ -2456,6 +2676,23 @@ export async function getInvoicingWorkspaceData():
               7,
               14,
             ],
+      portalEnabled:
+        setting.portal_enabled !==
+        false,
+      portalAccessDays:
+        Number(
+          setting.portal_access_days ||
+          90,
+        ),
+      portalAllowMessages:
+        setting.portal_allow_messages !==
+        false,
+      portalShowPaymentHistory:
+        setting.portal_show_payment_history !==
+        false,
+      portalShowCreditNotes:
+        setting.portal_show_credit_notes !==
+        false,
       paymentInstructions:
         setting.payment_instructions
           ? String(

@@ -38,6 +38,10 @@ export {
   reverseInvoicePayment,
   reverseInvoicePaymentAllocation,
   reverseInvoicePaymentRefund,
+  issueCustomerPortalAccess,
+  replyCustomerPortalMessage,
+  resolveCustomerPortalMessage,
+  revokeCustomerPortalAccess,
   saveDunningPolicy,
   saveInvoicingTemplate,
   sendInvoiceReminder,
@@ -54,3 +58,9 @@ export {
 export {
   getPublicInvoice,
 } from '@/lib/apps/invoicing/public';
+
+export {
+  getCustomerPortal,
+  getCustomerPortalInvoice,
+  submitCustomerPortalMessage,
+} from '@/lib/apps/invoicing/portal';
