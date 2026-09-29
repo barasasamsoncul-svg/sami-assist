@@ -12358,6 +12358,99 @@ export async function saveInvoicingTemplate(
     input.isDefault ===
     true;
 
+  const densityRaw =
+    cleanText(
+      input.density,
+      20,
+    );
+
+  const density =
+    [
+      'compact',
+      'comfortable',
+      'spacious',
+    ].includes(
+      densityRaw,
+    )
+      ? densityRaw
+      : 'comfortable';
+
+  const headerStyleRaw =
+    cleanText(
+      input.headerStyle,
+      20,
+    );
+
+  const headerStyle =
+    [
+      'band',
+      'minimal',
+      'split',
+    ].includes(
+      headerStyleRaw,
+    )
+      ? headerStyleRaw
+      : 'band';
+
+  const footerAlignmentRaw =
+    cleanText(
+      input.footerAlignment,
+      10,
+    );
+
+  const footerAlignment =
+    [
+      'left',
+      'center',
+      'right',
+    ].includes(
+      footerAlignmentRaw,
+    )
+      ? footerAlignmentRaw
+      : 'left';
+
+  const documentTitle =
+    cleanText(
+      input.documentTitle,
+      80,
+    ) ||
+    'Invoice';
+
+  const fromLabel =
+    cleanText(
+      input.fromLabel,
+      40,
+    ) ||
+    'From';
+
+  const billToLabel =
+    cleanText(
+      input.billToLabel,
+      40,
+    ) ||
+    'Bill to';
+
+  const notesLabel =
+    cleanText(
+      input.notesLabel,
+      40,
+    ) ||
+    'Notes';
+
+  const termsLabel =
+    cleanText(
+      input.termsLabel,
+      40,
+    ) ||
+    'Terms';
+
+  const paymentLabel =
+    cleanText(
+      input.paymentLabel,
+      60,
+    ) ||
+    'Payment instructions';
+
   const client =
     await context.pool.connect();
 
@@ -12480,26 +12573,62 @@ export async function saveInvoicingTemplate(
                 $9,
               layout =
                 $10,
-              show_company_logo =
+              design_version =
+                design_version + 1,
+              density =
                 $11,
-              show_company_address =
+              header_style =
                 $12,
-              show_company_contact =
+              document_title =
                 $13,
-              show_tax_id =
+              from_label =
                 $14,
-              show_payment_instructions =
+              bill_to_label =
                 $15,
-              show_tax_breakdown =
+              notes_label =
                 $16,
-              show_discount =
+              terms_label =
                 $17,
-              footer_text =
+              payment_label =
                 $18,
-              terms_text =
+              footer_alignment =
                 $19,
-              updated_by =
+              show_status =
                 $20,
+              show_page_numbers =
+                $21,
+              show_sku =
+                $22,
+              show_unit =
+                $23,
+              show_quantity =
+                $24,
+              show_unit_price =
+                $25,
+              show_line_tax =
+                $26,
+              show_line_discount =
+                $27,
+              show_company_logo =
+                $28,
+              show_company_address =
+                $29,
+              show_company_contact =
+                $30,
+              show_tax_id =
+                $31,
+              show_payment_instructions =
+                $32,
+              show_tax_breakdown =
+                $33,
+              show_discount =
+                $34,
+              footer_text =
+                $35,
+              terms_text =
+                $36,
+              updated_by =
+                $37,
               updated_at =
                 NOW()
             WHERE id =
@@ -12537,6 +12666,31 @@ export async function saveInvoicingTemplate(
             ),
             fontFamily,
             layout,
+            density,
+            headerStyle,
+            documentTitle,
+            fromLabel,
+            billToLabel,
+            notesLabel,
+            termsLabel,
+            paymentLabel,
+            footerAlignment,
+            input.showStatus !==
+              false,
+            input.showPageNumbers !==
+              false,
+            input.showSku !==
+              false,
+            input.showUnit !==
+              false,
+            input.showQuantity !==
+              false,
+            input.showUnitPrice !==
+              false,
+            input.showLineTax !==
+              false,
+            input.showLineDiscount !==
+              false,
             input.showCompanyLogo !==
               false,
             input.showCompanyAddress !==
@@ -12586,6 +12740,24 @@ export async function saveInvoicingTemplate(
               logo_url,
               font_family,
               layout,
+              design_version,
+              density,
+              header_style,
+              document_title,
+              from_label,
+              bill_to_label,
+              notes_label,
+              terms_label,
+              payment_label,
+              footer_alignment,
+              show_status,
+              show_page_numbers,
+              show_sku,
+              show_unit,
+              show_quantity,
+              show_unit_price,
+              show_line_tax,
+              show_line_discount,
               show_company_logo,
               show_company_address,
               show_company_contact,
@@ -12599,8 +12771,10 @@ export async function saveInvoicingTemplate(
               updated_by
             )
             VALUES (
-              $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-              $11,$12,$13,$14,$15,$16,$17,$18,$19,$19
+              $1,$2,$3,$4,$5,$6,$7,$8,$9,1,
+              $10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
+              $20,$21,$22,$23,$24,$25,$26,$27,$28,$29,
+              $30,$31,$32,$33,$34,$35,$36,$36
             )
             RETURNING
               id,
@@ -12630,6 +12804,31 @@ export async function saveInvoicingTemplate(
             ),
             fontFamily,
             layout,
+            density,
+            headerStyle,
+            documentTitle,
+            fromLabel,
+            billToLabel,
+            notesLabel,
+            termsLabel,
+            paymentLabel,
+            footerAlignment,
+            input.showStatus !==
+              false,
+            input.showPageNumbers !==
+              false,
+            input.showSku !==
+              false,
+            input.showUnit !==
+              false,
+            input.showQuantity !==
+              false,
+            input.showUnitPrice !==
+              false,
+            input.showLineTax !==
+              false,
+            input.showLineDiscount !==
+              false,
             input.showCompanyLogo !==
               false,
             input.showCompanyAddress !==
