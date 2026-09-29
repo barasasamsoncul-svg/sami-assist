@@ -38,6 +38,166 @@ const SQL = `
     ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS rejected_by UUID;
 
+  CREATE OR REPLACE FUNCTION public.validate_invoice_status_transition()
+  RETURNS TRIGGER
+  LANGUAGE plpgsql
+  AS $
+  BEGIN
+    IF TG_OP = 'INSERT' THEN
+      RETURN NEW;
+    END IF;
+
+    IF NEW.status = OLD.status THEN
+      RETURN NEW;
+    END IF;
+
+    IF OLD.status = 'draft'
+      AND NEW.status IN ('pending_approval','confirmed','cancelled','void')
+      THEN RETURN NEW;
+    END IF;
+
+    IF OLD.status = 'pending_approval'
+      AND NEW.status IN ('confirmed','rejected','cancelled','void')
+      THEN RETURN NEW;
+    END IF;
+
+    IF OLD.status = 'rejected'
+      AND NEW.status IN ('draft','pending_approval','cancelled','void')
+      THEN RETURN NEW;
+    END IF;
+
+    IF OLD.status = 'confirmed'
+      AND NEW.status IN ('sent','partially_paid','paid','overdue','cancelled','void','written_off')
+      THEN RETURN NEW;
+    END IF;
+
+    IF OLD.status = 'sent'
+      AND NEW.status IN ('viewed','partially_paid','paid','overdue','cancelled','void','written_off')
+      THEN RETURN NEW;
+    END IF;
+
+    IF OLD.status = 'viewed'
+      AND NEW.status IN ('partially_paid','paid','overdue','cancelled','void','written_off')
+      THEN RETURN NEW;
+    END IF;
+
+    IF OLD.status = 'overdue'
+      AND NEW.status IN ('partially_paid','paid','cancelled','void','written_off')
+      THEN RETURN NEW;
+    END IF;
+
+    IF OLD.status = 'partially_paid'
+      AND NEW.status IN ('paid','overdue','written_off')
+      THEN RETURN NEW;
+    END IF;
+
+    RAISE EXCEPTION 'Invalid invoice status transition from % to %', OLD.status, NEW.status;
+  END;
+  $;
+
+  CREATE OR REPLACE VIEW public.invoicing_customer_balances AS
+  SELECT
+    i.company_id,
+    i.customer_id,
+    COUNT(*) FILTER (
+      WHERE i.status NOT IN (
+        'draft',
+        'pending_approval',
+        'rejected',
+        'cancelled',
+        'void'
+      )
+    )::int AS invoice_count,
+    COALESCE(
+      SUM(i.total_amount) FILTER (
+        WHERE i.status NOT IN (
+          'draft',
+          'pending_approval',
+          'rejected',
+          'cancelled',
+          'void'
+        )
+      ),
+      0
+    )::numeric(19,4) AS invoiced_total,
+    COALESCE(
+      SUM(pa.paid_amount) FILTER (
+        WHERE i.status NOT IN (
+          'draft',
+          'pending_approval',
+          'rejected',
+          'cancelled',
+          'void'
+        )
+      ),
+      0
+    )::numeric(19,4) AS paid_total,
+    COALESCE(
+      SUM(cn.credited_amount) FILTER (
+        WHERE i.status NOT IN (
+          'draft',
+          'pending_approval',
+          'rejected',
+          'cancelled',
+          'void'
+        )
+      ),
+      0
+    )::numeric(19,4) AS credited_total,
+    COALESCE(
+      SUM(
+        GREATEST(
+          i.total_amount -
+          COALESCE(pa.paid_amount,0) -
+          COALESCE(cn.credited_amount,0),
+          0
+        )
+      ) FILTER (
+        WHERE i.status NOT IN (
+          'draft',
+          'pending_approval',
+          'rejected',
+          'cancelled',
+          'void',
+          'written_off'
+        )
+      ),
+      0
+    )::numeric(19,4) AS outstanding_total
+  FROM public.invoicing_invoices i
+  LEFT JOIN LATERAL (
+    SELECT
+      COALESCE(
+        SUM(a.amount),
+        0
+      )::numeric(19,4) AS paid_amount
+    FROM public.invoicing_payment_allocations a
+    INNER JOIN public.invoicing_payments p
+      ON p.id = a.payment_id
+    WHERE a.invoice_id = i.id
+      AND p.status = 'posted'
+      AND p.deleted_at IS NULL
+  ) pa ON TRUE
+  LEFT JOIN LATERAL (
+    SELECT
+      COALESCE(
+        SUM(c.total_amount),
+        0
+      )::numeric(19,4) AS credited_amount
+    FROM public.invoicing_credit_notes c
+    WHERE c.invoice_id = i.id
+      AND c.status IN (
+        'issued',
+        'applied',
+        'refunded'
+      )
+      AND c.deleted_at IS NULL
+  ) cn ON TRUE
+  WHERE i.deleted_at IS NULL
+  GROUP BY
+    i.company_id,
+    i.customer_id;
+
   CREATE OR REPLACE VIEW public.invoicing_aging AS
   SELECT
     i.company_id,
