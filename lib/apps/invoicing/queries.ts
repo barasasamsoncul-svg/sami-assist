@@ -2875,51 +2875,46 @@ export async function getInvoicingInvoiceDetail(
             i.rounding_adjustment,
             i.total_amount,
             a.balance_due,
-            GREATEST(
-              i.total_amount -
-              a.balance_due -
-              COALESCE(
-                (
-                  SELECT
-                    SUM(
-                      cn.total_amount
-                    )
-                  FROM invoicing_credit_notes cn
-                  WHERE cn.invoice_id =
-                        i.id
-                    AND cn.status IN (
-                      'issued',
-                      'applied',
-                      'refunded'
-                    )
-                    AND cn.deleted_at
-                        IS NULL
-                ),
-                0
-              ),
-              0
-            )
-              AS paid_amount,
             COALESCE(
               (
-                SELECT
-                  SUM(
-                    cn.total_amount
-                  )
-                FROM invoicing_credit_notes cn
-                WHERE cn.invoice_id =
-                      i.id
-                  AND cn.status IN (
-                    'issued',
-                    'applied',
-                    'refunded'
-                  )
-                  AND cn.deleted_at
-                      IS NULL
+                SELECT SUM(allocation.amount)
+                FROM invoicing_payment_allocations allocation
+                INNER JOIN invoicing_payments payment
+                  ON payment.id = allocation.payment_id
+                WHERE allocation.invoice_id = i.id
+                  AND allocation.company_id = i.company_id
+                  AND allocation.status = 'posted'
+                  AND payment.status = 'posted'
+                  AND payment.deleted_at IS NULL
               ),
               0
-            )
-              AS credited_amount,
+            ) AS paid_amount,
+            COALESCE(
+              (
+                SELECT SUM(application.amount)
+                FROM invoicing_credit_note_applications application
+                INNER JOIN invoicing_credit_notes note
+                  ON note.id = application.credit_note_id
+                 AND note.company_id = application.company_id
+                WHERE application.target_invoice_id = i.id
+                  AND application.company_id = i.company_id
+                  AND application.status = 'posted'
+                  AND note.status <> 'cancelled'
+                  AND note.deleted_at IS NULL
+              ),
+              0
+            ) AS credited_amount,
+            COALESCE(
+              (
+                SELECT available_credit
+                FROM invoicing_customer_credit_balances credit_balance
+                WHERE credit_balance.company_id = i.company_id
+                  AND credit_balance.customer_id = i.customer_id
+                  AND credit_balance.currency = i.currency
+                LIMIT 1
+              ),
+              0
+            ) AS customer_available_credit,
             i.tax_calculation,
             i.template_id,
             i.notes,
