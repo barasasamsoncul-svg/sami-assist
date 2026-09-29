@@ -296,7 +296,7 @@ export default function AppSurfaceShell({
             <p className="truncate text-sm font-black tracking-[-0.02em]">
               {title}
             </p>
-            <p className="mt-0.5 truncate text-[10px] font-bold text-slate-400">
+            <p className="mt-0.5 truncate text-[10px] font-bold text-slate-600 dark:text-slate-300">
               {
                 contextLabel ||
                 tenant?.name ||
@@ -385,7 +385,7 @@ export default function AppSurfaceShell({
                             'mt-0.5 block line-clamp-2 text-[9px] font-medium leading-4',
                             active
                               ? 'text-white/72'
-                              : 'text-slate-400',
+                              : 'text-slate-600 dark:text-slate-300',
                           ].join(
                             ' ',
                           )}
@@ -525,7 +525,7 @@ export default function AppSurfaceShell({
                 <span className="hidden text-slate-300 md:inline dark:text-slate-700">
                   /
                 </span>
-                <p className="hidden max-w-[220px] truncate text-[10px] font-bold text-slate-400 md:block">
+                <p className="hidden max-w-[220px] truncate text-[10px] font-bold text-slate-600 md:block dark:text-slate-300">
                   {
                     contextLabel ||
                     tenant?.name
@@ -533,7 +533,7 @@ export default function AppSurfaceShell({
                 </p>
               </div>
 
-              <p className="hidden max-w-[560px] truncate text-[10px] text-slate-400 sm:block">
+              <p className="hidden max-w-[560px] truncate text-[10px] text-slate-600 sm:block dark:text-slate-300">
                 {
                   profile.eyebrow
                 }
@@ -678,7 +678,7 @@ export default function AppSurfaceShell({
 
             <div className="absolute inset-y-0 left-0 w-[min(88vw,320px)] overflow-y-auto border-r border-[var(--sami-border)] bg-[var(--sami-canvas)] p-3 shadow-2xl">
               <div className="mb-3 flex items-center justify-between px-1">
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 dark:text-slate-300">
                   {
                     profile.eyebrow
                   }
