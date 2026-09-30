@@ -116,7 +116,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
 
   assert.match(
     invoicing,
-    /version:\s*['"]2\.13\.0['"]/,
+    /version:\s*['"]2\.14\.0['"]/,
   );
 
   assert.match(
@@ -2902,7 +2902,7 @@ test('Invoicing v2.7 turns recurring invoices into an observable retry-safe bill
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.13\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.14\.0['"]/s,
   );
 
   assert.match(
@@ -3102,7 +3102,7 @@ test('Invoicing v2.8 turns reminders into a staged auditable dunning engine', as
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.13\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.14\.0['"]/s,
   );
 
   assert.match(
@@ -3322,7 +3322,7 @@ test('Invoicing Part 8 builds a customer-scoped secure portal', async () => {
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.13\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.14\.0['"]/s,
   );
 
   assert.match(
@@ -3666,7 +3666,7 @@ test('Invoicing Part 9 freezes issued invoice PDFs as immutable document snapsho
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.13\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.14\.0['"]/s,
   );
 
   assert.match(
@@ -3942,7 +3942,7 @@ test('Invoicing Part 10 provides a live renderer-backed invoice template designe
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.13\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.14\.0['"]/s,
   );
 
   assert.match(
@@ -4129,7 +4129,7 @@ test('Invoicing Part 11 deepens credit notes into reusable customer credits and 
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.13\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.14\.0['"]/s,
   );
 
   assert.match(
@@ -4350,7 +4350,7 @@ test('Invoicing Part 12 manages retainers and deposits as auditable customer cre
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.13\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.14\.0['"]/s,
   );
 
   assert.match(
@@ -4484,5 +4484,269 @@ test('Invoicing Part 12 manages retainers and deposits as auditable customer cre
   assert.match(
     manifest,
     /key:\s*"retainer"[\s\S]*table:\s*"invoicing_retainers"/s,
+  );
+});
+
+
+
+test('Invoicing Part 13 schedules installment plans over the authoritative invoice settlement ledger', async () => {
+  const [
+    schema,
+    migration,
+    plans,
+    context,
+    queries,
+    types,
+    service,
+    route,
+    workspace,
+    portal,
+    portalPage,
+    runtimeMigrations,
+    manifest,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/schema.sql'),
+    source('lib/apps/invoicing/migrations/2.13.0-to-2.14.0.ts'),
+    source('lib/apps/invoicing/payment-plans.ts'),
+    source('lib/apps/invoicing/context.ts'),
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/types.ts'),
+    source('lib/apps/invoicing/service.ts'),
+    source('app/api/apps/invoicing/route.ts'),
+    source('app/apps/invoicing/PaymentPlansWorkspace.tsx'),
+    source('lib/apps/invoicing/portal.ts'),
+    source('app/p/[tenantId]/[token]/page.tsx'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+  ]);
+
+  assert.match(
+    manifest,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.14\.0['"]/s,
+  );
+
+  assert.match(
+    migration,
+    /fromVersion:\s*['"]2\.13\.0['"]/,
+  );
+
+  assert.match(
+    migration,
+    /toVersion:\s*['"]2\.14\.0['"]/,
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /INVOICING_2_13_0_TO_2_14_0/,
+  );
+
+  for (const table of [
+    'invoicing_payment_plans',
+    'invoicing_payment_plan_installments',
+  ]) {
+    assert.match(
+      schema,
+      new RegExp(table),
+      table + ' must be owned by Invoicing Part 13.',
+    );
+
+    assert.match(
+      migration,
+      new RegExp(table),
+      table + ' must be created by the Part 13 migration.',
+    );
+  }
+
+  assert.match(
+    migration,
+    /invoicing_payment_plan_installment_balances/,
+  );
+
+  assert.match(
+    migration,
+    /invoicing_payment_plan_balances/,
+  );
+
+  assert.match(
+    migration,
+    /settled_baseline_amount/,
+    'Plans created after partial settlement must not count earlier settlement against new installments.',
+  );
+
+  assert.match(
+    migration,
+    /original_due_date/,
+  );
+
+  assert.match(
+    migration,
+    /final_due_date/,
+  );
+
+  assert.match(
+    migration,
+    /uq_invoicing_payment_plan_active_invoice/,
+    'Only one active payment plan may exist for an invoice.',
+  );
+
+  assert.match(
+    migration,
+    /uq_invoicing_payment_plan_idempotency/,
+    'Plan creation must support idempotent retries.',
+  );
+
+  assert.match(
+    migration,
+    /'payment_plan'[\s\S]*'PLN-'/s,
+    'Part 13 must reserve dedicated payment-plan numbering.',
+  );
+
+  assert.match(
+    context,
+    /'payment_plan'[\s\S]*'PLN-'/s,
+    'Fresh workspaces must seed payment-plan numbering.',
+  );
+
+  assert.match(
+    context,
+    /'retainer'\s*\|[\s\S]*'payment_plan'/s,
+    'The document-number authority must accept payment plans.',
+  );
+
+  for (const command of [
+    'createInvoicePaymentPlan',
+    'cancelInvoicePaymentPlan',
+  ]) {
+    assert.match(
+      plans,
+      new RegExp('export async function ' + command),
+      command + ' must be a real Part 13 server authority.',
+    );
+  }
+
+  assert.match(
+    plans,
+    /pg_advisory_xact_lock/,
+    'Payment-plan creation must be concurrency-safe.',
+  );
+
+  assert.match(
+    plans,
+    /idempotencyKey/,
+    'Payment-plan creation must be idempotent.',
+  );
+
+  assert.match(
+    plans,
+    /Installments must total the current invoice balance/,
+    'Installment schedules must reconcile exactly to the live invoice balance.',
+  );
+
+  assert.match(
+    plans,
+    /settledBaselineAmount/,
+    'Plan activation must snapshot existing invoice settlement.',
+  );
+
+  assert.match(
+    plans,
+    /due_date =[\s\S]*finalDueDate/s,
+    'The invoice due date must move to the final installment date.',
+  );
+
+  assert.match(
+    plans,
+    /original_due_date/,
+    'Cancellation must retain the original invoice due date for restoration.',
+  );
+
+  for (const exported of [
+    'createInvoicePaymentPlan',
+    'cancelInvoicePaymentPlan',
+  ]) {
+    assert.match(
+      service,
+      new RegExp(exported),
+    );
+  }
+
+  for (const action of [
+    'create_payment_plan',
+    'cancel_payment_plan',
+  ]) {
+    assert.match(
+      route,
+      new RegExp("case '" + action + "'"),
+    );
+  }
+
+  assert.match(
+    queries,
+    /paymentPlans:/,
+  );
+
+  assert.match(
+    types,
+    /InvoicingPaymentPlanSummary/,
+  );
+
+  assert.match(
+    types,
+    /InvoicingPaymentPlanInstallmentSummary/,
+  );
+
+  for (const visibleControl of [
+    'Create installment plan',
+    'Generate schedule',
+    'Activate plan',
+    'Installment plans',
+    'Cancel payment plan',
+    'Scheduled balance',
+    'Overdue installments',
+  ]) {
+    assert.ok(
+      workspace.includes(
+        visibleControl,
+      ),
+      visibleControl + ' must be available in the Part 13 operator workspace.',
+    );
+  }
+
+  assert.match(
+    workspace,
+    /monthly/,
+  );
+
+  assert.match(
+    workspace,
+    /biweekly/,
+  );
+
+  assert.match(
+    workspace,
+    /weekly/,
+  );
+
+  assert.match(
+    portal,
+    /paymentPlans:/,
+    'Secure customer portal data must expose customer-scoped installment plans.',
+  );
+
+  assert.ok(
+    portalPage.includes(
+      'Payment plans',
+    ),
+    'Customers must see their installment schedule in the secure portal.',
+  );
+
+  assert.match(
+    manifest,
+    /key:\s*"payment_plan"[\s\S]*table:\s*"invoicing_payment_plans"/s,
+  );
+
+  assert.match(
+    manifest,
+    /key:\s*"payment_plan_installment"[\s\S]*table:\s*"invoicing_payment_plan_installments"/s,
   );
 });
