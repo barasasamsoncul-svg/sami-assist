@@ -23,6 +23,10 @@ import {
 } from '@/lib/apps/invoicing/document-snapshots';
 
 import {
+  assertEtimsDeliveryReady,
+} from '@/lib/apps/invoicing/etims';
+
+import {
   InvoicingError,
   money,
   recordInvoicingActivity,
@@ -230,6 +234,16 @@ export async function deliverInvoice(
         : 'This invoice cannot be sent in its current state.',
     );
   }
+
+  await assertEtimsDeliveryReady(
+    input.pool,
+    {
+      companyId:
+        input.companyId,
+      invoiceId:
+        input.invoiceId,
+    },
+  );
 
   const token =
     crypto
