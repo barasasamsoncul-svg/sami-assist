@@ -439,8 +439,11 @@ test('Invoicing workspace exposes operational Odoo/Zoho-class surfaces as standa
     of [
       '/apps/invoicing/new',
       '/apps/invoicing/invoices',
+      '/apps/invoicing/customers/new',
       '/apps/invoicing/customers',
+      '/apps/invoicing/items/new',
       '/apps/invoicing/items',
+      '/apps/invoicing/payments/new',
       '/apps/invoicing/payments',
       '/apps/invoicing/currencies',
       '/apps/invoicing/tax-engine',
@@ -5327,5 +5330,86 @@ test('Invoicing Part 15 provides a rule-driven tax engine with fiscal mappings, 
     composer,
     /group:/,
     'The composer tax selector must distinguish tax groups from single rates.',
+  );
+});
+
+
+test('Invoicing owns a full-height responsive module shell and focused create/register routes', async () => {
+  const [
+    shell,
+    sectionPage,
+    workspace,
+    newCustomer,
+    newItem,
+    newPayment,
+  ] = await Promise.all([
+    source('app/apps/invoicing/InvoicingModuleShell.tsx'),
+    source('app/apps/invoicing/InvoicingSectionPage.tsx'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('app/apps/invoicing/customers/new/page.tsx'),
+    source('app/apps/invoicing/items/new/page.tsx'),
+    source('app/apps/invoicing/payments/new/page.tsx'),
+  ]);
+
+  assert.match(
+    shell,
+    /fixed inset-y-0 left-0 z-50 w-\[286px\]/,
+    'Desktop Invoicing navigation must use a full-height fixed module sidebar.',
+  );
+
+  assert.match(
+    shell,
+    /lg:pl-\[286px\]/,
+    'Desktop Invoicing content must use the remaining viewport width rather than a squeezed sidebar card grid.',
+  );
+
+  assert.match(
+    shell,
+    /fixed inset-0 z-\[90\] lg:hidden/,
+    'Mobile Invoicing must use an overlay drawer instead of compressing the desktop sidebar.',
+  );
+
+  assert.match(
+    sectionPage,
+    /InvoicingModuleShell/,
+  );
+
+  assert.doesNotMatch(
+    sectionPage,
+    /AppSurfaceShell/,
+    'Invoicing must not fall back to the generic card-grid app shell.',
+  );
+
+  assert.match(
+    newCustomer,
+    /view="newCustomer"/,
+  );
+
+  assert.match(
+    newItem,
+    /view="newItem"/,
+  );
+
+  assert.match(
+    newPayment,
+    /view="receivePayment"/,
+  );
+
+  assert.match(
+    workspace,
+    /mode="create"/,
+    'Focused customer/item create routes must render create-only mode.',
+  );
+
+  assert.match(
+    workspace,
+    /mode="receive"/,
+    'The receive-payment route must render receipt-entry mode without the payment register stacked below it.',
+  );
+
+  assert.match(
+    workspace,
+    /mode="register"/,
+    'Payment register must remain its own focused surface.',
   );
 });
