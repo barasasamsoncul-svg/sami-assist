@@ -1642,6 +1642,7 @@ test('Workspace tutorials are reusable across modules and Invoicing ships comple
     tutorial,
     shell,
     page,
+    sectionPage,
     workspace,
     detailPage,
     detail,
@@ -1649,6 +1650,7 @@ test('Workspace tutorials are reusable across modules and Invoicing ships comple
     source('app/components/workspace/WorkspaceTutorial.tsx'),
     source('app/components/workspace/WorkspaceShell.tsx'),
     source('app/apps/invoicing/page.tsx'),
+    source('app/apps/invoicing/InvoicingSectionPage.tsx'),
     source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
     source('app/apps/invoicing/[invoiceId]/page.tsx'),
     source('app/apps/invoicing/[invoiceId]/InvoiceDetailClient.tsx'),
@@ -1666,10 +1668,12 @@ test('Workspace tutorials are reusable across modules and Invoicing ships comple
   assert.match(shell, /WorkspaceTutorialToggle/);
   assert.match(shell, /userId=\{/);
 
-  assert.match(page, /userId=\{/);
+  assert.match(page, /InvoicingSectionPage/);
+  assert.match(sectionPage, /userId=\{/);
   assert.match(workspace, /INVOICING_TUTORIAL_STEPS/);
   assert.match(workspace, /moduleKey="invoicing"/);
-  assert.match(workspace, /Receivables command center/);
+  assert.match(workspace, /Create invoice/);
+  assert.match(workspace, /Invoice register/);
   assert.match(workspace, /Items & pricing/);
   assert.match(workspace, /Recurring billing/);
   assert.match(workspace, /startWorkspaceTutorial/);
@@ -1680,6 +1684,8 @@ test('Workspace tutorials are reusable across modules and Invoicing ships comple
     'customers',
     'items',
     'payments',
+    'retainers',
+    'paymentPlans',
     'recurring',
     'reports',
     'settings',
@@ -5135,4 +5141,189 @@ test('Invoicing uses real standalone App Router pages and keeps invoice creation
 
   assert.match(registerSource, /Invoice register/);
   assert.match(registerSource, /href="\/apps\/invoicing\/new"/);
+});
+
+
+test('Invoicing Part 15 provides a rule-driven tax engine with fiscal mappings, exemptions and standalone operator controls', async () => {
+  const [
+    schema,
+    migration,
+    taxEngine,
+    commands,
+    queries,
+    service,
+    route,
+    workspace,
+    taxWorkspace,
+    composer,
+    runtimeMigrations,
+    manifest,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/schema.sql'),
+    source('lib/apps/invoicing/migrations/2.15.0-to-2.16.0.ts'),
+    source('lib/apps/invoicing/tax-engine.ts'),
+    source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/service.ts'),
+    source('app/api/apps/invoicing/route.ts'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('app/apps/invoicing/TaxEngineWorkspace.tsx'),
+    source('app/apps/invoicing/InvoiceComposer.tsx'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+  ]);
+
+  assert.match(
+    manifest,
+    /key:\\s*["']invoicing["'][\\s\\S]*version:\\s*['"]2\\.16\\.0['"]/s,
+  );
+
+  assert.match(
+    migration,
+    /fromVersion:\\s*['"]2\\.15\\.0['"]/,
+  );
+
+  assert.match(
+    migration,
+    /toVersion:\\s*['"]2\\.16\\.0['"]/,
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /INVOICING_2_15_0_TO_2_16_0/,
+  );
+
+  for (const table of [
+    'invoicing_tax_groups',
+    'invoicing_tax_group_members',
+    'invoicing_fiscal_positions',
+    'invoicing_fiscal_position_mappings',
+    'invoicing_tax_rules',
+    'invoicing_tax_exemptions',
+    'invoicing_tax_localizations',
+  ]) {
+    assert.match(schema, new RegExp(table));
+    assert.match(migration, new RegExp(table));
+  }
+
+  assert.match(
+    taxEngine,
+    /resolveInvoicingTaxTreatment/,
+    'Invoice lines must use the authoritative Part 15 tax resolver.',
+  );
+
+  assert.match(
+    taxEngine,
+    /customer_exemption/,
+  );
+
+  assert.match(
+    taxEngine,
+    /fiscal_position_exemption/,
+  );
+
+  assert.match(
+    taxEngine,
+    /tax_rule_exemption/,
+  );
+
+  assert.match(
+    taxEngine,
+    /calculationMode|calculation_mode|compound/,
+    'Tax groups must support compound calculations.',
+  );
+
+  assert.match(
+    commands,
+    /tax_components/,
+    'Resolved component taxes must be frozen on invoice lines.',
+  );
+
+  assert.match(
+    commands,
+    /tax_context/,
+    'Invoices must snapshot the tax context used to resolve their lines.',
+  );
+
+  assert.match(
+    queries,
+    /taxGroups/,
+  );
+
+  assert.match(
+    queries,
+    /fiscalPositions/,
+  );
+
+  assert.match(
+    queries,
+    /taxExemptions/,
+  );
+
+  assert.match(
+    queries,
+    /taxLocalizations/,
+  );
+
+  for (const action of [
+    'save_tax_group',
+    'save_tax_group_member',
+    'save_fiscal_position',
+    'save_fiscal_position_mapping',
+    'save_tax_rule',
+    'save_tax_exemption',
+    'save_tax_localization',
+  ]) {
+    assert.match(
+      route,
+      new RegExp("case '" + action + "'"),
+    );
+  }
+
+  for (const exported of [
+    'saveInvoicingTaxGroup',
+    'saveInvoicingTaxGroupMember',
+    'saveInvoicingFiscalPosition',
+    'saveInvoicingFiscalPositionMapping',
+    'saveInvoicingTaxRule',
+    'saveInvoicingTaxExemption',
+    'saveInvoicingTaxLocalization',
+  ]) {
+    assert.match(
+      service,
+      new RegExp(exported),
+    );
+  }
+
+  assert.match(
+    workspace,
+    /'taxEngine'/,
+  );
+
+  for (const text of [
+    'Tax engine',
+    'Tax rate',
+    'Tax group',
+    'Fiscal position',
+    'Tax rule',
+    'Customer tax exemption',
+    'Tax localization',
+  ]) {
+    assert.ok(
+      taxWorkspace.includes(text),
+      text + ' must be visible in the standalone Tax Engine page.',
+    );
+  }
+
+  assert.match(
+    composer,
+    /taxGroupId/,
+    'The invoice composer must preserve grouped taxes.',
+  );
+
+  assert.match(
+    composer,
+    /group:/,
+    'The composer tax selector must distinguish tax groups from single rates.',
+  );
 });
