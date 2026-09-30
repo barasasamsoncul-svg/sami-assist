@@ -416,7 +416,13 @@ test('Invoicing workspace exposes operational Odoo/Zoho-class surfaces as standa
 
   assert.match(
     sectionPage,
+    /InvoicingModuleShell/,
+  );
+
+  assert.doesNotMatch(
+    sectionPage,
     /AppSurfaceShell/,
+    'Invoicing must keep its own full module shell rather than the generic app-surface grid.',
   );
 
   assert.match(
