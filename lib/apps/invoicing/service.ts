@@ -99,6 +99,17 @@ export {
 } from '@/lib/apps/invoicing/etims';
 
 export {
+  generateEInvoiceDocument,
+  getEInvoiceDocumentXml,
+  getEInvoiceWorkspaceData,
+  getFiscalProviderAdapter,
+  markEInvoiceDocumentExported,
+  saveEInvoiceParticipant,
+  saveEInvoiceProfile,
+  submitEInvoiceDocument,
+} from '@/lib/apps/invoicing/e-invoicing';
+
+export {
   saveInvoicingFiscalPosition,
   saveInvoicingFiscalPositionMapping,
   saveInvoicingTaxExemption,
