@@ -6354,3 +6354,83 @@ test('Invoicing Part 20 keeps settings focused, mobile-safe and free of nested f
     'Focused settings navigation must not create an empty database migration.',
   );
 });
+
+
+test('Invoicing Part 21 enforces company-bound financial relationships and race-safe dunning defaults', async () => {
+  const [
+    context,
+    schema,
+    migration,
+    runtimeMigrations,
+    manifest,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/context.ts'),
+    source('lib/apps/invoicing/schema.sql'),
+    source('lib/apps/invoicing/migrations/2.18.0-to-2.19.0.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+  ]);
+
+  assert.match(
+    context,
+    /invoicing_dunning_stages[\s\S]*ON CONFLICT DO NOTHING/s,
+    'Concurrent default seeding must tolerate both stage-key and sequence-number uniqueness collisions.',
+  );
+
+  assert.doesNotMatch(
+    context,
+    /invoicing_dunning_stages[\s\S]*ON CONFLICT \(\s*policy_id,\s*stage_key\s*\)/s,
+    'Dunning seeding must not target only one of the stage table uniqueness rules.',
+  );
+
+  for (const sourceText of [
+    schema,
+    migration,
+  ]) {
+    assert.match(
+      sourceText,
+      /FOREIGN KEY \(company_id, %I\)/,
+      'Part 21 must enforce company_id together with the referenced record ID.',
+    );
+
+    assert.match(
+      sourceText,
+      /NOT VALID/,
+      'Part 21 must add constraints without blocking legacy tenant upgrades on historical rows.',
+    );
+
+    assert.match(
+      sourceText,
+      /VALIDATE CONSTRAINT/,
+      'Clean tenants must validate the new company-bound foreign keys immediately.',
+    );
+
+    for (const relation of [
+      'fk_inv_invoice_customer_company',
+      'fk_inv_alloc_payment_company',
+      'fk_inv_alloc_invoice_company',
+      'fk_inv_credit_invoice_company',
+      'fk_inv_stage_policy_company',
+      'fk_inv_reminder_invoice_company',
+      'fk_inv_etims_invoice_company',
+      'fk_inv_einvoice_invoice_company',
+      'fk_inv_einvoice_profile_company',
+      'fk_inv_einvoice_attempt_company',
+    ]) {
+      assert.ok(
+        sourceText.includes(relation),
+        relation + ' must remain in the Part 21 authority graph.',
+      );
+    }
+  }
+
+  assert.match(
+    runtimeMigrations,
+    /INVOICING_2_18_0_TO_2_19_0/,
+  );
+
+  assert.match(
+    manifest,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.19\.0['"]/s,
+  );
+});
