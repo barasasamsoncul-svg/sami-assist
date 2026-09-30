@@ -116,7 +116,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
 
   assert.match(
     invoicing,
-    /version:\s*['"]2\.14\.0['"]/,
+    /version:\s*['"]2\.15\.0['"]/,
   );
 
   assert.match(
@@ -2649,7 +2649,14 @@ test('Invoicing v2.6 separates cash receipts from allocation and reconciliation'
 
   assert.match(
     commands,
-    /Payment currency must match the invoice currency\./,
+    /allow_cross_currency_payments/,
+    'Part 14 may extend the Part 6 allocation authority across currencies only behind an explicit company control.',
+  );
+
+  assert.match(
+    commands,
+    /paymentAmount[\s\S]*paymentExchangeRate[\s\S]*invoiceAmount[\s\S]*invoiceExchangeRate/s,
+    'Cross-currency allocation must preserve both the payment-side and invoice-side values instead of treating unlike currencies as equal.',
   );
 
   assert.match(
@@ -2902,7 +2909,7 @@ test('Invoicing v2.7 turns recurring invoices into an observable retry-safe bill
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.14\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.15\.0['"]/s,
   );
 
   assert.match(
@@ -3102,7 +3109,7 @@ test('Invoicing v2.8 turns reminders into a staged auditable dunning engine', as
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.14\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.15\.0['"]/s,
   );
 
   assert.match(
@@ -3322,7 +3329,7 @@ test('Invoicing Part 8 builds a customer-scoped secure portal', async () => {
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.14\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.15\.0['"]/s,
   );
 
   assert.match(
@@ -3666,7 +3673,7 @@ test('Invoicing Part 9 freezes issued invoice PDFs as immutable document snapsho
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.14\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.15\.0['"]/s,
   );
 
   assert.match(
@@ -3942,7 +3949,7 @@ test('Invoicing Part 10 provides a live renderer-backed invoice template designe
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.14\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.15\.0['"]/s,
   );
 
   assert.match(
@@ -4129,7 +4136,7 @@ test('Invoicing Part 11 deepens credit notes into reusable customer credits and 
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.14\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.15\.0['"]/s,
   );
 
   assert.match(
@@ -4350,7 +4357,7 @@ test('Invoicing Part 12 manages retainers and deposits as auditable customer cre
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.14\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.15\.0['"]/s,
   );
 
   assert.match(
@@ -4522,7 +4529,7 @@ test('Invoicing Part 13 schedules installment plans over the authoritative invoi
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.14\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.15\.0['"]/s,
   );
 
   assert.match(
@@ -4748,5 +4755,190 @@ test('Invoicing Part 13 schedules installment plans over the authoritative invoi
   assert.match(
     manifest,
     /key:\s*"payment_plan_installment"[\s\S]*table:\s*"invoicing_payment_plan_installments"/s,
+  );
+});
+
+
+test('Invoicing Part 14 provides auditable multi-currency billing, base reporting and cross-currency settlement', async () => {
+  const [
+    schema,
+    migration,
+    currencies,
+    accounting,
+    commands,
+    queries,
+    types,
+    service,
+    route,
+    workspace,
+    currencyCenter,
+    runtimeMigrations,
+    manifest,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/schema.sql'),
+    source('lib/apps/invoicing/migrations/2.14.0-to-2.15.0.ts'),
+    source('lib/apps/invoicing/currencies.ts'),
+    source('lib/apps/invoicing/accounting.ts'),
+    source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/types.ts'),
+    source('lib/apps/invoicing/service.ts'),
+    source('app/api/apps/invoicing/route.ts'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('app/apps/invoicing/CurrencyCenterWorkspace.tsx'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+  ]);
+
+  assert.match(
+    manifest,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.15\.0['"]/s,
+  );
+
+  assert.match(
+    migration,
+    /fromVersion:\s*['"]2\.14\.0['"]/,
+  );
+
+  assert.match(
+    migration,
+    /toVersion:\s*['"]2\.15\.0['"]/,
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /INVOICING_2_14_0_TO_2_15_0/,
+  );
+
+  for (const table of [
+    'invoicing_currencies',
+    'invoicing_exchange_rates',
+  ]) {
+    assert.match(schema, new RegExp(table));
+    assert.match(migration, new RegExp(table));
+  }
+
+  assert.match(
+    schema,
+    /invoicing_aging_base/,
+    'Mixed-currency KPI totals must be consolidated in base currency.',
+  );
+
+  assert.match(
+    schema,
+    /invoicing_currency_exposure/,
+    'Part 14 must expose per-currency receivable exposure.',
+  );
+
+  assert.match(
+    currencies,
+    /resolveInvoicingExchangeRate/,
+    'Invoices and payments need a dated exchange-rate authority.',
+  );
+
+  assert.match(
+    currencies,
+    /effective_date <= \$4::date/,
+    'Rate resolution must use the latest historical rate on or before the transaction date.',
+  );
+
+  assert.match(
+    commands,
+    /payment_amount/,
+    'Allocations must retain payment-currency amounts.',
+  );
+
+  assert.match(
+    commands,
+    /invoice_amount/,
+    'Allocations must retain invoice-currency amounts.',
+  );
+
+  assert.match(
+    commands,
+    /allow_cross_currency_payments/,
+    'Cross-currency settlement must remain an explicit company control.',
+  );
+
+  assert.match(
+    accounting,
+    /fx_gain_loss/,
+    'Cross-currency settlement must post realized FX gain or loss.',
+  );
+
+  assert.match(
+    accounting,
+    /Realized foreign exchange gain/,
+  );
+
+  assert.match(
+    accounting,
+    /Realized foreign exchange loss/,
+  );
+
+  assert.match(
+    queries,
+    /SUM\(base_total_amount\)/,
+    'Dashboard totals must not sum raw foreign currencies together.',
+  );
+
+  assert.match(
+    types,
+    /InvoicingCurrencyExposureSummary/,
+  );
+
+  for (const exported of [
+    'saveInvoicingCurrency',
+    'saveInvoicingExchangeRate',
+  ]) {
+    assert.match(
+      service,
+      new RegExp(exported),
+    );
+  }
+
+  for (const action of [
+    'save_currency',
+    'save_exchange_rate',
+  ]) {
+    assert.match(
+      route,
+      new RegExp("case '" + action + "'"),
+    );
+  }
+
+  assert.ok(
+    workspace.includes(
+      "'currencies'",
+    ),
+    'Currency Center must be a first-class Invoicing workspace view.',
+  );
+
+  for (const visibleControl of [
+    'Currency Center',
+    'Add or update currency',
+    'Add dated exchange rate',
+    'Currency exposure',
+    'Exchange-rate history',
+  ]) {
+    assert.ok(
+      (
+        workspace +
+        currencyCenter
+      ).includes(
+        visibleControl,
+      ),
+      visibleControl + ' must be visible in the operator workspace.',
+    );
+  }
+
+  assert.match(
+    manifest,
+    /key:\s*"currency"[\s\S]*table:\s*"invoicing_currencies"/s,
+  );
+
+  assert.match(
+    manifest,
+    /key:\s*"exchange_rate"[\s\S]*table:\s*"invoicing_exchange_rates"/s,
   );
 });

@@ -18,6 +18,7 @@ import {
 import InvoiceComposer from '@/app/apps/invoicing/InvoiceComposer';
 import InvoiceAppearanceSettings from '@/app/apps/invoicing/InvoiceAppearanceSettings';
 import PaymentPlansWorkspace from '@/app/apps/invoicing/PaymentPlansWorkspace';
+import CurrencyCenterWorkspace from '@/app/apps/invoicing/CurrencyCenterWorkspace';
 import SaMiOverlay from '@/app/components/SaMiOverlay';
 import {
   useSaMiOverlay,
@@ -68,6 +69,7 @@ type ViewKey =
   | 'customers'
   | 'items'
   | 'payments'
+  | 'currencies'
   | 'retainers'
   | 'paymentPlans'
   | 'recurring'
@@ -124,6 +126,14 @@ const NAV:
         'Payments',
       icon:
         CreditCard,
+    },
+    {
+      key:
+        'currencies',
+      label:
+        'Currencies',
+      icon:
+        CircleDollarSign,
     },
     {
       key:
@@ -221,6 +231,12 @@ const VIEW_COPY:
         'Payments',
       description:
         'Review posted and reversed payments and their invoice allocations without changing invoice totals.',
+    },
+    currencies: {
+      title:
+        'Currency Center',
+      description:
+        'Manage transaction currencies, dated exchange rates, base-currency reporting and foreign-currency exposure.',
     },
     retainers: {
       title:
@@ -1645,6 +1661,27 @@ export default function InvoicingWorkspaceClient({
           .canViewPayments &&
         (
           <Payments
+            data={
+              initialData
+            }
+            pending={
+              busy
+            }
+            run={
+              run
+            }
+          />
+        )
+      }
+
+      {
+        view ===
+          'currencies' &&
+        initialData
+          .capabilities
+          .canView &&
+        (
+          <CurrencyCenterWorkspace
             data={
               initialData
             }
@@ -11900,6 +11937,15 @@ function Settings({
                   form.get(
                     'defaultDueDays',
                   ),
+                exchangeRateMode:
+                  form.get(
+                    'exchangeRateMode',
+                  ),
+                allowCrossCurrencyPayments:
+                  form.get(
+                    'allowCrossCurrencyPayments',
+                  ) ===
+                  'on',
                 taxCalculation:
                   form.get(
                     'taxCalculation',
@@ -12012,17 +12058,45 @@ function Settings({
         </div>
 
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <Field
-            label="Default currency"
-            name="defaultCurrency"
-            defaultValue={
-              data.settings
-                .defaultCurrency
-            }
-            maxLength={
-              3
-            }
-          />
+          <label className="block space-y-1">
+            <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+              Default currency
+            </span>
+            <select
+              name="defaultCurrency"
+              defaultValue={
+                data.settings
+                  .defaultCurrency
+              }
+              className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+            >
+              {
+                data.currencies
+                  .filter(
+                    currency =>
+                      currency.isActive,
+                  )
+                  .map(
+                    currency => (
+                      <option
+                        key={
+                          currency.id
+                        }
+                        value={
+                          currency.code
+                        }
+                      >
+                        {
+                          currency.code
+                        } — {
+                          currency.name
+                        }
+                      </option>
+                    ),
+                  )
+              }
+            </select>
+          </label>
 
           <Field
             label="Default due days"
@@ -12037,6 +12111,27 @@ function Settings({
               )
             }
           />
+
+          <label className="block space-y-1">
+            <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+              Exchange-rate mode
+            </span>
+            <select
+              name="exchangeRateMode"
+              defaultValue={
+                data.settings
+                  .exchangeRateMode
+              }
+              className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+            >
+              <option value="table">
+                Dated Currency Center rates
+              </option>
+              <option value="manual">
+                Manual override allowed
+              </option>
+            </select>
+          </label>
 
           <label className="block space-y-1">
             <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
@@ -12088,6 +12183,15 @@ function Settings({
         </div>
 
         <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+          <Toggle
+            name="allowCrossCurrencyPayments"
+            label="Cross-currency payments"
+            defaultChecked={
+              data.settings
+                .allowCrossCurrencyPayments
+            }
+          />
+
           <Toggle
             name="allowPartialPayments"
             label="Partial payments"
