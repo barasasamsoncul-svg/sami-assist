@@ -4095,9 +4095,11 @@ export async function getInvoicingInvoiceDetail(
             discount_value,
             discount_amount,
             tax_rate_id,
+            tax_group_id,
             tax_name_snapshot,
             tax_rate,
             tax_amount,
+            tax_components,
             subtotal,
             line_total
           FROM invoicing_invoice_items
@@ -4590,6 +4592,12 @@ export async function getInvoicingInvoiceDetail(
                   line.tax_rate_id,
                 )
               : null,
+          taxGroupId:
+            line.tax_group_id
+              ? String(
+                  line.tax_group_id,
+                )
+              : null,
           taxName:
             line.tax_name_snapshot
               ? String(
@@ -4604,6 +4612,12 @@ export async function getInvoicingInvoiceDetail(
             money(
               line.tax_amount,
             ),
+          taxComponents:
+            Array.isArray(
+              line.tax_components,
+            )
+              ? line.tax_components
+              : [],
           subtotal:
             money(
               line.subtotal,
