@@ -66,6 +66,7 @@ import type {
 
 type ViewKey =
   | 'dashboard'
+  | 'newInvoice'
   | 'invoices'
   | 'customers'
   | 'items'
@@ -99,9 +100,17 @@ const NAV:
     },
     {
       key:
+        'newInvoice',
+      label:
+        'New invoice',
+      icon:
+        Plus,
+    },
+    {
+      key:
         'invoices',
       label:
-        'Invoices',
+        'Invoice register',
       icon:
         Receipt,
     },
@@ -204,6 +213,44 @@ const NAV:
   ];
 
 
+const VIEW_PATHS:
+  Record<
+    ViewKey,
+    string
+  > = {
+    dashboard:
+      '/apps/invoicing',
+    newInvoice:
+      '/apps/invoicing/new',
+    invoices:
+      '/apps/invoicing/invoices',
+    customers:
+      '/apps/invoicing/customers',
+    items:
+      '/apps/invoicing/items',
+    payments:
+      '/apps/invoicing/payments',
+    currencies:
+      '/apps/invoicing/currencies',
+    taxEngine:
+      '/apps/invoicing/tax-engine',
+    retainers:
+      '/apps/invoicing/retainers',
+    paymentPlans:
+      '/apps/invoicing/payment-plans',
+    recurring:
+      '/apps/invoicing/recurring',
+    reminders:
+      '/apps/invoicing/reminders',
+    portal:
+      '/apps/invoicing/portal',
+    reports:
+      '/apps/invoicing/reports',
+    settings:
+      '/apps/invoicing/settings',
+  };
+
+
 const VIEW_COPY:
   Record<
     ViewKey,
@@ -218,11 +265,17 @@ const VIEW_COPY:
       description:
         'See receivables, collections, overdue balances and the health of customer billing.',
     },
+    newInvoice: {
+      title:
+        'Create invoice',
+      description:
+        'Create one invoice without the invoice register competing for space on the same page.',
+    },
     invoices: {
       title:
-        'Invoices',
+        'Invoice register',
       description:
-        'Create professional invoices, edit drafts, confirm, send, remind, duplicate and manage their lifecycle.',
+        'Search, filter, export and open existing invoices without the invoice composer stacked above the register.',
     },
     customers: {
       title:
@@ -1111,6 +1164,27 @@ export default function InvoicingWorkspaceClient({
     pending ||
     requestBusy;
 
+  const navigateToView =
+    useCallback(
+      (
+        nextView:
+          ViewKey,
+      ) => {
+        setView(
+          nextView,
+        );
+
+        router.push(
+          VIEW_PATHS[
+            nextView
+          ],
+        );
+      },
+      [
+        router,
+      ],
+    );
+
 
   const visibleNav =
     useMemo(
@@ -1230,6 +1304,7 @@ export default function InvoicingWorkspaceClient({
               ),
           ),
       [
+        navigateToView,
         visibleNav,
       ],
     );
@@ -1254,7 +1329,7 @@ export default function InvoicingWorkspaceClient({
               section,
           )
         ) {
-          setView(
+          navigateToView(
             section,
           );
         }
@@ -1524,8 +1599,8 @@ export default function InvoicingWorkspaceClient({
                   type="button"
                   onClick={
                     () =>
-                      setView(
-                        'invoices',
+                      navigateToView(
+                        'newInvoice',
                       )
                   }
                   className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-3.5 text-xs font-black text-white shadow-sm transition hover:bg-blue-700"
@@ -1594,9 +1669,32 @@ export default function InvoicingWorkspaceClient({
               initialData
             }
             onNavigate={
-              setView
+              navigateToView
             }
           />
+        )
+      }
+
+      {
+        view ===
+          'newInvoice' &&
+        initialData
+          .capabilities
+          .canCreate &&
+        (
+          <section className="sami-surface rounded-[24px] border border-[var(--sami-border)] p-3 sm:p-5">
+            <InvoiceComposer
+              data={
+                initialData
+              }
+              pending={
+                busy
+              }
+              run={
+                run
+              }
+            />
+          </section>
         )
       }
 
@@ -3727,49 +3825,29 @@ function Invoices({
 
   return (
     <div className="space-y-4">
-      {
-        data.capabilities
-          .canCreate &&
-        (
-          <details className="sami-surface overflow-hidden rounded-[24px] border border-[var(--sami-border)]">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 sm:p-5">
-              <div>
-                <div className="flex items-center gap-2">
-                  <div className="rounded-xl bg-blue-500/10 p-2 text-blue-700 dark:text-blue-300">
-                    <Plus className="h-4 w-4" />
-                  </div>
-
-                  <p className="text-sm font-black">
-                    Create invoice
-                  </p>
-                </div>
-
-                <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500">
-                  Start a new draft using a real customer and catalog items, review the totals, then save or confirm according to your permissions.
-                </p>
-              </div>
-
-              <span className="rounded-full border border-[var(--sami-border)] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">
-                New
-              </span>
-            </summary>
-
-            <div className="border-t border-[var(--sami-border)] p-3 sm:p-5">
-              <InvoiceComposer
-                data={
-                  data
-                }
-                pending={
-                  pending
-                }
-                run={
-                  run
-                }
-              />
-            </div>
-          </details>
-        )
-      }
+      <div className="flex flex-col gap-3 rounded-[20px] border border-[var(--sami-border)] bg-[var(--sami-surface)] p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-black">
+            Invoice register
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Existing invoices only. Creating a new invoice now has its own page.
+          </p>
+        </div>
+        {
+          data.capabilities
+            .canCreate &&
+          (
+            <Link
+              href="/apps/invoicing/new"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-black text-white"
+            >
+              <Plus className="h-4 w-4" />
+              New invoice
+            </Link>
+          )
+        }
+      </div>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         {
