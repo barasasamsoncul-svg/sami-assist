@@ -969,7 +969,7 @@ function FilterButton({
       }
       className={
         active
-          ? 'inline-flex h-9 shrink-0 items-center gap-2 rounded-xl bg-slate-950 px-3 text-[11px] font-semibold text-white dark:bg-white dark:text-slate-950'
+          ? 'inline-flex h-9 shrink-0 items-center gap-2 rounded-xl sami-contrast-invert px-3 text-[11px] font-semibold   '
           : 'inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-300 dark:hover:bg-white/10'
       }
     >

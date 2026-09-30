@@ -1535,7 +1535,7 @@ export default function BillingSettings({
                   'h-8 rounded-lg px-3 text-[11px] font-black transition',
                   mobileSection ===
                     key
-                    ? 'bg-slate-950 text-white dark:bg-white dark:text-slate-950'
+                    ? 'sami-contrast-invert   '
                     : 'text-slate-500',
                 ].join(
                   ' ',

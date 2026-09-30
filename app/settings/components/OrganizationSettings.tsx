@@ -1346,7 +1346,7 @@ export default function OrganizationSettings() {
         <div className="border-b border-slate-200 px-5 py-5 dark:border-white/10 sm:px-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
             <div className="flex min-w-0 items-center gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-950 text-sm font-bold text-white dark:bg-white dark:text-slate-950">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl sami-contrast-invert text-sm font-bold   ">
                 {headerCompany?.logoUrl ? (
                   <img
                     src={headerCompany.logoUrl}
@@ -1576,7 +1576,7 @@ function ProfileView({
               }
               className={
                 mobileSection === key
-                  ? 'h-9 rounded-lg bg-slate-950 px-3 text-xs font-semibold text-white dark:bg-white dark:text-slate-950'
+                  ? 'h-9 rounded-lg sami-contrast-invert px-3 text-xs font-semibold   '
                   : 'h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-600 dark:border-white/10 dark:text-slate-300'
               }
             >
@@ -1752,7 +1752,7 @@ function ProfileView({
             type="button"
             onClick={onSave}
             disabled={saving}
-            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 text-xs font-semibold text-white disabled:opacity-60 sm:w-auto dark:bg-white dark:text-slate-950"
+            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg sami-contrast-invert px-4 text-xs font-semibold  disabled:opacity-60 sm:w-auto  "
           >
             {saving ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -2001,7 +2001,7 @@ function BranchesView({
               type="button"
               onClick={onSave}
               disabled={saving === 'branch'}
-              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 text-xs font-semibold text-white disabled:opacity-60 dark:bg-white dark:text-slate-950"
+              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg sami-contrast-invert px-4 text-xs font-semibold  disabled:opacity-60  "
             >
               {saving === 'branch' ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -2197,7 +2197,7 @@ function CompaniesView({
               type="button"
               onClick={onCreate}
               disabled={saving === 'company:create'}
-              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 text-xs font-semibold text-white disabled:opacity-60 dark:bg-white dark:text-slate-950"
+              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg sami-contrast-invert px-4 text-xs font-semibold  disabled:opacity-60  "
             >
               {saving === 'company:create' ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

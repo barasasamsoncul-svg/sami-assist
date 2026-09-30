@@ -2048,7 +2048,7 @@ export default function WorkspaceSettings({
 
               <Link
                 href="/workspaces/new"
-                className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-950 px-3 text-[11px] font-black text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-100"
+                className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl sami-contrast-invert px-3 text-[11px] font-black  transition hover:bg-slate-800   dark:hover:bg-slate-100"
               >
                 <Plus className="h-3.5 w-3.5" />
                 Create workspace

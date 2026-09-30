@@ -1525,7 +1525,7 @@ export default function WorkspaceNotificationCenter({
             'ml-auto flex h-9 w-9 items-center justify-center rounded-lg transition',
             tab ===
               'preferences'
-              ? 'bg-slate-950 text-white dark:bg-white dark:text-slate-950'
+              ? 'sami-contrast-invert   '
               : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-white/10 dark:hover:text-white',
           ].join(' ')}
         >
@@ -1658,7 +1658,7 @@ export default function WorkspaceNotificationCenter({
                                   );
                                 }
                               }}
-                              className="inline-flex h-7 items-center rounded-lg bg-slate-950 px-2.5 text-[10px] font-bold text-white dark:bg-white dark:text-slate-950"
+                              className="inline-flex h-7 items-center rounded-lg sami-contrast-invert px-2.5 text-[10px] font-bold   "
                             >
                               Open
                             </Link>
@@ -1728,7 +1728,7 @@ export default function WorkspaceNotificationCenter({
                   null,
                 );
               }}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-slate-950 px-2.5 text-[11px] font-bold text-white dark:bg-white dark:text-slate-950"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg sami-contrast-invert px-2.5 text-[11px] font-bold   "
             >
               <Plus className="h-3.5 w-3.5" />
               New
@@ -1749,7 +1749,7 @@ export default function WorkspaceNotificationCenter({
                     'h-8 rounded-lg px-3 text-[11px] font-bold',
                     composeType ===
                       'direct'
-                      ? 'bg-slate-950 text-white dark:bg-white dark:text-slate-950'
+                      ? 'sami-contrast-invert   '
                       : 'border border-slate-200 text-slate-500 dark:border-white/10 dark:text-slate-400',
                   ].join(' ')}
                 >
@@ -1768,7 +1768,7 @@ export default function WorkspaceNotificationCenter({
                       'h-8 rounded-lg px-3 text-[11px] font-bold',
                       composeType ===
                         'announcement'
-                        ? 'bg-slate-950 text-white dark:bg-white dark:text-slate-950'
+                        ? 'sami-contrast-invert   '
                         : 'border border-slate-200 text-slate-500 dark:border-white/10 dark:text-slate-400',
                     ].join(' ')}
                   >
@@ -2284,7 +2284,7 @@ export default function WorkspaceNotificationCenter({
                   false,
                 )
               }
-              className="mt-4 inline-flex h-9 items-center rounded-lg bg-slate-950 px-3 text-xs font-bold text-white dark:bg-white dark:text-slate-950"
+              className="mt-4 inline-flex h-9 items-center rounded-lg sami-contrast-invert px-3 text-xs font-bold   "
             >
               Open full notification center
             </Link>
@@ -2476,7 +2476,7 @@ function TabButton({
       className={[
         'inline-flex h-9 items-center gap-2 rounded-lg px-3 text-[11px] font-bold transition',
         active
-          ? 'bg-slate-950 text-white dark:bg-white dark:text-slate-950'
+          ? 'sami-contrast-invert   '
           : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10',
       ].join(' ')}
     >
