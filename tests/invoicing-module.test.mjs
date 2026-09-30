@@ -5559,6 +5559,18 @@ test('Invoicing Part 16 provides KRA-native OSCU/VSCU fiscalization, immutable f
 
   assert.match(
     etims,
+    /communication_key_sealed\s*=\s*[\s\S]*?CASE[\s\S]*?ELSE NULL[\s\S]*?END/s,
+    'Changing the eTIMS device identity must clear stale encrypted OSCU credentials.',
+  );
+
+  assert.match(
+    etims,
+    /kra_sdc_id\s*=\s*[\s\S]*?CASE[\s\S]*?ELSE NULL[\s\S]*?END/s,
+    'Changing the eTIMS device identity must clear stale KRA activation identifiers.',
+  );
+
+  assert.match(
+    etims,
     /kra_sync_status[\s\S]*synced/s,
     'Products must be synchronized to KRA before they can be fiscalized.',
   );
