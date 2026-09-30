@@ -628,6 +628,10 @@ export async function ensureCompanyDefaults(
         'retainer',
         'RET-',
       ],
+      [
+        'payment_plan',
+        'PLN-',
+      ],
     ] as const
   ) {
     await pool.query(
@@ -877,7 +881,8 @@ export async function nextDocumentNumber(
     'payment' |
     'credit_note' |
     'credit_refund' |
-    'retainer',
+    'retainer' |
+    'payment_plan',
 ) {
   const result =
     await client.query(

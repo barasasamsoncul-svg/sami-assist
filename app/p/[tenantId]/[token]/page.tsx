@@ -390,6 +390,168 @@ export default async function CustomerPortalPage({
         </section>
 
         {
+          portal.paymentPlans.length >
+            0 &&
+          (
+            <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              <p className="text-sm font-black">
+                Payment plans
+              </p>
+              <p className="mt-1 text-xs text-slate-600">
+                Follow your agreed installment schedule and see how recorded payments and credits have reduced each amount.
+              </p>
+
+              <div className="mt-4 space-y-3">
+                {
+                  portal.paymentPlans.map(
+                    plan => (
+                      <div
+                        key={
+                          plan.planNumber
+                        }
+                        className="rounded-2xl border border-slate-200 p-3"
+                      >
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="text-xs font-black">
+                              {
+                                plan.planNumber
+                              } · {
+                                plan.invoiceNumber
+                              }
+                            </p>
+                            <p className="mt-1 text-[10px] text-slate-600">
+                              {
+                                plan.name
+                              } · {
+                                plan.paidInstallments
+                              }/{plan.installmentCount} installments paid
+                            </p>
+                          </div>
+                          <div className="sm:text-right">
+                            <p className="text-xs font-black">
+                              {
+                                formatMoney(
+                                  plan.balanceDue,
+                                  plan.currency,
+                                )
+                              } remaining
+                            </p>
+                            <p className="mt-1 text-[10px] capitalize text-slate-600">
+                              {
+                                plan.status
+                              }{
+                                plan.nextDueDate
+                                  ? ' · next ' +
+                                    formatDate(
+                                      plan.nextDueDate,
+                                    )
+                                  : ''
+                              }
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 overflow-x-auto">
+                          <table className="w-full min-w-[620px] text-left text-[10px]">
+                            <thead className="bg-slate-50 font-black uppercase tracking-[0.08em] text-slate-500">
+                              <tr>
+                                <th className="px-2 py-2">#</th>
+                                <th className="px-2 py-2">Installment</th>
+                                <th className="px-2 py-2">Due</th>
+                                <th className="px-2 py-2">Amount</th>
+                                <th className="px-2 py-2">Balance</th>
+                                <th className="px-2 py-2">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {
+                                plan.installments.map(
+                                  (
+                                    installment: {
+                                      sequenceNo:
+                                        number;
+                                      label:
+                                        string |
+                                        null;
+                                      dueDate:
+                                        string;
+                                      amount:
+                                        number;
+                                      paidAmount:
+                                        number;
+                                      balanceDue:
+                                        number;
+                                      status:
+                                        string;
+                                    },
+                                  ) => (
+                                    <tr
+                                      key={
+                                        installment.sequenceNo
+                                      }
+                                    >
+                                      <td className="px-2 py-2 font-black">
+                                        {
+                                          installment.sequenceNo
+                                        }
+                                      </td>
+                                      <td className="px-2 py-2">
+                                        {
+                                          installment.label ||
+                                          'Installment ' +
+                                          installment.sequenceNo
+                                        }
+                                      </td>
+                                      <td className="px-2 py-2">
+                                        {
+                                          formatDate(
+                                            installment.dueDate,
+                                          )
+                                        }
+                                      </td>
+                                      <td className="px-2 py-2">
+                                        {
+                                          formatMoney(
+                                            installment.amount,
+                                            plan.currency,
+                                          )
+                                        }
+                                      </td>
+                                      <td className="px-2 py-2 font-black">
+                                        {
+                                          formatMoney(
+                                            installment.balanceDue,
+                                            plan.currency,
+                                          )
+                                        }
+                                      </td>
+                                      <td className="px-2 py-2 capitalize">
+                                        {
+                                          installment.status
+                                            .replaceAll(
+                                              '_',
+                                              ' ',
+                                            )
+                                        }
+                                      </td>
+                                    </tr>
+                                  ),
+                                )
+                              }
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ),
+                  )
+                }
+              </div>
+            </section>
+          )
+        }
+
+        {
           portal.settings
             .paymentInstructions &&
           (

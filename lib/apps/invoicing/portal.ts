@@ -495,6 +495,7 @@ export async function getCustomerPortal(
     invoices,
     payments,
     creditNotes,
+    paymentPlans,
     messages,
   ] =
     await Promise.all([
@@ -664,6 +665,74 @@ export async function getCustomerPortal(
         : Promise.resolve({
             rows: [],
           }),
+
+      context.pool.query(
+        `
+          SELECT
+            plan.plan_number,
+            plan.invoice_id,
+            invoice.invoice_number,
+            plan.name,
+            plan.effective_status,
+            plan.currency,
+            plan.total_amount,
+            plan.paid_amount,
+            plan.balance_due,
+            plan.installment_count,
+            plan.paid_installments,
+            plan.overdue_installments,
+            plan.next_due_date,
+            COALESCE(
+              (
+                SELECT JSONB_AGG(
+                  JSONB_BUILD_OBJECT(
+                    'sequenceNo', installment.sequence_no,
+                    'label', installment.label,
+                    'dueDate', installment.due_date,
+                    'amount', installment.amount,
+                    'paidAmount', installment.paid_amount,
+                    'balanceDue', installment.balance_due,
+                    'status', installment.effective_status
+                  )
+                  ORDER BY installment.sequence_no
+                )
+                FROM invoicing_payment_plan_installment_balances installment
+                WHERE installment.plan_id =
+                      plan.plan_id
+                  AND installment.company_id =
+                      plan.company_id
+              ),
+              '[]'::jsonb
+            ) AS installments
+          FROM invoicing_payment_plan_balances plan
+          INNER JOIN invoicing_invoices invoice
+            ON invoice.id =
+               plan.invoice_id
+           AND invoice.company_id =
+               plan.company_id
+          WHERE plan.company_id =
+                $1
+            AND plan.customer_id =
+                $2
+          ORDER BY
+            CASE
+              WHEN plan.effective_status =
+                   'overdue'
+              THEN 0
+              WHEN plan.effective_status =
+                   'active'
+              THEN 1
+              ELSE 2
+            END,
+            plan.next_due_date NULLS LAST,
+            plan.activated_at DESC
+          LIMIT 100
+        `,
+        [
+          context.companyId,
+          context.customerId,
+        ],
+      ),
 
       context.settings
         .allowMessages
@@ -910,6 +979,113 @@ export async function getCustomerPortal(
             ),
         }),
       ),
+    paymentPlans:
+      paymentPlans.rows.map(
+        row => ({
+          planNumber:
+            String(
+              row.plan_number,
+            ),
+          invoiceId:
+            String(
+              row.invoice_id,
+            ),
+          invoiceNumber:
+            String(
+              row.invoice_number,
+            ),
+          name:
+            String(
+              row.name,
+            ),
+          status:
+            String(
+              row.effective_status,
+            ),
+          currency:
+            String(
+              row.currency,
+            ),
+          totalAmount:
+            money(
+              row.total_amount,
+            ),
+          paidAmount:
+            money(
+              row.paid_amount,
+            ),
+          balanceDue:
+            money(
+              row.balance_due,
+            ),
+          installmentCount:
+            Number(
+              row.installment_count,
+            ),
+          paidInstallments:
+            Number(
+              row.paid_installments ||
+              0,
+            ),
+          overdueInstallments:
+            Number(
+              row.overdue_installments ||
+              0,
+            ),
+          nextDueDate:
+            row.next_due_date
+              ? dateOnly(
+                  row.next_due_date,
+                )
+              : null,
+          installments:
+            Array.isArray(
+              row.installments,
+            )
+              ? row.installments.map(
+                  (
+                    item:
+                      Record<
+                        string,
+                        unknown
+                      >,
+                  ) => ({
+                    sequenceNo:
+                      Number(
+                        item.sequenceNo,
+                      ),
+                    label:
+                      item.label
+                        ? String(
+                            item.label,
+                          )
+                        : null,
+                    dueDate:
+                      dateOnly(
+                        item.dueDate,
+                      ),
+                    amount:
+                      money(
+                        item.amount,
+                      ),
+                    paidAmount:
+                      money(
+                        item.paidAmount,
+                      ),
+                    balanceDue:
+                      money(
+                        item.balanceDue,
+                      ),
+                    status:
+                      String(
+                        item.status,
+                      ),
+                  }),
+                )
+              : [],
+        }),
+      ),
+
     messages:
       messages.rows.map(
         row => ({

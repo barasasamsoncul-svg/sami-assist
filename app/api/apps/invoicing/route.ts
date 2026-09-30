@@ -8,8 +8,10 @@ import {
   applyInvoiceCreditNote,
   allocateInvoicePayment,
   cancelInvoiceCreditNote,
+  cancelInvoicePaymentPlan,
   changeInvoiceStatus,
   createInvoice,
+  createInvoicePaymentPlan,
   createInvoicingCatalogItem,
   createInvoicingCustomer,
   createInvoicingPaymentTerm,
@@ -488,6 +490,20 @@ export async function POST(
       case 'record_retainer':
         result =
           await recordCustomerRetainer(
+            payload,
+          );
+        break;
+
+      case 'create_payment_plan':
+        result =
+          await createInvoicePaymentPlan(
+            payload,
+          );
+        break;
+
+      case 'cancel_payment_plan':
+        result =
+          await cancelInvoicePaymentPlan(
             payload,
           );
         break;
