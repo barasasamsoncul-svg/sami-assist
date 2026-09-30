@@ -741,7 +741,7 @@ export default function AppSurfaceShell({
                     ? (
                       <Link
                         href="/settings?tab=billing"
-                        className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-xs font-black text-white dark:bg-white dark:text-slate-950"
+                        className="inline-flex h-11 items-center justify-center gap-2 rounded-xl sami-contrast-invert px-5 text-xs font-black"
                       >
                         <CreditCard className="h-4 w-4" />
                         Open Billing

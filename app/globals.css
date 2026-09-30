@@ -402,13 +402,15 @@ svg {
 
 
 /* Semantic selected navigation states */
-.sami-nav-selected {
+.sami-nav-selected,
+.sami-contrast-invert {
   background: #0f172a !important;
   color: #ffffff !important;
   border-color: #0f172a !important;
 }
 
-.dark .sami-nav-selected {
+.dark .sami-nav-selected,
+.dark .sami-contrast-invert {
   background: #f8fafc !important;
   color: #0f172a !important;
   border-color: #f8fafc !important;
@@ -434,6 +436,7 @@ svg {
 }
 
 .sami-nav-selected :where(svg, span, p),
+.sami-contrast-invert :where(svg, span, p),
 .sami-nav-selected-ai :where(svg, span, p) {
   color: inherit !important;
   stroke: currentColor;

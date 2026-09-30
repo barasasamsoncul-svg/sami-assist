@@ -161,7 +161,7 @@ const inputClass =
   'mt-1 h-10 w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs text-[var(--sami-text)] outline-none focus:border-blue-500';
 
 const buttonClass =
-  'inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-950';
+  'inline-flex h-10 items-center justify-center gap-2 rounded-xl sami-contrast-invert px-4 text-xs font-black disabled:cursor-not-allowed disabled:opacity-50';
 
 
 function money(
@@ -748,7 +748,7 @@ export default function EtimsWorkspace({
                           'h-9 rounded-xl px-3 text-xs font-black transition',
                           tab ===
                             key
-                            ? 'bg-slate-950 text-white dark:bg-white dark:text-slate-950'
+                            ? 'sami-nav-selected'
                             : 'text-slate-500 hover:bg-[var(--sami-surface-soft)] hover:text-[var(--sami-text)]',
                         ].join(
                           ' ',

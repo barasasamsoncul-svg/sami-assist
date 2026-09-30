@@ -82,7 +82,7 @@ function SubmitButton({
       disabled={
         pending
       }
-      className="h-10 rounded-xl bg-slate-950 px-4 text-xs font-black text-white disabled:opacity-60 dark:bg-white dark:text-slate-950"
+      className="h-10 rounded-xl sami-contrast-invert px-4 text-xs font-black disabled:opacity-60"
     >
       {children}
     </button>
