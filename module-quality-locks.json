@@ -3,16 +3,16 @@
   "locks": {
     "invoicing": {
       "status": "locked",
-      "moduleVersion": "2.17.0",
+      "moduleVersion": "2.18.0",
       "referenceStandard": true,
-      "baselineCommit": "c34e158b4b0f333ed04df53effdeef303ef789b2",
+      "baselineCommit": "4ef723fa3862771ed3deccc7f35b7dc87b57dcd7",
       "baselineBranch": "main",
       "lockedAt": "2026-09-30",
-      "policy": "Invoicing 2.17.0 preserves Parts 1–15 and completes Part 16 Kenya eTIMS with KRA-native OSCU/VSCU device activation, encrypted OSCU communication-key storage, KRA item/tax mappings, solution-scoped fiscal invoice sequencing, invoice and credit-note submission evidence, authority result-code acceptance, protected production delivery and immutable fiscalized PDFs. The standalone responsive Invoicing shell remains module-owned; migrations stay additive so workspace users are not blocked by version drift. Future changes must keep Invoicing, app-surface, ERP integration, platform closure, core-hardening, TypeScript, migration dry-run and production deployment gates green.",
+      "policy": "Invoicing 2.18.0 preserves Parts 1–16 and adds Part 17 international e-invoicing through an isolated FiscalDocument and FiscalProviderAdapter boundary: immutable UBL 2.1 invoice/credit-note XML, Peppol BIS Billing identifiers and participant routing, provider-agnostic EDI gateway delivery, encrypted provider credentials, validation evidence, idempotent transmission attempts and authenticated XML export. Kenya eTIMS remains isolated. The standalone responsive Invoicing shell remains module-owned and migrations remain additive.",
       "protectedTrees": {
-        "lib/apps/invoicing": "b99d0465e417783b654a3ced8d3bb9b356641891",
-        "app/apps/invoicing": "76970e6228571ab7ff96c3f271c458868ca58f62",
-        "app/api/apps/invoicing": "702cf11feb2459a2f3ddb2b4c9e2af590664e920",
+        "lib/apps/invoicing": "e5cccc794c11722ff82e9c2a42417f769afe2366",
+        "app/apps/invoicing": "5655ef0ea54524d089528597be4e02fef9dbc340",
+        "app/api/apps/invoicing": "409a0b9b57bb0191747cb4ba3bf6de066eb78dee",
         "app/api/internal/invoicing": "b2b22efc33d3b038495ccdd343845257789334a1",
         "app/i/[tenantId]/[token]": "62510a8ae454347c3d5e211895fdf27fb6a70bc7",
         "app/p/[tenantId]/[token]": "bd3d543da2bd0c28953828e2f658edfbcdd0a2cc",
