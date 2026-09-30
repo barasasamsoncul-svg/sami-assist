@@ -116,7 +116,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
 
   assert.match(
     invoicing,
-    /version:\s*['"]2\.17\.0['"]/,
+    /version:\s*['"]2\.18\.0['"]/,
   );
 
   assert.match(
@@ -3014,7 +3014,7 @@ test('Invoicing v2.7 turns recurring invoices into an observable retry-safe bill
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
   );
 
   assert.match(
@@ -3214,7 +3214,7 @@ test('Invoicing v2.8 turns reminders into a staged auditable dunning engine', as
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
   );
 
   assert.match(
@@ -3434,7 +3434,7 @@ test('Invoicing Part 8 builds a customer-scoped secure portal', async () => {
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
   );
 
   assert.match(
@@ -3778,7 +3778,7 @@ test('Invoicing Part 9 freezes issued invoice PDFs as immutable document snapsho
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
   );
 
   assert.match(
@@ -4054,7 +4054,7 @@ test('Invoicing Part 10 provides a live renderer-backed invoice template designe
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
   );
 
   assert.match(
@@ -4241,7 +4241,7 @@ test('Invoicing Part 11 deepens credit notes into reusable customer credits and 
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
   );
 
   assert.match(
@@ -4462,7 +4462,7 @@ test('Invoicing Part 12 manages retainers and deposits as auditable customer cre
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
   );
 
   assert.match(
@@ -4634,7 +4634,7 @@ test('Invoicing Part 13 schedules installment plans over the authoritative invoi
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
   );
 
   assert.match(
@@ -4897,7 +4897,7 @@ test('Invoicing Part 14 provides auditable multi-currency billing, base reportin
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
   );
 
   assert.match(
@@ -5186,7 +5186,7 @@ test('Invoicing Part 15 provides a rule-driven tax engine with fiscal mappings, 
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
   );
 
   assert.match(
@@ -5453,7 +5453,7 @@ test('Invoicing Part 16 provides KRA-native OSCU/VSCU fiscalization, immutable f
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
   );
 
   assert.match(
@@ -5690,6 +5690,123 @@ test('Invoicing Part 16 provides KRA-native OSCU/VSCU fiscalization, immutable f
         visibleText,
       ),
       visibleText + ' must be visible in the standalone eTIMS operator workspace.',
+    );
+  }
+});
+
+test('Invoicing Part 17 provides international e-invoicing with UBL, Peppol and isolated provider adapters', async () => {
+  const [
+    schema,
+    migration,
+    engine,
+    service,
+    route,
+    xmlRoute,
+    workspace,
+    page,
+    sectionPage,
+    workspaceClient,
+    runtimeMigrations,
+    manifest,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/schema.sql'),
+    source('lib/apps/invoicing/migrations/2.17.0-to-2.18.0.ts'),
+    source('lib/apps/invoicing/e-invoicing.ts'),
+    source('lib/apps/invoicing/service.ts'),
+    source('app/api/apps/invoicing/e-invoicing/route.ts'),
+    source('app/api/apps/invoicing/e-invoicing/[documentId]/xml/route.ts'),
+    source('app/apps/invoicing/EInvoicingWorkspace.tsx'),
+    source('app/apps/invoicing/e-invoicing/page.tsx'),
+    source('app/apps/invoicing/InvoicingSectionPage.tsx'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+  ]);
+
+  assert.match(
+    manifest,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
+  );
+
+  assert.match(migration, /fromVersion:\s*['"]2\.17\.0['"]/);
+  assert.match(migration, /toVersion:\s*['"]2\.18\.0['"]/);
+  assert.match(runtimeMigrations, /INVOICING_2_17_0_TO_2_18_0/);
+
+  for (const table of [
+    'invoicing_einvoice_profiles',
+    'invoicing_einvoice_participants',
+    'invoicing_einvoice_documents',
+    'invoicing_einvoice_attempts',
+  ]) {
+    assert.match(schema, new RegExp(table));
+    assert.match(migration, new RegExp(table));
+  }
+
+  assert.match(engine, /FiscalProviderAdapter/);
+  assert.match(engine, /getFiscalProviderAdapter/);
+  assert.match(engine, /PEPPOL_BIS_BILLING_CUSTOMIZATION_ID/);
+  assert.match(engine, /PEPPOL_BIS_BILLING_PROCESS_ID/);
+  assert.match(engine, /UBLVersionID/);
+  assert.match(engine, /CustomizationID/);
+  assert.match(engine, /ProfileID/);
+  assert.match(engine, /EndpointID/);
+  assert.match(engine, /BuyerReference/);
+  assert.match(
+    engine,
+    /BUYER_REFERENCE_REQUIRED/,
+    'Peppol buyer/order reference validation must apply before either invoice or credit-note transmission.',
+  );
+  assert.match(engine, /InvoiceLine/);
+  assert.match(engine, /CreditNoteLine/);
+  assert.match(engine, /xml_sha256/);
+  assert.match(engine, /source_hash/);
+  assert.match(engine, /Idempotency-Key/);
+  assert.match(engine, /sealIntegrationSecret/);
+  assert.match(
+    engine,
+    /SAMI_EINVOICE_PROVIDER/,
+    'Gateway destinations must be server-controlled through environment configuration.',
+  );
+
+  for (const exported of [
+    'getEInvoiceWorkspaceData',
+    'saveEInvoiceProfile',
+    'saveEInvoiceParticipant',
+    'generateEInvoiceDocument',
+    'submitEInvoiceDocument',
+    'getEInvoiceDocumentXml',
+    'getFiscalProviderAdapter',
+  ]) {
+    assert.match(engine + service, new RegExp(exported));
+  }
+
+  for (const action of [
+    'save_profile',
+    'save_participant',
+    'generate_document',
+    'submit_document',
+    'mark_exported',
+  ]) {
+    assert.match(route, new RegExp("case '" + action + "'"));
+  }
+
+  assert.match(xmlRoute, /application\/xml/);
+  assert.match(xmlRoute, /X-SaMi-Document-SHA256/);
+  assert.match(sectionPage, /\/apps\/invoicing\/e-invoicing/);
+  assert.match(page, /view="eInvoicing"/);
+  assert.match(workspaceClient, /<EInvoicingWorkspace/);
+
+  for (const visibleText of [
+    'International e-invoicing',
+    'Peppol, UBL & EDI control center',
+    'Profiles',
+    'Participants',
+    'Documents',
+    'Generate UBL XML',
+  ]) {
+    assert.ok(
+      workspace.includes(visibleText),
+      visibleText + ' must be visible in the focused Part 17 workspace.',
     );
   }
 });
