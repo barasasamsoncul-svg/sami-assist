@@ -68,6 +68,10 @@ import {
   resolveInvoicingTaxTreatment,
 } from '@/lib/apps/invoicing/tax-engine';
 
+import {
+  queueInvoiceForEtimsIfEnabled,
+} from '@/lib/apps/invoicing/etims';
+
 
 function plainObject(
   value:
@@ -3327,6 +3331,17 @@ export async function createInvoice(
         },
       );
 
+      await queueInvoiceForEtimsIfEnabled(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          invoiceId,
+        },
+      );
+
       await createPrimaryInvoiceDocumentSnapshot(
         client,
         {
@@ -5006,6 +5021,17 @@ export async function changeInvoiceStatus(
         'confirmed'
     ) {
       await postInvoiceConfirmationToAccounting(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          invoiceId,
+        },
+      );
+
+      await queueInvoiceForEtimsIfEnabled(
         client,
         {
           companyId:
