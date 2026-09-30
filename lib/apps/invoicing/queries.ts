@@ -229,6 +229,7 @@ export async function getInvoicingWorkspaceData():
     customers,
     payments,
     retainers,
+    paymentPlans,
     recurring,
     templates,
     paymentTerms,
@@ -787,6 +788,89 @@ export async function getInvoicingWorkspaceData():
             b.received_date DESC,
             b.created_at DESC,
             b.retainer_id DESC
+          LIMIT 300
+        `,
+        [
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            plan.plan_id,
+            plan.plan_number,
+            plan.invoice_id,
+            invoice.invoice_number,
+            plan.customer_id,
+            customer.name
+              AS customer_name,
+            plan.name,
+            plan.effective_status,
+            plan.currency,
+            plan.original_due_date,
+            plan.final_due_date,
+            plan.total_amount,
+            plan.paid_amount,
+            plan.balance_due,
+            plan.installment_count,
+            plan.paid_installments,
+            plan.overdue_installments,
+            plan.next_due_date,
+            plan.notes,
+            plan.activated_at,
+            plan.cancelled_at,
+            plan.cancellation_reason,
+            COALESCE(
+              (
+                SELECT JSONB_AGG(
+                  JSONB_BUILD_OBJECT(
+                    'id', installment.id,
+                    'sequenceNo', installment.sequence_no,
+                    'label', installment.label,
+                    'dueDate', installment.due_date,
+                    'amount', installment.amount,
+                    'paidAmount', installment.paid_amount,
+                    'balanceDue', installment.balance_due,
+                    'status', installment.effective_status
+                  )
+                  ORDER BY
+                    installment.sequence_no
+                )
+                FROM invoicing_payment_plan_installment_balances installment
+                WHERE installment.plan_id =
+                      plan.plan_id
+                  AND installment.company_id =
+                      plan.company_id
+              ),
+              '[]'::jsonb
+            )
+              AS installments
+          FROM invoicing_payment_plan_balances plan
+          INNER JOIN invoicing_invoices invoice
+            ON invoice.id =
+               plan.invoice_id
+           AND invoice.company_id =
+               plan.company_id
+          INNER JOIN invoicing_customers customer
+            ON customer.id =
+               plan.customer_id
+           AND customer.company_id =
+               plan.company_id
+          WHERE plan.company_id =
+                $1
+          ORDER BY
+            CASE
+              WHEN plan.effective_status =
+                   'overdue'
+              THEN 0
+              WHEN plan.effective_status =
+                   'active'
+              THEN 1
+              ELSE 2
+            END,
+            plan.next_due_date NULLS LAST,
+            plan.activated_at DESC
           LIMIT 300
         `,
         [
@@ -1961,6 +2045,161 @@ export async function getInvoicingWorkspaceData():
                     }),
                   )
                 : [],
+            }),
+          )
+        : [],
+
+    paymentPlans:
+      access.canViewPayments
+        ? paymentPlans.rows.map(
+            row => ({
+              id:
+                String(
+                  row.plan_id,
+                ),
+              planNumber:
+                String(
+                  row.plan_number,
+                ),
+              invoiceId:
+                String(
+                  row.invoice_id,
+                ),
+              invoiceNumber:
+                String(
+                  row.invoice_number,
+                ),
+              customerId:
+                String(
+                  row.customer_id,
+                ),
+              customerName:
+                String(
+                  row.customer_name,
+                ),
+              name:
+                String(
+                  row.name,
+                ),
+              status:
+                String(
+                  row.effective_status,
+                ),
+              currency:
+                String(
+                  row.currency,
+                ),
+              originalDueDate:
+                String(
+                  row.original_due_date,
+                ),
+              finalDueDate:
+                String(
+                  row.final_due_date,
+                ),
+              totalAmount:
+                money(
+                  row.total_amount,
+                ),
+              paidAmount:
+                money(
+                  row.paid_amount,
+                ),
+              balanceDue:
+                money(
+                  row.balance_due,
+                ),
+              installmentCount:
+                Number(
+                  row.installment_count,
+                ),
+              paidInstallments:
+                Number(
+                  row.paid_installments ||
+                  0,
+                ),
+              overdueInstallments:
+                Number(
+                  row.overdue_installments ||
+                  0,
+                ),
+              nextDueDate:
+                row.next_due_date
+                  ? String(
+                      row.next_due_date,
+                    )
+                  : null,
+              notes:
+                row.notes
+                  ? String(
+                      row.notes,
+                    )
+                  : null,
+              activatedAt:
+                new Date(
+                  row.activated_at,
+                ).toISOString(),
+              cancelledAt:
+                row.cancelled_at
+                  ? new Date(
+                      row.cancelled_at,
+                    ).toISOString()
+                  : null,
+              cancellationReason:
+                row.cancellation_reason
+                  ? String(
+                      row.cancellation_reason,
+                    )
+                  : null,
+              installments:
+                Array.isArray(
+                  row.installments,
+                )
+                  ? row.installments.map(
+                      (
+                        item:
+                          Record<
+                            string,
+                            unknown
+                          >,
+                      ) => ({
+                        id:
+                          String(
+                            item.id,
+                          ),
+                        sequenceNo:
+                          Number(
+                            item.sequenceNo,
+                          ),
+                        label:
+                          item.label
+                            ? String(
+                                item.label,
+                              )
+                            : null,
+                        dueDate:
+                          String(
+                            item.dueDate,
+                          ),
+                        amount:
+                          money(
+                            item.amount,
+                          ),
+                        paidAmount:
+                          money(
+                            item.paidAmount,
+                          ),
+                        balanceDue:
+                          money(
+                            item.balanceDue,
+                          ),
+                        status:
+                          String(
+                            item.status,
+                          ),
+                      }),
+                    )
+                  : [],
             }),
           )
         : [],
