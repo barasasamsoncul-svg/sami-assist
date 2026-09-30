@@ -9,6 +9,7 @@ import {
   formatAccountingAmount,
   reportFilters,
   validateJournal,
+  validateAccountingSetup,
 } from "../lib/apps/accounting/validation.ts";
 import {
   ACCOUNT_BALANCES_SQL,
@@ -66,6 +67,48 @@ test("dates, date ranges and pagination cannot silently normalize invalid inputs
   for (const page of ["0", "-1", "1e3", "1.2", "9999999"])
     assert.throws(() => reportFilters({ page }));
 });
+test("accounting setup validates fiscal policy, mappings and lock controls", () => {
+  const input = {
+    expectedCompanyId: company,
+    fiscalYearStartMonth: 7,
+    fiscalYearStartDay: 1,
+    defaultReceivableAccountId: cash,
+    defaultPayableAccountId: null,
+    retainedEarningsAccountId: null,
+    outputTaxAccountId: null,
+    inputTaxAccountId: null,
+    defaultCashAccountId: cash,
+    fxGainAccountId: revenue,
+    fxLossAccountId: null,
+    writeOffAccountId: null,
+    roundingAccountId: revenue,
+    roundingMethod: "half_up",
+    globalLockDate: "2026-06-30",
+    lockPostedEntries: true,
+    requireOpenPeriod: true,
+  };
+  const result = validateAccountingSetup(input);
+  assert.equal(result.fiscalYearStartMonth, 7);
+  assert.equal(result.globalLockDate, "2026-06-30");
+  assert.equal(result.requireOpenPeriod, true);
+
+  for (const mutate of [
+    (body) => (body.fiscalYearStartMonth = 13),
+    (body) => {
+      body.fiscalYearStartMonth = 2;
+      body.fiscalYearStartDay = 30;
+    },
+    (body) => (body.roundingMethod = "silent_round"),
+    (body) => (body.globalLockDate = "2026-02-30"),
+    (body) => (body.lockPostedEntries = "yes"),
+    (body) => (body.defaultCashAccountId = "not-a-uuid"),
+  ]) {
+    const body = structuredClone(input);
+    mutate(body);
+    assert.throws(() => validateAccountingSetup(body));
+  }
+});
+
 test("journal validation rejects imbalance, negative amounts, two-sided and empty lines", () => {
   assert.equal(validateJournal(draft()).lines[0].debit, "100.10");
   for (const mutate of [
@@ -116,6 +159,7 @@ test(
         `CREATE TABLE journals (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),company_id uuid NOT NULL,journal_number varchar(100) UNIQUE,journal_date date,reference text,description text,status text,created_by uuid,updated_by uuid,created_at timestamptz DEFAULT now(),deleted_at timestamptz)`,
         `CREATE TABLE journal_lines (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),company_id uuid NOT NULL,journal_id uuid REFERENCES journals(id),account_id uuid REFERENCES accounts(id),description text CHECK(description <> 'FAIL'),debit numeric(15,2),credit numeric(15,2),created_by uuid,updated_by uuid,created_at timestamptz DEFAULT now(),deleted_at timestamptz)`,
         `CREATE TABLE accounting_fiscal_periods(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),company_id uuid,name text,starts_on date,ends_on date,lock_date date,status text,deleted_at timestamptz)`,
+        `CREATE TABLE accounting_settings(company_id uuid PRIMARY KEY,global_lock_date date,require_open_period boolean NOT NULL DEFAULT true,deleted_at timestamptz)`,
         `CREATE TABLE sami_enterprise_idempotency(company_id uuid,idempotency_key uuid,module_key text,table_key text,request_hash text,created_by uuid,created_at timestamptz,updated_at timestamptz,record_key text,response_json jsonb,PRIMARY KEY(company_id,idempotency_key))`,
       ];
       for (const sql of statements) await pool.query(sql);
@@ -306,6 +350,44 @@ test(
           "concurrent retries create one journal",
         );
       }
+
+      await pool.query(
+        `INSERT INTO accounting_settings(company_id,global_lock_date,require_open_period)
+         VALUES($1,'2026-06-30',true)`,
+        [company],
+      );
+      await assert.rejects(
+        () =>
+          saveBalancedJournalDraft(
+            pool,
+            { companyId: company, userId: user },
+            validateJournal(draft()),
+          ),
+        /company Accounting lock date/,
+      );
+
+      await pool.query(
+        `UPDATE accounting_settings
+         SET global_lock_date=NULL,require_open_period=false
+         WHERE company_id=$1`,
+        [company],
+      );
+      await pool.query(
+        `DELETE FROM accounting_fiscal_periods WHERE company_id=$1`,
+        [company],
+      );
+      const noPeriod = draft();
+      noPeriod.journalDate = "2026-08-01";
+      const noPeriodJournal = await saveBalancedJournalDraft(
+        pool,
+        { companyId: company, userId: user },
+        validateJournal(noPeriod),
+      );
+      assert.equal(
+        noPeriodJournal.status,
+        "draft",
+        "setup can explicitly allow drafting outside a fiscal period",
+      );
     } finally {
       if (embedded) await embedded.close();
       else {
