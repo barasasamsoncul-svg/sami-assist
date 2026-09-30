@@ -27,6 +27,8 @@ const SQL = `
       CHECK (next_transaction_invoice_no > 0),
     kra_sdc_id VARCHAR(120),
     kra_mrc_no VARCHAR(120),
+    communication_key_sealed TEXT,
+    communication_key_version VARCHAR(32),
     initialization_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
     last_device_init_at TIMESTAMPTZ,
     last_reference_sync_at TIMESTAMPTZ,
