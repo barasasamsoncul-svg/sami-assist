@@ -39,6 +39,7 @@ import {
   BellRing,
   BarChart3,
   CalendarClock,
+  BookOpenCheck,
   ChevronDown,
   CircleDollarSign,
   CopyPlus,
