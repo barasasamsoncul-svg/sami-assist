@@ -260,3 +260,85 @@ svg {
 .sami-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
+
+
+/* Invoicing visibility contract */
+[data-sami-app='invoicing'] {
+  color: var(--foreground);
+}
+
+[data-sami-app='invoicing'] :where(
+  .text-slate-300,
+  .text-slate-400,
+  .text-slate-500
+) {
+  color: #475569;
+}
+
+[data-sami-app='invoicing'] :where(
+  .text-slate-600,
+  .text-slate-700
+) {
+  color: #334155;
+}
+
+.dark [data-sami-app='invoicing'] :where(
+  .text-slate-300,
+  .text-slate-400,
+  .text-slate-500,
+  .text-slate-600,
+  .text-slate-700
+) {
+  color: #cbd5e1;
+}
+
+[data-sami-app='invoicing'] :where(
+  p,
+  span,
+  label,
+  td,
+  th,
+  summary,
+  a,
+  button
+) {
+  text-underline-offset: 2px;
+}
+
+[data-sami-app='invoicing'] :where(
+  input,
+  textarea,
+  select
+) {
+  color: var(--foreground);
+  background-color: var(--sami-surface);
+}
+
+[data-sami-app='invoicing'] :where(
+  input,
+  textarea
+)::placeholder {
+  color: #64748b;
+  opacity: 1;
+}
+
+.dark [data-sami-app='invoicing'] :where(
+  input,
+  textarea
+)::placeholder {
+  color: #a8b3c7;
+}
+
+[data-sami-app='invoicing'] :where(
+  .break-words,
+  .whitespace-normal
+) {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+[data-sami-app='invoicing'] :where(
+  [title]
+) {
+  max-width: 100%;
+}
