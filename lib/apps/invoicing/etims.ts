@@ -3546,7 +3546,10 @@ export async function saveEtimsTaxMapping(
     taxRateId
       ? await context.pool.query(
           `
-            SELECT id
+            SELECT
+              id,
+              rate,
+              1::int AS component_count
             FROM invoicing_tax_rates
             WHERE id = $1
               AND company_id = $2
@@ -3560,11 +3563,24 @@ export async function saveEtimsTaxMapping(
         )
       : await context.pool.query(
           `
-            SELECT id
-            FROM invoicing_tax_groups
-            WHERE id = $1
-              AND company_id = $2
-              AND deleted_at IS NULL
+            SELECT
+              grp.id,
+              COUNT(member.id)::int
+                AS component_count,
+              MAX(rate.rate)
+                AS rate
+            FROM invoicing_tax_groups grp
+            LEFT JOIN invoicing_tax_group_members member
+              ON member.group_id = grp.id
+             AND member.company_id = grp.company_id
+            LEFT JOIN invoicing_tax_rates rate
+              ON rate.id = member.tax_rate_id
+             AND rate.company_id = member.company_id
+             AND rate.deleted_at IS NULL
+            WHERE grp.id = $1
+              AND grp.company_id = $2
+              AND grp.deleted_at IS NULL
+            GROUP BY grp.id
             LIMIT 1
           `,
           [
@@ -3580,6 +3596,50 @@ export async function saveEtimsTaxMapping(
     throw new InvoicingError(
       'INVALID_INPUT',
       'Choose a valid tax source.',
+    );
+  }
+
+  if (
+    Number(
+      source.rows[0]
+        .component_count ||
+      0,
+    ) !==
+      1
+  ) {
+    throw new InvoicingError(
+      'ETIMS_MAPPING_REQUIRED',
+      'KRA eTIMS accepts one A-E tax type per invoice item. Map a single tax rate or a one-component tax group.',
+    );
+  }
+
+  const sourceRate =
+    money(
+      source.rows[0]
+        .rate,
+    );
+
+  if (
+    Math.abs(
+      sourceRate -
+      TAX_RATES[
+        taxTypeCode
+      ],
+    ) >
+      0.0001
+  ) {
+    throw new InvoicingError(
+      'ETIMS_MAPPING_REQUIRED',
+      'The selected SaMi tax rate does not match the KRA tax type rate.',
+      {
+        samiRate:
+          sourceRate,
+        kraRate:
+          TAX_RATES[
+            taxTypeCode
+          ],
+        taxTypeCode,
+      },
     );
   }
 
