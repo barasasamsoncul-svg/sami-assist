@@ -3,6 +3,7 @@
 import type {
   InvoicingInvoiceDetail,
   InvoicingInvoiceSummary,
+  InvoicingWorkspaceData,
 } from '@/lib/apps/invoicing/types';
 
 
@@ -80,6 +81,7 @@ export default function CreditNoteLifecyclePanel({
   invoices,
   busy,
   run,
+  capabilities,
 }: {
   credit:
     Credit;
@@ -93,6 +95,10 @@ export default function CreditNoteLifecyclePanel({
     boolean;
   run:
     Runner;
+  capabilities:
+    InvoicingWorkspaceData[
+      'capabilities'
+    ];
 }) {
   const candidates =
     invoices
@@ -273,6 +279,8 @@ export default function CreditNoteLifecyclePanel({
                     </div>
 
                     {
+                      capabilities
+                        .canApplyCredit &&
                       application.applicationType ===
                         'customer_credit' &&
                       application.status ===
@@ -394,6 +402,8 @@ export default function CreditNoteLifecyclePanel({
                     </div>
 
                     {
+                      capabilities
+                        .canRefundCredit &&
                       refund.status ===
                         'posted' &&
                       (
@@ -467,9 +477,20 @@ export default function CreditNoteLifecyclePanel({
         credit.status !==
           'cancelled' &&
         (
+          capabilities
+            .canApplyCredit ||
+          capabilities
+            .canRefundCredit
+        ) &&
+        (
           <div className="mt-3 grid gap-3 lg:grid-cols-2">
             <form
-              className="rounded-xl border border-[var(--sami-border)] p-3"
+              className={[
+                'rounded-xl border border-[var(--sami-border)] p-3',
+                capabilities.canApplyCredit
+                  ? ''
+                  : 'hidden',
+              ].join(' ')}
               onSubmit={
                 async event => {
                   event.preventDefault();
@@ -583,7 +604,12 @@ export default function CreditNoteLifecyclePanel({
             </form>
 
             <form
-              className="rounded-xl border border-[var(--sami-border)] p-3"
+              className={[
+                'rounded-xl border border-[var(--sami-border)] p-3',
+                capabilities.canRefundCredit
+                  ? ''
+                  : 'hidden',
+              ].join(' ')}
               onSubmit={
                 async event => {
                   event.preventDefault();
@@ -713,6 +739,8 @@ export default function CreditNoteLifecyclePanel({
       }
 
       {
+        capabilities
+          .canCancelCredit &&
         canCancel &&
         (
           <form
