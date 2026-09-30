@@ -1925,7 +1925,7 @@ export default function EtimsWorkspace({
                                       />
                                     }
                                   </div>
-                                  <p className="mt-1 truncate text-xs text-slate-500">
+                                  <p className="mt-1 break-words whitespace-normal text-xs text-slate-500">
                                     {
                                       invoice
                                         .customerName
