@@ -96,8 +96,8 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
   defineSamiModule({
     key: "invoicing",
     name: "Invoicing",
-    version: '2.15.0',
-    description: "Create invoices, collect payments, manage receivables, multi-currency billing and settlement, retainers, installment payment plans, recurring billing, dunning, customer portal access, immutable documents, live template design, and deep credit-note/refund lifecycle management.",
+    version: '2.16.0',
+    description: "Create invoices, collect payments, manage receivables, multi-currency billing and settlement, rule-driven tax calculation, fiscal positions, tax exemptions and localizations, retainers, installment payment plans, recurring billing, dunning, customer portal access, immutable documents, live template design, and deep credit-note/refund lifecycle management.",
     category: "finance",
     icon: "receipt",
     route: "apps/invoicing",
