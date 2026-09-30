@@ -1124,6 +1124,43 @@ function buildItemPayload(
       line,
     );
 
+  const expectedTax =
+    money(
+      taxable *
+      TAX_RATES[
+        taxCode
+      ] /
+      100,
+    );
+
+  if (
+    Math.abs(
+      expectedTax -
+      money(
+        line.tax_amount,
+      ),
+    ) >
+    0.05
+  ) {
+    throw new InvoicingError(
+      'ETIMS_MAPPING_REQUIRED',
+      'The KRA tax mapping does not match the tax amount frozen on this invoice line.',
+      {
+        invoiceItemId:
+          String(
+            line.id,
+          ),
+        kraTaxType:
+          taxCode,
+        expectedTax,
+        invoiceTax:
+          money(
+            line.tax_amount,
+          ),
+      },
+    );
+  }
+
   const qty =
     money(
       line.quantity,
@@ -3041,6 +3078,334 @@ export async function saveEtimsItemMapping(
         result.rows[0].id,
       ),
   };
+}
+
+
+
+export async function syncEtimsItem(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .SETTINGS_MANAGE,
+    );
+
+  const mappingId =
+    requireUuid(
+      input.mappingId,
+      'eTIMS item mapping',
+    );
+
+  const client =
+    await context.pool.connect();
+
+  let profile:
+    EtimsProfileRow;
+
+  let row:
+    Record<string, unknown>;
+
+  try {
+    profile =
+      await loadProfile(
+        client,
+        context.companyId,
+      );
+
+    assertActivated(
+      profile,
+    );
+
+    const result =
+      await client.query(
+        `
+          SELECT
+            mapping.id,
+            mapping.item_classification_code,
+            mapping.item_code,
+            mapping.item_type_code,
+            mapping.origin_country_code,
+            mapping.packaging_unit_code,
+            mapping.quantity_unit_code,
+            item.id AS catalog_item_id,
+            item.name,
+            item.sku,
+            item.unit_price,
+            item.default_tax_rate_id,
+            item.default_tax_group_id,
+            taxmap.tax_type_code,
+            COALESCE(
+              (
+                SELECT COUNT(*)
+                FROM invoicing_tax_group_members member
+                WHERE member.company_id = item.company_id
+                  AND member.group_id = item.default_tax_group_id
+              ),
+              0
+            )::int AS group_component_count
+          FROM invoicing_etims_item_mappings mapping
+          INNER JOIN invoicing_catalog_items item
+            ON item.id = mapping.catalog_item_id
+           AND item.company_id = mapping.company_id
+           AND item.deleted_at IS NULL
+          LEFT JOIN invoicing_etims_tax_mappings taxmap
+            ON taxmap.company_id = item.company_id
+           AND taxmap.is_active = TRUE
+           AND (
+             (
+               item.default_tax_rate_id IS NOT NULL
+               AND taxmap.tax_rate_id = item.default_tax_rate_id
+             )
+             OR
+             (
+               item.default_tax_group_id IS NOT NULL
+               AND taxmap.tax_group_id = item.default_tax_group_id
+             )
+           )
+          WHERE mapping.id = $1
+            AND mapping.company_id = $2
+            AND mapping.is_active = TRUE
+          LIMIT 1
+        `,
+        [
+          mappingId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      result.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'The eTIMS item mapping was not found.',
+      );
+    }
+
+    row =
+      result.rows[0];
+
+    if (
+      !row.tax_type_code
+    ) {
+      throw new InvoicingError(
+        'ETIMS_MAPPING_REQUIRED',
+        'Map this item default tax to a KRA tax type before registering the item.',
+      );
+    }
+
+    if (
+      Number(
+        row.group_component_count ||
+        0,
+      ) >
+      1
+    ) {
+      throw new InvoicingError(
+        'ETIMS_MAPPING_REQUIRED',
+        'KRA item registration accepts one tax type. This item uses a multi-component tax group.',
+      );
+    }
+  } finally {
+    client.release();
+  }
+
+  const payload = {
+    tin:
+      profile!.taxpayer_pin,
+    bhfId:
+      profile!.branch_id,
+    itemClsCd:
+      String(
+        row!.item_classification_code,
+      ),
+    itemCd:
+      String(
+        row!.item_code,
+      ),
+    itemTyCd:
+      String(
+        row!.item_type_code,
+      ),
+    itemNm:
+      cleanText(
+        row!.name,
+        200,
+      ),
+    itemStdNm:
+      null,
+    orgnNatCd:
+      String(
+        row!.origin_country_code,
+      ),
+    pkgUnitCd:
+      String(
+        row!.packaging_unit_code,
+      ),
+    qtyUnitCd:
+      String(
+        row!.quantity_unit_code,
+      ),
+    taxTyCd:
+      String(
+        row!.tax_type_code,
+      ),
+    btchNo:
+      null,
+    bcd:
+      cleanText(
+        row!.sku,
+        20,
+      ) ||
+      null,
+    dftPrc:
+      money(
+        row!.unit_price,
+      ),
+    grpPrcL1:
+      null,
+    grpPrcL2:
+      null,
+    grpPrcL3:
+      null,
+    grpPrcL4:
+      null,
+    grpPrcL5:
+      null,
+    addInfo:
+      null,
+    sftyQty:
+      0,
+    isrcAplcbYn:
+      'N',
+    useYn:
+      'Y',
+    regrId:
+      context.userId,
+    regrNm:
+      'SaMi',
+    modrId:
+      context.userId,
+    modrNm:
+      'SaMi',
+  };
+
+  try {
+    const remote =
+      await etimsPost(
+        profile!,
+        'item_save',
+        payload,
+      );
+
+    assertRemoteSuccess(
+      remote,
+    );
+
+    await context.pool.query(
+      `
+        UPDATE invoicing_etims_item_mappings
+        SET
+          kra_sync_status = 'synced',
+          kra_last_sync_at = NOW(),
+          kra_result_code = $3,
+          kra_result_message = $4,
+          kra_response = $5::jsonb,
+          updated_by = $6,
+          updated_at = NOW()
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [
+        mappingId,
+        context.companyId,
+        remoteCode(
+          remote.body,
+        ),
+        remoteMessage(
+          remote.body,
+        ),
+        JSON.stringify(
+          remote.body,
+        ),
+        context.userId,
+      ],
+    );
+
+    return {
+      mappingId,
+      status:
+        'synced',
+      resultCode:
+        remoteCode(
+          remote.body,
+        ),
+    };
+  } catch (
+    error
+  ) {
+    const message =
+      error instanceof
+        Error
+        ? error.message
+        : 'KRA item registration failed.';
+
+    const code =
+      error instanceof
+        InvoicingError
+        ? error.code
+        : 'ETIMS_SUBMISSION_FAILED';
+
+    const details =
+      error instanceof
+        InvoicingError
+        ? jsonObject(
+            error
+              .details
+              .response,
+          )
+        : {};
+
+    await context.pool.query(
+      `
+        UPDATE invoicing_etims_item_mappings
+        SET
+          kra_sync_status = 'failed',
+          kra_last_sync_at = NOW(),
+          kra_result_code = $3,
+          kra_result_message = $4,
+          kra_response = $5::jsonb,
+          updated_by = $6,
+          updated_at = NOW()
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [
+        mappingId,
+        context.companyId,
+        error instanceof
+          InvoicingError
+          ? cleanText(
+              error
+                .details
+                .kraResultCode,
+              120,
+            ) ||
+            code
+          : code,
+        message,
+        JSON.stringify(
+          details,
+        ),
+        context.userId,
+      ],
+    );
+
+    throw error;
+  }
 }
 
 
