@@ -12039,6 +12039,106 @@ function Reports({
 }
 
 
+type InvoicingSettingsSection =
+  | 'general'
+  | 'workflow'
+  | 'reminders'
+  | 'portal'
+  | 'documents'
+  | 'appearance'
+  | 'paymentTerms'
+  | 'taxRates';
+
+
+type InvoicingSettingsRun =
+  (
+    payload:
+      Record<
+        string,
+        unknown
+      >,
+    message:
+      string,
+  ) =>
+    Promise<boolean>;
+
+
+const INVOICING_SETTINGS_SECTIONS:
+  Array<{
+    key:
+      InvoicingSettingsSection;
+    label:
+      string;
+    description:
+      string;
+  }> = [
+    {
+      key:
+        'general',
+      label:
+        'General',
+      description:
+        'Currency, due dates and tax defaults',
+    },
+    {
+      key:
+        'workflow',
+      label:
+        'Workflow',
+      description:
+        'Approvals and payment behavior',
+    },
+    {
+      key:
+        'reminders',
+      label:
+        'Reminders',
+      description:
+        'Dunning defaults and delivery channels',
+    },
+    {
+      key:
+        'portal',
+      label:
+        'Portal',
+      description:
+        'Customer self-service controls',
+    },
+    {
+      key:
+        'documents',
+      label:
+        'Documents',
+      description:
+        'Instructions, bank details and terms',
+    },
+    {
+      key:
+        'appearance',
+      label:
+        'Appearance',
+      description:
+        'Invoice templates and presentation',
+    },
+    {
+      key:
+        'paymentTerms',
+      label:
+        'Payment terms',
+      description:
+        'Reusable customer due-date policies',
+    },
+    {
+      key:
+        'taxRates',
+      label:
+        'Tax rates',
+      description:
+        'Reusable basic invoice tax rates',
+    },
+  ];
+
+
 function Settings({
   data,
   pending,
@@ -12049,17 +12149,16 @@ function Settings({
   pending:
     boolean;
   run:
-    (
-      payload:
-        Record<
-          string,
-          unknown
-        >,
-      message:
-        string,
-    ) =>
-      Promise<boolean>;
+    InvoicingSettingsRun;
 }) {
+  const [
+    section,
+    setSection,
+  ] =
+    useState<InvoicingSettingsSection>(
+      'general',
+    );
+
   if (
     !data.capabilities
       .canManageSettings
@@ -12079,163 +12178,405 @@ function Settings({
     );
   }
 
+  const activeSection =
+    INVOICING_SETTINGS_SECTIONS
+      .find(
+        item =>
+          item.key ===
+          section,
+      ) ||
+    INVOICING_SETTINGS_SECTIONS[
+      0
+    ];
+
   return (
     <div className="space-y-4">
-      <form
-        className="sami-surface rounded-[24px] p-4 sm:p-5"
-        onSubmit={
-          async event => {
-            event.preventDefault();
+      <section className="sami-surface overflow-hidden rounded-[24px]">
+        <div className="border-b border-[var(--sami-border)] p-4 sm:p-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-black text-slate-950 dark:text-white">
+                Invoicing settings
+              </p>
 
-            const form =
-              new FormData(
-                event.currentTarget,
-              );
+              <p className="mt-1 max-w-3xl break-words text-xs leading-5 text-slate-500 dark:text-slate-400">
+                Configure one area at a time. Company billing defaults stay inside Invoicing; provider credentials remain in SaMi Integrations/Core, and tutorials are enabled from Workspace Settings.
+              </p>
+            </div>
 
-            await run(
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href="/apps/invoicing/currencies"
+                className="inline-flex min-h-9 items-center rounded-xl border border-[var(--sami-border)] px-3 text-[10px] font-black text-slate-600 dark:text-slate-300"
+              >
+                Currency Center
+              </Link>
+
+              <Link
+                href="/apps/invoicing/tax-engine"
+                className="inline-flex min-h-9 items-center rounded-xl border border-[var(--sami-border)] px-3 text-[10px] font-black text-slate-600 dark:text-slate-300"
+              >
+                Tax Engine
+              </Link>
+
+              <Link
+                href="/apps/invoicing/etims"
+                className="inline-flex min-h-9 items-center rounded-xl border border-[var(--sami-border)] px-3 text-[10px] font-black text-slate-600 dark:text-slate-300"
+              >
+                Kenya eTIMS
+              </Link>
+            </div>
+          </div>
+
+          <div className="-mx-1 mt-4 overflow-x-auto pb-1">
+            <div
+              role="tablist"
+              aria-label="Invoicing settings sections"
+              className="flex min-w-max gap-2 px-1"
+            >
               {
-                action:
-                  'update_settings',
-                defaultCurrency:
-                  form.get(
-                    'defaultCurrency',
-                  ),
-                defaultDueDays:
-                  form.get(
-                    'defaultDueDays',
-                  ),
-                exchangeRateMode:
-                  form.get(
-                    'exchangeRateMode',
-                  ),
-                allowCrossCurrencyPayments:
-                  form.get(
-                    'allowCrossCurrencyPayments',
-                  ) ===
-                  'on',
-                taxCalculation:
-                  form.get(
-                    'taxCalculation',
-                  ),
-                allowPartialPayments:
-                  form.get(
-                    'allowPartialPayments',
-                  ) ===
-                  'on',
-                allowCreditNotes:
-                  form.get(
-                    'allowCreditNotes',
-                  ) ===
-                  'on',
-                requireApproval:
-                  form.get(
-                    'requireApproval',
-                  ) ===
-                  'on',
-                autoSendRecurring:
-                  form.get(
-                    'autoSendRecurring',
-                  ) ===
-                  'on',
-                reminderEnabled:
-                  form.get(
-                    'reminderEnabled',
-                  ) ===
-                  'on',
-                reminderChannels: [
-                  form.get(
-                    'reminderEmail',
-                  ) ===
-                    'on'
-                    ? 'email'
-                    : null,
-                  form.get(
-                    'reminderWhatsApp',
-                  ) ===
-                    'on'
-                    ? 'whatsapp'
-                    : null,
-                  form.get(
-                    'reminderSms',
-                  ) ===
-                    'on'
-                    ? 'sms'
-                    : null,
-                ].filter(
-                  Boolean,
-                ),
-                reminderDaysBefore:
-                  form.get(
-                    'reminderDaysBefore',
-                  ),
-                reminderDaysAfter:
-                  form.get(
-                    'reminderDaysAfter',
-                  ),
-                portalEnabled:
-                  form.get(
-                    'portalEnabled',
-                  ) ===
-                  'on',
-                portalAccessDays:
-                  form.get(
-                    'portalAccessDays',
-                  ),
-                portalAllowMessages:
-                  form.get(
-                    'portalAllowMessages',
-                  ) ===
-                  'on',
-                portalShowPaymentHistory:
-                  form.get(
-                    'portalShowPaymentHistory',
-                  ) ===
-                  'on',
-                portalShowCreditNotes:
-                  form.get(
-                    'portalShowCreditNotes',
-                  ) ===
-                  'on',
-                paymentInstructions:
-                  form.get(
-                    'paymentInstructions',
-                  ),
-                bankDetails:
-                  form.get(
-                    'bankDetails',
-                  ),
-                termsAndConditions:
-                  form.get(
-                    'termsAndConditions',
-                  ),
-              },
-              'Invoicing settings saved.',
+                INVOICING_SETTINGS_SECTIONS
+                  .map(
+                    item => {
+                      const active =
+                        item.key ===
+                        section;
+
+                      return (
+                        <button
+                          key={
+                            item.key
+                          }
+                          type="button"
+                          role="tab"
+                          aria-selected={
+                            active
+                          }
+                          onClick={
+                            () =>
+                              setSection(
+                                item.key,
+                              )
+                          }
+                          className={[
+                            'min-h-10 rounded-xl border px-3 py-2 text-left transition',
+                            active
+                              ? 'border-blue-300 bg-blue-50 text-blue-800 shadow-sm dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-200'
+                              : 'border-[var(--sami-border)] bg-[var(--sami-surface)] text-slate-600 hover:text-slate-950 dark:text-slate-400 dark:hover:text-white',
+                          ].join(
+                            ' ',
+                          )}
+                        >
+                          <span className="block whitespace-nowrap text-[11px] font-black">
+                            {
+                              item.label
+                            }
+                          </span>
+
+                          <span className="mt-0.5 hidden whitespace-nowrap text-[9px] font-semibold opacity-70 sm:block">
+                            {
+                              item.description
+                            }
+                          </span>
+                        </button>
+                      );
+                    },
+                  )
+              }
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-[var(--sami-surface-soft)] px-4 py-3 sm:px-5">
+          <p className="break-words text-xs font-black text-slate-900 dark:text-white">
+            {
+              activeSection
+                .label
+            }
+          </p>
+
+          <p className="mt-0.5 break-words text-[10px] leading-4 text-slate-500 dark:text-slate-400">
+            {
+              activeSection
+                .description
+            }
+          </p>
+        </div>
+      </section>
+
+      {
+        (
+          section ===
+            'general' ||
+          section ===
+            'workflow' ||
+          section ===
+            'reminders' ||
+          section ===
+            'portal' ||
+          section ===
+            'documents'
+        ) &&
+        (
+          <CommercialSettingsForm
+            data={
+              data
+            }
+            pending={
+              pending
+            }
+            run={
+              run
+            }
+            section={
+              section
+            }
+          />
+        )
+      }
+
+      {
+        section ===
+          'appearance' &&
+        (
+          <InvoiceAppearanceSettings
+            data={
+              data
+            }
+            pending={
+              pending
+            }
+            run={
+              run
+            }
+          />
+        )
+      }
+
+      {
+        section ===
+          'paymentTerms' &&
+        (
+          <PaymentTermsSettings
+            data={
+              data
+            }
+            pending={
+              pending
+            }
+            run={
+              run
+            }
+          />
+        )
+      }
+
+      {
+        section ===
+          'taxRates' &&
+        (
+          <TaxRatesSettings
+            data={
+              data
+            }
+            pending={
+              pending
+            }
+            run={
+              run
+            }
+          />
+        )
+      }
+    </div>
+  );
+}
+
+
+function CommercialSettingsForm({
+  data,
+  pending,
+  run,
+  section,
+}: {
+  data:
+    InvoicingWorkspaceData;
+  pending:
+    boolean;
+  run:
+    InvoicingSettingsRun;
+  section:
+    'general' |
+    'workflow' |
+    'reminders' |
+    'portal' |
+    'documents';
+}) {
+  return (
+    <form
+      className="sami-surface rounded-[24px] p-4 sm:p-5"
+      onSubmit={
+        async event => {
+          event.preventDefault();
+
+          const form =
+            new FormData(
+              event.currentTarget,
             );
-          }
+
+          await run(
+            {
+              action:
+                'update_settings',
+              defaultCurrency:
+                form.get(
+                  'defaultCurrency',
+                ),
+              defaultDueDays:
+                form.get(
+                  'defaultDueDays',
+                ),
+              exchangeRateMode:
+                form.get(
+                  'exchangeRateMode',
+                ),
+              allowCrossCurrencyPayments:
+                form.get(
+                  'allowCrossCurrencyPayments',
+                ) ===
+                'on',
+              taxCalculation:
+                form.get(
+                  'taxCalculation',
+                ),
+              allowPartialPayments:
+                form.get(
+                  'allowPartialPayments',
+                ) ===
+                'on',
+              allowCreditNotes:
+                form.get(
+                  'allowCreditNotes',
+                ) ===
+                'on',
+              requireApproval:
+                form.get(
+                  'requireApproval',
+                ) ===
+                'on',
+              autoSendRecurring:
+                form.get(
+                  'autoSendRecurring',
+                ) ===
+                'on',
+              reminderEnabled:
+                form.get(
+                  'reminderEnabled',
+                ) ===
+                'on',
+              reminderChannels: [
+                form.get(
+                  'reminderEmail',
+                ) ===
+                  'on'
+                  ? 'email'
+                  : null,
+                form.get(
+                  'reminderWhatsApp',
+                ) ===
+                  'on'
+                  ? 'whatsapp'
+                  : null,
+                form.get(
+                  'reminderSms',
+                ) ===
+                  'on'
+                  ? 'sms'
+                  : null,
+              ].filter(
+                Boolean,
+              ),
+              reminderDaysBefore:
+                form.get(
+                  'reminderDaysBefore',
+                ),
+              reminderDaysAfter:
+                form.get(
+                  'reminderDaysAfter',
+                ),
+              portalEnabled:
+                form.get(
+                  'portalEnabled',
+                ) ===
+                'on',
+              portalAccessDays:
+                form.get(
+                  'portalAccessDays',
+                ),
+              portalAllowMessages:
+                form.get(
+                  'portalAllowMessages',
+                ) ===
+                'on',
+              portalShowPaymentHistory:
+                form.get(
+                  'portalShowPaymentHistory',
+                ) ===
+                'on',
+              portalShowCreditNotes:
+                form.get(
+                  'portalShowCreditNotes',
+                ) ===
+                'on',
+              paymentInstructions:
+                form.get(
+                  'paymentInstructions',
+                ),
+              bankDetails:
+                form.get(
+                  'bankDetails',
+                ),
+              termsAndConditions:
+                form.get(
+                  'termsAndConditions',
+                ),
+            },
+            'Invoicing settings saved.',
+          );
+        }
+      }
+    >
+      <div
+        className={
+          section ===
+            'general'
+            ? 'block'
+            : 'hidden'
         }
       >
         <div>
           <p className="text-sm font-black">
-            Invoicing settings
+            General billing defaults
           </p>
 
-          <p className="mt-1 text-xs text-slate-500">
-            Company commercial defaults. Delivery provider credentials stay in SaMi Integrations/Core.
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            Defaults apply to the current company. Currency rates and advanced tax rules are maintained in their dedicated Invoicing workspaces.
           </p>
         </div>
 
-        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <label className="block space-y-1">
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <label className="block min-w-0 space-y-1">
             <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
               Default currency
             </span>
+
             <select
               name="defaultCurrency"
               defaultValue={
                 data.settings
                   .defaultCurrency
               }
-              className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+              className="h-11 w-full min-w-0 rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
             >
               {
                 data.currencies
@@ -12279,17 +12620,18 @@ function Settings({
             }
           />
 
-          <label className="block space-y-1">
+          <label className="block min-w-0 space-y-1">
             <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
               Exchange-rate mode
             </span>
+
             <select
               name="exchangeRateMode"
               defaultValue={
                 data.settings
                   .exchangeRateMode
               }
-              className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+              className="h-11 w-full min-w-0 rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
             >
               <option value="table">
                 Dated Currency Center rates
@@ -12300,7 +12642,7 @@ function Settings({
             </select>
           </label>
 
-          <label className="block space-y-1">
+          <label className="block min-w-0 space-y-1">
             <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
               Tax calculation
             </span>
@@ -12311,7 +12653,7 @@ function Settings({
                 data.settings
                   .taxCalculation
               }
-              className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+              className="h-11 w-full min-w-0 rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
             >
               <option value="exclusive">
                 Tax exclusive
@@ -12321,35 +12663,28 @@ function Settings({
               </option>
             </select>
           </label>
+        </div>
+      </div>
 
-          <Field
-            label="Reminder before due"
-            name="reminderDaysBefore"
-            type="number"
-            min="0"
-            max="365"
-            defaultValue={
-              String(
-                data.settings
-                  .reminderDaysBefore,
-              )
-            }
-          />
+      <div
+        className={
+          section ===
+            'workflow'
+            ? 'block'
+            : 'hidden'
+        }
+      >
+        <div>
+          <p className="text-sm font-black">
+            Invoice workflow
+          </p>
 
-          <Field
-            label="Overdue reminders"
-            name="reminderDaysAfter"
-            defaultValue={
-              data.settings
-                .reminderDaysAfter
-                .join(
-                  ', ',
-                )
-            }
-          />
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            Control approval, settlement and recurring behavior without weakening the invoice state machine or audit trail.
+          </p>
         </div>
 
-        <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           <Toggle
             name="allowCrossCurrencyPayments"
             label="Cross-currency payments"
@@ -12394,10 +12729,73 @@ function Settings({
                 .autoSendRecurring
             }
           />
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link
+            href="/apps/invoicing/payment-plans"
+            className="inline-flex min-h-9 items-center rounded-xl border border-[var(--sami-border)] px-3 text-[10px] font-black"
+          >
+            Payment plans
+          </Link>
+
+          <Link
+            href="/apps/invoicing/recurring"
+            className="inline-flex min-h-9 items-center rounded-xl border border-[var(--sami-border)] px-3 text-[10px] font-black"
+          >
+            Recurring invoices
+          </Link>
+        </div>
+      </div>
+
+      <div
+        className={
+          section ===
+            'reminders'
+            ? 'block'
+            : 'hidden'
+        }
+      >
+        <div>
+          <p className="text-sm font-black">
+            Reminder defaults
+          </p>
+
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            Configure the default reminder schedule and allowed delivery channels. Detailed dunning policies remain in the Reminders workspace.
+          </p>
+        </div>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Field
+            label="Reminder before due"
+            name="reminderDaysBefore"
+            type="number"
+            min="0"
+            max="365"
+            defaultValue={
+              String(
+                data.settings
+                  .reminderDaysBefore,
+              )
+            }
+          />
+
+          <Field
+            label="Overdue reminder days"
+            name="reminderDaysAfter"
+            defaultValue={
+              data.settings
+                .reminderDaysAfter
+                .join(
+                  ', ',
+                )
+            }
+          />
 
           <Toggle
             name="reminderEnabled"
-            label="Payment reminders"
+            label="Payment reminders enabled"
             defaultChecked={
               data.settings
                 .reminderEnabled
@@ -12406,73 +12804,8 @@ function Settings({
         </div>
 
         <div className="mt-4 rounded-2xl border border-[var(--sami-border)] p-3">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
-                Customer portal
-              </p>
-              <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
-                Control secure customer access, account history and billing messages. Portal tokens remain customer-scoped and revocable.
-              </p>
-            </div>
-
-            <div className="w-full max-w-[220px]">
-              <Field
-                label="Access days"
-                name="portalAccessDays"
-                type="number"
-                min="1"
-                max="3650"
-                required
-                defaultValue={
-                  String(
-                    data.settings
-                      .portalAccessDays,
-                  )
-                }
-              />
-            </div>
-          </div>
-
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            <Toggle
-              name="portalEnabled"
-              label="Enable customer portal"
-              defaultChecked={
-                data.settings
-                  .portalEnabled
-              }
-            />
-            <Toggle
-              name="portalAllowMessages"
-              label="Customer messages"
-              defaultChecked={
-                data.settings
-                  .portalAllowMessages
-              }
-            />
-            <Toggle
-              name="portalShowPaymentHistory"
-              label="Show payments"
-              defaultChecked={
-                data.settings
-                  .portalShowPaymentHistory
-              }
-            />
-            <Toggle
-              name="portalShowCreditNotes"
-              label="Show credits"
-              defaultChecked={
-                data.settings
-                  .portalShowCreditNotes
-              }
-            />
-          </div>
-        </div>
-
-        <div className="mt-4 rounded-2xl border border-[var(--sami-border)] p-3">
           <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
-            Reminder delivery channels
+            Delivery channels
           </p>
 
           <div className="mt-2 grid gap-2 sm:grid-cols-3">
@@ -12487,6 +12820,7 @@ function Settings({
                   )
               }
             />
+
             <Toggle
               name="reminderWhatsApp"
               label="WhatsApp PDF"
@@ -12498,6 +12832,7 @@ function Settings({
                   )
               }
             />
+
             <Toggle
               name="reminderSms"
               label="SMS link"
@@ -12512,7 +12847,118 @@ function Settings({
           </div>
         </div>
 
-        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+        <div className="mt-4">
+          <Link
+            href="/apps/invoicing/reminders"
+            className="inline-flex min-h-9 items-center rounded-xl border border-[var(--sami-border)] px-3 text-[10px] font-black"
+          >
+            Open Reminders workspace
+          </Link>
+        </div>
+      </div>
+
+      <div
+        className={
+          section ===
+            'portal'
+            ? 'block'
+            : 'hidden'
+        }
+      >
+        <div>
+          <p className="text-sm font-black">
+            Customer portal
+          </p>
+
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            Control secure customer self-service. Portal links remain customer-scoped, revocable and time-limited.
+          </p>
+        </div>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_220px] md:items-start">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Toggle
+              name="portalEnabled"
+              label="Enable customer portal"
+              defaultChecked={
+                data.settings
+                  .portalEnabled
+              }
+            />
+
+            <Toggle
+              name="portalAllowMessages"
+              label="Customer messages"
+              defaultChecked={
+                data.settings
+                  .portalAllowMessages
+              }
+            />
+
+            <Toggle
+              name="portalShowPaymentHistory"
+              label="Show payments"
+              defaultChecked={
+                data.settings
+                  .portalShowPaymentHistory
+              }
+            />
+
+            <Toggle
+              name="portalShowCreditNotes"
+              label="Show credits"
+              defaultChecked={
+                data.settings
+                  .portalShowCreditNotes
+              }
+            />
+          </div>
+
+          <Field
+            label="Portal access days"
+            name="portalAccessDays"
+            type="number"
+            min="1"
+            max="3650"
+            required
+            defaultValue={
+              String(
+                data.settings
+                  .portalAccessDays,
+              )
+            }
+          />
+        </div>
+
+        <div className="mt-4">
+          <Link
+            href="/apps/invoicing/portal"
+            className="inline-flex min-h-9 items-center rounded-xl border border-[var(--sami-border)] px-3 text-[10px] font-black"
+          >
+            Open Customer Portal workspace
+          </Link>
+        </div>
+      </div>
+
+      <div
+        className={
+          section ===
+            'documents'
+            ? 'block'
+            : 'hidden'
+        }
+      >
+        <div>
+          <p className="text-sm font-black">
+            Document defaults
+          </p>
+
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            These values become the company-level defaults used on generated invoice documents.
+          </p>
+        </div>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-3">
           <TextArea
             label="Payment instructions"
             name="paymentInstructions"
@@ -12543,49 +12989,81 @@ function Settings({
             }
           />
         </div>
+      </div>
 
-        <div className="mt-5 flex justify-end">
-          <button
-            type="submit"
-            disabled={
-              pending
-            }
-            className="h-10 rounded-xl bg-blue-600 px-4 text-xs font-black text-white"
-          >
-            Save settings
-          </button>
+      <div className="mt-5 flex flex-col gap-2 border-t border-[var(--sami-border)] pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="break-words text-[10px] leading-4 text-slate-400">
+          Saving preserves all Invoicing defaults, including settings from the other tabs.
+        </p>
+
+        <button
+          type="submit"
+          disabled={
+            pending
+          }
+          className="h-10 rounded-xl bg-blue-600 px-4 text-xs font-black text-white disabled:opacity-60"
+        >
+          {
+            pending
+              ? 'Saving…'
+              : 'Save settings'
+          }
+        </button>
+      </div>
+    </form>
+  );
+}
+
+
+function PaymentTermsSettings({
+  data,
+  pending,
+  run,
+}: {
+  data:
+    InvoicingWorkspaceData;
+  pending:
+    boolean;
+  run:
+    InvoicingSettingsRun;
+}) {
+  return (
+    <section className="sami-surface rounded-[24px] p-4 sm:p-5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-sm font-black">
+            Payment terms
+          </p>
+
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            Reusable company terms drive customer invoice due dates. Historical invoices keep their issued dates.
+          </p>
         </div>
-      </form>
 
-      <InvoiceAppearanceSettings
-        data={
-          data
-        }
-        pending={
-          pending
-        }
-        run={
-          run
-        }
-      />
+        <span className="inline-flex w-fit rounded-full bg-[var(--sami-surface-soft)] px-3 py-1 text-[10px] font-black text-slate-500">
+          {
+            data.paymentTerms
+              .length
+          } terms
+        </span>
+      </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <form
-          className="sami-surface rounded-[24px] p-4 sm:p-5"
-          onSubmit={
-            async event => {
-              event.preventDefault();
+      <form
+        className="mt-4 rounded-2xl border border-[var(--sami-border)] p-3 sm:p-4"
+        onSubmit={
+          async event => {
+            event.preventDefault();
 
-              const element =
-                event.currentTarget;
+            const element =
+              event.currentTarget;
 
-              const form =
-                new FormData(
-                  element,
-                );
+            const form =
+              new FormData(
+                element,
+              );
 
-              const saved =
-                await run(
+            const saved =
+              await run(
                 {
                   action:
                     'create_payment_term',
@@ -12610,253 +13088,298 @@ function Settings({
                 'Payment term created.',
               );
 
-              if (
-                saved
-              ) {
-                element.reset();
-              }
+            if (
+              saved
+            ) {
+              element.reset();
             }
           }
+        }
+      >
+        <p className="text-xs font-black">
+          Add payment term
+        </p>
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <Field
+            label="Term name"
+            name="name"
+            required
+          />
+
+          <Field
+            label="Due days"
+            name="dueDays"
+            type="number"
+            min="0"
+            max="3650"
+            required
+          />
+        </div>
+
+        <div className="mt-3">
+          <TextArea
+            label="Description"
+            name="description"
+          />
+        </div>
+
+        <label className="mt-3 flex min-h-11 items-center gap-2 text-xs font-bold">
+          <input
+            type="checkbox"
+            name="isDefault"
+          />
+          Make current company default
+        </label>
+
+        <button
+          type="submit"
+          disabled={
+            pending
+          }
+          className="mt-4 h-10 rounded-xl bg-blue-600 px-4 text-xs font-black text-white disabled:opacity-60"
         >
-          <p className="text-sm font-black">
-            Payment terms
-          </p>
+          Add payment term
+        </button>
+      </form>
 
-          <p className="mt-1 text-xs text-slate-500">
-            Customer terms drive invoice due dates.
-          </p>
-
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <Field
-              label="Term name"
-              name="name"
-              required
-            />
-
-            <Field
-              label="Due days"
-              name="dueDays"
-              type="number"
-              min="0"
-              max="3650"
-              required
-            />
-          </div>
-
-          <div className="mt-3">
-            <TextArea
-              label="Description"
-              name="description"
-            />
-          </div>
-
-          <label className="mt-3 flex min-h-11 items-center gap-2 text-xs font-bold">
-            <input
-              type="checkbox"
-              name="isDefault"
-            />
-            Make workspace default
-          </label>
-
-          <button
-            type="submit"
-            disabled={
-              pending
-            }
-            className="mt-4 h-10 rounded-xl bg-blue-600 px-4 text-xs font-black text-white"
-          >
-            Add payment term
-          </button>
-
-          <div className="mt-4 space-y-2">
-            {
-              data.paymentTerms.map(
-                term => (
-                  <details
-                    key={
-                      term.id
-                    }
-                    className="rounded-xl border border-[var(--sami-border)]"
-                  >
-                    <summary className="cursor-pointer list-none px-3 py-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="break-words whitespace-normal text-xs font-black">
-                            {
-                              term.name
-                            } · {
-                              term.dueDays
-                            } days
-                          </p>
-                          <p className="mt-1 text-[10px] text-slate-400">
-                            {
-                              term.isDefault
-                                ? 'Default'
-                                : term.isActive
-                                  ? 'Active'
-                                  : 'Inactive'
-                            }
-                          </p>
-                        </div>
-                        <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
-                      </div>
-                    </summary>
-
-                    <form
-                      className="border-t border-[var(--sami-border)] p-3"
-                      onSubmit={
-                        async event => {
-                          event.preventDefault();
-
-                          const form =
-                            new FormData(
-                              event.currentTarget,
-                            );
-
-                          await run(
-                            {
-                              action:
-                                'update_payment_term',
-                              termId:
-                                term.id,
-                              name:
-                                form.get(
-                                  'name',
-                                ),
-                              dueDays:
-                                form.get(
-                                  'dueDays',
-                                ),
-                              description:
-                                form.get(
-                                  'description',
-                                ),
-                              isDefault:
-                                form.get(
-                                  'isDefault',
-                                ) ===
-                                'on',
-                            },
-                            'Payment term updated.',
-                          );
-                        }
+      <div className="mt-4 space-y-2">
+        {
+          data.paymentTerms
+            .length ===
+            0
+            ? (
+              <p className="rounded-2xl border border-dashed border-[var(--sami-border)] px-4 py-8 text-center text-xs text-slate-500">
+                No payment terms yet.
+              </p>
+            )
+            : data.paymentTerms
+                .map(
+                  term => (
+                    <details
+                      key={
+                        term.id
                       }
+                      className="overflow-hidden rounded-xl border border-[var(--sami-border)]"
                     >
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <Field
-                          label="Term name"
-                          name="name"
-                          required
-                          defaultValue={
-                            term.name
-                          }
-                        />
-                        <Field
-                          label="Due days"
-                          name="dueDays"
-                          type="number"
-                          min="0"
-                          max="3650"
-                          required
-                          defaultValue={
-                            String(
-                              term.dueDays,
-                            )
-                          }
-                        />
-                      </div>
+                      <summary className="cursor-pointer list-none px-3 py-3">
+                        <div className="flex min-w-0 items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="break-words whitespace-normal text-xs font-black">
+                              {
+                                term.name
+                              } · {
+                                term.dueDays
+                              } days
+                            </p>
 
-                      <div className="mt-3">
-                        <TextArea
-                          label="Description"
-                          name="description"
-                          defaultValue={
-                            term.description ||
-                            ''
-                          }
-                        />
-                      </div>
+                            <p className="mt-1 text-[10px] text-slate-400">
+                              {
+                                term.isDefault
+                                  ? 'Company default'
+                                  : term.isActive
+                                    ? 'Active'
+                                    : 'Inactive'
+                              }
+                            </p>
+                          </div>
 
-                      <label className="mt-3 flex min-h-10 items-center gap-2 text-xs font-bold">
-                        <input
-                          type="checkbox"
-                          name="isDefault"
-                          defaultChecked={
-                            term.isDefault
-                          }
-                        />
-                        Workspace default
-                      </label>
+                          <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+                        </div>
+                      </summary>
 
-                      <div className="mt-3 flex items-center justify-between gap-2">
-                        <button
-                          type="button"
-                          disabled={
-                            pending ||
-                            (
-                              term.isDefault &&
-                              term.isActive
-                            )
+                      <form
+                        className="border-t border-[var(--sami-border)] p-3"
+                        onSubmit={
+                          async event => {
+                            event.preventDefault();
+
+                            const form =
+                              new FormData(
+                                event.currentTarget,
+                              );
+
+                            await run(
+                              {
+                                action:
+                                  'update_payment_term',
+                                termId:
+                                  term.id,
+                                name:
+                                  form.get(
+                                    'name',
+                                  ),
+                                dueDays:
+                                  form.get(
+                                    'dueDays',
+                                  ),
+                                description:
+                                  form.get(
+                                    'description',
+                                  ),
+                                isDefault:
+                                  form.get(
+                                    'isDefault',
+                                  ) ===
+                                  'on',
+                              },
+                              'Payment term updated.',
+                            );
                           }
-                          onClick={
-                            () =>
-                              run(
-                                {
-                                  action:
-                                    'set_payment_term_active',
-                                  termId:
-                                    term.id,
-                                  isActive:
-                                    !term.isActive,
-                                },
-                                term.isActive
-                                  ? 'Payment term deactivated.'
-                                  : 'Payment term activated.',
+                        }
+                      >
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <Field
+                            label="Term name"
+                            name="name"
+                            required
+                            defaultValue={
+                              term.name
+                            }
+                          />
+
+                          <Field
+                            label="Due days"
+                            name="dueDays"
+                            type="number"
+                            min="0"
+                            max="3650"
+                            required
+                            defaultValue={
+                              String(
+                                term.dueDays,
                               )
-                          }
-                          className="h-9 rounded-xl border border-[var(--sami-border)] px-3 text-[10px] font-black disabled:opacity-40"
-                        >
-                          {
-                            term.isActive
-                              ? 'Deactivate'
-                              : 'Activate'
-                          }
-                        </button>
+                            }
+                          />
+                        </div>
 
-                        <button
-                          type="submit"
-                          disabled={
-                            pending
-                          }
-                          className="h-9 rounded-xl bg-blue-600 px-3 text-[10px] font-black text-white disabled:opacity-60"
-                        >
-                          Save term
-                        </button>
-                      </div>
-                    </form>
-                  </details>
-                ),
-              )
-            }
-          </div>
-        </form>
+                        <div className="mt-3">
+                          <TextArea
+                            label="Description"
+                            name="description"
+                            defaultValue={
+                              term.description ||
+                              ''
+                            }
+                          />
+                        </div>
 
-        <form
-          className="sami-surface rounded-[24px] p-4 sm:p-5"
-          onSubmit={
-            async event => {
-              event.preventDefault();
+                        <label className="mt-3 flex min-h-10 items-center gap-2 text-xs font-bold">
+                          <input
+                            type="checkbox"
+                            name="isDefault"
+                            defaultChecked={
+                              term.isDefault
+                            }
+                          />
+                          Current company default
+                        </label>
 
-              const element =
-                event.currentTarget;
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            disabled={
+                              pending ||
+                              (
+                                term.isDefault &&
+                                term.isActive
+                              )
+                            }
+                            onClick={
+                              () =>
+                                void run(
+                                  {
+                                    action:
+                                      'set_payment_term_active',
+                                    termId:
+                                      term.id,
+                                    isActive:
+                                      !term.isActive,
+                                  },
+                                  term.isActive
+                                    ? 'Payment term deactivated.'
+                                    : 'Payment term activated.',
+                                )
+                            }
+                            className="h-9 rounded-xl border border-[var(--sami-border)] px-3 text-[10px] font-black disabled:opacity-40"
+                          >
+                            {
+                              term.isActive
+                                ? 'Deactivate'
+                                : 'Activate'
+                            }
+                          </button>
 
-              const form =
-                new FormData(
-                  element,
-                );
+                          <button
+                            type="submit"
+                            disabled={
+                              pending
+                            }
+                            className="h-9 rounded-xl bg-blue-600 px-3 text-[10px] font-black text-white disabled:opacity-60"
+                          >
+                            Save term
+                          </button>
+                        </div>
+                      </form>
+                    </details>
+                  ),
+                )
+        }
+      </div>
+    </section>
+  );
+}
 
-              const saved =
-                await run(
+
+function TaxRatesSettings({
+  data,
+  pending,
+  run,
+}: {
+  data:
+    InvoicingWorkspaceData;
+  pending:
+    boolean;
+  run:
+    InvoicingSettingsRun;
+}) {
+  return (
+    <section className="sami-surface rounded-[24px] p-4 sm:p-5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-sm font-black">
+            Basic tax rates
+          </p>
+
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            Maintain reusable invoice rates here. Use Tax Engine for groups, fiscal positions, exemptions, localizations and rule priority.
+          </p>
+        </div>
+
+        <Link
+          href="/apps/invoicing/tax-engine"
+          className="inline-flex min-h-9 w-fit items-center rounded-xl border border-[var(--sami-border)] px-3 text-[10px] font-black"
+        >
+          Open Tax Engine
+        </Link>
+      </div>
+
+      <form
+        className="mt-4 rounded-2xl border border-[var(--sami-border)] p-3 sm:p-4"
+        onSubmit={
+          async event => {
+            event.preventDefault();
+
+            const element =
+              event.currentTarget;
+
+            const form =
+              new FormData(
+                element,
+              );
+
+            const saved =
+              await run(
                 {
                   action:
                     'create_tax_rate',
@@ -12885,258 +13408,267 @@ function Settings({
                 'Tax rate created.',
               );
 
-              if (
-                saved
-              ) {
-                element.reset();
-              }
+            if (
+              saved
+            ) {
+              element.reset();
             }
           }
+        }
+      >
+        <p className="text-xs font-black">
+          Add tax rate
+        </p>
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <Field
+            label="Tax name"
+            name="name"
+            required
+          />
+
+          <Field
+            label="Rate %"
+            name="rate"
+            type="number"
+            min="0"
+            max="100"
+            step="0.0001"
+            required
+          />
+
+          <Field
+            label="Tax type"
+            name="taxType"
+            defaultValue="vat"
+          />
+
+          <Field
+            label="Country code"
+            name="countryCode"
+            maxLength={
+              2
+            }
+          />
+        </div>
+
+        <label className="mt-3 flex min-h-11 items-center gap-2 text-xs font-bold">
+          <input
+            type="checkbox"
+            name="isDefault"
+          />
+          Make current company default
+        </label>
+
+        <button
+          type="submit"
+          disabled={
+            pending
+          }
+          className="mt-4 h-10 rounded-xl bg-blue-600 px-4 text-xs font-black text-white disabled:opacity-60"
         >
-          <p className="text-sm font-black">
-            Taxes
-          </p>
+          Add tax rate
+        </button>
+      </form>
 
-          <p className="mt-1 text-xs text-slate-500">
-            Reusable tax rates default onto items and can still be changed per invoice line.
-          </p>
-
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <Field
-              label="Tax name"
-              name="name"
-              required
-            />
-
-            <Field
-              label="Rate %"
-              name="rate"
-              type="number"
-              min="0"
-              max="100"
-              step="0.0001"
-              required
-            />
-
-            <Field
-              label="Tax type"
-              name="taxType"
-              defaultValue="vat"
-            />
-
-            <Field
-              label="Country code"
-              name="countryCode"
-              maxLength={
-                2
-              }
-            />
-          </div>
-
-          <label className="mt-3 flex min-h-11 items-center gap-2 text-xs font-bold">
-            <input
-              type="checkbox"
-              name="isDefault"
-            />
-            Make workspace default
-          </label>
-
-          <button
-            type="submit"
-            disabled={
-              pending
-            }
-            className="mt-4 h-10 rounded-xl bg-blue-600 px-4 text-xs font-black text-white"
-          >
-            Add tax rate
-          </button>
-
-          <div className="mt-4 space-y-2">
-            {
-              data.taxRates.map(
-                tax => (
-                  <details
-                    key={
-                      tax.id
-                    }
-                    className="rounded-xl border border-[var(--sami-border)]"
-                  >
-                    <summary className="cursor-pointer list-none px-3 py-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="break-words whitespace-normal text-xs font-black">
-                            {
-                              tax.name
-                            } · {
-                              tax.rate
-                            }%
-                          </p>
-                          <p className="mt-1 text-[10px] text-slate-400">
-                            {
-                              tax.isDefault
-                                ? 'Default'
-                                : tax.isActive
-                                  ? 'Active'
-                                  : 'Inactive'
-                            }
-                          </p>
-                        </div>
-                        <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
-                      </div>
-                    </summary>
-
-                    <form
-                      className="border-t border-[var(--sami-border)] p-3"
-                      onSubmit={
-                        async event => {
-                          event.preventDefault();
-
-                          const form =
-                            new FormData(
-                              event.currentTarget,
-                            );
-
-                          await run(
-                            {
-                              action:
-                                'update_tax_rate',
-                              taxId:
-                                tax.id,
-                              name:
-                                form.get(
-                                  'name',
-                                ),
-                              rate:
-                                form.get(
-                                  'rate',
-                                ),
-                              taxType:
-                                form.get(
-                                  'taxType',
-                                ),
-                              countryCode:
-                                form.get(
-                                  'countryCode',
-                                ),
-                              isDefault:
-                                form.get(
-                                  'isDefault',
-                                ) ===
-                                'on',
-                            },
-                            'Tax rate updated.',
-                          );
-                        }
+      <div className="mt-4 space-y-2">
+        {
+          data.taxRates
+            .length ===
+            0
+            ? (
+              <p className="rounded-2xl border border-dashed border-[var(--sami-border)] px-4 py-8 text-center text-xs text-slate-500">
+                No tax rates yet.
+              </p>
+            )
+            : data.taxRates
+                .map(
+                  tax => (
+                    <details
+                      key={
+                        tax.id
                       }
+                      className="overflow-hidden rounded-xl border border-[var(--sami-border)]"
                     >
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <Field
-                          label="Tax name"
-                          name="name"
-                          required
-                          defaultValue={
-                            tax.name
-                          }
-                        />
-                        <Field
-                          label="Rate %"
-                          name="rate"
-                          type="number"
-                          min="0"
-                          max="100"
-                          step="0.0001"
-                          required
-                          defaultValue={
-                            String(
-                              tax.rate,
-                            )
-                          }
-                        />
-                        <Field
-                          label="Tax type"
-                          name="taxType"
-                          defaultValue={
-                            tax.taxType
-                          }
-                        />
-                        <Field
-                          label="Country code"
-                          name="countryCode"
-                          maxLength={
-                            2
-                          }
-                          defaultValue={
-                            tax.countryCode ||
-                            ''
-                          }
-                        />
-                      </div>
+                      <summary className="cursor-pointer list-none px-3 py-3">
+                        <div className="flex min-w-0 items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="break-words whitespace-normal text-xs font-black">
+                              {
+                                tax.name
+                              } · {
+                                tax.rate
+                              }%
+                            </p>
 
-                      <label className="mt-3 flex min-h-10 items-center gap-2 text-xs font-bold">
-                        <input
-                          type="checkbox"
-                          name="isDefault"
-                          defaultChecked={
-                            tax.isDefault
-                          }
-                        />
-                        Workspace default
-                      </label>
+                            <p className="mt-1 text-[10px] text-slate-400">
+                              {
+                                tax.isDefault
+                                  ? 'Company default'
+                                  : tax.isActive
+                                    ? 'Active'
+                                    : 'Inactive'
+                              }
+                            </p>
+                          </div>
 
-                      <div className="mt-3 flex items-center justify-between gap-2">
-                        <button
-                          type="button"
-                          disabled={
-                            pending ||
-                            (
-                              tax.isDefault &&
-                              tax.isActive
-                            )
+                          <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+                        </div>
+                      </summary>
+
+                      <form
+                        className="border-t border-[var(--sami-border)] p-3"
+                        onSubmit={
+                          async event => {
+                            event.preventDefault();
+
+                            const form =
+                              new FormData(
+                                event.currentTarget,
+                              );
+
+                            await run(
+                              {
+                                action:
+                                  'update_tax_rate',
+                                taxId:
+                                  tax.id,
+                                name:
+                                  form.get(
+                                    'name',
+                                  ),
+                                rate:
+                                  form.get(
+                                    'rate',
+                                  ),
+                                taxType:
+                                  form.get(
+                                    'taxType',
+                                  ),
+                                countryCode:
+                                  form.get(
+                                    'countryCode',
+                                  ),
+                                isDefault:
+                                  form.get(
+                                    'isDefault',
+                                  ) ===
+                                  'on',
+                              },
+                              'Tax rate updated.',
+                            );
                           }
-                          onClick={
-                            () =>
-                              run(
-                                {
-                                  action:
-                                    'set_tax_rate_active',
-                                  taxId:
-                                    tax.id,
-                                  isActive:
-                                    !tax.isActive,
-                                },
-                                tax.isActive
-                                  ? 'Tax rate deactivated.'
-                                  : 'Tax rate activated.',
+                        }
+                      >
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <Field
+                            label="Tax name"
+                            name="name"
+                            required
+                            defaultValue={
+                              tax.name
+                            }
+                          />
+
+                          <Field
+                            label="Rate %"
+                            name="rate"
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.0001"
+                            required
+                            defaultValue={
+                              String(
+                                tax.rate,
                               )
-                          }
-                          className="h-9 rounded-xl border border-[var(--sami-border)] px-3 text-[10px] font-black disabled:opacity-40"
-                        >
-                          {
-                            tax.isActive
-                              ? 'Deactivate'
-                              : 'Activate'
-                          }
-                        </button>
+                            }
+                          />
 
-                        <button
-                          type="submit"
-                          disabled={
-                            pending
-                          }
-                          className="h-9 rounded-xl bg-blue-600 px-3 text-[10px] font-black text-white disabled:opacity-60"
-                        >
-                          Save tax
-                        </button>
-                      </div>
-                    </form>
-                  </details>
-                ),
-              )
-            }
-          </div>
-        </form>
+                          <Field
+                            label="Tax type"
+                            name="taxType"
+                            defaultValue={
+                              tax.taxType
+                            }
+                          />
+
+                          <Field
+                            label="Country code"
+                            name="countryCode"
+                            maxLength={
+                              2
+                            }
+                            defaultValue={
+                              tax.countryCode ||
+                              ''
+                            }
+                          />
+                        </div>
+
+                        <label className="mt-3 flex min-h-10 items-center gap-2 text-xs font-bold">
+                          <input
+                            type="checkbox"
+                            name="isDefault"
+                            defaultChecked={
+                              tax.isDefault
+                            }
+                          />
+                          Current company default
+                        </label>
+
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            disabled={
+                              pending ||
+                              (
+                                tax.isDefault &&
+                                tax.isActive
+                              )
+                            }
+                            onClick={
+                              () =>
+                                void run(
+                                  {
+                                    action:
+                                      'set_tax_rate_active',
+                                    taxId:
+                                      tax.id,
+                                    isActive:
+                                      !tax.isActive,
+                                  },
+                                  tax.isActive
+                                    ? 'Tax rate deactivated.'
+                                    : 'Tax rate activated.',
+                                )
+                            }
+                            className="h-9 rounded-xl border border-[var(--sami-border)] px-3 text-[10px] font-black disabled:opacity-40"
+                          >
+                            {
+                              tax.isActive
+                                ? 'Deactivate'
+                                : 'Activate'
+                            }
+                          </button>
+
+                          <button
+                            type="submit"
+                            disabled={
+                              pending
+                            }
+                            className="h-9 rounded-xl bg-blue-600 px-3 text-[10px] font-black text-white disabled:opacity-60"
+                          >
+                            Save tax
+                          </button>
+                        </div>
+                      </form>
+                    </details>
+                  ),
+                )
+        }
       </div>
-    </div>
+    </section>
   );
 }
 
