@@ -118,3 +118,196 @@ export function reportFilters(input: {
     page: Number(input.page || 1),
   };
 }
+
+
+function optionalAccountingId(
+  value: unknown,
+): string | null {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    return null;
+  }
+
+  return accountingId(
+    value,
+  );
+}
+
+function integerBetween(
+  value: unknown,
+  min: number,
+  max: number,
+  label: string,
+) {
+  const numeric =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" &&
+          /^\d+$/.test(value)
+        ? Number(value)
+        : Number.NaN;
+
+  if (
+    !Number.isInteger(numeric) ||
+    numeric < min ||
+    numeric > max
+  ) {
+    throw new AccountingInputError(
+      `${label} must be between ${min} and ${max}.`,
+    );
+  }
+
+  return numeric;
+}
+
+function strictBoolean(
+  value: unknown,
+  label: string,
+) {
+  if (value === true || value === false) {
+    return value;
+  }
+
+  throw new AccountingInputError(
+    `${label} must be enabled or disabled.`,
+  );
+}
+
+export function validateAccountingSetup(
+  input: unknown,
+) {
+  if (
+    !input ||
+    typeof input !== "object" ||
+    Array.isArray(input)
+  ) {
+    throw new AccountingInputError(
+      "Enter valid Accounting settings.",
+    );
+  }
+
+  const body =
+    input as Record<string, unknown>;
+
+  const fiscalYearStartMonth =
+    integerBetween(
+      body.fiscalYearStartMonth,
+      1,
+      12,
+      "Fiscal year start month",
+    );
+
+  const fiscalYearStartDay =
+    integerBetween(
+      body.fiscalYearStartDay,
+      1,
+      31,
+      "Fiscal year start day",
+    );
+
+  const calendarCheck =
+    new Date(
+      Date.UTC(
+        2000,
+        fiscalYearStartMonth - 1,
+        fiscalYearStartDay,
+      ),
+    );
+
+  if (
+    calendarCheck.getUTCMonth() !==
+      fiscalYearStartMonth - 1 ||
+    calendarCheck.getUTCDate() !==
+      fiscalYearStartDay
+  ) {
+    throw new AccountingInputError(
+      "Choose a valid fiscal year start date.",
+    );
+  }
+
+  const roundingMethod =
+    body.roundingMethod === "half_up" ||
+    body.roundingMethod === "half_even"
+      ? body.roundingMethod
+      : null;
+
+  if (!roundingMethod) {
+    throw new AccountingInputError(
+      "Choose a supported rounding method.",
+    );
+  }
+
+  return {
+    expectedCompanyId:
+      accountingId(
+        body.expectedCompanyId,
+      ),
+    fiscalYearStartMonth,
+    fiscalYearStartDay,
+    defaultReceivableAccountId:
+      optionalAccountingId(
+        body.defaultReceivableAccountId,
+      ),
+    defaultPayableAccountId:
+      optionalAccountingId(
+        body.defaultPayableAccountId,
+      ),
+    retainedEarningsAccountId:
+      optionalAccountingId(
+        body.retainedEarningsAccountId,
+      ),
+    outputTaxAccountId:
+      optionalAccountingId(
+        body.outputTaxAccountId,
+      ),
+    inputTaxAccountId:
+      optionalAccountingId(
+        body.inputTaxAccountId,
+      ),
+    defaultCashAccountId:
+      optionalAccountingId(
+        body.defaultCashAccountId,
+      ),
+    fxGainAccountId:
+      optionalAccountingId(
+        body.fxGainAccountId,
+      ),
+    fxLossAccountId:
+      optionalAccountingId(
+        body.fxLossAccountId,
+      ),
+    writeOffAccountId:
+      optionalAccountingId(
+        body.writeOffAccountId,
+      ),
+    roundingAccountId:
+      optionalAccountingId(
+        body.roundingAccountId,
+      ),
+    roundingMethod,
+    globalLockDate:
+      body.globalLockDate
+        ? accountingDate(
+            body.globalLockDate,
+          )
+        : null,
+    lockPostedEntries:
+      strictBoolean(
+        body.lockPostedEntries,
+        "Posted-entry locking",
+      ),
+    requireOpenPeriod:
+      strictBoolean(
+        body.requireOpenPeriod,
+        "Open-period enforcement",
+      ),
+  };
+}
+
+export type AccountingSetupInput =
+  ReturnType<
+    typeof validateAccountingSetup
+  >;
