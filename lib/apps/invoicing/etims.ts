@@ -3,6 +3,7 @@ import 'server-only';
 import crypto from 'crypto';
 
 import type {
+  Pool,
   PoolClient,
 } from 'pg';
 
@@ -1349,6 +1350,48 @@ export async function queueInvoiceForEtims(
 }
 
 
+export async function queueInvoiceForEtimsIfEnabled(
+  client:
+    PoolClient,
+  input: {
+    companyId: string;
+    userId: string;
+    invoiceId: string;
+  },
+) {
+  const setting =
+    await client.query(
+      `
+        SELECT
+          enabled,
+          auto_queue_on_confirmation
+        FROM invoicing_etims_settings
+        WHERE company_id = $1
+        LIMIT 1
+      `,
+      [
+        input.companyId,
+      ],
+    );
+
+  if (
+    setting.rows[0]
+      ?.enabled !==
+        true ||
+    setting.rows[0]
+      ?.auto_queue_on_confirmation ===
+        false
+  ) {
+    return null;
+  }
+
+  return queueInvoiceForEtims(
+    client,
+    input,
+  );
+}
+
+
 export async function fiscalizeInvoiceWithEtims(
   input:
     Record<string, unknown>,
@@ -1783,6 +1826,7 @@ export async function fiscalizeInvoiceWithEtims(
 
 export async function assertEtimsDeliveryReady(
   client:
+    Pool |
     PoolClient,
   input: {
     companyId: string;
