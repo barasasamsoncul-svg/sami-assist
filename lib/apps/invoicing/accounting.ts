@@ -311,7 +311,7 @@ async function ensureAccount(
 }
 
 
-async function postJournal(
+async function postJournalUnsafe(
   client:
     PoolClient,
   input: {
@@ -584,6 +584,126 @@ async function postJournal(
       false,
     journalId,
   };
+}
+
+
+type AccountingBoundaryInput = {
+  companyId: string;
+  eventKey: string;
+  sourceType: string;
+  sourceId: string;
+};
+
+async function recordAccountingBoundaryFailure(
+  client: PoolClient,
+  input: AccountingBoundaryInput,
+  error: unknown,
+) {
+  const message =
+    error instanceof Error
+      ? error.message.slice(0, 500)
+      : 'Unknown Accounting integration error.';
+
+  try {
+    await client.query(
+      `
+        INSERT INTO invoicing_events (
+          company_id,
+          event_key,
+          payload
+        )
+        VALUES (
+          $1,
+          'invoicing.integration.accounting_failed',
+          jsonb_build_object(
+            'sourceType', $2::text,
+            'sourceId', $3::text,
+            'accountingEventKey', $4::text,
+            'message', $5::text,
+            'retryable', TRUE
+          )
+        )
+      `,
+      [
+        input.companyId,
+        input.sourceType,
+        input.sourceId,
+        input.eventKey,
+        message,
+      ],
+    );
+  } catch (auditError) {
+    console.error('[Invoicing] Could not record Accounting integration failure', {
+      eventKey: input.eventKey,
+      auditError,
+    });
+  }
+}
+
+async function runOptionalAccountingBoundary<T extends {
+  integrated: boolean;
+  reused: boolean;
+  journalId: string | null;
+}>(
+  client: PoolClient,
+  input: AccountingBoundaryInput,
+  work: () => Promise<T>,
+): Promise<T | {
+  integrated: false;
+  reused: false;
+  journalId: null;
+  reason: 'accounting_write_failed';
+}> {
+  await client.query('SAVEPOINT invoicing_accounting_boundary');
+
+  try {
+    const result = await work();
+    await client.query('RELEASE SAVEPOINT invoicing_accounting_boundary');
+    return result;
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK TO SAVEPOINT invoicing_accounting_boundary');
+      await client.query('RELEASE SAVEPOINT invoicing_accounting_boundary');
+    } catch (rollbackError) {
+      console.error('[Invoicing] Accounting boundary rollback failed', {
+        eventKey: input.eventKey,
+        rollbackError,
+      });
+      throw error;
+    }
+
+    console.error('[Invoicing] Optional Accounting integration failed', {
+      eventKey: input.eventKey,
+      sourceType: input.sourceType,
+      sourceId: input.sourceId,
+      error,
+    });
+
+    await recordAccountingBoundaryFailure(client, input, error);
+
+    return {
+      integrated: false,
+      reused: false,
+      journalId: null,
+      reason: 'accounting_write_failed',
+    };
+  }
+}
+
+async function postJournal(
+  client: PoolClient,
+  input: Parameters<typeof postJournalUnsafe>[1],
+) {
+  return runOptionalAccountingBoundary(
+    client,
+    {
+      companyId: input.companyId,
+      eventKey: input.eventKey,
+      sourceType: input.sourceType,
+      sourceId: input.sourceId,
+    },
+    () => postJournalUnsafe(client, input),
+  );
 }
 
 
