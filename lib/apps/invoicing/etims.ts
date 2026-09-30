@@ -5,6 +5,7 @@ import {
 } from 'node:crypto';
 
 import type {
+  Pool,
   PoolClient,
 } from 'pg';
 
@@ -13,6 +14,10 @@ import {
   openIntegrationSecret,
   sealIntegrationSecret,
 } from '@/lib/integrations/crypto';
+
+import {
+  ensureFiscalizedInvoiceDocumentSnapshot,
+} from '@/lib/apps/invoicing/document-snapshots';
 
 import {
   cleanText,
@@ -4368,12 +4373,46 @@ export async function submitInvoiceToEtims(
     client.release();
   }
 
-  return transmitSubmission(
-    context,
-    profile!,
-    submission!.row,
-    submission!.payload,
-  );
+  const result =
+    await transmitSubmission(
+      context,
+      profile!,
+      submission!.row,
+      submission!.payload,
+    );
+
+  let documentSnapshotReady =
+    false;
+
+  if (
+    result.status ===
+      'succeeded'
+  ) {
+    try {
+      await ensureFiscalizedInvoiceDocumentSnapshot(
+        context.pool,
+        {
+          companyId:
+            context.companyId,
+          invoiceId,
+          userId:
+            context.userId,
+        },
+      );
+
+      documentSnapshotReady =
+        true;
+    } catch {
+      // KRA already accepted the sale. Do not convert an authority success
+      // into a failed/retryable fiscal submission because PDF rendering failed.
+      // Official delivery retries snapshot promotion before sending.
+    }
+  }
+
+  return {
+    ...result,
+    documentSnapshotReady,
+  };
 }
 
 
@@ -4770,3 +4809,169 @@ export async function submitCreditNoteToEtims(
     submission!.payload,
   );
 }
+
+export async function assertEtimsDeliveryReady(
+  queryable:
+    Pool |
+    PoolClient,
+  input: {
+    companyId:
+      string;
+    invoiceId:
+      string;
+  },
+) {
+  const result =
+    await queryable.query(
+      `
+        SELECT
+          profile.status
+            AS profile_status,
+          profile.environment,
+          profile.solution_type,
+          submission.status
+            AS submission_status,
+          submission.transaction_invoice_no,
+          submission.kra_result_code,
+          submission.receipt_no,
+          submission.total_receipt_no,
+          submission.sdc_id,
+          submission.mrc_no,
+          submission.receipt_signature,
+          submission.succeeded_at
+        FROM invoicing_etims_profiles profile
+        LEFT JOIN invoicing_etims_submissions submission
+          ON submission.company_id =
+             profile.company_id
+         AND submission.invoice_id =
+             $2
+         AND submission.submission_type =
+             'sale'
+        WHERE profile.company_id =
+              $1
+        LIMIT 1
+      `,
+      [
+        input.companyId,
+        input.invoiceId,
+      ],
+    );
+
+  const row =
+    result.rows[0];
+
+  if (
+    !row ||
+    String(
+      row.environment ||
+      '',
+    ) !==
+      'production'
+  ) {
+    return null;
+  }
+
+  if (
+    String(
+      row.profile_status ||
+      '',
+    ) !==
+      'activated'
+  ) {
+    throw new InvoicingError(
+      'INVOICE_STATE_INVALID',
+      'Production eTIMS is configured for this company. Activate the KRA device before delivering official invoices.',
+      {
+        etimsStatus:
+          row.profile_status ||
+          'configured',
+      },
+    );
+  }
+
+  const accepted =
+    String(
+      row.submission_status ||
+      '',
+    ) ===
+      'succeeded' &&
+    String(
+      row.kra_result_code ||
+      '',
+    ) ===
+      '000' &&
+    Number(
+      row.transaction_invoice_no ||
+      0,
+    ) >
+      0 &&
+    Number(
+      row.receipt_no ||
+      0,
+    ) >
+      0 &&
+    Boolean(
+      cleanText(
+        row.receipt_signature,
+        10000,
+      ),
+    );
+
+  if (!accepted) {
+    throw new InvoicingError(
+      'INVOICE_STATE_INVALID',
+      'This invoice cannot be delivered as an official receipt until KRA eTIMS returns a successful fiscal receipt.',
+      {
+        etimsStatus:
+          row.submission_status ||
+          'not_submitted',
+        kraResultCode:
+          row.kra_result_code ||
+          null,
+      },
+    );
+  }
+
+  return {
+    solutionType:
+      String(
+        row.solution_type,
+      ),
+    environment:
+      'production' as const,
+    transactionInvoiceNo:
+      Number(
+        row.transaction_invoice_no,
+      ),
+    receiptNo:
+      Number(
+        row.receipt_no,
+      ),
+    totalReceiptNo:
+      row.total_receipt_no
+        ? Number(
+            row.total_receipt_no,
+          )
+        : null,
+    sdcId:
+      row.sdc_id
+        ? String(
+            row.sdc_id,
+          )
+        : null,
+    mrcNo:
+      row.mrc_no
+        ? String(
+            row.mrc_no,
+          )
+        : null,
+    receiptSignature:
+      String(
+        row.receipt_signature,
+      ),
+    succeededAt:
+      row.succeeded_at ||
+      null,
+  };
+}
+
