@@ -622,6 +622,43 @@ export type InvoicingTaxLocalizationSummary = {
   isActive: boolean;
 };
 
+export type InvoicingEtimsDocumentSummary = {
+  id: string;
+  invoiceId: string | null;
+  invoiceNumber: string | null;
+  customerName: string | null;
+  status: string;
+  receiptLabel: string;
+  provider: string | null;
+  scuId: string | null;
+  scuReceiptNumber: string | null;
+  cuInvoiceNumber: string | null;
+  receiptSignature: string | null;
+  qrPayload: string | null;
+  responseCode: string | null;
+  responseMessage: string | null;
+  attemptCount: number;
+  lastAttemptAt: string | null;
+  nextRetryAt: string | null;
+  fiscalizedAt: string | null;
+  createdAt: string;
+};
+
+export type InvoicingEtimsSettingsSummary = {
+  enabled: boolean;
+  environment: 'sandbox' | 'production';
+  controlUnitType: 'oscu' | 'vscu';
+  taxpayerPin: string | null;
+  branchId: string | null;
+  deviceSerial: string | null;
+  requireFiscalizationBeforeDelivery: boolean;
+  autoQueueOnConfirmation: boolean;
+  provider: string;
+  providerEnvironment: string;
+  providerConfigured: boolean;
+  endpointHost: string | null;
+};
+
 export type InvoicingWorkspaceData = {
   company: { id: string; name: string; currency: string };
   capabilities: {
@@ -664,6 +701,8 @@ export type InvoicingWorkspaceData = {
   currencies: InvoicingCurrencySummary[];
   exchangeRates: InvoicingExchangeRateSummary[];
   currencyExposure: InvoicingCurrencyExposureSummary[];
+  etimsDocuments: InvoicingEtimsDocumentSummary[];
+  etimsSettings: InvoicingEtimsSettingsSummary;
   recurring: InvoicingRecurringSummary[];
   dunningPolicies: InvoicingDunningPolicySummary[];
   reminders: InvoicingReminderSummary[];
