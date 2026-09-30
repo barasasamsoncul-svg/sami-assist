@@ -2222,8 +2222,6 @@ function validateDocument(
   }
 
   if (
-    source.kind ===
-      'invoice' &&
     !source
       .purchaseOrderNumber &&
     !source
