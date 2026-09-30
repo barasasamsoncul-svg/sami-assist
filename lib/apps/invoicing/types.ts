@@ -636,6 +636,7 @@ export type CreateInvoiceLineInput = {
   discountType?: unknown;
   discountValue?: unknown;
   taxRateId?: unknown;
+  taxGroupId?: unknown;
   taxRate?: unknown;
 };
 
