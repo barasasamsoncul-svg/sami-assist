@@ -24,8 +24,7 @@ import {
   AccountingInputError,
 } from '@/lib/apps/accounting/validation';
 
-const MODULE_KEY =
-  'accounting';
+const MODULE_KEY = 'accounting';
 
 export default async function AccountingWorkspace({
   section,
