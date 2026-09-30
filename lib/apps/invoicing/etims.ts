@@ -4196,40 +4196,6 @@ export async function submitInvoiceToEtims(
         invoiceId,
       );
 
-    if (
-      String(
-        prepared
-          .credit
-          .original_solution_type,
-      ) !==
-        profile.solution_type ||
-      String(
-        prepared
-          .credit
-          .original_environment,
-      ) !==
-        profile.environment ||
-      String(
-        prepared
-          .credit
-          .original_branch_id ||
-        '',
-      ) !==
-        profile.branch_id ||
-      String(
-        prepared
-          .credit
-          .original_taxpayer_pin ||
-        '',
-      ) !==
-        profile.taxpayer_pin
-    ) {
-      throw new InvoicingError(
-        'ETIMS_MAPPING_REQUIRED',
-        'The credit note must be fiscalized using the same eTIMS solution, environment, taxpayer PIN and branch as the original invoice.',
-      );
-    }
-
     const items =
       prepared.lines.map(
         (
@@ -4572,6 +4538,40 @@ export async function submitCreditNoteToEtims(
         context.companyId,
         creditNoteId,
       );
+
+    if (
+      String(
+        prepared
+          .credit
+          .original_solution_type,
+      ) !==
+        profile.solution_type ||
+      String(
+        prepared
+          .credit
+          .original_environment,
+      ) !==
+        profile.environment ||
+      String(
+        prepared
+          .credit
+          .original_branch_id ||
+        '',
+      ) !==
+        profile.branch_id ||
+      String(
+        prepared
+          .credit
+          .original_taxpayer_pin ||
+        '',
+      ) !==
+        profile.taxpayer_pin
+    ) {
+      throw new InvoicingError(
+        'ETIMS_MAPPING_REQUIRED',
+        'The credit note must be fiscalized using the same eTIMS solution, environment, taxpayer PIN and branch as the original invoice.',
+      );
+    }
 
     const items =
       prepared.lines.map(
