@@ -5277,6 +5277,10 @@ function Customers({
                         form.get(
                           'paymentTermsId',
                         ),
+                      fiscalPositionId:
+                        form.get(
+                          'fiscalPositionId',
+                        ),
                       creditLimit:
                         form.get(
                           'creditLimit',
@@ -5455,6 +5459,43 @@ function Customers({
                             } · {
                               term.dueDays
                             } days
+                          </option>
+                        ),
+                      )
+                  }
+                </select>
+              </label>
+
+              <label className="block space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                  Fiscal position
+                </span>
+                <select
+                  name="fiscalPositionId"
+                  className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                >
+                  <option value="">
+                    Automatic tax rules
+                  </option>
+                  {
+                    data.fiscalPositions
+                      .filter(
+                        position =>
+                          position.isActive,
+                      )
+                      .map(
+                        position => (
+                          <option
+                            key={
+                              position.id
+                            }
+                            value={
+                              position.id
+                            }
+                          >
+                            {
+                              position.name
+                            }
                           </option>
                         ),
                       )
@@ -5696,6 +5737,10 @@ function Customers({
                                     form.get(
                                       'paymentTermsId',
                                     ),
+                                  fiscalPositionId:
+                                    form.get(
+                                      'fiscalPositionId',
+                                    ),
                                   creditLimit:
                                     form.get(
                                       'creditLimit',
@@ -5886,6 +5931,49 @@ function Customers({
                                           } · {
                                             term.dueDays
                                           } days
+                                        </option>
+                                      ),
+                                    )
+                                }
+                              </select>
+                            </label>
+
+                            <label className="block space-y-1">
+                              <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                                Fiscal position
+                              </span>
+                              <select
+                                name="fiscalPositionId"
+                                defaultValue={
+                                  customer.fiscalPositionId ||
+                                  ''
+                                }
+                                className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                              >
+                                <option value="">
+                                  Automatic tax rules
+                                </option>
+                                {
+                                  data.fiscalPositions
+                                    .filter(
+                                      position =>
+                                        position.isActive ||
+                                        position.id ===
+                                          customer.fiscalPositionId,
+                                    )
+                                    .map(
+                                      position => (
+                                        <option
+                                          key={
+                                            position.id
+                                          }
+                                          value={
+                                            position.id
+                                          }
+                                        >
+                                          {
+                                            position.name
+                                          }
                                         </option>
                                       ),
                                     )
@@ -6228,6 +6316,14 @@ function Items({
                         form.get(
                           'taxRateId',
                         ),
+                      taxGroupId:
+                        form.get(
+                          'taxGroupId',
+                        ),
+                      taxCategory:
+                        form.get(
+                          'taxCategory',
+                        ),
                       description:
                         form.get(
                           'description',
@@ -6338,6 +6434,54 @@ function Items({
                   }
                 </select>
               </label>
+
+              <label className="block space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                  Default tax group
+                </span>
+                <select
+                  name="taxGroupId"
+                  className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                >
+                  <option value="">
+                    No default tax group
+                  </option>
+                  {
+                    data.taxGroups
+                      .filter(
+                        group =>
+                          group.isActive,
+                      )
+                      .map(
+                        group => (
+                          <option
+                            key={
+                              group.id
+                            }
+                            value={
+                              group.id
+                            }
+                          >
+                            {
+                              group.name
+                            } · {
+                              group.calculationMode
+                            }
+                          </option>
+                        ),
+                      )
+                  }
+                </select>
+              </label>
+
+              <Field
+                label="Tax category"
+                name="taxCategory"
+              />
+
+              <p className="text-[10px] leading-4 text-slate-500">
+                If a tax group is selected it takes precedence over the single default tax rate. Tax category is used by rule matching.
+              </p>
 
               <TextArea
                 label="Description"
@@ -6509,6 +6653,14 @@ function Items({
                                     form.get(
                                       'taxRateId',
                                     ),
+                                  taxGroupId:
+                                    form.get(
+                                      'taxGroupId',
+                                    ),
+                                  taxCategory:
+                                    form.get(
+                                      'taxCategory',
+                                    ),
                                   description:
                                     form.get(
                                       'description',
@@ -6622,6 +6774,60 @@ function Items({
                                 }
                               </select>
                             </label>
+
+                            <label className="block space-y-1">
+                              <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                                Default tax group
+                              </span>
+                              <select
+                                name="taxGroupId"
+                                defaultValue={
+                                  item.taxGroupId ||
+                                  ''
+                                }
+                                className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                              >
+                                <option value="">
+                                  No default tax group
+                                </option>
+                                {
+                                  data.taxGroups
+                                    .filter(
+                                      group =>
+                                        group.isActive ||
+                                        group.id ===
+                                          item.taxGroupId,
+                                    )
+                                    .map(
+                                      group => (
+                                        <option
+                                          key={
+                                            group.id
+                                          }
+                                          value={
+                                            group.id
+                                          }
+                                        >
+                                          {
+                                            group.name
+                                          } · {
+                                            group.calculationMode
+                                          }
+                                        </option>
+                                      ),
+                                    )
+                                }
+                              </select>
+                            </label>
+
+                            <Field
+                              label="Tax category"
+                              name="taxCategory"
+                              defaultValue={
+                                item.taxCategory ||
+                                ''
+                              }
+                            />
 
                             <div className="sm:col-span-2">
                               <TextArea
