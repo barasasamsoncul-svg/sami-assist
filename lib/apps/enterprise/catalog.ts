@@ -1,5 +1,5 @@
 export const ENTERPRISE_MODULE_TABLES = {
-  accounting: ['accounts','journals','journal_lines','accounting_fiscal_periods','accounting_bank_accounts','accounting_bank_statement_lines','accounting_reconciliation_rules'],
+  accounting: ['accounting_settings','accounts','journals','journal_lines','accounting_fiscal_periods','accounting_bank_accounts','accounting_bank_statement_lines','accounting_reconciliation_rules'],
   ads: ['ads_settings','ad_accounts','ad_campaigns','ad_daily_metrics'],
   appointments: ['appointment_services','appointments','appointment_availability_blocks','appointment_reminders','appointment_questions','appointment_answers','appointment_calendar_links','appointment_payment_requests'],
   appraisals: ['appraisal_cycles','appraisals','appraisal_goals','appraisal_competencies','appraisal_competency_scores','appraisal_feedback','appraisal_calibrations'],
