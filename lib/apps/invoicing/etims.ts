@@ -303,15 +303,19 @@ function normalizeResponse(
       'cu_invoice_number',
     );
 
+  const fiscalEvidenceReady =
+    Boolean(
+      scuId &&
+      receiptSignature &&
+      cuInvoiceNumber,
+    );
+
   const accepted =
     !explicitFailure &&
+    fiscalEvidenceReady &&
     (
       explicitSuccess ||
-      Boolean(
-        scuId &&
-        receiptSignature &&
-        cuInvoiceNumber,
-      )
+      !explicitFailure
     );
 
   return {
