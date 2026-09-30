@@ -3291,6 +3291,7 @@ export async function createInvoice(
             discount_value,
             discount_amount,
             tax_rate_id,
+            tax_group_id,
             tax_name_snapshot,
             tax_rate,
             tax_amount,
@@ -3300,7 +3301,7 @@ export async function createInvoice(
           )
           VALUES (
             $1,$2,$3,$4,$5,$6,$7,$8,$9,
-            $10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18,$19
+            $10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19,$20
           )
         `,
         [
@@ -3317,6 +3318,7 @@ export async function createInvoice(
           line.discountValue,
           line.discountAmount,
           line.taxRateId,
+          line.taxGroupId,
           line.taxName,
           line.taxRate,
           line.taxAmount,
@@ -3593,6 +3595,7 @@ export async function duplicateInvoice(
           discount_type,
           discount_value,
           tax_rate_id,
+          tax_group_id,
           tax_rate
         FROM invoicing_invoice_items
         WHERE invoice_id = $1
@@ -3688,6 +3691,9 @@ export async function duplicateInvoice(
             ),
           taxRateId:
             line.tax_rate_id ||
+            undefined,
+          taxGroupId:
+            line.tax_group_id ||
             undefined,
           taxRate:
             money(
@@ -4269,6 +4275,7 @@ export async function updateInvoiceDraft(
             discount_value,
             discount_amount,
             tax_rate_id,
+            tax_group_id,
             tax_name_snapshot,
             tax_rate,
             tax_amount,
@@ -4278,7 +4285,7 @@ export async function updateInvoiceDraft(
           )
           VALUES (
             $1,$2,$3,$4,$5,$6,$7,$8,$9,
-            $10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18,$19
+            $10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19,$20
           )
         `,
         [
@@ -4295,6 +4302,7 @@ export async function updateInvoiceDraft(
           line.discountValue,
           line.discountAmount,
           line.taxRateId,
+          line.taxGroupId,
           line.taxName,
           line.taxRate,
           line.taxAmount,
@@ -11369,6 +11377,7 @@ export async function createRecurringInvoiceTemplate(
           discount_type,
           discount_value,
           tax_rate_id,
+          tax_group_id,
           tax_rate
         FROM invoicing_invoice_items
         WHERE invoice_id =
@@ -11627,6 +11636,9 @@ export async function createRecurringInvoiceTemplate(
             ),
           taxRateId:
             line.tax_rate_id ||
+            undefined,
+          taxGroupId:
+            line.tax_group_id ||
             undefined,
           taxRate:
             money(
