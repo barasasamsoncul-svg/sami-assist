@@ -6442,11 +6442,17 @@ test('Invoicing Part 22 owns an append-only hash-chained audit ledger with redac
     migration,
     runtimeMigrations,
     manifest,
+    queries,
+    types,
+    detail,
   ] = await Promise.all([
     source('lib/apps/invoicing/schema.sql'),
     source('lib/apps/invoicing/migrations/2.19.0-to-2.20.0.ts'),
     source('lib/apps/runtime-migrations.ts'),
     source('lib/modules/first-party.ts'),
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/types.ts'),
+    source('app/apps/invoicing/[invoiceId]/InvoiceDetailClient.tsx'),
   ]);
 
   for (const sourceText of [
@@ -6495,5 +6501,62 @@ test('Invoicing Part 22 owns an append-only hash-chained audit ledger with redac
   assert.match(
     manifest,
     /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
+  );
+
+  assert.match(
+    queries,
+    /queryInvoiceAuditSafely/,
+    'Invoice detail must use a migration-safe audit query wrapper.',
+  );
+
+  assert.match(
+    queries,
+    /queryInvoicingAuditIntegritySafely/,
+  );
+
+  assert.match(
+    queries,
+    /code ===[\s\S]*'42P01'/,
+    'Pre-migration tenants must not lose invoice detail when audit tables do not exist yet.',
+  );
+
+  assert.match(
+    queries,
+    /FROM invoicing_audit_log[\s\S]*resource_type =[\s\S]*'invoice'/s,
+  );
+
+  assert.match(
+    queries,
+    /FROM invoicing_audit_integrity/,
+  );
+
+  assert.match(
+    types,
+    /auditTrail: Array</,
+  );
+
+  assert.match(
+    types,
+    /auditIntegrity:/,
+  );
+
+  assert.match(
+    detail,
+    /Immutable audit ledger/,
+  );
+
+  assert.match(
+    detail,
+    /Chain verified/,
+  );
+
+  assert.match(
+    detail,
+    /SHA-256/,
+  );
+
+  assert.match(
+    detail,
+    /sequenceNo/,
   );
 });
