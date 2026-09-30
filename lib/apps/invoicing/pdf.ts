@@ -28,6 +28,17 @@ export type PdfInvoice = {
   notes: string | null;
   terms: string | null;
   paymentInstructions: string | null;
+  etims: {
+    status: string;
+    scuId: string | null;
+    scuReceiptNumber: string | null;
+    cuInvoiceNumber: string | null;
+    receiptCounter: string | null;
+    totalReceiptCounter: string | null;
+    receiptSignature: string | null;
+    qrPayload: string | null;
+    fiscalizedAt: string | null;
+  } | null;
   template: {
     layout: string;
     primaryColor: string;
@@ -1050,6 +1061,18 @@ function documentHeader(
         invoice.taxCalculation,
       ],
       [
+        'eTIMS CU invoice',
+        invoice.etims
+          ?.cuInvoiceNumber ||
+        null,
+      ],
+      [
+        'eTIMS SCU ID',
+        invoice.etims
+          ?.scuId ||
+        null,
+      ],
+      [
         'Reference',
         invoice.reference,
       ],
@@ -1581,6 +1604,17 @@ function renderItemPage(
           invoice.discountTotal,
           invoice.currency,
         ),
+      );
+    }
+
+    if (
+      invoice.etims &&
+      invoice.etims.status ===
+        'accepted'
+    ) {
+      totalRow(
+        'eTIMS',
+        'Fiscalized',
       );
     }
 
