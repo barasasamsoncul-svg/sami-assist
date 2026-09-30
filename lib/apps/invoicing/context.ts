@@ -798,6 +798,40 @@ export async function ensureCompanyDefaults(
 
   await pool.query(
     `
+      INSERT INTO invoicing_etims_settings (
+        company_id,
+        enabled,
+        environment,
+        control_unit_type,
+        require_fiscalization_before_delivery,
+        auto_queue_on_confirmation,
+        created_by,
+        updated_by
+      )
+      VALUES (
+        $1,
+        FALSE,
+        'sandbox',
+        'oscu',
+        TRUE,
+        TRUE,
+        $2,
+        $2
+      )
+      ON CONFLICT (
+        company_id
+      )
+      DO NOTHING
+    `,
+    [
+      companyId,
+      userId,
+    ],
+  );
+
+
+  await pool.query(
+    `
       INSERT INTO invoicing_dunning_policies (
         company_id,
         name,
