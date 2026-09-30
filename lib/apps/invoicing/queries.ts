@@ -74,6 +74,120 @@ function dateOnlyValue(
 }
 
 
+async function queryInvoiceAuditSafely(
+  pool:
+    Awaited<
+      ReturnType<
+        typeof getTenantPoolByTenantId
+      >
+    >,
+  invoiceId:
+    string,
+  companyId:
+    string,
+) {
+  try {
+    return await pool.query(
+      `
+        SELECT
+          id,
+          sequence_no,
+          event_key,
+          action,
+          actor_user_id,
+          actor_type,
+          source,
+          entry_hash,
+          previous_hash,
+          occurred_at
+        FROM invoicing_audit_log
+        WHERE company_id =
+              $2
+          AND resource_type =
+              'invoice'
+          AND resource_id =
+              $1
+        ORDER BY
+          sequence_no DESC
+        LIMIT 100
+      `,
+      [
+        invoiceId,
+        companyId,
+      ],
+    );
+  } catch (
+    error
+  ) {
+    if (
+      (
+        error as {
+          code?:
+            string;
+        }
+      ).code ===
+        '42P01'
+    ) {
+      return {
+        rows: [],
+      };
+    }
+
+    throw error;
+  }
+}
+
+
+async function queryInvoicingAuditIntegritySafely(
+  pool:
+    Awaited<
+      ReturnType<
+        typeof getTenantPoolByTenantId
+      >
+    >,
+  companyId:
+    string,
+) {
+  try {
+    return await pool.query(
+      `
+        SELECT
+          entry_count,
+          first_sequence,
+          last_sequence,
+          last_entry_hash,
+          chain_valid
+        FROM invoicing_audit_integrity
+        WHERE company_id =
+              $1
+        LIMIT 1
+      `,
+      [
+        companyId,
+      ],
+    );
+  } catch (
+    error
+  ) {
+    if (
+      (
+        error as {
+          code?:
+            string;
+        }
+      ).code ===
+        '42P01'
+    ) {
+      return {
+        rows: [],
+      };
+    }
+
+    throw error;
+  }
+}
+
+
 function capabilities(
   isOwner:
     boolean,
@@ -4355,52 +4469,15 @@ export async function getInvoicingInvoiceDetail(
         ],
       ),
 
-      context.pool.query(
-        `
-          SELECT
-            id,
-            sequence_no,
-            event_key,
-            action,
-            actor_user_id,
-            actor_type,
-            source,
-            entry_hash,
-            previous_hash,
-            occurred_at
-          FROM invoicing_audit_log
-          WHERE company_id =
-                $2
-            AND resource_type =
-                'invoice'
-            AND resource_id =
-                $1
-          ORDER BY
-            sequence_no DESC
-          LIMIT 100
-        `,
-        [
-          invoiceId,
-          context.companyId,
-        ],
+      queryInvoiceAuditSafely(
+        context.pool,
+        invoiceId,
+        context.companyId,
       ),
 
-      context.pool.query(
-        `
-          SELECT
-            entry_count,
-            first_sequence,
-            last_sequence,
-            last_entry_hash,
-            chain_valid
-          FROM invoicing_audit_integrity
-          WHERE company_id =
-                $1
-          LIMIT 1
-        `,
-        [
-          context.companyId,
-        ],
+      queryInvoicingAuditIntegritySafely(
+        context.pool,
+        context.companyId,
       ),
     ]);
 
