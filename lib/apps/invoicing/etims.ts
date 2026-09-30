@@ -124,6 +124,7 @@ const REFERENCE_OPERATIONS = [
 
 type EtimsOperation =
   | 'initialize'
+  | 'item_save'
   | 'sales'
   | typeof REFERENCE_OPERATIONS[number];
 
@@ -156,6 +157,8 @@ function operationPath(
           '/selectBhfList',
         notices:
           '/selectNoticeList',
+        item_save:
+          '/saveItem',
         sales:
           '/saveTrnsSalesOsdc',
       };
@@ -180,6 +183,8 @@ function operationPath(
         '/branches/selectBranches',
       notices:
         '/notices/selectNotices',
+      item_save:
+        '/items/saveItems',
       sales:
         '/trnsSales/saveSales',
     };
