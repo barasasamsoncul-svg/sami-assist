@@ -22,7 +22,35 @@ export const runtime =
 export const dynamic =
   'force-dynamic';
 
-export default async function SamiAiPage() {
+export default async function SamiAiPage({
+  searchParams,
+}: {
+  searchParams:
+    Promise<
+      Record<
+        string,
+        string |
+        string[] |
+        undefined
+      >
+    >;
+}) {
+  const params =
+    await searchParams;
+
+  const requestedModule =
+    Array.isArray(
+      params.module,
+    )
+      ? params.module[0]
+      : params.module;
+
+  const moduleContext =
+    requestedModule ===
+      'invoicing'
+      ? 'invoicing'
+      : null;
+
   const session =
     await requirePageSession(
       '/ai',
@@ -53,6 +81,9 @@ export default async function SamiAiPage() {
     <WorkspaceAiClient
       entitled={
         shell.aiAvailable
+      }
+      moduleContext={
+        moduleContext
       }
     />
   );
