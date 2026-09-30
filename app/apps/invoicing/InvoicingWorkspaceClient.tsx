@@ -38,6 +38,7 @@ import {
   BadgeCheck,
   BellRing,
   BarChart3,
+  BookOpenCheck,
   CalendarClock,
   BookOpenCheck,
   ChevronDown,
