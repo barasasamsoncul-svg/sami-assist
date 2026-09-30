@@ -60,6 +60,10 @@ import {
   requireUuid,
 } from '@/lib/apps/invoicing/context';
 
+import {
+  resolveInvoicingExchangeRate,
+} from '@/lib/apps/invoicing/currencies';
+
 
 function plainObject(
   value:
@@ -2457,48 +2461,31 @@ async function resolveInvoiceTemplateId(
 }
 
 
-function invoiceExchangeRate(
+async function invoiceExchangeRate(
+  client:
+    PoolClient,
+  companyId:
+    string,
   currency:
     string,
   baseCurrency:
     string,
+  effectiveDate:
+    string,
   input:
     unknown,
 ) {
-  if (
-    currency ===
-    baseCurrency
-  ) {
-    return 1;
-  }
-
-  const rate =
-    Number(
-      input,
-    );
-
-  if (
-    !Number.isFinite(
-      rate,
-    ) ||
-    rate <=
-      0
-  ) {
-    throw new InvoicingError(
-      'INVALID_INPUT',
-      'A positive exchange rate is required when invoice currency differs from the company currency.',
-      {
-        currency,
-        baseCurrency,
-      },
-    );
-  }
-
-  return Math.round(
-    rate *
-    100000000,
-  ) /
-    100000000;
+  return resolveInvoicingExchangeRate(
+    client,
+    {
+      companyId,
+      currency,
+      baseCurrency,
+      effectiveDate,
+      manualRate:
+        input,
+    },
+  );
 }
 
 
@@ -2821,6 +2808,7 @@ export async function createInvoice(
 
     const baseCurrency =
       cleanText(
+        settings.base_currency ||
         context.company
           .currentCompany.currency ||
         settings.default_currency ||
@@ -2828,12 +2816,19 @@ export async function createInvoice(
         3,
       ).toUpperCase();
 
-    const exchangeRate =
-      invoiceExchangeRate(
+    const exchangeRateResolution =
+      await invoiceExchangeRate(
+        client,
+        context.companyId,
         currency,
         baseCurrency,
+        invoiceDate,
         input.exchangeRate,
       );
+
+    const exchangeRate =
+      exchangeRateResolution
+        .rate;
 
     const confirmAllowed =
       context.permissions.isOwner ||
@@ -2990,6 +2985,9 @@ export async function createInvoice(
         UPDATE invoicing_invoices
         SET
           exchange_rate = $3,
+          base_currency = $6,
+          exchange_rate_date = $7,
+          exchange_rate_source = $8,
           submitted_at =
             CASE
               WHEN $4::varchar(30) =
@@ -3019,6 +3017,13 @@ export async function createInvoice(
         exchangeRate,
         status,
         context.userId,
+        baseCurrency,
+        exchangeRateResolution
+          .effectiveDate,
+        exchangeRateResolution
+          .sourceName ||
+        exchangeRateResolution
+          .source,
       ],
     );
 
@@ -3796,6 +3801,7 @@ export async function updateInvoiceDraft(
 
     const baseCurrency =
       cleanText(
+        settings.base_currency ||
         context.company
           .currentCompany.currency ||
         settings.default_currency ||
@@ -3803,12 +3809,19 @@ export async function updateInvoiceDraft(
         3,
       ).toUpperCase();
 
-    const exchangeRate =
-      invoiceExchangeRate(
+    const exchangeRateResolution =
+      await invoiceExchangeRate(
+        client,
+        context.companyId,
         currency,
         baseCurrency,
+        invoiceDate,
         input.exchangeRate,
       );
+
+    const exchangeRate =
+      exchangeRateResolution
+        .rate;
 
     await client.query(
       `
@@ -3945,7 +3958,10 @@ export async function updateInvoiceDraft(
       `
         UPDATE invoicing_invoices
         SET
-          exchange_rate = $3
+          exchange_rate = $3,
+          base_currency = $4,
+          exchange_rate_date = $5,
+          exchange_rate_source = $6
         WHERE id = $1
           AND company_id = $2
       `,
@@ -3953,6 +3969,13 @@ export async function updateInvoiceDraft(
         invoiceId,
         context.companyId,
         exchangeRate,
+        baseCurrency,
+        exchangeRateResolution
+          .effectiveDate,
+        exchangeRateResolution
+          .sourceName ||
+        exchangeRateResolution
+          .source,
       ],
     );
 
