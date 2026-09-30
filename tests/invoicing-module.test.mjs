@@ -5628,6 +5628,28 @@ test('Invoicing Part 16 provides KRA-native OSCU/VSCU fiscalization, immutable f
   );
 
   assert.match(
+    migration,
+    /primary_document_snapshot_id/,
+    'Part 16 must promote fiscal PDFs through an invoice-level pointer instead of mutating archived snapshots.',
+  );
+
+  assert.match(
+    schema,
+    /primary_document_snapshot_id/,
+  );
+
+  assert.match(
+    snapshots,
+    /primary_document_snapshot_id/,
+  );
+
+  assert.doesNotMatch(
+    snapshots,
+    /UPDATE\s+invoicing_document_snapshots/i,
+    'Fiscal PDF promotion must preserve the immutable snapshot ledger.',
+  );
+
+  assert.match(
     snapshots,
     /invoicing_etims_submissions/,
   );
