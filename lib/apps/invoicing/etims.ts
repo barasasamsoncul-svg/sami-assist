@@ -43,7 +43,6 @@ type EtimsProfileRow = {
   device_serial_number: string;
   status: string;
   default_payment_type_code: string;
-  next_transaction_invoice_no: string | number;
   kra_sdc_id: string | null;
   kra_mrc_no: string | null;
   communication_key_sealed: string | null;
@@ -935,24 +934,64 @@ function assertActivated(
 async function reserveTransactionNumber(
   client:
     PoolClient,
-  companyId:
+  profile:
+    EtimsProfileRow,
+  userId:
     string,
 ) {
+  await client.query(
+    `
+      INSERT INTO invoicing_etims_sequences (
+        company_id,
+        solution_type,
+        environment,
+        branch_id,
+        next_invoice_no,
+        updated_by
+      )
+      VALUES (
+        $1,$2,$3,$4,1,$5
+      )
+      ON CONFLICT (
+        company_id,
+        solution_type,
+        environment,
+        branch_id
+      )
+      DO NOTHING
+    `,
+    [
+      profile.company_id,
+      profile.solution_type,
+      profile.environment,
+      profile.branch_id,
+      userId,
+    ],
+  );
+
   const result =
     await client.query(
       `
-        UPDATE invoicing_etims_profiles
+        UPDATE invoicing_etims_sequences
         SET
-          next_transaction_invoice_no =
-            next_transaction_invoice_no + 1,
+          next_invoice_no =
+            next_invoice_no + 1,
+          updated_by = $5,
           updated_at = NOW()
         WHERE company_id = $1
+          AND solution_type = $2
+          AND environment = $3
+          AND branch_id = $4
         RETURNING
-          next_transaction_invoice_no - 1
+          next_invoice_no - 1
             AS transaction_invoice_no
       `,
       [
-        companyId,
+        profile.company_id,
+        profile.solution_type,
+        profile.environment,
+        profile.branch_id,
+        userId,
       ],
     );
 
@@ -962,7 +1001,7 @@ async function reserveTransactionNumber(
   ) {
     throw new InvoicingError(
       'ETIMS_NOT_CONFIGURED',
-      'Configure eTIMS before fiscalizing invoices.',
+      'SaMi could not reserve the next eTIMS invoice number.',
     );
   }
 
@@ -1329,6 +1368,8 @@ function baseSalesPayload(
       EtimsProfileRow;
     transactionInvoiceNo:
       number;
+    traderInvoiceNumber:
+      string;
     customerPin:
       string;
     customerName:
@@ -1416,9 +1457,10 @@ function baseSalesPayload(
       input.profile
         .branch_id,
     trdInvcNo:
-      String(
+      cleanText(
         input
-          .transactionInvoiceNo,
+          .traderInvoiceNumber,
+        50,
       ),
     invcNo:
       input
@@ -1555,15 +1597,29 @@ async function upsertSubmission(
           .transactionInvoiceNo ||
         await reserveTransactionNumber(
           client,
-          input.companyId,
+          input.profile,
+          input.userId,
         );
+
+  const existingPayload =
+    existing.rows.length >
+      0
+      ? jsonObject(
+          existing.rows[0]
+            .request_payload,
+        )
+      : {};
 
   const payloadWithNumber = {
     ...input.payload,
-    trdInvcNo:
-      String(
-        transactionInvoiceNo,
-      ),
+    cfmDt:
+      cleanText(
+        existingPayload
+          .cfmDt,
+        14,
+      ) ||
+      input.payload
+        .cfmDt,
     invcNo:
       transactionInvoiceNo,
   };
@@ -4133,6 +4189,12 @@ export async function submitInvoiceToEtims(
         profile,
         transactionInvoiceNo:
           1,
+        traderInvoiceNumber:
+          String(
+            prepared
+              .invoice
+              .invoice_number,
+          ),
         customerPin:
           optionalPin(
             prepared
@@ -4461,6 +4523,12 @@ export async function submitCreditNoteToEtims(
         profile,
         transactionInvoiceNo:
           1,
+        traderInvoiceNumber:
+          String(
+            prepared
+              .credit
+              .credit_note_number,
+          ),
         customerPin:
           optionalPin(
             prepared
