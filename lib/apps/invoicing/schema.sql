@@ -616,6 +616,14 @@ CREATE INDEX IF NOT EXISTS idx_invoicing_document_snapshots_invoice
 CREATE INDEX IF NOT EXISTS idx_invoicing_document_snapshots_hash
   ON public.invoicing_document_snapshots(company_id, pdf_sha256);
 
+ALTER TABLE public.invoicing_invoices
+  ADD COLUMN IF NOT EXISTS primary_document_snapshot_id UUID
+    REFERENCES public.invoicing_document_snapshots(id)
+    ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_invoicing_invoices_primary_document_snapshot
+  ON public.invoicing_invoices(primary_document_snapshot_id)
+  WHERE primary_document_snapshot_id IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS public.invoicing_status_history (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   invoice_id UUID NOT NULL REFERENCES public.invoicing_invoices(id) ON DELETE CASCADE,
