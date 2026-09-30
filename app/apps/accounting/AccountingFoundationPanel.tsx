@@ -12,6 +12,8 @@ import {
   formatAccountingAmount,
 } from "@/lib/apps/accounting/validation";
 import AccountingJournalForm from "./AccountingJournalForm";
+import AccountingSetupForm from "./AccountingSetupForm";
+import type { AccountingSetup } from "@/lib/apps/accounting/setup";
 import styles from "./AccountingFoundation.module.css";
 export const ACCOUNTING_SECTIONS = [
   "overview",
@@ -33,10 +35,14 @@ export default function AccountingFoundationPanel({
   data,
   section,
   canCreate,
+  canManageSettings,
+  setup,
 }: {
   data: AccountingFoundation;
   section: AccountingSection;
   canCreate: boolean;
+  canManageSettings: boolean;
+  setup: AccountingSetup | null;
 }) {
   const { filters, currency } = data;
   const amount = (value: string) => formatAccountingAmount(value, currency);
@@ -90,7 +96,7 @@ export default function AccountingFoundationPanel({
     "new-journal":
       "Enter a balanced adjustment in company currency. Save it as a draft for review.",
     setup:
-      "Prepare your company books using the existing accounts and fiscal periods.",
+      "Configure fiscal policy, control accounts, tax mappings, FX accounts, write-offs and period locks for this company.",
   };
   const tasks = [
     {
@@ -180,14 +186,33 @@ export default function AccountingFoundationPanel({
           )}
         </>
       ) : section === "setup" ? (
-        <div className={styles.panel}>
-          <h3>Prepare your books</h3>
-          {taskList}
-          <p>
-            Checkmarks show existing records; they do not certify that your
-            setup or balances have been reviewed.
-          </p>
-        </div>
+        <>
+          {setup ? (
+            <AccountingSetupForm
+              key={data.companyId}
+              companyId={data.companyId}
+              currency={currency}
+              accounts={data.accounts}
+              initialSetup={setup}
+              canManage={canManageSettings}
+            />
+          ) : (
+            <div className={styles.notice}>
+              Accounting Setup could not be loaded. Reload this page before
+              changing company accounting policy.
+            </div>
+          )}
+
+          <div className={styles.panel}>
+            <h3>Operational readiness</h3>
+            {taskList}
+            <p>
+              Setup mappings define accounting policy. Readiness checks also
+              confirm that the chart, periods, bank records and opening work
+              exist before later posting workflows are enabled.
+            </p>
+          </div>
+        </>
       ) : (
         <>
           <form method="get" className={styles.filters}>
