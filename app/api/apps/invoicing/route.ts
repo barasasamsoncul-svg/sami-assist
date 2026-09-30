@@ -47,6 +47,8 @@ import {
   resolveCustomerPortalMessage,
   revokeCustomerPortalAccess,
   saveDunningPolicy,
+  saveInvoicingCurrency,
+  saveInvoicingExchangeRate,
   saveInvoicingTemplate,
   sendInvoiceReminder,
   setCustomerReminderControl,
@@ -490,6 +492,20 @@ export async function POST(
       case 'record_retainer':
         result =
           await recordCustomerRetainer(
+            payload,
+          );
+        break;
+
+      case 'save_currency':
+        result =
+          await saveInvoicingCurrency(
+            payload,
+          );
+        break;
+
+      case 'save_exchange_rate':
+        result =
+          await saveInvoicingExchangeRate(
             payload,
           );
         break;
