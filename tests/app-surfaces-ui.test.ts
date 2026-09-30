@@ -598,3 +598,169 @@ test(
     }
   },
 );
+
+
+test(
+  'selected navigation and inverted controls keep explicit contrast in both themes',
+  async () => {
+    const [
+      globals,
+      settings,
+      workspaceSidebar,
+      workspaceShell,
+      appShell,
+      invoicingShell,
+      etims,
+      eInvoicing,
+      taxEngine,
+      currencyCenter,
+      notifications,
+    ] =
+      await Promise.all([
+        readFile(
+          'app/globals.css',
+          'utf8',
+        ),
+        readFile(
+          'app/settings/SettingsClient.tsx',
+          'utf8',
+        ),
+        readFile(
+          'app/components/workspace/WorkspaceSidebar.tsx',
+          'utf8',
+        ),
+        readFile(
+          'app/components/workspace/WorkspaceShell.tsx',
+          'utf8',
+        ),
+        readFile(
+          'app/components/apps/AppSurfaceShell.tsx',
+          'utf8',
+        ),
+        readFile(
+          'app/apps/invoicing/InvoicingModuleShell.tsx',
+          'utf8',
+        ),
+        readFile(
+          'app/apps/invoicing/EtimsWorkspace.tsx',
+          'utf8',
+        ),
+        readFile(
+          'app/apps/invoicing/EInvoicingWorkspace.tsx',
+          'utf8',
+        ),
+        readFile(
+          'app/apps/invoicing/TaxEngineWorkspace.tsx',
+          'utf8',
+        ),
+        readFile(
+          'app/apps/invoicing/CurrencyCenterWorkspace.tsx',
+          'utf8',
+        ),
+        readFile(
+          'app/components/workspace/WorkspaceNotificationCenter.tsx',
+          'utf8',
+        ),
+      ]);
+
+    assert.match(
+      globals,
+      /\.sami-nav-selected,[\s\S]*\.sami-contrast-invert[\s\S]*background:\s*#0f172a\s*!important;[\s\S]*color:\s*#ffffff\s*!important;/,
+      'Light theme selected/inverted controls must force a dark background with a white foreground.',
+    );
+
+    assert.match(
+      globals,
+      /\.dark \.sami-nav-selected,[\s\S]*\.dark \.sami-contrast-invert[\s\S]*background:\s*#f8fafc\s*!important;[\s\S]*color:\s*#0f172a\s*!important;/,
+      'Dark theme selected/inverted controls must force a light background with a dark foreground.',
+    );
+
+    assert.match(
+      globals,
+      /\.sami-nav-selected :where\(svg, span, p\)[\s\S]*stroke:\s*currentColor;/,
+      'Selected-state icons and labels must inherit the forced foreground.',
+    );
+
+    assert.match(
+      settings,
+      /sami-nav-selected/,
+      'Settings selected navigation must use the semantic selected-state contract.',
+    );
+
+    assert.match(
+      workspaceSidebar,
+      /sami-workspace-nav-active/,
+      'Workspace sidebar selections must use the semantic active-state contract.',
+    );
+
+    assert.match(
+      workspaceSidebar,
+      /sami-nav-active-surface/,
+      'Workspace app selections must use the surface-safe active-state contract.',
+    );
+
+    assert.match(
+      appShell,
+      /sami-nav-active-accent/,
+      'Generic standalone apps must use an explicit active navigation foreground.',
+    );
+
+    assert.match(
+      invoicingShell,
+      /sami-nav-active-surface/,
+      'Invoicing sidebar selections must use the surface-safe active-state contract.',
+    );
+
+    for (const [
+      name,
+      sourceText,
+    ] of [
+      [
+        'eTIMS',
+        etims,
+      ],
+      [
+        'International e-Invoicing',
+        eInvoicing,
+      ],
+    ]) {
+      assert.match(
+        sourceText,
+        /sami-nav-selected/,
+        name +
+          ' internal selected tabs must use the semantic selected-state contract.',
+      );
+
+      assert.match(
+        sourceText,
+        /sami-contrast-invert/,
+        name +
+          ' primary controls must use the semantic inverted-contrast contract.',
+      );
+    }
+
+    assert.match(
+      taxEngine,
+      /sami-contrast-invert/,
+      'Tax Engine primary controls must use the semantic inverted-contrast contract.',
+    );
+
+    assert.match(
+      currencyCenter,
+      /sami-contrast-invert/,
+      'Currency Center primary controls must use the semantic inverted-contrast contract.',
+    );
+
+    assert.match(
+      workspaceShell,
+      /sami-contrast-invert/,
+      'Workspace recovery controls must use the semantic inverted-contrast contract.',
+    );
+
+    assert.match(
+      notifications,
+      /sami-contrast-invert/,
+      'Workspace notification controls must use the semantic inverted-contrast contract.',
+    );
+  },
+);
