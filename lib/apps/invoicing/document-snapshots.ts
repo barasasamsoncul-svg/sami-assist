@@ -435,7 +435,33 @@ async function loadIssuedInvoicePayload(
           )
             AS show_discount,
           template.footer_text,
-          template.terms_text
+          template.terms_text,
+          etims.status
+            AS etims_status,
+          etims.solution_type
+            AS etims_solution_type,
+          etims.environment
+            AS etims_environment,
+          etims.transaction_invoice_no
+            AS etims_transaction_invoice_no,
+          etims.receipt_no
+            AS etims_receipt_no,
+          etims.total_receipt_no
+            AS etims_total_receipt_no,
+          etims.sdc_id
+            AS etims_sdc_id,
+          etims.mrc_no
+            AS etims_mrc_no,
+          etims.internal_data
+            AS etims_internal_data,
+          etims.receipt_signature
+            AS etims_receipt_signature,
+          etims.verification_url
+            AS etims_verification_url,
+          etims.kra_result_code
+            AS etims_result_code,
+          etims.succeeded_at
+            AS etims_succeeded_at
         FROM invoicing_invoices i
         INNER JOIN invoicing_customers customer
           ON customer.id =
@@ -452,6 +478,15 @@ async function loadIssuedInvoicePayload(
              i.company_id
          AND template.deleted_at
              IS NULL
+        LEFT JOIN invoicing_etims_submissions etims
+          ON etims.company_id =
+             i.company_id
+         AND etims.invoice_id =
+             i.id
+         AND etims.submission_type =
+             'sale'
+         AND etims.status =
+             'succeeded'
         WHERE i.id =
               $1
           AND i.company_id =
@@ -626,6 +661,83 @@ async function loadIssuedInvoicePayload(
           ? String(
               row.payment_instructions,
             )
+          : null,
+      etims:
+        row.etims_status ===
+          'succeeded'
+          ? {
+              status:
+                'succeeded',
+              solutionType:
+                row.etims_solution_type ===
+                  'vscu'
+                  ? 'vscu'
+                  : 'oscu',
+              environment:
+                row.etims_environment ===
+                  'production'
+                  ? 'production'
+                  : 'sandbox',
+              transactionInvoiceNo:
+                Number(
+                  row.etims_transaction_invoice_no,
+                ),
+              receiptNo:
+                row.etims_receipt_no
+                  ? Number(
+                      row.etims_receipt_no,
+                    )
+                  : null,
+              totalReceiptNo:
+                row.etims_total_receipt_no
+                  ? Number(
+                      row.etims_total_receipt_no,
+                    )
+                  : null,
+              sdcId:
+                row.etims_sdc_id
+                  ? String(
+                      row.etims_sdc_id,
+                    )
+                  : null,
+              mrcNo:
+                row.etims_mrc_no
+                  ? String(
+                      row.etims_mrc_no,
+                    )
+                  : null,
+              internalData:
+                row.etims_internal_data
+                  ? String(
+                      row.etims_internal_data,
+                    )
+                  : null,
+              receiptSignature:
+                row.etims_receipt_signature
+                  ? String(
+                      row.etims_receipt_signature,
+                    )
+                  : null,
+              verificationUrl:
+                row.etims_verification_url
+                  ? String(
+                      row.etims_verification_url,
+                    )
+                  : null,
+              resultCode:
+                row.etims_result_code
+                  ? String(
+                      row.etims_result_code,
+                    )
+                  : null,
+              succeededAt:
+                row.etims_succeeded_at
+                  ? new Date(
+                      row.etims_succeeded_at,
+                    )
+                      .toISOString()
+                  : null,
+            }
           : null,
       template: {
         layout:
@@ -949,6 +1061,8 @@ export async function createPrimaryInvoiceDocumentSnapshot(
       null;
     reason:
       InvoiceSnapshotReason;
+    replacePrimary?:
+      boolean;
   },
 ) {
   await client.query(
@@ -974,7 +1088,8 @@ export async function createPrimaryInvoiceDocumentSnapshot(
     );
 
   if (
-    existing
+    existing &&
+    !input.replacePrimary
   ) {
     return existing;
   }
@@ -1045,6 +1160,34 @@ export async function createPrimaryInvoiceDocumentSnapshot(
         ?.next_version ||
       1,
     );
+
+  if (
+    existing &&
+    input.replacePrimary &&
+    existing.pdfSha256 ===
+      pdfSha256
+  ) {
+    return existing;
+  }
+
+  if (
+    existing &&
+    input.replacePrimary
+  ) {
+    await client.query(
+      `
+        UPDATE invoicing_document_snapshots
+        SET is_primary = FALSE
+        WHERE company_id = $1
+          AND invoice_id = $2
+          AND is_primary = TRUE
+      `,
+      [
+        input.companyId,
+        input.invoiceId,
+      ],
+    );
+  }
 
   const inserted =
     await client.query(
@@ -1285,6 +1428,96 @@ export async function getInvoiceDocumentSnapshot(
     : null;
 }
 
+
+
+export async function ensureFiscalizedInvoiceDocumentSnapshot(
+  pool:
+    Pool,
+  input: {
+    companyId:
+      string;
+    invoiceId:
+      string;
+    userId:
+      string |
+      null;
+  },
+) {
+  const existing =
+    await existingPrimarySnapshot(
+      pool,
+      input.companyId,
+      input.invoiceId,
+    );
+
+  const etims =
+    existing?.payload &&
+    typeof existing.payload ===
+      'object' &&
+    !Array.isArray(
+      existing.payload,
+    )
+      ? (
+          existing.payload as
+            Record<string, unknown>
+        ).etims
+      : null;
+
+  if (
+    etims &&
+    typeof etims ===
+      'object' &&
+    !Array.isArray(
+      etims,
+    ) &&
+    (
+      etims as
+        Record<string, unknown>
+    ).status ===
+      'succeeded'
+  ) {
+    return existing!;
+  }
+
+  const client =
+    await pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const snapshot =
+      await createPrimaryInvoiceDocumentSnapshot(
+        client,
+        {
+          ...input,
+          reason:
+            'manual',
+          replacePrimary:
+            true,
+        },
+      );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return snapshot;
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
 
 
 export async function ensureTenantInvoiceDocumentSnapshot(
