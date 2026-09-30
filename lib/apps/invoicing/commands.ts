@@ -14101,6 +14101,33 @@ export async function updateInvoicingSettings(
     );
   }
 
+  const configuredDefaultCurrency =
+    await context.pool.query(
+      `
+        SELECT code
+        FROM invoicing_currencies
+        WHERE company_id = $1
+          AND code = $2
+          AND is_active = TRUE
+        LIMIT 1
+      `,
+      [
+        context.companyId,
+        currency,
+      ],
+    );
+
+  if (
+    configuredDefaultCurrency
+      .rows.length !==
+    1
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Default currency must be active in Currency Center.',
+    );
+  }
+
   const rawDays =
     Number(
       input.defaultDueDays ??
