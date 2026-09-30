@@ -69,7 +69,8 @@ type AccountingLine = {
     'cash' |
     'customer_credit' |
     'returns' |
-    'bad_debt';
+    'bad_debt' |
+    'fx_gain_loss';
   description:
     string;
   debit:
@@ -135,6 +136,14 @@ const ACCOUNT_BLUEPRINT = {
       'SaMi Bad Debt Expense',
     accountType:
       'expense',
+  },
+  fx_gain_loss: {
+    suffix:
+      'FX',
+    name:
+      'SaMi Realized FX Gain / Loss',
+    accountType:
+      'income_other',
   },
 } as const;
 
@@ -835,20 +844,93 @@ export async function postInvoicePaymentAllocationToAccounting(
       string;
     allocationDate:
       string;
-    amount:
+    paymentAmount:
       number;
-    exchangeRate?:
+    invoiceAmount:
+      number;
+    paymentExchangeRate:
+      number;
+    invoiceExchangeRate:
       number;
   },
 ) {
-  const amount =
+  const paymentBaseAmount =
     money(
-      input.amount *
-      (
-        input.exchangeRate ||
-        1
-      ),
+      input.paymentAmount *
+      input.paymentExchangeRate,
     );
+
+  const invoiceBaseAmount =
+    money(
+      input.invoiceAmount *
+      input.invoiceExchangeRate,
+    );
+
+  const realizedFxAmount =
+    money(
+      paymentBaseAmount -
+      invoiceBaseAmount,
+    );
+
+  const lines:
+    AccountingLine[] = [
+      {
+        account:
+          'customer_credit',
+        description:
+          'Apply customer credit',
+        debit:
+          paymentBaseAmount,
+        credit:
+          0,
+      },
+      {
+        account:
+          'receivable',
+        description:
+          'Accounts receivable',
+        debit:
+          0,
+        credit:
+          invoiceBaseAmount,
+      },
+    ];
+
+  if (
+    realizedFxAmount >
+      0
+  ) {
+    lines.push(
+      {
+        account:
+          'fx_gain_loss',
+        description:
+          'Realized foreign exchange gain',
+        debit:
+          0,
+        credit:
+          realizedFxAmount,
+      },
+    );
+  } else if (
+    realizedFxAmount <
+      0
+  ) {
+    lines.push(
+      {
+        account:
+          'fx_gain_loss',
+        description:
+          'Realized foreign exchange loss',
+        debit:
+          Math.abs(
+            realizedFxAmount,
+          ),
+        credit:
+          0,
+      },
+    );
+  }
 
   return postJournal(
     client,
@@ -873,28 +955,7 @@ export async function postInvoicePaymentAllocationToAccounting(
         input.paymentNumber +
         ' allocated to invoice ' +
         input.invoiceNumber,
-      lines: [
-        {
-          account:
-            'customer_credit',
-          description:
-            'Apply customer credit',
-          debit:
-            amount,
-          credit:
-            0,
-        },
-        {
-          account:
-            'receivable',
-          description:
-            'Accounts receivable',
-          debit:
-            0,
-          credit:
-            amount,
-        },
-      ],
+      lines,
     },
   );
 }
