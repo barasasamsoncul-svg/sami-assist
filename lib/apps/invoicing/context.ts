@@ -674,6 +674,7 @@ export async function ensureCompanyDefaults(
       INSERT INTO invoicing_settings (
         company_id,
         default_currency,
+        base_currency,
         default_payment_terms_id,
         default_tax_rate_id,
         default_template_id,
@@ -681,6 +682,10 @@ export async function ensureCompanyDefaults(
       )
       SELECT
         c.id,
+        COALESCE(
+          c.currency,
+          'KES'
+        ),
         COALESCE(
           c.currency,
           'KES'
@@ -732,6 +737,57 @@ export async function ensureCompanyDefaults(
         company_id
       )
       DO NOTHING
+    `,
+    [
+      companyId,
+      userId,
+    ],
+  );
+
+  await pool.query(
+    `
+      INSERT INTO invoicing_currencies (
+        company_id,
+        code,
+        name,
+        symbol,
+        decimal_places,
+        is_active,
+        is_base,
+        created_by,
+        updated_by
+      )
+      SELECT
+        c.id,
+        COALESCE(
+          c.currency,
+          'KES'
+        ),
+        COALESCE(
+          c.currency,
+          'KES'
+        ),
+        COALESCE(
+          c.currency,
+          'KES'
+        ),
+        2,
+        TRUE,
+        TRUE,
+        $2,
+        $2
+      FROM companies c
+      WHERE c.id = $1
+      ON CONFLICT (
+        company_id,
+        code
+      )
+      DO UPDATE
+      SET
+        is_active = TRUE,
+        is_base = TRUE,
+        updated_by = EXCLUDED.updated_by,
+        updated_at = NOW()
     `,
     [
       companyId,
