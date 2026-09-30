@@ -28,7 +28,7 @@ export type PdfInvoice = {
   notes: string | null;
   terms: string | null;
   paymentInstructions: string | null;
-  etims: {
+  etims?: {
     status: string;
     scuId: string | null;
     scuReceiptNumber: string | null;
