@@ -19,13 +19,14 @@ const standaloneSurfaceFiles = [
   'app/apps/sales/page.tsx',
   'app/apps/sales/orders/[orderId]/page.tsx',
   'app/apps/sales/quotes/[quoteId]/page.tsx',
-  'app/apps/invoicing/page.tsx',
+  'app/apps/invoicing/InvoicingSectionPage.tsx',
   'app/apps/invoicing/[invoiceId]/page.tsx',
 ];
 
 const delegatingRouteFiles = [
   'app/apps/[appKey]/page.tsx',
   'app/apps/[appKey]/[section]/page.tsx',
+  'app/apps/invoicing/page.tsx',
 ];
 
 const allBusinessAppRouteFiles = [
@@ -333,12 +334,24 @@ test(
           'utf8',
         );
 
-      assert.match(
-        source,
-        /EnterpriseModulePage/,
-        path +
-          ' must delegate to the standalone enterprise app page',
-      );
+      if (
+        path ===
+          'app/apps/invoicing/page.tsx'
+      ) {
+        assert.match(
+          source,
+          /InvoicingSectionPage/,
+          path +
+            ' must delegate to the standalone Invoicing section surface',
+        );
+      } else {
+        assert.match(
+          source,
+          /EnterpriseModulePage/,
+          path +
+            ' must delegate to the standalone enterprise app page',
+        );
+      }
     }
 
     for (
