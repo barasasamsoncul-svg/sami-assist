@@ -86,7 +86,7 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
-      integrationProviders: true,
+      integrationProviders: false,
       apiEndpoints: false,
       dataExport: false,
       dataErasure: false,
