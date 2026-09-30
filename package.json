@@ -45,7 +45,8 @@
     "test:erp-integration": "node --conditions=react-server --import tsx --test tests/erp-parity-integration.test.ts",
     "test:app-ui": "node --import tsx --test tests/app-surfaces-ui.test.ts",
     "test:platform-closure": "node --conditions=react-server --import tsx --test tests/platform-kernel-closure.test.mjs tests/platform-kernel-plugin.test.ts",
-    "migrate:invoicing:release": "node --conditions=react-server --import tsx scripts/migrate-invoicing-before-release.ts"
+    "migrate:invoicing:release": "node --conditions=react-server --import tsx scripts/migrate-invoicing-before-release.ts",
+    "test:invoicing:release": "npm run test:invoicing && npm run test:locks && npm run test:module-migrations && npm run test:responsive && npm run test:app-ui && npm run test:erp-integration && npx tsc --noEmit && npm run build"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1133.0",
