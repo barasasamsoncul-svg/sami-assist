@@ -6401,8 +6401,12 @@ export async function allocateInvoicePayment(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .PAYMENT_RECORD,
+      [
+        INVOICING_PERMISSIONS
+          .PAYMENT_ALLOCATE,
+        INVOICING_PERMISSIONS
+          .PAYMENT_RECORD,
+      ],
     );
 
   const paymentId =
@@ -7080,8 +7084,12 @@ export async function reverseInvoicePaymentAllocation(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .PAYMENT_RECORD,
+      [
+        INVOICING_PERMISSIONS
+          .PAYMENT_REVERSE,
+        INVOICING_PERMISSIONS
+          .PAYMENT_RECORD,
+      ],
     );
 
   const allocationId =
@@ -7364,8 +7372,12 @@ export async function reconcileInvoicePayment(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .PAYMENT_RECORD,
+      [
+        INVOICING_PERMISSIONS
+          .PAYMENT_RECONCILE,
+        INVOICING_PERMISSIONS
+          .PAYMENT_RECORD,
+      ],
     );
 
   const paymentId =
@@ -7572,8 +7584,12 @@ export async function unreconcileInvoicePayment(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .PAYMENT_RECORD,
+      [
+        INVOICING_PERMISSIONS
+          .PAYMENT_RECONCILE,
+        INVOICING_PERMISSIONS
+          .PAYMENT_RECORD,
+      ],
     );
 
   const paymentId =
@@ -7816,8 +7832,12 @@ export async function refundInvoicePayment(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .PAYMENT_RECORD,
+      [
+        INVOICING_PERMISSIONS
+          .PAYMENT_REFUND,
+        INVOICING_PERMISSIONS
+          .PAYMENT_RECORD,
+      ],
     );
 
   const paymentId =
@@ -8119,8 +8139,12 @@ export async function reverseInvoicePaymentRefund(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .PAYMENT_RECORD,
+      [
+        INVOICING_PERMISSIONS
+          .PAYMENT_REVERSE,
+        INVOICING_PERMISSIONS
+          .PAYMENT_RECORD,
+      ],
     );
 
   const refundId =
@@ -8352,8 +8376,12 @@ export async function reverseInvoicePayment(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .PAYMENT_RECORD,
+      [
+        INVOICING_PERMISSIONS
+          .PAYMENT_REVERSE,
+        INVOICING_PERMISSIONS
+          .PAYMENT_RECORD,
+      ],
     );
 
   const paymentId =
@@ -8795,8 +8823,12 @@ export async function issueInvoiceCreditNote(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .CREDIT_NOTE_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .CREDIT_NOTE_ISSUE,
+        INVOICING_PERMISSIONS
+          .CREDIT_NOTE_MANAGE,
+      ],
     );
 
   const invoiceId =
@@ -9155,8 +9187,12 @@ export async function cancelInvoiceCreditNote(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .CREDIT_NOTE_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .CREDIT_NOTE_CANCEL,
+        INVOICING_PERMISSIONS
+          .CREDIT_NOTE_MANAGE,
+      ],
     );
 
   const creditNoteId =
@@ -9477,8 +9513,12 @@ export async function sendInvoiceReminder(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .INVOICE_SEND,
+      [
+        INVOICING_PERMISSIONS
+          .REMINDER_SEND,
+        INVOICING_PERMISSIONS
+          .INVOICE_SEND,
+      ],
     );
 
   const invoiceId =
@@ -9650,8 +9690,12 @@ export async function setInvoiceReminderControl(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .INVOICE_SEND,
+      [
+        INVOICING_PERMISSIONS
+          .REMINDER_MANAGE,
+        INVOICING_PERMISSIONS
+          .INVOICE_SEND,
+      ],
     );
 
   const invoiceId =
@@ -9768,8 +9812,12 @@ export async function setCustomerReminderControl(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .CUSTOMER_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .REMINDER_MANAGE,
+        INVOICING_PERMISSIONS
+          .CUSTOMER_MANAGE,
+      ],
     );
 
   const customerId =
@@ -9886,8 +9934,12 @@ export async function retryInvoiceReminder(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .INVOICE_SEND,
+      [
+        INVOICING_PERMISSIONS
+          .REMINDER_MANAGE,
+        INVOICING_PERMISSIONS
+          .INVOICE_SEND,
+      ],
     );
 
   const reminderId =
@@ -9962,8 +10014,12 @@ export async function saveDunningPolicy(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .SETTINGS_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .DUNNING_MANAGE,
+        INVOICING_PERMISSIONS
+          .SETTINGS_MANAGE,
+      ],
     );
 
   const policyId =
@@ -10462,8 +10518,12 @@ export async function issueCustomerPortalAccess(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .CUSTOMER_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .PORTAL_MANAGE,
+        INVOICING_PERMISSIONS
+          .CUSTOMER_MANAGE,
+      ],
     );
 
   const customerId =
@@ -10807,8 +10867,12 @@ export async function revokeCustomerPortalAccess(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .CUSTOMER_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .PORTAL_MANAGE,
+        INVOICING_PERMISSIONS
+          .CUSTOMER_MANAGE,
+      ],
     );
 
   const customerId =
@@ -10912,8 +10976,12 @@ export async function resolveCustomerPortalMessage(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .CUSTOMER_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .PORTAL_MANAGE,
+        INVOICING_PERMISSIONS
+          .CUSTOMER_MANAGE,
+      ],
     );
 
   const messageId =
@@ -11035,8 +11103,12 @@ export async function replyCustomerPortalMessage(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .CUSTOMER_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .PORTAL_MANAGE,
+        INVOICING_PERMISSIONS
+          .CUSTOMER_MANAGE,
+      ],
     );
 
   const messageId =
@@ -12507,8 +12579,12 @@ export async function retryRecurringInvoiceTemplate(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .RECURRING_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .RECURRING_RUN,
+        INVOICING_PERMISSIONS
+          .RECURRING_MANAGE,
+      ],
     );
 
   const recurringId =
@@ -12783,8 +12859,12 @@ export async function saveInvoicingTemplate(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .SETTINGS_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .TEMPLATE_MANAGE,
+        INVOICING_PERMISSIONS
+          .SETTINGS_MANAGE,
+      ],
     );
 
   await ensureCompanyDefaults(
@@ -13416,8 +13496,12 @@ export async function createInvoicingPaymentTerm(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .SETTINGS_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .PAYMENT_TERMS_MANAGE,
+        INVOICING_PERMISSIONS
+          .SETTINGS_MANAGE,
+      ],
     );
 
   return saveInvoicingPaymentTerm(
@@ -13747,8 +13831,12 @@ export async function updateInvoicingPaymentTerm(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .SETTINGS_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .PAYMENT_TERMS_MANAGE,
+        INVOICING_PERMISSIONS
+          .SETTINGS_MANAGE,
+      ],
     );
 
   const termId =
@@ -13771,8 +13859,12 @@ export async function setInvoicingPaymentTermActive(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .SETTINGS_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .PAYMENT_TERMS_MANAGE,
+        INVOICING_PERMISSIONS
+          .SETTINGS_MANAGE,
+      ],
     );
 
   const termId =
@@ -13869,8 +13961,12 @@ export async function createInvoicingTaxRate(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .SETTINGS_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .TAX_MANAGE,
+        INVOICING_PERMISSIONS
+          .SETTINGS_MANAGE,
+      ],
     );
 
   return saveInvoicingTaxRate(
@@ -14289,8 +14385,12 @@ export async function updateInvoicingTaxRate(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .SETTINGS_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .TAX_MANAGE,
+        INVOICING_PERMISSIONS
+          .SETTINGS_MANAGE,
+      ],
     );
 
   const taxId =
@@ -14313,8 +14413,12 @@ export async function setInvoicingTaxRateActive(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .SETTINGS_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .TAX_MANAGE,
+        INVOICING_PERMISSIONS
+          .SETTINGS_MANAGE,
+      ],
     );
 
   const taxId =

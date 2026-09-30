@@ -34,38 +34,75 @@ export const UUID_RE =
 
 
 export const INVOICING_PERMISSIONS = {
-  INVOICE_VIEW:
-    'invoicing.invoice.view',
-  INVOICE_CREATE:
-    'invoicing.invoice.create',
-  INVOICE_EDIT:
-    'invoicing.invoice.edit',
-  INVOICE_CONFIRM:
-    'invoicing.invoice.confirm',
-  INVOICE_SEND:
-    'invoicing.invoice.send',
-  INVOICE_CANCEL:
-    'invoicing.invoice.cancel',
-  PAYMENT_VIEW:
-    'invoicing.payment.view',
-  PAYMENT_RECORD:
-    'invoicing.payment.record',
-  CREDIT_NOTE_MANAGE:
-    'invoicing.credit_note.manage',
-  CUSTOMER_VIEW:
-    'invoicing.customer.view',
-  CUSTOMER_MANAGE:
-    'invoicing.customer.manage',
-  CATALOG_VIEW:
-    'invoicing.catalog.view',
-  CATALOG_MANAGE:
-    'invoicing.catalog.manage',
-  RECURRING_MANAGE:
-    'invoicing.recurring.manage',
-  REPORT_VIEW:
-    'invoicing.report.view',
-  SETTINGS_MANAGE:
-    'invoicing.settings.manage',
+  INVOICE_VIEW: 'invoicing.invoice.view',
+  INVOICE_CREATE: 'invoicing.invoice.create',
+  INVOICE_EDIT: 'invoicing.invoice.edit',
+  INVOICE_CONFIRM: 'invoicing.invoice.confirm',
+  INVOICE_SEND: 'invoicing.invoice.send',
+  INVOICE_CANCEL: 'invoicing.invoice.cancel',
+
+  PAYMENT_VIEW: 'invoicing.payment.view',
+  PAYMENT_RECORD: 'invoicing.payment.record',
+  PAYMENT_ALLOCATE: 'invoicing.payment.allocate',
+  PAYMENT_RECONCILE: 'invoicing.payment.reconcile',
+  PAYMENT_REFUND: 'invoicing.payment.refund',
+  PAYMENT_REVERSE: 'invoicing.payment.reverse',
+
+  CREDIT_NOTE_MANAGE: 'invoicing.credit_note.manage',
+  CREDIT_NOTE_VIEW: 'invoicing.credit_note.view',
+  CREDIT_NOTE_ISSUE: 'invoicing.credit_note.issue',
+  CREDIT_NOTE_APPLY: 'invoicing.credit_note.apply',
+  CREDIT_NOTE_REFUND: 'invoicing.credit_note.refund',
+  CREDIT_NOTE_CANCEL: 'invoicing.credit_note.cancel',
+
+  CUSTOMER_VIEW: 'invoicing.customer.view',
+  CUSTOMER_MANAGE: 'invoicing.customer.manage',
+  CATALOG_VIEW: 'invoicing.catalog.view',
+  CATALOG_MANAGE: 'invoicing.catalog.manage',
+
+  RETAINER_VIEW: 'invoicing.retainer.view',
+  RETAINER_MANAGE: 'invoicing.retainer.manage',
+  PAYMENT_PLAN_VIEW: 'invoicing.payment_plan.view',
+  PAYMENT_PLAN_MANAGE: 'invoicing.payment_plan.manage',
+
+  RECURRING_VIEW: 'invoicing.recurring.view',
+  RECURRING_MANAGE: 'invoicing.recurring.manage',
+  RECURRING_RUN: 'invoicing.recurring.run',
+
+  REMINDER_VIEW: 'invoicing.reminder.view',
+  REMINDER_SEND: 'invoicing.reminder.send',
+  REMINDER_MANAGE: 'invoicing.reminder.manage',
+  DUNNING_MANAGE: 'invoicing.dunning.manage',
+
+  PORTAL_VIEW: 'invoicing.portal.view',
+  PORTAL_MANAGE: 'invoicing.portal.manage',
+
+  CURRENCY_VIEW: 'invoicing.currency.view',
+  CURRENCY_MANAGE: 'invoicing.currency.manage',
+  TAX_VIEW: 'invoicing.tax.view',
+  TAX_MANAGE: 'invoicing.tax.manage',
+  PAYMENT_TERMS_MANAGE: 'invoicing.payment_terms.manage',
+  TEMPLATE_VIEW: 'invoicing.template.view',
+  TEMPLATE_MANAGE: 'invoicing.template.manage',
+
+  ETIMS_VIEW: 'invoicing.etims.view',
+  ETIMS_CONFIGURE: 'invoicing.etims.configure',
+  ETIMS_SUBMIT_INVOICE: 'invoicing.etims.submit_invoice',
+  ETIMS_SUBMIT_CREDIT: 'invoicing.etims.submit_credit',
+
+  EINVOICE_VIEW: 'invoicing.einvoice.view',
+  EINVOICE_CONFIGURE: 'invoicing.einvoice.configure',
+  EINVOICE_PARTICIPANT_MANAGE: 'invoicing.einvoice.participant_manage',
+  EINVOICE_GENERATE_INVOICE: 'invoicing.einvoice.generate_invoice',
+  EINVOICE_GENERATE_CREDIT: 'invoicing.einvoice.generate_credit',
+  EINVOICE_SUBMIT_INVOICE: 'invoicing.einvoice.submit_invoice',
+  EINVOICE_SUBMIT_CREDIT: 'invoicing.einvoice.submit_credit',
+  EINVOICE_EXPORT: 'invoicing.einvoice.export',
+
+  AUDIT_VIEW: 'invoicing.audit.view',
+  REPORT_VIEW: 'invoicing.report.view',
+  REPORT_EXPORT: 'invoicing.report.export',
+  SETTINGS_MANAGE: 'invoicing.settings.manage',
 } as const;
 
 
@@ -367,9 +404,30 @@ export function hasInvoicingPermission(
 }
 
 
+export function hasAnyInvoicingPermission(
+  isOwner:
+    boolean,
+  permissionSet:
+    ReadonlySet<string>,
+  permissions:
+    readonly string[],
+) {
+  return (
+    isOwner ||
+    permissions.some(
+      permission =>
+        permissionSet.has(
+          permission,
+        ),
+    )
+  );
+}
+
+
 export async function requireInvoicingContext(
   requiredPermission?:
-    string,
+    string |
+    readonly string[],
 ) {
   const [
     permissions,
@@ -460,20 +518,32 @@ export async function requireInvoicingContext(
     );
   }
 
+  const requiredPermissions =
+    requiredPermission
+      ? Array.isArray(
+          requiredPermission,
+        )
+        ? requiredPermission
+        : [
+            requiredPermission,
+          ]
+      : [];
+
   if (
-    requiredPermission &&
-    !hasInvoicingPermission(
+    requiredPermissions.length >
+      0 &&
+    !hasAnyInvoicingPermission(
       permissions.isOwner,
       permissions.permissionSet,
-      requiredPermission,
+      requiredPermissions,
     )
   ) {
     throw new InvoicingError(
       'INVOICING_PERMISSION_REQUIRED',
       'You do not have permission to perform this Invoicing action.',
       {
-        permission:
-          requiredPermission,
+        permissions:
+          requiredPermissions,
       },
     );
   }

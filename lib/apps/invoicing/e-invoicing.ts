@@ -18,6 +18,7 @@ import {
 
 import {
   cleanText,
+  hasAnyInvoicingPermission,
   hasInvoicingPermission,
   INVOICING_PERMISSIONS,
   InvoicingError,
@@ -3154,8 +3155,12 @@ export async function saveEInvoiceProfile(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .SETTINGS_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .EINVOICE_CONFIGURE,
+        INVOICING_PERMISSIONS
+          .SETTINGS_MANAGE,
+      ],
     );
 
   const id =
@@ -3603,8 +3608,12 @@ export async function saveEInvoiceParticipant(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .CUSTOMER_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .EINVOICE_PARTICIPANT_MANAGE,
+        INVOICING_PERMISSIONS
+          .CUSTOMER_MANAGE,
+      ],
     );
 
   const customerId =
@@ -3766,17 +3775,25 @@ export async function generateEInvoiceDocument(
       ? 'credit_note'
       : 'invoice';
 
-  const requiredPermission =
+  const requiredPermissions =
     kind ===
       'credit_note'
-      ? INVOICING_PERMISSIONS
-          .CREDIT_NOTE_MANAGE
-      : INVOICING_PERMISSIONS
-          .INVOICE_SEND;
+      ? [
+          INVOICING_PERMISSIONS
+            .EINVOICE_GENERATE_CREDIT,
+          INVOICING_PERMISSIONS
+            .CREDIT_NOTE_MANAGE,
+        ]
+      : [
+          INVOICING_PERMISSIONS
+            .EINVOICE_GENERATE_INVOICE,
+          INVOICING_PERMISSIONS
+            .INVOICE_SEND,
+        ];
 
   const context =
     await requireInvoicingContext(
-      requiredPermission,
+      requiredPermissions,
     );
 
   const sourceId =
@@ -4027,8 +4044,16 @@ export async function submitEInvoiceDocument(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .INVOICE_SEND,
+      [
+        INVOICING_PERMISSIONS
+          .EINVOICE_SUBMIT_INVOICE,
+        INVOICING_PERMISSIONS
+          .EINVOICE_SUBMIT_CREDIT,
+        INVOICING_PERMISSIONS
+          .INVOICE_SEND,
+        INVOICING_PERMISSIONS
+          .CREDIT_NOTE_MANAGE,
+      ],
     );
 
   const documentId =
@@ -4086,6 +4111,39 @@ export async function submitEInvoiceDocument(
       result
         .rows[0] as
           EInvoiceDocumentRow;
+
+    const canSubmitDocument =
+      document.document_kind ===
+        'credit_note'
+        ? hasAnyInvoicingPermission(
+            context.permissions.isOwner,
+            context.permissions.permissionSet,
+            [
+              INVOICING_PERMISSIONS
+                .EINVOICE_SUBMIT_CREDIT,
+              INVOICING_PERMISSIONS
+                .CREDIT_NOTE_MANAGE,
+            ],
+          )
+        : hasAnyInvoicingPermission(
+            context.permissions.isOwner,
+            context.permissions.permissionSet,
+            [
+              INVOICING_PERMISSIONS
+                .EINVOICE_SUBMIT_INVOICE,
+              INVOICING_PERMISSIONS
+                .INVOICE_SEND,
+            ],
+          );
+
+    if (
+      !canSubmitDocument
+    ) {
+      throw new InvoicingError(
+        'INVOICING_PERMISSION_REQUIRED',
+        'You do not have permission to submit this electronic fiscal document.',
+      );
+    }
 
     if (
       document
@@ -4564,8 +4622,12 @@ export async function markEInvoiceDocumentExported(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .INVOICE_VIEW,
+      [
+        INVOICING_PERMISSIONS
+          .EINVOICE_EXPORT,
+        INVOICING_PERMISSIONS
+          .INVOICE_VIEW,
+      ],
     );
 
   const documentId =
@@ -4620,8 +4682,12 @@ export async function getEInvoiceDocumentXml(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .INVOICE_VIEW,
+      [
+        INVOICING_PERMISSIONS
+          .EINVOICE_EXPORT,
+        INVOICING_PERMISSIONS
+          .INVOICE_VIEW,
+      ],
     );
 
   const id =
@@ -4706,45 +4772,60 @@ export async function getEInvoiceDocumentXml(
 export async function getEInvoiceWorkspaceData() {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .INVOICE_VIEW,
+      [
+        INVOICING_PERMISSIONS
+          .EINVOICE_VIEW,
+        INVOICING_PERMISSIONS
+          .INVOICE_VIEW,
+      ],
     );
+
+  const anyPermission =
+    (
+      permissions:
+        readonly string[],
+    ) =>
+      hasAnyInvoicingPermission(
+        context.permissions.isOwner,
+        context.permissions.permissionSet,
+        permissions,
+      );
 
   const canConfigure =
-    hasInvoicingPermission(
-      context
-        .permissions
-        .isOwner,
-      context
-        .permissions
-        .permissionSet,
-      INVOICING_PERMISSIONS
-        .SETTINGS_MANAGE,
-    );
-
+    anyPermission([
+      INVOICING_PERMISSIONS.EINVOICE_CONFIGURE,
+      INVOICING_PERMISSIONS.SETTINGS_MANAGE,
+    ]);
   const canManageParticipants =
-    hasInvoicingPermission(
-      context
-        .permissions
-        .isOwner,
-      context
-        .permissions
-        .permissionSet,
-      INVOICING_PERMISSIONS
-        .CUSTOMER_MANAGE,
-    );
-
-  const canSubmit =
-    hasInvoicingPermission(
-      context
-        .permissions
-        .isOwner,
-      context
-        .permissions
-        .permissionSet,
-      INVOICING_PERMISSIONS
-        .INVOICE_SEND,
-    );
+    anyPermission([
+      INVOICING_PERMISSIONS.EINVOICE_PARTICIPANT_MANAGE,
+      INVOICING_PERMISSIONS.CUSTOMER_MANAGE,
+    ]);
+  const canGenerateInvoice =
+    anyPermission([
+      INVOICING_PERMISSIONS.EINVOICE_GENERATE_INVOICE,
+      INVOICING_PERMISSIONS.INVOICE_SEND,
+    ]);
+  const canGenerateCredit =
+    anyPermission([
+      INVOICING_PERMISSIONS.EINVOICE_GENERATE_CREDIT,
+      INVOICING_PERMISSIONS.CREDIT_NOTE_MANAGE,
+    ]);
+  const canSubmitInvoice =
+    anyPermission([
+      INVOICING_PERMISSIONS.EINVOICE_SUBMIT_INVOICE,
+      INVOICING_PERMISSIONS.INVOICE_SEND,
+    ]);
+  const canSubmitCredit =
+    anyPermission([
+      INVOICING_PERMISSIONS.EINVOICE_SUBMIT_CREDIT,
+      INVOICING_PERMISSIONS.CREDIT_NOTE_MANAGE,
+    ]);
+  const canExport =
+    anyPermission([
+      INVOICING_PERMISSIONS.EINVOICE_EXPORT,
+      INVOICING_PERMISSIONS.INVOICE_VIEW,
+    ]);
 
   const [
     profiles,
@@ -4930,7 +5011,11 @@ export async function getEInvoiceWorkspaceData() {
     capabilities: {
       canConfigure,
       canManageParticipants,
-      canSubmit,
+      canGenerateInvoice,
+      canGenerateCredit,
+      canSubmitInvoice,
+      canSubmitCredit,
+      canExport,
     },
     standards: {
       syntax:

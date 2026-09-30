@@ -80,8 +80,12 @@ export async function recordCustomerRetainer(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .PAYMENT_RECORD,
+      [
+        INVOICING_PERMISSIONS
+          .RETAINER_MANAGE,
+        INVOICING_PERMISSIONS
+          .PAYMENT_RECORD,
+      ],
     );
 
   const customerId =

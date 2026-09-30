@@ -44,7 +44,11 @@ type WorkspaceData = {
   capabilities: {
     canConfigure: boolean;
     canManageParticipants: boolean;
-    canSubmit: boolean;
+    canGenerateInvoice: boolean;
+    canGenerateCredit: boolean;
+    canSubmitInvoice: boolean;
+    canSubmitCredit: boolean;
+    canExport: boolean;
   };
   standards: {
     syntax: string;
@@ -1647,6 +1651,10 @@ export default function EInvoicingWorkspace() {
                         }),
                       )
                   }
+                  allowed={
+                    data.capabilities
+                      .canGenerateInvoice
+                  }
                   busy={
                     busy
                   }
@@ -1696,6 +1704,10 @@ export default function EInvoicingWorkspace() {
                             ),
                         }),
                       )
+                  }
+                  allowed={
+                    data.capabilities
+                      .canGenerateCredit
                   }
                   busy={
                     busy
@@ -1772,34 +1784,46 @@ export default function EInvoicingWorkspace() {
                                 </div>
 
                                 <div className="flex flex-wrap gap-2">
-                                  <button
-                                    type="button"
-                                    className={secondaryButtonClass}
-                                    onClick={
-                                      async () => {
-                                        await run(
-                                          'mark_exported',
-                                          {
-                                            documentId:
-                                              document.id,
-                                          },
-                                          'XML export recorded.',
-                                        );
-
-                                        window.location.href =
-                                          '/api/apps/invoicing/e-invoicing/' +
-                                          document.id +
-                                          '/xml';
-                                      }
-                                    }
-                                  >
-                                    <Download className="h-3.5 w-3.5" />
-                                    XML
-                                  </button>
-
                                   {
                                     data.capabilities
-                                      .canSubmit &&
+                                      .canExport &&
+                                    (
+                                                                        <button
+                                                                          type="button"
+                                                                          className={secondaryButtonClass}
+                                                                          onClick={
+                                                                            async () => {
+                                                                              await run(
+                                                                                'mark_exported',
+                                                                                {
+                                                                                  documentId:
+                                                                                    document.id,
+                                                                                },
+                                                                                'XML export recorded.',
+                                                                              );
+                                      
+                                                                              window.location.href =
+                                                                                '/api/apps/invoicing/e-invoicing/' +
+                                                                                document.id +
+                                                                                '/xml';
+                                                                            }
+                                                                          }
+                                                                        >
+                                                                          <Download className="h-3.5 w-3.5" />
+                                                                          XML
+                                                                        </button>
+                                    )
+                                  }
+
+                                  {
+                                    (
+                                      document.documentKind ===
+                                        'credit_note'
+                                        ? data.capabilities
+                                            .canSubmitCredit
+                                        : data.capabilities
+                                            .canSubmitInvoice
+                                    ) &&
                                     document
                                       .validationStatus ===
                                       'valid' &&
@@ -1931,6 +1955,7 @@ function DocumentGenerator({
   profiles,
   options,
   busy,
+  allowed,
   onGenerate,
 }: {
   title:
@@ -1951,6 +1976,8 @@ function DocumentGenerator({
     }>;
   busy:
     boolean;
+  allowed:
+    boolean;
   onGenerate:
     (
       sourceId:
@@ -1962,6 +1989,12 @@ function DocumentGenerator({
         unknown
       >;
 }) {
+  if (
+    !allowed
+  ) {
+    return null;
+  }
+
   return (
     <section className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-4 sm:p-5">
       <div className="flex items-center gap-2">

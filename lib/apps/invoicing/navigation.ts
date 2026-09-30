@@ -239,7 +239,7 @@ export const INVOICING_NAVIGATION:
       group:
         'Money',
       capability:
-        'canViewPayments',
+        'canViewRetainers',
       sidebar:
         true,
     },
@@ -256,7 +256,7 @@ export const INVOICING_NAVIGATION:
       group:
         'Money',
       capability:
-        'canViewPayments',
+        'canViewPaymentPlans',
       sidebar:
         true,
     },
@@ -273,7 +273,7 @@ export const INVOICING_NAVIGATION:
       group:
         'Money',
       capability:
-        'canView',
+        'canViewCurrencies',
       sidebar:
         true,
     },
@@ -290,7 +290,7 @@ export const INVOICING_NAVIGATION:
       group:
         'Compliance',
       capability:
-        'canView',
+        'canViewTax',
       sidebar:
         true,
     },
@@ -307,7 +307,7 @@ export const INVOICING_NAVIGATION:
       group:
         'Compliance',
       capability:
-        'canView',
+        'canViewEtims',
       sidebar:
         true,
     },
@@ -324,7 +324,7 @@ export const INVOICING_NAVIGATION:
       group:
         'Compliance',
       capability:
-        'canView',
+        'canViewEInvoicing',
       sidebar:
         true,
     },
@@ -341,7 +341,7 @@ export const INVOICING_NAVIGATION:
       group:
         'Automation',
       capability:
-        'canManageRecurring',
+        'canViewRecurring',
       sidebar:
         true,
     },
@@ -358,7 +358,7 @@ export const INVOICING_NAVIGATION:
       group:
         'Automation',
       capability:
-        'canSend',
+        'canViewReminders',
       sidebar:
         true,
     },
@@ -375,7 +375,7 @@ export const INVOICING_NAVIGATION:
       group:
         'Automation',
       capability:
-        'canViewCustomers',
+        'canViewPortal',
       sidebar:
         true,
     },
