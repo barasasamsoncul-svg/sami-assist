@@ -249,7 +249,22 @@ export const INVOICING_AI_TOOLS:
             input.invoiceId,
           );
 
+        if (!detail) {
+          return {
+            found:
+              false,
+            invoiceId:
+              cleanText(
+                input,
+                'invoiceId',
+                80,
+              ),
+          };
+        }
+
         return {
+          found:
+            true,
           invoice: {
             id:
               detail.id,
