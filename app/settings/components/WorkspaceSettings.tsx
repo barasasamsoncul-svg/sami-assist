@@ -1987,7 +1987,7 @@ export default function WorkspaceSettings({
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <h2 className="truncate text-base font-black text-slate-950 dark:text-white">
+                  <h2 className="break-words whitespace-normal text-base font-black text-slate-950 dark:text-white">
                     {workspace.name}
                   </h2>
 
@@ -2638,7 +2638,7 @@ export default function WorkspaceSettings({
                 </div>
 
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-black text-slate-950 dark:text-white">
+                  <p className="break-words whitespace-normal text-sm font-black text-slate-950 dark:text-white">
                     {getPersonName(
                       owner,
                     )}
