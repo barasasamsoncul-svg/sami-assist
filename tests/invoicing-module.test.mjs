@@ -7007,3 +7007,75 @@ test('Invoicing Part 25 provides permission-gated base-currency analytics and ex
     'Part 25 is a read-model/UI upgrade and must not invent a tenant schema migration.',
   );
 });
+
+
+test('Invoicing Part 26 isolates optional cross-module Accounting writes without weakening idempotency', async () => {
+  const [
+    accounting,
+    manifest,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/accounting.ts'),
+    source('lib/modules/first-party.ts'),
+  ]);
+
+  assert.match(
+    accounting,
+    /SAVEPOINT invoicing_accounting_boundary/,
+    'Optional Accounting writes must be isolated from the authoritative Invoicing transaction.',
+  );
+
+  assert.match(
+    accounting,
+    /ROLLBACK TO SAVEPOINT invoicing_accounting_boundary/,
+    'A failed Accounting write must be rolled back without rolling back the invoice mutation.',
+  );
+
+  assert.match(
+    accounting,
+    /invoicing\.integration\.accounting_failed/,
+    'Recoverable Accounting integration failures must leave an operational event for diagnosis and retry.',
+  );
+
+  assert.match(
+    accounting,
+    /accountingEventKey/,
+    'Failure evidence must retain the idempotent accounting event key.',
+  );
+
+  assert.match(
+    accounting,
+    /event_key = \$2[\s\S]*invoicing_accounting_links/s,
+    'Existing Accounting postings must remain keyed by the integration event ledger.',
+  );
+
+  for (const dependency of [
+    'accounting',
+    'payments',
+    'crm',
+    'sales',
+    'inventory',
+    'tax',
+    'subscriptions',
+    'customer_portal',
+    'documents',
+    'sign',
+    'cash_flow',
+  ]) {
+    assert.match(
+      manifest,
+      new RegExp(
+        "key:\\s*[\\\"']invoicing[\\\"'][\\s\\S]*optionalDepends:[\\s\\S]*[\\\"']" +
+        dependency +
+        "[\\\"']",
+        's',
+      ),
+      dependency + ' must remain an optional Invoicing integration rather than a hard dependency.',
+    );
+  }
+
+  assert.match(
+    manifest,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.21\.0['"]/s,
+    'Part 26 hardens runtime boundaries without changing tenant schema.',
+  );
+});
