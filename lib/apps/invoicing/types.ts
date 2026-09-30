@@ -195,6 +195,43 @@ export type InvoicingRetainerSummary = {
   }>;
 };
 
+export type InvoicingPaymentPlanInstallmentSummary = {
+  id: string;
+  sequenceNo: number;
+  label: string | null;
+  dueDate: string;
+  amount: number;
+  paidAmount: number;
+  balanceDue: number;
+  status: string;
+};
+
+export type InvoicingPaymentPlanSummary = {
+  id: string;
+  planNumber: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  customerId: string;
+  customerName: string;
+  name: string;
+  status: string;
+  currency: string;
+  originalDueDate: string;
+  finalDueDate: string;
+  totalAmount: number;
+  paidAmount: number;
+  balanceDue: number;
+  installmentCount: number;
+  paidInstallments: number;
+  overdueInstallments: number;
+  nextDueDate: string | null;
+  notes: string | null;
+  activatedAt: string;
+  cancelledAt: string | null;
+  cancellationReason: string | null;
+  installments: InvoicingPaymentPlanInstallmentSummary[];
+};
+
 export type InvoicingDunningStageSummary = {
   id: string;
   stageKey: string;
@@ -499,6 +536,7 @@ export type InvoicingWorkspaceData = {
   customers: InvoicingCustomerSummary[];
   payments: InvoicingPaymentSummary[];
   retainers: InvoicingRetainerSummary[];
+  paymentPlans: InvoicingPaymentPlanSummary[];
   recurring: InvoicingRecurringSummary[];
   dunningPolicies: InvoicingDunningPolicySummary[];
   reminders: InvoicingReminderSummary[];
