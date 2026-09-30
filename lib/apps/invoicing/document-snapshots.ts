@@ -1064,25 +1064,6 @@ export async function createPrimaryInvoiceDocumentSnapshot(
     return existing;
   }
 
-  if (
-    existing &&
-    input.replacePrimary
-  ) {
-    await client.query(
-      `
-        UPDATE invoicing_document_snapshots
-        SET is_primary = FALSE
-        WHERE company_id = $1
-          AND invoice_id = $2
-          AND is_primary = TRUE
-      `,
-      [
-        input.companyId,
-        input.invoiceId,
-      ],
-    );
-  }
-
   const source =
     await loadIssuedInvoicePayload(
       client,
@@ -1174,7 +1155,7 @@ export async function createPrimaryInvoiceDocumentSnapshot(
           $1,$2,
           'invoice',
           $3,
-          TRUE,
+          $14::boolean,
           $4,$5,$6,
           $7::jsonb,
           $8,$9,$10,$11,$12,
@@ -1215,6 +1196,7 @@ export async function createPrimaryInvoiceDocumentSnapshot(
         pdf.length,
         input.userId,
         source.confirmedAt,
+        !input.replacePrimary,
       ],
     );
 
@@ -1365,12 +1347,6 @@ export async function getInvoiceDocumentSnapshot(
                $3::uuid
           )
         ORDER BY
-          CASE
-            WHEN is_primary =
-                 TRUE
-            THEN 0
-            ELSE 1
-          END,
           version_no DESC
         LIMIT 1
       `,
