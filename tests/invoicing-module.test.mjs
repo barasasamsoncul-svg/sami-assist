@@ -6074,3 +6074,147 @@ test('Invoicing Part 18 gives SaMi AI deep permission-aware receivables intellig
   );
 });
 
+
+
+test('Invoicing Part 19 centralizes standalone navigation and keeps route structure permission-aware', async () => {
+  const [
+    navigation,
+    sectionPage,
+    shell,
+    workspaceClient,
+    rootPage,
+    workspaceSettings,
+    manifest,
+    runtimeMigrations,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/navigation.ts'),
+    source('app/apps/invoicing/InvoicingSectionPage.tsx'),
+    source('app/apps/invoicing/InvoicingModuleShell.tsx'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('app/apps/invoicing/page.tsx'),
+    source('app/settings/components/WorkspaceSettings.tsx'),
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+  ]);
+
+  for (const route of [
+    '/apps/invoicing',
+    '/apps/invoicing/new',
+    '/apps/invoicing/invoices',
+    '/apps/invoicing/customers/new',
+    '/apps/invoicing/customers',
+    '/apps/invoicing/items/new',
+    '/apps/invoicing/items',
+    '/apps/invoicing/payments/new',
+    '/apps/invoicing/payments',
+    '/apps/invoicing/currencies',
+    '/apps/invoicing/tax-engine',
+    '/apps/invoicing/etims',
+    '/apps/invoicing/e-invoicing',
+    '/apps/invoicing/retainers',
+    '/apps/invoicing/payment-plans',
+    '/apps/invoicing/recurring',
+    '/apps/invoicing/reminders',
+    '/apps/invoicing/portal',
+    '/apps/invoicing/reports',
+    '/apps/invoicing/settings',
+  ]) {
+    assert.ok(
+      navigation.includes(route),
+      route + ' must be owned by the shared standalone navigation registry.',
+    );
+  }
+
+  for (const group of [
+    'Overview',
+    'Billing',
+    'Money',
+    'Compliance',
+    'Automation',
+    'Insights',
+    'Configuration',
+  ]) {
+    assert.ok(
+      navigation.includes("'" + group + "'"),
+      group + ' must remain an explicit Invoicing navigation group.',
+    );
+  }
+
+  for (const capability of [
+    'canView',
+    'canCreate',
+    'canManageCustomers',
+    'canViewCustomers',
+    'canManageCatalog',
+    'canViewCatalog',
+    'canRecordPayment',
+    'canViewPayments',
+    'canManageRecurring',
+    'canSend',
+    'canViewReports',
+    'canManageSettings',
+  ]) {
+    assert.match(
+      navigation,
+      new RegExp("capability:\\s*['\"]" + capability + "['\"]"),
+      capability + ' must remain enforced by the route registry.',
+    );
+  }
+
+  assert.match(navigation, /INVOICING_ROUTE_VIEWS/);
+  assert.match(navigation, /INVOICING_NAVIGATION/);
+  assert.match(navigation, /INVOICING_SIDEBAR_VIEWS/);
+  assert.match(navigation, /canAccessInvoicingView/);
+  assert.match(navigation, /getInvoicingParentView/);
+
+  assert.match(sectionPage, /INVOICING_SIDEBAR_VIEWS/);
+  assert.match(sectionPage, /canAccessInvoicingView/);
+  assert.match(sectionPage, /getInvoicingParentView/);
+  assert.match(sectionPage, /sectionLabel:[\s\S]*item\.group/s);
+  assert.doesNotMatch(sectionPage, /const VIEW_PATHS/);
+  assert.doesNotMatch(sectionPage, /function canOpenView/);
+
+  assert.match(shell, /sectionLabel/);
+  assert.match(shell, /previousSection/);
+  assert.match(shell, /fixed inset-y-0 left-0 z-50 w-\[286px\]/);
+  assert.match(shell, /fixed inset-0 z-\[90\] lg:hidden/);
+  assert.match(shell, /max-w-\[72px\][\s\S]*truncate/s);
+  assert.doesNotMatch(
+    shell,
+    /WorkspaceTutorialToggle/,
+    'Tutorial activation must not be duplicated in the Invoicing shell.',
+  );
+
+  assert.match(workspaceClient, /getInvoicingRoutePath/);
+  assert.match(workspaceClient, /INVOICING_NAVIGATION\[view\]\.title/);
+  assert.match(workspaceClient, /INVOICING_NAVIGATION\[view\]\.description/);
+  assert.match(workspaceClient, /INVOICING_SIDEBAR_VIEWS/);
+  assert.doesNotMatch(workspaceClient, /const NAV:/);
+  assert.doesNotMatch(workspaceClient, /const VIEW_PATHS:/);
+  assert.doesNotMatch(workspaceClient, /const VIEW_COPY:/);
+  assert.doesNotMatch(
+    workspaceClient,
+    /WorkspaceTutorialToggle/,
+    'The app may render an enabled tutorial, but the activation switch belongs to Workspace Settings.',
+  );
+
+  assert.match(rootPage, /INVOICING_ROUTE_VIEWS/);
+  assert.match(rootPage, /getInvoicingRoutePath/);
+  assert.doesNotMatch(rootPage, /LEGACY_VIEW_PATHS/);
+
+  assert.match(workspaceSettings, /Workspace tutorials/);
+  assert.match(workspaceSettings, /WorkspaceTutorialToggle/);
+  assert.match(workspaceSettings, /Tutorials are opt-in/);
+
+  assert.match(
+    manifest,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
+    'Part 19 changes application navigation only and must not fake a tenant schema version.',
+  );
+
+  assert.doesNotMatch(
+    runtimeMigrations,
+    /INVOICING_2_18_0_TO_2_19_0/,
+    'Standalone navigation work must not create an empty database migration.',
+  );
+});
