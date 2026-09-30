@@ -13766,9 +13766,57 @@ async function saveInvoicingTaxRate(
     );
   }
 
+  const code =
+    cleanText(
+      input.code,
+      80,
+    ) ||
+    null;
+
+  const jurisdictionCode =
+    cleanText(
+      input.jurisdictionCode,
+      80,
+    ) ||
+    null;
+
+  const priceIncluded =
+    input.priceIncluded ===
+      true ||
+    input.priceIncluded ===
+      'true';
+
+  const validFrom =
+    input.validFrom
+      ? isoDate(
+          input.validFrom,
+        )
+      : null;
+
+  const validTo =
+    input.validTo
+      ? isoDate(
+          input.validTo,
+        )
+      : null;
+
+  if (
+    validFrom &&
+    validTo &&
+    validTo <
+      validFrom
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Tax valid-to date cannot be before valid-from date.',
+    );
+  }
+
   const makeDefault =
     input.isDefault ===
-    true;
+      true ||
+    input.isDefault ===
+      'true';
 
   const client =
     await context.pool.connect();
@@ -13873,8 +13921,13 @@ async function saveInvoicingTaxRate(
               rate = $4,
               tax_type = $5,
               country_code = $6,
-              is_default = $7,
-              updated_by = $8,
+              code = $7,
+              jurisdiction_code = $8,
+              price_included = $9,
+              valid_from = $10,
+              valid_to = $11,
+              is_default = $12,
+              updated_by = $13,
               updated_at = NOW()
             WHERE id = $1
               AND company_id = $2
@@ -13894,6 +13947,11 @@ async function saveInvoicingTaxRate(
             taxType,
             countryCode ||
               null,
+            code,
+            jurisdictionCode,
+            priceIncluded,
+            validFrom,
+            validTo,
             makeDefault,
             context.userId,
           ],
@@ -13908,12 +13966,17 @@ async function saveInvoicingTaxRate(
               rate,
               tax_type,
               country_code,
+              code,
+              jurisdiction_code,
+              price_included,
+              valid_from,
+              valid_to,
               is_default,
               created_by,
               updated_by
             )
             VALUES (
-              $1,$2,$3,$4,$5,$6,$7,$7
+              $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13
             )
             RETURNING
               id,
@@ -13929,6 +13992,11 @@ async function saveInvoicingTaxRate(
             taxType,
             countryCode ||
               null,
+            code,
+            jurisdictionCode,
+            priceIncluded,
+            validFrom,
+            validTo,
             makeDefault,
             context.userId,
           ],
