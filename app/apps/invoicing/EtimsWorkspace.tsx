@@ -45,7 +45,8 @@ type EtimsData = {
   };
   capabilities: {
     canConfigure: boolean;
-    canSubmit: boolean;
+    canSubmitInvoice: boolean;
+    canSubmitCredit: boolean;
   };
   endpointConfigured: boolean;
   productionNotice: string;
@@ -1945,7 +1946,7 @@ export default function EtimsWorkspace({
 
                                 {
                                   data.capabilities
-                                    .canSubmit &&
+                                    .canSubmitInvoice &&
                                   invoice.etimsStatus !==
                                     'succeeded' &&
                                   (
@@ -2002,7 +2003,7 @@ export default function EtimsWorkspace({
 
                 {
                   data.capabilities
-                    .canSubmit &&
+                    .canSubmitCredit &&
                   data.creditNotes
                     .length >
                     0

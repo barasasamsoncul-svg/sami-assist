@@ -322,8 +322,12 @@ export async function saveInvoicingCurrency(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .SETTINGS_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .CURRENCY_MANAGE,
+        INVOICING_PERMISSIONS
+          .SETTINGS_MANAGE,
+      ],
     );
 
   const code =
@@ -566,8 +570,12 @@ export async function saveInvoicingExchangeRate(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .SETTINGS_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .CURRENCY_MANAGE,
+        INVOICING_PERMISSIONS
+          .SETTINGS_MANAGE,
+      ],
     );
 
   const settings =

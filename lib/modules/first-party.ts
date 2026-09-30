@@ -723,6 +723,15 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
           write: ["invoicing.settings.manage"],
         },
       },
+      {
+        key: "audit_log",
+        label: "Immutable invoicing audit log",
+        table: "invoicing_audit_log",
+        companyScoped: true,
+        permissions: {
+          read: ["invoicing.audit.view"],
+        },
+      },
     ],
     security: {
       permissions: [
@@ -742,6 +751,57 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
         { key: "invoicing.recurring.manage", name: "Manage recurring invoices", resource: "recurring", action: "manage", scope: "company", defaultSystemRoles: ["admin"] },
         { key: "invoicing.report.view", name: "View invoicing reports", resource: "report", action: "view", scope: "company", defaultSystemRoles: ["admin","member"] },
         { key: "invoicing.settings.manage", name: "Manage invoicing settings", resource: "settings", action: "manage", scope: "company", defaultSystemRoles: ["admin"] },
+        { key: "invoicing.payment.allocate", name: "Allocate invoice payments", resource: "payment", action: "allocate", scope: "company", defaultSystemRoles: ["admin"] },
+        { key: "invoicing.payment.reconcile", name: "Reconcile invoice payments", resource: "payment", action: "reconcile", scope: "company", defaultSystemRoles: ["admin"] },
+        { key: "invoicing.payment.refund", name: "Refund invoice payments", resource: "payment", action: "refund", scope: "company", defaultSystemRoles: ["admin"] },
+        { key: "invoicing.payment.reverse", name: "Reverse invoice payments", resource: "payment", action: "reverse", scope: "company", defaultSystemRoles: ["admin"] },
+
+        { key: "invoicing.credit_note.view", name: "View credit notes", resource: "credit_note", action: "view", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "invoicing.credit_note.issue", name: "Issue credit notes", resource: "credit_note", action: "issue", scope: "company", defaultSystemRoles: ["admin"] },
+        { key: "invoicing.credit_note.apply", name: "Apply customer credits", resource: "credit_note", action: "apply", scope: "company", defaultSystemRoles: ["admin"] },
+        { key: "invoicing.credit_note.refund", name: "Refund customer credits", resource: "credit_note", action: "refund", scope: "company", defaultSystemRoles: ["admin"] },
+        { key: "invoicing.credit_note.cancel", name: "Cancel credit notes", resource: "credit_note", action: "cancel", scope: "company", defaultSystemRoles: ["admin"] },
+
+        { key: "invoicing.retainer.view", name: "View retainers and deposits", resource: "retainer", action: "view", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "invoicing.retainer.manage", name: "Manage retainers and deposits", resource: "retainer", action: "manage", scope: "company", defaultSystemRoles: ["admin"] },
+        { key: "invoicing.payment_plan.view", name: "View payment plans", resource: "payment_plan", action: "view", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "invoicing.payment_plan.manage", name: "Manage payment plans", resource: "payment_plan", action: "manage", scope: "company", defaultSystemRoles: ["admin"] },
+
+        { key: "invoicing.recurring.view", name: "View recurring invoices", resource: "recurring", action: "view", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "invoicing.recurring.run", name: "Run recurring invoices", resource: "recurring", action: "run", scope: "company", defaultSystemRoles: ["admin"] },
+
+        { key: "invoicing.reminder.view", name: "View reminders", resource: "reminder", action: "view", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "invoicing.reminder.send", name: "Send payment reminders", resource: "reminder", action: "send", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "invoicing.reminder.manage", name: "Manage reminder holds and retries", resource: "reminder", action: "manage", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "invoicing.dunning.manage", name: "Manage dunning policies", resource: "dunning_policy", action: "manage", scope: "company", defaultSystemRoles: ["admin"] },
+
+        { key: "invoicing.portal.view", name: "View customer portal activity", resource: "portal_access", action: "view", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "invoicing.portal.manage", name: "Manage customer portal access", resource: "portal_access", action: "manage", scope: "company", defaultSystemRoles: ["admin","member"] },
+
+        { key: "invoicing.currency.view", name: "View billing currencies", resource: "currency", action: "view", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "invoicing.currency.manage", name: "Manage billing currencies", resource: "currency", action: "manage", scope: "company", defaultSystemRoles: ["admin"] },
+        { key: "invoicing.tax.view", name: "View tax configuration", resource: "tax_group", action: "view", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "invoicing.tax.manage", name: "Manage tax configuration", resource: "tax_group", action: "manage", scope: "company", defaultSystemRoles: ["admin"] },
+        { key: "invoicing.payment_terms.manage", name: "Manage payment terms", resource: "settings", action: "manage_payment_terms", scope: "company", defaultSystemRoles: ["admin"] },
+        { key: "invoicing.template.view", name: "View invoice templates", resource: "settings", action: "view_templates", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "invoicing.template.manage", name: "Manage invoice templates", resource: "settings", action: "manage_templates", scope: "company", defaultSystemRoles: ["admin"] },
+
+        { key: "invoicing.etims.view", name: "View Kenya eTIMS", resource: "etims_submission", action: "view", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "invoicing.etims.configure", name: "Configure Kenya eTIMS", resource: "etims_profile", action: "configure", scope: "company", defaultSystemRoles: ["admin"] },
+        { key: "invoicing.etims.submit_invoice", name: "Submit invoices to Kenya eTIMS", resource: "etims_submission", action: "submit_invoice", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "invoicing.etims.submit_credit", name: "Submit credit notes to Kenya eTIMS", resource: "etims_submission", action: "submit_credit", scope: "company", defaultSystemRoles: ["admin"] },
+
+        { key: "invoicing.einvoice.view", name: "View international e-invoicing", resource: "einvoice_document", action: "view", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "invoicing.einvoice.configure", name: "Configure international e-invoicing", resource: "einvoice_profile", action: "configure", scope: "company", defaultSystemRoles: ["admin"] },
+        { key: "invoicing.einvoice.participant_manage", name: "Manage e-invoicing participants", resource: "einvoice_participant", action: "manage", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "invoicing.einvoice.generate_invoice", name: "Generate electronic invoices", resource: "einvoice_document", action: "generate_invoice", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "invoicing.einvoice.generate_credit", name: "Generate electronic credit notes", resource: "einvoice_document", action: "generate_credit", scope: "company", defaultSystemRoles: ["admin"] },
+        { key: "invoicing.einvoice.submit_invoice", name: "Submit electronic invoices", resource: "einvoice_document", action: "submit_invoice", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "invoicing.einvoice.submit_credit", name: "Submit electronic credit notes", resource: "einvoice_document", action: "submit_credit", scope: "company", defaultSystemRoles: ["admin"] },
+        { key: "invoicing.einvoice.export", name: "Export electronic invoice XML", resource: "einvoice_document", action: "export", scope: "company", defaultSystemRoles: ["admin","member"] },
+
+        { key: "invoicing.audit.view", name: "View immutable invoicing audit trail", resource: "audit_log", action: "view", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "invoicing.report.export", name: "Export invoicing reports", resource: "report", action: "export", scope: "company", defaultSystemRoles: ["admin","member"] },
       ],
       recordPolicies: [
         { key: "invoicing.invoice.company", name: "Invoices in current company", resourceKey: "invoice", operations: ["read","create","write"], scope: "company" },
@@ -772,6 +832,7 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
         { key: "invoicing.etims_profile.company", name: "eTIMS profile in current company", resourceKey: "etims_profile", operations: ["read","create","write"], scope: "company" },
         { key: "invoicing.etims_submission.company", name: "eTIMS submissions in current company", resourceKey: "etims_submission", operations: ["read","create","write"], scope: "company" },
         { key: "invoicing.settings.company", name: "Invoicing settings in current company", resourceKey: "settings", operations: ["read","write"], scope: "company" },
+        { key: "invoicing.audit.company", name: "Immutable audit records in current company", resourceKey: "audit_log", operations: ["read"], scope: "company" },
       ],
       fieldPolicies: [],
     },

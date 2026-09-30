@@ -1350,8 +1350,12 @@ export async function resolveInvoicingTaxTreatment(
 
 async function taxAdminContext() {
   return requireInvoicingContext(
-    INVOICING_PERMISSIONS
-      .SETTINGS_MANAGE,
+    [
+      INVOICING_PERMISSIONS
+        .TAX_MANAGE,
+      INVOICING_PERMISSIONS
+        .SETTINGS_MANAGE,
+    ],
   );
 }
 

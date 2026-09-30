@@ -6,6 +6,7 @@ import type {
 
 import {
   ensureCompanyDefaults,
+  hasAnyInvoicingPermission,
   hasInvoicingPermission,
   INVOICING_PERMISSIONS,
   money,
@@ -209,107 +210,169 @@ function capabilities(
         permission,
       );
 
+  const anyAllowed =
+    (
+      ...permissions:
+        string[]
+    ) =>
+      hasAnyInvoicingPermission(
+        isOwner,
+        permissionSet,
+        permissions,
+      );
+
   const canViewCustomers =
-    allowed(
-      INVOICING_PERMISSIONS
-        .CUSTOMER_VIEW,
-    ) ||
-    allowed(
-      INVOICING_PERMISSIONS
-        .CUSTOMER_MANAGE,
+    anyAllowed(
+      INVOICING_PERMISSIONS.CUSTOMER_VIEW,
+      INVOICING_PERMISSIONS.CUSTOMER_MANAGE,
     );
-
   const canViewCatalog =
-    allowed(
-      INVOICING_PERMISSIONS
-        .CATALOG_VIEW,
-    ) ||
-    allowed(
-      INVOICING_PERMISSIONS
-        .CATALOG_MANAGE,
+    anyAllowed(
+      INVOICING_PERMISSIONS.CATALOG_VIEW,
+      INVOICING_PERMISSIONS.CATALOG_MANAGE,
     );
-
   const canViewPayments =
-    allowed(
-      INVOICING_PERMISSIONS
-        .PAYMENT_VIEW,
-    ) ||
-    allowed(
-      INVOICING_PERMISSIONS
-        .PAYMENT_RECORD,
+    anyAllowed(
+      INVOICING_PERMISSIONS.PAYMENT_VIEW,
+      INVOICING_PERMISSIONS.PAYMENT_RECORD,
+    );
+  const canIssueCredit =
+    anyAllowed(
+      INVOICING_PERMISSIONS.CREDIT_NOTE_ISSUE,
+      INVOICING_PERMISSIONS.CREDIT_NOTE_MANAGE,
+    );
+  const canApplyCredit =
+    anyAllowed(
+      INVOICING_PERMISSIONS.CREDIT_NOTE_APPLY,
+      INVOICING_PERMISSIONS.CREDIT_NOTE_MANAGE,
+    );
+  const canRefundCredit =
+    anyAllowed(
+      INVOICING_PERMISSIONS.CREDIT_NOTE_REFUND,
+      INVOICING_PERMISSIONS.CREDIT_NOTE_MANAGE,
+    );
+  const canCancelCredit =
+    anyAllowed(
+      INVOICING_PERMISSIONS.CREDIT_NOTE_CANCEL,
+      INVOICING_PERMISSIONS.CREDIT_NOTE_MANAGE,
     );
 
   return {
-    canView:
-      allowed(
-        INVOICING_PERMISSIONS
-          .INVOICE_VIEW,
-      ),
+    canView: allowed(INVOICING_PERMISSIONS.INVOICE_VIEW),
     canCreate:
-      allowed(
-        INVOICING_PERMISSIONS
-          .INVOICE_CREATE,
-      ) &&
+      allowed(INVOICING_PERMISSIONS.INVOICE_CREATE) &&
       canViewCustomers,
     canEdit:
-      allowed(
-        INVOICING_PERMISSIONS
-          .INVOICE_EDIT,
-      ) &&
+      allowed(INVOICING_PERMISSIONS.INVOICE_EDIT) &&
       canViewCustomers,
-    canConfirm:
-      allowed(
-        INVOICING_PERMISSIONS
-          .INVOICE_CONFIRM,
-      ),
-    canCancel:
-      allowed(
-        INVOICING_PERMISSIONS
-          .INVOICE_CANCEL,
-      ),
-    canSend:
-      allowed(
-        INVOICING_PERMISSIONS
-          .INVOICE_SEND,
-      ),
+    canConfirm: allowed(INVOICING_PERMISSIONS.INVOICE_CONFIRM),
+    canCancel: allowed(INVOICING_PERMISSIONS.INVOICE_CANCEL),
+    canSend: allowed(INVOICING_PERMISSIONS.INVOICE_SEND),
+
     canViewPayments,
-    canRecordPayment:
-      allowed(
-        INVOICING_PERMISSIONS
-          .PAYMENT_RECORD,
-      ),
+    canRecordPayment: allowed(INVOICING_PERMISSIONS.PAYMENT_RECORD),
+    canAllocatePayment:
+      anyAllowed(INVOICING_PERMISSIONS.PAYMENT_ALLOCATE, INVOICING_PERMISSIONS.PAYMENT_RECORD),
+    canReconcilePayment:
+      anyAllowed(INVOICING_PERMISSIONS.PAYMENT_RECONCILE, INVOICING_PERMISSIONS.PAYMENT_RECORD),
+    canRefundPayment:
+      anyAllowed(INVOICING_PERMISSIONS.PAYMENT_REFUND, INVOICING_PERMISSIONS.PAYMENT_RECORD),
+    canReversePayment:
+      anyAllowed(INVOICING_PERMISSIONS.PAYMENT_REVERSE, INVOICING_PERMISSIONS.PAYMENT_RECORD),
+
     canCredit:
-      allowed(
-        INVOICING_PERMISSIONS
-          .CREDIT_NOTE_MANAGE,
-      ),
+      canIssueCredit ||
+      canApplyCredit ||
+      canRefundCredit ||
+      canCancelCredit,
+    canViewCredits:
+      anyAllowed(INVOICING_PERMISSIONS.CREDIT_NOTE_VIEW, INVOICING_PERMISSIONS.CREDIT_NOTE_MANAGE, INVOICING_PERMISSIONS.INVOICE_VIEW),
+    canIssueCredit,
+    canApplyCredit,
+    canRefundCredit,
+    canCancelCredit,
+
     canViewCustomers,
-    canManageCustomers:
-      allowed(
-        INVOICING_PERMISSIONS
-          .CUSTOMER_MANAGE,
-      ),
+    canManageCustomers: allowed(INVOICING_PERMISSIONS.CUSTOMER_MANAGE),
     canViewCatalog,
-    canManageCatalog:
-      allowed(
-        INVOICING_PERMISSIONS
-          .CATALOG_MANAGE,
-      ),
-    canManageRecurring:
-      allowed(
-        INVOICING_PERMISSIONS
-          .RECURRING_MANAGE,
-      ),
-    canViewReports:
-      allowed(
-        INVOICING_PERMISSIONS
-          .REPORT_VIEW,
-      ),
-    canManageSettings:
-      allowed(
-        INVOICING_PERMISSIONS
-          .SETTINGS_MANAGE,
-      ),
+    canManageCatalog: allowed(INVOICING_PERMISSIONS.CATALOG_MANAGE),
+
+    canViewRetainers:
+      anyAllowed(INVOICING_PERMISSIONS.RETAINER_VIEW, INVOICING_PERMISSIONS.PAYMENT_VIEW, INVOICING_PERMISSIONS.PAYMENT_RECORD),
+    canManageRetainers:
+      anyAllowed(INVOICING_PERMISSIONS.RETAINER_MANAGE, INVOICING_PERMISSIONS.PAYMENT_RECORD),
+    canViewPaymentPlans:
+      anyAllowed(INVOICING_PERMISSIONS.PAYMENT_PLAN_VIEW, INVOICING_PERMISSIONS.PAYMENT_VIEW, INVOICING_PERMISSIONS.PAYMENT_RECORD),
+    canManagePaymentPlans:
+      anyAllowed(INVOICING_PERMISSIONS.PAYMENT_PLAN_MANAGE, INVOICING_PERMISSIONS.PAYMENT_RECORD),
+
+    canViewRecurring:
+      anyAllowed(INVOICING_PERMISSIONS.RECURRING_VIEW, INVOICING_PERMISSIONS.RECURRING_MANAGE, INVOICING_PERMISSIONS.INVOICE_VIEW),
+    canManageRecurring: allowed(INVOICING_PERMISSIONS.RECURRING_MANAGE),
+    canRunRecurring:
+      anyAllowed(INVOICING_PERMISSIONS.RECURRING_RUN, INVOICING_PERMISSIONS.RECURRING_MANAGE),
+
+    canViewReminders:
+      anyAllowed(INVOICING_PERMISSIONS.REMINDER_VIEW, INVOICING_PERMISSIONS.INVOICE_VIEW, INVOICING_PERMISSIONS.INVOICE_SEND),
+    canSendReminder:
+      anyAllowed(INVOICING_PERMISSIONS.REMINDER_SEND, INVOICING_PERMISSIONS.INVOICE_SEND),
+    canManageReminders:
+      anyAllowed(INVOICING_PERMISSIONS.REMINDER_MANAGE, INVOICING_PERMISSIONS.INVOICE_SEND, INVOICING_PERMISSIONS.CUSTOMER_MANAGE),
+    canManageDunning:
+      anyAllowed(INVOICING_PERMISSIONS.DUNNING_MANAGE, INVOICING_PERMISSIONS.SETTINGS_MANAGE),
+
+    canViewPortal:
+      anyAllowed(INVOICING_PERMISSIONS.PORTAL_VIEW, INVOICING_PERMISSIONS.CUSTOMER_VIEW, INVOICING_PERMISSIONS.CUSTOMER_MANAGE),
+    canManagePortal:
+      anyAllowed(INVOICING_PERMISSIONS.PORTAL_MANAGE, INVOICING_PERMISSIONS.CUSTOMER_MANAGE),
+
+    canViewCurrencies:
+      anyAllowed(INVOICING_PERMISSIONS.CURRENCY_VIEW, INVOICING_PERMISSIONS.INVOICE_VIEW),
+    canManageCurrencies:
+      anyAllowed(INVOICING_PERMISSIONS.CURRENCY_MANAGE, INVOICING_PERMISSIONS.SETTINGS_MANAGE),
+    canViewTax:
+      anyAllowed(INVOICING_PERMISSIONS.TAX_VIEW, INVOICING_PERMISSIONS.INVOICE_VIEW),
+    canManageTax:
+      anyAllowed(INVOICING_PERMISSIONS.TAX_MANAGE, INVOICING_PERMISSIONS.SETTINGS_MANAGE),
+    canManagePaymentTerms:
+      anyAllowed(INVOICING_PERMISSIONS.PAYMENT_TERMS_MANAGE, INVOICING_PERMISSIONS.SETTINGS_MANAGE),
+    canViewTemplates:
+      anyAllowed(INVOICING_PERMISSIONS.TEMPLATE_VIEW, INVOICING_PERMISSIONS.INVOICE_VIEW),
+    canManageTemplates:
+      anyAllowed(INVOICING_PERMISSIONS.TEMPLATE_MANAGE, INVOICING_PERMISSIONS.SETTINGS_MANAGE),
+
+    canViewEtims:
+      anyAllowed(INVOICING_PERMISSIONS.ETIMS_VIEW, INVOICING_PERMISSIONS.INVOICE_VIEW),
+    canConfigureEtims:
+      anyAllowed(INVOICING_PERMISSIONS.ETIMS_CONFIGURE, INVOICING_PERMISSIONS.SETTINGS_MANAGE),
+    canSubmitEtimsInvoice:
+      anyAllowed(INVOICING_PERMISSIONS.ETIMS_SUBMIT_INVOICE, INVOICING_PERMISSIONS.INVOICE_SEND),
+    canSubmitEtimsCredit:
+      anyAllowed(INVOICING_PERMISSIONS.ETIMS_SUBMIT_CREDIT, INVOICING_PERMISSIONS.CREDIT_NOTE_MANAGE),
+
+    canViewEInvoicing:
+      anyAllowed(INVOICING_PERMISSIONS.EINVOICE_VIEW, INVOICING_PERMISSIONS.INVOICE_VIEW),
+    canConfigureEInvoicing:
+      anyAllowed(INVOICING_PERMISSIONS.EINVOICE_CONFIGURE, INVOICING_PERMISSIONS.SETTINGS_MANAGE),
+    canManageEInvoicingParticipants:
+      anyAllowed(INVOICING_PERMISSIONS.EINVOICE_PARTICIPANT_MANAGE, INVOICING_PERMISSIONS.CUSTOMER_MANAGE),
+    canGenerateEInvoice:
+      anyAllowed(INVOICING_PERMISSIONS.EINVOICE_GENERATE_INVOICE, INVOICING_PERMISSIONS.INVOICE_SEND),
+    canGenerateEInvoiceCredit:
+      anyAllowed(INVOICING_PERMISSIONS.EINVOICE_GENERATE_CREDIT, INVOICING_PERMISSIONS.CREDIT_NOTE_MANAGE),
+    canSubmitEInvoice:
+      anyAllowed(INVOICING_PERMISSIONS.EINVOICE_SUBMIT_INVOICE, INVOICING_PERMISSIONS.INVOICE_SEND),
+    canSubmitEInvoiceCredit:
+      anyAllowed(INVOICING_PERMISSIONS.EINVOICE_SUBMIT_CREDIT, INVOICING_PERMISSIONS.CREDIT_NOTE_MANAGE),
+    canExportEInvoice:
+      anyAllowed(INVOICING_PERMISSIONS.EINVOICE_EXPORT, INVOICING_PERMISSIONS.INVOICE_VIEW),
+
+    canViewAudit:
+      anyAllowed(INVOICING_PERMISSIONS.AUDIT_VIEW, INVOICING_PERMISSIONS.INVOICE_VIEW),
+    canViewReports: allowed(INVOICING_PERMISSIONS.REPORT_VIEW),
+    canExportReports:
+      anyAllowed(INVOICING_PERMISSIONS.REPORT_EXPORT, INVOICING_PERMISSIONS.REPORT_VIEW),
+    canManageSettings: allowed(INVOICING_PERMISSIONS.SETTINGS_MANAGE),
   };
 }
 
@@ -2469,7 +2532,7 @@ export async function getInvoicingWorkspaceData():
         : [],
 
     retainers:
-      access.canViewPayments
+      access.canViewRetainers
         ? retainers.rows.map(
             row => ({
               id: String(row.retainer_id),
@@ -2534,7 +2597,7 @@ export async function getInvoicingWorkspaceData():
         : [],
 
     paymentPlans:
-      access.canViewPayments
+      access.canViewPaymentPlans
         ? paymentPlans.rows.map(
             row => ({
               id:
@@ -2689,7 +2752,7 @@ export async function getInvoicingWorkspaceData():
         : [],
 
     recurring:
-      access.canManageRecurring
+      access.canViewRecurring
         ? recurring.rows.map(
         row => ({
           id:
@@ -3176,7 +3239,7 @@ export async function getInvoicingWorkspaceData():
       ),
 
     portalAccess:
-      access.canViewCustomers
+      access.canViewPortal
         ? portalAccess.rows.map(
             row => ({
               id:
@@ -3220,7 +3283,7 @@ export async function getInvoicingWorkspaceData():
         : [],
 
     portalMessages:
-      access.canViewCustomers
+      access.canViewPortal
         ? portalMessages.rows.map(
             row => ({
               id:
@@ -4047,21 +4110,23 @@ export async function getInvoicingInvoiceDetail(
     );
 
   const canViewPayments =
-    hasInvoicingPermission(
-      context.permissions
-        .isOwner,
-      context.permissions
-        .permissionSet,
-      INVOICING_PERMISSIONS
-        .PAYMENT_VIEW,
-    ) ||
-    hasInvoicingPermission(
-      context.permissions
-        .isOwner,
-      context.permissions
-        .permissionSet,
-      INVOICING_PERMISSIONS
-        .PAYMENT_RECORD,
+    hasAnyInvoicingPermission(
+      context.permissions.isOwner,
+      context.permissions.permissionSet,
+      [
+        INVOICING_PERMISSIONS.PAYMENT_VIEW,
+        INVOICING_PERMISSIONS.PAYMENT_RECORD,
+      ],
+    );
+
+  const canViewAudit =
+    hasAnyInvoicingPermission(
+      context.permissions.isOwner,
+      context.permissions.permissionSet,
+      [
+        INVOICING_PERMISSIONS.AUDIT_VIEW,
+        INVOICING_PERMISSIONS.INVOICE_VIEW,
+      ],
     );
 
   const [
@@ -4471,16 +4536,20 @@ export async function getInvoicingInvoiceDetail(
         ],
       ),
 
-      queryInvoiceAuditSafely(
-        context.pool,
-        invoiceId,
-        context.companyId,
-      ),
+      canViewAudit
+        ? queryInvoiceAuditSafely(
+            context.pool,
+            invoiceId,
+            context.companyId,
+          )
+        : Promise.resolve({ rows: [] }),
 
-      queryInvoicingAuditIntegritySafely(
-        context.pool,
-        context.companyId,
-      ),
+      canViewAudit
+        ? queryInvoicingAuditIntegritySafely(
+            context.pool,
+            context.companyId,
+          )
+        : Promise.resolve({ rows: [] }),
     ]);
 
   if (

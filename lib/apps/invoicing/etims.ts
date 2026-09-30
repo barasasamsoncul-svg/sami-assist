@@ -21,6 +21,7 @@ import {
 
 import {
   cleanText,
+  hasAnyInvoicingPermission,
   hasInvoicingPermission,
   INVOICING_PERMISSIONS,
   InvoicingError,
@@ -2136,28 +2137,48 @@ async function transmitSubmission(
 export async function getEtimsWorkspaceData() {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .INVOICE_VIEW,
+      [
+        INVOICING_PERMISSIONS
+          .ETIMS_VIEW,
+        INVOICING_PERMISSIONS
+          .INVOICE_VIEW,
+      ],
     );
 
   const canConfigure =
-    hasInvoicingPermission(
-      context.permissions
-        .isOwner,
-      context.permissions
-        .permissionSet,
-      INVOICING_PERMISSIONS
-        .SETTINGS_MANAGE,
+    hasAnyInvoicingPermission(
+      context.permissions.isOwner,
+      context.permissions.permissionSet,
+      [
+        INVOICING_PERMISSIONS
+          .ETIMS_CONFIGURE,
+        INVOICING_PERMISSIONS
+          .SETTINGS_MANAGE,
+      ],
     );
 
-  const canSubmit =
-    hasInvoicingPermission(
-      context.permissions
-        .isOwner,
-      context.permissions
-        .permissionSet,
-      INVOICING_PERMISSIONS
-        .INVOICE_SEND,
+  const canSubmitInvoice =
+    hasAnyInvoicingPermission(
+      context.permissions.isOwner,
+      context.permissions.permissionSet,
+      [
+        INVOICING_PERMISSIONS
+          .ETIMS_SUBMIT_INVOICE,
+        INVOICING_PERMISSIONS
+          .INVOICE_SEND,
+      ],
+    );
+
+  const canSubmitCredit =
+    hasAnyInvoicingPermission(
+      context.permissions.isOwner,
+      context.permissions.permissionSet,
+      [
+        INVOICING_PERMISSIONS
+          .ETIMS_SUBMIT_CREDIT,
+        INVOICING_PERMISSIONS
+          .CREDIT_NOTE_MANAGE,
+      ],
     );
 
   const [
@@ -2398,7 +2419,8 @@ export async function getEtimsWorkspaceData() {
     },
     capabilities: {
       canConfigure,
-      canSubmit,
+      canSubmitInvoice,
+      canSubmitCredit,
     },
     endpointConfigured,
     productionNotice:
@@ -2803,8 +2825,12 @@ export async function saveEtimsProfile(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .SETTINGS_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .ETIMS_CONFIGURE,
+        INVOICING_PERMISSIONS
+          .SETTINGS_MANAGE,
+      ],
     );
 
   const solutionType =
@@ -3058,8 +3084,12 @@ export async function saveEtimsItemMapping(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .SETTINGS_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .ETIMS_CONFIGURE,
+        INVOICING_PERMISSIONS
+          .SETTINGS_MANAGE,
+      ],
     );
 
   const catalogItemId =
@@ -3246,8 +3276,12 @@ export async function syncEtimsItem(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .SETTINGS_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .ETIMS_CONFIGURE,
+        INVOICING_PERMISSIONS
+          .SETTINGS_MANAGE,
+      ],
     );
 
   const mappingId =
@@ -3573,8 +3607,12 @@ export async function saveEtimsTaxMapping(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .SETTINGS_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .ETIMS_CONFIGURE,
+        INVOICING_PERMISSIONS
+          .SETTINGS_MANAGE,
+      ],
     );
 
   const taxRateId =
@@ -3840,8 +3878,12 @@ export async function saveEtimsTaxMapping(
 export async function initializeEtimsDevice() {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .SETTINGS_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .ETIMS_CONFIGURE,
+        INVOICING_PERMISSIONS
+          .SETTINGS_MANAGE,
+      ],
     );
 
   const client =
@@ -4012,8 +4054,12 @@ export async function initializeEtimsDevice() {
 export async function syncEtimsReferenceData() {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .SETTINGS_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .ETIMS_CONFIGURE,
+        INVOICING_PERMISSIONS
+          .SETTINGS_MANAGE,
+      ],
     );
 
   const client =
@@ -4292,8 +4338,12 @@ export async function submitInvoiceToEtims(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .INVOICE_SEND,
+      [
+        INVOICING_PERMISSIONS
+          .ETIMS_SUBMIT_INVOICE,
+        INVOICING_PERMISSIONS
+          .INVOICE_SEND,
+      ],
     );
 
   const invoiceId =
@@ -4671,8 +4721,12 @@ export async function submitCreditNoteToEtims(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .CREDIT_NOTE_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .ETIMS_SUBMIT_CREDIT,
+        INVOICING_PERMISSIONS
+          .CREDIT_NOTE_MANAGE,
+      ],
     );
 
   const creditNoteId =

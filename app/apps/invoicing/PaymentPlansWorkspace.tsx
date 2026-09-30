@@ -545,7 +545,7 @@ export default function PaymentPlansWorkspace({
 
       {
         data.capabilities
-          .canRecordPayment &&
+          .canManagePaymentPlans &&
         (
           <section className="sami-surface rounded-[24px] p-4 sm:p-5">
             <div>
@@ -1239,7 +1239,7 @@ export default function PaymentPlansWorkspace({
 
                   {
                     data.capabilities
-                      .canRecordPayment &&
+                      .canManagePaymentPlans &&
                     [
                       'active',
                       'overdue',

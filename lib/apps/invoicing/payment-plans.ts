@@ -179,8 +179,12 @@ export async function createInvoicePaymentPlan(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .PAYMENT_RECORD,
+      [
+        INVOICING_PERMISSIONS
+          .PAYMENT_PLAN_MANAGE,
+        INVOICING_PERMISSIONS
+          .PAYMENT_RECORD,
+      ],
     );
 
   const invoiceId =
@@ -763,8 +767,12 @@ export async function cancelInvoicePaymentPlan(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .PAYMENT_RECORD,
+      [
+        INVOICING_PERMISSIONS
+          .PAYMENT_PLAN_MANAGE,
+        INVOICING_PERMISSIONS
+          .PAYMENT_RECORD,
+      ],
     );
 
   const planId =

@@ -282,7 +282,7 @@ export default function TaxEngineWorkspace({
 
       {
         data.capabilities
-          .canManageSettings &&
+          .canManageTax &&
         (
           <div className="grid gap-4 xl:grid-cols-2">
             <Card

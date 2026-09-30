@@ -184,8 +184,12 @@ export async function issueInvoiceCreditNote(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .CREDIT_NOTE_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .CREDIT_NOTE_ISSUE,
+        INVOICING_PERMISSIONS
+          .CREDIT_NOTE_MANAGE,
+      ],
     );
 
   const invoiceId =
@@ -1015,8 +1019,12 @@ export async function applyInvoiceCreditNote(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .CREDIT_NOTE_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .CREDIT_NOTE_APPLY,
+        INVOICING_PERMISSIONS
+          .CREDIT_NOTE_MANAGE,
+      ],
     );
 
   const creditNoteId =
@@ -1403,8 +1411,12 @@ export async function reverseInvoiceCreditApplication(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .CREDIT_NOTE_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .CREDIT_NOTE_APPLY,
+        INVOICING_PERMISSIONS
+          .CREDIT_NOTE_MANAGE,
+      ],
     );
 
   const applicationId =
@@ -1626,8 +1638,12 @@ export async function refundInvoiceCreditNote(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .CREDIT_NOTE_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .CREDIT_NOTE_REFUND,
+        INVOICING_PERMISSIONS
+          .CREDIT_NOTE_MANAGE,
+      ],
     );
 
   const creditNoteId =
@@ -1951,8 +1967,12 @@ export async function reverseInvoiceCreditNoteRefund(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .CREDIT_NOTE_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .CREDIT_NOTE_REFUND,
+        INVOICING_PERMISSIONS
+          .CREDIT_NOTE_MANAGE,
+      ],
     );
 
   const refundId =
@@ -2152,8 +2172,12 @@ export async function cancelInvoiceCreditNote(
 ) {
   const context =
     await requireInvoicingContext(
-      INVOICING_PERMISSIONS
-        .CREDIT_NOTE_MANAGE,
+      [
+        INVOICING_PERMISSIONS
+          .CREDIT_NOTE_CANCEL,
+        INVOICING_PERMISSIONS
+          .CREDIT_NOTE_MANAGE,
+      ],
     );
 
   const creditNoteId =
