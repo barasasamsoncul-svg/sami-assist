@@ -754,18 +754,20 @@ function mappedTaxableAmount(
   line:
     Record<string, unknown>,
 ) {
-  const components =
-    Array.isArray(
-      line.tax_components,
-    )
-      ? line.tax_components
-          .map(
-            jsonObject,
-          )
-      : [];
+  const componentCount =
+    Number(
+      line.tax_component_count ??
+      (
+        Array.isArray(
+          line.tax_components,
+        )
+          ? line.tax_components.length
+          : 0
+      ),
+    );
 
   if (
-    components.length >
+    componentCount >
       1
   ) {
     throw new InvoicingError(
@@ -779,6 +781,27 @@ function mappedTaxableAmount(
       },
     );
   }
+
+  if (
+    line.taxable_amount_override !==
+      undefined &&
+    line.taxable_amount_override !==
+      null
+  ) {
+    return money(
+      line.taxable_amount_override,
+    );
+  }
+
+  const components =
+    Array.isArray(
+      line.tax_components,
+    )
+      ? line.tax_components
+          .map(
+            jsonObject,
+          )
+      : [];
 
   if (
     components.length ===
@@ -2950,24 +2973,21 @@ export async function initializeEtimsDevice() {
         .SETTINGS_MANAGE,
     );
 
-  const profile =
-    await loadProfile(
-      await context.pool
-        .connect()
-        .then(
-          async client => {
-            try {
-              return client;
-            } catch (
-              error
-            ) {
-              client.release();
-              throw error;
-            }
-          },
-        ),
-      context.companyId,
-    );
+  const client =
+    await context.pool.connect();
+
+  let profile:
+    EtimsProfileRow;
+
+  try {
+    profile =
+      await loadProfile(
+        client,
+        context.companyId,
+      );
+  } finally {
+    client.release();
+  }
 
   const remote =
     await etimsPost(
@@ -3395,16 +3415,11 @@ export async function submitInvoiceToEtims(
           ),
       );
 
-    const transactionInvoiceNo =
-      await reserveTransactionNumber(
-        client,
-        context.companyId,
-      );
-
     const payload =
       baseSalesPayload({
         profile,
-        transactionInvoiceNo,
+        transactionInvoiceNo:
+          1,
         customerPin:
           optionalPin(
             prepared
@@ -3462,7 +3477,6 @@ export async function submitInvoiceToEtims(
           payload,
           userId:
             context.userId,
-          transactionInvoiceNo,
         },
       );
 
@@ -3576,6 +3590,23 @@ async function creditFiscalizationSource(
           invoice_item.tax_group_id,
           credit_item.tax_amount,
           invoice_item.tax_components,
+          JSONB_ARRAY_LENGTH(
+            COALESCE(
+              invoice_item.tax_components,
+              '[]'::jsonb
+            )
+          ) AS tax_component_count,
+          CASE
+            WHEN source_invoice.tax_calculation = 'inclusive'
+            THEN GREATEST(
+              credit_item.line_total - credit_item.tax_amount,
+              0
+            )
+            ELSE GREATEST(
+              credit_item.subtotal - credit_item.discount_amount,
+              0
+            )
+          END AS taxable_amount_override,
           credit_item.subtotal,
           credit_item.line_total,
           map.item_classification_code,
@@ -3586,6 +3617,12 @@ async function creditFiscalizationSource(
           taxmap.tax_type_code,
           taxmap.kra_rate
         FROM invoicing_credit_note_items credit_item
+        INNER JOIN invoicing_credit_notes credit_doc
+          ON credit_doc.id = credit_item.credit_note_id
+         AND credit_doc.company_id = credit_item.company_id
+        INNER JOIN invoicing_invoices source_invoice
+          ON source_invoice.id = credit_doc.invoice_id
+         AND source_invoice.company_id = credit_item.company_id
         LEFT JOIN invoicing_invoice_items invoice_item
           ON invoice_item.id = credit_item.invoice_item_id
          AND invoice_item.company_id = credit_item.company_id
@@ -3706,16 +3743,11 @@ export async function submitCreditNoteToEtims(
           ),
       );
 
-    const transactionInvoiceNo =
-      await reserveTransactionNumber(
-        client,
-        context.companyId,
-      );
-
     const payload =
       baseSalesPayload({
         profile,
-        transactionInvoiceNo,
+        transactionInvoiceNo:
+          1,
         customerPin:
           optionalPin(
             prepared
@@ -3791,7 +3823,6 @@ export async function submitCreditNoteToEtims(
           payload,
           userId:
             context.userId,
-          transactionInvoiceNo,
         },
       );
 
