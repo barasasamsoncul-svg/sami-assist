@@ -48,6 +48,11 @@ CREATE TABLE IF NOT EXISTS public.invoicing_tax_rates (
   tax_type VARCHAR(40) NOT NULL DEFAULT 'vat',
   country_code VARCHAR(2),
   external_tax_id UUID,
+  code VARCHAR(80),
+  jurisdiction_code VARCHAR(80),
+  price_included BOOLEAN NOT NULL DEFAULT FALSE,
+  valid_from DATE,
+  valid_to DATE,
   is_default BOOLEAN NOT NULL DEFAULT FALSE,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   created_by UUID,
@@ -62,6 +67,177 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_invoicing_tax_rates_company_name
   WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_invoicing_tax_rates_company
   ON public.invoicing_tax_rates(company_id, is_active)
+  WHERE deleted_at IS NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_invoicing_tax_rate_code
+  ON public.invoicing_tax_rates(company_id, LOWER(code))
+  WHERE code IS NOT NULL AND deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS public.invoicing_tax_groups (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  name VARCHAR(140) NOT NULL,
+  code VARCHAR(80),
+  description TEXT,
+  tax_type VARCHAR(40) NOT NULL DEFAULT 'vat',
+  country_code VARCHAR(2),
+  jurisdiction_code VARCHAR(80),
+  calculation_mode VARCHAR(20) NOT NULL DEFAULT 'sum'
+    CHECK (calculation_mode IN ('sum','compound')),
+  is_default BOOLEAN NOT NULL DEFAULT FALSE,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_by UUID,
+  updated_by UUID,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_invoicing_tax_group_name
+  ON public.invoicing_tax_groups(company_id, LOWER(name))
+  WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_invoicing_tax_group_code
+  ON public.invoicing_tax_groups(company_id, LOWER(code))
+  WHERE code IS NOT NULL AND deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS public.invoicing_tax_group_members (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  group_id UUID NOT NULL REFERENCES public.invoicing_tax_groups(id) ON DELETE CASCADE,
+  tax_rate_id UUID NOT NULL REFERENCES public.invoicing_tax_rates(id) ON DELETE RESTRICT,
+  sequence_no INTEGER NOT NULL DEFAULT 10 CHECK (sequence_no > 0),
+  compound BOOLEAN NOT NULL DEFAULT FALSE,
+  created_by UUID,
+  updated_by UUID,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(group_id, tax_rate_id)
+);
+CREATE INDEX IF NOT EXISTS idx_invoicing_tax_group_members_group
+  ON public.invoicing_tax_group_members(company_id, group_id, sequence_no, id);
+
+CREATE TABLE IF NOT EXISTS public.invoicing_fiscal_positions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  name VARCHAR(140) NOT NULL,
+  code VARCHAR(80),
+  description TEXT,
+  country_code VARCHAR(2),
+  customer_type VARCHAR(30),
+  priority INTEGER NOT NULL DEFAULT 100,
+  auto_apply BOOLEAN NOT NULL DEFAULT TRUE,
+  is_default BOOLEAN NOT NULL DEFAULT FALSE,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_by UUID,
+  updated_by UUID,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_invoicing_fiscal_position_name
+  ON public.invoicing_fiscal_positions(company_id, LOWER(name))
+  WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS public.invoicing_fiscal_position_mappings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  fiscal_position_id UUID NOT NULL REFERENCES public.invoicing_fiscal_positions(id) ON DELETE CASCADE,
+  source_tax_rate_id UUID REFERENCES public.invoicing_tax_rates(id) ON DELETE CASCADE,
+  source_tax_group_id UUID REFERENCES public.invoicing_tax_groups(id) ON DELETE CASCADE,
+  destination_tax_rate_id UUID REFERENCES public.invoicing_tax_rates(id) ON DELETE RESTRICT,
+  destination_tax_group_id UUID REFERENCES public.invoicing_tax_groups(id) ON DELETE RESTRICT,
+  exempt BOOLEAN NOT NULL DEFAULT FALSE,
+  label VARCHAR(180),
+  sequence_no INTEGER NOT NULL DEFAULT 100,
+  created_by UUID,
+  updated_by UUID,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (source_tax_rate_id IS NOT NULL OR source_tax_group_id IS NOT NULL),
+  CHECK (
+    exempt = TRUE
+    OR destination_tax_rate_id IS NOT NULL
+    OR destination_tax_group_id IS NOT NULL
+  )
+);
+CREATE INDEX IF NOT EXISTS idx_invoicing_fiscal_position_mappings
+  ON public.invoicing_fiscal_position_mappings(company_id, fiscal_position_id, sequence_no, id);
+
+CREATE TABLE IF NOT EXISTS public.invoicing_tax_rules (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  name VARCHAR(160) NOT NULL,
+  priority INTEGER NOT NULL DEFAULT 100,
+  country_code VARCHAR(2),
+  customer_type VARCHAR(30),
+  tax_category VARCHAR(80),
+  source_tax_rate_id UUID REFERENCES public.invoicing_tax_rates(id) ON DELETE CASCADE,
+  source_tax_group_id UUID REFERENCES public.invoicing_tax_groups(id) ON DELETE CASCADE,
+  destination_tax_rate_id UUID REFERENCES public.invoicing_tax_rates(id) ON DELETE RESTRICT,
+  destination_tax_group_id UUID REFERENCES public.invoicing_tax_groups(id) ON DELETE RESTRICT,
+  action VARCHAR(20) NOT NULL DEFAULT 'map'
+    CHECK (action IN ('map','exempt','keep')),
+  valid_from DATE,
+  valid_to DATE,
+  stop_processing BOOLEAN NOT NULL DEFAULT TRUE,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_by UUID,
+  updated_by UUID,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_invoicing_tax_rules_match
+  ON public.invoicing_tax_rules(company_id, is_active, priority, country_code, customer_type, tax_category)
+  WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS public.invoicing_tax_exemptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  customer_id UUID NOT NULL REFERENCES public.invoicing_customers(id) ON DELETE CASCADE,
+  exemption_type VARCHAR(80) NOT NULL DEFAULT 'customer',
+  certificate_number VARCHAR(180),
+  tax_type VARCHAR(40),
+  country_code VARCHAR(2),
+  valid_from DATE,
+  valid_to DATE,
+  reason TEXT NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'active'
+    CHECK (status IN ('active','revoked','expired')),
+  created_by UUID,
+  updated_by UUID,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_invoicing_tax_exemptions_customer
+  ON public.invoicing_tax_exemptions(company_id, customer_id, status, valid_to);
+
+CREATE TABLE IF NOT EXISTS public.invoicing_tax_localizations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  name VARCHAR(160) NOT NULL,
+  country_code VARCHAR(2) NOT NULL,
+  jurisdiction_code VARCHAR(80),
+  tax_registration_number VARCHAR(180),
+  default_tax_type VARCHAR(40) NOT NULL DEFAULT 'vat',
+  filing_frequency VARCHAR(20) NOT NULL DEFAULT 'monthly'
+    CHECK (filing_frequency IN ('monthly','quarterly','annual','custom')),
+  is_default BOOLEAN NOT NULL DEFAULT FALSE,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  config JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_by UUID,
+  updated_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_invoicing_tax_localization_name
+  ON public.invoicing_tax_localizations(company_id, LOWER(name))
   WHERE deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS public.invoicing_customers (
@@ -85,6 +261,7 @@ CREATE TABLE IF NOT EXISTS public.invoicing_customers (
   country_code VARCHAR(2),
   tax_id VARCHAR(120),
   registration_number VARCHAR(120),
+  fiscal_position_id UUID,
   currency VARCHAR(3) NOT NULL DEFAULT 'KES',
   payment_terms_id UUID REFERENCES public.invoicing_payment_terms(id) ON DELETE SET NULL,
   credit_limit NUMERIC(19,4) CHECK (credit_limit IS NULL OR credit_limit >= 0),
@@ -120,7 +297,9 @@ CREATE TABLE IF NOT EXISTS public.invoicing_catalog_items (
   description TEXT,
   unit VARCHAR(40) NOT NULL DEFAULT 'unit',
   unit_price NUMERIC(19,4) NOT NULL DEFAULT 0 CHECK (unit_price >= 0),
+  tax_category VARCHAR(80),
   default_tax_rate_id UUID REFERENCES public.invoicing_tax_rates(id) ON DELETE SET NULL,
+  default_tax_group_id UUID REFERENCES public.invoicing_tax_groups(id) ON DELETE SET NULL,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   created_by UUID,
   updated_by UUID,
@@ -310,6 +489,9 @@ CREATE TABLE IF NOT EXISTS public.invoicing_invoices (
   payment_terms_name_snapshot VARCHAR(140),
   tax_calculation VARCHAR(20) NOT NULL DEFAULT 'exclusive'
     CHECK (tax_calculation IN ('exclusive','inclusive')),
+  fiscal_position_id UUID,
+  tax_localization_id UUID,
+  tax_context JSONB NOT NULL DEFAULT '{}'::jsonb,
   template_id UUID REFERENCES public.invoicing_templates(id) ON DELETE SET NULL,
   external_sales_order_id UUID,
   invoice_number VARCHAR(140) NOT NULL,
@@ -388,9 +570,11 @@ CREATE TABLE IF NOT EXISTS public.invoicing_invoice_items (
   discount_value NUMERIC(19,4) NOT NULL DEFAULT 0 CHECK (discount_value >= 0),
   discount_amount NUMERIC(19,4) NOT NULL DEFAULT 0 CHECK (discount_amount >= 0),
   tax_rate_id UUID REFERENCES public.invoicing_tax_rates(id) ON DELETE SET NULL,
+  tax_group_id UUID REFERENCES public.invoicing_tax_groups(id) ON DELETE SET NULL,
   tax_name_snapshot VARCHAR(120),
   tax_rate NUMERIC(9,4) NOT NULL DEFAULT 0 CHECK (tax_rate BETWEEN 0 AND 100),
   tax_amount NUMERIC(19,4) NOT NULL DEFAULT 0 CHECK (tax_amount >= 0),
+  tax_components JSONB NOT NULL DEFAULT '[]'::jsonb,
   subtotal NUMERIC(19,4) NOT NULL DEFAULT 0,
   line_total NUMERIC(19,4) NOT NULL DEFAULT 0,
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -547,6 +731,33 @@ CREATE INDEX IF NOT EXISTS idx_invoicing_payment_refunds_payment
 CREATE UNIQUE INDEX IF NOT EXISTS uq_invoicing_payment_refunds_idempotency
   ON public.invoicing_payment_refunds(company_id, idempotency_key)
   WHERE idempotency_key IS NOT NULL;
+
+CREATE OR REPLACE VIEW public.invoicing_tax_rate_usage AS
+SELECT
+  rate.company_id,
+  rate.id AS tax_rate_id,
+  rate.name,
+  rate.code,
+  rate.tax_type,
+  rate.country_code,
+  rate.rate,
+  rate.is_active,
+  COUNT(item.id)::int AS invoice_line_count,
+  COALESCE(SUM(item.tax_amount),0)::numeric(19,4) AS tax_amount
+FROM public.invoicing_tax_rates rate
+LEFT JOIN public.invoicing_invoice_items item
+  ON item.tax_rate_id = rate.id
+ AND item.company_id = rate.company_id
+WHERE rate.deleted_at IS NULL
+GROUP BY
+  rate.company_id,
+  rate.id,
+  rate.name,
+  rate.code,
+  rate.tax_type,
+  rate.country_code,
+  rate.rate,
+  rate.is_active;
 
 CREATE OR REPLACE VIEW public.invoicing_payment_balances AS
 SELECT

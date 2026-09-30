@@ -19,6 +19,7 @@ import InvoiceComposer from '@/app/apps/invoicing/InvoiceComposer';
 import InvoiceAppearanceSettings from '@/app/apps/invoicing/InvoiceAppearanceSettings';
 import PaymentPlansWorkspace from '@/app/apps/invoicing/PaymentPlansWorkspace';
 import CurrencyCenterWorkspace from '@/app/apps/invoicing/CurrencyCenterWorkspace';
+import TaxEngineWorkspace from '@/app/apps/invoicing/TaxEngineWorkspace';
 import SaMiOverlay from '@/app/components/SaMiOverlay';
 import {
   useSaMiOverlay,
@@ -65,11 +66,16 @@ import type {
 
 type ViewKey =
   | 'dashboard'
+  | 'newInvoice'
   | 'invoices'
+  | 'newCustomer'
   | 'customers'
+  | 'newItem'
   | 'items'
+  | 'receivePayment'
   | 'payments'
   | 'currencies'
+  | 'taxEngine'
   | 'retainers'
   | 'paymentPlans'
   | 'recurring'
@@ -97,9 +103,17 @@ const NAV:
     },
     {
       key:
+        'newInvoice',
+      label:
+        'New invoice',
+      icon:
+        Plus,
+    },
+    {
+      key:
         'invoices',
       label:
-        'Invoices',
+        'Invoice register',
       icon:
         Receipt,
     },
@@ -134,6 +148,14 @@ const NAV:
         'Currencies',
       icon:
         CircleDollarSign,
+    },
+    {
+      key:
+        'taxEngine',
+      label:
+        'Tax engine',
+      icon:
+        BadgeCheck,
     },
     {
       key:
@@ -194,6 +216,50 @@ const NAV:
   ];
 
 
+const VIEW_PATHS:
+  Record<
+    ViewKey,
+    string
+  > = {
+    dashboard:
+      '/apps/invoicing',
+    newInvoice:
+      '/apps/invoicing/new',
+    invoices:
+      '/apps/invoicing/invoices',
+    newCustomer:
+      '/apps/invoicing/customers/new',
+    customers:
+      '/apps/invoicing/customers',
+    newItem:
+      '/apps/invoicing/items/new',
+    items:
+      '/apps/invoicing/items',
+    receivePayment:
+      '/apps/invoicing/payments/new',
+    payments:
+      '/apps/invoicing/payments',
+    currencies:
+      '/apps/invoicing/currencies',
+    taxEngine:
+      '/apps/invoicing/tax-engine',
+    retainers:
+      '/apps/invoicing/retainers',
+    paymentPlans:
+      '/apps/invoicing/payment-plans',
+    recurring:
+      '/apps/invoicing/recurring',
+    reminders:
+      '/apps/invoicing/reminders',
+    portal:
+      '/apps/invoicing/portal',
+    reports:
+      '/apps/invoicing/reports',
+    settings:
+      '/apps/invoicing/settings',
+  };
+
+
 const VIEW_COPY:
   Record<
     ViewKey,
@@ -208,11 +274,23 @@ const VIEW_COPY:
       description:
         'See receivables, collections, overdue balances and the health of customer billing.',
     },
+    newInvoice: {
+      title:
+        'Create invoice',
+      description:
+        'Create one invoice without the invoice register competing for space on the same page.',
+    },
     invoices: {
       title:
-        'Invoices',
+        'Invoice register',
       description:
-        'Create professional invoices, edit drafts, confirm, send, remind, duplicate and manage their lifecycle.',
+        'Search, filter, export and open existing invoices without the invoice composer stacked above the register.',
+    },
+    newCustomer: {
+      title:
+        'New customer',
+      description:
+        'Create one billing customer on a focused page.',
     },
     customers: {
       title:
@@ -220,11 +298,23 @@ const VIEW_COPY:
       description:
         'Maintain billing identities, contacts, tax details, payment terms and customer status safely.',
     },
+    newItem: {
+      title:
+        'New item',
+      description:
+        'Create one product or service billing item without the item register below it.',
+    },
     items: {
       title:
         'Items & pricing',
       description:
         'Maintain products and services, prices, units and default taxes used on invoices.',
+    },
+    receivePayment: {
+      title:
+        'Receive payment',
+      description:
+        'Record one customer receipt on a focused page before allocating it.',
     },
     payments: {
       title:
@@ -237,6 +327,12 @@ const VIEW_COPY:
         'Currency Center',
       description:
         'Manage transaction currencies, dated exchange rates, base-currency reporting and foreign-currency exposure.',
+    },
+    taxEngine: {
+      title:
+        'Tax engine',
+      description:
+        'Manage rates, tax groups, fiscal positions, rules, exemptions and jurisdiction localizations with auditable invoice-line resolution.',
     },
     retainers: {
       title:
@@ -1095,6 +1191,27 @@ export default function InvoicingWorkspaceClient({
     pending ||
     requestBusy;
 
+  const navigateToView =
+    useCallback(
+      (
+        nextView:
+          ViewKey,
+      ) => {
+        setView(
+          nextView,
+        );
+
+        router.push(
+          VIEW_PATHS[
+            nextView
+          ],
+        );
+      },
+      [
+        router,
+      ],
+    );
+
 
   const visibleNav =
     useMemo(
@@ -1238,12 +1355,13 @@ export default function InvoicingWorkspaceClient({
               section,
           )
         ) {
-          setView(
+          navigateToView(
             section,
           );
         }
       },
       [
+        navigateToView,
         visibleNav,
       ],
     );
@@ -1463,8 +1581,8 @@ export default function InvoicingWorkspaceClient({
       />
 
       <div className="space-y-4">
-      <section className="sami-surface overflow-hidden rounded-[26px]">
-        <div className="flex flex-col gap-4 border-b border-[var(--sami-border)] p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
+      <section className="sami-surface overflow-hidden rounded-[22px] sm:rounded-[26px]">
+        <div className="flex flex-col gap-3 border-b border-[var(--sami-border)] p-3 sm:gap-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-blue-600 dark:text-blue-300">
               {
@@ -1474,12 +1592,20 @@ export default function InvoicingWorkspaceClient({
               }
             </p>
 
-            <h1 className="mt-1 text-xl font-black tracking-[-0.03em] sm:text-2xl">
-              Receivables command center
+            <h1 className="mt-1 text-lg font-black tracking-[-0.03em] sm:text-2xl">
+              {
+                VIEW_COPY[
+                  view
+                ].title
+              }
             </h1>
 
-            <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400">
-              Invoices, customer billing, collections, credit notes and recurring schedules are isolated to the current company.
+            <p className="mt-1 hidden max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400 sm:block">
+              {
+                VIEW_COPY[
+                  view
+                ].description
+              }
             </p>
           </div>
 
@@ -1493,13 +1619,15 @@ export default function InvoicingWorkspaceClient({
                     'invoicing',
                   )
               }
-              className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs font-black"
+              className="hidden h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs font-black sm:inline-flex"
             >
               <BookOpenCheck className="h-4 w-4 text-blue-600" />
               Tutorial
             </button>
 
             {
+              view ===
+                'invoices' &&
               initialData
                 .capabilities
                 .canCreate &&
@@ -1508,14 +1636,83 @@ export default function InvoicingWorkspaceClient({
                   type="button"
                   onClick={
                     () =>
-                      setView(
-                        'invoices',
+                      navigateToView(
+                        'newInvoice',
                       )
                   }
                   className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-3.5 text-xs font-black text-white shadow-sm transition hover:bg-blue-700"
                 >
                   <Plus className="h-4 w-4" />
                   New invoice
+                </button>
+              )
+            }
+
+            {
+              view ===
+                'customers' &&
+              initialData
+                .capabilities
+                .canManageCustomers &&
+              (
+                <button
+                  type="button"
+                  onClick={
+                    () =>
+                      navigateToView(
+                        'newCustomer',
+                      )
+                  }
+                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-3.5 text-xs font-black text-white"
+                >
+                  <Plus className="h-4 w-4" />
+                  New customer
+                </button>
+              )
+            }
+
+            {
+              view ===
+                'items' &&
+              initialData
+                .capabilities
+                .canManageCatalog &&
+              (
+                <button
+                  type="button"
+                  onClick={
+                    () =>
+                      navigateToView(
+                        'newItem',
+                      )
+                  }
+                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-3.5 text-xs font-black text-white"
+                >
+                  <Plus className="h-4 w-4" />
+                  New item
+                </button>
+              )
+            }
+
+            {
+              view ===
+                'payments' &&
+              initialData
+                .capabilities
+                .canRecordPayment &&
+              (
+                <button
+                  type="button"
+                  onClick={
+                    () =>
+                      navigateToView(
+                        'receivePayment',
+                      )
+                  }
+                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-3.5 text-xs font-black text-white"
+                >
+                  <Plus className="h-4 w-4" />
+                  Receive payment
                 </button>
               )
             }
@@ -1533,7 +1730,7 @@ export default function InvoicingWorkspaceClient({
                     },
                   )
               }
-              className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs font-bold disabled:opacity-60"
+              className="inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-2.5 text-[11px] font-bold disabled:opacity-60 sm:h-10 sm:px-3 sm:text-xs"
             >
               <RefreshCw
                 className={[
@@ -1545,28 +1742,13 @@ export default function InvoicingWorkspaceClient({
                   ' ',
                 )}
               />
-              Refresh
+              <span className="hidden sm:inline">
+                Refresh
+              </span>
             </button>
           </div>
         </div>
 
-        <div className="border-t border-[var(--sami-border)] bg-[var(--sami-surface-soft)] px-4 py-3 sm:px-5">
-          <p className="text-xs font-black text-slate-900 dark:text-white">
-            {
-              VIEW_COPY[
-                view
-              ].title
-            }
-          </p>
-
-          <p className="mt-1 max-w-3xl text-[11px] leading-5 text-slate-500 dark:text-slate-400">
-            {
-              VIEW_COPY[
-                view
-              ].description
-            }
-          </p>
-        </div>
       </section>
 
       {
@@ -1578,9 +1760,32 @@ export default function InvoicingWorkspaceClient({
               initialData
             }
             onNavigate={
-              setView
+              navigateToView
             }
           />
+        )
+      }
+
+      {
+        view ===
+          'newInvoice' &&
+        initialData
+          .capabilities
+          .canCreate &&
+        (
+          <section className="sami-surface rounded-[24px] border border-[var(--sami-border)] p-3 sm:p-5">
+            <InvoiceComposer
+              data={
+                initialData
+              }
+              pending={
+                busy
+              }
+              run={
+                run
+              }
+            />
+          </section>
         )
       }
 
@@ -1613,6 +1818,28 @@ export default function InvoicingWorkspaceClient({
 
       {
         view ===
+          'newCustomer' &&
+        initialData
+          .capabilities
+          .canManageCustomers &&
+        (
+          <Customers
+            data={
+              initialData
+            }
+            pending={
+              busy
+            }
+            run={
+              run
+            }
+            mode="create"
+          />
+        )
+      }
+
+      {
+        view ===
           'customers' &&
         initialData
           .capabilities
@@ -1628,6 +1855,29 @@ export default function InvoicingWorkspaceClient({
             run={
               run
             }
+            mode="list"
+          />
+        )
+      }
+
+      {
+        view ===
+          'newItem' &&
+        initialData
+          .capabilities
+          .canManageCatalog &&
+        (
+          <Items
+            data={
+              initialData
+            }
+            pending={
+              busy
+            }
+            run={
+              run
+            }
+            mode="create"
           />
         )
       }
@@ -1649,6 +1899,29 @@ export default function InvoicingWorkspaceClient({
             run={
               run
             }
+          
+            mode="list"/>
+        )
+      }
+
+      {
+        view ===
+          'receivePayment' &&
+        initialData
+          .capabilities
+          .canRecordPayment &&
+        (
+          <Payments
+            data={
+              initialData
+            }
+            pending={
+              busy
+            }
+            run={
+              run
+            }
+            mode="receive"
           />
         )
       }
@@ -1670,7 +1943,8 @@ export default function InvoicingWorkspaceClient({
             run={
               run
             }
-          />
+          
+            mode="register"/>
         )
       }
 
@@ -1682,6 +1956,27 @@ export default function InvoicingWorkspaceClient({
           .canView &&
         (
           <CurrencyCenterWorkspace
+            data={
+              initialData
+            }
+            pending={
+              busy
+            }
+            run={
+              run
+            }
+          />
+        )
+      }
+
+      {
+        view ===
+          'taxEngine' &&
+        initialData
+          .capabilities
+          .canView &&
+        (
+          <TaxEngineWorkspace
             data={
               initialData
             }
@@ -3690,49 +3985,29 @@ function Invoices({
 
   return (
     <div className="space-y-4">
-      {
-        data.capabilities
-          .canCreate &&
-        (
-          <details className="sami-surface overflow-hidden rounded-[24px] border border-[var(--sami-border)]">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 sm:p-5">
-              <div>
-                <div className="flex items-center gap-2">
-                  <div className="rounded-xl bg-blue-500/10 p-2 text-blue-700 dark:text-blue-300">
-                    <Plus className="h-4 w-4" />
-                  </div>
-
-                  <p className="text-sm font-black">
-                    Create invoice
-                  </p>
-                </div>
-
-                <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500">
-                  Start a new draft using a real customer and catalog items, review the totals, then save or confirm according to your permissions.
-                </p>
-              </div>
-
-              <span className="rounded-full border border-[var(--sami-border)] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">
-                New
-              </span>
-            </summary>
-
-            <div className="border-t border-[var(--sami-border)] p-3 sm:p-5">
-              <InvoiceComposer
-                data={
-                  data
-                }
-                pending={
-                  pending
-                }
-                run={
-                  run
-                }
-              />
-            </div>
-          </details>
-        )
-      }
+      <div className="flex flex-col gap-3 rounded-[20px] border border-[var(--sami-border)] bg-[var(--sami-surface)] p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-black">
+            Invoice register
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Existing invoices only. Creating a new invoice now has its own page.
+          </p>
+        </div>
+        {
+          data.capabilities
+            .canCreate &&
+          (
+            <Link
+              href="/apps/invoicing/new"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-black text-white"
+            >
+              <Plus className="h-4 w-4" />
+              New invoice
+            </Link>
+          )
+        }
+      </div>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         {
@@ -5104,6 +5379,7 @@ function Customers({
   data,
   pending,
   run,
+  mode = 'list',
 }: {
   data:
     InvoicingWorkspaceData;
@@ -5120,6 +5396,9 @@ function Customers({
         string,
     ) =>
       Promise<boolean>;
+  mode?:
+    'create' |
+    'list';
 }) {
   const [
     query,
@@ -5175,13 +5454,21 @@ function Customers({
     );
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[390px_minmax(0,1fr)]">
+    <div className="min-w-0">
       {
         data.capabilities
           .canManageCustomers &&
         (
           <form
-            className="sami-surface h-fit rounded-[24px] p-4 sm:p-5"
+            className={[
+              'sami-surface mx-auto h-fit max-w-4xl rounded-[24px] p-4 sm:p-5',
+              mode ===
+                'create'
+                ? ''
+                : 'hidden',
+            ].join(
+              ' ',
+            )}
             onSubmit={
               async event => {
                 event
@@ -5239,6 +5526,10 @@ function Customers({
                       paymentTermsId:
                         form.get(
                           'paymentTermsId',
+                        ),
+                      fiscalPositionId:
+                        form.get(
+                          'fiscalPositionId',
                         ),
                       creditLimit:
                         form.get(
@@ -5425,6 +5716,43 @@ function Customers({
                 </select>
               </label>
 
+              <label className="block space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                  Fiscal position
+                </span>
+                <select
+                  name="fiscalPositionId"
+                  className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                >
+                  <option value="">
+                    Automatic tax rules
+                  </option>
+                  {
+                    data.fiscalPositions
+                      .filter(
+                        position =>
+                          position.isActive,
+                      )
+                      .map(
+                        position => (
+                          <option
+                            key={
+                              position.id
+                            }
+                            value={
+                              position.id
+                            }
+                          >
+                            {
+                              position.name
+                            }
+                          </option>
+                        ),
+                      )
+                  }
+                </select>
+              </label>
+
               <TextArea
                 label="Billing address"
                 name="billingAddress"
@@ -5498,7 +5826,17 @@ function Customers({
         )
       }
 
-      <div className="sami-surface overflow-hidden rounded-[24px]">
+      <div
+        className={[
+          'sami-surface overflow-hidden rounded-[24px]',
+          mode ===
+            'list'
+            ? ''
+            : 'hidden',
+        ].join(
+          ' ',
+        )}
+      >
         <div className="border-b border-[var(--sami-border)] p-4 sm:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -5658,6 +5996,10 @@ function Customers({
                                   paymentTermsId:
                                     form.get(
                                       'paymentTermsId',
+                                    ),
+                                  fiscalPositionId:
+                                    form.get(
+                                      'fiscalPositionId',
                                     ),
                                   creditLimit:
                                     form.get(
@@ -5849,6 +6191,49 @@ function Customers({
                                           } · {
                                             term.dueDays
                                           } days
+                                        </option>
+                                      ),
+                                    )
+                                }
+                              </select>
+                            </label>
+
+                            <label className="block space-y-1">
+                              <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                                Fiscal position
+                              </span>
+                              <select
+                                name="fiscalPositionId"
+                                defaultValue={
+                                  customer.fiscalPositionId ||
+                                  ''
+                                }
+                                className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                              >
+                                <option value="">
+                                  Automatic tax rules
+                                </option>
+                                {
+                                  data.fiscalPositions
+                                    .filter(
+                                      position =>
+                                        position.isActive ||
+                                        position.id ===
+                                          customer.fiscalPositionId,
+                                    )
+                                    .map(
+                                      position => (
+                                        <option
+                                          key={
+                                            position.id
+                                          }
+                                          value={
+                                            position.id
+                                          }
+                                        >
+                                          {
+                                            position.name
+                                          }
                                         </option>
                                       ),
                                     )
@@ -6071,6 +6456,7 @@ function Items({
   data,
   pending,
   run,
+  mode = 'list',
 }: {
   data:
     InvoicingWorkspaceData;
@@ -6087,6 +6473,9 @@ function Items({
         string,
     ) =>
       Promise<boolean>;
+  mode?:
+    'create' |
+    'list';
 }) {
   const [
     query,
@@ -6142,13 +6531,21 @@ function Items({
     );
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[390px_minmax(0,1fr)]">
+    <div className="min-w-0">
       {
         data.capabilities
           .canManageCatalog &&
         (
           <form
-            className="sami-surface h-fit rounded-[24px] p-4 sm:p-5"
+            className={[
+              'sami-surface mx-auto h-fit max-w-4xl rounded-[24px] p-4 sm:p-5',
+              mode ===
+                'create'
+                ? ''
+                : 'hidden',
+            ].join(
+              ' ',
+            )}
             onSubmit={
               async event => {
                 event
@@ -6190,6 +6587,14 @@ function Items({
                       taxRateId:
                         form.get(
                           'taxRateId',
+                        ),
+                      taxGroupId:
+                        form.get(
+                          'taxGroupId',
+                        ),
+                      taxCategory:
+                        form.get(
+                          'taxCategory',
                         ),
                       description:
                         form.get(
@@ -6302,6 +6707,54 @@ function Items({
                 </select>
               </label>
 
+              <label className="block space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                  Default tax group
+                </span>
+                <select
+                  name="taxGroupId"
+                  className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                >
+                  <option value="">
+                    No default tax group
+                  </option>
+                  {
+                    data.taxGroups
+                      .filter(
+                        group =>
+                          group.isActive,
+                      )
+                      .map(
+                        group => (
+                          <option
+                            key={
+                              group.id
+                            }
+                            value={
+                              group.id
+                            }
+                          >
+                            {
+                              group.name
+                            } · {
+                              group.calculationMode
+                            }
+                          </option>
+                        ),
+                      )
+                  }
+                </select>
+              </label>
+
+              <Field
+                label="Tax category"
+                name="taxCategory"
+              />
+
+              <p className="text-[10px] leading-4 text-slate-500">
+                If a tax group is selected it takes precedence over the single default tax rate. Tax category is used by rule matching.
+              </p>
+
               <TextArea
                 label="Description"
                 name="description"
@@ -6325,7 +6778,17 @@ function Items({
         )
       }
 
-      <div className="sami-surface overflow-hidden rounded-[24px]">
+      <div
+        className={[
+          'sami-surface overflow-hidden rounded-[24px]',
+          mode ===
+            'list'
+            ? ''
+            : 'hidden',
+        ].join(
+          ' ',
+        )}
+      >
         <div className="border-b border-[var(--sami-border)] p-4 sm:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -6472,6 +6935,14 @@ function Items({
                                     form.get(
                                       'taxRateId',
                                     ),
+                                  taxGroupId:
+                                    form.get(
+                                      'taxGroupId',
+                                    ),
+                                  taxCategory:
+                                    form.get(
+                                      'taxCategory',
+                                    ),
                                   description:
                                     form.get(
                                       'description',
@@ -6585,6 +7056,60 @@ function Items({
                                 }
                               </select>
                             </label>
+
+                            <label className="block space-y-1">
+                              <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                                Default tax group
+                              </span>
+                              <select
+                                name="taxGroupId"
+                                defaultValue={
+                                  item.taxGroupId ||
+                                  ''
+                                }
+                                className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                              >
+                                <option value="">
+                                  No default tax group
+                                </option>
+                                {
+                                  data.taxGroups
+                                    .filter(
+                                      group =>
+                                        group.isActive ||
+                                        group.id ===
+                                          item.taxGroupId,
+                                    )
+                                    .map(
+                                      group => (
+                                        <option
+                                          key={
+                                            group.id
+                                          }
+                                          value={
+                                            group.id
+                                          }
+                                        >
+                                          {
+                                            group.name
+                                          } · {
+                                            group.calculationMode
+                                          }
+                                        </option>
+                                      ),
+                                    )
+                                }
+                              </select>
+                            </label>
+
+                            <Field
+                              label="Tax category"
+                              name="taxCategory"
+                              defaultValue={
+                                item.taxCategory ||
+                                ''
+                              }
+                            />
 
                             <div className="sm:col-span-2">
                               <TextArea
@@ -7582,6 +8107,7 @@ function Payments({
   data,
   pending,
   run,
+  mode = 'register',
 }: {
   data:
     InvoicingWorkspaceData;
@@ -7598,6 +8124,9 @@ function Payments({
         string,
     ) =>
       Promise<boolean>;
+  mode?:
+    'receive' |
+    'register';
 }) {
   const postedPayments =
     data.payments.filter(
@@ -7632,7 +8161,17 @@ function Payments({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div
+        className={[
+          'grid gap-3 sm:grid-cols-2 xl:grid-cols-4',
+          mode ===
+            'register'
+            ? ''
+            : 'hidden',
+        ].join(
+          ' ',
+        )}
+      >
         <MetricCard
           label="Posted receipts"
           value={
@@ -7695,7 +8234,15 @@ function Payments({
           .canRecordPayment &&
         (
           <form
-            className="sami-surface rounded-[24px] p-4 sm:p-5"
+            className={[
+              'sami-surface mx-auto max-w-5xl rounded-[24px] p-4 sm:p-5',
+              mode ===
+                'receive'
+                ? ''
+                : 'hidden',
+            ].join(
+              ' ',
+            )}
             onSubmit={
               async event => {
                 event.preventDefault();
@@ -7899,7 +8446,17 @@ function Payments({
         )
       }
 
-      <div className="sami-surface overflow-hidden rounded-[24px]">
+      <div
+        className={[
+          'sami-surface overflow-hidden rounded-[24px]',
+          mode ===
+            'register'
+            ? ''
+            : 'hidden',
+        ].join(
+          ' ',
+        )}
+      >
         <div className="border-b border-[var(--sami-border)] p-4 sm:p-5">
           <p className="text-sm font-black">
             Payment register

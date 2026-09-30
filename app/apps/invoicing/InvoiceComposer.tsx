@@ -30,6 +30,7 @@ type ComposerLine = {
   discountType: 'percent' | 'fixed';
   discountValue: number;
   taxRateId: string;
+  taxGroupId: string;
   taxRate: number;
 };
 
@@ -77,15 +78,69 @@ function formatMoney(
   }
 }
 
+function taxGroupEffectiveRate(
+  group:
+    InvoicingWorkspaceData['taxGroups'][number] |
+    undefined,
+) {
+  if (!group) {
+    return 0;
+  }
+
+  if (
+    group.calculationMode ===
+      'compound'
+  ) {
+    return (
+      (
+        group.members.reduce(
+          (
+            factor,
+            member,
+          ) =>
+            factor *
+            (
+              1 +
+              member.rate /
+                100
+            ),
+          1,
+        ) -
+        1
+      ) *
+      100
+    );
+  }
+
+  return group.members.reduce(
+    (
+      total,
+      member,
+    ) =>
+      total +
+      member.rate,
+    0,
+  );
+}
+
 function emptyLine(
   data: InvoicingWorkspaceData,
 ): ComposerLine {
-  const tax =
-    data.taxRates.find(
+  const taxGroup =
+    data.taxGroups.find(
       item =>
         item.isDefault &&
         item.isActive,
     );
+
+  const tax =
+    !taxGroup
+      ? data.taxRates.find(
+          item =>
+            item.isDefault &&
+            item.isActive,
+        )
+      : undefined;
 
   return {
     catalogItemId: '',
@@ -97,7 +152,16 @@ function emptyLine(
     discountType: 'percent',
     discountValue: 0,
     taxRateId: tax?.id || '',
-    taxRate: tax?.rate || 0,
+    taxGroupId:
+      taxGroup?.id ||
+      '',
+    taxRate:
+      taxGroup
+        ? taxGroupEffectiveRate(
+            taxGroup,
+          )
+        : tax?.rate ||
+          0,
   };
 }
 
@@ -124,6 +188,8 @@ function detailLines(
         line.discountValue,
       taxRateId:
         line.taxRateId || '',
+      taxGroupId:
+        line.taxGroupId || '',
       taxRate:
         line.taxRate,
     }),
@@ -490,9 +556,23 @@ export default function InvoiceComposer({
         unitPrice:
           item.unitPrice,
         taxRateId:
-          item.taxRateId || '',
+          item.taxGroupId
+            ? ''
+            : item.taxRateId ||
+              '',
+        taxGroupId:
+          item.taxGroupId ||
+          '',
         taxRate:
-          item.taxRate,
+          item.taxGroupId
+            ? taxGroupEffectiveRate(
+                data.taxGroups.find(
+                  group =>
+                    group.id ===
+                    item.taxGroupId,
+                ),
+              )
+            : item.taxRate,
       },
     );
   }
@@ -609,7 +689,12 @@ export default function InvoiceComposer({
             discountValue:
               line.discountValue,
             taxRateId:
-              line.taxRateId ||
+              line.taxGroupId
+                ? undefined
+                : line.taxRateId ||
+                  undefined,
+            taxGroupId:
+              line.taxGroupId ||
               undefined,
             taxRate:
               line.taxRate,
@@ -1346,24 +1431,80 @@ export default function InvoiceComposer({
                               Tax
                             </span>
                             <select
-                              value={line.taxRateId}
+                              value={
+                                line.taxGroupId
+                                  ? 'group:' +
+                                    line.taxGroupId
+                                  : line.taxRateId
+                                    ? 'rate:' +
+                                      line.taxRateId
+                                    : ''
+                              }
                               onChange={
                                 event => {
-                                  const id =
+                                  const value =
                                     event.target.value;
+
+                                  if (
+                                    value.startsWith(
+                                      'group:',
+                                    )
+                                  ) {
+                                    const id =
+                                      value.slice(
+                                        6,
+                                      );
+
+                                    const group =
+                                      data.taxGroups.find(
+                                        candidate =>
+                                          candidate.id ===
+                                          id,
+                                      );
+
+                                    updateLine(
+                                      index,
+                                      {
+                                        taxRateId:
+                                          '',
+                                        taxGroupId:
+                                          id,
+                                        taxRate:
+                                          taxGroupEffectiveRate(
+                                            group,
+                                          ),
+                                      },
+                                    );
+
+                                    return;
+                                  }
+
+                                  const id =
+                                    value.startsWith(
+                                      'rate:',
+                                    )
+                                      ? value.slice(
+                                          5,
+                                        )
+                                      : '';
 
                                   const tax =
                                     data.taxRates.find(
                                       candidate =>
-                                        candidate.id === id,
+                                        candidate.id ===
+                                        id,
                                     );
 
                                   updateLine(
                                     index,
                                     {
-                                      taxRateId: id,
+                                      taxRateId:
+                                        id,
+                                      taxGroupId:
+                                        '',
                                       taxRate:
-                                        tax?.rate || 0,
+                                        tax?.rate ||
+                                        0,
                                     },
                                   );
                                 }
@@ -1373,6 +1514,35 @@ export default function InvoiceComposer({
                               <option value="">
                                 No tax
                               </option>
+
+                              {
+                                data.taxGroups
+                                  .filter(
+                                    group =>
+                                      group.isActive ||
+                                      group.id ===
+                                        line.taxGroupId,
+                                  )
+                                  .map(
+                                    group => (
+                                      <option
+                                        key={
+                                          'group:' +
+                                          group.id
+                                        }
+                                        value={
+                                          'group:' +
+                                          group.id
+                                        }
+                                      >
+                                        {
+                                          group.name
+                                        } · group
+                                      </option>
+                                    ),
+                                  )
+                              }
+
                               {
                                 data.taxRates
                                   .filter(
@@ -1382,15 +1552,25 @@ export default function InvoiceComposer({
                                         line.taxRateId,
                                   )
                                   .map(
-                                  tax => (
-                                    <option
-                                      key={tax.id}
-                                      value={tax.id}
-                                    >
-                                      {tax.name}
-                                    </option>
-                                  ),
-                                )
+                                    tax => (
+                                      <option
+                                        key={
+                                          'rate:' +
+                                          tax.id
+                                        }
+                                        value={
+                                          'rate:' +
+                                          tax.id
+                                        }
+                                      >
+                                        {
+                                          tax.name
+                                        } ({
+                                          tax.rate
+                                        }%)
+                                      </option>
+                                    ),
+                                  )
                               }
                             </select>
                           </label>

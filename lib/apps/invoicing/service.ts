@@ -85,3 +85,13 @@ export {
   saveInvoicingCurrency,
   saveInvoicingExchangeRate,
 } from '@/lib/apps/invoicing/currencies';
+
+export {
+  saveInvoicingFiscalPosition,
+  saveInvoicingFiscalPositionMapping,
+  saveInvoicingTaxExemption,
+  saveInvoicingTaxGroup,
+  saveInvoicingTaxGroupMember,
+  saveInvoicingTaxLocalization,
+  saveInvoicingTaxRule,
+} from '@/lib/apps/invoicing/tax-engine';

@@ -234,6 +234,11 @@ export async function getInvoicingWorkspaceData():
     templates,
     paymentTerms,
     taxRates,
+    taxGroups,
+    fiscalPositions,
+    taxRules,
+    taxExemptions,
+    taxLocalizations,
     catalogItems,
     dunningPolicies,
     reminders,
@@ -567,6 +572,7 @@ export async function getInvoicingWorkspaceData():
             c.country_code,
             c.tax_id,
             c.registration_number,
+            c.fiscal_position_id,
             c.currency,
             c.payment_terms_id,
             c.credit_limit,
@@ -1107,21 +1113,277 @@ export async function getInvoicingWorkspaceData():
       context.pool.query(
         `
           SELECT
+            rate.id,
+            rate.name,
+            rate.code,
+            rate.rate,
+            rate.tax_type,
+            rate.country_code,
+            rate.jurisdiction_code,
+            rate.price_included,
+            rate.valid_from,
+            rate.valid_to,
+            rate.is_default,
+            rate.is_active,
+            COALESCE(
+              usage.invoice_line_count,
+              0
+            ) AS invoice_line_count,
+            COALESCE(
+              usage.tax_amount,
+              0
+            ) AS usage_tax_amount
+          FROM invoicing_tax_rates rate
+          LEFT JOIN invoicing_tax_rate_usage usage
+            ON usage.tax_rate_id =
+               rate.id
+           AND usage.company_id =
+               rate.company_id
+          WHERE rate.company_id =
+                $1
+            AND rate.deleted_at
+                IS NULL
+          ORDER BY
+            rate.is_default DESC,
+            LOWER(rate.name) ASC
+        `,
+        [
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            tax_group.id,
+            tax_group.name,
+            tax_group.code,
+            tax_group.description,
+            tax_group.tax_type,
+            tax_group.country_code,
+            tax_group.jurisdiction_code,
+            tax_group.calculation_mode,
+            tax_group.is_default,
+            tax_group.is_active,
+            COALESCE(
+              JSONB_AGG(
+                JSONB_BUILD_OBJECT(
+                  'id',
+                  member.id,
+                  'taxRateId',
+                  member.tax_rate_id,
+                  'taxRateName',
+                  rate.name,
+                  'rate',
+                  rate.rate,
+                  'sequenceNo',
+                  member.sequence_no,
+                  'compound',
+                  member.compound
+                )
+                ORDER BY
+                  member.sequence_no,
+                  member.id
+              )
+              FILTER (
+                WHERE member.id
+                      IS NOT NULL
+              ),
+              '[]'::jsonb
+            ) AS members
+          FROM invoicing_tax_groups tax_group
+          LEFT JOIN invoicing_tax_group_members member
+            ON member.group_id =
+               tax_group.id
+           AND member.company_id =
+               tax_group.company_id
+          LEFT JOIN invoicing_tax_rates rate
+            ON rate.id =
+               member.tax_rate_id
+           AND rate.company_id =
+               member.company_id
+           AND rate.deleted_at
+               IS NULL
+          WHERE tax_group.company_id =
+                $1
+            AND tax_group.deleted_at
+                IS NULL
+          GROUP BY
+            tax_group.id
+          ORDER BY
+            tax_group.is_default DESC,
+            LOWER(tax_group.name)
+        `,
+        [
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            position.id,
+            position.name,
+            position.code,
+            position.description,
+            position.country_code,
+            position.customer_type,
+            position.priority,
+            position.auto_apply,
+            position.is_default,
+            position.is_active,
+            COALESCE(
+              JSONB_AGG(
+                JSONB_BUILD_OBJECT(
+                  'id',
+                  mapping.id,
+                  'sourceTaxRateId',
+                  mapping.source_tax_rate_id,
+                  'sourceTaxGroupId',
+                  mapping.source_tax_group_id,
+                  'destinationTaxRateId',
+                  mapping.destination_tax_rate_id,
+                  'destinationTaxGroupId',
+                  mapping.destination_tax_group_id,
+                  'exempt',
+                  mapping.exempt,
+                  'label',
+                  mapping.label,
+                  'sequenceNo',
+                  mapping.sequence_no
+                )
+                ORDER BY
+                  mapping.sequence_no,
+                  mapping.created_at
+              )
+              FILTER (
+                WHERE mapping.id
+                      IS NOT NULL
+              ),
+              '[]'::jsonb
+            ) AS mappings
+          FROM invoicing_fiscal_positions position
+          LEFT JOIN invoicing_fiscal_position_mappings mapping
+            ON mapping.fiscal_position_id =
+               position.id
+           AND mapping.company_id =
+               position.company_id
+          WHERE position.company_id =
+                $1
+            AND position.deleted_at
+                IS NULL
+          GROUP BY
+            position.id
+          ORDER BY
+            position.is_default DESC,
+            position.priority ASC,
+            LOWER(position.name)
+        `,
+        [
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
             id,
             name,
-            rate,
-            tax_type,
+            priority,
             country_code,
+            customer_type,
+            tax_category,
+            source_tax_rate_id,
+            source_tax_group_id,
+            destination_tax_rate_id,
+            destination_tax_group_id,
+            action,
+            valid_from,
+            valid_to,
+            stop_processing,
+            is_active
+          FROM invoicing_tax_rules
+          WHERE company_id =
+                $1
+            AND deleted_at
+                IS NULL
+          ORDER BY
+            priority ASC,
+            LOWER(name)
+        `,
+        [
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            exemption.id,
+            exemption.customer_id,
+            customer.name
+              AS customer_name,
+            exemption.exemption_type,
+            exemption.certificate_number,
+            exemption.tax_type,
+            exemption.country_code,
+            exemption.valid_from,
+            exemption.valid_to,
+            exemption.reason,
+            CASE
+              WHEN exemption.status =
+                   'active'
+               AND exemption.valid_to
+                   IS NOT NULL
+               AND exemption.valid_to <
+                   CURRENT_DATE
+              THEN 'expired'
+              ELSE exemption.status
+            END AS effective_status
+          FROM invoicing_tax_exemptions exemption
+          INNER JOIN invoicing_customers customer
+            ON customer.id =
+               exemption.customer_id
+           AND customer.company_id =
+               exemption.company_id
+          WHERE exemption.company_id =
+                $1
+          ORDER BY
+            CASE
+              WHEN exemption.status =
+                   'active'
+              THEN 0
+              ELSE 1
+            END,
+            exemption.created_at DESC
+          LIMIT 500
+        `,
+        [
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            id,
+            name,
+            country_code,
+            jurisdiction_code,
+            tax_registration_number,
+            default_tax_type,
+            filing_frequency,
             is_default,
             is_active
-          FROM invoicing_tax_rates
+          FROM invoicing_tax_localizations
           WHERE company_id =
                 $1
             AND deleted_at
                 IS NULL
           ORDER BY
             is_default DESC,
-            LOWER(name) ASC
+            country_code,
+            LOWER(name)
         `,
         [
           context.companyId,
@@ -1138,7 +1400,9 @@ export async function getInvoicingWorkspaceData():
             item.description,
             item.unit,
             item.unit_price,
+            item.tax_category,
             item.default_tax_rate_id,
+            item.default_tax_group_id,
             item.is_active,
             tax.name
               AS tax_rate_name,
@@ -1814,6 +2078,12 @@ export async function getInvoicingWorkspaceData():
             row.registration_number
               ? String(
                   row.registration_number,
+                )
+              : null,
+          fiscalPositionId:
+            row.fiscal_position_id
+              ? String(
+                  row.fiscal_position_id,
                 )
               : null,
           currency:
@@ -3110,6 +3380,12 @@ export async function getInvoicingWorkspaceData():
             String(
               row.name,
             ),
+          code:
+            row.code
+              ? String(
+                  row.code,
+                )
+              : null,
           rate:
             money(
               row.rate,
@@ -3125,12 +3401,165 @@ export async function getInvoicingWorkspaceData():
                   row.country_code,
                 )
               : null,
+          jurisdictionCode:
+            row.jurisdiction_code
+              ? String(
+                  row.jurisdiction_code,
+                )
+              : null,
+          priceIncluded:
+            row.price_included ===
+            true,
+          validFrom:
+            row.valid_from
+              ? String(
+                  row.valid_from,
+                )
+              : null,
+          validTo:
+            row.valid_to
+              ? String(
+                  row.valid_to,
+                )
+              : null,
           isDefault:
             row.is_default ===
             true,
           isActive:
             row.is_active !==
             false,
+          invoiceLineCount:
+            Number(
+              row.invoice_line_count ||
+              0,
+            ),
+          taxAmount:
+            money(
+              row.usage_tax_amount,
+            ),
+        }),
+      ),
+
+    taxGroups:
+      taxGroups.rows.map(
+        row => ({
+          id: String(row.id),
+          name: String(row.name),
+          code: row.code ? String(row.code) : null,
+          description: row.description ? String(row.description) : null,
+          taxType: String(row.tax_type || 'vat'),
+          countryCode: row.country_code ? String(row.country_code) : null,
+          jurisdictionCode: row.jurisdiction_code ? String(row.jurisdiction_code) : null,
+          calculationMode: String(row.calculation_mode || 'sum'),
+          isDefault: row.is_default === true,
+          isActive: row.is_active !== false,
+          members:
+            Array.isArray(
+              row.members,
+            )
+              ? row.members.map(
+                  (
+                    member:
+                      Record<string, unknown>,
+                  ) => ({
+                    id: String(member.id),
+                    taxRateId: String(member.taxRateId),
+                    taxRateName: String(member.taxRateName),
+                    rate: money(member.rate),
+                    sequenceNo: Number(member.sequenceNo || 10),
+                    compound: member.compound === true,
+                  }),
+                )
+              : [],
+        }),
+      ),
+
+    fiscalPositions:
+      fiscalPositions.rows.map(
+        row => ({
+          id: String(row.id),
+          name: String(row.name),
+          code: row.code ? String(row.code) : null,
+          description: row.description ? String(row.description) : null,
+          countryCode: row.country_code ? String(row.country_code) : null,
+          customerType: row.customer_type ? String(row.customer_type) : null,
+          priority: Number(row.priority || 100),
+          autoApply: row.auto_apply !== false,
+          isDefault: row.is_default === true,
+          isActive: row.is_active !== false,
+          mappings:
+            Array.isArray(
+              row.mappings,
+            )
+              ? row.mappings.map(
+                  (
+                    mapping:
+                      Record<string, unknown>,
+                  ) => ({
+                    id: String(mapping.id),
+                    sourceTaxRateId: mapping.sourceTaxRateId ? String(mapping.sourceTaxRateId) : null,
+                    sourceTaxGroupId: mapping.sourceTaxGroupId ? String(mapping.sourceTaxGroupId) : null,
+                    destinationTaxRateId: mapping.destinationTaxRateId ? String(mapping.destinationTaxRateId) : null,
+                    destinationTaxGroupId: mapping.destinationTaxGroupId ? String(mapping.destinationTaxGroupId) : null,
+                    exempt: mapping.exempt === true,
+                    label: mapping.label ? String(mapping.label) : null,
+                    sequenceNo: Number(mapping.sequenceNo || 100),
+                  }),
+                )
+              : [],
+        }),
+      ),
+
+    taxRules:
+      taxRules.rows.map(
+        row => ({
+          id: String(row.id),
+          name: String(row.name),
+          priority: Number(row.priority || 100),
+          countryCode: row.country_code ? String(row.country_code) : null,
+          customerType: row.customer_type ? String(row.customer_type) : null,
+          taxCategory: row.tax_category ? String(row.tax_category) : null,
+          sourceTaxRateId: row.source_tax_rate_id ? String(row.source_tax_rate_id) : null,
+          sourceTaxGroupId: row.source_tax_group_id ? String(row.source_tax_group_id) : null,
+          destinationTaxRateId: row.destination_tax_rate_id ? String(row.destination_tax_rate_id) : null,
+          destinationTaxGroupId: row.destination_tax_group_id ? String(row.destination_tax_group_id) : null,
+          action: String(row.action || 'map'),
+          validFrom: row.valid_from ? String(row.valid_from) : null,
+          validTo: row.valid_to ? String(row.valid_to) : null,
+          stopProcessing: row.stop_processing !== false,
+          isActive: row.is_active !== false,
+        }),
+      ),
+
+    taxExemptions:
+      taxExemptions.rows.map(
+        row => ({
+          id: String(row.id),
+          customerId: String(row.customer_id),
+          customerName: String(row.customer_name),
+          exemptionType: String(row.exemption_type || 'customer'),
+          certificateNumber: row.certificate_number ? String(row.certificate_number) : null,
+          taxType: row.tax_type ? String(row.tax_type) : null,
+          countryCode: row.country_code ? String(row.country_code) : null,
+          validFrom: row.valid_from ? String(row.valid_from) : null,
+          validTo: row.valid_to ? String(row.valid_to) : null,
+          reason: String(row.reason),
+          status: String(row.effective_status),
+        }),
+      ),
+
+    taxLocalizations:
+      taxLocalizations.rows.map(
+        row => ({
+          id: String(row.id),
+          name: String(row.name),
+          countryCode: String(row.country_code),
+          jurisdictionCode: row.jurisdiction_code ? String(row.jurisdiction_code) : null,
+          taxRegistrationNumber: row.tax_registration_number ? String(row.tax_registration_number) : null,
+          defaultTaxType: String(row.default_tax_type || 'vat'),
+          filingFrequency: String(row.filing_frequency || 'monthly'),
+          isDefault: row.is_default === true,
+          isActive: row.is_active !== false,
         }),
       ),
 
@@ -3172,10 +3601,22 @@ export async function getInvoicingWorkspaceData():
             money(
               row.unit_price,
             ),
+          taxCategory:
+            row.tax_category
+              ? String(
+                  row.tax_category,
+                )
+              : null,
           taxRateId:
             row.default_tax_rate_id
               ? String(
                   row.default_tax_rate_id,
+                )
+              : null,
+          taxGroupId:
+            row.default_tax_group_id
+              ? String(
+                  row.default_tax_group_id,
                 )
               : null,
           taxRateName:
@@ -3654,9 +4095,11 @@ export async function getInvoicingInvoiceDetail(
             discount_value,
             discount_amount,
             tax_rate_id,
+            tax_group_id,
             tax_name_snapshot,
             tax_rate,
             tax_amount,
+            tax_components,
             subtotal,
             line_total
           FROM invoicing_invoice_items
@@ -4149,6 +4592,12 @@ export async function getInvoicingInvoiceDetail(
                   line.tax_rate_id,
                 )
               : null,
+          taxGroupId:
+            line.tax_group_id
+              ? String(
+                  line.tax_group_id,
+                )
+              : null,
           taxName:
             line.tax_name_snapshot
               ? String(
@@ -4163,6 +4612,12 @@ export async function getInvoicingInvoiceDetail(
             money(
               line.tax_amount,
             ),
+          taxComponents:
+            Array.isArray(
+              line.tax_components,
+            )
+              ? line.tax_components
+              : [],
           subtotal:
             money(
               line.subtotal,

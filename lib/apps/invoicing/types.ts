@@ -49,6 +49,7 @@ export type InvoicingCustomerSummary = {
   countryCode: string | null;
   taxId: string | null;
   registrationNumber: string | null;
+  fiscalPositionId: string | null;
   currency: string;
   paymentTermsId: string | null;
   paymentTermsName: string | null;
@@ -73,7 +74,9 @@ export type InvoicingCatalogItemSummary = {
   description: string | null;
   unit: string;
   unitPrice: number;
+  taxCategory: string | null;
   taxRateId: string | null;
+  taxGroupId: string | null;
   taxRateName: string | null;
   taxRate: number;
   isActive: boolean;
@@ -375,8 +378,10 @@ export type InvoicingInvoiceLine = {
   discountValue: number;
   discountAmount: number;
   taxRateId: string | null;
+  taxGroupId: string | null;
   taxName: string | null;
   taxRate: number;
+  taxComponents: Array<Record<string, unknown>>;
   taxAmount: number;
   subtotal: number;
   lineTotal: number;
@@ -529,6 +534,94 @@ export type InvoicingCurrencyExposureSummary = {
   openBaseAmount: number;
 };
 
+export type InvoicingTaxGroupSummary = {
+  id: string;
+  name: string;
+  code: string | null;
+  description: string | null;
+  taxType: string;
+  countryCode: string | null;
+  jurisdictionCode: string | null;
+  calculationMode: string;
+  isDefault: boolean;
+  isActive: boolean;
+  members: Array<{
+    id: string;
+    taxRateId: string;
+    taxRateName: string;
+    rate: number;
+    sequenceNo: number;
+    compound: boolean;
+  }>;
+};
+
+export type InvoicingFiscalPositionSummary = {
+  id: string;
+  name: string;
+  code: string | null;
+  description: string | null;
+  countryCode: string | null;
+  customerType: string | null;
+  priority: number;
+  autoApply: boolean;
+  isDefault: boolean;
+  isActive: boolean;
+  mappings: Array<{
+    id: string;
+    sourceTaxRateId: string | null;
+    sourceTaxGroupId: string | null;
+    destinationTaxRateId: string | null;
+    destinationTaxGroupId: string | null;
+    exempt: boolean;
+    label: string | null;
+    sequenceNo: number;
+  }>;
+};
+
+export type InvoicingTaxRuleSummary = {
+  id: string;
+  name: string;
+  priority: number;
+  countryCode: string | null;
+  customerType: string | null;
+  taxCategory: string | null;
+  sourceTaxRateId: string | null;
+  sourceTaxGroupId: string | null;
+  destinationTaxRateId: string | null;
+  destinationTaxGroupId: string | null;
+  action: string;
+  validFrom: string | null;
+  validTo: string | null;
+  stopProcessing: boolean;
+  isActive: boolean;
+};
+
+export type InvoicingTaxExemptionSummary = {
+  id: string;
+  customerId: string;
+  customerName: string;
+  exemptionType: string;
+  certificateNumber: string | null;
+  taxType: string | null;
+  countryCode: string | null;
+  validFrom: string | null;
+  validTo: string | null;
+  reason: string;
+  status: string;
+};
+
+export type InvoicingTaxLocalizationSummary = {
+  id: string;
+  name: string;
+  countryCode: string;
+  jurisdictionCode: string | null;
+  taxRegistrationNumber: string | null;
+  defaultTaxType: string;
+  filingFrequency: string;
+  isDefault: boolean;
+  isActive: boolean;
+};
+
 export type InvoicingWorkspaceData = {
   company: { id: string; name: string; currency: string };
   capabilities: {
@@ -588,12 +681,24 @@ export type InvoicingWorkspaceData = {
   taxRates: Array<{
     id: string;
     name: string;
+    code: string | null;
     rate: number;
     taxType: string;
     countryCode: string | null;
+    jurisdictionCode: string | null;
+    priceIncluded: boolean;
+    validFrom: string | null;
+    validTo: string | null;
     isDefault: boolean;
     isActive: boolean;
+    invoiceLineCount: number;
+    taxAmount: number;
   }>;
+  taxGroups: InvoicingTaxGroupSummary[];
+  fiscalPositions: InvoicingFiscalPositionSummary[];
+  taxRules: InvoicingTaxRuleSummary[];
+  taxExemptions: InvoicingTaxExemptionSummary[];
+  taxLocalizations: InvoicingTaxLocalizationSummary[];
   catalogItems: InvoicingCatalogItemSummary[];
   settings: {
     defaultCurrency: string;
@@ -636,6 +741,7 @@ export type CreateInvoiceLineInput = {
   discountType?: unknown;
   discountValue?: unknown;
   taxRateId?: unknown;
+  taxGroupId?: unknown;
   taxRate?: unknown;
 };
 

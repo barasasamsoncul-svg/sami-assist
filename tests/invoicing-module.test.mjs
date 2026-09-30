@@ -116,7 +116,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
 
   assert.match(
     invoicing,
-    /version:\s*['"]2\.15\.0['"]/,
+    /version:\s*['"]2\.16\.0['"]/,
   );
 
   assert.match(
@@ -376,9 +376,12 @@ test('Invoicing server authority uses trusted workspace/company context and neve
   );
 });
 
-test('Invoicing workspace exposes operational Odoo/Zoho-class surfaces rather than a placeholder page', async () => {
+test('Invoicing workspace exposes operational Odoo/Zoho-class surfaces as standalone routes rather than one stacked page', async () => {
   const [
     page,
+    sectionPage,
+    newInvoicePage,
+    invoiceRegisterPage,
     client,
     composer,
     detail,
@@ -387,6 +390,15 @@ test('Invoicing workspace exposes operational Odoo/Zoho-class surfaces rather th
     await Promise.all([
       source(
         'app/apps/invoicing/page.tsx',
+      ),
+      source(
+        'app/apps/invoicing/InvoicingSectionPage.tsx',
+      ),
+      source(
+        'app/apps/invoicing/new/page.tsx',
+      ),
+      source(
+        'app/apps/invoicing/invoices/page.tsx',
       ),
       source(
         'app/apps/invoicing/InvoicingWorkspaceClient.tsx',
@@ -403,18 +415,103 @@ test('Invoicing workspace exposes operational Odoo/Zoho-class surfaces rather th
     ]);
 
   assert.match(
+    sectionPage,
+    /InvoicingModuleShell/,
+  );
+
+  assert.doesNotMatch(
+    sectionPage,
+    /AppSurfaceShell/,
+    'Invoicing must keep its own full module shell rather than the generic app-surface grid.',
+  );
+
+  assert.match(
     page,
-    /WorkspaceShell/,
+    /view="dashboard"/,
+  );
+
+  assert.match(
+    newInvoicePage,
+    /view="newInvoice"/,
+  );
+
+  assert.match(
+    invoiceRegisterPage,
+    /view="invoices"/,
+  );
+
+  for (
+    const route
+    of [
+      '/apps/invoicing/new',
+      '/apps/invoicing/invoices',
+      '/apps/invoicing/customers/new',
+      '/apps/invoicing/customers',
+      '/apps/invoicing/items/new',
+      '/apps/invoicing/items',
+      '/apps/invoicing/payments/new',
+      '/apps/invoicing/payments',
+      '/apps/invoicing/currencies',
+      '/apps/invoicing/tax-engine',
+      '/apps/invoicing/retainers',
+      '/apps/invoicing/payment-plans',
+      '/apps/invoicing/recurring',
+      '/apps/invoicing/reminders',
+      '/apps/invoicing/portal',
+      '/apps/invoicing/reports',
+      '/apps/invoicing/settings',
+    ]
+  ) {
+    assert.ok(
+      sectionPage.includes(
+        route,
+      ),
+      route +
+        ' must be a first-class Invoicing route.',
+    );
+  }
+
+  assert.match(
+    client,
+    /view ===\s*'newInvoice'[\s\S]*<InvoiceComposer/s,
+    'Create Invoice must render on its dedicated new-invoice route.',
+  );
+
+  const invoiceRegisterStart =
+    client.indexOf(
+      'function Invoices(',
+    );
+
+  assert.ok(
+    invoiceRegisterStart >
+      -1,
+  );
+
+  const invoiceRegister =
+    client.slice(
+      invoiceRegisterStart,
+    );
+
+  assert.doesNotMatch(
+    invoiceRegister,
+    /<details[\s\S]{0,1500}<InvoiceComposer/s,
+    'Invoice Register must not stack the Create Invoice composer above the register.',
   );
 
   for (
     const surface
     of [
-      'Invoices',
+      'Invoice register',
       'Customers',
       'Items',
       'Payments',
+      'Currency Center',
+      'Tax engine',
+      'Retainers',
+      'Payment plans',
       'Recurring',
+      'Reminders',
+      'Customer portal',
       'Reports',
       'Settings',
     ]
@@ -1554,6 +1651,7 @@ test('Workspace tutorials are reusable across modules and Invoicing ships comple
     tutorial,
     shell,
     page,
+    sectionPage,
     workspace,
     detailPage,
     detail,
@@ -1561,6 +1659,7 @@ test('Workspace tutorials are reusable across modules and Invoicing ships comple
     source('app/components/workspace/WorkspaceTutorial.tsx'),
     source('app/components/workspace/WorkspaceShell.tsx'),
     source('app/apps/invoicing/page.tsx'),
+    source('app/apps/invoicing/InvoicingSectionPage.tsx'),
     source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
     source('app/apps/invoicing/[invoiceId]/page.tsx'),
     source('app/apps/invoicing/[invoiceId]/InvoiceDetailClient.tsx'),
@@ -1578,10 +1677,12 @@ test('Workspace tutorials are reusable across modules and Invoicing ships comple
   assert.match(shell, /WorkspaceTutorialToggle/);
   assert.match(shell, /userId=\{/);
 
-  assert.match(page, /userId=\{/);
+  assert.match(page, /InvoicingSectionPage/);
+  assert.match(sectionPage, /userId=\{/);
   assert.match(workspace, /INVOICING_TUTORIAL_STEPS/);
   assert.match(workspace, /moduleKey="invoicing"/);
-  assert.match(workspace, /Receivables command center/);
+  assert.match(workspace, /Create invoice/);
+  assert.match(workspace, /Invoice register/);
   assert.match(workspace, /Items & pricing/);
   assert.match(workspace, /Recurring billing/);
   assert.match(workspace, /startWorkspaceTutorial/);
@@ -1592,6 +1693,8 @@ test('Workspace tutorials are reusable across modules and Invoicing ships comple
     'customers',
     'items',
     'payments',
+    'retainers',
+    'paymentPlans',
     'recurring',
     'reports',
     'settings',
@@ -1655,11 +1758,13 @@ test('Invoicing SQL explicitly types reused status parameters to prevent Postgre
 test('Invoicing rejects stale master-data references and preserves a draft invoice template while editing', async () => {
   const [
     commands,
+    taxEngine,
     queries,
     types,
     composer,
   ] = await Promise.all([
     source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/invoicing/tax-engine.ts'),
     source('lib/apps/invoicing/queries.ts'),
     source('lib/apps/invoicing/types.ts'),
     source('app/apps/invoicing/InvoiceComposer.tsx'),
@@ -1672,9 +1777,9 @@ test('Invoicing rejects stale master-data references and preserves a draft invoi
   );
 
   assert.match(
-    commands,
-    /Choose a valid active tax rate\./,
-    'A stale or cross-company tax rate must be rejected before invoice insert.',
+    taxEngine,
+    /The selected tax rate is inactive or outside its validity period\./,
+    'A stale, cross-company or expired tax rate must be rejected by the authoritative Part 15 tax resolver before invoice insert.',
   );
 
   assert.match(
@@ -1880,13 +1985,13 @@ test('Invoicing keeps customer, catalog, payment, recurring, report and settings
     queries,
     commands,
     workspace,
-    page,
+    sectionPage,
   ] = await Promise.all([
     source('lib/apps/invoicing/types.ts'),
     source('lib/apps/invoicing/queries.ts'),
     source('lib/apps/invoicing/commands.ts'),
     source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
-    source('app/apps/invoicing/page.tsx'),
+    source('app/apps/invoicing/InvoicingSectionPage.tsx'),
   ]);
 
   for (const capability of [
@@ -1956,8 +2061,8 @@ test('Invoicing keeps customer, catalog, payment, recurring, report and settings
   );
 
   assert.match(
-    page,
-    /const appSidebarItems =/,
+    sectionPage,
+    /buildInvoicingSidebarItems/,
   );
 
   for (const capability of [
@@ -1969,7 +2074,7 @@ test('Invoicing keeps customer, catalog, payment, recurring, report and settings
     'canManageSettings',
   ]) {
     assert.match(
-      page,
+      sectionPage,
       new RegExp(
         capability +
         '[\\s\\S]*?label:',
@@ -2909,7 +3014,7 @@ test('Invoicing v2.7 turns recurring invoices into an observable retry-safe bill
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.15\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
   );
 
   assert.match(
@@ -3109,7 +3214,7 @@ test('Invoicing v2.8 turns reminders into a staged auditable dunning engine', as
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.15\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
   );
 
   assert.match(
@@ -3329,7 +3434,7 @@ test('Invoicing Part 8 builds a customer-scoped secure portal', async () => {
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.15\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
   );
 
   assert.match(
@@ -3673,7 +3778,7 @@ test('Invoicing Part 9 freezes issued invoice PDFs as immutable document snapsho
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.15\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
   );
 
   assert.match(
@@ -3949,7 +4054,7 @@ test('Invoicing Part 10 provides a live renderer-backed invoice template designe
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.15\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
   );
 
   assert.match(
@@ -4136,7 +4241,7 @@ test('Invoicing Part 11 deepens credit notes into reusable customer credits and 
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.15\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
   );
 
   assert.match(
@@ -4357,7 +4462,7 @@ test('Invoicing Part 12 manages retainers and deposits as auditable customer cre
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.15\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
   );
 
   assert.match(
@@ -4529,7 +4634,7 @@ test('Invoicing Part 13 schedules installment plans over the authoritative invoi
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.15\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
   );
 
   assert.match(
@@ -4792,7 +4897,7 @@ test('Invoicing Part 14 provides auditable multi-currency billing, base reportin
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.15\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
   );
 
   assert.match(
@@ -4940,5 +5045,377 @@ test('Invoicing Part 14 provides auditable multi-currency billing, base reportin
   assert.match(
     manifest,
     /key:\s*"exchange_rate"[\s\S]*table:\s*"invoicing_exchange_rates"/s,
+  );
+});
+
+
+test('Invoicing uses real standalone App Router pages and keeps invoice creation separate from the register', async () => {
+  const [
+    rootPage,
+    sectionPage,
+    newPage,
+    invoicesPage,
+    customersPage,
+    itemsPage,
+    paymentsPage,
+    currenciesPage,
+    taxEnginePage,
+    retainersPage,
+    paymentPlansPage,
+    recurringPage,
+    remindersPage,
+    portalPage,
+    reportsPage,
+    settingsPage,
+    workspace,
+  ] = await Promise.all([
+    source('app/apps/invoicing/page.tsx'),
+    source('app/apps/invoicing/InvoicingSectionPage.tsx'),
+    source('app/apps/invoicing/new/page.tsx'),
+    source('app/apps/invoicing/invoices/page.tsx'),
+    source('app/apps/invoicing/customers/page.tsx'),
+    source('app/apps/invoicing/items/page.tsx'),
+    source('app/apps/invoicing/payments/page.tsx'),
+    source('app/apps/invoicing/currencies/page.tsx'),
+    source('app/apps/invoicing/tax-engine/page.tsx'),
+    source('app/apps/invoicing/retainers/page.tsx'),
+    source('app/apps/invoicing/payment-plans/page.tsx'),
+    source('app/apps/invoicing/recurring/page.tsx'),
+    source('app/apps/invoicing/reminders/page.tsx'),
+    source('app/apps/invoicing/portal/page.tsx'),
+    source('app/apps/invoicing/reports/page.tsx'),
+    source('app/apps/invoicing/settings/page.tsx'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+  ]);
+
+  assert.match(newPage, /view="newInvoice"/);
+  assert.match(invoicesPage, /view="invoices"/);
+  assert.match(customersPage, /view="customers"/);
+  assert.match(itemsPage, /view="items"/);
+  assert.match(paymentsPage, /view="payments"/);
+  assert.match(currenciesPage, /view="currencies"/);
+  assert.match(taxEnginePage, /view="taxEngine"/);
+  assert.match(retainersPage, /view="retainers"/);
+  assert.match(paymentPlansPage, /view="paymentPlans"/);
+  assert.match(recurringPage, /view="recurring"/);
+  assert.match(remindersPage, /view="reminders"/);
+  assert.match(portalPage, /view="portal"/);
+  assert.match(reportsPage, /view="reports"/);
+  assert.match(settingsPage, /view="settings"/);
+
+  assert.match(sectionPage, /\/apps\/invoicing\/new/);
+  assert.match(sectionPage, /\/apps\/invoicing\/invoices/);
+  assert.match(sectionPage, /\/apps\/invoicing\/customers/);
+  assert.match(sectionPage, /\/apps\/invoicing\/payments/);
+  assert.match(sectionPage, /\/apps\/invoicing\/tax-engine/);
+  assert.match(sectionPage, /\/apps\/invoicing\/settings/);
+  assert.doesNotMatch(
+    sectionPage,
+    /\?view=/,
+    'The Invoicing sidebar must navigate real App Router pages rather than one stacked query-string workspace.',
+  );
+
+  assert.match(rootPage, /LEGACY_VIEW_PATHS/);
+  assert.match(rootPage, /redirect\(/);
+  assert.match(rootPage, /view="dashboard"/);
+
+  assert.match(workspace, /view ===[\s\S]*'newInvoice'[\s\S]*<InvoiceComposer/s);
+  assert.match(workspace, /href="\/apps\/invoicing\/new"/);
+
+  const registerStart =
+    workspace.indexOf(
+      'function Invoices(',
+    );
+  const registerEnd =
+    workspace.indexOf(
+      'function Customers(',
+      registerStart,
+    );
+
+  assert.ok(
+    registerStart >= 0 &&
+    registerEnd > registerStart,
+    'Invoice register component boundaries must be present.',
+  );
+
+  const registerSource =
+    workspace.slice(
+      registerStart,
+      registerEnd,
+    );
+
+  assert.doesNotMatch(
+    registerSource,
+    /<InvoiceComposer/,
+    'Invoice creation must not be stacked inside the invoice register page.',
+  );
+
+  assert.match(registerSource, /Invoice register/);
+  assert.match(registerSource, /href="\/apps\/invoicing\/new"/);
+});
+
+
+test('Invoicing Part 15 provides a rule-driven tax engine with fiscal mappings, exemptions and standalone operator controls', async () => {
+  const [
+    schema,
+    migration,
+    taxEngine,
+    commands,
+    queries,
+    service,
+    route,
+    workspace,
+    taxWorkspace,
+    composer,
+    runtimeMigrations,
+    manifest,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/schema.sql'),
+    source('lib/apps/invoicing/migrations/2.15.0-to-2.16.0.ts'),
+    source('lib/apps/invoicing/tax-engine.ts'),
+    source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/service.ts'),
+    source('app/api/apps/invoicing/route.ts'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('app/apps/invoicing/TaxEngineWorkspace.tsx'),
+    source('app/apps/invoicing/InvoiceComposer.tsx'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+  ]);
+
+  assert.match(
+    manifest,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
+  );
+
+  assert.match(
+    migration,
+    /fromVersion:\s*['"]2\.15\.0['"]/,
+  );
+
+  assert.match(
+    migration,
+    /toVersion:\s*['"]2\.16\.0['"]/,
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /INVOICING_2_15_0_TO_2_16_0/,
+  );
+
+  for (const table of [
+    'invoicing_tax_groups',
+    'invoicing_tax_group_members',
+    'invoicing_fiscal_positions',
+    'invoicing_fiscal_position_mappings',
+    'invoicing_tax_rules',
+    'invoicing_tax_exemptions',
+    'invoicing_tax_localizations',
+  ]) {
+    assert.match(schema, new RegExp(table));
+    assert.match(migration, new RegExp(table));
+  }
+
+  assert.match(
+    taxEngine,
+    /resolveInvoicingTaxTreatment/,
+    'Invoice lines must use the authoritative Part 15 tax resolver.',
+  );
+
+  assert.match(
+    taxEngine,
+    /customer_exemption/,
+  );
+
+  assert.match(
+    taxEngine,
+    /fiscal_position_exemption/,
+  );
+
+  assert.match(
+    taxEngine,
+    /tax_rule_exemption/,
+  );
+
+  assert.match(
+    taxEngine,
+    /calculationMode|calculation_mode|compound/,
+    'Tax groups must support compound calculations.',
+  );
+
+  assert.match(
+    commands,
+    /tax_components/,
+    'Resolved component taxes must be frozen on invoice lines.',
+  );
+
+  assert.match(
+    commands,
+    /tax_context/,
+    'Invoices must snapshot the tax context used to resolve their lines.',
+  );
+
+  assert.match(
+    queries,
+    /taxGroups/,
+  );
+
+  assert.match(
+    queries,
+    /fiscalPositions/,
+  );
+
+  assert.match(
+    queries,
+    /taxExemptions/,
+  );
+
+  assert.match(
+    queries,
+    /taxLocalizations/,
+  );
+
+  for (const action of [
+    'save_tax_group',
+    'save_tax_group_member',
+    'save_fiscal_position',
+    'save_fiscal_position_mapping',
+    'save_tax_rule',
+    'save_tax_exemption',
+    'save_tax_localization',
+  ]) {
+    assert.match(
+      route,
+      new RegExp("case '" + action + "'"),
+    );
+  }
+
+  for (const exported of [
+    'saveInvoicingTaxGroup',
+    'saveInvoicingTaxGroupMember',
+    'saveInvoicingFiscalPosition',
+    'saveInvoicingFiscalPositionMapping',
+    'saveInvoicingTaxRule',
+    'saveInvoicingTaxExemption',
+    'saveInvoicingTaxLocalization',
+  ]) {
+    assert.match(
+      service,
+      new RegExp(exported),
+    );
+  }
+
+  assert.match(
+    workspace,
+    /'taxEngine'/,
+  );
+
+  for (const text of [
+    'Tax engine',
+    'Tax rate',
+    'Tax group',
+    'Fiscal position',
+    'Tax rule',
+    'Customer tax exemption',
+    'Tax localization',
+  ]) {
+    assert.ok(
+      taxWorkspace.includes(text),
+      text + ' must be visible in the standalone Tax Engine page.',
+    );
+  }
+
+  assert.match(
+    composer,
+    /taxGroupId/,
+    'The invoice composer must preserve grouped taxes.',
+  );
+
+  assert.match(
+    composer,
+    /group:/,
+    'The composer tax selector must distinguish tax groups from single rates.',
+  );
+});
+
+
+test('Invoicing owns a full-height responsive module shell and focused create/register routes', async () => {
+  const [
+    shell,
+    sectionPage,
+    workspace,
+    newCustomer,
+    newItem,
+    newPayment,
+  ] = await Promise.all([
+    source('app/apps/invoicing/InvoicingModuleShell.tsx'),
+    source('app/apps/invoicing/InvoicingSectionPage.tsx'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('app/apps/invoicing/customers/new/page.tsx'),
+    source('app/apps/invoicing/items/new/page.tsx'),
+    source('app/apps/invoicing/payments/new/page.tsx'),
+  ]);
+
+  assert.match(
+    shell,
+    /fixed inset-y-0 left-0 z-50 w-\[286px\]/,
+    'Desktop Invoicing navigation must use a full-height fixed module sidebar.',
+  );
+
+  assert.match(
+    shell,
+    /lg:pl-\[286px\]/,
+    'Desktop Invoicing content must use the remaining viewport width rather than a squeezed sidebar card grid.',
+  );
+
+  assert.match(
+    shell,
+    /fixed inset-0 z-\[90\] lg:hidden/,
+    'Mobile Invoicing must use an overlay drawer instead of compressing the desktop sidebar.',
+  );
+
+  assert.match(
+    sectionPage,
+    /InvoicingModuleShell/,
+  );
+
+  assert.doesNotMatch(
+    sectionPage,
+    /AppSurfaceShell/,
+    'Invoicing must not fall back to the generic card-grid app shell.',
+  );
+
+  assert.match(
+    newCustomer,
+    /view="newCustomer"/,
+  );
+
+  assert.match(
+    newItem,
+    /view="newItem"/,
+  );
+
+  assert.match(
+    newPayment,
+    /view="receivePayment"/,
+  );
+
+  assert.match(
+    workspace,
+    /mode="create"/,
+    'Focused customer/item create routes must render create-only mode.',
+  );
+
+  assert.match(
+    workspace,
+    /mode="receive"/,
+    'The receive-payment route must render receipt-entry mode without the payment register stacked below it.',
+  );
+
+  assert.match(
+    workspace,
+    /mode="register"/,
+    'Payment register must remain its own focused surface.',
   );
 });

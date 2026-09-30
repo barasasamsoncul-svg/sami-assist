@@ -373,3 +373,87 @@ export async function upgradeInstalledModulesAcrossTenants() {
       results,
   };
 }
+
+
+export async function upgradeInstalledModuleAcrossTenants(
+  moduleKeyInput:
+    string,
+) {
+  const moduleKey =
+    normalizeKey(
+      moduleKeyInput,
+    );
+
+  if (!moduleKey) {
+    throw new Error(
+      'Module key is required.',
+    );
+  }
+
+  const tenantIds =
+    await listTenantsWithInstalledModules();
+
+  const upgrades:
+    WorkspaceModuleUpgrade[] =
+      [];
+
+  let installedTenants =
+    0;
+
+  for (
+    const tenantId
+    of tenantIds
+  ) {
+    const installed =
+      await listInstalledModules(
+        tenantId,
+      );
+
+    const row =
+      installed.find(
+        candidate =>
+          candidate.module_key ===
+            moduleKey &&
+          [
+            'installed',
+            'active',
+            'enabled',
+          ].includes(
+            candidate.status,
+          ),
+      );
+
+    if (!row) {
+      continue;
+    }
+
+    installedTenants +=
+      1;
+
+    const pool =
+      await getTenantPoolByTenantId(
+        tenantId,
+      );
+
+    const upgraded =
+      await upgradeInstalledModuleRow(
+        tenantId,
+        pool,
+        row,
+      );
+
+    if (upgraded) {
+      upgrades.push(
+        upgraded,
+      );
+    }
+  }
+
+  return {
+    moduleKey,
+    tenantsChecked:
+      tenantIds.length,
+    installedTenants,
+    upgrades,
+  };
+}

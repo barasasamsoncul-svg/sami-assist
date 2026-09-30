@@ -64,6 +64,10 @@ import {
   resolveInvoicingExchangeRate,
 } from '@/lib/apps/invoicing/currencies';
 
+import {
+  resolveInvoicingTaxTreatment,
+} from '@/lib/apps/invoicing/tax-engine';
+
 
 function plainObject(
   value:
@@ -518,6 +522,108 @@ async function resolveTaxRateId(
 }
 
 
+async function resolveTaxGroupId(
+  client:
+    PoolClient,
+  companyId:
+    string,
+  value:
+    unknown,
+  allowInactive =
+    false,
+) {
+  const requested =
+    optionalUuid(
+      value,
+    );
+
+  if (!requested) {
+    return null;
+  }
+
+  const result =
+    await client.query(
+      `
+        SELECT id
+        FROM invoicing_tax_groups
+        WHERE id = $1
+          AND company_id = $2
+          AND (
+            is_active = TRUE
+            OR $3 = TRUE
+          )
+          AND deleted_at IS NULL
+        LIMIT 1
+      `,
+      [
+        requested,
+        companyId,
+        allowInactive,
+      ],
+    );
+
+  if (
+    result.rows.length !==
+      1
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Choose a valid active tax group for this company.',
+    );
+  }
+
+  return requested;
+}
+
+
+async function resolveFiscalPositionId(
+  client:
+    PoolClient,
+  companyId:
+    string,
+  value:
+    unknown,
+) {
+  const requested =
+    optionalUuid(
+      value,
+    );
+
+  if (!requested) {
+    return null;
+  }
+
+  const result =
+    await client.query(
+      `
+        SELECT id
+        FROM invoicing_fiscal_positions
+        WHERE id = $1
+          AND company_id = $2
+          AND is_active = TRUE
+          AND deleted_at IS NULL
+        LIMIT 1
+      `,
+      [
+        requested,
+        companyId,
+      ],
+    );
+
+  if (
+    result.rows.length !==
+      1
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Choose a valid active fiscal position.',
+    );
+  }
+
+  return requested;
+}
+
+
 export async function createInvoicingCustomer(
   input:
     Record<string, unknown>,
@@ -632,6 +738,13 @@ export async function createInvoicingCustomer(
         client,
         context.companyId,
         input.paymentTermsId,
+      );
+
+    const fiscalPositionId =
+      await resolveFiscalPositionId(
+        client,
+        context.companyId,
+        input.fiscalPositionId,
       );
 
     const identityKey =
@@ -770,6 +883,7 @@ export async function createInvoicingCustomer(
             country_code,
             tax_id,
             registration_number,
+            fiscal_position_id,
             currency,
             payment_terms_id,
             credit_limit,
@@ -779,7 +893,7 @@ export async function createInvoicingCustomer(
           )
           VALUES (
             $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
-            $12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$21
+            $12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$22
           )
           RETURNING
             id,
@@ -833,6 +947,7 @@ export async function createInvoicingCustomer(
             input.registrationNumber,
             120,
           ),
+          fiscalPositionId,
           currency,
           paymentTermsId,
           input.creditLimit ===
@@ -1044,6 +1159,13 @@ export async function updateInvoicingCustomer(
             ':',
           );
 
+    const fiscalPositionId =
+      await resolveFiscalPositionId(
+        client,
+        context.companyId,
+        input.fiscalPositionId,
+      );
+
     await lockMasterIdentity(
       client,
       identityKey,
@@ -1157,11 +1279,12 @@ export async function updateInvoicingCustomer(
             country_code = $15,
             tax_id = $16,
             registration_number = $17,
-            currency = $18,
-            payment_terms_id = $19,
-            credit_limit = $20,
-            notes = $21,
-            updated_by = $22,
+            fiscal_position_id = $18,
+            currency = $19,
+            payment_terms_id = $20,
+            credit_limit = $21,
+            notes = $22,
+            updated_by = $23,
             updated_at = NOW()
           WHERE id = $1
             AND company_id = $2
@@ -1217,6 +1340,7 @@ export async function updateInvoicingCustomer(
             input.registrationNumber,
             120,
           ),
+          fiscalPositionId,
           currency,
           paymentTermsId,
           input.creditLimit ===
@@ -1518,6 +1642,25 @@ export async function createInvoicingCatalogItem(
         input.taxRateId,
       );
 
+    const taxGroupId =
+      await resolveTaxGroupId(
+        client,
+        context.companyId,
+        input.taxGroupId,
+      );
+
+    const taxCategory =
+      cleanText(
+        input.taxCategory,
+        80,
+      ) ||
+      null;
+
+    const effectiveTaxRateId =
+      taxGroupId
+        ? null
+        : taxRateId;
+
     const identityKey =
       sku
         ? [
@@ -1621,12 +1764,14 @@ export async function createInvoicingCatalogItem(
             description,
             unit,
             unit_price,
+            tax_category,
             default_tax_rate_id,
+            default_tax_group_id,
             created_by,
             updated_by
           )
           VALUES (
-            $1,$2,$3,$4,$5,$6,$7,$8,$9,$9
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11
           )
           RETURNING
             id,
@@ -1644,7 +1789,9 @@ export async function createInvoicingCatalogItem(
           ),
           unit,
           unitPrice,
-          taxRateId,
+          taxCategory,
+          effectiveTaxRateId,
+          taxGroupId,
           context.userId,
         ],
       );
@@ -1774,6 +1921,26 @@ export async function updateInvoicingCatalogItem(
         true,
       );
 
+    const taxGroupId =
+      await resolveTaxGroupId(
+        client,
+        context.companyId,
+        input.taxGroupId,
+        true,
+      );
+
+    const taxCategory =
+      cleanText(
+        input.taxCategory,
+        80,
+      ) ||
+      null;
+
+    const effectiveTaxRateId =
+      taxGroupId
+        ? null
+        : taxRateId;
+
     await lockMasterIdentity(
       client,
       sku
@@ -1876,8 +2043,10 @@ export async function updateInvoicingCatalogItem(
             description = $6,
             unit = $7,
             unit_price = $8,
-            default_tax_rate_id = $9,
-            updated_by = $10,
+            tax_category = $9,
+            default_tax_rate_id = $10,
+            default_tax_group_id = $11,
+            updated_by = $12,
             updated_at = NOW()
           WHERE id = $1
             AND company_id = $2
@@ -1897,7 +2066,9 @@ export async function updateInvoicingCatalogItem(
           ),
           unit,
           unitPrice,
-          taxRateId,
+          taxCategory,
+          effectiveTaxRateId,
+          taxGroupId,
           context.userId,
         ],
       );
@@ -2028,6 +2199,10 @@ export async function normalizeInvoicingLines(
     PoolClient,
   companyId:
     string,
+  customerId:
+    string,
+  invoiceDate:
+    string,
   linesInput:
     unknown,
   taxCalculation:
@@ -2063,9 +2238,23 @@ export async function normalizeInvoicingLines(
       discountValue: number;
       discountAmount: number;
       taxRateId: string | null;
+      taxGroupId: string | null;
       taxName: string | null;
       taxRate: number;
       taxAmount: number;
+      taxComponents:
+        unknown[];
+      fiscalPositionId:
+        string |
+        null;
+      localizationId:
+        string |
+        null;
+      exemptionId:
+        string |
+        null;
+      taxSource:
+        string;
       subtotal: number;
       lineTotal: number;
       sortOrder: number;
@@ -2118,8 +2307,7 @@ export async function normalizeInvoicingLines(
               sku,
               description,
               unit,
-              unit_price,
-              default_tax_rate_id
+              unit_price
             FROM invoicing_catalog_items
             WHERE id =
                   $1
@@ -2234,91 +2422,6 @@ export async function normalizeInvoicingLines(
             discountValue,
           );
 
-    const taxRateId =
-      optionalUuid(
-        raw.taxRateId ||
-        catalog
-          ?.default_tax_rate_id,
-      );
-
-    let taxRate =
-      raw.taxRate ===
-        undefined ||
-      raw.taxRate ===
-        null ||
-      raw.taxRate ===
-        ''
-        ? null
-        : numberInput(
-            raw.taxRate,
-            'Tax rate',
-            {
-              max:
-                100,
-            },
-          );
-
-    let taxName:
-      string |
-      null =
-        null;
-
-    if (
-      taxRateId
-    ) {
-      const taxResult =
-        await client.query(
-          `
-            SELECT
-              name,
-              rate
-            FROM invoicing_tax_rates
-            WHERE id =
-                  $1
-              AND company_id =
-                  $2
-              AND is_active =
-                  TRUE
-              AND deleted_at
-                  IS NULL
-            LIMIT 1
-          `,
-          [
-            taxRateId,
-            companyId,
-          ],
-        );
-
-      if (
-        taxResult.rows.length !==
-          1
-      ) {
-        throw new InvoicingError(
-          'INVALID_INPUT',
-          'Choose a valid active tax rate.',
-          {
-            line:
-              index +
-              1,
-          },
-        );
-      }
-
-      taxName =
-        String(
-          taxResult.rows[0].name,
-        );
-
-      taxRate =
-        money(
-          taxResult.rows[0].rate,
-        );
-    }
-
-    taxRate =
-      taxRate ??
-      0;
-
     const discountedAmount =
       Math.max(
         0,
@@ -2326,27 +2429,45 @@ export async function normalizeInvoicingLines(
         discountAmount,
       );
 
-    const taxAmount =
-      taxCalculation ===
-        'inclusive' &&
-      taxRate >
-        0
-        ? discountedAmount *
-          taxRate /
-          (
-            100 +
-            taxRate
-          )
-        : discountedAmount *
-          taxRate /
-          100;
-
-    const lineTotal =
-      taxCalculation ===
-        'inclusive'
-        ? discountedAmount
-        : discountedAmount +
-          taxAmount;
+    const taxTreatment =
+      await resolveInvoicingTaxTreatment(
+        client,
+        {
+          companyId,
+          customerId,
+          catalogItemId,
+          explicitTaxRateId:
+            optionalUuid(
+              raw.taxRateId,
+            ),
+          explicitTaxGroupId:
+            optionalUuid(
+              raw.taxGroupId,
+            ),
+          explicitTaxRate:
+            raw.taxRate ===
+              undefined ||
+            raw.taxRate ===
+              null ||
+            raw.taxRate ===
+              ''
+              ? null
+              : numberInput(
+                  raw.taxRate,
+                  'Tax rate',
+                  {
+                    min:
+                      0,
+                    max:
+                      100,
+                  },
+                ),
+          invoiceDate,
+          taxCalculation,
+          taxableAmount:
+            discountedAmount,
+        },
+      );
 
     normalized.push({
       catalogItemId,
@@ -2373,24 +2494,43 @@ export async function normalizeInvoicingLines(
         money(
           discountAmount,
         ),
-      taxRateId,
-      taxName,
+      taxRateId:
+        taxTreatment
+          .taxRateId,
+      taxGroupId:
+        taxTreatment
+          .taxGroupId,
+      taxName:
+        taxTreatment
+          .taxName,
       taxRate:
-        money(
-          taxRate,
-        ),
+        taxTreatment
+          .taxRate,
       taxAmount:
-        money(
-          taxAmount,
-        ),
+        taxTreatment
+          .taxAmount,
+      taxComponents:
+        taxTreatment
+          .components,
+      fiscalPositionId:
+        taxTreatment
+          .fiscalPositionId,
+      localizationId:
+        taxTreatment
+          .localizationId,
+      exemptionId:
+        taxTreatment
+          .exemptionId,
+      taxSource:
+        taxTreatment
+          .source,
       subtotal:
         money(
           gross,
         ),
       lineTotal:
-        money(
-          lineTotal,
-        ),
+        taxTreatment
+          .lineTotal,
       sortOrder:
         index,
     });
@@ -2676,9 +2816,59 @@ export async function createInvoice(
       await normalizeInvoicingLines(
         client,
         context.companyId,
+        customerId,
+        invoiceDate,
         input.lines,
         taxCalculation,
       );
+
+    const fiscalPositionId =
+      lines.find(
+        line =>
+          Boolean(
+            line.fiscalPositionId,
+          ),
+      )
+        ?.fiscalPositionId ||
+      null;
+
+    const taxLocalizationId =
+      lines.find(
+        line =>
+          Boolean(
+            line.localizationId,
+          ),
+      )
+        ?.localizationId ||
+      null;
+
+    const taxContext =
+      JSON.stringify({
+        engineVersion:
+          '2.16.0',
+        fiscalPositionId,
+        taxLocalizationId,
+        exemptionIds: [
+          ...new Set(
+            lines
+              .map(
+                line =>
+                  line.exemptionId,
+              )
+              .filter(
+                Boolean,
+              ),
+          ),
+        ],
+        sources: [
+          ...new Set(
+            lines.map(
+              line =>
+                line.taxSource,
+            ),
+          ),
+        ],
+      });
 
     const subtotal =
       money(
@@ -2988,6 +3178,9 @@ export async function createInvoice(
           base_currency = $6,
           exchange_rate_date = $7,
           exchange_rate_source = $8,
+          fiscal_position_id = $9,
+          tax_localization_id = $10,
+          tax_context = $11::jsonb,
           submitted_at =
             CASE
               WHEN $4::varchar(30) =
@@ -3024,6 +3217,9 @@ export async function createInvoice(
           .sourceName ||
         exchangeRateResolution
           .source,
+        fiscalPositionId,
+        taxLocalizationId,
+        taxContext,
       ],
     );
 
@@ -3047,15 +3243,17 @@ export async function createInvoice(
             discount_value,
             discount_amount,
             tax_rate_id,
+            tax_group_id,
             tax_name_snapshot,
             tax_rate,
             tax_amount,
+            tax_components,
             subtotal,
             line_total
           )
           VALUES (
             $1,$2,$3,$4,$5,$6,$7,$8,$9,
-            $10,$11,$12,$13,$14,$15,$16,$17,$18
+            $10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19,$20
           )
         `,
         [
@@ -3072,9 +3270,13 @@ export async function createInvoice(
           line.discountValue,
           line.discountAmount,
           line.taxRateId,
+          line.taxGroupId,
           line.taxName,
           line.taxRate,
           line.taxAmount,
+          JSON.stringify(
+            line.taxComponents,
+          ),
           line.subtotal,
           line.lineTotal,
         ],
@@ -3345,6 +3547,7 @@ export async function duplicateInvoice(
           discount_type,
           discount_value,
           tax_rate_id,
+          tax_group_id,
           tax_rate
         FROM invoicing_invoice_items
         WHERE invoice_id = $1
@@ -3440,6 +3643,9 @@ export async function duplicateInvoice(
             ),
           taxRateId:
             line.tax_rate_id ||
+            undefined,
+          taxGroupId:
+            line.tax_group_id ||
             undefined,
           taxRate:
             money(
@@ -3675,9 +3881,59 @@ export async function updateInvoiceDraft(
       await normalizeInvoicingLines(
         client,
         context.companyId,
+        customerId,
+        invoiceDate,
         input.lines,
         taxCalculation,
       );
+
+    const fiscalPositionId =
+      lines.find(
+        line =>
+          Boolean(
+            line.fiscalPositionId,
+          ),
+      )
+        ?.fiscalPositionId ||
+      null;
+
+    const taxLocalizationId =
+      lines.find(
+        line =>
+          Boolean(
+            line.localizationId,
+          ),
+      )
+        ?.localizationId ||
+      null;
+
+    const taxContext =
+      JSON.stringify({
+        engineVersion:
+          '2.16.0',
+        fiscalPositionId,
+        taxLocalizationId,
+        exemptionIds: [
+          ...new Set(
+            lines
+              .map(
+                line =>
+                  line.exemptionId,
+              )
+              .filter(
+                Boolean,
+              ),
+          ),
+        ],
+        sources: [
+          ...new Set(
+            lines.map(
+              line =>
+                line.taxSource,
+            ),
+          ),
+        ],
+      });
 
     const subtotal =
       money(
@@ -3961,7 +4217,10 @@ export async function updateInvoiceDraft(
           exchange_rate = $3,
           base_currency = $4,
           exchange_rate_date = $5,
-          exchange_rate_source = $6
+          exchange_rate_source = $6,
+          fiscal_position_id = $7,
+          tax_localization_id = $8,
+          tax_context = $9::jsonb
         WHERE id = $1
           AND company_id = $2
       `,
@@ -3976,6 +4235,9 @@ export async function updateInvoiceDraft(
           .sourceName ||
         exchangeRateResolution
           .source,
+        fiscalPositionId,
+        taxLocalizationId,
+        taxContext,
       ],
     );
 
@@ -4013,15 +4275,17 @@ export async function updateInvoiceDraft(
             discount_value,
             discount_amount,
             tax_rate_id,
+            tax_group_id,
             tax_name_snapshot,
             tax_rate,
             tax_amount,
+            tax_components,
             subtotal,
             line_total
           )
           VALUES (
             $1,$2,$3,$4,$5,$6,$7,$8,$9,
-            $10,$11,$12,$13,$14,$15,$16,$17,$18
+            $10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19,$20
           )
         `,
         [
@@ -4038,9 +4302,13 @@ export async function updateInvoiceDraft(
           line.discountValue,
           line.discountAmount,
           line.taxRateId,
+          line.taxGroupId,
           line.taxName,
           line.taxRate,
           line.taxAmount,
+          JSON.stringify(
+            line.taxComponents,
+          ),
           line.subtotal,
           line.lineTotal,
         ],
@@ -11109,6 +11377,7 @@ export async function createRecurringInvoiceTemplate(
           discount_type,
           discount_value,
           tax_rate_id,
+          tax_group_id,
           tax_rate
         FROM invoicing_invoice_items
         WHERE invoice_id =
@@ -11367,6 +11636,9 @@ export async function createRecurringInvoiceTemplate(
             ),
           taxRateId:
             line.tax_rate_id ||
+            undefined,
+          taxGroupId:
+            line.tax_group_id ||
             undefined,
           taxRate:
             money(
@@ -13673,9 +13945,57 @@ async function saveInvoicingTaxRate(
     );
   }
 
+  const code =
+    cleanText(
+      input.code,
+      80,
+    ) ||
+    null;
+
+  const jurisdictionCode =
+    cleanText(
+      input.jurisdictionCode,
+      80,
+    ) ||
+    null;
+
+  const priceIncluded =
+    input.priceIncluded ===
+      true ||
+    input.priceIncluded ===
+      'true';
+
+  const validFrom =
+    input.validFrom
+      ? isoDate(
+          input.validFrom,
+        )
+      : null;
+
+  const validTo =
+    input.validTo
+      ? isoDate(
+          input.validTo,
+        )
+      : null;
+
+  if (
+    validFrom &&
+    validTo &&
+    validTo <
+      validFrom
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Tax valid-to date cannot be before valid-from date.',
+    );
+  }
+
   const makeDefault =
     input.isDefault ===
-    true;
+      true ||
+    input.isDefault ===
+      'true';
 
   const client =
     await context.pool.connect();
@@ -13780,8 +14100,13 @@ async function saveInvoicingTaxRate(
               rate = $4,
               tax_type = $5,
               country_code = $6,
-              is_default = $7,
-              updated_by = $8,
+              code = $7,
+              jurisdiction_code = $8,
+              price_included = $9,
+              valid_from = $10,
+              valid_to = $11,
+              is_default = $12,
+              updated_by = $13,
               updated_at = NOW()
             WHERE id = $1
               AND company_id = $2
@@ -13801,6 +14126,11 @@ async function saveInvoicingTaxRate(
             taxType,
             countryCode ||
               null,
+            code,
+            jurisdictionCode,
+            priceIncluded,
+            validFrom,
+            validTo,
             makeDefault,
             context.userId,
           ],
@@ -13815,12 +14145,17 @@ async function saveInvoicingTaxRate(
               rate,
               tax_type,
               country_code,
+              code,
+              jurisdiction_code,
+              price_included,
+              valid_from,
+              valid_to,
               is_default,
               created_by,
               updated_by
             )
             VALUES (
-              $1,$2,$3,$4,$5,$6,$7,$7
+              $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13
             )
             RETURNING
               id,
@@ -13836,6 +14171,11 @@ async function saveInvoicingTaxRate(
             taxType,
             countryCode ||
               null,
+            code,
+            jurisdictionCode,
+            priceIncluded,
+            validFrom,
+            validTo,
             makeDefault,
             context.userId,
           ],

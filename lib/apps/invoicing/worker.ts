@@ -854,6 +854,10 @@ async function generateOneRecurringInvoice(
         String(
           row.company_id,
         ),
+        String(
+          row.customer_id,
+        ),
+        scheduledFor,
         payload.lines,
         taxCalculation,
       );

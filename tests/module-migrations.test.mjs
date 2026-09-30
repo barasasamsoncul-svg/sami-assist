@@ -283,3 +283,38 @@ test('module permissions: manifest definitions synchronize automatically on inst
     /manifest\.security[\s\S]*?\.permissions/s,
   );
 });
+
+
+test('Invoicing releases migrate installed tenants before promotion', async () => {
+  const [
+    upgrades,
+    releaseScript,
+    pkg,
+  ] = await Promise.all([
+    source('lib/services/module-upgrades.ts'),
+    source('scripts/migrate-invoicing-before-release.ts'),
+    source('package.json'),
+  ]);
+
+  assert.match(
+    upgrades,
+    /upgradeInstalledModuleAcrossTenants/,
+  );
+
+  assert.match(
+    releaseScript,
+    /upgradeInstalledModuleAcrossTenants\(\s*'invoicing'/s,
+    'The release command must upgrade only Invoicing tenants before code promotion.',
+  );
+
+  assert.match(
+    releaseScript,
+    /expand-before-promote/,
+    'The release command must make the expand-before-promote deployment contract explicit.',
+  );
+
+  assert.match(
+    pkg,
+    /migrate:invoicing:release/,
+  );
+});
