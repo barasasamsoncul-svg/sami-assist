@@ -10,6 +10,14 @@ import {
 
 
 const SQL = `
+  ALTER TABLE public.invoicing_invoices
+    ADD COLUMN IF NOT EXISTS primary_document_snapshot_id UUID
+      REFERENCES public.invoicing_document_snapshots(id)
+      ON DELETE SET NULL;
+  CREATE INDEX IF NOT EXISTS idx_invoicing_invoices_primary_document_snapshot
+    ON public.invoicing_invoices(primary_document_snapshot_id)
+    WHERE primary_document_snapshot_id IS NOT NULL;
+
   CREATE TABLE IF NOT EXISTS public.invoicing_etims_profiles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
