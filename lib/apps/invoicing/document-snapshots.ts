@@ -435,7 +435,25 @@ async function loadIssuedInvoicePayload(
           )
             AS show_discount,
           template.footer_text,
-          template.terms_text
+          template.terms_text,
+          etims.status
+            AS etims_status,
+          etims.scu_id
+            AS etims_scu_id,
+          etims.scu_receipt_number
+            AS etims_scu_receipt_number,
+          etims.cu_invoice_number
+            AS etims_cu_invoice_number,
+          etims.receipt_counter
+            AS etims_receipt_counter,
+          etims.total_receipt_counter
+            AS etims_total_receipt_counter,
+          etims.receipt_signature
+            AS etims_receipt_signature,
+          etims.qr_payload
+            AS etims_qr_payload,
+          etims.fiscalized_at
+            AS etims_fiscalized_at
         FROM invoicing_invoices i
         INNER JOIN invoicing_customers customer
           ON customer.id =
@@ -452,6 +470,13 @@ async function loadIssuedInvoicePayload(
              i.company_id
          AND template.deleted_at
              IS NULL
+        LEFT JOIN invoicing_etims_documents etims
+          ON etims.company_id =
+             i.company_id
+         AND etims.invoice_id =
+             i.id
+         AND etims.status =
+             'accepted'
         WHERE i.id =
               $1
           AND i.company_id =
@@ -626,6 +651,63 @@ async function loadIssuedInvoicePayload(
           ? String(
               row.payment_instructions,
             )
+          : null,
+      etims:
+        row.etims_status ===
+          'accepted'
+          ? {
+              status:
+                'accepted',
+              scuId:
+                row.etims_scu_id
+                  ? String(
+                      row.etims_scu_id,
+                    )
+                  : null,
+              scuReceiptNumber:
+                row.etims_scu_receipt_number
+                  ? String(
+                      row.etims_scu_receipt_number,
+                    )
+                  : null,
+              cuInvoiceNumber:
+                row.etims_cu_invoice_number
+                  ? String(
+                      row.etims_cu_invoice_number,
+                    )
+                  : null,
+              receiptCounter:
+                row.etims_receipt_counter
+                  ? String(
+                      row.etims_receipt_counter,
+                    )
+                  : null,
+              totalReceiptCounter:
+                row.etims_total_receipt_counter
+                  ? String(
+                      row.etims_total_receipt_counter,
+                    )
+                  : null,
+              receiptSignature:
+                row.etims_receipt_signature
+                  ? String(
+                      row.etims_receipt_signature,
+                    )
+                  : null,
+              qrPayload:
+                row.etims_qr_payload
+                  ? String(
+                      row.etims_qr_payload,
+                    )
+                  : null,
+              fiscalizedAt:
+                row.etims_fiscalized_at
+                  ? new Date(
+                      row.etims_fiscalized_at,
+                    )
+                      .toISOString()
+                  : null,
+            }
           : null,
       template: {
         layout:
@@ -949,6 +1031,8 @@ export async function createPrimaryInvoiceDocumentSnapshot(
       null;
     reason:
       InvoiceSnapshotReason;
+    replacePrimary?:
+      boolean;
   },
 ) {
   await client.query(
@@ -974,9 +1058,29 @@ export async function createPrimaryInvoiceDocumentSnapshot(
     );
 
   if (
-    existing
+    existing &&
+    !input.replacePrimary
   ) {
     return existing;
+  }
+
+  if (
+    existing &&
+    input.replacePrimary
+  ) {
+    await client.query(
+      `
+        UPDATE invoicing_document_snapshots
+        SET is_primary = FALSE
+        WHERE company_id = $1
+          AND invoice_id = $2
+          AND is_primary = TRUE
+      `,
+      [
+        input.companyId,
+        input.invoiceId,
+      ],
+    );
   }
 
   const source =
@@ -1346,6 +1450,32 @@ export async function ensureTenantInvoiceDocumentSnapshot(
         input.userId,
       reason:
         input.reason,
+    },
+  );
+}
+
+
+export async function createFiscalizedInvoiceDocumentSnapshot(
+  client:
+    PoolClient,
+  input: {
+    companyId:
+      string;
+    invoiceId:
+      string;
+    userId:
+      string |
+      null;
+  },
+) {
+  return createPrimaryInvoiceDocumentSnapshot(
+    client,
+    {
+      ...input,
+      reason:
+        'manual',
+      replacePrimary:
+        true,
     },
   );
 }
