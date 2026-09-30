@@ -6066,12 +6066,6 @@ test('Invoicing Part 18 gives SaMi AI deep permission-aware receivables intellig
     /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
     'Part 18 reuses the existing Invoicing schema and must not force a fake schema version bump.',
   );
-
-  assert.doesNotMatch(
-    runtimeMigrations,
-    /INVOICING_2_18_0_TO_2_19_0/,
-    'Part 18 adds AI application capabilities only; no empty database migration should be invented.',
-  );
 });
 
 
@@ -6211,12 +6205,6 @@ test('Invoicing Part 19 centralizes standalone navigation and keeps route struct
     /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
     'Part 19 changes application navigation only and must not fake a tenant schema version.',
   );
-
-  assert.doesNotMatch(
-    runtimeMigrations,
-    /INVOICING_2_18_0_TO_2_19_0/,
-    'Standalone navigation work must not create an empty database migration.',
-  );
 });
 
 
@@ -6346,12 +6334,6 @@ test('Invoicing Part 20 keeps settings focused, mobile-safe and free of nested f
     manifest,
     /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
     'Part 20 reorganizes settings without pretending the tenant schema changed.',
-  );
-
-  assert.doesNotMatch(
-    runtimeMigrations,
-    /INVOICING_2_18_0_TO_2_19_0/,
-    'Focused settings navigation must not create an empty database migration.',
   );
 });
 
@@ -6579,5 +6561,175 @@ test('Invoicing Part 22 normalizes audit resource names for invoice detail', asy
   assert.match(
     queries,
     /resource_type IN[\s\S]*'invoice'[\s\S]*'invoices'/s,
+  );
+});
+
+
+test('Invoicing Part 23 splits high-risk authorities and aligns backend, UI and role catalog', async () => {
+  const [
+    context,
+    queries,
+    navigation,
+    commands,
+    credits,
+    retainers,
+    paymentPlans,
+    currencies,
+    taxEngine,
+    etims,
+    eInvoicing,
+    manifest,
+    client,
+    invoiceDetail,
+    creditLifecycle,
+    paymentPlanUi,
+    currencyUi,
+    taxUi,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/context.ts'),
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/navigation.ts'),
+    source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/invoicing/credit-notes.ts'),
+    source('lib/apps/invoicing/retainers.ts'),
+    source('lib/apps/invoicing/payment-plans.ts'),
+    source('lib/apps/invoicing/currencies.ts'),
+    source('lib/apps/invoicing/tax-engine.ts'),
+    source('lib/apps/invoicing/etims.ts'),
+    source('lib/apps/invoicing/e-invoicing.ts'),
+    source('lib/modules/first-party.ts'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('app/apps/invoicing/[invoiceId]/InvoiceDetailClient.tsx'),
+    source('app/apps/invoicing/[invoiceId]/CreditNoteLifecyclePanel.tsx'),
+    source('app/apps/invoicing/PaymentPlansWorkspace.tsx'),
+    source('app/apps/invoicing/CurrencyCenterWorkspace.tsx'),
+    source('app/apps/invoicing/TaxEngineWorkspace.tsx'),
+  ]);
+
+  assert.match(context, /hasAnyInvoicingPermission/);
+  assert.match(
+    context,
+    /requiredPermission\?:[\s\S]*readonly string\[\]/,
+  );
+
+  for (const permission of [
+    'invoicing.payment.allocate',
+    'invoicing.payment.reconcile',
+    'invoicing.payment.refund',
+    'invoicing.payment.reverse',
+    'invoicing.credit_note.issue',
+    'invoicing.credit_note.apply',
+    'invoicing.credit_note.refund',
+    'invoicing.credit_note.cancel',
+    'invoicing.retainer.manage',
+    'invoicing.payment_plan.manage',
+    'invoicing.recurring.run',
+    'invoicing.reminder.send',
+    'invoicing.reminder.manage',
+    'invoicing.dunning.manage',
+    'invoicing.portal.manage',
+    'invoicing.currency.manage',
+    'invoicing.tax.manage',
+    'invoicing.etims.configure',
+    'invoicing.etims.submit_invoice',
+    'invoicing.etims.submit_credit',
+    'invoicing.einvoice.configure',
+    'invoicing.einvoice.generate_invoice',
+    'invoicing.einvoice.generate_credit',
+    'invoicing.einvoice.submit_invoice',
+    'invoicing.einvoice.submit_credit',
+    'invoicing.einvoice.export',
+    'invoicing.audit.view',
+  ]) {
+    assert.ok(
+      context.includes(permission),
+      permission + ' must remain a code-owned authority.',
+    );
+
+    assert.ok(
+      manifest.includes(permission),
+      permission + ' must remain synchronized into workspace roles.',
+    );
+  }
+
+  assert.match(commands, /PAYMENT_ALLOCATE[\s\S]*PAYMENT_RECORD/);
+  assert.match(commands, /PAYMENT_RECONCILE[\s\S]*PAYMENT_RECORD/);
+  assert.match(commands, /PAYMENT_REFUND[\s\S]*PAYMENT_RECORD/);
+  assert.match(commands, /PAYMENT_REVERSE[\s\S]*PAYMENT_RECORD/);
+  assert.match(commands, /REMINDER_SEND[\s\S]*INVOICE_SEND/);
+  assert.match(commands, /DUNNING_MANAGE[\s\S]*SETTINGS_MANAGE/);
+  assert.match(commands, /PORTAL_MANAGE[\s\S]*CUSTOMER_MANAGE/);
+
+  assert.match(credits, /CREDIT_NOTE_ISSUE[\s\S]*CREDIT_NOTE_MANAGE/);
+  assert.match(credits, /CREDIT_NOTE_APPLY[\s\S]*CREDIT_NOTE_MANAGE/);
+  assert.match(credits, /CREDIT_NOTE_REFUND[\s\S]*CREDIT_NOTE_MANAGE/);
+  assert.match(credits, /CREDIT_NOTE_CANCEL[\s\S]*CREDIT_NOTE_MANAGE/);
+
+  assert.match(retainers, /RETAINER_MANAGE[\s\S]*PAYMENT_RECORD/);
+  assert.match(paymentPlans, /PAYMENT_PLAN_MANAGE[\s\S]*PAYMENT_RECORD/);
+  assert.match(currencies, /CURRENCY_MANAGE[\s\S]*SETTINGS_MANAGE/);
+  assert.match(taxEngine, /TAX_MANAGE[\s\S]*SETTINGS_MANAGE/);
+
+  assert.match(etims, /ETIMS_CONFIGURE[\s\S]*SETTINGS_MANAGE/);
+  assert.match(etims, /ETIMS_SUBMIT_INVOICE[\s\S]*INVOICE_SEND/);
+  assert.match(etims, /ETIMS_SUBMIT_CREDIT[\s\S]*CREDIT_NOTE_MANAGE/);
+
+  assert.match(eInvoicing, /EINVOICE_GENERATE_INVOICE/);
+  assert.match(eInvoicing, /EINVOICE_GENERATE_CREDIT/);
+  assert.match(eInvoicing, /EINVOICE_SUBMIT_INVOICE/);
+  assert.match(eInvoicing, /EINVOICE_SUBMIT_CREDIT/);
+  assert.match(eInvoicing, /document_kind ===[\s\S]*'credit_note'/);
+
+  for (const capability of [
+    'canAllocatePayment',
+    'canReconcilePayment',
+    'canRefundPayment',
+    'canReversePayment',
+    'canManageRetainers',
+    'canManagePaymentPlans',
+    'canRunRecurring',
+    'canManageDunning',
+    'canManagePortal',
+    'canViewEtims',
+    'canViewEInvoicing',
+    'canViewAudit',
+  ]) {
+    assert.ok(
+      queries.includes(capability),
+      capability + ' must be computed by the server read model.',
+    );
+  }
+
+  assert.match(navigation, /'canViewEtims'/);
+  assert.match(navigation, /'canViewEInvoicing'/);
+  assert.match(navigation, /'canViewRetainers'/);
+  assert.match(navigation, /'canViewPaymentPlans'/);
+
+  assert.match(client, /canManageRetainers/);
+  assert.match(client, /canAllocatePayment/);
+  assert.match(client, /canRefundPayment/);
+  assert.match(client, /canReconcilePayment/);
+  assert.match(client, /canReversePayment/);
+  assert.match(client, /canManagePortal/);
+  assert.match(client, /canManageDunning/);
+  assert.match(client, /canRunRecurring/);
+
+  assert.match(invoiceDetail, /canViewAudit/);
+  assert.match(invoiceDetail, /canIssueCredit/);
+  assert.match(invoiceDetail, /canReversePayment/);
+
+  assert.match(creditLifecycle, /canApplyCredit/);
+  assert.match(creditLifecycle, /canRefundCredit/);
+  assert.match(creditLifecycle, /canCancelCredit/);
+
+  assert.match(paymentPlanUi, /canManagePaymentPlans/);
+  assert.match(currencyUi, /canManageCurrencies/);
+  assert.match(taxUi, /canManageTax/);
+
+  assert.match(manifest, /key:\s*"audit_log"/);
+  assert.match(manifest, /invoicing\.audit\.company/);
+  assert.match(
+    manifest,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
   );
 });
