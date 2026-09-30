@@ -23,8 +23,6 @@ const SQL = `
     status VARCHAR(20) NOT NULL DEFAULT 'configured'
       CHECK (status IN ('disabled','configured','activated','error')),
     default_payment_type_code VARCHAR(4) NOT NULL DEFAULT '02',
-    next_transaction_invoice_no BIGINT NOT NULL DEFAULT 1
-      CHECK (next_transaction_invoice_no > 0),
     kra_sdc_id VARCHAR(120),
     kra_mrc_no VARCHAR(120),
     communication_key_sealed TEXT,
@@ -42,6 +40,22 @@ const SQL = `
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(company_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS public.invoicing_etims_sequences (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+    solution_type VARCHAR(10) NOT NULL
+      CHECK (solution_type IN ('oscu','vscu')),
+    environment VARCHAR(12) NOT NULL
+      CHECK (environment IN ('sandbox','production')),
+    branch_id VARCHAR(20) NOT NULL,
+    next_invoice_no BIGINT NOT NULL DEFAULT 1
+      CHECK (next_invoice_no > 0),
+    updated_by UUID,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(company_id, solution_type, environment, branch_id)
   );
 
   CREATE TABLE IF NOT EXISTS public.invoicing_etims_item_mappings (
