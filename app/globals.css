@@ -342,3 +342,60 @@ svg {
 ) {
   max-width: 100%;
 }
+
+
+/* Workspace visibility contract */
+[data-sami-workspace-shell='true'] {
+  color: var(--foreground);
+}
+
+[data-sami-workspace-shell='true'] :where(
+  .text-slate-300,
+  .text-slate-400
+) {
+  color: #64748b;
+}
+
+[data-sami-workspace-shell='true'] :where(
+  .text-slate-500
+) {
+  color: #475569;
+}
+
+[data-sami-workspace-shell='true'] :where(
+  .text-slate-600,
+  .text-slate-700
+) {
+  color: #334155;
+}
+
+.dark [data-sami-workspace-shell='true'] :where(
+  .text-slate-300,
+  .text-slate-400,
+  .text-slate-500
+) {
+  color: #cbd5e1;
+}
+
+.dark [data-sami-workspace-shell='true'] :where(
+  .text-slate-600,
+  .text-slate-700
+) {
+  color: #a8b3c7;
+}
+
+[data-sami-workspace-shell='true'] :where(
+  input,
+  textarea,
+  select
+) {
+  color: var(--foreground);
+}
+
+[data-sami-workspace-shell='true'] :where(
+  input,
+  textarea
+)::placeholder {
+  color: var(--sami-muted);
+  opacity: 1;
+}
