@@ -5754,22 +5754,58 @@ export async function recordCustomerPayment(
           3,
         );
 
-    const exchangeRate =
-      numberInput(
-        input.exchangeRate ===
-          undefined ||
-        input.exchangeRate ===
-          null ||
-        input.exchangeRate ===
-          ''
-          ? 1
-          : input.exchangeRate,
-        'Payment exchange rate',
-        {
-          min:
-            0.00000001,
-        },
+    const paymentDate =
+      isoDate(
+        input.paymentDate,
+        new Date(),
       );
+
+    const paymentSettings =
+      await client.query(
+        `
+          SELECT
+            COALESCE(
+              base_currency,
+              default_currency,
+              $2
+            ) AS base_currency
+          FROM invoicing_settings
+          WHERE company_id =
+                $1
+          LIMIT 1
+        `,
+        [
+          context.companyId,
+          context.company
+            .currentCompany
+            .currency ||
+            'KES',
+        ],
+      );
+
+    const baseCurrency =
+      cleanText(
+        paymentSettings.rows[0]
+          ?.base_currency ||
+        context.company
+          .currentCompany.currency ||
+        'KES',
+        3,
+      ).toUpperCase();
+
+    const exchangeRateResolution =
+      await invoiceExchangeRate(
+        client,
+        context.companyId,
+        currency,
+        baseCurrency,
+        paymentDate,
+        input.exchangeRate,
+      );
+
+    const exchangeRate =
+      exchangeRateResolution
+        .rate;
 
     if (
       idempotencyKey
@@ -5910,12 +5946,6 @@ export async function recordCustomerPayment(
         'payment',
       );
 
-    const paymentDate =
-      isoDate(
-        input.paymentDate,
-        new Date(),
-      );
-
     const created =
       await client.query(
         `
@@ -5968,6 +5998,32 @@ export async function recordCustomerPayment(
       String(
         created.rows[0].id,
       );
+
+    await client.query(
+      `
+        UPDATE invoicing_payments
+        SET
+          base_currency = $3,
+          exchange_rate_date = $4,
+          exchange_rate_source = $5,
+          updated_at = NOW(),
+          updated_by = $6
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [
+        paymentId,
+        context.companyId,
+        baseCurrency,
+        exchangeRateResolution
+          .effectiveDate,
+        exchangeRateResolution
+          .sourceName ||
+        exchangeRateResolution
+          .source,
+        context.userId,
+      ],
+    );
 
     await postInvoicePaymentToAccounting(
       client,
