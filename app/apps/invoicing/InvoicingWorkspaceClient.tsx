@@ -2994,7 +2994,7 @@ function Dashboard({
 
                       <div className="min-w-0 flex-1">
                         <div className="flex min-w-0 flex-wrap items-center gap-2">
-                          <p className="truncate text-sm font-black">
+                          <p className="break-words whitespace-normal text-sm font-black">
                             {
                               invoice
                                 .invoiceNumber
@@ -3117,7 +3117,7 @@ function Dashboard({
                       </div>
 
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-black">
+                        <p className="break-words whitespace-normal text-xs font-black">
                           {
                             payment
                               .customerName ||
@@ -3237,7 +3237,7 @@ function Dashboard({
                             }
                           >
                             <div className="flex items-center justify-between gap-3">
-                              <p className="truncate text-xs font-black">
+                              <p className="break-words whitespace-normal text-xs font-black">
                                 {
                                   customer
                                     .name
@@ -3331,7 +3331,7 @@ function Dashboard({
                           </div>
 
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-xs font-black">
+                            <p className="break-words whitespace-normal text-xs font-black">
                               {
                                 item.name
                               }
@@ -3663,7 +3663,7 @@ function Dashboard({
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-black">
+                        <p className="break-words whitespace-normal text-sm font-black">
                           {
                             invoice
                               .invoiceNumber
@@ -4691,7 +4691,7 @@ function Invoices({
                       </td>
 
                       <td className="max-w-[230px] px-4 py-3.5">
-                        <p className="truncate font-bold">
+                        <p className="break-words whitespace-normal font-bold">
                           {
                             invoice
                               .customerName
@@ -5923,7 +5923,7 @@ function Customers({
                     <div className="grid items-center gap-3 md:grid-cols-[minmax(0,1fr)_110px_160px_28px]">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="truncate font-black">
+                          <p className="break-words whitespace-normal font-black">
                             {
                               customer.name
                             }
@@ -6875,7 +6875,7 @@ function Items({
                     <div className="grid items-center gap-3 md:grid-cols-[minmax(0,1fr)_110px_140px_28px]">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="truncate font-black">
+                          <p className="break-words whitespace-normal font-black">
                             {
                               item.name
                             }
@@ -10752,7 +10752,7 @@ function CustomerPortal({
                     >
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0">
-                          <p className="truncate text-xs font-black">
+                          <p className="break-words whitespace-normal text-xs font-black">
                             {
                               customer.name
                             }
@@ -12251,7 +12251,7 @@ function RemindersAndDunning({
                         }
                       </td>
                       <td className="max-w-[260px] px-4 py-3">
-                        <p className="truncate font-semibold">
+                        <p className="break-words whitespace-normal font-semibold">
                           {
                             reminder.failureCode ||
                             reminder.failureMessage ||
@@ -13112,7 +13112,7 @@ function Settings({
                     <summary className="cursor-pointer list-none px-3 py-3">
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="truncate text-xs font-black">
+                          <p className="break-words whitespace-normal text-xs font-black">
                             {
                               term.name
                             } · {
@@ -13395,7 +13395,7 @@ function Settings({
                     <summary className="cursor-pointer list-none px-3 py-3">
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="truncate text-xs font-black">
+                          <p className="break-words whitespace-normal text-xs font-black">
                             {
                               tax.name
                             } · {
