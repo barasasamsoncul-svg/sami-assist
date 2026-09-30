@@ -64,6 +64,10 @@ import {
   resolveInvoicingExchangeRate,
 } from '@/lib/apps/invoicing/currencies';
 
+import {
+  resolveInvoicingTaxTreatment,
+} from '@/lib/apps/invoicing/tax-engine';
+
 
 function plainObject(
   value:
@@ -2028,6 +2032,10 @@ export async function normalizeInvoicingLines(
     PoolClient,
   companyId:
     string,
+  customerId:
+    string,
+  invoiceDate:
+    string,
   linesInput:
     unknown,
   taxCalculation:
@@ -2063,9 +2071,23 @@ export async function normalizeInvoicingLines(
       discountValue: number;
       discountAmount: number;
       taxRateId: string | null;
+      taxGroupId: string | null;
       taxName: string | null;
       taxRate: number;
       taxAmount: number;
+      taxComponents:
+        unknown[];
+      fiscalPositionId:
+        string |
+        null;
+      localizationId:
+        string |
+        null;
+      exemptionId:
+        string |
+        null;
+      taxSource:
+        string;
       subtotal: number;
       lineTotal: number;
       sortOrder: number;
@@ -2118,8 +2140,7 @@ export async function normalizeInvoicingLines(
               sku,
               description,
               unit,
-              unit_price,
-              default_tax_rate_id
+              unit_price
             FROM invoicing_catalog_items
             WHERE id =
                   $1
@@ -2234,91 +2255,6 @@ export async function normalizeInvoicingLines(
             discountValue,
           );
 
-    const taxRateId =
-      optionalUuid(
-        raw.taxRateId ||
-        catalog
-          ?.default_tax_rate_id,
-      );
-
-    let taxRate =
-      raw.taxRate ===
-        undefined ||
-      raw.taxRate ===
-        null ||
-      raw.taxRate ===
-        ''
-        ? null
-        : numberInput(
-            raw.taxRate,
-            'Tax rate',
-            {
-              max:
-                100,
-            },
-          );
-
-    let taxName:
-      string |
-      null =
-        null;
-
-    if (
-      taxRateId
-    ) {
-      const taxResult =
-        await client.query(
-          `
-            SELECT
-              name,
-              rate
-            FROM invoicing_tax_rates
-            WHERE id =
-                  $1
-              AND company_id =
-                  $2
-              AND is_active =
-                  TRUE
-              AND deleted_at
-                  IS NULL
-            LIMIT 1
-          `,
-          [
-            taxRateId,
-            companyId,
-          ],
-        );
-
-      if (
-        taxResult.rows.length !==
-          1
-      ) {
-        throw new InvoicingError(
-          'INVALID_INPUT',
-          'Choose a valid active tax rate.',
-          {
-            line:
-              index +
-              1,
-          },
-        );
-      }
-
-      taxName =
-        String(
-          taxResult.rows[0].name,
-        );
-
-      taxRate =
-        money(
-          taxResult.rows[0].rate,
-        );
-    }
-
-    taxRate =
-      taxRate ??
-      0;
-
     const discountedAmount =
       Math.max(
         0,
@@ -2326,27 +2262,45 @@ export async function normalizeInvoicingLines(
         discountAmount,
       );
 
-    const taxAmount =
-      taxCalculation ===
-        'inclusive' &&
-      taxRate >
-        0
-        ? discountedAmount *
-          taxRate /
-          (
-            100 +
-            taxRate
-          )
-        : discountedAmount *
-          taxRate /
-          100;
-
-    const lineTotal =
-      taxCalculation ===
-        'inclusive'
-        ? discountedAmount
-        : discountedAmount +
-          taxAmount;
+    const taxTreatment =
+      await resolveInvoicingTaxTreatment(
+        client,
+        {
+          companyId,
+          customerId,
+          catalogItemId,
+          explicitTaxRateId:
+            optionalUuid(
+              raw.taxRateId,
+            ),
+          explicitTaxGroupId:
+            optionalUuid(
+              raw.taxGroupId,
+            ),
+          explicitTaxRate:
+            raw.taxRate ===
+              undefined ||
+            raw.taxRate ===
+              null ||
+            raw.taxRate ===
+              ''
+              ? null
+              : numberInput(
+                  raw.taxRate,
+                  'Tax rate',
+                  {
+                    min:
+                      0,
+                    max:
+                      100,
+                  },
+                ),
+          invoiceDate,
+          taxCalculation,
+          taxableAmount:
+            discountedAmount,
+        },
+      );
 
     normalized.push({
       catalogItemId,
@@ -2373,24 +2327,43 @@ export async function normalizeInvoicingLines(
         money(
           discountAmount,
         ),
-      taxRateId,
-      taxName,
+      taxRateId:
+        taxTreatment
+          .taxRateId,
+      taxGroupId:
+        taxTreatment
+          .taxGroupId,
+      taxName:
+        taxTreatment
+          .taxName,
       taxRate:
-        money(
-          taxRate,
-        ),
+        taxTreatment
+          .taxRate,
       taxAmount:
-        money(
-          taxAmount,
-        ),
+        taxTreatment
+          .taxAmount,
+      taxComponents:
+        taxTreatment
+          .components,
+      fiscalPositionId:
+        taxTreatment
+          .fiscalPositionId,
+      localizationId:
+        taxTreatment
+          .localizationId,
+      exemptionId:
+        taxTreatment
+          .exemptionId,
+      taxSource:
+        taxTreatment
+          .source,
       subtotal:
         money(
           gross,
         ),
       lineTotal:
-        money(
-          lineTotal,
-        ),
+        taxTreatment
+          .lineTotal,
       sortOrder:
         index,
     });
@@ -2676,6 +2649,8 @@ export async function createInvoice(
       await normalizeInvoicingLines(
         client,
         context.companyId,
+        customerId,
+        invoiceDate,
         input.lines,
         taxCalculation,
       );
@@ -3050,12 +3025,13 @@ export async function createInvoice(
             tax_name_snapshot,
             tax_rate,
             tax_amount,
+            tax_components,
             subtotal,
             line_total
           )
           VALUES (
             $1,$2,$3,$4,$5,$6,$7,$8,$9,
-            $10,$11,$12,$13,$14,$15,$16,$17,$18
+            $10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18,$19
           )
         `,
         [
@@ -3075,6 +3051,9 @@ export async function createInvoice(
           line.taxName,
           line.taxRate,
           line.taxAmount,
+          JSON.stringify(
+            line.taxComponents,
+          ),
           line.subtotal,
           line.lineTotal,
         ],
