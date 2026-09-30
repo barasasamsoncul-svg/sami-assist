@@ -719,6 +719,54 @@ export type InvoicingWorkspaceData = {
   aging: Array<{ bucket: string; amount: number; count: number }>;
   statusCounts: Array<{ status: string; count: number; amount: number }>;
   monthly: Array<{ month: string; invoiceCount: number; amount: number }>;
+  reporting: {
+    kpis: {
+      billedTotal: number;
+      collectedTotal: number;
+      collectionRate: number;
+      dsoDays: number;
+      averageDaysToPay: number;
+      averageInvoiceValue: number;
+    };
+    monthlyTrend: Array<{
+      month: string;
+      invoiceCount: number;
+      paymentCount: number;
+      billed: number;
+      collected: number;
+      credited: number;
+    }>;
+    customerExposure: Array<{
+      customerId: string;
+      customerName: string;
+      invoiceCount: number;
+      billed: number;
+      outstanding: number;
+      overdue: number;
+    }>;
+    itemPerformance: Array<{
+      catalogItemId: string | null;
+      itemName: string;
+      sku: string | null;
+      quantity: number;
+      revenue: number;
+      tax: number;
+    }>;
+    taxSummary: Array<{
+      taxName: string;
+      taxRate: number;
+      invoiceCount: number;
+      taxableAmount: number;
+      taxAmount: number;
+    }>;
+    paymentMethods: Array<{
+      method: string;
+      paymentCount: number;
+      gross: number;
+      refunded: number;
+      net: number;
+    }>;
+  };
   invoices: InvoicingInvoiceSummary[];
   customers: InvoicingCustomerSummary[];
   payments: InvoicingPaymentSummary[];

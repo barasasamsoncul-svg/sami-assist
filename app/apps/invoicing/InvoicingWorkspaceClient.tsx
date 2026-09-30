@@ -22,6 +22,7 @@ import CurrencyCenterWorkspace from '@/app/apps/invoicing/CurrencyCenterWorkspac
 import TaxEngineWorkspace from '@/app/apps/invoicing/TaxEngineWorkspace';
 import EtimsWorkspace from '@/app/apps/invoicing/EtimsWorkspace';
 import EInvoicingWorkspace from '@/app/apps/invoicing/EInvoicingWorkspace';
+import InvoicingReportsWorkspace from '@/app/apps/invoicing/InvoicingReportsWorkspace';
 import SaMiOverlay from '@/app/components/SaMiOverlay';
 import {
   useSaMiOverlay,
@@ -11909,143 +11910,13 @@ function Reports({
     InvoicingWorkspaceData;
 }) {
   return (
-    <div className="grid gap-4 xl:grid-cols-2">
-      <div className="sami-surface rounded-[24px] p-4 sm:p-5">
-        <p className="text-sm font-black">
-          Status analysis
-        </p>
-
-        <p className="mt-1 text-xs text-slate-500">
-          Invoice volume and value by current status.
-        </p>
-
-        <div className="mt-4 space-y-2">
-          {
-            data.statusCounts
-              .map(
-                item => (
-                  <div
-                    key={
-                      item.status
-                    }
-                    className="flex items-center gap-3 rounded-xl border border-[var(--sami-border)] px-3 py-2.5"
-                  >
-                    <StatusPill
-                      value={
-                        item.status
-                      }
-                    />
-
-                    <span className="text-xs font-bold text-slate-500">
-                      {
-                        item.count
-                      } invoices
-                    </span>
-
-                    <span className="ml-auto text-sm font-black">
-                      {
-                        formatMoney(
-                          item.amount,
-                          data.company
-                            .currency,
-                        )
-                      }
-                    </span>
-                  </div>
-                ),
-              )
-          }
-        </div>
-      </div>
-
-      <div className="sami-surface rounded-[24px] p-4 sm:p-5">
-        <p className="text-sm font-black">
-          Monthly invoicing
-        </p>
-
-        <p className="mt-1 text-xs text-slate-500">
-          Last 12 active billing months.
-        </p>
-
-        <div className="mt-4 space-y-3">
-          {
-            data.monthly
-              .map(
-                item => {
-                  const maxAmount =
-                    Math.max(
-                      1,
-                      ...data.monthly
-                        .map(
-                          row =>
-                            row.amount,
-                        ),
-                    );
-
-                  const percent =
-                    Math.min(
-                      100,
-                      item.amount /
-                      maxAmount *
-                      100,
-                    );
-
-                  return (
-                    <div
-                      key={
-                        item.month
-                      }
-                    >
-                      <div className="flex justify-between gap-3 text-xs">
-                        <span className="font-bold">
-                          {
-                            item.month
-                          }
-                        </span>
-
-                        <span className="font-black">
-                          {
-                            formatMoney(
-                              item.amount,
-                              data.company
-                                .currency,
-                            )
-                          }
-                        </span>
-                      </div>
-
-                      <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-white/5">
-                        <div
-                          className="h-full rounded-full bg-blue-600"
-                          style={{
-                            width:
-                              percent +
-                              '%',
-                          }}
-                        />
-                      </div>
-                    </div>
-                  );
-                },
-              )
-          }
-
-          {
-            data.monthly
-              .length ===
-              0 &&
-            (
-              <p className="py-8 text-center text-sm text-slate-500">
-                Monthly reporting will populate as invoices are created.
-              </p>
-            )
-          }
-        </div>
-      </div>
-    </div>
+    <InvoicingReportsWorkspace
+      data={
+        data
+      }
+    />
   );
 }
-
 
 type InvoicingSettingsSection =
   | 'general'

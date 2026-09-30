@@ -404,6 +404,12 @@ export async function getInvoicingWorkspaceData():
     aging,
     statuses,
     monthly,
+    reportKpis,
+    reportMonthlyTrend,
+    reportCustomerExposure,
+    reportItemPerformance,
+    reportTaxSummary,
+    reportPaymentMethods,
     invoices,
     customers,
     payments,
@@ -612,6 +618,815 @@ export async function getInvoicingWorkspaceData():
           context.companyId,
         ],
       ),
+
+      access.canViewReports
+        ? context.pool.query(
+            `
+              WITH eligible AS (
+                SELECT *
+                FROM invoicing_aging_base
+                WHERE company_id = $1
+                  AND effective_status
+                      NOT IN (
+                        'draft',
+                        'pending_approval',
+                        'rejected',
+                        'cancelled',
+                        'void'
+                      )
+              ),
+              totals AS (
+                SELECT
+                  COUNT(*)::int
+                    AS invoice_count,
+                  COALESCE(
+                    SUM(
+                      base_total_amount
+                    ),
+                    0
+                  )
+                    AS billed_total,
+                  COALESCE(
+                    SUM(
+                      base_balance_due
+                    ),
+                    0
+                  )
+                    AS outstanding_total
+                FROM eligible
+              ),
+              sales_90 AS (
+                SELECT
+                  COALESCE(
+                    SUM(
+                      base_total_amount
+                    ),
+                    0
+                  )
+                    AS amount
+                FROM eligible
+                WHERE invoice_date >=
+                      CURRENT_DATE -
+                      INTERVAL '89 days'
+              ),
+              allocations AS (
+                SELECT
+                  COALESCE(
+                    SUM(
+                      COALESCE(
+                        allocation
+                          .base_invoice_amount,
+                        COALESCE(
+                          allocation
+                            .invoice_amount,
+                          allocation
+                            .amount
+                        ) *
+                        COALESCE(
+                          invoice
+                            .exchange_rate,
+                          1
+                        )
+                      )
+                    ),
+                    0
+                  )
+                    AS collected_total,
+                  COALESCE(
+                    AVG(
+                      GREATEST(
+                        payment
+                          .payment_date -
+                        invoice
+                          .invoice_date,
+                        0
+                      )
+                    ),
+                    0
+                  )
+                    AS average_days_to_pay
+                FROM
+                  invoicing_payment_allocations
+                    allocation
+                INNER JOIN
+                  invoicing_payments
+                    payment
+                  ON payment.id =
+                     allocation
+                       .payment_id
+                 AND payment.company_id =
+                     allocation
+                       .company_id
+                INNER JOIN
+                  invoicing_invoices
+                    invoice
+                  ON invoice.id =
+                     allocation
+                       .invoice_id
+                 AND invoice.company_id =
+                     allocation
+                       .company_id
+                WHERE allocation
+                        .company_id =
+                      $1
+                  AND allocation.status =
+                      'posted'
+                  AND payment.status =
+                      'posted'
+                  AND payment.deleted_at
+                      IS NULL
+                  AND invoice.deleted_at
+                      IS NULL
+              )
+              SELECT
+                totals.billed_total,
+                allocations
+                  .collected_total,
+                CASE
+                  WHEN totals
+                         .billed_total >
+                       0
+                  THEN LEAST(
+                    100,
+                    allocations
+                      .collected_total /
+                    totals
+                      .billed_total *
+                    100
+                  )
+                  ELSE 0
+                END
+                  AS collection_rate,
+                CASE
+                  WHEN sales_90.amount >
+                       0
+                  THEN totals
+                         .outstanding_total /
+                       sales_90.amount *
+                       90
+                  ELSE 0
+                END
+                  AS dso_days,
+                allocations
+                  .average_days_to_pay,
+                CASE
+                  WHEN totals
+                         .invoice_count >
+                       0
+                  THEN totals
+                         .billed_total /
+                       totals
+                         .invoice_count
+                  ELSE 0
+                END
+                  AS average_invoice_value
+              FROM totals
+              CROSS JOIN sales_90
+              CROSS JOIN allocations
+            `,
+            [
+              context.companyId,
+            ],
+          )
+        : Promise.resolve({
+            rows: [],
+          }),
+
+      access.canViewReports
+        ? context.pool.query(
+            `
+              WITH months AS (
+                SELECT
+                  GENERATE_SERIES(
+                    DATE_TRUNC(
+                      'month',
+                      CURRENT_DATE
+                    ) -
+                    INTERVAL '11 months',
+                    DATE_TRUNC(
+                      'month',
+                      CURRENT_DATE
+                    ),
+                    INTERVAL '1 month'
+                  )::date
+                    AS month
+              ),
+              billed AS (
+                SELECT
+                  DATE_TRUNC(
+                    'month',
+                    invoice_date
+                  )::date
+                    AS month,
+                  COUNT(*)::int
+                    AS invoice_count,
+                  COALESCE(
+                    SUM(
+                      total_amount *
+                      COALESCE(
+                        exchange_rate,
+                        1
+                      )
+                    ),
+                    0
+                  )
+                    AS billed
+                FROM
+                  invoicing_invoices
+                WHERE company_id =
+                      $1
+                  AND deleted_at
+                      IS NULL
+                  AND status
+                      NOT IN (
+                        'draft',
+                        'pending_approval',
+                        'rejected',
+                        'cancelled',
+                        'void'
+                      )
+                  AND invoice_date >=
+                      DATE_TRUNC(
+                        'month',
+                        CURRENT_DATE
+                      ) -
+                      INTERVAL '11 months'
+                GROUP BY
+                  DATE_TRUNC(
+                    'month',
+                    invoice_date
+                  )
+              ),
+              collected AS (
+                SELECT
+                  DATE_TRUNC(
+                    'month',
+                    payment
+                      .payment_date
+                  )::date
+                    AS month,
+                  COUNT(
+                    DISTINCT
+                    payment.id
+                  )::int
+                    AS payment_count,
+                  COALESCE(
+                    SUM(
+                      COALESCE(
+                        allocation
+                          .base_invoice_amount,
+                        COALESCE(
+                          allocation
+                            .invoice_amount,
+                          allocation
+                            .amount
+                        ) *
+                        COALESCE(
+                          invoice
+                            .exchange_rate,
+                          1
+                        )
+                      )
+                    ),
+                    0
+                  )
+                    AS collected
+                FROM
+                  invoicing_payment_allocations
+                    allocation
+                INNER JOIN
+                  invoicing_payments
+                    payment
+                  ON payment.id =
+                     allocation
+                       .payment_id
+                 AND payment.company_id =
+                     allocation
+                       .company_id
+                INNER JOIN
+                  invoicing_invoices
+                    invoice
+                  ON invoice.id =
+                     allocation
+                       .invoice_id
+                 AND invoice.company_id =
+                     allocation
+                       .company_id
+                WHERE allocation
+                        .company_id =
+                      $1
+                  AND allocation.status =
+                      'posted'
+                  AND payment.status =
+                      'posted'
+                  AND payment.deleted_at
+                      IS NULL
+                  AND payment
+                        .payment_date >=
+                      DATE_TRUNC(
+                        'month',
+                        CURRENT_DATE
+                      ) -
+                      INTERVAL '11 months'
+                GROUP BY
+                  DATE_TRUNC(
+                    'month',
+                    payment
+                      .payment_date
+                  )
+              ),
+              credits AS (
+                SELECT
+                  DATE_TRUNC(
+                    'month',
+                    application
+                      .applied_at
+                  )::date
+                    AS month,
+                  COALESCE(
+                    SUM(
+                      application.amount *
+                      COALESCE(
+                        invoice
+                          .exchange_rate,
+                        1
+                      )
+                    ),
+                    0
+                  )
+                    AS credited
+                FROM
+                  invoicing_credit_note_applications
+                    application
+                INNER JOIN
+                  invoicing_credit_notes
+                    note
+                  ON note.id =
+                     application
+                       .credit_note_id
+                 AND note.company_id =
+                     application
+                       .company_id
+                INNER JOIN
+                  invoicing_invoices
+                    invoice
+                  ON invoice.id =
+                     application
+                       .target_invoice_id
+                 AND invoice.company_id =
+                     application
+                       .company_id
+                WHERE application
+                        .company_id =
+                      $1
+                  AND application.status =
+                      'posted'
+                  AND note.status <>
+                      'cancelled'
+                  AND note.deleted_at
+                      IS NULL
+                  AND application
+                        .applied_at >=
+                      DATE_TRUNC(
+                        'month',
+                        CURRENT_DATE
+                      ) -
+                      INTERVAL '11 months'
+                GROUP BY
+                  DATE_TRUNC(
+                    'month',
+                    application
+                      .applied_at
+                  )
+              )
+              SELECT
+                TO_CHAR(
+                  months.month,
+                  'YYYY-MM'
+                )
+                  AS month,
+                COALESCE(
+                  billed.invoice_count,
+                  0
+                )::int
+                  AS invoice_count,
+                COALESCE(
+                  collected
+                    .payment_count,
+                  0
+                )::int
+                  AS payment_count,
+                COALESCE(
+                  billed.billed,
+                  0
+                )
+                  AS billed,
+                COALESCE(
+                  collected.collected,
+                  0
+                )
+                  AS collected,
+                COALESCE(
+                  credits.credited,
+                  0
+                )
+                  AS credited
+              FROM months
+              LEFT JOIN billed
+                USING (month)
+              LEFT JOIN collected
+                USING (month)
+              LEFT JOIN credits
+                USING (month)
+              ORDER BY
+                months.month
+            `,
+            [
+              context.companyId,
+            ],
+          )
+        : Promise.resolve({
+            rows: [],
+          }),
+
+      access.canViewReports
+        ? context.pool.query(
+            `
+              SELECT
+                aging.customer_id,
+                customer.name
+                  AS customer_name,
+                COUNT(*) FILTER (
+                  WHERE aging
+                          .effective_status
+                        NOT IN (
+                          'draft',
+                          'pending_approval',
+                          'rejected',
+                          'cancelled',
+                          'void'
+                        )
+                )::int
+                  AS invoice_count,
+                COALESCE(
+                  SUM(
+                    aging
+                      .base_total_amount
+                  ) FILTER (
+                    WHERE aging
+                            .effective_status
+                          NOT IN (
+                            'draft',
+                            'pending_approval',
+                            'rejected',
+                            'cancelled',
+                            'void'
+                          )
+                  ),
+                  0
+                )
+                  AS billed,
+                COALESCE(
+                  SUM(
+                    aging
+                      .base_balance_due
+                  ) FILTER (
+                    WHERE aging
+                            .effective_status
+                          NOT IN (
+                            'cancelled',
+                            'void',
+                            'written_off'
+                          )
+                  ),
+                  0
+                )
+                  AS outstanding,
+                COALESCE(
+                  SUM(
+                    aging
+                      .base_balance_due
+                  ) FILTER (
+                    WHERE aging
+                            .effective_status =
+                          'overdue'
+                  ),
+                  0
+                )
+                  AS overdue
+              FROM
+                invoicing_aging_base
+                  aging
+              INNER JOIN
+                invoicing_customers
+                  customer
+                ON customer.id =
+                   aging.customer_id
+               AND customer.company_id =
+                   aging.company_id
+              WHERE aging.company_id =
+                    $1
+                AND customer.deleted_at
+                    IS NULL
+              GROUP BY
+                aging.customer_id,
+                customer.name
+              ORDER BY
+                outstanding DESC,
+                billed DESC,
+                LOWER(
+                  customer.name
+                )
+              LIMIT 10
+            `,
+            [
+              context.companyId,
+            ],
+          )
+        : Promise.resolve({
+            rows: [],
+          }),
+
+      access.canViewReports
+        ? context.pool.query(
+            `
+              SELECT
+                item.catalog_item_id,
+                COALESCE(
+                  catalog.name,
+                  item.description
+                )
+                  AS item_name,
+                COALESCE(
+                  catalog.sku,
+                  item.sku_snapshot
+                )
+                  AS sku,
+                COALESCE(
+                  SUM(
+                    item.quantity
+                  ),
+                  0
+                )
+                  AS quantity,
+                COALESCE(
+                  SUM(
+                    item.line_total *
+                    COALESCE(
+                      invoice
+                        .exchange_rate,
+                      1
+                    )
+                  ),
+                  0
+                )
+                  AS revenue,
+                COALESCE(
+                  SUM(
+                    item.tax_amount *
+                    COALESCE(
+                      invoice
+                        .exchange_rate,
+                      1
+                    )
+                  ),
+                  0
+                )
+                  AS tax
+              FROM
+                invoicing_invoice_items
+                  item
+              INNER JOIN
+                invoicing_invoices
+                  invoice
+                ON invoice.id =
+                   item.invoice_id
+               AND invoice.company_id =
+                   item.company_id
+              LEFT JOIN
+                invoicing_catalog_items
+                  catalog
+                ON catalog.id =
+                   item.catalog_item_id
+               AND catalog.company_id =
+                   item.company_id
+              WHERE item.company_id =
+                    $1
+                AND invoice.deleted_at
+                    IS NULL
+                AND invoice.status
+                    NOT IN (
+                      'draft',
+                      'pending_approval',
+                      'rejected',
+                      'cancelled',
+                      'void'
+                    )
+              GROUP BY
+                item.catalog_item_id,
+                COALESCE(
+                  catalog.name,
+                  item.description
+                ),
+                COALESCE(
+                  catalog.sku,
+                  item.sku_snapshot
+                )
+              ORDER BY
+                revenue DESC,
+                quantity DESC
+              LIMIT 10
+            `,
+            [
+              context.companyId,
+            ],
+          )
+        : Promise.resolve({
+            rows: [],
+          }),
+
+      access.canViewReports
+        ? context.pool.query(
+            `
+              SELECT
+                COALESCE(
+                  NULLIF(
+                    item
+                      .tax_name_snapshot,
+                    ''
+                  ),
+                  'No tax'
+                )
+                  AS tax_name,
+                item.tax_rate,
+                COUNT(
+                  DISTINCT
+                  invoice.id
+                )::int
+                  AS invoice_count,
+                COALESCE(
+                  SUM(
+                    item.subtotal *
+                    COALESCE(
+                      invoice
+                        .exchange_rate,
+                      1
+                    )
+                  ),
+                  0
+                )
+                  AS taxable_amount,
+                COALESCE(
+                  SUM(
+                    item.tax_amount *
+                    COALESCE(
+                      invoice
+                        .exchange_rate,
+                      1
+                    )
+                  ),
+                  0
+                )
+                  AS tax_amount
+              FROM
+                invoicing_invoice_items
+                  item
+              INNER JOIN
+                invoicing_invoices
+                  invoice
+                ON invoice.id =
+                   item.invoice_id
+               AND invoice.company_id =
+                   item.company_id
+              WHERE item.company_id =
+                    $1
+                AND invoice.deleted_at
+                    IS NULL
+                AND invoice.status
+                    NOT IN (
+                      'draft',
+                      'pending_approval',
+                      'rejected',
+                      'cancelled',
+                      'void'
+                    )
+              GROUP BY
+                COALESCE(
+                  NULLIF(
+                    item
+                      .tax_name_snapshot,
+                    ''
+                  ),
+                  'No tax'
+                ),
+                item.tax_rate
+              ORDER BY
+                tax_amount DESC,
+                taxable_amount DESC
+            `,
+            [
+              context.companyId,
+            ],
+          )
+        : Promise.resolve({
+            rows: [],
+          }),
+
+      access.canViewReports
+        ? context.pool.query(
+            `
+              SELECT
+                payment.method,
+                COUNT(*)::int
+                  AS payment_count,
+                COALESCE(
+                  SUM(
+                    payment.amount *
+                    COALESCE(
+                      payment
+                        .exchange_rate,
+                      1
+                    )
+                  ),
+                  0
+                )
+                  AS gross,
+                COALESCE(
+                  SUM(
+                    COALESCE(
+                      refunds.refunded,
+                      0
+                    ) *
+                    COALESCE(
+                      payment
+                        .exchange_rate,
+                      1
+                    )
+                  ),
+                  0
+                )
+                  AS refunded,
+                COALESCE(
+                  SUM(
+                    (
+                      payment.amount -
+                      COALESCE(
+                        refunds.refunded,
+                        0
+                      )
+                    ) *
+                    COALESCE(
+                      payment
+                        .exchange_rate,
+                      1
+                    )
+                  ),
+                  0
+                )
+                  AS net
+              FROM
+                invoicing_payments
+                  payment
+              LEFT JOIN LATERAL (
+                SELECT
+                  COALESCE(
+                    SUM(
+                      refund.amount
+                    ),
+                    0
+                  )
+                    AS refunded
+                FROM
+                  invoicing_payment_refunds
+                    refund
+                WHERE refund.payment_id =
+                      payment.id
+                  AND refund.company_id =
+                      payment.company_id
+                  AND refund.status =
+                      'posted'
+              ) refunds
+                ON TRUE
+              WHERE payment.company_id =
+                    $1
+                AND payment.status =
+                    'posted'
+                AND payment.deleted_at
+                    IS NULL
+              GROUP BY
+                payment.method
+              ORDER BY
+                net DESC,
+                payment_count DESC,
+                payment.method
+            `,
+            [
+              context.companyId,
+            ],
+          )
+        : Promise.resolve({
+            rows: [],
+          }),
 
       context.pool.query(
         `
@@ -2071,6 +2886,240 @@ export async function getInvoicingWorkspaceData():
         )
         .reverse()
         : [],
+
+    reporting: {
+      kpis:
+        access.canViewReports &&
+        reportKpis.rows[0]
+          ? {
+              billedTotal:
+                money(
+                  reportKpis
+                    .rows[0]
+                    .billed_total,
+                ),
+              collectedTotal:
+                money(
+                  reportKpis
+                    .rows[0]
+                    .collected_total,
+                ),
+              collectionRate:
+                Number(
+                  reportKpis
+                    .rows[0]
+                    .collection_rate ||
+                  0,
+                ),
+              dsoDays:
+                Number(
+                  reportKpis
+                    .rows[0]
+                    .dso_days ||
+                  0,
+                ),
+              averageDaysToPay:
+                Number(
+                  reportKpis
+                    .rows[0]
+                    .average_days_to_pay ||
+                  0,
+                ),
+              averageInvoiceValue:
+                money(
+                  reportKpis
+                    .rows[0]
+                    .average_invoice_value,
+                ),
+            }
+          : {
+              billedTotal:
+                0,
+              collectedTotal:
+                0,
+              collectionRate:
+                0,
+              dsoDays:
+                0,
+              averageDaysToPay:
+                0,
+              averageInvoiceValue:
+                0,
+            },
+
+      monthlyTrend:
+        access.canViewReports
+          ? reportMonthlyTrend
+              .rows
+              .map(
+                row => ({
+                  month:
+                    String(
+                      row.month,
+                    ),
+                  invoiceCount:
+                    Number(
+                      row.invoice_count ||
+                      0,
+                    ),
+                  paymentCount:
+                    Number(
+                      row.payment_count ||
+                      0,
+                    ),
+                  billed:
+                    money(
+                      row.billed,
+                    ),
+                  collected:
+                    money(
+                      row.collected,
+                    ),
+                  credited:
+                    money(
+                      row.credited,
+                    ),
+                }),
+              )
+          : [],
+
+      customerExposure:
+        access.canViewReports
+          ? reportCustomerExposure
+              .rows
+              .map(
+                row => ({
+                  customerId:
+                    String(
+                      row.customer_id,
+                    ),
+                  customerName:
+                    String(
+                      row.customer_name,
+                    ),
+                  invoiceCount:
+                    Number(
+                      row.invoice_count ||
+                      0,
+                    ),
+                  billed:
+                    money(
+                      row.billed,
+                    ),
+                  outstanding:
+                    money(
+                      row.outstanding,
+                    ),
+                  overdue:
+                    money(
+                      row.overdue,
+                    ),
+                }),
+              )
+          : [],
+
+      itemPerformance:
+        access.canViewReports
+          ? reportItemPerformance
+              .rows
+              .map(
+                row => ({
+                  catalogItemId:
+                    row.catalog_item_id
+                      ? String(
+                          row.catalog_item_id,
+                        )
+                      : null,
+                  itemName:
+                    String(
+                      row.item_name,
+                    ),
+                  sku:
+                    row.sku
+                      ? String(
+                          row.sku,
+                        )
+                      : null,
+                  quantity:
+                    Number(
+                      row.quantity ||
+                      0,
+                    ),
+                  revenue:
+                    money(
+                      row.revenue,
+                    ),
+                  tax:
+                    money(
+                      row.tax,
+                    ),
+                }),
+              )
+          : [],
+
+      taxSummary:
+        access.canViewReports
+          ? reportTaxSummary
+              .rows
+              .map(
+                row => ({
+                  taxName:
+                    String(
+                      row.tax_name,
+                    ),
+                  taxRate:
+                    Number(
+                      row.tax_rate ||
+                      0,
+                    ),
+                  invoiceCount:
+                    Number(
+                      row.invoice_count ||
+                      0,
+                    ),
+                  taxableAmount:
+                    money(
+                      row.taxable_amount,
+                    ),
+                  taxAmount:
+                    money(
+                      row.tax_amount,
+                    ),
+                }),
+              )
+          : [],
+
+      paymentMethods:
+        access.canViewReports
+          ? reportPaymentMethods
+              .rows
+              .map(
+                row => ({
+                  method:
+                    String(
+                      row.method,
+                    ),
+                  paymentCount:
+                    Number(
+                      row.payment_count ||
+                      0,
+                    ),
+                  gross:
+                    money(
+                      row.gross,
+                    ),
+                  refunded:
+                    money(
+                      row.refunded,
+                    ),
+                  net:
+                    money(
+                      row.net,
+                    ),
+                }),
+              )
+          : [],
+    },
 
     invoices:
       invoices.rows.map(
