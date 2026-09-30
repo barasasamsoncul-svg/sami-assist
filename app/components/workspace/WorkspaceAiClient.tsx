@@ -176,8 +176,12 @@ function formatBytes(
 
 export default function WorkspaceAiClient({
   entitled,
+  moduleContext = null,
 }: {
   entitled: boolean;
+  moduleContext?:
+    | 'invoicing'
+    | null;
 }) {
   const [
     status,
@@ -317,6 +321,41 @@ export default function WorkspaceAiClient({
     setUsagePanelOpen,
   ] =
     useState(false);
+
+  const emptyState =
+    useMemo(
+      () =>
+        moduleContext ===
+          'invoicing'
+          ? {
+              title:
+                'Ask SaMi about Invoicing',
+              description:
+                'Ask about receivables, overdue invoices, customer balances, recurring billing, collections or fiscal readiness. SaMi only uses Invoicing data and actions allowed by your current permissions.',
+              suggestions: [
+                'Which invoices need collection attention?',
+                'Summarize overdue receivables.',
+                'Explain an invoice or customer balance.',
+                'Check eTIMS and international e-invoicing readiness.',
+              ],
+            }
+          : {
+              title:
+                'How can I help?',
+              description:
+                'Ask about the current company, your apps, files, activity, notifications or business data available to your account. SaMi cannot bypass your permissions.',
+              suggestions: [
+                'What changed recently?',
+                'What needs my attention?',
+                'What apps can I access?',
+                'Summarize my workspace activity.',
+              ],
+            },
+      [
+        moduleContext,
+      ],
+    );
+
 
   const selectedConversation =
     useMemo(
@@ -1836,20 +1875,24 @@ export default function WorkspaceAiClient({
                   </div>
 
                   <h1 className="mt-5 text-2xl font-semibold tracking-[-0.025em] sm:text-3xl">
-                    How can I help?
+                    {
+                      emptyState
+                        .title
+                    }
                   </h1>
 
                   <p className="mt-2 max-w-xl text-xs leading-6 text-slate-500 sm:text-sm dark:text-slate-400">
-                    Ask about the current company, your apps, files, activity, notifications or business data available to your account. SaMi cannot bypass your permissions.
+                    {
+                      emptyState
+                        .description
+                    }
                   </p>
 
                   <div className="mt-6 grid w-full max-w-2xl gap-2 sm:grid-cols-2">
-                    {[
-                      'What changed recently?',
-                      'What needs my attention?',
-                      'What apps can I access?',
-                      'Summarize my workspace activity.',
-                    ].map(
+                    {
+                      emptyState
+                        .suggestions
+                        .map(
                       suggestion => (
                         <button
                           key={
