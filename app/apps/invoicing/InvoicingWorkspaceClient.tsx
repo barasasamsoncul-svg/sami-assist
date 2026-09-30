@@ -21,6 +21,7 @@ import PaymentPlansWorkspace from '@/app/apps/invoicing/PaymentPlansWorkspace';
 import CurrencyCenterWorkspace from '@/app/apps/invoicing/CurrencyCenterWorkspace';
 import TaxEngineWorkspace from '@/app/apps/invoicing/TaxEngineWorkspace';
 import EtimsWorkspace from '@/app/apps/invoicing/EtimsWorkspace';
+import EInvoicingWorkspace from '@/app/apps/invoicing/EInvoicingWorkspace';
 import SaMiOverlay from '@/app/components/SaMiOverlay';
 import {
   useSaMiOverlay,
@@ -79,6 +80,7 @@ type ViewKey =
   | 'currencies'
   | 'taxEngine'
   | 'etims'
+  | 'eInvoicing'
   | 'retainers'
   | 'paymentPlans'
   | 'recurring'
@@ -170,6 +172,14 @@ const NAV:
     },
     {
       key:
+        'eInvoicing',
+      label:
+        'International e-invoicing',
+      icon:
+        FileCode2,
+    },
+    {
+      key:
         'retainers',
       label:
         'Retainers',
@@ -256,6 +266,8 @@ const VIEW_PATHS:
       '/apps/invoicing/tax-engine',
     etims:
       '/apps/invoicing/etims',
+    eInvoicing:
+      '/apps/invoicing/e-invoicing',
     retainers:
       '/apps/invoicing/retainers',
     paymentPlans:
@@ -352,6 +364,12 @@ const VIEW_COPY:
         'Kenya eTIMS',
       description:
         'Configure KRA OSCU or VSCU, map invoice data and fiscalize eligible sales and credit notes from a dedicated Invoicing workspace.',
+    },
+    eInvoicing: {
+      title:
+        'International e-invoicing',
+      description:
+        'Generate UBL 2.1 fiscal documents, manage Peppol or EDI participant identities and transmit through isolated provider adapters.',
     },
     retainers: {
       title:
@@ -2018,6 +2036,14 @@ export default function InvoicingWorkspaceClient({
               initialData
             }
           />
+        )
+      }
+
+      {
+        view ===
+          'eInvoicing' &&
+        (
+          <EInvoicingWorkspace />
         )
       }
 
