@@ -184,7 +184,7 @@ const INVOICING_TUTORIAL_STEPS:
       description:
         'Configure appearance templates, taxes, payment terms, reminder behavior, payment instructions and invoice defaults for the current company.',
       tip:
-        'Use the Tutorials control in the workspace top bar to turn guided help on or off at any time.',
+        'Turn guided help on or off from Workspace Settings. Invoicing only shows the tutorial after that workspace-level preference is enabled.',
     },
   ];
 
