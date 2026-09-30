@@ -49,6 +49,13 @@ import {
   saveDunningPolicy,
   saveInvoicingCurrency,
   saveInvoicingExchangeRate,
+  saveInvoicingFiscalPosition,
+  saveInvoicingFiscalPositionMapping,
+  saveInvoicingTaxExemption,
+  saveInvoicingTaxGroup,
+  saveInvoicingTaxGroupMember,
+  saveInvoicingTaxLocalization,
+  saveInvoicingTaxRule,
   saveInvoicingTemplate,
   sendInvoiceReminder,
   setCustomerReminderControl,
@@ -436,6 +443,55 @@ export async function POST(
       case 'set_tax_rate_active':
         result =
           await setInvoicingTaxRateActive(
+            payload,
+          );
+        break;
+
+      case 'save_tax_group':
+        result =
+          await saveInvoicingTaxGroup(
+            payload,
+          );
+        break;
+
+      case 'save_tax_group_member':
+        result =
+          await saveInvoicingTaxGroupMember(
+            payload,
+          );
+        break;
+
+      case 'save_fiscal_position':
+        result =
+          await saveInvoicingFiscalPosition(
+            payload,
+          );
+        break;
+
+      case 'save_fiscal_position_mapping':
+        result =
+          await saveInvoicingFiscalPositionMapping(
+            payload,
+          );
+        break;
+
+      case 'save_tax_rule':
+        result =
+          await saveInvoicingTaxRule(
+            payload,
+          );
+        break;
+
+      case 'save_tax_exemption':
+        result =
+          await saveInvoicingTaxExemption(
+            payload,
+          );
+        break;
+
+      case 'save_tax_localization':
+        result =
+          await saveInvoicingTaxLocalization(
             payload,
           );
         break;
