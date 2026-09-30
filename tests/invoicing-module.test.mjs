@@ -7079,3 +7079,72 @@ test('Invoicing Part 26 isolates optional cross-module Accounting writes without
     'Part 26 hardens runtime boundaries without changing tenant schema.',
   );
 });
+
+
+test('Invoicing Part 27 closes standalone routes and the production release validation gate', async () => {
+  const [
+    packageJson,
+    workflow,
+    shell,
+    client,
+  ] = await Promise.all([
+    source('package.json'),
+    source('.github/workflows/invoicing-module.yml'),
+    source('app/apps/invoicing/InvoicingModuleShell.tsx'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+  ]);
+
+  const standaloneRoutes = [
+    'app/apps/invoicing/page.tsx',
+    'app/apps/invoicing/invoices/page.tsx',
+    'app/apps/invoicing/new/page.tsx',
+    'app/apps/invoicing/customers/page.tsx',
+    'app/apps/invoicing/customers/new/page.tsx',
+    'app/apps/invoicing/items/page.tsx',
+    'app/apps/invoicing/items/new/page.tsx',
+    'app/apps/invoicing/payments/page.tsx',
+    'app/apps/invoicing/payments/new/page.tsx',
+    'app/apps/invoicing/recurring/page.tsx',
+    'app/apps/invoicing/reminders/page.tsx',
+    'app/apps/invoicing/portal/page.tsx',
+    'app/apps/invoicing/retainers/page.tsx',
+    'app/apps/invoicing/payment-plans/page.tsx',
+    'app/apps/invoicing/currencies/page.tsx',
+    'app/apps/invoicing/tax-engine/page.tsx',
+    'app/apps/invoicing/etims/page.tsx',
+    'app/apps/invoicing/e-invoicing/page.tsx',
+    'app/apps/invoicing/reports/page.tsx',
+    'app/apps/invoicing/settings/page.tsx',
+  ];
+
+  for (const route of standaloneRoutes) {
+    const routeSource = await source(route);
+    assert.ok(
+      routeSource.length > 0,
+      route + ' must remain a real standalone Invoicing route.',
+    );
+  }
+
+  const parsedPackage = JSON.parse(packageJson);
+  assert.equal(
+    parsedPackage.scripts['test:invoicing:release'],
+    'npm run test:invoicing && npm run test:locks && npm run test:module-migrations && npm run test:responsive && npm run test:app-ui && npm run test:erp-integration && npx tsc --noEmit && npm run build',
+  );
+
+  assert.match(
+    workflow,
+    /Final Invoicing release gate[\s\S]*npm run test:invoicing:release/s,
+  );
+
+  assert.match(
+    shell,
+    /min-w-0/,
+    'The standalone module shell must preserve shrink-safe mobile layout.',
+  );
+
+  assert.match(
+    client,
+    /overflow-x-auto/,
+    'Focused Invoicing navigation/settings must remain horizontally usable on narrow screens.',
+  );
+});
