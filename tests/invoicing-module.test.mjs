@@ -1749,11 +1749,13 @@ test('Invoicing SQL explicitly types reused status parameters to prevent Postgre
 test('Invoicing rejects stale master-data references and preserves a draft invoice template while editing', async () => {
   const [
     commands,
+    taxEngine,
     queries,
     types,
     composer,
   ] = await Promise.all([
     source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/invoicing/tax-engine.ts'),
     source('lib/apps/invoicing/queries.ts'),
     source('lib/apps/invoicing/types.ts'),
     source('app/apps/invoicing/InvoiceComposer.tsx'),
@@ -1766,9 +1768,9 @@ test('Invoicing rejects stale master-data references and preserves a draft invoi
   );
 
   assert.match(
-    commands,
-    /Choose a valid active tax rate\./,
-    'A stale or cross-company tax rate must be rejected before invoice insert.',
+    taxEngine,
+    /The selected tax rate is inactive or outside its validity period\./,
+    'A stale, cross-company or expired tax rate must be rejected by the authoritative Part 15 tax resolver before invoice insert.',
   );
 
   assert.match(
@@ -1974,13 +1976,13 @@ test('Invoicing keeps customer, catalog, payment, recurring, report and settings
     queries,
     commands,
     workspace,
-    page,
+    sectionPage,
   ] = await Promise.all([
     source('lib/apps/invoicing/types.ts'),
     source('lib/apps/invoicing/queries.ts'),
     source('lib/apps/invoicing/commands.ts'),
     source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
-    source('app/apps/invoicing/page.tsx'),
+    source('app/apps/invoicing/InvoicingSectionPage.tsx'),
   ]);
 
   for (const capability of [
@@ -2050,8 +2052,8 @@ test('Invoicing keeps customer, catalog, payment, recurring, report and settings
   );
 
   assert.match(
-    page,
-    /const appSidebarItems =/,
+    sectionPage,
+    /buildInvoicingSidebarItems/,
   );
 
   for (const capability of [
@@ -2063,7 +2065,7 @@ test('Invoicing keeps customer, catalog, payment, recurring, report and settings
     'canManageSettings',
   ]) {
     assert.match(
-      page,
+      sectionPage,
       new RegExp(
         capability +
         '[\\s\\S]*?label:',
