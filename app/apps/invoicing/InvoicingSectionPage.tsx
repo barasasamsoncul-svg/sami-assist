@@ -46,6 +46,7 @@ export type InvoicingRouteView =
   | 'payments'
   | 'currencies'
   | 'taxEngine'
+  | 'etims'
   | 'retainers'
   | 'paymentPlans'
   | 'recurring'
@@ -82,6 +83,8 @@ const VIEW_PATHS:
       '/apps/invoicing/currencies',
     taxEngine:
       '/apps/invoicing/tax-engine',
+    etims:
+      '/apps/invoicing/etims',
     retainers:
       '/apps/invoicing/retainers',
     paymentPlans:
@@ -336,6 +339,17 @@ export function buildInvoicingSidebarItems(
           .taxEngine,
       description:
         'Rates, groups, fiscal positions, rules and exemptions.',
+    },
+    {
+      key:
+        'etims',
+      label:
+        'Kenya eTIMS',
+      href:
+        VIEW_PATHS
+          .etims,
+      description:
+        'KRA fiscalization, mappings, activation and transmission audit.',
     },
     ...(
       data.capabilities
