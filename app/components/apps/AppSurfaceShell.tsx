@@ -343,7 +343,7 @@ export default function AppSurfaceShell({
                   className={[
                     'group flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-left transition',
                     active
-                      ? 'text-white shadow-sm'
+                      ? 'sami-nav-active-accent shadow-sm'
                       : profile.header ===
                           'command'
                         ? 'text-slate-300 hover:bg-white/8 hover:text-white'
@@ -384,7 +384,7 @@ export default function AppSurfaceShell({
                           className={[
                             'mt-0.5 block line-clamp-2 text-[9px] font-medium leading-4',
                             active
-                              ? 'text-white/72'
+                              ? 'text-inherit'
                               : 'text-slate-600 dark:text-slate-300',
                           ].join(
                             ' ',
@@ -408,7 +408,7 @@ export default function AppSurfaceShell({
                         className={[
                           'rounded-full px-2 py-0.5 text-[9px] font-black',
                           active
-                            ? 'bg-white/16 text-white'
+                            ? 'bg-white/16 text-inherit'
                             : 'bg-[var(--sami-surface-soft)] text-slate-500 dark:text-slate-300',
                         ].join(
                           ' ',
@@ -423,7 +423,7 @@ export default function AppSurfaceShell({
                         className={[
                           'h-3.5 w-3.5 shrink-0 transition',
                           active
-                            ? 'text-white/80'
+                            ? 'text-inherit'
                             : 'text-slate-300 group-hover:translate-x-0.5 group-hover:text-[var(--sami-app-accent)] dark:text-slate-600',
                         ].join(
                           ' ',

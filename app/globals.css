@@ -399,3 +399,77 @@ svg {
   color: var(--sami-muted);
   opacity: 1;
 }
+
+
+/* Semantic selected navigation states */
+.sami-nav-selected {
+  background: #0f172a !important;
+  color: #ffffff !important;
+  border-color: #0f172a !important;
+}
+
+.dark .sami-nav-selected {
+  background: #f8fafc !important;
+  color: #0f172a !important;
+  border-color: #f8fafc !important;
+}
+
+.sami-nav-selected-ai {
+  background:
+    linear-gradient(
+      90deg,
+      #4f46e5,
+      #2563eb
+    ) !important;
+  color: #ffffff !important;
+  border-color: transparent !important;
+}
+
+.sami-nav-selected,
+.sami-nav-selected-ai,
+.sami-nav-active-accent,
+.sami-nav-active-surface,
+.sami-workspace-nav-active {
+  isolation: isolate;
+}
+
+.sami-nav-selected :where(svg, span, p),
+.sami-nav-selected-ai :where(svg, span, p) {
+  color: inherit !important;
+  stroke: currentColor;
+}
+
+.sami-nav-active-accent {
+  color: #ffffff !important;
+}
+
+.sami-nav-active-accent :where(svg, span, p) {
+  color: inherit !important;
+  stroke: currentColor;
+}
+
+.sami-nav-active-surface {
+  background: var(--sami-surface) !important;
+  color: var(--foreground) !important;
+  border-color: var(--sami-border) !important;
+}
+
+.sami-nav-active-surface :where(svg, span, p) {
+  color: inherit !important;
+  stroke: currentColor;
+}
+
+.sami-workspace-nav-active {
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+}
+
+.dark .sami-workspace-nav-active {
+  background: rgba(30, 64, 175, 0.34) !important;
+  color: #bfdbfe !important;
+}
+
+.sami-workspace-nav-active :where(svg, span, p) {
+  color: inherit !important;
+  stroke: currentColor;
+}

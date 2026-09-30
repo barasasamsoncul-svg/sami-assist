@@ -3790,7 +3790,7 @@ function NavLink({
         'flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition',
 
         active
-          ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
+          ? 'sami-workspace-nav-active'
           : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-white',
       ].join(
         ' ',
@@ -3870,7 +3870,7 @@ function DropdownButton({
         'flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold transition',
 
         active
-          ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
+          ? 'sami-workspace-nav-active'
           : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-white',
       ].join(
         ' ',
@@ -3971,7 +3971,7 @@ function ChildNavLink({
         'group flex min-h-10 items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-[11px] font-semibold transition',
 
         active
-          ? 'bg-[var(--sami-surface)] text-slate-950 shadow-[var(--sami-shadow-sm)] ring-1 ring-[var(--sami-border)] dark:text-white'
+          ? 'sami-nav-active-surface shadow-[var(--sami-shadow-sm)] ring-1 ring-[var(--sami-border)]'
           : 'text-slate-500 hover:bg-[var(--sami-surface)] hover:text-slate-900 dark:text-slate-400 dark:hover:text-white',
       ].join(
         ' ',

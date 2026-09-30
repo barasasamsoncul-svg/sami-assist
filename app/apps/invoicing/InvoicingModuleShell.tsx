@@ -194,7 +194,7 @@ function InvoicingSidebar({
                     className={[
                       'group flex min-h-10 min-w-0 items-center gap-3 rounded-xl px-3 py-2 text-[11px] font-semibold transition',
                       active
-                        ? 'bg-[var(--sami-surface)] text-slate-950 shadow-[var(--sami-shadow-sm)] ring-1 ring-[var(--sami-border)] dark:text-white'
+                        ? 'sami-nav-active-surface shadow-[var(--sami-shadow-sm)] ring-1 ring-[var(--sami-border)]'
                         : 'text-slate-500 hover:bg-[var(--sami-surface)] hover:text-slate-900 dark:text-slate-400 dark:hover:text-white',
                     ].join(
                       ' ',

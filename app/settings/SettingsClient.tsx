@@ -1099,8 +1099,8 @@ export default function SettingsClient({
                     className={
                       selected
                         ? item.key === 'ai'
-                          ? 'inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 px-3.5 text-xs font-semibold text-white shadow-md shadow-indigo-500/15'
-                          : 'inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-slate-950 px-3.5 text-xs font-semibold text-white shadow-sm dark:bg-white dark:text-slate-950'
+                          ? 'sami-nav-selected-ai inline-flex h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 text-xs font-semibold shadow-md shadow-indigo-500/15'
+                          : 'sami-nav-selected inline-flex h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 text-xs font-semibold shadow-sm'
                         : 'inline-flex h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 text-xs font-semibold text-slate-500 transition hover:bg-[var(--sami-surface-soft)] hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
                     }
                   >
