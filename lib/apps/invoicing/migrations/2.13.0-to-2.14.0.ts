@@ -18,6 +18,8 @@ const SQL = `
     status VARCHAR(20) NOT NULL DEFAULT 'active'
       CHECK (status IN ('active','cancelled')),
     currency VARCHAR(3) NOT NULL,
+    original_due_date DATE NOT NULL,
+    final_due_date DATE NOT NULL,
     total_amount NUMERIC(19,4) NOT NULL CHECK (total_amount > 0),
     settled_baseline_amount NUMERIC(19,4) NOT NULL DEFAULT 0
       CHECK (settled_baseline_amount >= 0),
@@ -175,6 +177,8 @@ const SQL = `
     plan.name,
     plan.status AS stored_status,
     plan.currency,
+    plan.original_due_date,
+    plan.final_due_date,
     plan.total_amount,
     plan.settled_baseline_amount,
     plan.installment_count,
@@ -213,6 +217,8 @@ const SQL = `
     plan.name,
     plan.status,
     plan.currency,
+    plan.original_due_date,
+    plan.final_due_date,
     plan.total_amount,
     plan.settled_baseline_amount,
     plan.installment_count,
