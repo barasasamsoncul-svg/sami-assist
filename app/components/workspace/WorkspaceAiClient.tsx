@@ -689,6 +689,7 @@ export default function WorkspaceAiClient({
                   input.targetMessageId,
                 attachmentIds:
                   input.attachmentIds,
+                moduleContext,
               }),
           },
         );
