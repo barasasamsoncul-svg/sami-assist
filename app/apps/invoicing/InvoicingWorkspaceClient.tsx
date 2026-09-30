@@ -17,6 +17,7 @@ import {
 
 import InvoiceComposer from '@/app/apps/invoicing/InvoiceComposer';
 import InvoiceAppearanceSettings from '@/app/apps/invoicing/InvoiceAppearanceSettings';
+import PaymentPlansWorkspace from '@/app/apps/invoicing/PaymentPlansWorkspace';
 import SaMiOverlay from '@/app/components/SaMiOverlay';
 import {
   useSaMiOverlay,
@@ -68,6 +69,7 @@ type ViewKey =
   | 'items'
   | 'payments'
   | 'retainers'
+  | 'paymentPlans'
   | 'recurring'
   | 'reminders'
   | 'portal'
@@ -130,6 +132,14 @@ const NAV:
         'Retainers',
       icon:
         CircleDollarSign,
+    },
+    {
+      key:
+        'paymentPlans',
+      label:
+        'Payment plans',
+      icon:
+        CalendarClock,
     },
     {
       key:
@@ -217,6 +227,12 @@ const VIEW_COPY:
         'Retainers & deposits',
       description:
         'Receive advance customer funds, track available balances and apply, refund or reconcile them through the same auditable payment ledger.',
+    },
+    paymentPlans: {
+      title:
+        'Installments & payment plans',
+      description:
+        'Split an unpaid invoice balance into dated installments while payments and credits continue through the authoritative settlement ledger.',
     },
     recurring: {
       title:
@@ -318,6 +334,18 @@ const INVOICING_TUTORIAL_STEPS:
         'Receive advance customer funds before an invoice is settled, then apply the available balance to eligible invoices or refund it when required.',
       tip:
         'Retainers stay linked to the underlying posted customer-credit payment, so allocation, refund and reconciliation use the same financial controls as ordinary receipts.',
+    },
+    {
+      id:
+        'payment-plans',
+      section:
+        'paymentPlans',
+      title:
+        'Schedule invoice installments',
+      description:
+        'Split an open invoice balance into dated installments. SaMi tracks each due amount from the invoice settlement ledger, so payments, credits and reversals automatically recalculate the plan.',
+      tip:
+        'The invoice due date follows the final installment while the payment-plan workspace still identifies earlier overdue installments.',
     },
     {
       id:
@@ -1095,6 +1123,15 @@ export default function InvoicingWorkspaceClient({
 
             if (
               item.key ===
+                'paymentPlans'
+            ) {
+              return initialData
+                .capabilities
+                .canViewPayments;
+            }
+
+            if (
+              item.key ===
                 'recurring'
             ) {
               return initialData
@@ -1629,6 +1666,27 @@ export default function InvoicingWorkspaceClient({
           .canViewPayments &&
         (
           <Retainers
+            data={
+              initialData
+            }
+            pending={
+              busy
+            }
+            run={
+              run
+            }
+          />
+        )
+      }
+
+      {
+        view ===
+          'paymentPlans' &&
+        initialData
+          .capabilities
+          .canViewPayments &&
+        (
+          <PaymentPlansWorkspace
             data={
               initialData
             }
