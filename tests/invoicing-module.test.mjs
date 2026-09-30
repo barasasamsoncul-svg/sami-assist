@@ -5736,7 +5736,8 @@ test('Invoicing Part 16 provides KRA-native OSCU/VSCU fiscalization, immutable f
 
   assert.match(
     sectionPage,
-    /\/apps\/invoicing\/etims/,
+    /INVOICING_NAVIGATION|INVOICING_SIDEBAR_VIEWS/,
+    'The standalone eTIMS route is owned by the centralized Invoicing navigation registry.',
   );
 
   assert.match(
@@ -5856,7 +5857,11 @@ test('Invoicing Part 17 provides international e-invoicing with UBL, Peppol and 
 
   assert.match(xmlRoute, /application\/xml/);
   assert.match(xmlRoute, /X-SaMi-Document-SHA256/);
-  assert.match(sectionPage, /\/apps\/invoicing\/e-invoicing/);
+  assert.match(
+    sectionPage,
+    /INVOICING_NAVIGATION|INVOICING_SIDEBAR_VIEWS/,
+    'International e-invoicing is resolved through the centralized Invoicing navigation registry.',
+  );
   assert.match(page, /view="eInvoicing"/);
   assert.match(workspaceClient, /<EInvoicingWorkspace/);
 
@@ -6143,8 +6148,15 @@ test('Invoicing Part 19 centralizes standalone navigation and keeps route struct
     'canViewCatalog',
     'canRecordPayment',
     'canViewPayments',
-    'canManageRecurring',
-    'canSend',
+    'canViewRetainers',
+    'canViewPaymentPlans',
+    'canViewCurrencies',
+    'canViewTax',
+    'canViewEtims',
+    'canViewEInvoicing',
+    'canViewRecurring',
+    'canViewReminders',
+    'canViewPortal',
     'canViewReports',
     'canManageSettings',
   ]) {
