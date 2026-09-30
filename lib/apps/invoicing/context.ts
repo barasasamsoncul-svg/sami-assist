@@ -921,11 +921,18 @@ export async function ensureCompanyDefaults(
             TRUE
         AND p.deleted_at
             IS NULL
-      ON CONFLICT (
-        policy_id,
-        stage_key
-      )
-      DO NOTHING
+      /*
+       * Defaults may be initialized concurrently by multiple requests.
+       *
+       * The stage table has two independent uniqueness rules:
+       *   (policy_id, stage_key)
+       *   (policy_id, sequence_no)
+       *
+       * Targeting only stage_key lets a concurrent/previously-customized row
+       * fail on sequence_no. Treat either uniqueness collision as an already
+       * initialized slot instead of surfacing a 500 from a read path.
+       */
+      ON CONFLICT DO NOTHING
     `,
     [
       companyId,
