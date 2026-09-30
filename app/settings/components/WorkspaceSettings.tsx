@@ -38,6 +38,10 @@ import SaMiOverlay, {
   type SaMiOverlayType,
 } from '@/app/components/SaMiOverlay';
 
+import {
+  WorkspaceTutorialToggle,
+} from '@/app/components/workspace/WorkspaceTutorial';
+
 
 /* ============================================================
    TYPES
@@ -327,7 +331,11 @@ async function readResponse(
    COMPONENT
    ============================================================ */
 
-export default function WorkspaceSettings() {
+export default function WorkspaceSettings({
+  userId,
+}: {
+  userId: string;
+}) {
   const router =
     useRouter();
 
@@ -2007,6 +2015,26 @@ export default function WorkspaceSettings() {
 
 
           <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6 dark:border-slate-800 dark:bg-[#0d121b]">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-sm font-black text-slate-950 dark:text-white">
+                  Workspace tutorials
+                </p>
+                <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400">
+                  Tutorials are opt-in. Turn them on here when you want guided steps inside SaMi apps. Page headers and app top bars no longer carry separate tutorial controls.
+                </p>
+              </div>
+
+              <div className="shrink-0">
+                <WorkspaceTutorialToggle
+                  userId={userId}
+                />
+              </div>
+            </div>
+          </section>
+
+
+          <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6 dark:border-slate-800 dark:bg-[#0d121b]">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm font-black">
@@ -2064,10 +2092,10 @@ export default function WorkspaceSettings() {
                       </span>
 
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-xs font-black">
+                        <span className="block break-words whitespace-normal text-xs font-black">
                           {item.name}
                         </span>
-                        <span className="mt-0.5 block truncate text-[10px] font-semibold text-slate-400">
+                        <span className="mt-0.5 block break-words whitespace-normal text-[10px] font-semibold text-slate-400">
                           {item.slug}
                           {' · '}
                           {formatStatus(
@@ -2616,7 +2644,7 @@ export default function WorkspaceSettings() {
                     )}
                   </p>
 
-                  <p className="mt-1 truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  <p className="mt-1 break-words whitespace-normal text-xs font-semibold text-slate-500 dark:text-slate-400">
                     {owner.email}
                   </p>
                 </div>
@@ -3121,7 +3149,7 @@ function WorkspaceMenuRow({
       </div>
 
       <div className="mt-3 flex items-center justify-between gap-3">
-        <span className="min-w-0 truncate text-[11px] font-bold text-slate-400">
+        <span className="min-w-0 break-words whitespace-normal text-[11px] font-bold text-slate-400">
           {value}
         </span>
 
