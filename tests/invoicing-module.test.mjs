@@ -6434,3 +6434,66 @@ test('Invoicing Part 21 enforces company-bound financial relationships and race-
     /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.19\.0['"]/s,
   );
 });
+
+
+test('Invoicing Part 22 owns an append-only hash-chained audit ledger with redacted provider evidence', async () => {
+  const [
+    schema,
+    migration,
+    runtimeMigrations,
+    manifest,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/schema.sql'),
+    source('lib/apps/invoicing/migrations/2.19.0-to-2.20.0.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+  ]);
+
+  for (const sourceText of [
+    schema,
+    migration,
+  ]) {
+    assert.match(sourceText, /invoicing_audit_heads/);
+    assert.match(sourceText, /invoicing_audit_log/);
+    assert.match(sourceText, /invoicing_compute_audit_hash/);
+    assert.match(sourceText, /invoicing_prepare_audit_entry/);
+    assert.match(sourceText, /invoicing_reject_audit_mutation/);
+    assert.match(sourceText, /invoicing_capture_row_audit/);
+    assert.match(sourceText, /trg_invoicing_audit_append_only/);
+    assert.match(sourceText, /trg_invoicing_row_audit/);
+    assert.match(sourceText, /invoicing_audit_integrity/);
+    assert.match(sourceText, /previous_hash/);
+    assert.match(sourceText, /entry_hash/);
+    assert.match(sourceText, /sequence_no/);
+    assert.match(sourceText, /VALIDATE|chain_valid/);
+
+    for (const sensitiveField of [
+      'credential_sealed',
+      'communication_key_sealed',
+      'public_token_hash',
+      'token_hash',
+      'xml_payload',
+      'request_payload',
+      'response_payload',
+      'provider_response',
+      'internal_data',
+      'receipt_signature',
+    ]) {
+      assert.match(
+        sourceText,
+        new RegExp("'" + sensitiveField + "'"),
+        sensitiveField + ' must be removed from row snapshots before audit persistence.',
+      );
+    }
+  }
+
+  assert.match(
+    runtimeMigrations,
+    /INVOICING_2_19_0_TO_2_20_0/,
+  );
+
+  assert.match(
+    manifest,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
+  );
+});
