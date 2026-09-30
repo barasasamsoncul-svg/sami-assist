@@ -56,7 +56,7 @@ test(
 
     assert.equal(
       lock.moduleVersion,
-      '2.16.0',
+      '2.17.0',
     );
 
     assert.equal(
@@ -66,12 +66,12 @@ test(
 
     assert.equal(
       lock.baselineCommit,
-      '0786cf13ac4f459fd53c7d1d4158bf6570ae4bdc',
+      '2e519a668b3e2b49737591bdb8d8a1c289e4b0b2',
     );
 
     assert.equal(
       lock.baselineBranch,
-      'main',
+      'feat/invoicing-part-16-kenya-etims',
     );
 
     for (
