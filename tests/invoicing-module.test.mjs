@@ -5030,3 +5030,109 @@ test('Invoicing Part 14 provides auditable multi-currency billing, base reportin
     /key:\s*"exchange_rate"[\s\S]*table:\s*"invoicing_exchange_rates"/s,
   );
 });
+
+
+test('Invoicing uses real standalone App Router pages and keeps invoice creation separate from the register', async () => {
+  const [
+    rootPage,
+    sectionPage,
+    newPage,
+    invoicesPage,
+    customersPage,
+    itemsPage,
+    paymentsPage,
+    currenciesPage,
+    taxEnginePage,
+    retainersPage,
+    paymentPlansPage,
+    recurringPage,
+    remindersPage,
+    portalPage,
+    reportsPage,
+    settingsPage,
+    workspace,
+  ] = await Promise.all([
+    source('app/apps/invoicing/page.tsx'),
+    source('app/apps/invoicing/InvoicingSectionPage.tsx'),
+    source('app/apps/invoicing/new/page.tsx'),
+    source('app/apps/invoicing/invoices/page.tsx'),
+    source('app/apps/invoicing/customers/page.tsx'),
+    source('app/apps/invoicing/items/page.tsx'),
+    source('app/apps/invoicing/payments/page.tsx'),
+    source('app/apps/invoicing/currencies/page.tsx'),
+    source('app/apps/invoicing/tax-engine/page.tsx'),
+    source('app/apps/invoicing/retainers/page.tsx'),
+    source('app/apps/invoicing/payment-plans/page.tsx'),
+    source('app/apps/invoicing/recurring/page.tsx'),
+    source('app/apps/invoicing/reminders/page.tsx'),
+    source('app/apps/invoicing/portal/page.tsx'),
+    source('app/apps/invoicing/reports/page.tsx'),
+    source('app/apps/invoicing/settings/page.tsx'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+  ]);
+
+  assert.match(newPage, /view="newInvoice"/);
+  assert.match(invoicesPage, /view="invoices"/);
+  assert.match(customersPage, /view="customers"/);
+  assert.match(itemsPage, /view="items"/);
+  assert.match(paymentsPage, /view="payments"/);
+  assert.match(currenciesPage, /view="currencies"/);
+  assert.match(taxEnginePage, /view="taxEngine"/);
+  assert.match(retainersPage, /view="retainers"/);
+  assert.match(paymentPlansPage, /view="paymentPlans"/);
+  assert.match(recurringPage, /view="recurring"/);
+  assert.match(remindersPage, /view="reminders"/);
+  assert.match(portalPage, /view="portal"/);
+  assert.match(reportsPage, /view="reports"/);
+  assert.match(settingsPage, /view="settings"/);
+
+  assert.match(sectionPage, /\/apps\/invoicing\/new/);
+  assert.match(sectionPage, /\/apps\/invoicing\/invoices/);
+  assert.match(sectionPage, /\/apps\/invoicing\/customers/);
+  assert.match(sectionPage, /\/apps\/invoicing\/payments/);
+  assert.match(sectionPage, /\/apps\/invoicing\/tax-engine/);
+  assert.match(sectionPage, /\/apps\/invoicing\/settings/);
+  assert.doesNotMatch(
+    sectionPage,
+    /\?view=/,
+    'The Invoicing sidebar must navigate real App Router pages rather than one stacked query-string workspace.',
+  );
+
+  assert.match(rootPage, /LEGACY_VIEW_PATHS/);
+  assert.match(rootPage, /redirect\(/);
+  assert.match(rootPage, /view="dashboard"/);
+
+  assert.match(workspace, /view ===[\s\S]*'newInvoice'[\s\S]*<InvoiceComposer/s);
+  assert.match(workspace, /href="\/apps\/invoicing\/new"/);
+
+  const registerStart =
+    workspace.indexOf(
+      'function Invoices(',
+    );
+  const registerEnd =
+    workspace.indexOf(
+      'function Customers(',
+      registerStart,
+    );
+
+  assert.ok(
+    registerStart >= 0 &&
+    registerEnd > registerStart,
+    'Invoice register component boundaries must be present.',
+  );
+
+  const registerSource =
+    workspace.slice(
+      registerStart,
+      registerEnd,
+    );
+
+  assert.doesNotMatch(
+    registerSource,
+    /<InvoiceComposer/,
+    'Invoice creation must not be stacked inside the invoice register page.',
+  );
+
+  assert.match(registerSource, /Invoice register/);
+  assert.match(registerSource, /href="\/apps\/invoicing\/new"/);
+});
