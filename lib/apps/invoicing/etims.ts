@@ -1132,6 +1132,29 @@ function buildItemPayload(
     );
   }
 
+  if (
+    String(
+      line.kra_sync_status ||
+      ''
+    ) !==
+      'synced'
+  ) {
+    throw new InvoicingError(
+      'ETIMS_MAPPING_REQUIRED',
+      'The mapped catalog item must be registered with KRA before this document can be fiscalized.',
+      {
+        catalogItemId:
+          String(
+            line.catalog_item_id,
+          ),
+        invoiceItemId:
+          String(
+            line.id,
+          ),
+      },
+    );
+  }
+
   const taxCode =
     cleanText(
       line.tax_type_code,
@@ -4062,6 +4085,7 @@ async function invoiceFiscalizationSource(
           map.origin_country_code,
           map.packaging_unit_code,
           map.quantity_unit_code,
+          map.kra_sync_status,
           taxmap.tax_type_code,
           taxmap.kra_rate
         FROM invoicing_invoice_items item
@@ -4171,6 +4195,40 @@ export async function submitInvoiceToEtims(
         context.companyId,
         invoiceId,
       );
+
+    if (
+      String(
+        prepared
+          .credit
+          .original_solution_type,
+      ) !==
+        profile.solution_type ||
+      String(
+        prepared
+          .credit
+          .original_environment,
+      ) !==
+        profile.environment ||
+      String(
+        prepared
+          .credit
+          .original_branch_id ||
+        '',
+      ) !==
+        profile.branch_id ||
+      String(
+        prepared
+          .credit
+          .original_taxpayer_pin ||
+        '',
+      ) !==
+        profile.taxpayer_pin
+    ) {
+      throw new InvoicingError(
+        'ETIMS_MAPPING_REQUIRED',
+        'The credit note must be fiscalized using the same eTIMS solution, environment, taxpayer PIN and branch as the original invoice.',
+      );
+    }
 
     const items =
       prepared.lines.map(
@@ -4304,7 +4362,15 @@ async function creditFiscalizationSource(
           customer.name AS customer_name,
           customer.tax_id AS customer_tax_id,
           original.transaction_invoice_no
-            AS original_transaction_invoice_no
+            AS original_transaction_invoice_no,
+          original.solution_type
+            AS original_solution_type,
+          original.environment
+            AS original_environment,
+          original.request_payload ->> 'bhfId'
+            AS original_branch_id,
+          original.request_payload ->> 'tin'
+            AS original_taxpayer_pin
         FROM invoicing_credit_notes credit
         INNER JOIN invoicing_customers customer
           ON customer.id = credit.customer_id
@@ -4389,6 +4455,7 @@ async function creditFiscalizationSource(
           map.origin_country_code,
           map.packaging_unit_code,
           map.quantity_unit_code,
+          map.kra_sync_status,
           taxmap.tax_type_code,
           taxmap.kra_rate
         FROM invoicing_credit_note_items credit_item
