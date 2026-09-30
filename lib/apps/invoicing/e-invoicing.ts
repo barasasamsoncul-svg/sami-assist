@@ -4752,6 +4752,7 @@ export async function getEInvoiceWorkspaceData() {
     profiles,
     participants,
     documents,
+    customers,
     invoices,
     creditNotes,
   ] =
@@ -4823,6 +4824,26 @@ export async function getEInvoiceWorkspaceData() {
             document.created_at DESC,
             document.id DESC
           LIMIT 100
+        `,
+        [
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            id,
+            name,
+            tax_id,
+            country_code,
+            status
+          FROM invoicing_customers
+          WHERE company_id = $1
+            AND deleted_at IS NULL
+            AND status <> 'blocked'
+          ORDER BY name, id
+          LIMIT 500
         `,
         [
           context.companyId,
@@ -5065,6 +5086,35 @@ export async function getEInvoiceWorkspaceData() {
                   row.document_number,
                 )
               : '',
+        }),
+      ),
+    customers:
+      customers.rows.map(
+        row => ({
+          id:
+            String(
+              row.id,
+            ),
+          name:
+            String(
+              row.name,
+            ),
+          taxId:
+            row.tax_id
+              ? String(
+                  row.tax_id,
+                )
+              : null,
+          countryCode:
+            row.country_code
+              ? String(
+                  row.country_code,
+                )
+              : null,
+          status:
+            String(
+              row.status,
+            ),
         }),
       ),
     invoices:
