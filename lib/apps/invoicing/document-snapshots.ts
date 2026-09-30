@@ -1011,27 +1011,56 @@ async function existingPrimarySnapshot(
     await queryable.query(
       `
         SELECT
-          id,
-          invoice_id,
-          version_no,
-          is_primary,
-          snapshot_reason,
-          invoice_status,
-          renderer_version,
-          payload,
-          payload_sha256,
-          pdf_bytes,
-          pdf_sha256,
-          pdf_size_bytes,
-          created_by,
-          created_at
-        FROM invoicing_document_snapshots
-        WHERE company_id =
+          snapshot.id,
+          snapshot.invoice_id,
+          snapshot.version_no,
+          CASE
+            WHEN invoice.primary_document_snapshot_id =
+                 snapshot.id
+            THEN TRUE
+            WHEN invoice.primary_document_snapshot_id
+                 IS NULL
+            THEN snapshot.is_primary
+            ELSE FALSE
+          END AS is_primary,
+          snapshot.snapshot_reason,
+          snapshot.invoice_status,
+          snapshot.renderer_version,
+          snapshot.payload,
+          snapshot.payload_sha256,
+          snapshot.pdf_bytes,
+          snapshot.pdf_sha256,
+          snapshot.pdf_size_bytes,
+          snapshot.created_by,
+          snapshot.created_at
+        FROM invoicing_document_snapshots snapshot
+        INNER JOIN invoicing_invoices invoice
+          ON invoice.id =
+             snapshot.invoice_id
+         AND invoice.company_id =
+             snapshot.company_id
+        WHERE snapshot.company_id =
               $1
-          AND invoice_id =
+          AND snapshot.invoice_id =
               $2
-          AND is_primary =
-              TRUE
+          AND (
+            invoice.primary_document_snapshot_id =
+              snapshot.id
+            OR (
+              invoice.primary_document_snapshot_id
+                IS NULL
+              AND snapshot.is_primary =
+                  TRUE
+            )
+          )
+        ORDER BY
+          CASE
+            WHEN invoice.primary_document_snapshot_id =
+                 snapshot.id
+            THEN 0
+            ELSE 1
+          END,
+          snapshot.version_no DESC
         LIMIT 1
       `,
       [
@@ -1170,25 +1199,6 @@ export async function createPrimaryInvoiceDocumentSnapshot(
     return existing;
   }
 
-  if (
-    existing &&
-    input.replacePrimary
-  ) {
-    await client.query(
-      `
-        UPDATE invoicing_document_snapshots
-        SET is_primary = FALSE
-        WHERE company_id = $1
-          AND invoice_id = $2
-          AND is_primary = TRUE
-      `,
-      [
-        input.companyId,
-        input.invoiceId,
-      ],
-    );
-  }
-
   const inserted =
     await client.query(
       `
@@ -1213,7 +1223,7 @@ export async function createPrimaryInvoiceDocumentSnapshot(
           $1,$2,
           'invoice',
           $3,
-          TRUE,
+          $14::boolean,
           $4,$5,$6,
           $7::jsonb,
           $8,$9,$10,$11,$12,
@@ -1254,13 +1264,36 @@ export async function createPrimaryInvoiceDocumentSnapshot(
         pdf.length,
         input.userId,
         source.confirmedAt,
+        !existing,
       ],
     );
 
+  await client.query(
+    `
+      UPDATE invoicing_invoices
+      SET
+        primary_document_snapshot_id =
+          $3,
+        updated_at =
+          NOW()
+      WHERE id =
+            $1
+        AND company_id =
+            $2
+    `,
+    [
+      input.invoiceId,
+      input.companyId,
+      inserted.rows[0].id,
+    ],
+  );
+
   const snapshot =
-    snapshotFromRow(
-      inserted.rows[0],
-    );
+    snapshotFromRow({
+      ...inserted.rows[0],
+      is_primary:
+        true,
+    });
 
   await recordInvoicingActivity(
     client,
@@ -1378,39 +1411,60 @@ export async function getInvoiceDocumentSnapshot(
     await pool.query(
       `
         SELECT
-          id,
-          invoice_id,
-          version_no,
-          is_primary,
-          snapshot_reason,
-          invoice_status,
-          renderer_version,
-          payload,
-          payload_sha256,
-          pdf_bytes,
-          pdf_sha256,
-          pdf_size_bytes,
-          created_by,
-          created_at
-        FROM invoicing_document_snapshots
-        WHERE company_id =
+          snapshot.id,
+          snapshot.invoice_id,
+          snapshot.version_no,
+          CASE
+            WHEN invoice.primary_document_snapshot_id =
+                 snapshot.id
+            THEN TRUE
+            WHEN invoice.primary_document_snapshot_id
+                 IS NULL
+            THEN snapshot.is_primary
+            ELSE FALSE
+          END AS is_primary,
+          snapshot.snapshot_reason,
+          snapshot.invoice_status,
+          snapshot.renderer_version,
+          snapshot.payload,
+          snapshot.payload_sha256,
+          snapshot.pdf_bytes,
+          snapshot.pdf_sha256,
+          snapshot.pdf_size_bytes,
+          snapshot.created_by,
+          snapshot.created_at
+        FROM invoicing_document_snapshots snapshot
+        INNER JOIN invoicing_invoices invoice
+          ON invoice.id =
+             snapshot.invoice_id
+         AND invoice.company_id =
+             snapshot.company_id
+        WHERE snapshot.company_id =
               $1
-          AND invoice_id =
+          AND snapshot.invoice_id =
               $2
           AND (
             $3::uuid
               IS NULL
-            OR id =
+            OR snapshot.id =
                $3::uuid
           )
         ORDER BY
           CASE
-            WHEN is_primary =
-                 TRUE
+            WHEN $3::uuid
+                 IS NOT NULL
             THEN 0
-            ELSE 1
+            WHEN invoice.primary_document_snapshot_id =
+                 snapshot.id
+            THEN 0
+            WHEN invoice.primary_document_snapshot_id
+                 IS NULL
+             AND snapshot.is_primary =
+                 TRUE
+            THEN 1
+            ELSE 2
           END,
-          version_no DESC
+          snapshot.version_no DESC
         LIMIT 1
       `,
       [
