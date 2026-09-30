@@ -1581,8 +1581,8 @@ export default function InvoicingWorkspaceClient({
       />
 
       <div className="space-y-4">
-      <section className="sami-surface overflow-hidden rounded-[26px]">
-        <div className="flex flex-col gap-4 border-b border-[var(--sami-border)] p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
+      <section className="sami-surface overflow-hidden rounded-[22px] sm:rounded-[26px]">
+        <div className="flex flex-col gap-3 border-b border-[var(--sami-border)] p-3 sm:gap-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-blue-600 dark:text-blue-300">
               {
@@ -1592,7 +1592,7 @@ export default function InvoicingWorkspaceClient({
               }
             </p>
 
-            <h1 className="mt-1 text-xl font-black tracking-[-0.03em] sm:text-2xl">
+            <h1 className="mt-1 text-lg font-black tracking-[-0.03em] sm:text-2xl">
               {
                 VIEW_COPY[
                   view
@@ -1600,7 +1600,7 @@ export default function InvoicingWorkspaceClient({
               }
             </h1>
 
-            <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400">
+            <p className="mt-1 hidden max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400 sm:block">
               {
                 VIEW_COPY[
                   view
@@ -1619,7 +1619,7 @@ export default function InvoicingWorkspaceClient({
                     'invoicing',
                   )
               }
-              className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs font-black"
+              className="hidden h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs font-black sm:inline-flex"
             >
               <BookOpenCheck className="h-4 w-4 text-blue-600" />
               Tutorial
@@ -1730,7 +1730,7 @@ export default function InvoicingWorkspaceClient({
                     },
                   )
               }
-              className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs font-bold disabled:opacity-60"
+              className="inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-2.5 text-[11px] font-bold disabled:opacity-60 sm:h-10 sm:px-3 sm:text-xs"
             >
               <RefreshCw
                 className={[
@@ -1742,7 +1742,9 @@ export default function InvoicingWorkspaceClient({
                   ' ',
                 )}
               />
-              Refresh
+              <span className="hidden sm:inline">
+                Refresh
+              </span>
             </button>
           </div>
         </div>
