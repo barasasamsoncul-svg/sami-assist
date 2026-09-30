@@ -2,9 +2,7 @@ import {
   redirect,
 } from 'next/navigation';
 
-import InvoicingRoutePage, {
-  type InvoicingRouteView,
-} from '@/app/apps/invoicing/InvoicingRoutePage';
+import InvoicingSectionPage from '@/app/apps/invoicing/InvoicingSectionPage';
 
 
 export const runtime =
@@ -88,11 +86,8 @@ export default async function InvoicingPage({
   }
 
   return (
-    <InvoicingRoutePage
-      view={
-        'dashboard' satisfies
-          InvoicingRouteView
-      }
+    <InvoicingSectionPage
+      view="dashboard"
     />
   );
 }
