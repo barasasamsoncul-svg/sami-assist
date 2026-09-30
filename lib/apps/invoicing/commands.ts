@@ -6250,38 +6250,113 @@ export async function allocateInvoicePayment(
       );
     }
 
-    if (
+    const settings =
+      await client.query(
+        `
+          SELECT
+            allow_partial_payments,
+            allow_cross_currency_payments,
+            COALESCE(
+              base_currency,
+              default_currency,
+              $2
+            ) AS base_currency
+          FROM invoicing_settings
+          WHERE company_id = $1
+          LIMIT 1
+        `,
+        [
+          context.companyId,
+          context.company
+            .currentCompany
+            .currency ||
+            'KES',
+        ],
+      );
+
+    const sameCurrency =
       String(
         invoice.currency,
-      ) !==
+      ) ===
       String(
         payment.currency,
-      )
+      );
+
+    if (
+      !sameCurrency &&
+      settings.rows[0]
+        ?.allow_cross_currency_payments ===
+          false
     ) {
       throw new InvoicingError(
         'INVALID_INPUT',
-        'Payment currency must match the invoice currency.',
+        'Cross-currency payment allocation is disabled in Invoicing settings.',
       );
     }
 
+    const paymentExchangeRate =
+      Number(
+        payment.exchange_rate ||
+        1,
+      );
+
+    const invoiceExchangeRate =
+      Number(
+        invoice.exchange_rate ||
+        1,
+      );
+
     if (
-      Math.abs(
-        Number(
-          invoice.exchange_rate ||
-          1,
-        ) -
-        Number(
-          payment.exchange_rate ||
-          1,
-        ),
-      ) >
-        0.0000001
+      !Number.isFinite(
+        paymentExchangeRate,
+      ) ||
+      paymentExchangeRate <=
+        0 ||
+      !Number.isFinite(
+        invoiceExchangeRate,
+      ) ||
+      invoiceExchangeRate <=
+        0
     ) {
       throw new InvoicingError(
         'INVALID_INPUT',
-        'This invoice uses a different exchange rate. Multi-rate allocation is handled by the Multi-currency workflow.',
+        'The payment or invoice has an invalid locked exchange rate.',
       );
     }
+
+    const paymentAmount =
+      money(
+        amount,
+      );
+
+    const invoiceAmount =
+      sameCurrency
+        ? paymentAmount
+        : money(
+            (
+              paymentAmount *
+              paymentExchangeRate
+            ) /
+            invoiceExchangeRate,
+          );
+
+    const basePaymentAmount =
+      money(
+        paymentAmount *
+        paymentExchangeRate,
+      );
+
+    const baseInvoiceAmount =
+      money(
+        invoiceAmount *
+        invoiceExchangeRate,
+      );
+
+    const realizedFxAmount =
+      money(
+        basePaymentAmount -
+        baseInvoiceAmount,
+      );
 
     const balance =
       money(
@@ -6289,44 +6364,40 @@ export async function allocateInvoicePayment(
       );
 
     if (
-      amount >
+      invoiceAmount >
       balance +
         0.0001
     ) {
       throw new InvoicingError(
         'PAYMENT_EXCEEDS_BALANCE',
-        'Allocation exceeds the remaining invoice balance.',
+        'This allocation converts to more than the remaining invoice balance.',
         {
+          paymentAmount,
+          paymentCurrency:
+            String(
+              payment.currency,
+            ),
+          invoiceAmount,
+          invoiceCurrency:
+            String(
+              invoice.currency,
+            ),
           balance,
         },
       );
     }
 
-    const settings =
-      await client.query(
-        `
-          SELECT
-            allow_partial_payments
-          FROM invoicing_settings
-          WHERE company_id = $1
-          LIMIT 1
-        `,
-        [
-          context.companyId,
-        ],
-      );
-
     if (
       settings.rows[0]
         ?.allow_partial_payments ===
           false &&
-      amount <
+      invoiceAmount <
         balance -
           0.0001
     ) {
       throw new InvoicingError(
         'INVALID_INPUT',
-        'Partial payments are disabled for this company. Allocate the full remaining balance.',
+        'Partial payments are disabled for this company. Allocate enough payment currency to settle the full remaining invoice balance.',
       );
     }
 
@@ -6394,9 +6465,16 @@ export async function allocateInvoicePayment(
           UPDATE invoicing_payment_allocations
           SET
             amount = $4,
+            payment_amount = $5,
+            invoice_amount = $4,
+            payment_exchange_rate = $6,
+            invoice_exchange_rate = $7,
+            base_payment_amount = $8,
+            base_invoice_amount = $9,
+            realized_fx_amount = $10,
             status = 'posted',
-            operation_key = $5,
-            created_by = $6,
+            operation_key = $11,
+            created_by = $12,
             reversed_at = NULL,
             reversed_by = NULL,
             reversal_reason = NULL,
@@ -6409,7 +6487,13 @@ export async function allocateInvoicePayment(
           allocationId,
           context.companyId,
           paymentId,
-          amount,
+          invoiceAmount,
+          paymentAmount,
+          paymentExchangeRate,
+          invoiceExchangeRate,
+          basePaymentAmount,
+          baseInvoiceAmount,
+          realizedFxAmount,
           operationKey,
           context.userId,
         ],
@@ -6423,14 +6507,21 @@ export async function allocateInvoicePayment(
               payment_id,
               invoice_id,
               amount,
+              payment_amount,
+              invoice_amount,
+              payment_exchange_rate,
+              invoice_exchange_rate,
+              base_payment_amount,
+              base_invoice_amount,
+              realized_fx_amount,
               status,
               operation_key,
               created_by
             )
             VALUES (
-              $1,$2,$3,$4,
+              $1,$2,$3,$4,$5,$4,$6,$7,$8,$9,$10,
               'posted',
-              $5,$6
+              $11,$12
             )
             RETURNING id
           `,
@@ -6438,7 +6529,13 @@ export async function allocateInvoicePayment(
             context.companyId,
             paymentId,
             invoiceId,
-            amount,
+            invoiceAmount,
+            paymentAmount,
+            paymentExchangeRate,
+            invoiceExchangeRate,
+            basePaymentAmount,
+            baseInvoiceAmount,
+            realizedFxAmount,
             operationKey,
             context.userId,
           ],
@@ -6473,12 +6570,10 @@ export async function allocateInvoicePayment(
           String(
             payment.payment_date,
           ),
-        amount,
-        exchangeRate:
-          Number(
-            invoice.exchange_rate ||
-            1,
-          ),
+        paymentAmount,
+        invoiceAmount,
+        paymentExchangeRate,
+        invoiceExchangeRate,
       },
     );
 
@@ -6514,7 +6609,17 @@ export async function allocateInvoicePayment(
         metadata: {
           paymentId,
           allocationId,
-          amount,
+          paymentAmount,
+          paymentCurrency:
+            String(
+              payment.currency,
+            ),
+          invoiceAmount,
+          invoiceCurrency:
+            String(
+              invoice.currency,
+            ),
+          realizedFxAmount,
           operationKey,
           remainingBalance:
             settlement.balanceDue,
@@ -6561,7 +6666,17 @@ export async function allocateInvoicePayment(
         payload: {
           invoiceId,
           allocationId,
-          amount,
+          paymentAmount,
+          paymentCurrency:
+            String(
+              payment.currency,
+            ),
+          invoiceAmount,
+          invoiceCurrency:
+            String(
+              invoice.currency,
+            ),
+          realizedFxAmount,
           paymentNumber:
             String(
               payment.payment_number,
