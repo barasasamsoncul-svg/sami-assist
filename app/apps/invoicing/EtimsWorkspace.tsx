@@ -81,10 +81,15 @@ type EtimsData = {
     sku: string | null;
     itemClassificationCode: string;
     itemCode: string;
+    itemTypeCode: string;
     originCountryCode: string;
     packagingUnitCode: string;
     quantityUnitCode: string;
     isActive: boolean;
+    kraSyncStatus: string;
+    kraLastSyncAt: string | null;
+    kraResultCode: string | null;
+    kraResultMessage: string | null;
     updatedAt: string;
   }>;
   taxMappings: Array<{
@@ -214,6 +219,7 @@ function statusClass(
     [
       'succeeded',
       'activated',
+      'synced',
     ].includes(
       status,
     )
@@ -236,6 +242,7 @@ function statusClass(
     [
       'retryable',
       'submitting',
+      'not_synced',
     ].includes(
       status,
     )
@@ -1323,6 +1330,10 @@ export default function EtimsWorkspace({
                                   form.get(
                                     'itemCode',
                                   ),
+                                itemTypeCode:
+                                  form.get(
+                                    'itemTypeCode',
+                                  ),
                                 originCountryCode:
                                   form.get(
                                     'originCountryCode',
@@ -1412,6 +1423,24 @@ export default function EtimsWorkspace({
                             }
                             required
                           />
+                        </label>
+
+                        <label>
+                          <span className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-500">
+                            KRA item type
+                          </span>
+                          <select
+                            name="itemTypeCode"
+                            className={
+                              inputClass
+                            }
+                            defaultValue="3"
+                            required
+                          >
+                            <option value="1">1 — Raw material</option>
+                            <option value="2">2 — Finished product</option>
+                            <option value="3">3 — Service</option>
+                          </select>
                         </label>
 
                         <label>
@@ -1697,19 +1726,61 @@ export default function EtimsWorkspace({
                                         }
                                       </p>
                                     </div>
-                                    <StatusPill
-                                      value={
+                                    <div className="flex shrink-0 flex-col items-end gap-1.5">
+                                      <StatusPill
+                                        value={
+                                          mapping
+                                            .kraSyncStatus
+                                        }
+                                      />
+                                      {
                                         mapping
-                                          .isActive
-                                          ? 'active'
-                                          : 'disabled'
+                                          .isActive &&
+                                        data
+                                          .capabilities
+                                          .canConfigure &&
+                                        (
+                                          <button
+                                            type="button"
+                                            disabled={
+                                              busy ||
+                                              data
+                                                .profile
+                                                ?.status !==
+                                                'activated'
+                                            }
+                                            onClick={
+                                              () =>
+                                                void run(
+                                                  'sync_item',
+                                                  {
+                                                    mappingId:
+                                                      mapping.id,
+                                                  },
+                                                  'Item registered with KRA eTIMS.',
+                                                )
+                                            }
+                                            className="h-8 rounded-lg border border-[var(--sami-border)] bg-[var(--sami-surface)] px-2.5 text-[10px] font-black disabled:opacity-50"
+                                          >
+                                            {
+                                              mapping
+                                                .kraSyncStatus ===
+                                                'synced'
+                                                ? 'Resync'
+                                                : 'Register'
+                                            }
+                                          </button>
+                                        )
                                       }
-                                    />
+                                    </div>
                                   </div>
                                   <p className="mt-2 text-[10px] text-slate-500">
                                     {
                                       mapping
                                         .originCountryCode
+                                    } · type {
+                                      mapping
+                                        .itemTypeCode
                                     } · package {
                                       mapping
                                         .packagingUnitCode
@@ -1718,6 +1789,25 @@ export default function EtimsWorkspace({
                                         .quantityUnitCode
                                     }
                                   </p>
+                                  {
+                                    mapping
+                                      .kraResultMessage &&
+                                    (
+                                      <p className="mt-2 text-[10px] text-slate-500">
+                                        KRA: {
+                                          mapping
+                                            .kraResultCode
+                                            ? mapping
+                                                .kraResultCode +
+                                              ' — '
+                                            : ''
+                                        }{
+                                          mapping
+                                            .kraResultMessage
+                                        }
+                                      </p>
+                                    )
+                                  }
                                 </div>
                               ),
                             )
