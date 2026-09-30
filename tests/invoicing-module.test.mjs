@@ -5757,6 +5757,11 @@ test('Invoicing Part 17 provides international e-invoicing with UBL, Peppol and 
   assert.match(engine, /source_hash/);
   assert.match(engine, /Idempotency-Key/);
   assert.match(engine, /sealIntegrationSecret/);
+  assert.match(
+    engine,
+    /SAMI_EINVOICE_PROVIDER/,
+    'Gateway destinations must be server-controlled through environment configuration.',
+  );
 
   for (const exported of [
     'getEInvoiceWorkspaceData',
