@@ -4,6 +4,12 @@ import {
 
 import InvoicingSectionPage from '@/app/apps/invoicing/InvoicingSectionPage';
 
+import {
+  getInvoicingRoutePath,
+  INVOICING_ROUTE_VIEWS,
+  type InvoicingRouteView,
+} from '@/lib/apps/invoicing/navigation';
+
 
 export const runtime =
   'nodejs';
@@ -12,44 +18,21 @@ export const dynamic =
   'force-dynamic';
 
 
-const LEGACY_VIEW_PATHS:
-  Record<
+const INVOICING_ROUTE_VIEW_SET =
+  new Set<string>(
+    INVOICING_ROUTE_VIEWS,
+  );
+
+
+function isInvoicingRouteView(
+  value:
     string,
-    string
-  > = {
-    dashboard:
-      '/apps/invoicing',
-    newInvoice:
-      '/apps/invoicing/new',
-    invoices:
-      '/apps/invoicing/invoices',
-    customers:
-      '/apps/invoicing/customers',
-    items:
-      '/apps/invoicing/items',
-    payments:
-      '/apps/invoicing/payments',
-    currencies:
-      '/apps/invoicing/currencies',
-    taxEngine:
-      '/apps/invoicing/tax-engine',
-    etims:
-      '/apps/invoicing/etims',
-    retainers:
-      '/apps/invoicing/retainers',
-    paymentPlans:
-      '/apps/invoicing/payment-plans',
-    recurring:
-      '/apps/invoicing/recurring',
-    reminders:
-      '/apps/invoicing/reminders',
-    portal:
-      '/apps/invoicing/portal',
-    reports:
-      '/apps/invoicing/reports',
-    settings:
-      '/apps/invoicing/settings',
-  };
+): value is InvoicingRouteView {
+  return INVOICING_ROUTE_VIEW_SET
+    .has(
+      value,
+    );
+}
 
 
 export default async function InvoicingPage({
@@ -76,14 +59,14 @@ export default async function InvoicingPage({
     legacyView &&
     legacyView !==
       'dashboard' &&
-    LEGACY_VIEW_PATHS[
-      legacyView
-    ]
+    isInvoicingRouteView(
+      legacyView,
+    )
   ) {
     redirect(
-      LEGACY_VIEW_PATHS[
-        legacyView
-      ],
+      getInvoicingRoutePath(
+        legacyView,
+      ),
     );
   }
 
