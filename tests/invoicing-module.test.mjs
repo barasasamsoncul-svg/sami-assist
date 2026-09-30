@@ -7007,3 +7007,144 @@ test('Invoicing Part 25 provides permission-gated base-currency analytics and ex
     'Part 25 is a read-model/UI upgrade and must not invent a tenant schema migration.',
   );
 });
+
+
+test('Invoicing Part 26 isolates optional cross-module Accounting writes without weakening idempotency', async () => {
+  const [
+    accounting,
+    manifest,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/accounting.ts'),
+    source('lib/modules/first-party.ts'),
+  ]);
+
+  assert.match(
+    accounting,
+    /SAVEPOINT invoicing_accounting_boundary/,
+    'Optional Accounting writes must be isolated from the authoritative Invoicing transaction.',
+  );
+
+  assert.match(
+    accounting,
+    /ROLLBACK TO SAVEPOINT invoicing_accounting_boundary/,
+    'A failed Accounting write must be rolled back without rolling back the invoice mutation.',
+  );
+
+  assert.match(
+    accounting,
+    /invoicing\.integration\.accounting_failed/,
+    'Recoverable Accounting integration failures must leave an operational event for diagnosis and retry.',
+  );
+
+  assert.match(
+    accounting,
+    /accountingEventKey/,
+    'Failure evidence must retain the idempotent accounting event key.',
+  );
+
+  assert.match(
+    accounting,
+    /event_key = \$2[\s\S]*invoicing_accounting_links/s,
+    'Existing Accounting postings must remain keyed by the integration event ledger.',
+  );
+
+  for (const dependency of [
+    'accounting',
+    'payments',
+    'crm',
+    'sales',
+    'inventory',
+    'tax',
+    'subscriptions',
+    'customer_portal',
+    'documents',
+    'sign',
+    'cash_flow',
+  ]) {
+    assert.match(
+      manifest,
+      new RegExp(
+        "key:\\s*[\\\"']invoicing[\\\"'][\\s\\S]*optionalDepends:[\\s\\S]*[\\\"']" +
+        dependency +
+        "[\\\"']",
+        's',
+      ),
+      dependency + ' must remain an optional Invoicing integration rather than a hard dependency.',
+    );
+  }
+
+  assert.match(
+    manifest,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.21\.0['"]/s,
+    'Part 26 hardens runtime boundaries without changing tenant schema.',
+  );
+});
+
+
+test('Invoicing Part 27 closes standalone routes and the production release validation gate', async () => {
+  const [
+    packageJson,
+    workflow,
+    shell,
+    client,
+  ] = await Promise.all([
+    source('package.json'),
+    source('.github/workflows/invoicing-module.yml'),
+    source('app/apps/invoicing/InvoicingModuleShell.tsx'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+  ]);
+
+  const standaloneRoutes = [
+    'app/apps/invoicing/page.tsx',
+    'app/apps/invoicing/invoices/page.tsx',
+    'app/apps/invoicing/new/page.tsx',
+    'app/apps/invoicing/customers/page.tsx',
+    'app/apps/invoicing/customers/new/page.tsx',
+    'app/apps/invoicing/items/page.tsx',
+    'app/apps/invoicing/items/new/page.tsx',
+    'app/apps/invoicing/payments/page.tsx',
+    'app/apps/invoicing/payments/new/page.tsx',
+    'app/apps/invoicing/recurring/page.tsx',
+    'app/apps/invoicing/reminders/page.tsx',
+    'app/apps/invoicing/portal/page.tsx',
+    'app/apps/invoicing/retainers/page.tsx',
+    'app/apps/invoicing/payment-plans/page.tsx',
+    'app/apps/invoicing/currencies/page.tsx',
+    'app/apps/invoicing/tax-engine/page.tsx',
+    'app/apps/invoicing/etims/page.tsx',
+    'app/apps/invoicing/e-invoicing/page.tsx',
+    'app/apps/invoicing/reports/page.tsx',
+    'app/apps/invoicing/settings/page.tsx',
+  ];
+
+  for (const route of standaloneRoutes) {
+    const routeSource = await source(route);
+    assert.ok(
+      routeSource.length > 0,
+      route + ' must remain a real standalone Invoicing route.',
+    );
+  }
+
+  const parsedPackage = JSON.parse(packageJson);
+  assert.equal(
+    parsedPackage.scripts['test:invoicing:release'],
+    'npm run test:invoicing && npm run test:locks && npm run test:module-migrations && npm run test:responsive && npm run test:app-ui && npm run test:erp-integration && npx tsc --noEmit && npm run build',
+  );
+
+  assert.match(
+    workflow,
+    /Final Invoicing release gate[\s\S]*npm run test:invoicing:release/s,
+  );
+
+  assert.match(
+    shell,
+    /min-w-0/,
+    'The standalone module shell must preserve shrink-safe mobile layout.',
+  );
+
+  assert.match(
+    client,
+    /overflow-x-auto/,
+    'Focused Invoicing navigation/settings must remain horizontally usable on narrow screens.',
+  );
+});

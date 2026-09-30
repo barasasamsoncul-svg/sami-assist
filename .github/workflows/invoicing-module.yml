@@ -15,6 +15,7 @@ on:
       - 'tests/invoicing-module.test.mjs'
       - 'tests/module-quality-locks.test.mjs'
       - '.github/workflows/invoicing-module.yml'
+      - 'package.json'
   push:
     branches:
       - main
@@ -29,6 +30,7 @@ on:
       - 'tests/invoicing-module.test.mjs'
       - 'tests/module-quality-locks.test.mjs'
       - '.github/workflows/invoicing-module.yml'
+      - 'package.json'
 
 permissions:
   contents: read
@@ -51,14 +53,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Invoicing regressions
-        run: npm run test:invoicing
-
-      - name: Quality locks
-        run: npm run test:locks
-
-      - name: TypeScript
-        run: npx tsc --noEmit
-
-      - name: Production build
-        run: npm run build
+      - name: Final Invoicing release gate
+        run: npm run test:invoicing:release
