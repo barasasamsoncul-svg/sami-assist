@@ -5751,6 +5751,11 @@ test('Invoicing Part 17 provides international e-invoicing with UBL, Peppol and 
   assert.match(engine, /ProfileID/);
   assert.match(engine, /EndpointID/);
   assert.match(engine, /BuyerReference/);
+  assert.match(
+    engine,
+    /BUYER_REFERENCE_REQUIRED/,
+    'Peppol buyer/order reference validation must apply before either invoice or credit-note transmission.',
+  );
   assert.match(engine, /InvoiceLine/);
   assert.match(engine, /CreditNoteLine/);
   assert.match(engine, /xml_sha256/);
