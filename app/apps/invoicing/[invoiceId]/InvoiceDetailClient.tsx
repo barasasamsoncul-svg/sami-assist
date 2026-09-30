@@ -2576,7 +2576,7 @@ export default function InvoiceDetailClient({
 
                         {
                           data.capabilities
-                            .canCredit &&
+                            .canViewCredits &&
                           (
                             <CreditNoteLifecyclePanel
                               credit={
