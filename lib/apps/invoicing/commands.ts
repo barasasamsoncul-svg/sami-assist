@@ -2702,11 +2702,39 @@ export async function createInvoice(
         reservation.replayed &&
         reservation.response
       ) {
+        const replay =
+          reservation.response;
+
         await client.query(
           'COMMIT',
         );
 
-        return reservation.response;
+        return {
+          id:
+            String(
+              replay.id,
+            ),
+          invoiceNumber:
+            String(
+              replay.invoiceNumber,
+            ),
+          status:
+            String(
+              replay.status,
+            ),
+          totalAmount:
+            Number(
+              replay.totalAmount,
+            ),
+          currency:
+            String(
+              replay.currency,
+            ),
+          exchangeRate:
+            Number(
+              replay.exchangeRate,
+            ),
+        };
       }
     }
 
