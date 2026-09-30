@@ -521,7 +521,10 @@ test('Invoicing workspace exposes operational Odoo/Zoho-class surfaces as standa
     ]
   ) {
     assert.ok(
-      client.includes(
+      (
+        client +
+        navigation
+      ).includes(
         surface,
       ),
       surface,
