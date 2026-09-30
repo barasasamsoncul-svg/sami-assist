@@ -68,6 +68,13 @@ import {
   resolveInvoicingTaxTreatment,
 } from '@/lib/apps/invoicing/tax-engine';
 
+import {
+  completeInvoicingMutation,
+  hashInvoicingMutationRequest,
+  normalizeInvoicingIdempotencyKey,
+  reserveInvoicingMutation,
+} from '@/lib/apps/invoicing/idempotency';
+
 
 function plainObject(
   value:
@@ -2650,6 +2657,20 @@ export async function createInvoice(
     context.userId,
   );
 
+  const idempotencyKey =
+    normalizeInvoicingIdempotencyKey(
+      input.idempotencyKey,
+    );
+
+  const requestHash =
+    idempotencyKey
+      ? hashInvoicingMutationRequest(
+          'create_invoice',
+          input as unknown as
+            Record<string, unknown>,
+        )
+      : null;
+
   const client =
     await context.pool.connect();
 
@@ -2657,6 +2678,37 @@ export async function createInvoice(
     await client.query(
       'BEGIN',
     );
+
+    if (
+      idempotencyKey &&
+      requestHash
+    ) {
+      const reservation =
+        await reserveInvoicingMutation(
+          client,
+          {
+            companyId:
+              context.companyId,
+            userId:
+              context.userId,
+            action:
+              'create_invoice',
+            idempotencyKey,
+            requestHash,
+          },
+        );
+
+      if (
+        reservation.replayed &&
+        reservation.response
+      ) {
+        await client.query(
+          'COMMIT',
+        );
+
+        return reservation.response;
+      }
+    }
 
     const customerId =
       requireUuid(
@@ -3363,6 +3415,33 @@ export async function createInvoice(
       },
     );
 
+    const responsePayload = {
+      id:
+        invoiceId,
+      invoiceNumber,
+      status,
+      totalAmount,
+      currency,
+      exchangeRate,
+    };
+
+    if (
+      idempotencyKey
+    ) {
+      await completeInvoicingMutation(
+        client,
+        {
+          companyId:
+            context.companyId,
+          idempotencyKey,
+          recordId:
+            invoiceId,
+          response:
+            responsePayload,
+        },
+      );
+    }
+
     await client.query(
       'COMMIT',
     );
@@ -3439,15 +3518,7 @@ export async function createInvoice(
       );
     }
 
-    return {
-      id:
-        invoiceId,
-      invoiceNumber,
-      status,
-      totalAmount,
-      currency,
-      exchangeRate,
-    };
+    return responsePayload;
   } catch (
     error
   ) {
@@ -3695,7 +3766,8 @@ export async function updateInvoiceDraft(
           SELECT
             id,
             invoice_number,
-            status
+            status,
+            updated_at
           FROM invoicing_invoices
           WHERE id =
                 $1
@@ -3731,6 +3803,54 @@ export async function updateInvoiceDraft(
         'INVOICE_STATE_INVALID',
         'Only draft invoices can be edited. Use payments, credit notes or cancellation after confirmation.',
       );
+    }
+
+    const expectedUpdatedAt =
+      typeof input
+        .expectedUpdatedAt ===
+        'string'
+        ? input
+            .expectedUpdatedAt
+            .trim()
+        : '';
+
+    if (
+      expectedUpdatedAt
+    ) {
+      const expectedTime =
+        Date.parse(
+          expectedUpdatedAt,
+        );
+
+      const currentTime =
+        new Date(
+          existing.rows[0]
+            .updated_at,
+        ).getTime();
+
+      if (
+        !Number.isFinite(
+          expectedTime,
+        )
+      ) {
+        throw new InvoicingError(
+          'INVALID_INPUT',
+          'The invoice revision token is invalid. Reload the draft and try again.',
+        );
+      }
+
+      if (
+        !Number.isFinite(
+          currentTime,
+        ) ||
+        currentTime !==
+          expectedTime
+      ) {
+        throw new InvoicingError(
+          'INVOICE_CONFLICT',
+          'This draft changed after you opened it. Reload the latest invoice before saving your edits.',
+        );
+      }
     }
 
     const customerId =
