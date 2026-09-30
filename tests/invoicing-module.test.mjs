@@ -116,7 +116,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
 
   assert.match(
     invoicing,
-    /version:\s*['"]2\.20\.0['"]/,
+    /version:\s*['"]2\.21\.0['"]/,
   );
 
   assert.match(
@@ -3088,7 +3088,7 @@ test('Invoicing v2.7 turns recurring invoices into an observable retry-safe bill
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.21\.0['"]/s,
   );
 
   assert.match(
@@ -3288,7 +3288,7 @@ test('Invoicing v2.8 turns reminders into a staged auditable dunning engine', as
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.21\.0['"]/s,
   );
 
   assert.match(
@@ -3507,7 +3507,7 @@ test('Invoicing Part 8 builds a customer-scoped secure portal', async () => {
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.21\.0['"]/s,
   );
 
   assert.match(
@@ -3851,7 +3851,7 @@ test('Invoicing Part 9 freezes issued invoice PDFs as immutable document snapsho
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.21\.0['"]/s,
   );
 
   assert.match(
@@ -4127,7 +4127,7 @@ test('Invoicing Part 10 provides a live renderer-backed invoice template designe
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.21\.0['"]/s,
   );
 
   assert.match(
@@ -4314,7 +4314,7 @@ test('Invoicing Part 11 deepens credit notes into reusable customer credits and 
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.21\.0['"]/s,
   );
 
   assert.match(
@@ -4535,7 +4535,7 @@ test('Invoicing Part 12 manages retainers and deposits as auditable customer cre
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.21\.0['"]/s,
   );
 
   assert.match(
@@ -4707,7 +4707,7 @@ test('Invoicing Part 13 schedules installment plans over the authoritative invoi
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.21\.0['"]/s,
   );
 
   assert.match(
@@ -4970,7 +4970,7 @@ test('Invoicing Part 14 provides auditable multi-currency billing, base reportin
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.21\.0['"]/s,
   );
 
   assert.match(
@@ -5261,7 +5261,7 @@ test('Invoicing Part 15 provides a rule-driven tax engine with fiscal mappings, 
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.21\.0['"]/s,
   );
 
   assert.match(
@@ -5528,7 +5528,7 @@ test('Invoicing Part 16 provides KRA-native OSCU/VSCU fiscalization, immutable f
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.21\.0['"]/s,
   );
 
   assert.match(
@@ -5801,7 +5801,7 @@ test('Invoicing Part 17 provides international e-invoicing with UBL, Peppol and 
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.21\.0['"]/s,
   );
 
   assert.match(migration, /fromVersion:\s*['"]2\.17\.0['"]/);
@@ -6079,7 +6079,7 @@ test('Invoicing Part 18 gives SaMi AI deep permission-aware receivables intellig
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.21\.0['"]/s,
     'Part 18 reuses the existing Invoicing schema and must not force a fake schema version bump.',
   );
 });
@@ -6225,7 +6225,7 @@ test('Invoicing Part 19 centralizes standalone navigation and keeps route struct
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.21\.0['"]/s,
     'Part 19 changes application navigation only and must not fake a tenant schema version.',
   );
 });
@@ -6355,7 +6355,7 @@ test('Invoicing Part 20 keeps settings focused, mobile-safe and free of nested f
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.21\.0['"]/s,
     'Part 20 reorganizes settings without pretending the tenant schema changed.',
   );
 });
@@ -6436,7 +6436,7 @@ test('Invoicing Part 21 enforces company-bound financial relationships and race-
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.21\.0['"]/s,
   );
 });
 
@@ -6505,7 +6505,7 @@ test('Invoicing Part 22 owns an append-only hash-chained audit ledger with redac
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.21\.0['"]/s,
   );
 
   assert.match(
@@ -6753,6 +6753,148 @@ test('Invoicing Part 23 splits high-risk authorities and aligns backend, UI and 
   assert.match(manifest, /invoicing\.audit\.company/);
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.21\.0['"]/s,
+  );
+});
+
+
+test('Invoicing Part 24 makes invoice creation retry-safe and rejects stale draft overwrites', async () => {
+  const [
+    schema,
+    migration,
+    idempotency,
+    runtimeMigrations,
+    manifest,
+    commands,
+    route,
+    queries,
+    types,
+    composer,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/schema.sql'),
+    source('lib/apps/invoicing/migrations/2.20.0-to-2.21.0.ts'),
+    source('lib/apps/invoicing/idempotency.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/invoicing/commands.ts'),
+    source('app/api/apps/invoicing/route.ts'),
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/types.ts'),
+    source('app/apps/invoicing/InvoiceComposer.tsx'),
+  ]);
+
+  for (const sourceText of [
+    schema,
+    migration,
+  ]) {
+    assert.match(
+      sourceText,
+      /invoicing_idempotency_requests/,
+    );
+
+    assert.match(
+      sourceText,
+      /PRIMARY KEY \(\s*company_id,\s*idempotency_key\s*\)/s,
+    );
+
+    assert.match(
+      sourceText,
+      /request_hash VARCHAR\(64\)/,
+    );
+
+    assert.doesNotMatch(
+      sourceText,
+      /request_payload/,
+      'The Part 24 retry ledger must not persist the submitted invoice payload.',
+    );
+  }
+
+  assert.match(
+    idempotency,
+    /ON CONFLICT \(\s*company_id,\s*idempotency_key\s*\)[\s\S]*DO NOTHING/s,
+    'Concurrent retries must serialize on one company-scoped key.',
+  );
+
+  assert.match(
+    idempotency,
+    /request_hash/,
+  );
+
+  assert.match(
+    idempotency,
+    /response_json/,
+  );
+
+  assert.match(
+    commands,
+    /reserveInvoicingMutation/,
+  );
+
+  assert.match(
+    commands,
+    /completeInvoicingMutation/,
+  );
+
+  assert.match(
+    commands,
+    /INVOICE_CONFLICT/,
+    'Draft writes must reject a stale revision after taking the row lock.',
+  );
+
+  assert.match(
+    commands,
+    /updated_at[\s\S]*FOR UPDATE/s,
+  );
+
+  assert.match(
+    route,
+    /idempotency-key/,
+    'The authenticated API must accept a standard retry key at the transport boundary.',
+  );
+
+  assert.match(
+    route,
+    /IDEMPOTENCY_CONFLICT/,
+  );
+
+  assert.match(
+    types,
+    /idempotencyKey\?: unknown;/,
+  );
+
+  assert.match(
+    types,
+    /expectedUpdatedAt\?: unknown;/,
+  );
+
+  assert.match(
+    types,
+    /updatedAt: string \| null;/,
+  );
+
+  assert.match(
+    queries,
+    /i\.updated_at/,
+  );
+
+  assert.match(
+    composer,
+    /createRequestKeyRef/,
+    'Manual retry after an uncertain response must reuse the original create key.',
+  );
+
+  assert.match(
+    composer,
+    /expectedUpdatedAt/,
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /INVOICING_2_20_0_TO_2_21_0/,
+  );
+
+  assert.match(
+    manifest,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.21\.0['"]/s,
   );
 });
