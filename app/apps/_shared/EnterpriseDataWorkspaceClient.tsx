@@ -3723,7 +3723,7 @@ function Records({
                                 'shrink-0 rounded-xl px-3 py-2 text-xs font-black transition',
                                 selected.key ===
                                   table.key
-                                  ? 'bg-slate-950 text-white shadow-sm dark:bg-white dark:text-slate-950'
+                                  ? 'sami-contrast-invert  shadow-sm  '
                                   : 'border border-[var(--sami-border)] hover:-translate-y-px hover:bg-blue-500/[0.04]',
                               ].join(
                                 ' ',
@@ -4051,7 +4051,7 @@ function Records({
                   'inline-flex h-8 items-center gap-1 rounded-lg px-2 text-[10px] font-black',
                   recordView ===
                     'list'
-                    ? 'bg-slate-950 text-white dark:bg-white dark:text-slate-950'
+                    ? 'sami-contrast-invert   '
                     : '',
                 ].join(
                   ' ',
@@ -4077,7 +4077,7 @@ function Records({
                       'inline-flex h-8 items-center gap-1 rounded-lg px-2 text-[10px] font-black',
                       recordView ===
                         'kanban'
-                        ? 'bg-slate-950 text-white dark:bg-white dark:text-slate-950'
+                        ? 'sami-contrast-invert   '
                         : '',
                     ].join(
                       ' ',
@@ -4105,7 +4105,7 @@ function Records({
                       'inline-flex h-8 items-center gap-1 rounded-lg px-2 text-[10px] font-black',
                       recordView ===
                         'calendar'
-                        ? 'bg-slate-950 text-white dark:bg-white dark:text-slate-950'
+                        ? 'sami-contrast-invert   '
                         : '',
                     ].join(
                       ' ',

@@ -762,5 +762,23 @@ test(
       /sami-contrast-invert/,
       'Workspace notification controls must use the semantic inverted-contrast contract.',
     );
+
+    const enterpriseControls =
+      await readFile(
+        'app/apps/_shared/EnterpriseDataWorkspaceClient.tsx',
+        'utf8',
+      );
+
+    assert.match(
+      enterpriseControls,
+      /sami-contrast-invert/,
+      'All shared enterprise app controls must use the semantic inverted-contrast contract.',
+    );
+
+    assert.doesNotMatch(
+      enterpriseControls,
+      /bg-slate-950[^"'\\n]*text-white[^"'\\n]*dark:bg-white[^"'\\n]*dark:text-slate-950/,
+      'The 78 shared enterprise apps must not reintroduce fragile theme inversion utilities.',
+    );
   },
 );
