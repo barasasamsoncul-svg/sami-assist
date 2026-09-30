@@ -378,8 +378,10 @@ export type InvoicingInvoiceLine = {
   discountValue: number;
   discountAmount: number;
   taxRateId: string | null;
+  taxGroupId: string | null;
   taxName: string | null;
   taxRate: number;
+  taxComponents: Array<Record<string, unknown>>;
   taxAmount: number;
   subtotal: number;
   lineTotal: number;
