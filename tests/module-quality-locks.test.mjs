@@ -66,7 +66,7 @@ test(
 
     assert.equal(
       lock.baselineCommit,
-      '4250e548304ce05b098b4785d92c563994fcfa44',
+      'd52302ebe731d595746ac4f0919a330050734a22',
     );
 
     assert.equal(
