@@ -12,6 +12,7 @@ import {
   saveEtimsTaxMapping,
   submitCreditNoteToEtims,
   submitInvoiceToEtims,
+  syncEtimsItem,
   syncEtimsReferenceData,
 } from '@/lib/apps/invoicing/service';
 
@@ -291,6 +292,13 @@ export async function POST(
       case 'save_tax_mapping':
         result =
           await saveEtimsTaxMapping(
+            payload,
+          );
+        break;
+
+      case 'sync_item':
+        result =
+          await syncEtimsItem(
             payload,
           );
         break;
