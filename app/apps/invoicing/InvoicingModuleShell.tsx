@@ -325,7 +325,7 @@ export default function InvoicingModuleShell({
                 false
                   ? (
                     <Link
-                      href="/ai"
+                      href="/ai?module=invoicing"
                       aria-label="Open SaMi AI"
                       title="SaMi AI"
                       className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-indigo-200/80 bg-gradient-to-r from-indigo-50 to-blue-50 text-indigo-700 dark:border-indigo-500/20 dark:from-indigo-500/10 dark:to-blue-500/10 dark:text-indigo-300 sm:w-auto sm:px-3"

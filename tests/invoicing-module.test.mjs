@@ -5875,3 +5875,202 @@ test('Invoicing Part 17 provides international e-invoicing with UBL, Peppol and 
   }
 });
 
+test('Invoicing Part 18 gives SaMi AI deep permission-aware receivables intelligence without a fake schema migration', async () => {
+  const [
+    tools,
+    registry,
+    runtimeAi,
+    moduleShell,
+    aiPage,
+    aiClient,
+    chatRoute,
+    aiService,
+    manifest,
+    runtimeMigrations,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/ai-tools.ts'),
+    source('lib/ai/tool-registry.ts'),
+    source('lib/apps/runtime-ai.ts'),
+    source('app/apps/invoicing/InvoicingModuleShell.tsx'),
+    source('app/ai/page.tsx'),
+    source('app/components/workspace/WorkspaceAiClient.tsx'),
+    source('app/api/workspace/ai/chat/route.ts'),
+    source('lib/services/workspace-ai.ts'),
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+  ]);
+
+  for (const toolKey of [
+    'invoicing_summary',
+    'invoicing_search',
+    'invoicing_invoice_detail',
+    'invoicing_collections_queue',
+    'invoicing_customer_account',
+    'invoicing_recurring_health',
+    'invoicing_fiscal_readiness',
+    'invoicing_create_draft',
+    'invoicing_confirm_invoice',
+    'invoicing_send_invoice',
+    'invoicing_send_reminder',
+    'invoicing_record_payment',
+    'invoicing_issue_credit_note',
+  ]) {
+    assert.match(
+      tools,
+      new RegExp("key:\\s*'" + toolKey + "'"),
+      toolKey + ' must remain a code-owned Invoicing SaMi AI capability.',
+    );
+  }
+
+  assert.match(tools, /getInvoicingInvoiceDetail/);
+  assert.match(tools, /getInvoicingWorkspaceData/);
+  assert.match(tools, /getEtimsWorkspaceData/);
+  assert.match(tools, /getEInvoiceWorkspaceData/);
+  assert.match(tools, /sendInvoiceReminder/);
+
+  assert.match(
+    tools,
+    /name:\s*'Collections queue'[\s\S]*CUSTOMER_VIEW/s,
+    'Collections intelligence must not expose customer account data without customer-read permission.',
+  );
+
+  assert.match(
+    tools,
+    /name:\s*'Recurring billing health'[\s\S]*RECURRING_MANAGE/s,
+    'Recurring billing intelligence must respect the dedicated recurring permission.',
+  );
+
+  const fiscalStart =
+    tools.indexOf(
+      "key: 'invoicing_fiscal_readiness'",
+    );
+  const reminderStart =
+    tools.indexOf(
+      "key: 'invoicing_send_reminder'",
+    );
+
+  assert.ok(
+    fiscalStart >= 0 &&
+    reminderStart > fiscalStart,
+  );
+
+  const fiscalBlock =
+    tools.slice(
+      fiscalStart,
+      reminderStart,
+    );
+
+  for (const secretField of [
+    'taxpayerPin',
+    'deviceSerialNumber',
+    'receiptSignature',
+    'credentialSealed',
+    'communicationKey',
+  ]) {
+    assert.doesNotMatch(
+      fiscalBlock,
+      new RegExp(secretField),
+      'Fiscal readiness must not expose ' + secretField + ' to the AI model.',
+    );
+  }
+
+  const reminderBlock =
+    tools.slice(
+      reminderStart,
+      tools.indexOf(
+        "key: 'invoicing_create_draft'",
+        reminderStart,
+      ),
+    );
+
+  assert.match(reminderBlock, /operation:\s*'write'/);
+  assert.match(reminderBlock, /riskLevel:\s*'high'/);
+  assert.match(reminderBlock, /confirmationRequired:\s*true/);
+  assert.match(reminderBlock, /INVOICE_SEND/);
+
+  for (const writeTool of [
+    'invoicing_create_draft',
+    'invoicing_confirm_invoice',
+    'invoicing_send_invoice',
+    'invoicing_send_reminder',
+    'invoicing_record_payment',
+    'invoicing_issue_credit_note',
+  ]) {
+    const start =
+      tools.indexOf(
+        "key: '" + writeTool + "'",
+      );
+
+    assert.ok(
+      start >= 0,
+      writeTool + ' must exist.',
+    );
+
+    const next =
+      tools.indexOf(
+        "\n    {\n      key:",
+        start + 20,
+      );
+
+    const block =
+      tools.slice(
+        start,
+        next >= 0
+          ? next
+          : tools.length,
+      );
+
+    assert.match(
+      block,
+      /operation:\s*'write'/,
+    );
+
+    assert.match(
+      block,
+      /confirmationRequired:\s*true/,
+      writeTool + ' must always require explicit confirmation.',
+    );
+  }
+
+  assert.match(runtimeAi, /INVOICING_AI_TOOLS/);
+  assert.match(registry, /moduleIsAccessible/);
+  assert.match(registry, /hasAllPermissions/);
+  assert.match(registry, /confirmationRequired/);
+
+  assert.match(
+    moduleShell,
+    /href="\/ai\?module=invoicing"/,
+    'Opening SaMi AI from Invoicing must carry a narrow module focus.',
+  );
+
+  assert.match(aiPage, /requestedModule ===[\s\S]*'invoicing'/s);
+  assert.match(aiPage, /moduleContext=\{/);
+  assert.match(aiClient, /Ask SaMi about Invoicing/);
+  assert.match(aiClient, /Which invoices need collection attention\?/);
+  assert.match(aiClient, /Check eTIMS and international e-invoicing readiness\./);
+  assert.match(aiClient, /moduleContext,/);
+  assert.match(chatRoute, /moduleContext:[\s\S]*body\?\.moduleContext/s);
+
+  assert.match(
+    aiService,
+    /requestedModuleContext[\s\S]*accessibleModuleKeys[\s\S]*moduleContext/s,
+    'The backend must discard Invoicing focus if the user cannot access Invoicing.',
+  );
+
+  assert.match(aiService, /Current workspace focus: Invoicing\./);
+  assert.match(aiService, /prefer the available Invoicing tools/);
+  assert.match(aiService, /financial write actions confirmation-gated/);
+
+  assert.match(
+    manifest,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
+    'Part 18 reuses the existing Invoicing schema and must not force a fake schema version bump.',
+  );
+
+  assert.doesNotMatch(
+    runtimeMigrations,
+    /INVOICING_2_18_0_TO_2_19_0/,
+    'Part 18 adds AI application capabilities only; no empty database migration should be invented.',
+  );
+});
+

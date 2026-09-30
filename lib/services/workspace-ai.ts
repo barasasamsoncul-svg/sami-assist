@@ -1540,6 +1540,9 @@ function systemPrompt(
     content: string;
     importance: number;
   }>,
+  moduleContext:
+    | 'invoicing'
+    | null = null,
 ) {
   const apps =
     context
@@ -1572,6 +1575,17 @@ function systemPrompt(
     `Current company: ${context.companyName}`,
     `Accessible app keys: ${apps}`,
   ];
+
+  if (
+    moduleContext ===
+      'invoicing'
+  ) {
+    lines.push(
+      'Current workspace focus: Invoicing.',
+      'For ambiguous business questions in this conversation, prefer the available Invoicing tools and Invoicing records before broad workspace tools.',
+      'Keep financial write actions confirmation-gated and never infer a payment, credit, delivery or fiscal submission succeeded before its tool result confirms it.',
+    );
+  }
 
   if (
     context
@@ -2852,6 +2866,7 @@ export async function sendWorkspaceAiMessage(
     mode?: unknown;
     targetMessageId?: unknown;
     attachmentIds?: unknown;
+    moduleContext?: unknown;
     signal?:
       AbortSignal;
   },
@@ -2861,6 +2876,26 @@ export async function sendWorkspaceAiMessage(
 
   const context =
     resolved.runtime;
+
+  const requestedModuleContext =
+    input.moduleContext ===
+      'invoicing'
+      ? 'invoicing'
+      : null;
+
+  const moduleContext =
+    requestedModuleContext &&
+    context
+      .accessibleModuleKeys
+      .some(
+        key =>
+          key
+            .trim()
+            .toLowerCase() ===
+          requestedModuleContext,
+      )
+      ? requestedModuleContext
+      : null;
 
   const platformSettings =
     await getRuntimePlatformSettings();
@@ -3219,6 +3254,7 @@ export async function sendWorkspaceAiMessage(
             systemPrompt(
               context,
               memories,
+              moduleContext,
             ),
         },
         ...history,
