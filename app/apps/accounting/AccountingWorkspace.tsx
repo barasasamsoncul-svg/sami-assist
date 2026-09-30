@@ -23,6 +23,9 @@ import {
 import {
   AccountingInputError,
 } from '@/lib/apps/accounting/validation';
+import {
+  getAccountingSetup,
+} from '@/lib/apps/accounting/setup';
 
 const MODULE_KEY = 'accounting';
 
@@ -77,6 +80,15 @@ export default async function AccountingWorkspace({
   let foundationError =
     '';
 
+  let accountingSetup:
+    Awaited<
+      ReturnType<
+        typeof getAccountingSetup
+      >
+    > |
+    null =
+      null;
+
   if (dedicatedSection) {
     try {
       foundation =
@@ -101,6 +113,25 @@ export default async function AccountingWorkspace({
           error,
         );
       }
+    }
+  }
+
+  if (
+    dedicatedSection ===
+      'setup' &&
+    foundation
+  ) {
+    try {
+      accountingSetup =
+        await getAccountingSetup();
+    } catch (
+      error
+    ) {
+      foundationError =
+        error instanceof
+          Error
+          ? error.message
+          : 'Accounting Setup could not be loaded.';
     }
   }
 
@@ -290,19 +321,22 @@ export default async function AccountingWorkspace({
         'Insights',
     },
 
-    {
-      key:
-        'setup',
-      label:
-        'Accounting Setup',
-      href:
-        appBaseHref +
-        '/setup',
-      description:
-        'Prepare the books and required accounting controls.',
-      sectionLabel:
-        'Configuration',
-    },
+    data.capabilities
+      .canManageSettings
+      ? {
+          key:
+            'setup',
+          label:
+            'Accounting Setup',
+          href:
+            appBaseHref +
+            '/setup',
+          description:
+            'Prepare the books and required accounting controls.',
+          sectionLabel:
+            'Configuration',
+        }
+      : null,
 
     tableItem(
       'accounting_fiscal_periods',
@@ -382,6 +416,13 @@ export default async function AccountingWorkspace({
                       canCreate={
                         data.capabilities
                           .canCreate
+                      }
+                      canManageSettings={
+                        data.capabilities
+                          .canManageSettings
+                      }
+                      setup={
+                        accountingSetup
                       }
                     />
                   )
