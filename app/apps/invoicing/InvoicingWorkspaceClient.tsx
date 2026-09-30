@@ -28,7 +28,6 @@ import {
 } from '@/app/components/useSaMiOverlay';
 
 import WorkspaceTutorial, {
-  startWorkspaceTutorial,
   type WorkspaceTutorialStep,
 } from '@/app/components/workspace/WorkspaceTutorial';
 
@@ -40,7 +39,6 @@ import {
   BellRing,
   BarChart3,
   CalendarClock,
-  BookOpenCheck,
   ChevronDown,
   CircleDollarSign,
   CopyPlus,
@@ -1088,7 +1086,7 @@ function MetricCard({
             }
           </p>
 
-          <p className="mt-2 truncate text-[1.35rem] font-black tracking-[-0.04em] text-slate-950 dark:text-white sm:text-2xl">
+          <p className="mt-2 break-words whitespace-normal text-[1.35rem] font-black tracking-[-0.04em] text-slate-950 dark:text-white sm:text-2xl">
             {
               value
             }
@@ -1638,7 +1636,7 @@ export default function InvoicingWorkspaceClient({
               }
             </h1>
 
-            <p className="mt-1 hidden max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400 sm:block">
+            <p className="mt-1 max-w-2xl break-words text-xs leading-5 text-slate-500 dark:text-slate-400">
               {
                 VIEW_COPY[
                   view
@@ -1648,21 +1646,6 @@ export default function InvoicingWorkspaceClient({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={
-                () =>
-                  startWorkspaceTutorial(
-                    userId,
-                    'invoicing',
-                  )
-              }
-              className="hidden h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs font-black sm:inline-flex"
-            >
-              <BookOpenCheck className="h-4 w-4 text-blue-600" />
-              Tutorial
-            </button>
-
             {
               view ===
                 'invoices' &&
@@ -2567,7 +2550,7 @@ function Dashboard({
                 <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
                   Collected
                 </p>
-                <p className="mt-1 truncate text-sm font-black">
+                <p className="mt-1 break-words whitespace-normal text-sm font-black">
                   {
                     formatMoney(
                       data.metrics
@@ -3029,7 +3012,7 @@ function Dashboard({
                           </span>
                         </div>
 
-                        <p className="mt-1 truncate text-xs text-slate-500">
+                        <p className="mt-1 break-words whitespace-normal text-xs text-slate-500">
                           {
                             invoice
                               .customerName
@@ -3142,7 +3125,7 @@ function Dashboard({
                           }
                         </p>
 
-                        <p className="mt-1 truncate text-[10px] text-slate-400">
+                        <p className="mt-1 break-words whitespace-normal text-[10px] text-slate-400">
                           {
                             payment
                               .paymentNumber
@@ -3353,7 +3336,7 @@ function Dashboard({
                                 item.name
                               }
                             </p>
-                            <p className="mt-1 truncate text-[10px] text-slate-400">
+                            <p className="mt-1 break-words whitespace-normal text-[10px] text-slate-400">
                               {
                                 item
                                   .customerName
@@ -3597,7 +3580,7 @@ function Dashboard({
                           </Link>
                         </td>
 
-                        <td className="max-w-[220px] truncate px-4 py-3.5 text-xs font-bold">
+                        <td className="max-w-[220px] break-words whitespace-normal px-4 py-3.5 text-xs font-bold">
                           {
                             invoice
                               .customerName
@@ -3686,7 +3669,7 @@ function Dashboard({
                               .invoiceNumber
                           }
                         </p>
-                        <p className="mt-1 truncate text-xs text-slate-500">
+                        <p className="mt-1 break-words whitespace-normal text-xs text-slate-500">
                           {
                             invoice
                               .customerName
@@ -4487,7 +4470,7 @@ function Invoices({
                         }
                       </Link>
 
-                      <p className="mt-1 truncate text-xs font-semibold">
+                      <p className="mt-1 break-words whitespace-normal text-xs font-semibold">
                         {
                           invoice
                             .customerName
@@ -4509,7 +4492,7 @@ function Invoices({
                         Total
                       </p>
 
-                      <p className="mt-1 truncate text-xs font-black">
+                      <p className="mt-1 break-words whitespace-normal text-xs font-black">
                         {
                           formatMoney(
                             invoice
@@ -4526,7 +4509,7 @@ function Invoices({
                         Paid
                       </p>
 
-                      <p className="mt-1 truncate text-xs font-black text-emerald-700 dark:text-emerald-300">
+                      <p className="mt-1 break-words whitespace-normal text-xs font-black text-emerald-700 dark:text-emerald-300">
                         {
                           formatMoney(
                             invoice
@@ -4543,7 +4526,7 @@ function Invoices({
                         Balance
                       </p>
 
-                      <p className="mt-1 truncate text-xs font-black text-amber-700 dark:text-amber-300">
+                      <p className="mt-1 break-words whitespace-normal text-xs font-black text-amber-700 dark:text-amber-300">
                         {
                           formatMoney(
                             invoice
@@ -4715,7 +4698,7 @@ function Invoices({
                           }
                         </p>
 
-                        <p className="mt-1 truncate text-[11px] text-slate-500">
+                        <p className="mt-1 break-words whitespace-normal text-[11px] text-slate-500">
                           {
                             invoice
                               .customerEmail ||
@@ -5952,7 +5935,7 @@ function Customers({
                           />
                         </div>
 
-                        <p className="mt-1 truncate text-xs text-slate-500">
+                        <p className="mt-1 break-words whitespace-normal text-xs text-slate-500">
                           {
                             customer.email ||
                             customer.phone ||
@@ -6906,7 +6889,7 @@ function Items({
                           />
                         </div>
 
-                        <p className="mt-1 truncate text-xs text-slate-500">
+                        <p className="mt-1 break-words whitespace-normal text-xs text-slate-500">
                           {
                             item.sku
                               ? 'SKU ' +
@@ -9455,7 +9438,7 @@ function PaymentAmount({
           label
         }
       </p>
-      <p className="mt-1 truncate text-xs font-black">
+      <p className="mt-1 break-words whitespace-normal text-xs font-black">
         {
           value
         }
@@ -10449,7 +10432,7 @@ function Recurring({
                                                     '/apps/invoicing/' +
                                                     recurringRun.invoiceId
                                                   }
-                                                  className="mt-1 inline-block truncate font-black text-blue-700 hover:underline dark:text-blue-300"
+                                                  className="mt-1 inline-block break-words whitespace-normal font-black text-blue-700 hover:underline dark:text-blue-300"
                                                 >
                                                   {
                                                     recurringRun.invoiceNumber
@@ -10457,7 +10440,7 @@ function Recurring({
                                                 </Link>
                                               )
                                             : (
-                                                <p className="mt-1 truncate font-semibold">
+                                                <p className="mt-1 break-words whitespace-normal font-semibold">
                                                   {
                                                     recurringRun.errorCode ||
                                                     recurringRun.errorMessage ||
@@ -10774,7 +10757,7 @@ function CustomerPortal({
                               customer.name
                             }
                           </p>
-                          <p className="mt-1 truncate text-[10px] text-slate-600 dark:text-slate-300">
+                          <p className="mt-1 break-words whitespace-normal text-[10px] text-slate-600 dark:text-slate-300">
                             {
                               customer.email ||
                               'No customer email'
