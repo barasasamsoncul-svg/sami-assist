@@ -19,7 +19,6 @@ import {
   Download,
   FileJson,
   Globe2,
-  GraduationCap,
   Loader2,
   LockKeyhole,
   Mail,
@@ -2620,34 +2619,6 @@ function PreferencesView({
             ]}
           />
 
-          <label className="flex min-h-12 items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-800 dark:bg-slate-950">
-            <span className="flex min-w-0 items-center gap-2">
-              <GraduationCap className="h-4 w-4 shrink-0 text-blue-600" />
-              <span>
-                <span className="block text-xs font-black text-slate-700 dark:text-slate-300">
-                  Workspace tutorials
-                </span>
-                <span className="mt-0.5 block text-[10px] leading-4 text-slate-400">
-                  Show guided steps the first time you open each SaMi app.
-                </span>
-              </span>
-            </span>
-
-            <input
-              type="checkbox"
-              checked={
-                preferences.tutorialsEnabled
-              }
-              onChange={
-                event =>
-                  update(
-                    'tutorialsEnabled',
-                    event.target.checked
-                  )
-              }
-              className="h-4 w-4 shrink-0 accent-blue-600"
-            />
-          </label>
         </div>
 
         <div className="mt-6 flex flex-wrap gap-2">

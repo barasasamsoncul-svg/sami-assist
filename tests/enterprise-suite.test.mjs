@@ -2686,10 +2686,11 @@ test('enterprise business events enter Automation only after successful business
 });
 
 
-test('tutorial preference is durable across the full workspace suite', async () => {
+test('tutorial preference is durable and activated only from Workspace settings', async () => {
   const [
     migrationManifest,
     migration,
+    optInMigration,
     account,
     preferencesApi,
     tutorial,
@@ -2697,13 +2698,17 @@ test('tutorial preference is durable across the full workspace suite', async () 
     genericWorkspace,
     invoicingWorkspace,
     salesWorkspace,
-    settings,
+    workspaceSettings,
+    myAccountSettings,
   ] = await Promise.all([
     source(
       'lib/schema/control-migrations/manifest.ts',
     ),
     source(
       'lib/schema/control-migrations/008-user-tutorial-preferences.sql',
+    ),
+    source(
+      'lib/schema/control-migrations/009-workspace-tutorial-opt-in.sql',
     ),
     source(
       'lib/account/user-account.ts',
@@ -2727,6 +2732,9 @@ test('tutorial preference is durable across the full workspace suite', async () 
       'app/apps/sales/SalesWorkspaceClient.tsx',
     ),
     source(
+      'app/settings/components/WorkspaceSettings.tsx',
+    ),
+    source(
       'app/settings/components/MyAccountSettings.tsx',
     ),
   ]);
@@ -2734,6 +2742,11 @@ test('tutorial preference is durable across the full workspace suite', async () 
   assert.match(
     migrationManifest,
     /008-user-tutorial-preferences\.sql/,
+  );
+
+  assert.match(
+    migrationManifest,
+    /009-workspace-tutorial-opt-in\.sql/,
   );
 
   assert.match(
@@ -2776,7 +2789,7 @@ test('tutorial preference is durable across the full workspace suite', async () 
     /syncWorkspaceTutorialPreference/,
   );
 
-  assert.match(
+  assert.doesNotMatch(
     shell,
     /WorkspaceTutorialToggle/,
   );
@@ -2786,9 +2799,19 @@ test('tutorial preference is durable across the full workspace suite', async () 
     /WorkspaceTutorial/,
   );
 
+  assert.doesNotMatch(
+    genericWorkspace,
+    /startWorkspaceTutorial/,
+  );
+
   assert.match(
     invoicingWorkspace,
     /moduleKey="invoicing"/,
+  );
+
+  assert.doesNotMatch(
+    invoicingWorkspace,
+    /startWorkspaceTutorial/,
   );
 
   assert.match(
@@ -2796,9 +2819,34 @@ test('tutorial preference is durable across the full workspace suite', async () 
     /moduleKey="sales"/,
   );
 
+  assert.doesNotMatch(
+    salesWorkspace,
+    /startWorkspaceTutorial/,
+  );
+
   assert.match(
-    settings,
+    workspaceSettings,
+    /WorkspaceTutorialToggle/,
+  );
+
+  assert.match(
+    workspaceSettings,
     /Workspace tutorials/,
+  );
+
+  assert.doesNotMatch(
+    myAccountSettings,
+    />\s*Workspace tutorials\s*</,
+  );
+
+  assert.match(
+    optInMigration,
+    /ALTER COLUMN tutorials_enabled SET DEFAULT FALSE/,
+  );
+
+  assert.match(
+    optInMigration,
+    /SET tutorials_enabled = FALSE/,
   );
 });
 

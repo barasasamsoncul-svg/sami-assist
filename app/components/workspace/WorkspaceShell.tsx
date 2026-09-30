@@ -15,10 +15,6 @@ import {
 } from 'lucide-react';
 
 import {
-  WorkspaceTutorialToggle,
-} from '@/app/components/workspace/WorkspaceTutorial';
-
-import {
   useState,
   type ReactNode,
 } from 'react';
@@ -220,7 +216,7 @@ export default function WorkspaceShell({
               ) : (
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 items-center gap-2">
-                    <p className="truncate text-[15px] font-bold tracking-[-0.01em] text-slate-900 dark:text-white">
+                    <p className="break-words whitespace-normal text-[15px] font-bold tracking-[-0.01em] text-slate-900 dark:text-white">
                       {title}
                     </p>
 
@@ -230,7 +226,7 @@ export default function WorkspaceShell({
                         <span className="hidden text-slate-300 md:inline dark:text-slate-700">
                           /
                         </span>
-                        <p className="hidden max-w-[220px] truncate text-[11px] font-semibold text-slate-600 dark:text-slate-300 md:block">
+                        <p className="hidden max-w-[260px] break-words whitespace-normal text-[11px] font-semibold leading-4 text-slate-600 dark:text-slate-300 md:block">
                           {contextLabel ||
                             tenant?.name}
                         </p>
@@ -239,7 +235,7 @@ export default function WorkspaceShell({
                   </div>
 
                   {description && (
-                    <p className="mt-0.5 hidden max-w-[660px] truncate text-[10px] text-slate-600 dark:text-slate-300 sm:block">
+                    <p className="mt-0.5 hidden max-w-[660px] break-words whitespace-normal text-[10px] leading-4 text-slate-600 dark:text-slate-300 sm:block">
                       {description}
                     </p>
                   )}
@@ -249,12 +245,6 @@ export default function WorkspaceShell({
               <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
                 <WorkspaceAppSwitcher
                   modules={modules}
-                />
-
-                <WorkspaceTutorialToggle
-                  userId={
-                    user.id
-                  }
                 />
 
                 <Link

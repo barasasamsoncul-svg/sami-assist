@@ -22,10 +22,6 @@ import WorkspaceCompanyIdentity from '@/app/components/workspace/WorkspaceCompan
 import WorkspaceNotificationCenter from '@/app/components/workspace/WorkspaceNotificationCenter';
 import WorkspaceSearchLauncher from '@/app/components/workspace/WorkspaceSearch';
 import WorkspaceTenantSwitcher from '@/app/components/workspace/WorkspaceTenantSwitcher';
-import {
-  WorkspaceTutorialToggle,
-} from '@/app/components/workspace/WorkspaceTutorial';
-
 import type {
   AppSidebarItem,
 } from '@/app/components/apps/AppSurfaceShell';
@@ -95,7 +91,7 @@ function InvoicingSidebar({
       aria-label="Invoicing navigation"
       className="flex h-full min-h-0 flex-col bg-[var(--sami-sidebar)] text-slate-950 dark:text-white"
     >
-      <div className="flex h-[72px] shrink-0 items-center gap-3 border-b border-[var(--sami-border)] px-5">
+      <div className="flex min-h-[72px] shrink-0 items-center gap-3 border-b border-[var(--sami-border)] py-3 pl-5 pr-14 lg:pr-5">
         <SamiAppIconTile
           appKey="invoicing"
           category="finance"
@@ -103,10 +99,10 @@ function InvoicingSidebar({
         />
 
         <div className="min-w-0">
-          <p className="truncate text-sm font-black tracking-[-0.02em]">
+          <p className="break-words text-sm font-black leading-5 tracking-[-0.02em]">
             Invoicing
           </p>
-          <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+          <p className="mt-0.5 break-words text-[10px] font-semibold leading-4 text-slate-500 dark:text-slate-400">
             {companyName}
           </p>
         </div>
@@ -170,7 +166,7 @@ function InvoicingSidebar({
                     )}
                   />
 
-                  <span className="min-w-0 flex-1 truncate">
+                  <span className="min-w-0 flex-1 break-words whitespace-normal leading-4">
                     {item.label}
                   </span>
 
@@ -314,10 +310,10 @@ export default function InvoicingModuleShell({
             </Link>
 
             <div className="min-w-0">
-              <p className="truncate text-sm font-black">
+              <p className="break-words whitespace-normal text-sm font-black">
                 Invoicing
               </p>
-              <p className="truncate text-[10px] text-slate-500 sm:hidden">
+              <p className="break-words whitespace-normal text-[10px] text-slate-500 sm:hidden">
                 {companyName}
               </p>
             </div>
@@ -350,12 +346,6 @@ export default function InvoicingModuleShell({
               <WorkspaceAppSwitcher
                 modules={modules}
               />
-
-              <div className="hidden xl:block">
-                <WorkspaceTutorialToggle
-                  userId={user.id}
-                />
-              </div>
 
               <div className="hidden lg:block">
                 <WorkspaceTenantSwitcher

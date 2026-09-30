@@ -1646,36 +1646,78 @@ test('Invoicing financial corrections are auditable and company settings are enf
 });
 
 
-test('Workspace tutorials are reusable across modules and Invoicing ships complete guided flows', async () => {
+test('Workspace tutorials are centrally opt-in and Invoicing preserves readable guided flows', async () => {
   const [
     tutorial,
     shell,
+    invoicingShell,
     page,
     sectionPage,
     workspace,
     detailPage,
     detail,
+    workspaceSettings,
+    myAccount,
+    formatting,
+    optInMigration,
+    etimsWorkspace,
+    eInvoicingWorkspace,
   ] = await Promise.all([
     source('app/components/workspace/WorkspaceTutorial.tsx'),
     source('app/components/workspace/WorkspaceShell.tsx'),
+    source('app/apps/invoicing/InvoicingModuleShell.tsx'),
     source('app/apps/invoicing/page.tsx'),
     source('app/apps/invoicing/InvoicingSectionPage.tsx'),
     source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
     source('app/apps/invoicing/[invoiceId]/page.tsx'),
     source('app/apps/invoicing/[invoiceId]/InvoiceDetailClient.tsx'),
+    source('app/settings/components/WorkspaceSettings.tsx'),
+    source('app/settings/components/MyAccountSettings.tsx'),
+    source('lib/account/user-formatting.ts'),
+    source('lib/schema/control-migrations/009-workspace-tutorial-opt-in.sql'),
+    source('app/apps/invoicing/EtimsWorkspace.tsx'),
+    source('app/apps/invoicing/EInvoicingWorkspace.tsx'),
   ]);
 
   assert.match(tutorial, /WorkspaceTutorialToggle/);
-  assert.match(tutorial, /startWorkspaceTutorial/);
   assert.match(tutorial, /sami:tutorial-preference/);
-  assert.match(tutorial, /sami:tutorial-start/);
   assert.match(tutorial, /userId/);
   assert.match(tutorial, /localStorage/);
   assert.match(tutorial, /Tutorials On/);
   assert.match(tutorial, /Tutorials Off/);
 
-  assert.match(shell, /WorkspaceTutorialToggle/);
-  assert.match(shell, /userId=\{/);
+  assert.match(
+    tutorial,
+    /return false;/,
+    'Tutorial browser fallback must be opt-in rather than automatically enabled.',
+  );
+  assert.match(
+    formatting,
+    /tutorialsEnabled:\s*false/,
+    'New/default account preferences must keep tutorials off until activated.',
+  );
+  assert.match(optInMigration, /ALTER COLUMN tutorials_enabled SET DEFAULT FALSE/);
+  assert.match(optInMigration, /SET tutorials_enabled = FALSE/);
+
+  assert.match(workspaceSettings, /WorkspaceTutorialToggle/);
+  assert.match(workspaceSettings, /Workspace tutorials/);
+  assert.match(workspaceSettings, /Tutorials are opt-in/);
+
+  assert.doesNotMatch(
+    shell,
+    /WorkspaceTutorialToggle/,
+    'The generic workspace topbar must not carry a tutorial toggle.',
+  );
+  assert.doesNotMatch(
+    invoicingShell,
+    /WorkspaceTutorialToggle/,
+    'The Invoicing topbar must not carry a tutorial toggle.',
+  );
+  assert.doesNotMatch(
+    myAccount,
+    />\s*Workspace tutorials\s*</,
+    'Tutorial activation belongs to Workspace settings, not My Account preferences.',
+  );
 
   assert.match(page, /InvoicingSectionPage/);
   assert.match(sectionPage, /userId=\{/);
@@ -1685,7 +1727,7 @@ test('Workspace tutorials are reusable across modules and Invoicing ships comple
   assert.match(workspace, /Invoice register/);
   assert.match(workspace, /Items & pricing/);
   assert.match(workspace, /Recurring billing/);
-  assert.match(workspace, /startWorkspaceTutorial/);
+  assert.doesNotMatch(workspace, /startWorkspaceTutorial/);
 
   for (const section of [
     'dashboard',
@@ -1711,8 +1753,30 @@ test('Workspace tutorials are reusable across modules and Invoicing ships comple
   assert.match(detail, /Record and reverse payments safely/);
   assert.match(detail, /Use credit notes for commercial reductions/);
   assert.match(detail, /Use the audit trail/);
-});
+  assert.doesNotMatch(detail, /startWorkspaceTutorial/);
 
+  assert.match(invoicingShell, /break-words whitespace-normal/);
+  assert.doesNotMatch(
+    workspace,
+    /\btruncate\b/,
+    'Core Invoicing cards and rows must wrap rather than cover long labels.',
+  );
+  assert.doesNotMatch(
+    detail,
+    /\btruncate\b/,
+    'Invoice detail must not clip customer/document labels.',
+  );
+  assert.doesNotMatch(
+    etimsWorkspace,
+    /\btruncate\b/,
+    'eTIMS labels and fiscal records must remain readable.',
+  );
+  assert.doesNotMatch(
+    eInvoicingWorkspace,
+    /\btruncate\b/,
+    'International e-invoicing labels must remain readable.',
+  );
+});
 
 test('Invoicing SQL explicitly types reused status parameters to prevent Postgres 42P08 failures', async () => {
   const [

@@ -103,7 +103,7 @@ function readEnabled(
     // SaMi remains usable when browser storage is unavailable.
   }
 
-  return true;
+  return false;
 }
 
 
@@ -386,7 +386,7 @@ export function WorkspaceTutorialToggle({
     setEnabled,
   ] =
     useState(
-      true,
+      false,
     );
 
   const [
@@ -599,7 +599,7 @@ export default function WorkspaceTutorial({
     setEnabled,
   ] =
     useState(
-      true,
+      false,
     );
 
   const [

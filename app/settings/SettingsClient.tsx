@@ -1142,7 +1142,9 @@ export default function SettingsClient({
               hasWorkspaceAccess &&
               capabilities
                 .workspaceManage && (
-                <WorkspaceSettings />
+                <WorkspaceSettings
+                  userId={user.id}
+                />
               )}
 
 

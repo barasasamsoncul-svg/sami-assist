@@ -1710,7 +1710,7 @@ export default function EtimsWorkspace({
                                 >
                                   <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
-                                      <p className="truncate text-xs font-black">
+                                      <p className="break-words whitespace-normal text-xs font-black">
                                         {
                                           mapping
                                             .itemName
@@ -1837,7 +1837,7 @@ export default function EtimsWorkspace({
                                   className="flex items-center justify-between gap-3 rounded-xl bg-[var(--sami-surface-soft)] p-3"
                                 >
                                   <div className="min-w-0">
-                                    <p className="truncate text-xs font-black">
+                                    <p className="break-words whitespace-normal text-xs font-black">
                                       {
                                         mapping
                                           .sourceName
@@ -1925,7 +1925,7 @@ export default function EtimsWorkspace({
                                       />
                                     }
                                   </div>
-                                  <p className="mt-1 truncate text-xs text-slate-500">
+                                  <p className="mt-1 break-words whitespace-normal text-xs text-slate-500">
                                     {
                                       invoice
                                         .customerName

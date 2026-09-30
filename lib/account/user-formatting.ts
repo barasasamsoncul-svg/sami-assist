@@ -88,7 +88,7 @@ export const DEFAULT_USER_DISPLAY_PREFERENCES:
     1,
 
   tutorialsEnabled:
-    true,
+    false,
 };
 
 /* ============================================================
