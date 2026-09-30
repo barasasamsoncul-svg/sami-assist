@@ -210,6 +210,10 @@ CREATE TABLE IF NOT EXISTS public.invoicing_settings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
   default_currency VARCHAR(3) NOT NULL DEFAULT 'KES',
+  base_currency VARCHAR(3),
+  exchange_rate_mode VARCHAR(20) NOT NULL DEFAULT 'table'
+    CHECK (exchange_rate_mode IN ('table','manual')),
+  allow_cross_currency_payments BOOLEAN NOT NULL DEFAULT TRUE,
   default_due_days INTEGER NOT NULL DEFAULT 30 CHECK (default_due_days >= 0),
   default_payment_terms_id UUID REFERENCES public.invoicing_payment_terms(id) ON DELETE SET NULL,
   default_tax_rate_id UUID REFERENCES public.invoicing_tax_rates(id) ON DELETE SET NULL,
@@ -242,6 +246,58 @@ CREATE TABLE IF NOT EXISTS public.invoicing_settings (
   UNIQUE(company_id)
 );
 
+CREATE TABLE IF NOT EXISTS public.invoicing_currencies (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  code VARCHAR(3) NOT NULL,
+  name VARCHAR(120) NOT NULL,
+  symbol VARCHAR(16) NOT NULL,
+  decimal_places SMALLINT NOT NULL DEFAULT 2
+    CHECK (decimal_places BETWEEN 0 AND 6),
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  is_base BOOLEAN NOT NULL DEFAULT FALSE,
+  created_by UUID,
+  updated_by UUID,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(company_id, code)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_invoicing_currency_base
+  ON public.invoicing_currencies(company_id)
+  WHERE is_base = TRUE;
+CREATE INDEX IF NOT EXISTS idx_invoicing_currencies_active
+  ON public.invoicing_currencies(company_id, is_active, code);
+
+CREATE TABLE IF NOT EXISTS public.invoicing_exchange_rates (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  currency VARCHAR(3) NOT NULL,
+  base_currency VARCHAR(3) NOT NULL,
+  rate_to_base NUMERIC(19,8) NOT NULL CHECK (rate_to_base > 0),
+  effective_date DATE NOT NULL,
+  source_type VARCHAR(30) NOT NULL DEFAULT 'manual'
+    CHECK (source_type IN ('manual','provider','import')),
+  source_name VARCHAR(120),
+  note TEXT,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_by UUID,
+  updated_by UUID,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (currency <> base_currency),
+  UNIQUE(company_id, currency, base_currency, effective_date)
+);
+CREATE INDEX IF NOT EXISTS idx_invoicing_exchange_rates_lookup
+  ON public.invoicing_exchange_rates(
+    company_id,
+    currency,
+    base_currency,
+    effective_date DESC
+  )
+  WHERE is_active = TRUE;
+
 CREATE TABLE IF NOT EXISTS public.invoicing_invoices (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
@@ -263,6 +319,9 @@ CREATE TABLE IF NOT EXISTS public.invoicing_invoices (
   due_date DATE NOT NULL,
   currency VARCHAR(3) NOT NULL DEFAULT 'KES',
   exchange_rate NUMERIC(19,8) NOT NULL DEFAULT 1 CHECK (exchange_rate > 0),
+  base_currency VARCHAR(3),
+  exchange_rate_date DATE,
+  exchange_rate_source VARCHAR(120),
   reference VARCHAR(255),
   purchase_order_number VARCHAR(180),
   service_date DATE,
@@ -396,6 +455,9 @@ CREATE TABLE IF NOT EXISTS public.invoicing_payments (
   amount NUMERIC(19,4) NOT NULL CHECK (amount > 0),
   currency VARCHAR(3) NOT NULL DEFAULT 'KES',
   exchange_rate NUMERIC(19,8) NOT NULL DEFAULT 1 CHECK (exchange_rate > 0),
+  base_currency VARCHAR(3),
+  exchange_rate_date DATE,
+  exchange_rate_source VARCHAR(120),
   method VARCHAR(50) NOT NULL DEFAULT 'other',
   reference VARCHAR(255),
   idempotency_key VARCHAR(160),
@@ -432,6 +494,13 @@ CREATE TABLE IF NOT EXISTS public.invoicing_payment_allocations (
   payment_id UUID NOT NULL REFERENCES public.invoicing_payments(id) ON DELETE CASCADE,
   invoice_id UUID NOT NULL REFERENCES public.invoicing_invoices(id) ON DELETE RESTRICT,
   amount NUMERIC(19,4) NOT NULL CHECK (amount > 0),
+  payment_amount NUMERIC(19,4),
+  invoice_amount NUMERIC(19,4),
+  payment_exchange_rate NUMERIC(19,8),
+  invoice_exchange_rate NUMERIC(19,8),
+  base_payment_amount NUMERIC(19,4),
+  base_invoice_amount NUMERIC(19,4),
+  realized_fx_amount NUMERIC(19,4) NOT NULL DEFAULT 0,
   status VARCHAR(20) NOT NULL DEFAULT 'posted'
     CHECK (status IN ('posted','reversed')),
   operation_key VARCHAR(160),
@@ -490,7 +559,12 @@ SELECT
   p.exchange_rate,
   COALESCE(
     (
-      SELECT SUM(a.amount)
+      SELECT SUM(
+        COALESCE(
+          a.payment_amount,
+          a.amount
+        )
+      )
       FROM public.invoicing_payment_allocations a
       WHERE a.payment_id = p.id
         AND a.company_id = p.company_id
@@ -512,7 +586,12 @@ SELECT
     p.amount -
     COALESCE(
       (
-        SELECT SUM(a.amount)
+        SELECT SUM(
+          COALESCE(
+            a.payment_amount,
+            a.amount
+          )
+        )
         FROM public.invoicing_payment_allocations a
         WHERE a.payment_id = p.id
           AND a.company_id = p.company_id
@@ -538,6 +617,7 @@ SELECT
   p.reconciliation_notes
 FROM public.invoicing_payments p
 WHERE p.deleted_at IS NULL;
+
 CREATE TABLE IF NOT EXISTS public.invoicing_retainers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
@@ -1349,7 +1429,15 @@ SELECT
   END AS aging_bucket
 FROM public.invoicing_invoices i
 LEFT JOIN LATERAL (
-  SELECT COALESCE(SUM(a.amount),0)::numeric(19,4) AS paid_amount
+  SELECT COALESCE(
+    SUM(
+      COALESCE(
+        a.invoice_amount,
+        a.amount
+      )
+    ),
+    0
+  )::numeric(19,4) AS paid_amount
   FROM public.invoicing_payment_allocations a
   INNER JOIN public.invoicing_payments p ON p.id = a.payment_id
   WHERE a.invoice_id = i.id
@@ -1369,6 +1457,51 @@ LEFT JOIN LATERAL (
     AND cn.deleted_at IS NULL
 ) cn ON TRUE
 WHERE i.deleted_at IS NULL;
+
+CREATE OR REPLACE VIEW public.invoicing_currency_exposure AS
+SELECT
+  aging.company_id,
+  aging.currency,
+  COALESCE(
+    NULLIF(MAX(invoice.base_currency),''),
+    MAX(setting.base_currency),
+    MAX(setting.default_currency),
+    aging.currency
+  ) AS base_currency,
+  COUNT(*) FILTER (
+    WHERE aging.balance_due > 0
+  )::int AS open_invoice_count,
+  COALESCE(
+    SUM(aging.total_amount),
+    0
+  )::numeric(19,4) AS invoiced_amount,
+  COALESCE(
+    SUM(aging.balance_due),
+    0
+  )::numeric(19,4) AS open_amount,
+  COALESCE(
+    SUM(
+      aging.total_amount *
+      COALESCE(invoice.exchange_rate,1)
+    ),
+    0
+  )::numeric(19,4) AS invoiced_base_amount,
+  COALESCE(
+    SUM(
+      aging.balance_due *
+      COALESCE(invoice.exchange_rate,1)
+    ),
+    0
+  )::numeric(19,4) AS open_base_amount
+FROM public.invoicing_aging aging
+INNER JOIN public.invoicing_invoices invoice
+  ON invoice.id = aging.invoice_id
+ AND invoice.company_id = aging.company_id
+LEFT JOIN public.invoicing_settings setting
+  ON setting.company_id = aging.company_id
+GROUP BY
+  aging.company_id,
+  aging.currency;
 
 CREATE OR REPLACE VIEW public.invoicing_payment_plan_installment_balances AS
 WITH base AS (
