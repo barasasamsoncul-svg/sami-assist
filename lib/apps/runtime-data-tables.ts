@@ -27,6 +27,7 @@ const APP_ADDITIONAL_DATA_TABLES:
       'invoicing_delivery_log',
       'invoicing_events',
       'invoicing_etims_profiles',
+      'invoicing_etims_sequences',
       'invoicing_etims_item_mappings',
       'invoicing_etims_tax_mappings',
       'invoicing_etims_reference_cache',
