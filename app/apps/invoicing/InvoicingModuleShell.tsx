@@ -62,11 +62,18 @@ type SidebarCapabilities = {
   notificationsEnabled?: boolean;
 };
 
+type InvoicingSidebarItem =
+  AppSidebarItem & {
+    sectionLabel?:
+      string | null;
+  };
+
+
 type Props = {
   user: UserData;
   tenant: TenantData;
   modules: ModuleData[];
-  appSidebarItems: AppSidebarItem[];
+  appSidebarItems: InvoicingSidebarItem[];
   activeSidebarKey: string;
   unreadNotifications?: number;
   sidebarCapabilities?: SidebarCapabilities;
@@ -82,7 +89,7 @@ function InvoicingSidebar({
   onNavigate,
 }: {
   companyName: string;
-  appSidebarItems: AppSidebarItem[];
+  appSidebarItems: InvoicingSidebarItem[];
   activeSidebarKey: string;
   onNavigate?: () => void;
 }) {
@@ -131,58 +138,104 @@ function InvoicingSidebar({
       <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-3">
         {
           appSidebarItems.map(
-            item => {
+            (
+              item,
+              index,
+            ) => {
               const active =
                 item.key ===
                 activeSidebarKey;
 
+              const previousSection =
+                index > 0
+                  ? appSidebarItems[
+                      index - 1
+                    ]?.sectionLabel
+                  : null;
+
+              const showSection =
+                Boolean(
+                  item.sectionLabel &&
+                  item.sectionLabel !==
+                    previousSection,
+                );
+
               return (
-                <Link
+                <div
                   key={item.key}
-                  href={item.href}
-                  onClick={onNavigate}
-                  aria-current={
-                    active
-                      ? 'page'
+                  className={
+                    showSection &&
+                    index > 0
+                      ? 'pt-3'
                       : undefined
                   }
-                  className={[
-                    'group flex min-h-10 items-center gap-3 rounded-xl px-3 py-2 text-[11px] font-semibold transition',
-                    active
-                      ? 'bg-[var(--sami-surface)] text-slate-950 shadow-[var(--sami-shadow-sm)] ring-1 ring-[var(--sami-border)] dark:text-white'
-                      : 'text-slate-500 hover:bg-[var(--sami-surface)] hover:text-slate-900 dark:text-slate-400 dark:hover:text-white',
-                  ].join(
-                    ' ',
-                  )}
                 >
-                  <span
-                    className={[
-                      'h-2 w-2 shrink-0 rounded-full',
-                      active
-                        ? 'bg-blue-600'
-                        : 'bg-slate-300 group-hover:bg-blue-400 dark:bg-slate-600',
-                    ].join(
-                      ' ',
-                    )}
-                  />
-
-                  <span className="min-w-0 flex-1 break-words whitespace-normal leading-4">
-                    {item.label}
-                  </span>
-
                   {
-                    item.badge !==
-                      null &&
-                    item.badge !==
-                      undefined
+                    showSection
                       ? (
-                        <span className="rounded-full bg-[var(--sami-surface-soft)] px-2 py-0.5 text-[9px] font-black text-slate-500">
-                          {item.badge}
-                        </span>
+                        <p className="px-3 pb-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+                          {
+                            item
+                              .sectionLabel
+                          }
+                        </p>
                       )
                       : null
                   }
-                </Link>
+
+                  <Link
+                    href={item.href}
+                    onClick={onNavigate}
+                    aria-current={
+                      active
+                        ? 'page'
+                        : undefined
+                    }
+                    className={[
+                      'group flex min-h-10 min-w-0 items-center gap-3 rounded-xl px-3 py-2 text-[11px] font-semibold transition',
+                      active
+                        ? 'bg-[var(--sami-surface)] text-slate-950 shadow-[var(--sami-shadow-sm)] ring-1 ring-[var(--sami-border)] dark:text-white'
+                        : 'text-slate-500 hover:bg-[var(--sami-surface)] hover:text-slate-900 dark:text-slate-400 dark:hover:text-white',
+                    ].join(
+                      ' ',
+                    )}
+                  >
+                    <span
+                      className={[
+                        'h-2 w-2 shrink-0 rounded-full',
+                        active
+                          ? 'bg-blue-600'
+                          : 'bg-slate-300 group-hover:bg-blue-400 dark:bg-slate-600',
+                      ].join(
+                        ' ',
+                      )}
+                    />
+
+                    <span className="min-w-0 flex-1 break-words whitespace-normal leading-4">
+                      {item.label}
+                    </span>
+
+                    {
+                      item.badge !==
+                        null &&
+                      item.badge !==
+                        undefined
+                        ? (
+                          <span
+                            className="max-w-[72px] shrink-0 truncate rounded-full bg-[var(--sami-surface-soft)] px-2 py-0.5 text-[9px] font-black tabular-nums text-slate-500"
+                            title={
+                              String(
+                                item.badge,
+                              )
+                            }
+                          >
+                            {item.badge}
+                          </span>
+                        )
+                        : null
+                    }
+                  </Link>
+                </div>
               );
             },
           )
