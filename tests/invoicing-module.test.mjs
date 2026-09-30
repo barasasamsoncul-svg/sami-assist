@@ -6218,3 +6218,139 @@ test('Invoicing Part 19 centralizes standalone navigation and keeps route struct
     'Standalone navigation work must not create an empty database migration.',
   );
 });
+
+
+test('Invoicing Part 20 keeps settings focused, mobile-safe and free of nested forms', async () => {
+  const [
+    workspaceClient,
+    manifest,
+    runtimeMigrations,
+  ] = await Promise.all([
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+  ]);
+
+  for (const section of [
+    'general',
+    'workflow',
+    'reminders',
+    'portal',
+    'documents',
+    'appearance',
+    'paymentTerms',
+    'taxRates',
+  ]) {
+    assert.ok(
+      workspaceClient.includes("'" + section + "'"),
+      section + ' must remain an explicit Invoicing settings section.',
+    );
+  }
+
+  assert.match(workspaceClient, /INVOICING_SETTINGS_SECTIONS/);
+  assert.match(workspaceClient, /role="tablist"/);
+  assert.match(workspaceClient, /overflow-x-auto/);
+  assert.match(workspaceClient, /min-w-max/);
+  assert.match(workspaceClient, /CommercialSettingsForm/);
+  assert.match(workspaceClient, /PaymentTermsSettings/);
+  assert.match(workspaceClient, /TaxRatesSettings/);
+  assert.match(workspaceClient, /InvoiceAppearanceSettings/);
+
+  assert.match(
+    workspaceClient,
+    /provider credentials remain in SaMi Integrations\/Core/,
+  );
+  assert.match(
+    workspaceClient,
+    /tutorials are enabled from Workspace Settings/,
+  );
+  assert.doesNotMatch(
+    workspaceClient,
+    /Tutorials control in the workspace top bar/,
+  );
+
+  assert.match(
+    workspaceClient,
+    /h-11 w-full min-w-0 rounded-xl/,
+  );
+  assert.match(
+    workspaceClient,
+    /min-w-0 break-words leading-5/,
+  );
+
+  const paymentTermsStart =
+    workspaceClient.indexOf(
+      'function PaymentTermsSettings',
+    );
+  const taxRatesStart =
+    workspaceClient.indexOf(
+      'function TaxRatesSettings',
+    );
+  const toggleStart =
+    workspaceClient.indexOf(
+      'function Toggle',
+      taxRatesStart,
+    );
+
+  assert.ok(
+    paymentTermsStart >=
+      0 &&
+    taxRatesStart >
+      paymentTermsStart &&
+    toggleStart >
+      taxRatesStart,
+    'Part 20 settings components must remain independently defined.',
+  );
+
+  const paymentTermsSource =
+    workspaceClient.slice(
+      paymentTermsStart,
+      taxRatesStart,
+    );
+  const taxRatesSource =
+    workspaceClient.slice(
+      taxRatesStart,
+      toggleStart,
+    );
+
+  assert.ok(
+    paymentTermsSource.indexOf(
+      '</form>',
+    ) <
+      paymentTermsSource.indexOf(
+        '<details',
+      ),
+    'The payment-term create form must close before editable term rows so forms are never nested.',
+  );
+
+  assert.ok(
+    taxRatesSource.indexOf(
+      '</form>',
+    ) <
+      taxRatesSource.indexOf(
+        '<details',
+      ),
+    'The tax-rate create form must close before editable tax rows so forms are never nested.',
+  );
+
+  assert.match(
+    paymentTermsSource,
+    /Make current company default/,
+  );
+  assert.match(
+    taxRatesSource,
+    /Make current company default/,
+  );
+
+  assert.match(
+    manifest,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
+    'Part 20 reorganizes settings without pretending the tenant schema changed.',
+  );
+
+  assert.doesNotMatch(
+    runtimeMigrations,
+    /INVOICING_2_18_0_TO_2_19_0/,
+    'Focused settings navigation must not create an empty database migration.',
+  );
+});
