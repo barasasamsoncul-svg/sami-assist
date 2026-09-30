@@ -44,6 +44,8 @@ export type AccountingFoundation = {
   draftCount: number;
   postedCount: number;
   openPeriods: number;
+  bankAccounts: number;
+  unreconciledBankLines: number;
   recent: {
     id: string;
     journal_number: string;
@@ -79,6 +81,26 @@ export async function getAccountingFoundation(
       `SELECT COUNT(*)::int AS count FROM accounting_fiscal_periods WHERE company_id=$1 AND deleted_at IS NULL AND status='open'`,
       [context.companyId],
     );
+    const bankStats = await client.query(
+      `
+        SELECT
+          (
+            SELECT COUNT(*)::int
+            FROM accounting_bank_accounts
+            WHERE company_id = $1
+              AND deleted_at IS NULL
+              AND status = 'active'
+          ) AS bank_accounts,
+          (
+            SELECT COUNT(*)::int
+            FROM accounting_bank_statement_lines
+            WHERE company_id = $1
+              AND deleted_at IS NULL
+              AND reconciliation_status IN ('unmatched','suggested')
+          ) AS unreconciled_bank_lines
+      `,
+      [context.companyId],
+    );
     const recent = await client.query(
       `SELECT id,journal_number,journal_date::text,description,status FROM journals WHERE company_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC,id DESC LIMIT 6`,
       [context.companyId],
@@ -110,6 +132,8 @@ export async function getAccountingFoundation(
       draftCount: stats.rows[0].draft_count,
       postedCount: stats.rows[0].posted_count,
       openPeriods: periods.rows[0].count,
+      bankAccounts: bankStats.rows[0].bank_accounts,
+      unreconciledBankLines: bankStats.rows[0].unreconciled_bank_lines,
       recent: recent.rows,
     };
   } catch (error) {
