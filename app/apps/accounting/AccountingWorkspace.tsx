@@ -1,16 +1,4 @@
-import type {
-  CSSProperties,
-} from 'react';
-
 import Link from 'next/link';
-
-import {
-  ArrowLeft,
-} from 'lucide-react';
-
-import AppSurfaceShell from '@/app/components/apps/AppSurfaceShell';
-import SamiAppIconTile from '@/app/components/apps/SamiAppIconTile';
-import styles from '@/app/apps/[appKey]/EnterpriseModuleWorkspaceShell.module.css';
 
 import {
   SAMI_PERMISSIONS,
@@ -20,214 +8,426 @@ import {
   loadStandaloneEnterpriseApp,
 } from '@/app/apps/_shared/loadStandaloneEnterpriseApp';
 
+import AccountingFoundationPanel, {
+  ACCOUNTING_SECTIONS,
+  type AccountingSection,
+} from '@/app/apps/accounting/AccountingFoundationPanel';
+import AccountingModuleShell, {
+  type AccountingSidebarItem,
+} from '@/app/apps/accounting/AccountingModuleShell';
 import AccountingWorkspaceClient from '@/app/apps/accounting/AccountingWorkspaceClient';
 
-import AccountingFoundationPanel, { ACCOUNTING_SECTIONS, type AccountingSection } from './AccountingFoundationPanel';
-import { getAccountingFoundation } from '@/lib/apps/accounting/foundation';
-import { AccountingInputError } from '@/lib/apps/accounting/validation';
+import {
+  getAccountingFoundation,
+} from '@/lib/apps/accounting/foundation';
+import {
+  AccountingInputError,
+} from '@/lib/apps/accounting/validation';
 
-const MODULE_KEY = 'accounting';
+const MODULE_KEY =
+  'accounting';
 
 export default async function AccountingWorkspace({
   section,
   filters = {},
 }: {
   section?: string | null;
-  filters?: { from?: string; to?: string; accountId?: string; page?: string };
+  filters?: {
+    from?: string;
+    to?: string;
+    accountId?: string;
+    page?: string;
+  };
 }) {
-  const dedicatedSection = ACCOUNTING_SECTIONS.includes((section || 'overview') as AccountingSection) ? (section || 'overview') as AccountingSection : null;
+  const requestedSection =
+    section ||
+    'overview';
+
+  const dedicatedSection =
+    ACCOUNTING_SECTIONS.includes(
+      requestedSection as AccountingSection,
+    )
+      ? requestedSection as AccountingSection
+      : null;
+
   const {
     session,
     account,
     shell,
-    app,
     data,
     notifications,
     resolved,
     can,
-    visual,
-    uiProfile,
   } =
     await loadStandaloneEnterpriseApp(
       MODULE_KEY,
-      dedicatedSection ? undefined : section,
+      dedicatedSection
+        ? undefined
+        : section,
     );
 
-  let foundation = null;
-  let foundationError = '';
+  let foundation:
+    Awaited<
+      ReturnType<
+        typeof getAccountingFoundation
+      >
+    > |
+    null =
+      null;
+
+  let foundationError =
+    '';
+
   if (dedicatedSection) {
-    try { foundation = await getAccountingFoundation(filters); }
-    catch (error) {
-      foundationError = error instanceof AccountingInputError ? error.message : 'Accounting data could not be loaded. Retry this page.';
-      if (!(error instanceof AccountingInputError)) console.error('[Accounting] Foundation load failed', error);
+    try {
+      foundation =
+        await getAccountingFoundation(
+          filters,
+        );
+    } catch (error) {
+      foundationError =
+        error instanceof
+          AccountingInputError
+          ? error.message
+          : 'Accounting data could not be loaded. Retry this page.';
+
+      if (
+        !(
+          error instanceof
+            AccountingInputError
+        )
+      ) {
+        console.error(
+          '[Accounting] Foundation load failed',
+          error,
+        );
+      }
     }
   }
 
   const appBaseHref =
     '/apps/accounting';
 
-  const appSidebarItems = [
+  const tableByKey =
+    new Map(
+      data.tables.map(
+        table => [
+          table.key,
+          table,
+        ],
+      ),
+    );
+
+  const tableItem = (
+    key:
+      string,
+    label:
+      string,
+    sectionLabel:
+      string,
+    description:
+      string,
+  ):
+    AccountingSidebarItem |
+    null => {
+    const table =
+      tableByKey.get(
+        key,
+      );
+
+    if (!table) {
+      return null;
+    }
+
+    return {
+      key,
+      label,
+      href:
+        appBaseHref +
+        '/' +
+        encodeURIComponent(
+          key,
+        ),
+      description,
+      sectionLabel,
+      badge:
+        table.count,
+    };
+  };
+
+  const sidebarCandidates:
+    Array<
+      AccountingSidebarItem |
+      null |
+      false
+    > = [
     {
-      key: 'overview',
-      label: 'Overview',
-      href: appBaseHref,
-      description: 'KPIs, priorities and current operating state.',
+      key:
+        'overview',
+      label:
+        'Dashboard',
+      href:
+        appBaseHref,
+      description:
+        'Financial command center and book health.',
+      sectionLabel:
+        'Overview',
     },
-    { key: 'setup', label: 'Setup', href: appBaseHref + '/setup', description: 'Prepare accounts and fiscal periods.' },
-    ...(data.capabilities.canCreate ? [{ key: 'new-journal', label: 'New journal', href: appBaseHref + '/new-journal', description: 'Create a balanced journal draft.' }] : []),
-    ...(data.capabilities.canReport ? [
-      { key: 'trial-balance', label: 'Trial balance', href: appBaseHref + '/trial-balance', description: 'Opening, movement and closing balances.' },
-      { key: 'general-ledger', label: 'General ledger', href: appBaseHref + '/general-ledger', description: 'Account movements and running balance.' },
-    ] : []),
-    ...data.tables
-      .filter(
-        table =>
-          !table.settingTable,
-      )
-      .map(
-        table => ({
-          key: table.key,
-          label: table.label,
+
+    data.capabilities
+      .canCreate
+      ? {
+          key:
+            'new-journal',
+          label:
+            'New Journal',
           href:
             appBaseHref +
-            '/' +
-            encodeURIComponent(
-              table.key,
-            ),
+            '/new-journal',
           description:
-            'Open ' +
-            table.label.toLowerCase() +
-            ' records.',
-          badge: table.count,
-        }),
-      ),
-    ...(
-      data.capabilities.canReport
-        ? [{
-            key: 'reports',
-            label: 'Reports',
-            href:
-              appBaseHref +
-              '/reports',
-            description: 'Module analysis and operational reporting.',
-          }]
-        : []
+            'Create a balanced manual journal draft.',
+          sectionLabel:
+            'Transactions',
+        }
+      : null,
+
+    tableItem(
+      'journals',
+      'Journal Entries',
+      'Transactions',
+      'Review draft and posted journal entries.',
     ),
+
+    tableItem(
+      'accounts',
+      'Chart of Accounts',
+      'Ledger',
+      'Open the company chart of accounts.',
+    ),
+
+    data.capabilities
+      .canReport
+      ? {
+          key:
+            'general-ledger',
+          label:
+            'General Ledger',
+          href:
+            appBaseHref +
+            '/general-ledger',
+          description:
+            'Drill into posted account movements.',
+          sectionLabel:
+            'Ledger',
+        }
+      : null,
+
+    data.capabilities
+      .canReport
+      ? {
+          key:
+            'trial-balance',
+          label:
+            'Trial Balance',
+          href:
+            appBaseHref +
+            '/trial-balance',
+          description:
+            'Review opening, movement and closing balances.',
+          sectionLabel:
+            'Ledger',
+        }
+      : null,
+
+    tableItem(
+      'accounting_bank_accounts',
+      'Bank & Cash',
+      'Banking',
+      'Bank, cash and mobile-money ledger accounts.',
+    ),
+
+    tableItem(
+      'accounting_bank_statement_lines',
+      'Bank Statements',
+      'Banking',
+      'Imported statement transactions and matching state.',
+    ),
+
+    tableItem(
+      'accounting_reconciliation_rules',
+      'Reconciliation Rules',
+      'Banking',
+      'Rules used to classify and match bank transactions.',
+    ),
+
+    data.capabilities
+      .canReport
+      ? {
+          key:
+            'reports',
+          label:
+            'Reports',
+          href:
+            appBaseHref +
+            '/reports',
+          description:
+            'Accounting reports and operational analysis.',
+          sectionLabel:
+            'Insights',
+        }
+      : null,
+
     {
-      key: 'activity',
-      label: 'Activity',
+      key:
+        'activity',
+      label:
+        'Activity & Audit',
       href:
         appBaseHref +
         '/activity',
-      description: 'Recent module changes and user actions.',
+      description:
+        'Recent Accounting changes and user actions.',
+      sectionLabel:
+        'Insights',
     },
-    ...(
-      data.capabilities.canManageSettings &&
-      data.tables.some(
-        table =>
-          table.settingTable,
-      )
-        ? [{
-            key: 'settings',
-            label: 'Settings',
-            href:
-              appBaseHref +
-              '/settings',
-            description: 'Module defaults, policy and configuration.',
-          }]
-        : []
+
+    {
+      key:
+        'setup',
+      label:
+        'Accounting Setup',
+      href:
+        appBaseHref +
+        '/setup',
+      description:
+        'Prepare the books and required accounting controls.',
+      sectionLabel:
+        'Configuration',
+    },
+
+    tableItem(
+      'accounting_fiscal_periods',
+      'Fiscal Periods',
+      'Configuration',
+      'Open, close and review accounting periods.',
     ),
   ];
 
-  const activeSidebarKey = dedicatedSection || (
-    resolved.view === 'records'
-      ? resolved.tableKey
-      : resolved.view);
+  const appSidebarItems =
+    sidebarCandidates.filter(
+      (
+        item,
+      ): item is AccountingSidebarItem =>
+        Boolean(
+          item,
+        ),
+    );
+
+  const activeSidebarKey =
+    dedicatedSection ||
+    (
+      resolved.view ===
+        'records'
+        ? resolved.tableKey
+        : resolved.view
+    );
 
   return (
-    <AppSurfaceShell
-      appKey={app.registryKey}
-      appCategory={app.category}
-      appIconKey={app.iconKey}
-      profile={uiProfile}
-      user={session.user}
-      tenant={account.tenant}
-      membership={account.membership}
-      subscription={shell.subscription}
-      modules={shell.accessibleModules}
-      appSidebarItems={appSidebarItems}
-      activeSidebarKey={activeSidebarKey}
+    <AccountingModuleShell
+      user={
+        session.user
+      }
+      tenant={
+        account.tenant
+      }
+      modules={
+        shell.accessibleModules
+      }
+      appSidebarItems={
+        appSidebarItems
+      }
+      activeSidebarKey={
+        activeSidebarKey ||
+        'overview'
+      }
       sidebarCapabilities={{
-        aiEnabled: shell.aiAvailable,
-        filesEnabled:
-          can(
-            SAMI_PERMISSIONS.FILES_VIEW,
-          ),
+        aiEnabled:
+          shell.aiAvailable,
         notificationsEnabled:
           can(
-            SAMI_PERMISSIONS.NOTIFICATIONS_VIEW,
+            SAMI_PERMISSIONS
+              .NOTIFICATIONS_VIEW,
           ),
       }}
       unreadNotifications={
-        notifications?.unreadCount ||
+        notifications
+          ?.unreadCount ||
         0
       }
-      title={app.name}
-      description={app.description}
-      contextLabel={data.company.name}
-      actions={
-        <div className="flex items-center gap-2">
-          <SamiAppIconTile
-            appKey={app.registryKey}
-            category={app.category}
-            iconKey={app.iconKey}
-            size="sm"
-          />
-
-          <Link
-            href="/apps"
-            className={[
-              'inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold shadow-[var(--sami-shadow-sm)] transition hover:-translate-y-px',
-              visual.border,
-              visual.soft,
-              visual.text,
-            ].join(' ')}
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span className="hidden sm:inline">
-              All Apps
-            </span>
-          </Link>
-        </div>
+      companyName={
+        data.company.name
       }
     >
-      <div
-        className={styles.enterpriseWorkspace}
-        data-module={MODULE_KEY}
-        data-archetype={uiProfile.archetype}
-        data-navigation={uiProfile.navigation}
-        data-density={uiProfile.density}
-        data-header={uiProfile.header}
-        style={{
-          '--sami-module-accent':
-            uiProfile.accent,
-          '--sami-module-secondary':
-            uiProfile.secondary,
-        } as CSSProperties}
-      >
-        {dedicatedSection ? (foundation ? <AccountingFoundationPanel data={foundation} section={dedicatedSection} canCreate={data.capabilities.canCreate} /> : <div role="alert" className="rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-6 text-[var(--foreground)]">{foundationError} <Link href="/apps/accounting" className="underline">Return to Accounting</Link></div>) : <AccountingWorkspaceClient
-          initialData={data}
-          userId={session.user.id}
-          initialView={resolved.view}
-          initialTableKey={resolved.tableKey}
-          accessibleModuleKeys={
-            shell.accessibleModules.map(
-              module =>
-                module.registryKey,
+      {
+        dedicatedSection
+          ? (
+              foundation
+                ? (
+                    <AccountingFoundationPanel
+                      data={
+                        foundation
+                      }
+                      section={
+                        dedicatedSection
+                      }
+                      canCreate={
+                        data.capabilities
+                          .canCreate
+                      }
+                    />
+                  )
+                : (
+                    <div
+                      role="alert"
+                      className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-6 text-[var(--foreground)]"
+                    >
+                      {
+                        foundationError
+                      }{' '}
+                      <Link
+                        href="/apps/accounting"
+                        className="font-bold underline underline-offset-4"
+                      >
+                        Return to Accounting
+                      </Link>
+                    </div>
+                  )
             )
-          }
-        />}
-      </div>
-    </AppSurfaceShell>
+          : (
+              <AccountingWorkspaceClient
+                initialData={
+                  data
+                }
+                userId={
+                  session.user.id
+                }
+                initialView={
+                  resolved.view
+                }
+                initialTableKey={
+                  resolved.tableKey
+                }
+                accessibleModuleKeys={
+                  shell
+                    .accessibleModules
+                    .map(
+                      module =>
+                        module.registryKey,
+                    )
+                }
+              />
+            )
+      }
+    </AccountingModuleShell>
   );
 }
