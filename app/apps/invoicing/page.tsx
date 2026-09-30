@@ -33,6 +33,8 @@ const LEGACY_VIEW_PATHS:
       '/apps/invoicing/currencies',
     taxEngine:
       '/apps/invoicing/tax-engine',
+    etims:
+      '/apps/invoicing/etims',
     retainers:
       '/apps/invoicing/retainers',
     paymentPlans:

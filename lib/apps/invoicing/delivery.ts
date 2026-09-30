@@ -19,8 +19,13 @@ import {
 } from '@/lib/services/whatsapp';
 
 import {
+  ensureFiscalizedInvoiceDocumentSnapshot,
   ensurePrimaryInvoiceDocumentSnapshot,
 } from '@/lib/apps/invoicing/document-snapshots';
+
+import {
+  assertEtimsDeliveryReady,
+} from '@/lib/apps/invoicing/etims';
 
 import {
   InvoicingError,
@@ -231,6 +236,17 @@ export async function deliverInvoice(
     );
   }
 
+  const etimsReceipt =
+    await assertEtimsDeliveryReady(
+      input.pool,
+      {
+        companyId:
+          input.companyId,
+        invoiceId:
+          input.invoiceId,
+      },
+    );
+
   const token =
     crypto
       .randomBytes(
@@ -296,19 +312,31 @@ export async function deliverInvoice(
 
   try {
     const snapshot =
-      await ensurePrimaryInvoiceDocumentSnapshot(
-        input.pool,
-        {
-          companyId:
-            input.companyId,
-          invoiceId:
-            input.invoiceId,
-          userId:
-            input.userId,
-          reason:
-            'delivery',
-        },
-      );
+      etimsReceipt
+        ? await ensureFiscalizedInvoiceDocumentSnapshot(
+            input.pool,
+            {
+              companyId:
+                input.companyId,
+              invoiceId:
+                input.invoiceId,
+              userId:
+                input.userId,
+            },
+          )
+        : await ensurePrimaryInvoiceDocumentSnapshot(
+            input.pool,
+            {
+              companyId:
+                input.companyId,
+              invoiceId:
+                input.invoiceId,
+              userId:
+                input.userId,
+              reason:
+                'delivery',
+            },
+          );
 
     pdf =
       snapshot.pdf;

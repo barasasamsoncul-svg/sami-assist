@@ -28,6 +28,21 @@ export type PdfInvoice = {
   notes: string | null;
   terms: string | null;
   paymentInstructions: string | null;
+  etims?: {
+    status: 'succeeded';
+    solutionType: 'oscu' | 'vscu';
+    environment: 'sandbox' | 'production';
+    transactionInvoiceNo: number;
+    receiptNo: number | null;
+    totalReceiptNo: number | null;
+    sdcId: string | null;
+    mrcNo: string | null;
+    internalData: string | null;
+    receiptSignature: string | null;
+    verificationUrl: string | null;
+    resultCode: string | null;
+    succeededAt: string | null;
+  } | null;
   template: {
     layout: string;
     primaryColor: string;
@@ -1806,6 +1821,87 @@ function supplementaryEntries(
         value,
         92,
       ),
+    );
+  }
+
+  if (
+    invoice.etims?.status ===
+      'succeeded'
+  ) {
+    add(
+      invoice.etims.environment ===
+        'production'
+        ? 'KRA eTIMS FISCAL RECEIPT'
+        : 'KRA eTIMS SANDBOX / TEST',
+      [
+        'Solution: ' +
+          invoice.etims
+            .solutionType
+            .toUpperCase(),
+        'eTIMS invoice no: ' +
+          invoice.etims
+            .transactionInvoiceNo,
+        invoice.etims
+          .receiptNo
+          ? 'Receipt no: ' +
+            invoice.etims
+              .receiptNo
+          : '',
+        invoice.etims
+          .totalReceiptNo
+          ? 'Total receipt no: ' +
+            invoice.etims
+              .totalReceiptNo
+          : '',
+        invoice.etims
+          .sdcId
+          ? 'SDC ID: ' +
+            invoice.etims
+              .sdcId
+          : '',
+        invoice.etims
+          .mrcNo
+          ? 'MRC no: ' +
+            invoice.etims
+              .mrcNo
+          : '',
+        invoice.etims
+          .resultCode
+          ? 'KRA result: ' +
+            invoice.etims
+              .resultCode
+          : '',
+        invoice.etims
+          .succeededAt
+          ? 'Fiscalized: ' +
+            invoice.etims
+              .succeededAt
+          : '',
+      ]
+        .filter(
+          Boolean,
+        )
+        .join(
+          ' | ',
+        ),
+    );
+
+    add(
+      'eTIMS RECEIPT SIGNATURE',
+      invoice.etims
+        .receiptSignature,
+    );
+
+    add(
+      'eTIMS INTERNAL DATA',
+      invoice.etims
+        .internalData,
+    );
+
+    add(
+      'eTIMS VERIFICATION',
+      invoice.etims
+        .verificationUrl,
     );
   }
 

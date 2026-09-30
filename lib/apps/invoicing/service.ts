@@ -87,6 +87,18 @@ export {
 } from '@/lib/apps/invoicing/currencies';
 
 export {
+  getEtimsWorkspaceData,
+  initializeEtimsDevice,
+  saveEtimsItemMapping,
+  saveEtimsProfile,
+  saveEtimsTaxMapping,
+  submitCreditNoteToEtims,
+  submitInvoiceToEtims,
+  syncEtimsItem,
+  syncEtimsReferenceData,
+} from '@/lib/apps/invoicing/etims';
+
+export {
   saveInvoicingFiscalPosition,
   saveInvoicingFiscalPositionMapping,
   saveInvoicingTaxExemption,
