@@ -175,7 +175,13 @@ function handleError(
                 error.code ===
                   'DUPLICATE_PAYMENT_TERM' ||
                 error.code ===
-                  'DUPLICATE_TAX_RATE'
+                  'DUPLICATE_TAX_RATE' ||
+                error.code ===
+                  'INVOICE_CONFLICT' ||
+                error.code ===
+                  'IDEMPOTENCY_CONFLICT' ||
+                error.code ===
+                  'IDEMPOTENCY_IN_PROGRESS'
                 ? 409
                 : 400;
 
@@ -348,6 +354,21 @@ export async function POST(
     const payload =
       body as
         Record<string, unknown>;
+
+    const headerIdempotencyKey =
+      request.headers
+        .get(
+          'idempotency-key',
+        )
+        ?.trim();
+
+    if (
+      headerIdempotencyKey &&
+      !payload.idempotencyKey
+    ) {
+      payload.idempotencyKey =
+        headerIdempotencyKey;
+    }
 
     const action =
       typeof payload.action ===

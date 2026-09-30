@@ -426,6 +426,7 @@ export type InvoicingInvoiceDetail = {
   notes: string | null;
   terms: string | null;
   paymentInstructions: string | null;
+  updatedAt: string | null;
   customer: {
     id: string;
     name: string;
@@ -808,6 +809,8 @@ export type CreateInvoiceLineInput = {
 };
 
 export type CreateInvoiceInput = {
+  idempotencyKey?: unknown;
+  expectedUpdatedAt?: unknown;
   customerId?: unknown;
   invoiceDate?: unknown;
   dueDate?: unknown;

@@ -96,7 +96,7 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
   defineSamiModule({
     key: "invoicing",
     name: "Invoicing",
-    version: '2.20.0',
+    version: '2.21.0',
     description: "Create invoices, collect payments, manage receivables, multi-currency billing and settlement, rule-driven tax calculation, Kenya KRA eTIMS OSCU/VSCU fiscalization, Peppol/UBL international e-invoicing, provider-routed EDI, fiscal positions, tax exemptions and localizations, retainers, installment payment plans, recurring billing, dunning, customer portal access, immutable documents, live template design, and deep credit-note/refund lifecycle management.",
     category: "finance",
     icon: "receipt",

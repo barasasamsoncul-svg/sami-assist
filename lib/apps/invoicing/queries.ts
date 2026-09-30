@@ -4208,6 +4208,7 @@ export async function getInvoicingInvoiceDetail(
             i.notes,
             i.terms,
             i.payment_instructions,
+            i.updated_at,
             c.id
               AS customer_id,
             COALESCE(
@@ -4689,6 +4690,16 @@ export async function getInvoicingInvoiceDetail(
             row.payment_instructions,
           )
         : null,
+    updatedAt:
+      row.updated_at instanceof
+        Date
+        ? row.updated_at
+            .toISOString()
+        : row.updated_at
+          ? String(
+              row.updated_at,
+            )
+          : null,
     customer: {
       id:
         String(

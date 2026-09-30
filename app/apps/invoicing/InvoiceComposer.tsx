@@ -2,6 +2,7 @@
 
 import {
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
@@ -208,6 +209,11 @@ export default function InvoiceComposer({
   invoice?: InvoicingInvoiceDetail | null;
 }) {
   const editing = Boolean(invoice);
+
+  const createRequestKeyRef =
+    useRef<string | null>(
+      null,
+    );
 
   const initialCustomer =
     invoice
@@ -644,6 +650,38 @@ export default function InvoiceComposer({
       return;
     }
 
+    if (
+      !editing &&
+      !createRequestKeyRef
+        .current
+    ) {
+      createRequestKeyRef
+        .current =
+        (
+          typeof crypto !==
+            'undefined' &&
+          'randomUUID' in
+            crypto
+        )
+          ? crypto
+              .randomUUID()
+          : (
+              'invoice-' +
+              Date.now()
+                .toString(
+                  36,
+                ) +
+              '-' +
+              Math.random()
+                .toString(
+                  36,
+                )
+                .slice(
+                  2,
+                )
+            );
+    }
+
     const payload = {
       action:
         editing
@@ -651,6 +689,16 @@ export default function InvoiceComposer({
           : 'create_invoice',
       invoiceId:
         invoice?.id,
+      idempotencyKey:
+        editing
+          ? undefined
+          : createRequestKeyRef
+              .current,
+      expectedUpdatedAt:
+        editing
+          ? invoice
+              ?.updatedAt
+          : undefined,
       customerId,
       invoiceDate,
       dueDate,
@@ -719,6 +767,10 @@ export default function InvoiceComposer({
       saved &&
       !editing
     ) {
+      createRequestKeyRef
+        .current =
+        null;
+
       const nextDate =
         today();
 
