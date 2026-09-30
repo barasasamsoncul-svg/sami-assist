@@ -116,7 +116,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
 
   assert.match(
     invoicing,
-    /version:\s*['"]2\.12\.0['"]/,
+    /version:\s*['"]2\.13\.0['"]/,
   );
 
   assert.match(
@@ -2902,7 +2902,7 @@ test('Invoicing v2.7 turns recurring invoices into an observable retry-safe bill
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.12\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.13\.0['"]/s,
   );
 
   assert.match(
@@ -3102,7 +3102,7 @@ test('Invoicing v2.8 turns reminders into a staged auditable dunning engine', as
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.12\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.13\.0['"]/s,
   );
 
   assert.match(
@@ -3322,7 +3322,7 @@ test('Invoicing Part 8 builds a customer-scoped secure portal', async () => {
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.12\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.13\.0['"]/s,
   );
 
   assert.match(
@@ -3666,7 +3666,7 @@ test('Invoicing Part 9 freezes issued invoice PDFs as immutable document snapsho
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.12\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.13\.0['"]/s,
   );
 
   assert.match(
@@ -3942,7 +3942,7 @@ test('Invoicing Part 10 provides a live renderer-backed invoice template designe
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.12\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.13\.0['"]/s,
   );
 
   assert.match(
@@ -4129,7 +4129,7 @@ test('Invoicing Part 11 deepens credit notes into reusable customer credits and 
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.12\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.13\.0['"]/s,
   );
 
   assert.match(
@@ -4318,5 +4318,171 @@ test('Invoicing Part 11 deepens credit notes into reusable customer credits and 
   assert.match(
     manifest,
     /key:\s*"credit_refund"[\s\S]*table:\s*"invoicing_credit_note_refunds"/s,
+  );
+});
+
+
+
+test('Invoicing Part 12 manages retainers and deposits as auditable customer credit', async () => {
+  const [
+    schema,
+    migration,
+    retainers,
+    queries,
+    types,
+    service,
+    route,
+    workspace,
+    runtimeMigrations,
+    manifest,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/schema.sql'),
+    source('lib/apps/invoicing/migrations/2.12.0-to-2.13.0.ts'),
+    source('lib/apps/invoicing/retainers.ts'),
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/types.ts'),
+    source('lib/apps/invoicing/service.ts'),
+    source('app/api/apps/invoicing/route.ts'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+  ]);
+
+  assert.match(
+    manifest,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.13\.0['"]/s,
+  );
+
+  assert.match(
+    migration,
+    /fromVersion:\s*['"]2\.12\.0['"]/,
+  );
+
+  assert.match(
+    migration,
+    /toVersion:\s*['"]2\.13\.0['"]/,
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /INVOICING_2_12_0_TO_2_13_0/,
+  );
+
+  assert.match(
+    schema,
+    /CREATE TABLE IF NOT EXISTS public\.invoicing_retainers/,
+  );
+
+  assert.match(
+    schema,
+    /invoicing_retainer_balances/,
+  );
+
+  assert.match(
+    migration,
+    /retainer_type IN \('retainer','deposit'\)/,
+  );
+
+  assert.match(
+    migration,
+    /UNIQUE\(payment_id\)/,
+  );
+
+  assert.match(
+    migration,
+    /uq_invoicing_retainers_idempotency/,
+  );
+
+  assert.match(
+    migration,
+    /'retainer'[\s\S]*'RET-'/s,
+    'Part 12 must reserve dedicated retainer numbering.',
+  );
+
+  assert.match(
+    retainers,
+    /export async function recordCustomerRetainer/,
+  );
+
+  assert.match(
+    retainers,
+    /pg_advisory_xact_lock/,
+    'Retainer creation must be concurrency-safe.',
+  );
+
+  assert.match(
+    retainers,
+    /idempotencyKey/,
+    'Retainer creation must be idempotent.',
+  );
+
+  assert.match(
+    retainers,
+    /accounting_model[\s\S]*'customer_credit'/s,
+    'Retainers must enter the shared customer-credit payment ledger.',
+  );
+
+  assert.match(
+    retainers,
+    /postInvoicePaymentToAccounting/,
+    'Retainer receipts must post through the existing accounting authority.',
+  );
+
+  assert.match(
+    service,
+    /recordCustomerRetainer/,
+  );
+
+  assert.match(
+    route,
+    /case 'record_retainer'/,
+  );
+
+  assert.match(
+    queries,
+    /retainers:/,
+  );
+
+  assert.match(
+    types,
+    /InvoicingRetainerSummary/,
+  );
+
+  for (const visibleControl of [
+    'Retainers & deposits',
+    'Receive retainer or deposit',
+    'Retainer & deposit register',
+    'Apply to invoice',
+    'Refund unused advance',
+    'Reconcile advance',
+    'Allocation history',
+    'Refund history',
+  ]) {
+    assert.ok(
+      workspace.includes(
+        visibleControl,
+      ),
+      visibleControl + ' must be available in the Part 12 workspace.',
+    );
+  }
+
+  assert.match(
+    workspace,
+    /action:[\s\S]*'allocate_payment'/s,
+  );
+
+  assert.match(
+    workspace,
+    /action:[\s\S]*'refund_payment'/s,
+  );
+
+  assert.match(
+    workspace,
+    /action:[\s\S]*'reconcile_payment'/s,
+  );
+
+  assert.match(
+    manifest,
+    /key:\s*"retainer"[\s\S]*table:\s*"invoicing_retainers"/s,
   );
 });
