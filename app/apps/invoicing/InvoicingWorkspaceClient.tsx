@@ -565,8 +565,8 @@ function Field({
     string;
 }) {
   return (
-    <label className="block space-y-1">
-      <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+    <label className="block min-w-0 space-y-1">
+      <span className="break-words text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
         {
           label
         }
@@ -597,7 +597,7 @@ function Field({
         step={
           step
         }
-        className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm outline-none transition focus:border-blue-500"
+        className="h-11 w-full min-w-0 rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm outline-none transition focus:border-blue-500"
       />
     </label>
   );
@@ -618,8 +618,8 @@ function TextArea({
     string;
 }) {
   return (
-    <label className="block space-y-1">
-      <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+    <label className="block min-w-0 space-y-1">
+      <span className="break-words text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
         {
           label
         }
@@ -635,7 +635,7 @@ function TextArea({
         defaultValue={
           defaultValue
         }
-        className="w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 py-2 text-sm outline-none transition focus:border-blue-500"
+        className="w-full min-w-0 rounded-xl border border-[var(--sami-border)] bg-transparent px-3 py-2 text-sm outline-none transition focus:border-blue-500"
       />
     </label>
   );
@@ -5198,8 +5198,8 @@ function Customers({
             </p>
 
             <div className="mt-4 space-y-3">
-              <label className="block space-y-1">
-                <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+              <label className="block min-w-0 space-y-1">
+                <span className="break-words text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
                   Customer type
                 </span>
                 <select
@@ -5285,8 +5285,8 @@ function Customers({
                 />
               </div>
 
-              <label className="block space-y-1">
-                <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+              <label className="block min-w-0 space-y-1">
+                <span className="break-words text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
                   Payment terms
                 </span>
 
@@ -5326,8 +5326,8 @@ function Customers({
                 </select>
               </label>
 
-              <label className="block space-y-1">
-                <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+              <label className="block min-w-0 space-y-1">
+                <span className="break-words text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
                   Fiscal position
                 </span>
                 <select
@@ -5654,8 +5654,8 @@ function Customers({
                           }
                         >
                           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                            <label className="block space-y-1">
-                              <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                            <label className="block min-w-0 space-y-1">
+                              <span className="break-words text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
                                 Type
                               </span>
                               <select
@@ -5763,8 +5763,8 @@ function Customers({
                               }
                             />
 
-                            <label className="block space-y-1">
-                              <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                            <label className="block min-w-0 space-y-1">
+                              <span className="break-words text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
                                 Payment terms
                               </span>
                               <select
@@ -5808,8 +5808,8 @@ function Customers({
                               </select>
                             </label>
 
-                            <label className="block space-y-1">
-                              <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                            <label className="block min-w-0 space-y-1">
+                              <span className="break-words text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
                                 Fiscal position
                               </span>
                               <select
@@ -6231,8 +6231,8 @@ function Items({
             </p>
 
             <div className="mt-4 space-y-3">
-              <label className="block space-y-1">
-                <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+              <label className="block min-w-0 space-y-1">
+                <span className="break-words text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
                   Type
                 </span>
 
@@ -6278,8 +6278,8 @@ function Items({
                 />
               </div>
 
-              <label className="block space-y-1">
-                <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+              <label className="block min-w-0 space-y-1">
+                <span className="break-words text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
                   Default tax
                 </span>
 
@@ -6317,8 +6317,8 @@ function Items({
                 </select>
               </label>
 
-              <label className="block space-y-1">
-                <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+              <label className="block min-w-0 space-y-1">
+                <span className="break-words text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
                   Default tax group
                 </span>
                 <select
@@ -6564,8 +6564,8 @@ function Items({
                           }
                         >
                           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                            <label className="block space-y-1">
-                              <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                            <label className="block min-w-0 space-y-1">
+                              <span className="break-words text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
                                 Type
                               </span>
                               <select
@@ -6624,8 +6624,8 @@ function Items({
                               }
                             />
 
-                            <label className="block space-y-1">
-                              <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                            <label className="block min-w-0 space-y-1">
+                              <span className="break-words text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
                                 Default tax
                               </span>
                               <select
@@ -6667,8 +6667,8 @@ function Items({
                               </select>
                             </label>
 
-                            <label className="block space-y-1">
-                              <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                            <label className="block min-w-0 space-y-1">
+                              <span className="break-words text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
                                 Default tax group
                               </span>
                               <select
@@ -9215,8 +9215,8 @@ function Recurring({
                   required
                 />
 
-                <label className="block space-y-1">
-                  <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                <label className="block min-w-0 space-y-1">
+                  <span className="break-words text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
                     Source invoice
                   </span>
 
@@ -9279,8 +9279,8 @@ function Recurring({
                     required
                   />
 
-                  <label className="block space-y-1">
-                    <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                  <label className="block min-w-0 space-y-1">
+                    <span className="break-words text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
                       Period
                     </span>
 
@@ -9719,8 +9719,8 @@ function Recurring({
                                     }
                                   />
 
-                                  <label className="block space-y-1">
-                                    <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                                  <label className="block min-w-0 space-y-1">
+                                    <span className="break-words text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
                                       Period
                                     </span>
                                     <select
@@ -11103,7 +11103,7 @@ function RemindersAndDunning({
             </div>
 
             <div className="mt-4 max-w-xl">
-              <label className="block space-y-1">
+              <label className="block min-w-0 space-y-1">
                 <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-600 dark:text-slate-300">
                   Policy name
                 </span>
@@ -11164,7 +11164,7 @@ function RemindersAndDunning({
                           />
                         </label>
 
-                        <label className="block space-y-1">
+                        <label className="block min-w-0 space-y-1">
                           <span className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
                             Due offset
                           </span>
@@ -11192,7 +11192,7 @@ function RemindersAndDunning({
                           />
                         </label>
 
-                        <label className="block space-y-1">
+                        <label className="block min-w-0 space-y-1">
                           <span className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
                             Tone
                           </span>
@@ -11225,7 +11225,7 @@ function RemindersAndDunning({
                           </select>
                         </label>
 
-                        <label className="block space-y-1">
+                        <label className="block min-w-0 space-y-1">
                           <span className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
                             Retry limit
                           </span>
@@ -11253,7 +11253,7 @@ function RemindersAndDunning({
                           />
                         </label>
 
-                        <label className="block space-y-1">
+                        <label className="block min-w-0 space-y-1">
                           <span className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
                             Retry delay min
                           </span>
@@ -12566,7 +12566,7 @@ function CommercialSettingsForm({
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <label className="block min-w-0 space-y-1">
-            <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+            <span className="break-words text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
               Default currency
             </span>
 
@@ -12621,7 +12621,7 @@ function CommercialSettingsForm({
           />
 
           <label className="block min-w-0 space-y-1">
-            <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+            <span className="break-words text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
               Exchange-rate mode
             </span>
 
@@ -12643,7 +12643,7 @@ function CommercialSettingsForm({
           </label>
 
           <label className="block min-w-0 space-y-1">
-            <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+            <span className="break-words text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
               Tax calculation
             </span>
 
@@ -13686,7 +13686,7 @@ function Toggle({
     boolean;
 }) {
   return (
-    <label className="flex items-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 py-3 text-xs font-bold">
+    <label className="flex min-w-0 items-start gap-2 rounded-xl border border-[var(--sami-border)] px-3 py-3 text-xs font-bold">
       <input
         type="checkbox"
         name={
@@ -13695,11 +13695,14 @@ function Toggle({
         defaultChecked={
           defaultChecked
         }
+        className="mt-0.5 shrink-0"
       />
 
-      {
-        label
-      }
+      <span className="min-w-0 break-words leading-5">
+        {
+          label
+        }
+      </span>
     </label>
   );
 }
