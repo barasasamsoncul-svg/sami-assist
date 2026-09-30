@@ -3956,6 +3956,8 @@ export async function getInvoicingInvoiceDetail(
     historyResult,
     deliveriesResult,
     snapshotsResult,
+    auditResult,
+    auditIntegrityResult,
   ] =
     await Promise.all([
       context.pool.query(
@@ -4349,6 +4351,54 @@ export async function getInvoicingInvoiceDetail(
         `,
         [
           invoiceId,
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            id,
+            sequence_no,
+            event_key,
+            action,
+            actor_user_id,
+            actor_type,
+            source,
+            entry_hash,
+            previous_hash,
+            occurred_at
+          FROM invoicing_audit_log
+          WHERE company_id =
+                $2
+            AND resource_type =
+                'invoice'
+            AND resource_id =
+                $1
+          ORDER BY
+            sequence_no DESC
+          LIMIT 100
+        `,
+        [
+          invoiceId,
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            entry_count,
+            first_sequence,
+            last_sequence,
+            last_entry_hash,
+            chain_valid
+          FROM invoicing_audit_integrity
+          WHERE company_id =
+                $1
+          LIMIT 1
+        `,
+        [
           context.companyId,
         ],
       ),
@@ -4920,6 +4970,105 @@ export async function getInvoicingInvoiceDetail(
             ).toISOString(),
         }),
       ),
+    auditTrail:
+      auditResult.rows.map(
+        audit => ({
+          id:
+            String(
+              audit.id,
+            ),
+          sequenceNo:
+            Number(
+              audit.sequence_no,
+            ),
+          eventKey:
+            String(
+              audit.event_key,
+            ),
+          action:
+            String(
+              audit.action,
+            ),
+          actorUserId:
+            audit.actor_user_id
+              ? String(
+                  audit.actor_user_id,
+                )
+              : null,
+          actorType:
+            String(
+              audit.actor_type,
+            ),
+          source:
+            String(
+              audit.source,
+            ),
+          entryHash:
+            String(
+              audit.entry_hash,
+            ),
+          previousHash:
+            audit.previous_hash
+              ? String(
+                  audit.previous_hash,
+                )
+              : null,
+          occurredAt:
+            new Date(
+              audit.occurred_at,
+            ).toISOString(),
+        }),
+      ),
+    auditIntegrity: {
+      hasEntries:
+        auditIntegrityResult
+          .rows.length >
+        0,
+      verified:
+        auditIntegrityResult
+          .rows[0]
+          ?.chain_valid ===
+        true,
+      entryCount:
+        Number(
+          auditIntegrityResult
+            .rows[0]
+            ?.entry_count ||
+          0,
+        ),
+      firstSequence:
+        auditIntegrityResult
+          .rows[0]
+          ?.first_sequence !==
+          undefined
+          ? Number(
+              auditIntegrityResult
+                .rows[0]
+                .first_sequence,
+            )
+          : null,
+      lastSequence:
+        auditIntegrityResult
+          .rows[0]
+          ?.last_sequence !==
+          undefined
+          ? Number(
+              auditIntegrityResult
+                .rows[0]
+                .last_sequence,
+            )
+          : null,
+      lastHash:
+        auditIntegrityResult
+          .rows[0]
+          ?.last_entry_hash
+          ? String(
+              auditIntegrityResult
+                .rows[0]
+                .last_entry_hash,
+            )
+          : null,
+    },
   };
 }
 

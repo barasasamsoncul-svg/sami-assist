@@ -491,6 +491,26 @@ export type InvoicingInvoiceDetail = {
     reason: string | null;
     createdAt: string;
   }>;
+  auditTrail: Array<{
+    id: string;
+    sequenceNo: number;
+    eventKey: string;
+    action: string;
+    actorUserId: string | null;
+    actorType: string;
+    source: string;
+    entryHash: string;
+    previousHash: string | null;
+    occurredAt: string;
+  }>;
+  auditIntegrity: {
+    hasEntries: boolean;
+    verified: boolean;
+    entryCount: number;
+    firstSequence: number | null;
+    lastSequence: number | null;
+    lastHash: string | null;
+  };
   deliveries: Array<{
     id: string;
     channel: string;

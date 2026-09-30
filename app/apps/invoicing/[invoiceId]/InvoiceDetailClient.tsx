@@ -1344,6 +1344,185 @@ export default function InvoiceDetailClient({
             </div>
           </section>
 
+          <section className="sami-surface rounded-[24px] p-4 sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-sm font-black">
+                  Immutable audit ledger
+                </p>
+
+                <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600 dark:text-slate-300">
+                  SaMi records append-only, SHA-256 chained evidence for Invoicing changes. Sequence numbers make missing entries detectable and each entry links to the previous hash.
+                </p>
+              </div>
+
+              <span
+                className={[
+                  'inline-flex w-fit shrink-0 rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.08em] ring-1 ring-inset',
+                  invoice.auditIntegrity
+                    .hasEntries &&
+                  invoice.auditIntegrity
+                    .verified
+                    ? 'bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:text-emerald-300'
+                    : invoice.auditIntegrity
+                        .hasEntries
+                      ? 'bg-red-500/10 text-red-700 ring-red-500/20 dark:text-red-300'
+                      : 'bg-slate-500/10 text-slate-600 ring-slate-500/20 dark:text-slate-300',
+                ].join(
+                  ' ',
+                )}
+              >
+                {
+                  invoice.auditIntegrity
+                    .hasEntries
+                    ? invoice
+                        .auditIntegrity
+                        .verified
+                      ? 'Chain verified'
+                      : 'Chain check failed'
+                    : 'No ledger entries yet'
+                }
+              </span>
+            </div>
+
+            {
+              invoice.auditIntegrity
+                .hasEntries &&
+              (
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-2xl bg-[var(--sami-surface-soft)] p-3">
+                    <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
+                      Company entries
+                    </p>
+                    <p className="mt-1 text-lg font-black">
+                      {
+                        invoice
+                          .auditIntegrity
+                          .entryCount
+                      }
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl bg-[var(--sami-surface-soft)] p-3">
+                    <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
+                      Latest sequence
+                    </p>
+                    <p className="mt-1 text-lg font-black">
+                      #
+                      {
+                        invoice
+                          .auditIntegrity
+                          .lastSequence ||
+                        0
+                      }
+                    </p>
+                  </div>
+
+                  <div className="min-w-0 rounded-2xl bg-[var(--sami-surface-soft)] p-3">
+                    <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-600 dark:text-slate-300">
+                      Head SHA-256
+                    </p>
+                    <p className="mt-1 break-all font-mono text-[10px] font-bold">
+                      {
+                        invoice
+                          .auditIntegrity
+                          .lastHash
+                          ?.slice(
+                            0,
+                            24,
+                          ) ||
+                        '—'
+                      }
+                    </p>
+                  </div>
+                </div>
+              )
+            }
+
+            <div className="mt-4 divide-y divide-[var(--sami-border)]">
+              {
+                invoice.auditTrail
+                  .length ===
+                  0
+                  ? (
+                    <Empty text="This invoice has no Part 22 ledger entries yet. Existing invoices begin accumulating entries after the 2.20.0 migration is applied." />
+                  )
+                  : invoice.auditTrail
+                      .map(
+                        entry => (
+                          <div
+                            key={
+                              entry.id
+                            }
+                            className="grid gap-2 py-3 sm:grid-cols-[88px_minmax(0,1fr)_auto] sm:items-start"
+                          >
+                            <p className="text-[10px] font-black tabular-nums text-slate-600 dark:text-slate-300">
+                              #
+                              {
+                                entry
+                                  .sequenceNo
+                              }
+                            </p>
+
+                            <div className="min-w-0">
+                              <p className="break-words text-xs font-black">
+                                {
+                                  entry
+                                    .eventKey
+                                    .replaceAll(
+                                      '_',
+                                      ' ',
+                                    )
+                                }
+                              </p>
+
+                              <p className="mt-1 break-words text-[10px] leading-4 text-slate-600 dark:text-slate-300">
+                                {
+                                  entry
+                                    .action
+                                } · {
+                                  entry
+                                    .source
+                                } · {
+                                  entry
+                                    .actorType
+                                }
+                              </p>
+
+                              <p
+                                className="mt-1 break-all font-mono text-[9px] text-slate-600 dark:text-slate-300"
+                                title={
+                                  entry
+                                    .entryHash
+                                }
+                              >
+                                SHA-256 {
+                                  entry
+                                    .entryHash
+                                    .slice(
+                                      0,
+                                      24,
+                                    )
+                                }…
+                              </p>
+                            </div>
+
+                            <p className="text-[9px] text-slate-600 dark:text-slate-300">
+                              {
+                                new Date(
+                                  entry
+                                    .occurredAt,
+                                )
+                                  .toLocaleString()
+                              }
+                            </p>
+                          </div>
+                        ),
+                      )
+              }
+            </div>
+          </section>
+
           <section className="grid gap-4 lg:grid-cols-2">
             <ActivityCard
               title="Status history"
