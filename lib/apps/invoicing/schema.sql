@@ -1503,6 +1503,51 @@ GROUP BY
   aging.company_id,
   aging.currency;
 
+CREATE OR REPLACE VIEW public.invoicing_aging_base AS
+SELECT
+  aging.company_id,
+  aging.invoice_id,
+  aging.invoice_number,
+  aging.customer_id,
+  aging.invoice_date,
+  aging.due_date,
+  aging.currency,
+  COALESCE(
+    invoice.base_currency,
+    setting.base_currency,
+    setting.default_currency,
+    aging.currency
+  ) AS base_currency,
+  COALESCE(
+    invoice.exchange_rate,
+    1
+  )::numeric(19,8) AS exchange_rate,
+  aging.total_amount,
+  aging.balance_due,
+  (
+    aging.total_amount *
+    COALESCE(
+      invoice.exchange_rate,
+      1
+    )
+  )::numeric(19,4) AS base_total_amount,
+  (
+    aging.balance_due *
+    COALESCE(
+      invoice.exchange_rate,
+      1
+    )
+  )::numeric(19,4) AS base_balance_due,
+  aging.effective_status,
+  aging.days_overdue,
+  aging.aging_bucket
+FROM public.invoicing_aging aging
+INNER JOIN public.invoicing_invoices invoice
+  ON invoice.id = aging.invoice_id
+ AND invoice.company_id = aging.company_id
+LEFT JOIN public.invoicing_settings setting
+  ON setting.company_id = aging.company_id;
+
 CREATE OR REPLACE VIEW public.invoicing_payment_plan_installment_balances AS
 WITH base AS (
   SELECT
