@@ -380,6 +380,7 @@ test('Invoicing workspace exposes operational Odoo/Zoho-class surfaces as standa
   const [
     page,
     sectionPage,
+    navigation,
     newInvoicePage,
     invoiceRegisterPage,
     client,
@@ -393,6 +394,9 @@ test('Invoicing workspace exposes operational Odoo/Zoho-class surfaces as standa
       ),
       source(
         'app/apps/invoicing/InvoicingSectionPage.tsx',
+      ),
+      source(
+        'lib/apps/invoicing/navigation.ts',
       ),
       source(
         'app/apps/invoicing/new/page.tsx',
@@ -463,7 +467,7 @@ test('Invoicing workspace exposes operational Odoo/Zoho-class surfaces as standa
     ]
   ) {
     assert.ok(
-      sectionPage.includes(
+      navigation.includes(
         route,
       ),
       route +
@@ -1581,7 +1585,7 @@ test('Invoicing v2.2 runs recurring generation and payment reminders through one
 
   assert.match(
     client,
-    /Reminder delivery channels/,
+    /Delivery channels/,
   );
 
   assert.match(
@@ -1723,10 +1727,10 @@ test('Workspace tutorials are centrally opt-in and Invoicing preserves readable 
   assert.match(sectionPage, /userId=\{/);
   assert.match(workspace, /INVOICING_TUTORIAL_STEPS/);
   assert.match(workspace, /moduleKey="invoicing"/);
-  assert.match(workspace, /Create invoice/);
-  assert.match(workspace, /Invoice register/);
-  assert.match(workspace, /Items & pricing/);
-  assert.match(workspace, /Recurring billing/);
+  assert.match(workspace, /Create and manage invoices/);
+  assert.match(workspace, /Track payments and corrections/);
+  assert.match(workspace, /Maintain products and services/);
+  assert.match(workspace, /Automate recurring billing/);
   assert.doesNotMatch(workspace, /startWorkspaceTutorial/);
 
   for (const section of [
@@ -2050,12 +2054,14 @@ test('Invoicing keeps customer, catalog, payment, recurring, report and settings
     commands,
     workspace,
     sectionPage,
+    navigation,
   ] = await Promise.all([
     source('lib/apps/invoicing/types.ts'),
     source('lib/apps/invoicing/queries.ts'),
     source('lib/apps/invoicing/commands.ts'),
     source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
     source('app/apps/invoicing/InvoicingSectionPage.tsx'),
+    source('lib/apps/invoicing/navigation.ts'),
   ]);
 
   for (const capability of [
@@ -2091,7 +2097,7 @@ test('Invoicing keeps customer, catalog, payment, recurring, report and settings
 
   assert.match(
     queries,
-    /recurring:\s*access\.canManageRecurring[\s\S]*\? recurring\.rows\.map/s,
+    /recurring:\s*access\.canViewRecurring[\s\S]*\? recurring\.rows\.map/s,
   );
 
   assert.match(
@@ -2133,15 +2139,16 @@ test('Invoicing keeps customer, catalog, payment, recurring, report and settings
     'canViewCustomers',
     'canViewCatalog',
     'canViewPayments',
-    'canManageRecurring',
+    'canViewRecurring',
     'canViewReports',
     'canManageSettings',
   ]) {
     assert.match(
-      sectionPage,
+      navigation,
       new RegExp(
+        "capability:\\s*['\"]" +
         capability +
-        '[\\s\\S]*?label:',
+        "['\"]",
       ),
       'Invoicing sidebar entries must remain capability-aware for ' +
       capability,
@@ -3431,7 +3438,6 @@ test('Invoicing v2.8 turns reminders into a staged auditable dunning engine', as
   }
 
   for (const visibleControl of [
-    'Reminders & dunning',
     'Dunning policy',
     'Invoice collection controls',
     'Customer reminder controls',
@@ -4625,7 +4631,7 @@ test('Invoicing Part 12 manages retainers and deposits as auditable customer cre
   );
 
   for (const visibleControl of [
-    'Retainers & deposits',
+    'Manage retainers and deposits',
     'Receive retainer or deposit',
     'Retainer & deposit register',
     'Apply to invoice',
@@ -5132,6 +5138,7 @@ test('Invoicing uses real standalone App Router pages and keeps invoice creation
     reportsPage,
     settingsPage,
     workspace,
+    navigation,
   ] = await Promise.all([
     source('app/apps/invoicing/page.tsx'),
     source('app/apps/invoicing/InvoicingSectionPage.tsx'),
@@ -5150,6 +5157,7 @@ test('Invoicing uses real standalone App Router pages and keeps invoice creation
     source('app/apps/invoicing/reports/page.tsx'),
     source('app/apps/invoicing/settings/page.tsx'),
     source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('lib/apps/invoicing/navigation.ts'),
   ]);
 
   assert.match(newPage, /view="newInvoice"/);
@@ -5167,19 +5175,19 @@ test('Invoicing uses real standalone App Router pages and keeps invoice creation
   assert.match(reportsPage, /view="reports"/);
   assert.match(settingsPage, /view="settings"/);
 
-  assert.match(sectionPage, /\/apps\/invoicing\/new/);
-  assert.match(sectionPage, /\/apps\/invoicing\/invoices/);
-  assert.match(sectionPage, /\/apps\/invoicing\/customers/);
-  assert.match(sectionPage, /\/apps\/invoicing\/payments/);
-  assert.match(sectionPage, /\/apps\/invoicing\/tax-engine/);
-  assert.match(sectionPage, /\/apps\/invoicing\/settings/);
+  assert.match(navigation, /\/apps\/invoicing\/new/);
+  assert.match(navigation, /\/apps\/invoicing\/invoices/);
+  assert.match(navigation, /\/apps\/invoicing\/customers/);
+  assert.match(navigation, /\/apps\/invoicing\/payments/);
+  assert.match(navigation, /\/apps\/invoicing\/tax-engine/);
+  assert.match(navigation, /\/apps\/invoicing\/settings/);
   assert.doesNotMatch(
     sectionPage,
     /\?view=/,
     'The Invoicing sidebar must navigate real App Router pages rather than one stacked query-string workspace.',
   );
 
-  assert.match(rootPage, /LEGACY_VIEW_PATHS/);
+  assert.match(rootPage, /INVOICING_ROUTE_VIEWS/);
   assert.match(rootPage, /redirect\(/);
   assert.match(rootPage, /view="dashboard"/);
 
