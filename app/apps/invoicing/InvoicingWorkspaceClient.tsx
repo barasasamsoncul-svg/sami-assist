@@ -67,6 +67,7 @@ type ViewKey =
   | 'customers'
   | 'items'
   | 'payments'
+  | 'retainers'
   | 'recurring'
   | 'reminders'
   | 'portal'
@@ -121,6 +122,14 @@ const NAV:
         'Payments',
       icon:
         CreditCard,
+    },
+    {
+      key:
+        'retainers',
+      label:
+        'Retainers',
+      icon:
+        CircleDollarSign,
     },
     {
       key:
@@ -202,6 +211,12 @@ const VIEW_COPY:
         'Payments',
       description:
         'Review posted and reversed payments and their invoice allocations without changing invoice totals.',
+    },
+    retainers: {
+      title:
+        'Retainers & deposits',
+      description:
+        'Receive advance customer funds, track available balances and apply, refund or reconcile them through the same auditable payment ledger.',
     },
     recurring: {
       title:
@@ -291,6 +306,18 @@ const INVOICING_TUTORIAL_STEPS:
         'Track payments and corrections',
       description:
         'The payment register shows customer receipts and invoice allocations. If a payment was posted incorrectly, open its invoice and reverse it with a reason instead of deleting financial history.',
+    },
+    {
+      id:
+        'retainers',
+      section:
+        'retainers',
+      title:
+        'Manage retainers and deposits',
+      description:
+        'Receive advance customer funds before an invoice is settled, then apply the available balance to eligible invoices or refund it when required.',
+      tip:
+        'Retainers stay linked to the underlying posted customer-credit payment, so allocation, refund and reconciliation use the same financial controls as ordinary receipts.',
     },
     {
       id:
@@ -1059,6 +1086,15 @@ export default function InvoicingWorkspaceClient({
 
             if (
               item.key ===
+                'retainers'
+            ) {
+              return initialData
+                .capabilities
+                .canViewPayments;
+            }
+
+            if (
+              item.key ===
                 'recurring'
             ) {
               return initialData
@@ -1572,6 +1608,27 @@ export default function InvoicingWorkspaceClient({
           .canViewPayments &&
         (
           <Payments
+            data={
+              initialData
+            }
+            pending={
+              busy
+            }
+            run={
+              run
+            }
+          />
+        )
+      }
+
+      {
+        view ===
+          'retainers' &&
+        initialData
+          .capabilities
+          .canViewPayments &&
+        (
+          <Retainers
             data={
               initialData
             }
@@ -6507,6 +6564,915 @@ function Items({
                     ? 'No invoice items yet.'
                     : 'No items match your search.'
                 }
+              </p>
+            )
+          }
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+function Retainers({
+  data,
+  pending,
+  run,
+}: {
+  data:
+    InvoicingWorkspaceData;
+  pending:
+    boolean;
+  run:
+    (
+      payload:
+        Record<string, unknown>,
+      message:
+        string,
+    ) =>
+      Promise<boolean>;
+}) {
+  const active =
+    data.retainers.filter(
+      retainer =>
+        retainer.status ===
+          'active' &&
+        retainer.availableAmount >
+          0,
+    );
+
+  const totalAvailable =
+    active
+      .filter(
+        retainer =>
+          retainer.currency ===
+          data.company.currency,
+      )
+      .reduce(
+        (
+          sum,
+          retainer,
+        ) =>
+          sum +
+          retainer.availableAmount,
+        0,
+      );
+
+  const totalAllocated =
+    data.retainers
+      .filter(
+        retainer =>
+          retainer.currency ===
+          data.company.currency,
+      )
+      .reduce(
+        (
+          sum,
+          retainer,
+        ) =>
+          sum +
+          retainer.allocatedAmount,
+        0,
+      );
+
+  const totalRefunded =
+    data.retainers
+      .filter(
+        retainer =>
+          retainer.currency ===
+          data.company.currency,
+      )
+      .reduce(
+        (
+          sum,
+          retainer,
+        ) =>
+          sum +
+          retainer.refundedAmount,
+        0,
+      );
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard
+          label="Active advances"
+          value={
+            String(
+              active.length,
+            )
+          }
+          note="Retainers or deposits with money still available"
+          icon={CircleDollarSign}
+          tone="blue"
+        />
+
+        <MetricCard
+          label="Available"
+          value={
+            formatMoney(
+              totalAvailable,
+              data.company.currency,
+            )
+          }
+          note={
+            data.company.currency +
+            ' ready to apply or refund'
+          }
+          icon={CircleDollarSign}
+          tone="emerald"
+        />
+
+        <MetricCard
+          label="Applied"
+          value={
+            formatMoney(
+              totalAllocated,
+              data.company.currency,
+            )
+          }
+          note="Advance money already allocated to invoices"
+          icon={Receipt}
+          tone="blue"
+        />
+
+        <MetricCard
+          label="Refunded"
+          value={
+            formatMoney(
+              totalRefunded,
+              data.company.currency,
+            )
+          }
+          note="Advance money returned to customers"
+          icon={RefreshCw}
+          tone="amber"
+        />
+      </div>
+
+      {
+        data.capabilities
+          .canRecordPayment &&
+        (
+          <form
+            className="sami-surface rounded-[24px] p-4 sm:p-5"
+            onSubmit={
+              async event => {
+                event.preventDefault();
+
+                const element =
+                  event.currentTarget;
+
+                const form =
+                  new FormData(
+                    element,
+                  );
+
+                const saved =
+                  await run(
+                    {
+                      action:
+                        'record_retainer',
+                      customerId:
+                        form.get(
+                          'customerId',
+                        ),
+                      retainerType:
+                        form.get(
+                          'retainerType',
+                        ),
+                      amount:
+                        form.get(
+                          'amount',
+                        ),
+                      receivedDate:
+                        form.get(
+                          'receivedDate',
+                        ),
+                      method:
+                        form.get(
+                          'method',
+                        ),
+                      reference:
+                        form.get(
+                          'reference',
+                        ),
+                      purpose:
+                        form.get(
+                          'purpose',
+                        ),
+                      expectedUseDate:
+                        form.get(
+                          'expectedUseDate',
+                        ),
+                      idempotencyKey:
+                        (
+                          typeof crypto !==
+                            'undefined' &&
+                          'randomUUID' in
+                            crypto
+                        )
+                          ? crypto
+                              .randomUUID()
+                          : (
+                              Date.now()
+                                .toString(
+                                  36,
+                                ) +
+                              Math.random()
+                                .toString(
+                                  36,
+                                )
+                                .slice(
+                                  2,
+                                )
+                            ),
+                    },
+                    'Customer advance received and posted as available credit.',
+                  );
+
+                if (
+                  saved
+                ) {
+                  element.reset();
+                }
+              }
+            }
+          >
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <p className="text-sm font-black">
+                  Receive retainer or deposit
+                </p>
+                <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600 dark:text-slate-300">
+                  Record advance money before it is tied to an invoice. SaMi posts the receipt as customer credit and keeps a dedicated retainer/deposit record for lifecycle tracking.
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-blue-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-blue-700 dark:text-blue-300">
+                Advance → customer credit
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-7">
+              <label className="xl:col-span-2">
+                <span className="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                  Customer
+                </span>
+                <select
+                  name="customerId"
+                  required
+                  defaultValue=""
+                  className="mt-1 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                >
+                  <option value="" disabled>
+                    Choose customer
+                  </option>
+                  {
+                    data.customers
+                      .filter(
+                        customer =>
+                          customer.status ===
+                            'active',
+                      )
+                      .map(
+                        customer => (
+                          <option
+                            key={
+                              customer.id
+                            }
+                            value={
+                              customer.id
+                            }
+                          >
+                            {
+                              customer.name
+                            } · {
+                              customer.currency
+                            }
+                          </option>
+                        ),
+                      )
+                  }
+                </select>
+              </label>
+
+              <label>
+                <span className="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                  Type
+                </span>
+                <select
+                  name="retainerType"
+                  defaultValue="retainer"
+                  className="mt-1 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                >
+                  <option value="retainer">
+                    Retainer
+                  </option>
+                  <option value="deposit">
+                    Deposit
+                  </option>
+                </select>
+              </label>
+
+              <Field
+                label="Amount"
+                name="amount"
+                type="number"
+                min="0.01"
+                step="0.01"
+                required
+              />
+
+              <Field
+                label="Received date"
+                name="receivedDate"
+                type="date"
+              />
+
+              <label>
+                <span className="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                  Method
+                </span>
+                <select
+                  name="method"
+                  defaultValue="mpesa"
+                  className="mt-1 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                >
+                  <option value="mpesa">M-Pesa</option>
+                  <option value="bank">Bank</option>
+                  <option value="cash">Cash</option>
+                  <option value="card">Card</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+
+              <Field
+                label="Expected use"
+                name="expectedUseDate"
+                type="date"
+              />
+            </div>
+
+            <div className="mt-3 grid gap-3 lg:grid-cols-[280px_minmax(0,1fr)_auto] lg:items-end">
+              <Field
+                label="Reference"
+                name="reference"
+                maxLength={255}
+              />
+
+              <TextArea
+                label="Purpose / agreement"
+                name="purpose"
+              />
+
+              <button
+                type="submit"
+                disabled={
+                  pending
+                }
+                className="h-11 rounded-xl bg-blue-600 px-5 text-xs font-black text-white disabled:opacity-60"
+              >
+                Receive advance
+              </button>
+            </div>
+          </form>
+        )
+      }
+
+      <div className="sami-surface overflow-hidden rounded-[24px]">
+        <div className="border-b border-[var(--sami-border)] p-4 sm:p-5">
+          <p className="text-sm font-black">
+            Retainer & deposit register
+          </p>
+          <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
+            Each advance remains linked to its posted receipt. Allocate, refund and reconcile through the same controlled payment ledger while this register preserves purpose and expected-use context.
+          </p>
+        </div>
+
+        <div className="divide-y divide-[var(--sami-border)]">
+          {
+            data.retainers.map(
+              retainer => {
+                const eligibleInvoices =
+                  data.invoices.filter(
+                    invoice =>
+                      invoice.customerId ===
+                        retainer.customerId &&
+                      invoice.currency ===
+                        retainer.currency &&
+                      invoice.balanceDue >
+                        0 &&
+                      ![
+                        'draft',
+                        'pending_approval',
+                        'rejected',
+                        'paid',
+                        'cancelled',
+                        'void',
+                        'written_off',
+                      ].includes(
+                        invoice.status,
+                      ),
+                  );
+
+                return (
+                  <div
+                    key={
+                      retainer.id
+                    }
+                    className="p-4 sm:p-5"
+                  >
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-black">
+                            {
+                              retainer.retainerNumber
+                            }
+                          </p>
+                          <StatusPill
+                            value={
+                              retainer.status
+                            }
+                          />
+                          <span className="rounded-full border border-[var(--sami-border)] px-2 py-1 text-[9px] font-black uppercase tracking-wide text-slate-600 dark:text-slate-300">
+                            {
+                              retainer.retainerType
+                            }
+                          </span>
+                        </div>
+
+                        <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                          {
+                            retainer.customerName
+                          } · {
+                            retainer.receivedDate
+                          } · {
+                            retainer.method
+                          }
+                          {
+                            retainer.reference
+                              ? ' · ' +
+                                retainer.reference
+                              : ''
+                          }
+                        </p>
+
+                        {
+                          retainer.purpose &&
+                          (
+                            <p className="mt-2 max-w-3xl text-[11px] leading-5 text-slate-500">
+                              {
+                                retainer.purpose
+                              }
+                            </p>
+                          )
+                        }
+
+                        {
+                          retainer.expectedUseDate &&
+                          (
+                            <p className="mt-1 text-[10px] font-semibold text-slate-500">
+                              Expected use: {
+                                retainer.expectedUseDate
+                              }
+                            </p>
+                          )
+                        }
+                      </div>
+
+                      <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-4 xl:min-w-[560px]">
+                        <PaymentAmount
+                          label="Received"
+                          value={
+                            formatMoney(
+                              retainer.amount,
+                              retainer.currency,
+                            )
+                          }
+                        />
+                        <PaymentAmount
+                          label="Applied"
+                          value={
+                            formatMoney(
+                              retainer.allocatedAmount,
+                              retainer.currency,
+                            )
+                          }
+                        />
+                        <PaymentAmount
+                          label="Refunded"
+                          value={
+                            formatMoney(
+                              retainer.refundedAmount,
+                              retainer.currency,
+                            )
+                          }
+                        />
+                        <PaymentAmount
+                          label="Available"
+                          value={
+                            formatMoney(
+                              retainer.availableAmount,
+                              retainer.currency,
+                            )
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    {
+                      data.capabilities
+                        .canRecordPayment &&
+                      retainer.status ===
+                        'active' &&
+                      (
+                        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                          {
+                            retainer.availableAmount >
+                              0 &&
+                            eligibleInvoices.length >
+                              0 &&
+                            (
+                              <form
+                                className="rounded-2xl border border-blue-500/15 bg-blue-500/[0.04] p-3"
+                                onSubmit={
+                                  async event => {
+                                    event.preventDefault();
+
+                                    const element =
+                                      event.currentTarget;
+                                    const form =
+                                      new FormData(
+                                        element,
+                                      );
+
+                                    const saved =
+                                      await run(
+                                        {
+                                          action:
+                                            'allocate_payment',
+                                          paymentId:
+                                            retainer.paymentId,
+                                          invoiceId:
+                                            form.get(
+                                              'invoiceId',
+                                            ),
+                                          amount:
+                                            form.get(
+                                              'amount',
+                                            ),
+                                        },
+                                        'Retainer amount applied to invoice.',
+                                      );
+
+                                    if (
+                                      saved
+                                    ) {
+                                      element.reset();
+                                    }
+                                  }
+                                }
+                              >
+                                <p className="text-xs font-black text-blue-700 dark:text-blue-300">
+                                  Apply to invoice
+                                </p>
+                                <select
+                                  name="invoiceId"
+                                  required
+                                  defaultValue=""
+                                  className="mt-2 h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-2 text-xs"
+                                >
+                                  <option value="" disabled>
+                                    Choose invoice
+                                  </option>
+                                  {
+                                    eligibleInvoices.map(
+                                      invoice => (
+                                        <option
+                                          key={
+                                            invoice.id
+                                          }
+                                          value={
+                                            invoice.id
+                                          }
+                                        >
+                                          {
+                                            invoice.invoiceNumber
+                                          } · {
+                                            formatMoney(
+                                              invoice.balanceDue,
+                                              invoice.currency,
+                                            )
+                                          }
+                                        </option>
+                                      ),
+                                    )
+                                  }
+                                </select>
+                                <div className="mt-2 flex gap-2">
+                                  <input
+                                    name="amount"
+                                    type="number"
+                                    min="0.01"
+                                    max={
+                                      retainer.availableAmount
+                                    }
+                                    step="0.01"
+                                    required
+                                    placeholder="Amount"
+                                    className="h-10 min-w-0 flex-1 rounded-xl border border-[var(--sami-border)] bg-transparent px-2 text-xs"
+                                  />
+                                  <button
+                                    type="submit"
+                                    disabled={
+                                      pending
+                                    }
+                                    className="h-10 rounded-xl bg-blue-600 px-3 text-[10px] font-black text-white disabled:opacity-60"
+                                  >
+                                    Apply
+                                  </button>
+                                </div>
+                              </form>
+                            )
+                          }
+
+                          {
+                            retainer.availableAmount >
+                              0 &&
+                            (
+                              <form
+                                className="rounded-2xl border border-amber-500/15 bg-amber-500/[0.04] p-3"
+                                onSubmit={
+                                  async event => {
+                                    event.preventDefault();
+
+                                    const element =
+                                      event.currentTarget;
+                                    const form =
+                                      new FormData(
+                                        element,
+                                      );
+
+                                    const saved =
+                                      await run(
+                                        {
+                                          action:
+                                            'refund_payment',
+                                          paymentId:
+                                            retainer.paymentId,
+                                          amount:
+                                            form.get(
+                                              'amount',
+                                            ),
+                                          method:
+                                            form.get(
+                                              'method',
+                                            ),
+                                          reference:
+                                            form.get(
+                                              'reference',
+                                            ),
+                                          reason:
+                                            form.get(
+                                              'reason',
+                                            ),
+                                        },
+                                        'Unused retainer amount refunded.',
+                                      );
+
+                                    if (
+                                      saved
+                                    ) {
+                                      element.reset();
+                                    }
+                                  }
+                                }
+                              >
+                                <p className="text-xs font-black text-amber-700 dark:text-amber-300">
+                                  Refund unused advance
+                                </p>
+                                <div className="mt-2 grid grid-cols-2 gap-2">
+                                  <input
+                                    name="amount"
+                                    type="number"
+                                    min="0.01"
+                                    max={
+                                      retainer.availableAmount
+                                    }
+                                    step="0.01"
+                                    required
+                                    placeholder="Amount"
+                                    className="h-10 rounded-xl border border-[var(--sami-border)] bg-transparent px-2 text-xs"
+                                  />
+                                  <select
+                                    name="method"
+                                    defaultValue={
+                                      retainer.method
+                                    }
+                                    className="h-10 rounded-xl border border-[var(--sami-border)] bg-transparent px-2 text-xs"
+                                  >
+                                    <option value="mpesa">M-Pesa</option>
+                                    <option value="bank">Bank</option>
+                                    <option value="cash">Cash</option>
+                                    <option value="card">Card</option>
+                                    <option value="other">Other</option>
+                                  </select>
+                                </div>
+                                <input
+                                  name="reference"
+                                  maxLength={255}
+                                  placeholder="Refund reference"
+                                  className="mt-2 h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-2 text-xs"
+                                />
+                                <div className="mt-2 flex gap-2">
+                                  <input
+                                    name="reason"
+                                    required
+                                    maxLength={2000}
+                                    placeholder="Reason"
+                                    className="h-10 min-w-0 flex-1 rounded-xl border border-[var(--sami-border)] bg-transparent px-2 text-xs"
+                                  />
+                                  <button
+                                    type="submit"
+                                    disabled={
+                                      pending
+                                    }
+                                    className="h-10 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 text-[10px] font-black text-amber-700 disabled:opacity-60 dark:text-amber-300"
+                                  >
+                                    Refund
+                                  </button>
+                                </div>
+                              </form>
+                            )
+                          }
+
+                          {
+                            !retainer.reconciledAt &&
+                            (
+                              <form
+                                className="rounded-2xl border border-emerald-500/15 bg-emerald-500/[0.04] p-3"
+                                onSubmit={
+                                  async event => {
+                                    event.preventDefault();
+
+                                    const element =
+                                      event.currentTarget;
+                                    const form =
+                                      new FormData(
+                                        element,
+                                      );
+
+                                    const saved =
+                                      await run(
+                                        {
+                                          action:
+                                            'reconcile_payment',
+                                          paymentId:
+                                            retainer.paymentId,
+                                          reference:
+                                            form.get(
+                                              'reference',
+                                            ),
+                                          notes:
+                                            form.get(
+                                              'notes',
+                                            ),
+                                        },
+                                        'Retainer receipt reconciled.',
+                                      );
+
+                                    if (
+                                      saved
+                                    ) {
+                                      element.reset();
+                                    }
+                                  }
+                                }
+                              >
+                                <p className="text-xs font-black text-emerald-700 dark:text-emerald-300">
+                                  Reconcile advance
+                                </p>
+                                <input
+                                  name="reference"
+                                  maxLength={255}
+                                  defaultValue={
+                                    retainer.reference ||
+                                    ''
+                                  }
+                                  placeholder="Statement reference"
+                                  className="mt-2 h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-2 text-xs"
+                                />
+                                <div className="mt-2 flex gap-2">
+                                  <input
+                                    name="notes"
+                                    maxLength={3000}
+                                    placeholder="Reconciliation notes"
+                                    className="h-10 min-w-0 flex-1 rounded-xl border border-[var(--sami-border)] bg-transparent px-2 text-xs"
+                                  />
+                                  <button
+                                    type="submit"
+                                    disabled={
+                                      pending
+                                    }
+                                    className="h-10 rounded-xl bg-emerald-600 px-3 text-[10px] font-black text-white disabled:opacity-60"
+                                  >
+                                    Reconcile
+                                  </button>
+                                </div>
+                              </form>
+                            )
+                          }
+                        </div>
+                      )
+                    }
+
+                    {
+                      retainer.allocations.length >
+                        0 &&
+                      (
+                        <div className="mt-3 rounded-2xl border border-[var(--sami-border)] p-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">
+                            Allocation history
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {
+                              retainer.allocations.map(
+                                allocation => (
+                                  <span
+                                    key={
+                                      allocation.id
+                                    }
+                                    className="rounded-xl bg-blue-500/[0.06] px-2.5 py-1.5 text-[10px] font-semibold text-blue-800 dark:text-blue-200"
+                                  >
+                                    {
+                                      allocation.invoiceNumber
+                                    } · {
+                                      formatMoney(
+                                        allocation.amount,
+                                        retainer.currency,
+                                      )
+                                    } · {
+                                      allocation.status
+                                    }
+                                  </span>
+                                ),
+                              )
+                            }
+                          </div>
+                        </div>
+                      )
+                    }
+
+                    {
+                      retainer.refunds.length >
+                        0 &&
+                      (
+                        <div className="mt-3 rounded-2xl border border-[var(--sami-border)] p-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">
+                            Refund history
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {
+                              retainer.refunds.map(
+                                refund => (
+                                  <span
+                                    key={
+                                      refund.id
+                                    }
+                                    className="rounded-xl bg-amber-500/[0.06] px-2.5 py-1.5 text-[10px] font-semibold text-amber-800 dark:text-amber-200"
+                                  >
+                                    {
+                                      refund.refundNumber
+                                    } · {
+                                      formatMoney(
+                                        refund.amount,
+                                        retainer.currency,
+                                      )
+                                    } · {
+                                      refund.status
+                                    }
+                                  </span>
+                                ),
+                              )
+                            }
+                          </div>
+                        </div>
+                      )
+                    }
+                  </div>
+                );
+              },
+            )
+          }
+
+          {
+            data.retainers.length ===
+              0 &&
+            (
+              <p className="p-8 text-center text-sm text-slate-600 dark:text-slate-300">
+                No retainers or deposits received yet.
               </p>
             )
           }

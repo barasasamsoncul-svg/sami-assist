@@ -29,6 +29,7 @@ import {
   issueInvoiceCreditNote,
   reconcileInvoicePayment,
   recordCustomerPayment,
+  recordCustomerRetainer,
   recordInvoicePayment,
   refundInvoiceCreditNote,
   refundInvoicePayment,
@@ -480,6 +481,13 @@ export async function POST(
       case 'record_customer_payment':
         result =
           await recordCustomerPayment(
+            payload,
+          );
+        break;
+
+      case 'record_retainer':
+        result =
+          await recordCustomerRetainer(
             payload,
           );
         break;
