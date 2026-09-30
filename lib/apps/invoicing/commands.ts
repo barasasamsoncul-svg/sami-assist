@@ -5363,16 +5363,26 @@ export async function recordInvoicePayment(
           payment_id,
           invoice_id,
           amount,
+          payment_amount,
+          invoice_amount,
+          payment_exchange_rate,
+          invoice_exchange_rate,
+          base_payment_amount,
+          base_invoice_amount,
+          realized_fx_amount,
           status,
           operation_key,
           created_by
         )
         VALUES (
-          $1,$2,$3,$4,
+          $1,$2,$3,$4,$4,$4,$5,$5,
+          ROUND(($4 * $5)::numeric,4),
+          ROUND(($4 * $5)::numeric,4),
+          0,
           'posted',
           'initial:' ||
           gen_random_uuid()::text,
-          $5
+          $6
         )
         RETURNING
           id,
@@ -5383,6 +5393,10 @@ export async function recordInvoicePayment(
         paymentId,
         invoiceId,
         allocationAmount,
+        Number(
+          invoice.exchange_rate ||
+          1,
+        ),
         context.userId,
       ],
     );
@@ -5514,9 +5528,16 @@ export async function recordInvoicePayment(
             input.paymentDate,
             new Date(),
           ),
-        amount:
+        paymentAmount:
           allocationAmount,
-        exchangeRate:
+        invoiceAmount:
+          allocationAmount,
+        paymentExchangeRate:
+          Number(
+            invoice.exchange_rate ||
+            1,
+          ),
+        invoiceExchangeRate:
           Number(
             invoice.exchange_rate ||
             1,
