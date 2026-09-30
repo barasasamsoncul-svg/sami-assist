@@ -442,9 +442,18 @@ export async function saveInvoicingCurrency(
             decimal_places =
               EXCLUDED.decimal_places,
             is_active =
-              EXCLUDED.is_active,
+              CASE
+                WHEN invoicing_currencies.is_base = TRUE
+                  THEN TRUE
+                ELSE EXCLUDED.is_active
+              END,
             is_base =
-              EXCLUDED.is_base,
+              CASE
+                WHEN invoicing_currencies.is_base = TRUE
+                  AND EXCLUDED.is_base = FALSE
+                  THEN TRUE
+                ELSE EXCLUDED.is_base
+              END,
             updated_by =
               EXCLUDED.updated_by,
             updated_at =
@@ -452,7 +461,8 @@ export async function saveInvoicingCurrency(
           RETURNING
             id,
             code,
-            is_base
+            is_base,
+            is_active
         `,
         [
           context.companyId,
@@ -524,8 +534,14 @@ export async function saveInvoicingCurrency(
           saved.rows[0].id,
         ),
       code,
-      isBase,
-      isActive,
+      isBase:
+        saved.rows[0]
+          .is_base ===
+        true,
+      isActive:
+        saved.rows[0]
+          .is_active !==
+        false,
       decimalPlaces,
     };
   } catch (
