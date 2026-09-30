@@ -95,3 +95,10 @@ export {
   saveInvoicingTaxLocalization,
   saveInvoicingTaxRule,
 } from '@/lib/apps/invoicing/tax-engine';
+
+
+export {
+  fiscalizeInvoiceWithEtims,
+  getEtimsProviderRuntimeStatus,
+  saveEtimsSettings,
+} from '@/lib/apps/invoicing/etims';
