@@ -26,6 +26,7 @@ import {
   updateInvoicingTaxRate,
   createRecurringInvoiceTemplate,
   duplicateInvoice,
+  fiscalizeInvoiceWithEtims,
   getInvoicingInvoiceDetail,
   getInvoicingWorkspaceData,
   issueInvoiceCreditNote,
@@ -47,6 +48,7 @@ import {
   resolveCustomerPortalMessage,
   revokeCustomerPortalAccess,
   saveDunningPolicy,
+  saveEtimsSettings,
   saveInvoicingCurrency,
   saveInvoicingExchangeRate,
   saveInvoicingFiscalPosition,
@@ -548,6 +550,20 @@ export async function POST(
       case 'record_retainer':
         result =
           await recordCustomerRetainer(
+            payload,
+          );
+        break;
+
+      case 'save_etims_settings':
+        result =
+          await saveEtimsSettings(
+            payload,
+          );
+        break;
+
+      case 'fiscalize_etims':
+        result =
+          await fiscalizeInvoiceWithEtims(
             payload,
           );
         break;
