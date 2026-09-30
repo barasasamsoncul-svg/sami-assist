@@ -203,7 +203,10 @@ test(
 
       assert.match(
         workspace,
-        /AppSurfaceShell/,
+        moduleKey ===
+          'accounting'
+          ? /AccountingModuleShell/
+          : /AppSurfaceShell/,
         moduleKey +
           ' must compose its own standalone app surface.',
       );
