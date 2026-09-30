@@ -116,7 +116,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
 
   assert.match(
     invoicing,
-    /version:\s*['"]2\.15\.0['"]/,
+    /version:\s*['"]2\.16\.0['"]/,
   );
 
   assert.match(
@@ -376,9 +376,12 @@ test('Invoicing server authority uses trusted workspace/company context and neve
   );
 });
 
-test('Invoicing workspace exposes operational Odoo/Zoho-class surfaces rather than a placeholder page', async () => {
+test('Invoicing workspace exposes operational Odoo/Zoho-class surfaces as standalone routes rather than one stacked page', async () => {
   const [
     page,
+    sectionPage,
+    newInvoicePage,
+    invoiceRegisterPage,
     client,
     composer,
     detail,
@@ -387,6 +390,15 @@ test('Invoicing workspace exposes operational Odoo/Zoho-class surfaces rather th
     await Promise.all([
       source(
         'app/apps/invoicing/page.tsx',
+      ),
+      source(
+        'app/apps/invoicing/InvoicingSectionPage.tsx',
+      ),
+      source(
+        'app/apps/invoicing/new/page.tsx',
+      ),
+      source(
+        'app/apps/invoicing/invoices/page.tsx',
       ),
       source(
         'app/apps/invoicing/InvoicingWorkspaceClient.tsx',
@@ -403,18 +415,94 @@ test('Invoicing workspace exposes operational Odoo/Zoho-class surfaces rather th
     ]);
 
   assert.match(
+    sectionPage,
+    /AppSurfaceShell/,
+  );
+
+  assert.match(
     page,
-    /WorkspaceShell/,
+    /view="dashboard"/,
+  );
+
+  assert.match(
+    newInvoicePage,
+    /view="newInvoice"/,
+  );
+
+  assert.match(
+    invoiceRegisterPage,
+    /view="invoices"/,
+  );
+
+  for (
+    const route
+    of [
+      '/apps/invoicing/new',
+      '/apps/invoicing/invoices',
+      '/apps/invoicing/customers',
+      '/apps/invoicing/items',
+      '/apps/invoicing/payments',
+      '/apps/invoicing/currencies',
+      '/apps/invoicing/tax-engine',
+      '/apps/invoicing/retainers',
+      '/apps/invoicing/payment-plans',
+      '/apps/invoicing/recurring',
+      '/apps/invoicing/reminders',
+      '/apps/invoicing/portal',
+      '/apps/invoicing/reports',
+      '/apps/invoicing/settings',
+    ]
+  ) {
+    assert.ok(
+      sectionPage.includes(
+        route,
+      ),
+      route +
+        ' must be a first-class Invoicing route.',
+    );
+  }
+
+  assert.match(
+    client,
+    /view ===\s*'newInvoice'[\s\S]*<InvoiceComposer/s,
+    'Create Invoice must render on its dedicated new-invoice route.',
+  );
+
+  const invoiceRegisterStart =
+    client.indexOf(
+      'function Invoices(',
+    );
+
+  assert.ok(
+    invoiceRegisterStart >
+      -1,
+  );
+
+  const invoiceRegister =
+    client.slice(
+      invoiceRegisterStart,
+    );
+
+  assert.doesNotMatch(
+    invoiceRegister,
+    /<details[\s\S]{0,1500}<InvoiceComposer/s,
+    'Invoice Register must not stack the Create Invoice composer above the register.',
   );
 
   for (
     const surface
     of [
-      'Invoices',
+      'Invoice register',
       'Customers',
       'Items',
       'Payments',
+      'Currency Center',
+      'Tax engine',
+      'Retainers',
+      'Payment plans',
       'Recurring',
+      'Reminders',
+      'Customer portal',
       'Reports',
       'Settings',
     ]
