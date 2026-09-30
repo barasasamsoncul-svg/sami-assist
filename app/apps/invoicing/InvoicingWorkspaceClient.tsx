@@ -19,6 +19,7 @@ import InvoiceComposer from '@/app/apps/invoicing/InvoiceComposer';
 import InvoiceAppearanceSettings from '@/app/apps/invoicing/InvoiceAppearanceSettings';
 import PaymentPlansWorkspace from '@/app/apps/invoicing/PaymentPlansWorkspace';
 import CurrencyCenterWorkspace from '@/app/apps/invoicing/CurrencyCenterWorkspace';
+import TaxEngineWorkspace from '@/app/apps/invoicing/TaxEngineWorkspace';
 import SaMiOverlay from '@/app/components/SaMiOverlay';
 import {
   useSaMiOverlay,
@@ -70,6 +71,7 @@ type ViewKey =
   | 'items'
   | 'payments'
   | 'currencies'
+  | 'taxEngine'
   | 'retainers'
   | 'paymentPlans'
   | 'recurring'
@@ -134,6 +136,14 @@ const NAV:
         'Currencies',
       icon:
         CircleDollarSign,
+    },
+    {
+      key:
+        'taxEngine',
+      label:
+        'Tax engine',
+      icon:
+        BadgeCheck,
     },
     {
       key:
@@ -237,6 +247,12 @@ const VIEW_COPY:
         'Currency Center',
       description:
         'Manage transaction currencies, dated exchange rates, base-currency reporting and foreign-currency exposure.',
+    },
+    taxEngine: {
+      title:
+        'Tax engine',
+      description:
+        'Manage rates, tax groups, fiscal positions, rules, exemptions and jurisdiction localizations with auditable invoice-line resolution.',
     },
     retainers: {
       title:
@@ -1682,6 +1698,27 @@ export default function InvoicingWorkspaceClient({
           .canView &&
         (
           <CurrencyCenterWorkspace
+            data={
+              initialData
+            }
+            pending={
+              busy
+            }
+            run={
+              run
+            }
+          />
+        )
+      }
+
+      {
+        view ===
+          'taxEngine' &&
+        initialData
+          .capabilities
+          .canView &&
+        (
+          <TaxEngineWorkspace
             data={
               initialData
             }
