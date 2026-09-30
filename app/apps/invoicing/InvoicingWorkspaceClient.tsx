@@ -40,7 +40,6 @@ import {
   BarChart3,
   BookOpenCheck,
   CalendarClock,
-  BookOpenCheck,
   ChevronDown,
   CircleDollarSign,
   CopyPlus,
