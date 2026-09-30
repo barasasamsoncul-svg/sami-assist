@@ -17,6 +17,10 @@ import {
   getTenantPoolByTenantId,
 } from '@/lib/db/tenant';
 
+import {
+  getEtimsProviderRuntimeStatus,
+} from '@/lib/apps/invoicing/etims';
+
 
 function dateOnlyValue(
   value:
@@ -247,6 +251,8 @@ export async function getInvoicingWorkspaceData():
     currencies,
     exchangeRates,
     currencyExposure,
+    etimsDocuments,
+    etimsSettings,
     settings,
   ] =
     await Promise.all([
@@ -1717,6 +1723,90 @@ export async function getInvoicingWorkspaceData():
           ORDER BY
             open_base_amount DESC,
             currency ASC
+        `,
+        [
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            document.id,
+            document.invoice_id,
+            invoice.invoice_number,
+            COALESCE(
+              invoice.bill_to_name,
+              customer.name
+            ) AS customer_name,
+            document.status,
+            document.receipt_label,
+            document.provider,
+            document.scu_id,
+            document.scu_receipt_number,
+            document.cu_invoice_number,
+            document.receipt_signature,
+            document.qr_payload,
+            document.response_code,
+            document.response_message,
+            document.attempt_count,
+            document.last_attempt_at,
+            document.next_retry_at,
+            document.fiscalized_at,
+            document.created_at
+          FROM invoicing_etims_documents document
+          LEFT JOIN invoicing_invoices invoice
+            ON invoice.id =
+               document.invoice_id
+           AND invoice.company_id =
+               document.company_id
+          LEFT JOIN invoicing_customers customer
+            ON customer.id =
+               invoice.customer_id
+           AND customer.company_id =
+               invoice.company_id
+          WHERE document.company_id =
+                $1
+          ORDER BY
+            CASE
+              WHEN document.status =
+                   'failed'
+              THEN 0
+              WHEN document.status =
+                   'rejected'
+              THEN 1
+              WHEN document.status =
+                   'queued'
+              THEN 2
+              WHEN document.status =
+                   'submitting'
+              THEN 3
+              ELSE 4
+            END,
+            document.updated_at DESC,
+            document.id DESC
+          LIMIT 500
+        `,
+        [
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            enabled,
+            environment,
+            control_unit_type,
+            taxpayer_pin,
+            branch_id,
+            device_serial,
+            require_fiscalization_before_delivery,
+            auto_queue_on_confirmation
+          FROM invoicing_etims_settings
+          WHERE company_id =
+                $1
+          LIMIT 1
         `,
         [
           context.companyId,
@@ -3747,6 +3837,181 @@ export async function getInvoicingWorkspaceData():
             ),
         }),
       ),
+
+    etimsDocuments:
+      etimsDocuments.rows.map(
+        row => ({
+          id:
+            String(
+              row.id,
+            ),
+          invoiceId:
+            row.invoice_id
+              ? String(
+                  row.invoice_id,
+                )
+              : null,
+          invoiceNumber:
+            row.invoice_number
+              ? String(
+                  row.invoice_number,
+                )
+              : null,
+          customerName:
+            row.customer_name
+              ? String(
+                  row.customer_name,
+                )
+              : null,
+          status:
+            String(
+              row.status ||
+              'queued',
+            ),
+          receiptLabel:
+            String(
+              row.receipt_label ||
+              'NS',
+            ),
+          provider:
+            row.provider
+              ? String(
+                  row.provider,
+                )
+              : null,
+          scuId:
+            row.scu_id
+              ? String(
+                  row.scu_id,
+                )
+              : null,
+          scuReceiptNumber:
+            row.scu_receipt_number
+              ? String(
+                  row.scu_receipt_number,
+                )
+              : null,
+          cuInvoiceNumber:
+            row.cu_invoice_number
+              ? String(
+                  row.cu_invoice_number,
+                )
+              : null,
+          receiptSignature:
+            row.receipt_signature
+              ? String(
+                  row.receipt_signature,
+                )
+              : null,
+          qrPayload:
+            row.qr_payload
+              ? String(
+                  row.qr_payload,
+                )
+              : null,
+          responseCode:
+            row.response_code
+              ? String(
+                  row.response_code,
+                )
+              : null,
+          responseMessage:
+            row.response_message
+              ? String(
+                  row.response_message,
+                )
+              : null,
+          attemptCount:
+            Number(
+              row.attempt_count ||
+              0,
+            ),
+          lastAttemptAt:
+            row.last_attempt_at
+              ? new Date(
+                  row.last_attempt_at,
+                )
+                  .toISOString()
+              : null,
+          nextRetryAt:
+            row.next_retry_at
+              ? new Date(
+                  row.next_retry_at,
+                )
+                  .toISOString()
+              : null,
+          fiscalizedAt:
+            row.fiscalized_at
+              ? new Date(
+                  row.fiscalized_at,
+                )
+                  .toISOString()
+              : null,
+          createdAt:
+            new Date(
+              row.created_at,
+            )
+              .toISOString(),
+        }),
+      ),
+
+    etimsSettings:
+      (() => {
+        const row =
+          etimsSettings.rows[0] ||
+          {};
+
+        const runtime =
+          getEtimsProviderRuntimeStatus();
+
+        return {
+          enabled:
+            row.enabled ===
+            true,
+          environment:
+            row.environment ===
+              'production'
+              ? 'production'
+              : 'sandbox',
+          controlUnitType:
+            row.control_unit_type ===
+              'vscu'
+              ? 'vscu'
+              : 'oscu',
+          taxpayerPin:
+            row.taxpayer_pin
+              ? String(
+                  row.taxpayer_pin,
+                )
+              : null,
+          branchId:
+            row.branch_id
+              ? String(
+                  row.branch_id,
+                )
+              : null,
+          deviceSerial:
+            row.device_serial
+              ? String(
+                  row.device_serial,
+                )
+              : null,
+          requireFiscalizationBeforeDelivery:
+            row.require_fiscalization_before_delivery !==
+            false,
+          autoQueueOnConfirmation:
+            row.auto_queue_on_confirmation !==
+            false,
+          provider:
+            runtime.provider,
+          providerEnvironment:
+            runtime.environment,
+          providerConfigured:
+            runtime.configured,
+          endpointHost:
+            runtime.endpointHost,
+        };
+      })(),
 
     settings: {
       defaultCurrency:
