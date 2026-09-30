@@ -7313,12 +7313,11 @@ function Retainers({
                     </div>
 
                     {
-                      data.capabilities
-                        (
-                          data.capabilities.canAllocatePayment ||
-                          data.capabilities.canRefundPayment ||
-                          data.capabilities.canReconcilePayment
-                        ) &&
+                      (
+                        data.capabilities.canAllocatePayment ||
+                        data.capabilities.canRefundPayment ||
+                        data.capabilities.canReconcilePayment
+                      ) &&
                       retainer.status ===
                         'active' &&
                       (
@@ -8456,12 +8455,11 @@ function Payments({
                     }
 
                     {
-                      data.capabilities
-                        (
-                          data.capabilities.canAllocatePayment ||
-                          data.capabilities.canRefundPayment ||
-                          data.capabilities.canReconcilePayment
-                        ) &&
+                      (
+                        data.capabilities.canAllocatePayment ||
+                        data.capabilities.canRefundPayment ||
+                        data.capabilities.canReconcilePayment
+                      ) &&
                       payment.status ===
                         'posted' &&
                       (
