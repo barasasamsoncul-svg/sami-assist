@@ -318,11 +318,28 @@ const SQL = `
       )::uuid;
 
     resource_value :=
-      regexp_replace(
-        TG_TABLE_NAME,
-        '^invoicing_',
-        ''
-      );
+      CASE
+        WHEN TG_TABLE_NAME =
+             'invoicing_invoices'
+          THEN 'invoice'
+        WHEN TG_TABLE_NAME =
+             'invoicing_credit_notes'
+          THEN 'credit_note'
+        WHEN TG_TABLE_NAME =
+             'invoicing_payments'
+          THEN 'payment'
+        WHEN TG_TABLE_NAME =
+             'invoicing_customers'
+          THEN 'customer'
+        WHEN TG_TABLE_NAME =
+             'invoicing_catalog_items'
+          THEN 'catalog_item'
+        ELSE regexp_replace(
+          TG_TABLE_NAME,
+          '^invoicing_',
+          ''
+        )
+      END;
 
     event_value :=
       'row.' ||

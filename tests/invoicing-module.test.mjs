@@ -6560,3 +6560,24 @@ test('Invoicing Part 22 owns an append-only hash-chained audit ledger with redac
     /sequenceNo/,
   );
 });
+
+
+test('Invoicing Part 22 normalizes audit resource names for invoice detail', async () => {
+  const [
+    migration,
+    queries,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/migrations/2.19.0-to-2.20.0.ts'),
+    source('lib/apps/invoicing/queries.ts'),
+  ]);
+
+  assert.match(
+    migration,
+    /TG_TABLE_NAME =[\s\S]*'invoicing_invoices'[\s\S]*THEN 'invoice'/s,
+  );
+
+  assert.match(
+    queries,
+    /resource_type IN[\s\S]*'invoice'[\s\S]*'invoices'/s,
+  );
+});

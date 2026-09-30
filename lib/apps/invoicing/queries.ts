@@ -103,8 +103,10 @@ async function queryInvoiceAuditSafely(
         FROM invoicing_audit_log
         WHERE company_id =
               $2
-          AND resource_type =
-              'invoice'
+          AND resource_type IN (
+              'invoice',
+              'invoices'
+            )
           AND resource_id =
               $1
         ORDER BY
