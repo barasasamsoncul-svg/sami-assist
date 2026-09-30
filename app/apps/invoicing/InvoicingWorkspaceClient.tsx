@@ -12058,17 +12058,45 @@ function Settings({
         </div>
 
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <Field
-            label="Default currency"
-            name="defaultCurrency"
-            defaultValue={
-              data.settings
-                .defaultCurrency
-            }
-            maxLength={
-              3
-            }
-          />
+          <label className="block space-y-1">
+            <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+              Default currency
+            </span>
+            <select
+              name="defaultCurrency"
+              defaultValue={
+                data.settings
+                  .defaultCurrency
+              }
+              className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+            >
+              {
+                data.currencies
+                  .filter(
+                    currency =>
+                      currency.isActive,
+                  )
+                  .map(
+                    currency => (
+                      <option
+                        key={
+                          currency.id
+                        }
+                        value={
+                          currency.code
+                        }
+                      >
+                        {
+                          currency.code
+                        } — {
+                          currency.name
+                        }
+                      </option>
+                    ),
+                  )
+              }
+            </select>
+          </label>
 
           <Field
             label="Default due days"
