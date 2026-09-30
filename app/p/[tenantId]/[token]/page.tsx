@@ -467,7 +467,25 @@ export default async function CustomerPortalPage({
                             <tbody className="divide-y divide-slate-100">
                               {
                                 plan.installments.map(
-                                  installment => (
+                                  (
+                                    installment: {
+                                      sequenceNo:
+                                        number;
+                                      label:
+                                        string |
+                                        null;
+                                      dueDate:
+                                        string;
+                                      amount:
+                                        number;
+                                      paidAmount:
+                                        number;
+                                      balanceDue:
+                                        number;
+                                      status:
+                                        string;
+                                    },
+                                  ) => (
                                     <tr
                                       key={
                                         installment.sequenceNo
