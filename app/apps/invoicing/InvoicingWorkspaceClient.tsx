@@ -1304,7 +1304,6 @@ export default function InvoicingWorkspaceClient({
               ),
           ),
       [
-        navigateToView,
         visibleNav,
       ],
     );
@@ -1335,6 +1334,7 @@ export default function InvoicingWorkspaceClient({
         }
       },
       [
+        navigateToView,
         visibleNav,
       ],
     );
@@ -1566,11 +1566,19 @@ export default function InvoicingWorkspaceClient({
             </p>
 
             <h1 className="mt-1 text-xl font-black tracking-[-0.03em] sm:text-2xl">
-              Receivables command center
+              {
+                VIEW_COPY[
+                  view
+                ].title
+              }
             </h1>
 
             <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400">
-              Invoices, customer billing, collections, credit notes and recurring schedules are isolated to the current company.
+              {
+                VIEW_COPY[
+                  view
+                ].description
+              }
             </p>
           </div>
 
@@ -1594,6 +1602,8 @@ export default function InvoicingWorkspaceClient({
               initialData
                 .capabilities
                 .canCreate &&
+              view !==
+                'newInvoice' &&
               (
                 <button
                   type="button"
@@ -1641,23 +1651,6 @@ export default function InvoicingWorkspaceClient({
           </div>
         </div>
 
-        <div className="border-t border-[var(--sami-border)] bg-[var(--sami-surface-soft)] px-4 py-3 sm:px-5">
-          <p className="text-xs font-black text-slate-900 dark:text-white">
-            {
-              VIEW_COPY[
-                view
-              ].title
-            }
-          </p>
-
-          <p className="mt-1 max-w-3xl text-[11px] leading-5 text-slate-500 dark:text-slate-400">
-            {
-              VIEW_COPY[
-                view
-              ].description
-            }
-          </p>
-        </div>
       </section>
 
       {
