@@ -6,7 +6,7 @@
       "moduleVersion": "2.15.0",
       "referenceStandard": true,
       "baselineCommit": "f780d7c97c912be9675b623fa3ecca73ec05d3a5",
-      "baselineBranch": "feat/invoicing-part-14-multi-currency",
+      "baselineBranch": "main",
       "lockedAt": "2026-09-30",
       "policy": "Invoicing 2.15.0 preserves the locked Parts 1–13 baseline and completes Part 14 Multi-Currency with a workspace Currency Center, active currency registry, dated exchange-rate history, base-currency consolidated KPI reporting, locked invoice/payment rates, per-currency exposure reporting, dual-sided payment allocations, configurable cross-currency settlement, and realized FX gain/loss accounting. Future changes must keep Invoicing, ERP integration, platform closure, app-surface, core-hardening, TypeScript, migration dry-run and production deployment gates green.",
       "protectedTrees": {
