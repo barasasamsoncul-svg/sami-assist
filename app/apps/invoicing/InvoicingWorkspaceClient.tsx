@@ -38,7 +38,6 @@ import {
   BadgeCheck,
   BellRing,
   BarChart3,
-  BookOpenCheck,
   CalendarClock,
   ChevronDown,
   CircleDollarSign,
@@ -46,9 +45,6 @@ import {
   CreditCard,
   Download,
   Filter,
-  FileCode2,
-  LayoutDashboard,
-  Package,
   Plus,
   Receipt,
   RefreshCw,
@@ -56,7 +52,6 @@ import {
   Search,
   Send,
   Settings2,
-  ShieldCheck,
   Users,
   X,
 } from 'lucide-react';
@@ -66,354 +61,17 @@ import type {
   InvoicingWorkspaceData,
 } from '@/lib/apps/invoicing/types';
 
+import {
+  canAccessInvoicingView,
+  getInvoicingRoutePath,
+  INVOICING_NAVIGATION,
+  INVOICING_SIDEBAR_VIEWS,
+  type InvoicingRouteView,
+} from '@/lib/apps/invoicing/navigation';
+
 
 type ViewKey =
-  | 'dashboard'
-  | 'newInvoice'
-  | 'invoices'
-  | 'newCustomer'
-  | 'customers'
-  | 'newItem'
-  | 'items'
-  | 'receivePayment'
-  | 'payments'
-  | 'currencies'
-  | 'taxEngine'
-  | 'etims'
-  | 'eInvoicing'
-  | 'retainers'
-  | 'paymentPlans'
-  | 'recurring'
-  | 'reminders'
-  | 'portal'
-  | 'reports'
-  | 'settings';
-
-
-
-const NAV:
-  Array<{
-    key: ViewKey;
-    label: string;
-    icon:
-      typeof Receipt;
-  }> = [
-    {
-      key:
-        'dashboard',
-      label:
-        'Overview',
-      icon:
-        LayoutDashboard,
-    },
-    {
-      key:
-        'newInvoice',
-      label:
-        'New invoice',
-      icon:
-        Plus,
-    },
-    {
-      key:
-        'invoices',
-      label:
-        'Invoice register',
-      icon:
-        Receipt,
-    },
-    {
-      key:
-        'customers',
-      label:
-        'Customers',
-      icon:
-        Users,
-    },
-    {
-      key:
-        'items',
-      label:
-        'Items',
-      icon:
-        Package,
-    },
-    {
-      key:
-        'payments',
-      label:
-        'Payments',
-      icon:
-        CreditCard,
-    },
-    {
-      key:
-        'currencies',
-      label:
-        'Currencies',
-      icon:
-        CircleDollarSign,
-    },
-    {
-      key:
-        'taxEngine',
-      label:
-        'Tax engine',
-      icon:
-        BadgeCheck,
-    },
-    {
-      key:
-        'etims',
-      label:
-        'Kenya eTIMS',
-      icon:
-        ShieldCheck,
-    },
-    {
-      key:
-        'eInvoicing',
-      label:
-        'International e-invoicing',
-      icon:
-        FileCode2,
-    },
-    {
-      key:
-        'retainers',
-      label:
-        'Retainers',
-      icon:
-        CircleDollarSign,
-    },
-    {
-      key:
-        'paymentPlans',
-      label:
-        'Payment plans',
-      icon:
-        CalendarClock,
-    },
-    {
-      key:
-        'recurring',
-      label:
-        'Recurring',
-      icon:
-        Repeat2,
-    },
-    {
-      key:
-        'reminders',
-      label:
-        'Reminders',
-      icon:
-        BellRing,
-    },
-    {
-      key:
-        'portal',
-      label:
-        'Customer portal',
-      icon:
-        BookOpenCheck,
-    },
-    {
-      key:
-        'reports',
-      label:
-        'Reports',
-      icon:
-        BarChart3,
-    },
-    {
-      key:
-        'settings',
-      label:
-        'Settings',
-      icon:
-        Settings2,
-    },
-  ];
-
-
-const VIEW_PATHS:
-  Record<
-    ViewKey,
-    string
-  > = {
-    dashboard:
-      '/apps/invoicing',
-    newInvoice:
-      '/apps/invoicing/new',
-    invoices:
-      '/apps/invoicing/invoices',
-    newCustomer:
-      '/apps/invoicing/customers/new',
-    customers:
-      '/apps/invoicing/customers',
-    newItem:
-      '/apps/invoicing/items/new',
-    items:
-      '/apps/invoicing/items',
-    receivePayment:
-      '/apps/invoicing/payments/new',
-    payments:
-      '/apps/invoicing/payments',
-    currencies:
-      '/apps/invoicing/currencies',
-    taxEngine:
-      '/apps/invoicing/tax-engine',
-    etims:
-      '/apps/invoicing/etims',
-    eInvoicing:
-      '/apps/invoicing/e-invoicing',
-    retainers:
-      '/apps/invoicing/retainers',
-    paymentPlans:
-      '/apps/invoicing/payment-plans',
-    recurring:
-      '/apps/invoicing/recurring',
-    reminders:
-      '/apps/invoicing/reminders',
-    portal:
-      '/apps/invoicing/portal',
-    reports:
-      '/apps/invoicing/reports',
-    settings:
-      '/apps/invoicing/settings',
-  };
-
-
-const VIEW_COPY:
-  Record<
-    ViewKey,
-    {
-      title: string;
-      description: string;
-    }
-  > = {
-    dashboard: {
-      title:
-        'Overview',
-      description:
-        'See receivables, collections, overdue balances and the health of customer billing.',
-    },
-    newInvoice: {
-      title:
-        'Create invoice',
-      description:
-        'Create one invoice without the invoice register competing for space on the same page.',
-    },
-    invoices: {
-      title:
-        'Invoice register',
-      description:
-        'Search, filter, export and open existing invoices without the invoice composer stacked above the register.',
-    },
-    newCustomer: {
-      title:
-        'New customer',
-      description:
-        'Create one billing customer on a focused page.',
-    },
-    customers: {
-      title:
-        'Customers',
-      description:
-        'Maintain billing identities, contacts, tax details, payment terms and customer status safely.',
-    },
-    newItem: {
-      title:
-        'New item',
-      description:
-        'Create one product or service billing item without the item register below it.',
-    },
-    items: {
-      title:
-        'Items & pricing',
-      description:
-        'Maintain products and services, prices, units and default taxes used on invoices.',
-    },
-    receivePayment: {
-      title:
-        'Receive payment',
-      description:
-        'Record one customer receipt on a focused page before allocating it.',
-    },
-    payments: {
-      title:
-        'Payments',
-      description:
-        'Review posted and reversed payments and their invoice allocations without changing invoice totals.',
-    },
-    currencies: {
-      title:
-        'Currency Center',
-      description:
-        'Manage transaction currencies, dated exchange rates, base-currency reporting and foreign-currency exposure.',
-    },
-    taxEngine: {
-      title:
-        'Tax engine',
-      description:
-        'Manage rates, tax groups, fiscal positions, rules, exemptions and jurisdiction localizations with auditable invoice-line resolution.',
-    },
-    etims: {
-      title:
-        'Kenya eTIMS',
-      description:
-        'Configure KRA OSCU or VSCU, map invoice data and fiscalize eligible sales and credit notes from a dedicated Invoicing workspace.',
-    },
-    eInvoicing: {
-      title:
-        'International e-invoicing',
-      description:
-        'Generate UBL 2.1 fiscal documents, manage Peppol or EDI participant identities and transmit through isolated provider adapters.',
-    },
-    retainers: {
-      title:
-        'Retainers & deposits',
-      description:
-        'Receive advance customer funds, track available balances and apply, refund or reconcile them through the same auditable payment ledger.',
-    },
-    paymentPlans: {
-      title:
-        'Installments & payment plans',
-      description:
-        'Split an unpaid invoice balance into dated installments while payments and credits continue through the authoritative settlement ledger.',
-    },
-    recurring: {
-      title:
-        'Recurring billing',
-      description:
-        'Automate repeat invoices, schedules and delivery channels using a source invoice as the commercial template.',
-    },
-    reminders: {
-      title:
-        'Reminders & dunning',
-      description:
-        'Control payment follow-up stages, collection pauses, retries and delivery history without losing the audit trail.',
-    },
-    portal: {
-      title:
-        'Customer portal',
-      description:
-        'Issue secure customer access, review portal activity and work customer billing messages without exposing the internal workspace.',
-    },
-    reports: {
-      title:
-        'Reports',
-      description:
-        'Review invoice status, aging and monthly billing, then export the invoice register when needed.',
-    },
-    settings: {
-      title:
-        'Invoicing settings',
-      description:
-        'Control templates, numbering defaults, taxes, payment terms, reminders and document behavior.',
-    },
-  };
+  InvoicingRouteView;
 
 
 const INVOICING_TUTORIAL_STEPS:
@@ -1239,9 +897,9 @@ export default function InvoicingWorkspaceClient({
         );
 
         router.push(
-          VIEW_PATHS[
-            nextView
-          ],
+          getInvoicingRoutePath(
+            nextView,
+          ),
         );
       },
       [
@@ -1253,101 +911,15 @@ export default function InvoicingWorkspaceClient({
   const visibleNav =
     useMemo(
       () =>
-        NAV.filter(
-          item => {
-            if (
-              item.key ===
-                'customers'
-            ) {
-              return initialData
-                .capabilities
-                .canViewCustomers;
-            }
-
-            if (
-              item.key ===
-                'items'
-            ) {
-              return initialData
-                .capabilities
-                .canViewCatalog;
-            }
-
-            if (
-              item.key ===
-                'payments'
-            ) {
-              return initialData
-                .capabilities
-                .canViewPayments;
-            }
-
-            if (
-              item.key ===
-                'retainers'
-            ) {
-              return initialData
-                .capabilities
-                .canViewPayments;
-            }
-
-            if (
-              item.key ===
-                'paymentPlans'
-            ) {
-              return initialData
-                .capabilities
-                .canViewPayments;
-            }
-
-            if (
-              item.key ===
-                'recurring'
-            ) {
-              return initialData
-                .capabilities
-                .canManageRecurring;
-            }
-
-            if (
-              item.key ===
-                'reminders'
-            ) {
-              return initialData
-                .capabilities
-                .canSend;
-            }
-
-            if (
-              item.key ===
-                'portal'
-            ) {
-              return initialData
-                .capabilities
-                .canViewCustomers;
-            }
-
-            if (
-              item.key ===
-                'reports'
-            ) {
-              return initialData
-                .capabilities
-                .canViewReports;
-            }
-
-            if (
-              item.key ===
-                'settings'
-            ) {
-              return initialData
-                .capabilities
-                .canManageSettings;
-            }
-
-            return true;
-          },
-        ),
+        INVOICING_SIDEBAR_VIEWS
+          .filter(
+            item =>
+              canAccessInvoicingView(
+                initialData
+                  .capabilities,
+                item,
+              ),
+          ),
       [
         initialData
           .capabilities,
@@ -1363,7 +935,7 @@ export default function InvoicingWorkspaceClient({
               !step.section ||
               visibleNav.some(
                 item =>
-                  item.key ===
+                  item ===
                   step.section,
               ),
           ),
@@ -1388,7 +960,7 @@ export default function InvoicingWorkspaceClient({
           section &&
           visibleNav.some(
             item =>
-              item.key ===
+              item ===
               section,
           )
         ) {
@@ -1631,17 +1203,13 @@ export default function InvoicingWorkspaceClient({
 
             <h1 className="mt-1 text-lg font-black tracking-[-0.03em] sm:text-2xl">
               {
-                VIEW_COPY[
-                  view
-                ].title
+                INVOICING_NAVIGATION[view].title
               }
             </h1>
 
             <p className="mt-1 max-w-2xl break-words text-xs leading-5 text-slate-500 dark:text-slate-400">
               {
-                VIEW_COPY[
-                  view
-                ].description
+                INVOICING_NAVIGATION[view].description
               }
             </p>
           </div>
