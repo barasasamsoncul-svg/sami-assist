@@ -4736,7 +4736,7 @@ function InvoiceActions({
 
         {
           capabilities
-            .canSend &&
+            .canSendReminder &&
           invoice.customerEmail &&
           collectible &&
           (
@@ -4893,7 +4893,7 @@ function InvoiceActions({
 
         {
           capabilities
-            .canCredit &&
+            .canIssueCredit &&
           settings
             .allowCreditNotes &&
           collectible &&
@@ -6942,7 +6942,7 @@ function Retainers({
 
       {
         data.capabilities
-          .canRecordPayment &&
+          .canManageRetainers &&
         (
           <form
             className="sami-surface rounded-[24px] p-4 sm:p-5"
@@ -7314,7 +7314,11 @@ function Retainers({
 
                     {
                       data.capabilities
-                        .canRecordPayment &&
+                        (
+                          data.capabilities.canAllocatePayment ||
+                          data.capabilities.canRefundPayment ||
+                          data.capabilities.canReconcilePayment
+                        ) &&
                       retainer.status ===
                         'active' &&
                       (
@@ -8265,7 +8269,7 @@ function Payments({
 
                                     {
                                       data.capabilities
-                                        .canRecordPayment &&
+                                        .canReversePayment &&
                                       payment.status ===
                                         'posted' &&
                                       !payment.reconciledAt &&
@@ -8381,7 +8385,7 @@ function Payments({
 
                                     {
                                       data.capabilities
-                                        .canRecordPayment &&
+                                        .canReversePayment &&
                                       !payment.reconciledAt &&
                                       refund.status ===
                                         'posted' &&
@@ -8453,7 +8457,11 @@ function Payments({
 
                     {
                       data.capabilities
-                        .canRecordPayment &&
+                        (
+                          data.capabilities.canAllocatePayment ||
+                          data.capabilities.canRefundPayment ||
+                          data.capabilities.canReconcilePayment
+                        ) &&
                       payment.status ===
                         'posted' &&
                       (
@@ -8777,7 +8785,7 @@ function Payments({
 
                     {
                       data.capabilities
-                        .canRecordPayment &&
+                        .canReversePayment &&
                       payment.status ===
                         'posted' &&
                       !payment.reconciledAt &&
@@ -8892,7 +8900,7 @@ function Payments({
 
                           {
                             data.capabilities
-                              .canRecordPayment &&
+                              .canReconcilePayment &&
                             payment.status ===
                               'posted' &&
                             (
@@ -9876,6 +9884,8 @@ function Recurring({
 
                                     {
                                       hasFailedRun &&
+                                      data.capabilities
+                                        .canRunRecurring &&
                                       (
                                         <button
                                           type="button"
@@ -10359,7 +10369,7 @@ function CustomerPortal({
                         <div className="flex shrink-0 flex-wrap gap-2">
                           {
                             data.capabilities
-                              .canManageCustomers &&
+                              .canManagePortal &&
                             (
                               <button
                                 type="button"
@@ -10389,7 +10399,7 @@ function CustomerPortal({
                           {
                             access &&
                             data.capabilities
-                              .canManageCustomers &&
+                              .canManagePortal &&
                             (
                               <button
                                 type="button"
@@ -10554,7 +10564,7 @@ function CustomerPortal({
 
                     {
                       data.capabilities
-                        .canManageCustomers &&
+                        .canManagePortal &&
                       (
                         <form
                           className="mt-3"
@@ -11061,7 +11071,7 @@ function RemindersAndDunning({
 
       {
         data.capabilities
-          .canManageSettings &&
+          .canManageDunning &&
         (
           <section className="sami-surface rounded-[24px] p-4 sm:p-5">
             <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
