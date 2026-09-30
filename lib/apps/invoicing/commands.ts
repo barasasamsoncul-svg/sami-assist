@@ -14240,6 +14240,10 @@ export async function updateInvoicingSettings(
           $19,
         terms_and_conditions =
           $20,
+        exchange_rate_mode =
+          $22,
+        allow_cross_currency_payments =
+          $23,
         updated_by =
           $21,
         updated_at =
@@ -14304,6 +14308,12 @@ export async function updateInvoicingSettings(
         10000,
       ),
       context.userId,
+      input.exchangeRateMode ===
+        'manual'
+        ? 'manual'
+        : 'table',
+      input.allowCrossCurrencyPayments !==
+        false,
     ],
   );
 
