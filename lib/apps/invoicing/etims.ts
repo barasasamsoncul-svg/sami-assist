@@ -2069,10 +2069,15 @@ export async function getEtimsWorkspaceData() {
             item.sku,
             mapping.item_classification_code,
             mapping.item_code,
+            mapping.item_type_code,
             mapping.origin_country_code,
             mapping.packaging_unit_code,
             mapping.quantity_unit_code,
             mapping.is_active,
+            mapping.kra_sync_status,
+            mapping.kra_last_sync_at,
+            mapping.kra_result_code,
+            mapping.kra_result_message,
             mapping.updated_at
           FROM invoicing_etims_item_mappings mapping
           INNER JOIN invoicing_catalog_items item
@@ -2380,6 +2385,10 @@ export async function getEtimsWorkspaceData() {
             String(
               row.item_code,
             ),
+          itemTypeCode:
+            String(
+              row.item_type_code,
+            ),
           originCountryCode:
             String(
               row.origin_country_code,
@@ -2395,6 +2404,25 @@ export async function getEtimsWorkspaceData() {
           isActive:
             row.is_active !==
             false,
+          kraSyncStatus:
+            String(
+              row.kra_sync_status ||
+              'not_synced',
+            ),
+          kraLastSyncAt:
+            row.kra_last_sync_at,
+          kraResultCode:
+            row.kra_result_code
+              ? String(
+                  row.kra_result_code,
+                )
+              : null,
+          kraResultMessage:
+            row.kra_result_message
+              ? String(
+                  row.kra_result_message,
+                )
+              : null,
           updatedAt:
             row.updated_at,
         }),
@@ -2848,14 +2876,36 @@ export async function saveEtimsItemMapping(
   const itemClassCode =
     cleanText(
       input.itemClassificationCode,
-      40,
+      10,
     );
 
   const itemCode =
     cleanText(
       input.itemCode,
-      120,
+      20,
     );
+
+  const itemTypeCode =
+    cleanText(
+      input.itemTypeCode,
+      1,
+    ) ||
+    '3';
+
+  if (
+    ![
+      '1',
+      '2',
+      '3',
+    ].includes(
+      itemTypeCode,
+    )
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Choose a valid KRA item type: raw material, finished product or service.',
+    );
+  }
 
   const originCountryCode =
     cleanText(
@@ -2867,13 +2917,13 @@ export async function saveEtimsItemMapping(
   const packagingUnitCode =
     cleanText(
       input.packagingUnitCode,
-      20,
+      5,
     ).toUpperCase();
 
   const quantityUnitCode =
     cleanText(
       input.quantityUnitCode,
-      20,
+      5,
     ).toUpperCase();
 
   if (
@@ -2922,6 +2972,7 @@ export async function saveEtimsItemMapping(
           catalog_item_id,
           item_classification_code,
           item_code,
+          item_type_code,
           origin_country_code,
           packaging_unit_code,
           quantity_unit_code,
@@ -2930,7 +2981,7 @@ export async function saveEtimsItemMapping(
           updated_by
         )
         VALUES (
-          $1,$2,$3,$4,$5,$6,$7,$8,$9,$9
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10
         )
         ON CONFLICT (company_id, catalog_item_id)
         DO UPDATE SET
@@ -2938,6 +2989,8 @@ export async function saveEtimsItemMapping(
             EXCLUDED.item_classification_code,
           item_code =
             EXCLUDED.item_code,
+          item_type_code =
+            EXCLUDED.item_type_code,
           origin_country_code =
             EXCLUDED.origin_country_code,
           packaging_unit_code =
@@ -2946,6 +2999,17 @@ export async function saveEtimsItemMapping(
             EXCLUDED.quantity_unit_code,
           is_active =
             EXCLUDED.is_active,
+          kra_sync_status =
+            CASE
+              WHEN invoicing_etims_item_mappings.item_classification_code = EXCLUDED.item_classification_code
+               AND invoicing_etims_item_mappings.item_code = EXCLUDED.item_code
+               AND invoicing_etims_item_mappings.item_type_code = EXCLUDED.item_type_code
+               AND invoicing_etims_item_mappings.origin_country_code = EXCLUDED.origin_country_code
+               AND invoicing_etims_item_mappings.packaging_unit_code = EXCLUDED.packaging_unit_code
+               AND invoicing_etims_item_mappings.quantity_unit_code = EXCLUDED.quantity_unit_code
+              THEN invoicing_etims_item_mappings.kra_sync_status
+              ELSE 'not_synced'
+            END,
           updated_by =
             EXCLUDED.updated_by,
           updated_at =
@@ -2957,6 +3021,7 @@ export async function saveEtimsItemMapping(
         catalogItemId,
         itemClassCode,
         itemCode,
+        itemTypeCode,
         originCountryCode,
         packagingUnitCode,
         quantityUnitCode,
