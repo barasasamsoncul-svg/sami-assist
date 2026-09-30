@@ -116,7 +116,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
 
   assert.match(
     invoicing,
-    /version:\s*['"]2\.16\.0['"]/,
+    /version:\s*['"]2\.17\.0['"]/,
   );
 
   assert.match(
@@ -3214,7 +3214,7 @@ test('Invoicing v2.8 turns reminders into a staged auditable dunning engine', as
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
   );
 
   assert.match(
@@ -3434,7 +3434,7 @@ test('Invoicing Part 8 builds a customer-scoped secure portal', async () => {
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
   );
 
   assert.match(
@@ -3778,7 +3778,7 @@ test('Invoicing Part 9 freezes issued invoice PDFs as immutable document snapsho
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
   );
 
   assert.match(
@@ -4054,7 +4054,7 @@ test('Invoicing Part 10 provides a live renderer-backed invoice template designe
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
   );
 
   assert.match(
@@ -4241,7 +4241,7 @@ test('Invoicing Part 11 deepens credit notes into reusable customer credits and 
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
   );
 
   assert.match(
@@ -4462,7 +4462,7 @@ test('Invoicing Part 12 manages retainers and deposits as auditable customer cre
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
   );
 
   assert.match(
@@ -4634,7 +4634,7 @@ test('Invoicing Part 13 schedules installment plans over the authoritative invoi
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
   );
 
   assert.match(
@@ -4897,7 +4897,7 @@ test('Invoicing Part 14 provides auditable multi-currency billing, base reportin
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
   );
 
   assert.match(
@@ -5186,7 +5186,7 @@ test('Invoicing Part 15 provides a rule-driven tax engine with fiscal mappings, 
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
   );
 
   assert.match(
