@@ -55,6 +55,7 @@ import {
   Search,
   Send,
   Settings2,
+  ShieldCheck,
   Users,
   X,
 } from 'lucide-react';
