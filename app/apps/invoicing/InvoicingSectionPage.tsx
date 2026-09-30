@@ -2,12 +2,8 @@ import {
   notFound,
 } from 'next/navigation';
 
-import AppSurfaceShell from '@/app/components/apps/AppSurfaceShell';
+import InvoicingModuleShell from '@/app/apps/invoicing/InvoicingModuleShell';
 import InvoicingWorkspaceClient from '@/app/apps/invoicing/InvoicingWorkspaceClient';
-
-import {
-  getSamiAppUiProfile,
-} from '@/lib/apps/ui-profiles';
 
 import {
   getAccountContextForUser,
@@ -487,29 +483,13 @@ export default async function InvoicingSectionPage({
     notFound();
   }
 
-  const uiProfile =
-    getSamiAppUiProfile(
-      'invoicing',
-    );
-
   return (
-    <AppSurfaceShell
-      appKey="invoicing"
-      appCategory="finance"
-      profile={
-        uiProfile
-      }
+    <InvoicingModuleShell
       user={
         session.user
       }
       tenant={
         accountContext.tenant
-      }
-      membership={
-        accountContext.membership
-      }
-      subscription={
-        shell.subscription
       }
       modules={
         shell.accessibleModules
@@ -526,14 +506,6 @@ export default async function InvoicingSectionPage({
         aiEnabled:
           shell.aiAvailable,
 
-        filesEnabled:
-          permissionContext
-            .permissionSet
-            .has(
-              SAMI_PERMISSIONS
-                .FILES_VIEW,
-            ),
-
         notificationsEnabled:
           permissionContext
             .permissionSet
@@ -547,9 +519,7 @@ export default async function InvoicingSectionPage({
           ?.unreadCount ||
         0
       }
-      title="Invoicing"
-      description="Invoices, receivables, payments, tax, recurring billing and customer billing records."
-      contextLabel={
+      companyName={
         data.company.name
       }
     >
@@ -564,6 +534,6 @@ export default async function InvoicingSectionPage({
           session.user.id
         }
       />
-    </AppSurfaceShell>
+    </InvoicingModuleShell>
   );
 }
