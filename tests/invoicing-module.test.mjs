@@ -6802,12 +6802,26 @@ test('Invoicing Part 24 makes invoice creation retry-safe and rejects stale draf
       /request_hash VARCHAR\(64\)/,
     );
 
-    assert.doesNotMatch(
-      sourceText,
-      /request_payload/,
-      'The Part 24 retry ledger must not persist the submitted invoice payload.',
-    );
   }
+
+  const part24Schema =
+    schema.slice(
+      schema.indexOf(
+        'Part 24 — retry-safe mutation ledger.',
+      ),
+    );
+
+  assert.doesNotMatch(
+    part24Schema,
+    /request_payload/,
+    'The fresh-install Part 24 retry ledger must not persist the submitted invoice payload.',
+  );
+
+  assert.doesNotMatch(
+    migration,
+    /request_payload/,
+    'The Part 24 upgrade must not persist the submitted invoice payload.',
+  );
 
   assert.match(
     idempotency,
