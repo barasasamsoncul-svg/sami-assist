@@ -654,7 +654,7 @@ export default function EtimsWorkspace({
                   </p>
                 </div>
                 <h2 className="mt-2 text-xl font-black tracking-[-0.03em] sm:text-2xl">
-                  KRA eTIMS control center
+                  Kenya eTIMS control center
                 </h2>
                 <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-300">
                   Configure OSCU/VSCU, synchronize KRA reference data, map SaMi items and taxes, and retain an auditable fiscalization history.
