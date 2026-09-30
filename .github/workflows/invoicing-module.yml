@@ -16,7 +16,6 @@ on:
       - 'tests/module-quality-locks.test.mjs'
       - '.github/workflows/invoicing-module.yml'
       - 'package.json'
-      - 'package.json'
   push:
     branches:
       - main
@@ -31,6 +30,7 @@ on:
       - 'tests/invoicing-module.test.mjs'
       - 'tests/module-quality-locks.test.mjs'
       - '.github/workflows/invoicing-module.yml'
+      - 'package.json'
 
 permissions:
   contents: read
