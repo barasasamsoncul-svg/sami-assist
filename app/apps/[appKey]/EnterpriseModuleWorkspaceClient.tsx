@@ -11,7 +11,6 @@ import {
 import {
   Activity,
   BarChart3,
-  BookOpenCheck,
   CalendarDays,
   CircleCheckBig,
   Columns3,
@@ -49,7 +48,6 @@ import {
 } from '@/app/components/useSaMiOverlay';
 
 import WorkspaceTutorial, {
-  startWorkspaceTutorial,
   type WorkspaceTutorialStep,
 } from '@/app/components/workspace/WorkspaceTutorial';
 
@@ -1956,22 +1954,6 @@ export default function EnterpriseModuleWorkspaceClient({
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={
-                  () =>
-                    startWorkspaceTutorial(
-                      userId,
-                      initialData
-                        .module
-                        .key,
-                    )
-                }
-                className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black"
-              >
-                <BookOpenCheck className="h-4 w-4 text-blue-600" />
-                Tutorial
-              </button>
 
               <button
                 type="button"
