@@ -570,6 +570,7 @@ CREATE TABLE IF NOT EXISTS public.invoicing_invoice_items (
   discount_value NUMERIC(19,4) NOT NULL DEFAULT 0 CHECK (discount_value >= 0),
   discount_amount NUMERIC(19,4) NOT NULL DEFAULT 0 CHECK (discount_amount >= 0),
   tax_rate_id UUID REFERENCES public.invoicing_tax_rates(id) ON DELETE SET NULL,
+  tax_group_id UUID REFERENCES public.invoicing_tax_groups(id) ON DELETE SET NULL,
   tax_name_snapshot VARCHAR(120),
   tax_rate NUMERIC(9,4) NOT NULL DEFAULT 0 CHECK (tax_rate BETWEEN 0 AND 100),
   tax_amount NUMERIC(19,4) NOT NULL DEFAULT 0 CHECK (tax_amount >= 0),
