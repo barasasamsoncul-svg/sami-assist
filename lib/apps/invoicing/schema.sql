@@ -2017,10 +2017,18 @@ CREATE TABLE IF NOT EXISTS public.invoicing_etims_profiles (
     catalog_item_id UUID NOT NULL REFERENCES public.invoicing_catalog_items(id) ON DELETE CASCADE,
     item_classification_code VARCHAR(40) NOT NULL,
     item_code VARCHAR(120) NOT NULL,
+    item_type_code VARCHAR(1) NOT NULL DEFAULT '3'
+      CHECK (item_type_code IN ('1','2','3')),
     origin_country_code VARCHAR(3) NOT NULL DEFAULT 'KE',
     packaging_unit_code VARCHAR(20) NOT NULL,
     quantity_unit_code VARCHAR(20) NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    kra_sync_status VARCHAR(20) NOT NULL DEFAULT 'not_synced'
+      CHECK (kra_sync_status IN ('not_synced','synced','failed')),
+    kra_last_sync_at TIMESTAMPTZ,
+    kra_result_code VARCHAR(120),
+    kra_result_message TEXT,
+    kra_response JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_by UUID,
     updated_by UUID,
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
