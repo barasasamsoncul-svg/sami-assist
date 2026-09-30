@@ -94,6 +94,7 @@ export {
   saveEtimsTaxMapping,
   submitCreditNoteToEtims,
   submitInvoiceToEtims,
+  syncEtimsItem,
   syncEtimsReferenceData,
 } from '@/lib/apps/invoicing/etims';
 
