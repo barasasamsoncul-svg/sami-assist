@@ -219,6 +219,7 @@ const SQL = `
     ADD COLUMN IF NOT EXISTS tax_context JSONB NOT NULL DEFAULT '{}'::jsonb;
 
   ALTER TABLE public.invoicing_invoice_items
+    ADD COLUMN IF NOT EXISTS tax_group_id UUID,
     ADD COLUMN IF NOT EXISTS tax_components JSONB NOT NULL DEFAULT '[]'::jsonb;
 
   CREATE OR REPLACE VIEW public.invoicing_tax_rate_usage AS
