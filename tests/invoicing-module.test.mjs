@@ -116,7 +116,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
 
   assert.match(
     invoicing,
-    /version:\s*['"]2\.16\.0['"]/,
+    /version:\s*['"]2\.17\.0['"]/,
   );
 
   assert.match(
@@ -3014,7 +3014,7 @@ test('Invoicing v2.7 turns recurring invoices into an observable retry-safe bill
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
   );
 
   assert.match(
@@ -3214,7 +3214,7 @@ test('Invoicing v2.8 turns reminders into a staged auditable dunning engine', as
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
   );
 
   assert.match(
@@ -3434,7 +3434,7 @@ test('Invoicing Part 8 builds a customer-scoped secure portal', async () => {
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
   );
 
   assert.match(
@@ -3778,7 +3778,7 @@ test('Invoicing Part 9 freezes issued invoice PDFs as immutable document snapsho
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
   );
 
   assert.match(
@@ -4054,7 +4054,7 @@ test('Invoicing Part 10 provides a live renderer-backed invoice template designe
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
   );
 
   assert.match(
@@ -4241,7 +4241,7 @@ test('Invoicing Part 11 deepens credit notes into reusable customer credits and 
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
   );
 
   assert.match(
@@ -4462,7 +4462,7 @@ test('Invoicing Part 12 manages retainers and deposits as auditable customer cre
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
   );
 
   assert.match(
@@ -4634,7 +4634,7 @@ test('Invoicing Part 13 schedules installment plans over the authoritative invoi
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
   );
 
   assert.match(
@@ -4897,7 +4897,7 @@ test('Invoicing Part 14 provides auditable multi-currency billing, base reportin
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
   );
 
   assert.match(
@@ -5186,7 +5186,7 @@ test('Invoicing Part 15 provides a rule-driven tax engine with fiscal mappings, 
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
   );
 
   assert.match(
@@ -5419,3 +5419,244 @@ test('Invoicing owns a full-height responsive module shell and focused create/re
     'Payment register must remain its own focused surface.',
   );
 });
+
+test('Invoicing Part 16 provides KRA-native OSCU/VSCU fiscalization, immutable fiscal receipts and protected delivery', async () => {
+  const [
+    schema,
+    migration,
+    etims,
+    service,
+    route,
+    etimsWorkspace,
+    etimsPage,
+    sectionPage,
+    delivery,
+    snapshots,
+    pdf,
+    runtimeMigrations,
+    manifest,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/schema.sql'),
+    source('lib/apps/invoicing/migrations/2.16.0-to-2.17.0.ts'),
+    source('lib/apps/invoicing/etims.ts'),
+    source('lib/apps/invoicing/service.ts'),
+    source('app/api/apps/invoicing/etims/route.ts'),
+    source('app/apps/invoicing/EtimsWorkspace.tsx'),
+    source('app/apps/invoicing/etims/page.tsx'),
+    source('app/apps/invoicing/InvoicingSectionPage.tsx'),
+    source('lib/apps/invoicing/delivery.ts'),
+    source('lib/apps/invoicing/document-snapshots.ts'),
+    source('lib/apps/invoicing/pdf.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+  ]);
+
+  assert.match(
+    manifest,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
+  );
+
+  assert.match(
+    migration,
+    /fromVersion:\s*['"]2\.16\.0['"]/,
+  );
+
+  assert.match(
+    migration,
+    /toVersion:\s*['"]2\.17\.0['"]/,
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /INVOICING_2_16_0_TO_2_17_0/,
+  );
+
+  for (const table of [
+    'invoicing_etims_profiles',
+    'invoicing_etims_sequences',
+    'invoicing_etims_item_mappings',
+    'invoicing_etims_tax_mappings',
+    'invoicing_etims_reference_cache',
+    'invoicing_etims_submissions',
+    'invoicing_etims_submission_attempts',
+  ]) {
+    assert.match(schema, new RegExp(table));
+    assert.match(migration, new RegExp(table));
+  }
+
+  assert.match(
+    etims,
+    /\/saveTrnsSalesOsdc/,
+    'OSCU must use its KRA save-sales operation.',
+  );
+
+  assert.match(
+    etims,
+    /\/trnsSales\/saveSales/,
+    'VSCU must use its KRA save-sales operation.',
+  );
+
+  assert.match(
+    etims,
+    /body\.resultCd/,
+    'KRA resultCd must be treated as the authority response code.',
+  );
+
+  assert.match(
+    etims,
+    /code !==[\s\S]*['"]000['"]/s,
+    'Only KRA result code 000 may be treated as accepted.',
+  );
+
+  for (const field of [
+    'trdInvcNo',
+    'invcNo',
+    'orgInvcNo',
+    'custTin',
+    'salesTyCd',
+    'rcptTyCd',
+    'pmtTyCd',
+    'salesSttsCd',
+    'totTaxblAmt',
+    'totTaxAmt',
+    'totAmt',
+    'itemList',
+  ]) {
+    assert.match(
+      etims,
+      new RegExp(field),
+      field + ' must be present in the native KRA sales payload.',
+    );
+  }
+
+  assert.match(
+    etims,
+    /reserveTransactionNumber/,
+    'Each eTIMS solution needs an independent fiscal invoice sequence.',
+  );
+
+  assert.match(
+    migration,
+    /UNIQUE\(company_id, solution_type, environment, branch_id\)/,
+  );
+
+  assert.match(
+    etims,
+    /original_solution_type[\s\S]*profile\.solution_type/s,
+    'Credit notes must stay on the solution used by the source invoice.',
+  );
+
+  assert.match(
+    etims,
+    /communication_key_sealed/,
+  );
+
+  assert.match(
+    etims,
+    /sealIntegrationSecret/,
+    'OSCU communication keys must use encrypted integration-secret storage.',
+  );
+
+  assert.match(
+    etims,
+    /kra_sync_status[\s\S]*synced/s,
+    'Products must be synchronized to KRA before they can be fiscalized.',
+  );
+
+  assert.match(
+    etims,
+    /TAX_RATES/,
+    'KRA A-E tax mappings must be validated by the fiscal adapter.',
+  );
+
+  for (const action of [
+    'save_profile',
+    'initialize_device',
+    'sync_reference_data',
+    'save_item_mapping',
+    'save_tax_mapping',
+    'sync_item',
+    'submit_invoice',
+    'submit_credit_note',
+  ]) {
+    assert.match(
+      route,
+      new RegExp("case '" + action + "'"),
+    );
+  }
+
+  for (const exported of [
+    'getEtimsWorkspaceData',
+    'saveEtimsProfile',
+    'saveEtimsItemMapping',
+    'syncEtimsItem',
+    'saveEtimsTaxMapping',
+    'initializeEtimsDevice',
+    'syncEtimsReferenceData',
+    'submitInvoiceToEtims',
+    'submitCreditNoteToEtims',
+    'assertEtimsDeliveryReady',
+  ]) {
+    assert.match(
+      etims + service,
+      new RegExp(exported),
+    );
+  }
+
+  assert.match(
+    delivery,
+    /assertEtimsDeliveryReady/,
+    'Official delivery must fail closed when production KRA fiscalization is missing.',
+  );
+
+  assert.match(
+    delivery,
+    /ensureFiscalizedInvoiceDocumentSnapshot/,
+    'Delivery must use a fiscalized immutable PDF snapshot after KRA acceptance.',
+  );
+
+  assert.match(
+    snapshots,
+    /invoicing_etims_submissions/,
+  );
+
+  assert.match(
+    snapshots,
+    /replacePrimary/,
+    'The KRA-bearing immutable snapshot must replace the pre-fiscal primary delivery snapshot.',
+  );
+
+  assert.match(
+    pdf,
+    /KRA eTIMS FISCAL RECEIPT/,
+  );
+
+  assert.match(
+    pdf,
+    /eTIMS RECEIPT SIGNATURE/,
+  );
+
+  assert.match(
+    sectionPage,
+    /\/apps\/invoicing\/etims/,
+  );
+
+  assert.match(
+    etimsPage,
+    /EtimsWorkspace|view="etims"/,
+  );
+
+  for (const visibleText of [
+    'Kenya eTIMS',
+    'OSCU',
+    'VSCU',
+  ]) {
+    assert.ok(
+      etimsWorkspace.includes(
+        visibleText,
+      ),
+      visibleText + ' must be visible in the standalone eTIMS operator workspace.',
+    );
+  }
+});
+
