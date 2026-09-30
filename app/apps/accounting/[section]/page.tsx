@@ -5,10 +5,12 @@ export const dynamic = 'force-dynamic';
 
 export default async function AccountingSectionPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ section: string }>;
+  searchParams: Promise<{ from?: string; to?: string; accountId?: string; page?: string }>;
 }) {
   const { section } = await params;
 
-  return <AccountingWorkspace section={section} />;
+  return <AccountingWorkspace section={section} filters={await searchParams} />;
 }

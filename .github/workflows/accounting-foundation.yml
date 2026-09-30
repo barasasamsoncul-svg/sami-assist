@@ -1,0 +1,51 @@
+name: Accounting Foundation Validation
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/apps/accounting/**'
+      - 'app/api/apps/accounting/**'
+      - 'lib/apps/accounting/**'
+      - 'tests/accounting-foundation.test.mjs'
+      - '.github/workflows/accounting-foundation.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'app/apps/accounting/**'
+      - 'app/api/apps/accounting/**'
+      - 'lib/apps/accounting/**'
+      - 'tests/accounting-foundation.test.mjs'
+      - '.github/workflows/accounting-foundation.yml'
+permissions:
+  contents: read
+jobs:
+  accounting:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: accounting_test
+          POSTGRES_PASSWORD: accounting_test
+          POSTGRES_DB: accounting_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://accounting_test:accounting_test@localhost:5432/accounting_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: node --conditions=react-server --import tsx --test tests/accounting-foundation.test.mjs
+      - run: npx eslint app/apps/accounting app/api/apps/accounting lib/apps/accounting
+      - run: npm run test:module-migrations && npm run test:app-ui && npm run test:invoicing
+      - run: npx tsc --noEmit
+      - run: npm run build

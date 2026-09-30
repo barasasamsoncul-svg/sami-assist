@@ -22,13 +22,20 @@ import {
 
 import AccountingWorkspaceClient from '@/app/apps/accounting/AccountingWorkspaceClient';
 
+import AccountingFoundationPanel, { ACCOUNTING_SECTIONS, type AccountingSection } from './AccountingFoundationPanel';
+import { getAccountingFoundation } from '@/lib/apps/accounting/foundation';
+import { AccountingInputError } from '@/lib/apps/accounting/validation';
+
 const MODULE_KEY = 'accounting';
 
 export default async function AccountingWorkspace({
   section,
+  filters = {},
 }: {
   section?: string | null;
+  filters?: { from?: string; to?: string; accountId?: string; page?: string };
 }) {
+  const dedicatedSection = ACCOUNTING_SECTIONS.includes((section || 'overview') as AccountingSection) ? (section || 'overview') as AccountingSection : null;
   const {
     session,
     account,
@@ -43,8 +50,18 @@ export default async function AccountingWorkspace({
   } =
     await loadStandaloneEnterpriseApp(
       MODULE_KEY,
-      section,
+      dedicatedSection ? undefined : section,
     );
+
+  let foundation = null;
+  let foundationError = '';
+  if (dedicatedSection) {
+    try { foundation = await getAccountingFoundation(filters); }
+    catch (error) {
+      foundationError = error instanceof AccountingInputError ? error.message : 'Accounting data could not be loaded. Retry this page.';
+      if (!(error instanceof AccountingInputError)) console.error('[Accounting] Foundation load failed', error);
+    }
+  }
 
   const appBaseHref =
     '/apps/accounting';
@@ -56,6 +73,12 @@ export default async function AccountingWorkspace({
       href: appBaseHref,
       description: 'KPIs, priorities and current operating state.',
     },
+    { key: 'setup', label: 'Setup', href: appBaseHref + '/setup', description: 'Prepare accounts and fiscal periods.' },
+    ...(data.capabilities.canCreate ? [{ key: 'new-journal', label: 'New journal', href: appBaseHref + '/new-journal', description: 'Create a balanced journal draft.' }] : []),
+    ...(data.capabilities.canReport ? [
+      { key: 'trial-balance', label: 'Trial balance', href: appBaseHref + '/trial-balance', description: 'Opening, movement and closing balances.' },
+      { key: 'general-ledger', label: 'General ledger', href: appBaseHref + '/general-ledger', description: 'Account movements and running balance.' },
+    ] : []),
     ...data.tables
       .filter(
         table =>
@@ -116,10 +139,10 @@ export default async function AccountingWorkspace({
     ),
   ];
 
-  const activeSidebarKey =
+  const activeSidebarKey = dedicatedSection || (
     resolved.view === 'records'
       ? resolved.tableKey
-      : resolved.view;
+      : resolved.view);
 
   return (
     <AppSurfaceShell
@@ -192,7 +215,7 @@ export default async function AccountingWorkspace({
             uiProfile.secondary,
         } as CSSProperties}
       >
-        <AccountingWorkspaceClient
+        {dedicatedSection ? (foundation ? <AccountingFoundationPanel data={foundation} section={dedicatedSection} canCreate={data.capabilities.canCreate} /> : <div role="alert" className="rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-6 text-[var(--foreground)]">{foundationError} <Link href="/apps/accounting" className="underline">Return to Accounting</Link></div>) : <AccountingWorkspaceClient
           initialData={data}
           userId={session.user.id}
           initialView={resolved.view}
@@ -203,7 +226,7 @@ export default async function AccountingWorkspace({
                 module.registryKey,
             )
           }
-        />
+        />}
       </div>
     </AppSurfaceShell>
   );
