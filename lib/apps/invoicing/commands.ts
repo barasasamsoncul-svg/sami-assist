@@ -2655,6 +2655,102 @@ export async function createInvoice(
         taxCalculation,
       );
 
+    const fiscalPositionId =
+      lines.find(
+        line =>
+          Boolean(
+            line.fiscalPositionId,
+          ),
+      )
+        ?.fiscalPositionId ||
+      null;
+
+    const taxLocalizationId =
+      lines.find(
+        line =>
+          Boolean(
+            line.localizationId,
+          ),
+      )
+        ?.localizationId ||
+      null;
+
+    const taxContext =
+      JSON.stringify({
+        engineVersion:
+          '2.16.0',
+        fiscalPositionId,
+        taxLocalizationId,
+        exemptionIds: [
+          ...new Set(
+            lines
+              .map(
+                line =>
+                  line.exemptionId,
+              )
+              .filter(
+                Boolean,
+              ),
+          ),
+        ],
+        sources: [
+          ...new Set(
+            lines.map(
+              line =>
+                line.taxSource,
+            ),
+          ),
+        ],
+      });
+
+    const fiscalPositionId =
+      lines.find(
+        line =>
+          Boolean(
+            line.fiscalPositionId,
+          ),
+      )
+        ?.fiscalPositionId ||
+      null;
+
+    const taxLocalizationId =
+      lines.find(
+        line =>
+          Boolean(
+            line.localizationId,
+          ),
+      )
+        ?.localizationId ||
+      null;
+
+    const taxContext =
+      JSON.stringify({
+        engineVersion:
+          '2.16.0',
+        fiscalPositionId,
+        taxLocalizationId,
+        exemptionIds: [
+          ...new Set(
+            lines
+              .map(
+                line =>
+                  line.exemptionId,
+              )
+              .filter(
+                Boolean,
+              ),
+          ),
+        ],
+        sources: [
+          ...new Set(
+            lines.map(
+              line =>
+                line.taxSource,
+            ),
+          ),
+        ],
+      });
+
     const subtotal =
       money(
         lines.reduce(
@@ -2963,6 +3059,9 @@ export async function createInvoice(
           base_currency = $6,
           exchange_rate_date = $7,
           exchange_rate_source = $8,
+          fiscal_position_id = $9,
+          tax_localization_id = $10,
+          tax_context = $11::jsonb,
           submitted_at =
             CASE
               WHEN $4::varchar(30) =
@@ -2999,6 +3098,9 @@ export async function createInvoice(
           .sourceName ||
         exchangeRateResolution
           .source,
+        fiscalPositionId,
+        taxLocalizationId,
+        taxContext,
       ],
     );
 
@@ -3654,6 +3756,8 @@ export async function updateInvoiceDraft(
       await normalizeInvoicingLines(
         client,
         context.companyId,
+        customerId,
+        invoiceDate,
         input.lines,
         taxCalculation,
       );
@@ -3940,7 +4044,10 @@ export async function updateInvoiceDraft(
           exchange_rate = $3,
           base_currency = $4,
           exchange_rate_date = $5,
-          exchange_rate_source = $6
+          exchange_rate_source = $6,
+          fiscal_position_id = $7,
+          tax_localization_id = $8,
+          tax_context = $9::jsonb
         WHERE id = $1
           AND company_id = $2
       `,
@@ -3955,6 +4062,9 @@ export async function updateInvoiceDraft(
           .sourceName ||
         exchangeRateResolution
           .source,
+        fiscalPositionId,
+        taxLocalizationId,
+        taxContext,
       ],
     );
 
@@ -3995,12 +4105,13 @@ export async function updateInvoiceDraft(
             tax_name_snapshot,
             tax_rate,
             tax_amount,
+            tax_components,
             subtotal,
             line_total
           )
           VALUES (
             $1,$2,$3,$4,$5,$6,$7,$8,$9,
-            $10,$11,$12,$13,$14,$15,$16,$17,$18
+            $10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18,$19
           )
         `,
         [
@@ -4020,6 +4131,9 @@ export async function updateInvoiceDraft(
           line.taxName,
           line.taxRate,
           line.taxAmount,
+          JSON.stringify(
+            line.taxComponents,
+          ),
           line.subtotal,
           line.lineTotal,
         ],
