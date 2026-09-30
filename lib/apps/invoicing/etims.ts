@@ -16,6 +16,10 @@ import {
   requireUuid,
 } from '@/lib/apps/invoicing/context';
 
+import {
+  createFiscalizedInvoiceDocumentSnapshot,
+} from '@/lib/apps/invoicing/document-snapshots';
+
 
 type EtimsProviderResponse = {
   accepted: boolean;
@@ -1706,6 +1710,21 @@ export async function fiscalizeInvoiceWithEtims(
         context.userId,
       ],
     );
+
+    if (
+      normalized.accepted
+    ) {
+      await createFiscalizedInvoiceDocumentSnapshot(
+        client,
+        {
+          companyId:
+            context.companyId,
+          invoiceId,
+          userId:
+            context.userId,
+        },
+      );
+    }
 
     await client.query(
       'COMMIT',
