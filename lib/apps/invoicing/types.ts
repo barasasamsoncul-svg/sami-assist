@@ -498,6 +498,37 @@ export type InvoicingInvoiceDetail = {
   documentSnapshots: InvoicingDocumentSnapshotSummary[];
 };
 
+export type InvoicingCurrencySummary = {
+  id: string;
+  code: string;
+  name: string;
+  symbol: string;
+  decimalPlaces: number;
+  isActive: boolean;
+  isBase: boolean;
+};
+
+export type InvoicingExchangeRateSummary = {
+  id: string;
+  currency: string;
+  baseCurrency: string;
+  rate: number;
+  effectiveDate: string;
+  sourceType: string;
+  sourceName: string | null;
+  note: string | null;
+};
+
+export type InvoicingCurrencyExposureSummary = {
+  currency: string;
+  baseCurrency: string;
+  openInvoiceCount: number;
+  invoicedAmount: number;
+  openAmount: number;
+  invoicedBaseAmount: number;
+  openBaseAmount: number;
+};
+
 export type InvoicingWorkspaceData = {
   company: { id: string; name: string; currency: string };
   capabilities: {
@@ -537,6 +568,9 @@ export type InvoicingWorkspaceData = {
   payments: InvoicingPaymentSummary[];
   retainers: InvoicingRetainerSummary[];
   paymentPlans: InvoicingPaymentPlanSummary[];
+  currencies: InvoicingCurrencySummary[];
+  exchangeRates: InvoicingExchangeRateSummary[];
+  currencyExposure: InvoicingCurrencyExposureSummary[];
   recurring: InvoicingRecurringSummary[];
   dunningPolicies: InvoicingDunningPolicySummary[];
   reminders: InvoicingReminderSummary[];
@@ -563,6 +597,9 @@ export type InvoicingWorkspaceData = {
   catalogItems: InvoicingCatalogItemSummary[];
   settings: {
     defaultCurrency: string;
+    baseCurrency: string;
+    exchangeRateMode: string;
+    allowCrossCurrencyPayments: boolean;
     defaultDueDays: number;
     defaultTemplateId: string | null;
     taxCalculation: string;
