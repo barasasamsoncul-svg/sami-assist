@@ -381,3 +381,35 @@ test('Accounting 2.4 setup schema is migration-backed and available on fresh ins
     'Fresh Accounting installs must receive the same setup table without replaying an upgrade migration.',
   );
 });
+
+
+test('Accounting policy writes cannot bypass the validated Setup service', async () => {
+  const [
+    setupService,
+    domainHooks,
+  ] = await Promise.all([
+    source('lib/apps/accounting/setup.ts'),
+    source('lib/apps/enterprise/domain-hooks.ts'),
+  ]);
+
+  assert.match(
+    setupService,
+    /requireEnterpriseModuleTableContext\([\s\S]*'accounting'[\s\S]*'accounting_settings'[\s\S]*'settings'/,
+  );
+
+  assert.match(
+    setupService,
+    /validateAccountMappings/,
+  );
+
+  assert.match(
+    setupService,
+    /ON CONFLICT \(\s*company_id\s*\)/,
+  );
+
+  assert.match(
+    domainHooks,
+    /moduleKey ===[\s\S]*'accounting'[\s\S]*table ===[\s\S]*'accounting_settings'[\s\S]*validated Accounting Setup workspace/,
+    'The generic enterprise editor must not write Accounting policy directly.',
+  );
+});
