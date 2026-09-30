@@ -518,16 +518,16 @@ export async function requireInvoicingContext(
     );
   }
 
-  const requiredPermissions =
-    requiredPermission
-      ? Array.isArray(
-          requiredPermission,
-        )
-        ? requiredPermission
-        : [
+  const requiredPermissions:
+    readonly string[] =
+    !requiredPermission
+      ? []
+      : typeof requiredPermission ===
+          'string'
+        ? [
             requiredPermission,
           ]
-      : [];
+        : requiredPermission;
 
   if (
     requiredPermissions.length >
