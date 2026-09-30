@@ -9,6 +9,7 @@ import type {
 } from 'pg';
 
 import {
+  isIntegrationEncryptionConfigured,
   openIntegrationSecret,
   sealIntegrationSecret,
 } from '@/lib/integrations/crypto';
@@ -3779,6 +3780,17 @@ export async function initializeEtimsDevice() {
       );
   } finally {
     client.release();
+  }
+
+  if (
+    profile.solution_type ===
+      'oscu' &&
+    !isIntegrationEncryptionConfigured()
+  ) {
+    throw new InvoicingError(
+      'ETIMS_NOT_CONFIGURED',
+      'OSCU activation requires the SaMi integration encryption key so the KRA communication key can be stored securely.',
+    );
   }
 
   const remote =
