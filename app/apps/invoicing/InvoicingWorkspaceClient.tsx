@@ -47,6 +47,7 @@ import {
   CreditCard,
   Download,
   Filter,
+  FileCode2,
   LayoutDashboard,
   Package,
   Plus,
