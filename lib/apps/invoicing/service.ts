@@ -75,3 +75,8 @@ export {
 export {
   recordCustomerRetainer,
 } from '@/lib/apps/invoicing/retainers';
+
+export {
+  cancelInvoicePaymentPlan,
+  createInvoicePaymentPlan,
+} from '@/lib/apps/invoicing/payment-plans';
