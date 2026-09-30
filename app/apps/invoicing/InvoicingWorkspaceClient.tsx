@@ -68,8 +68,11 @@ type ViewKey =
   | 'dashboard'
   | 'newInvoice'
   | 'invoices'
+  | 'newCustomer'
   | 'customers'
+  | 'newItem'
   | 'items'
+  | 'receivePayment'
   | 'payments'
   | 'currencies'
   | 'taxEngine'
@@ -224,10 +227,16 @@ const VIEW_PATHS:
       '/apps/invoicing/new',
     invoices:
       '/apps/invoicing/invoices',
+    newCustomer:
+      '/apps/invoicing/customers/new',
     customers:
       '/apps/invoicing/customers',
+    newItem:
+      '/apps/invoicing/items/new',
     items:
       '/apps/invoicing/items',
+    receivePayment:
+      '/apps/invoicing/payments/new',
     payments:
       '/apps/invoicing/payments',
     currencies:
@@ -277,17 +286,35 @@ const VIEW_COPY:
       description:
         'Search, filter, export and open existing invoices without the invoice composer stacked above the register.',
     },
+    newCustomer: {
+      title:
+        'New customer',
+      description:
+        'Create one billing customer on a focused page.',
+    },
     customers: {
       title:
         'Customers',
       description:
         'Maintain billing identities, contacts, tax details, payment terms and customer status safely.',
     },
+    newItem: {
+      title:
+        'New item',
+      description:
+        'Create one product or service billing item without the item register below it.',
+    },
     items: {
       title:
         'Items & pricing',
       description:
         'Maintain products and services, prices, units and default taxes used on invoices.',
+    },
+    receivePayment: {
+      title:
+        'Receive payment',
+      description:
+        'Record one customer receipt on a focused page before allocating it.',
     },
     payments: {
       title:
@@ -1599,11 +1626,11 @@ export default function InvoicingWorkspaceClient({
             </button>
 
             {
+              view ===
+                'invoices' &&
               initialData
                 .capabilities
                 .canCreate &&
-              view !==
-                'newInvoice' &&
               (
                 <button
                   type="button"
@@ -1617,6 +1644,75 @@ export default function InvoicingWorkspaceClient({
                 >
                   <Plus className="h-4 w-4" />
                   New invoice
+                </button>
+              )
+            }
+
+            {
+              view ===
+                'customers' &&
+              initialData
+                .capabilities
+                .canManageCustomers &&
+              (
+                <button
+                  type="button"
+                  onClick={
+                    () =>
+                      navigateToView(
+                        'newCustomer',
+                      )
+                  }
+                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-3.5 text-xs font-black text-white"
+                >
+                  <Plus className="h-4 w-4" />
+                  New customer
+                </button>
+              )
+            }
+
+            {
+              view ===
+                'items' &&
+              initialData
+                .capabilities
+                .canManageCatalog &&
+              (
+                <button
+                  type="button"
+                  onClick={
+                    () =>
+                      navigateToView(
+                        'newItem',
+                      )
+                  }
+                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-3.5 text-xs font-black text-white"
+                >
+                  <Plus className="h-4 w-4" />
+                  New item
+                </button>
+              )
+            }
+
+            {
+              view ===
+                'payments' &&
+              initialData
+                .capabilities
+                .canRecordPayment &&
+              (
+                <button
+                  type="button"
+                  onClick={
+                    () =>
+                      navigateToView(
+                        'receivePayment',
+                      )
+                  }
+                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-3.5 text-xs font-black text-white"
+                >
+                  <Plus className="h-4 w-4" />
+                  Receive payment
                 </button>
               )
             }
@@ -1720,6 +1816,28 @@ export default function InvoicingWorkspaceClient({
 
       {
         view ===
+          'newCustomer' &&
+        initialData
+          .capabilities
+          .canManageCustomers &&
+        (
+          <Customers
+            data={
+              initialData
+            }
+            pending={
+              busy
+            }
+            run={
+              run
+            }
+            mode="create"
+          />
+        )
+      }
+
+      {
+        view ===
           'customers' &&
         initialData
           .capabilities
@@ -1735,6 +1853,29 @@ export default function InvoicingWorkspaceClient({
             run={
               run
             }
+            mode="list"
+          />
+        )
+      }
+
+      {
+        view ===
+          'newItem' &&
+        initialData
+          .capabilities
+          .canManageCatalog &&
+        (
+          <Items
+            data={
+              initialData
+            }
+            pending={
+              busy
+            }
+            run={
+              run
+            }
+            mode="create"
           />
         )
       }
@@ -1756,6 +1897,29 @@ export default function InvoicingWorkspaceClient({
             run={
               run
             }
+          
+            mode="list"/>
+        )
+      }
+
+      {
+        view ===
+          'receivePayment' &&
+        initialData
+          .capabilities
+          .canRecordPayment &&
+        (
+          <Payments
+            data={
+              initialData
+            }
+            pending={
+              busy
+            }
+            run={
+              run
+            }
+            mode="receive"
           />
         )
       }
@@ -1777,7 +1941,8 @@ export default function InvoicingWorkspaceClient({
             run={
               run
             }
-          />
+          
+            mode="register"/>
         )
       }
 
@@ -5212,6 +5377,7 @@ function Customers({
   data,
   pending,
   run,
+  mode = 'list',
 }: {
   data:
     InvoicingWorkspaceData;
@@ -5228,6 +5394,9 @@ function Customers({
         string,
     ) =>
       Promise<boolean>;
+  mode?:
+    'create' |
+    'list';
 }) {
   const [
     query,
@@ -5283,13 +5452,21 @@ function Customers({
     );
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[390px_minmax(0,1fr)]">
+    <div className="min-w-0">
       {
         data.capabilities
           .canManageCustomers &&
         (
           <form
-            className="sami-surface h-fit rounded-[24px] p-4 sm:p-5"
+            className={[
+              'sami-surface mx-auto h-fit max-w-4xl rounded-[24px] p-4 sm:p-5',
+              mode ===
+                'create'
+                ? ''
+                : 'hidden',
+            ].join(
+              ' ',
+            )}
             onSubmit={
               async event => {
                 event
@@ -5647,7 +5824,17 @@ function Customers({
         )
       }
 
-      <div className="sami-surface overflow-hidden rounded-[24px]">
+      <div
+        className={[
+          'sami-surface overflow-hidden rounded-[24px]',
+          mode ===
+            'list'
+            ? ''
+            : 'hidden',
+        ].join(
+          ' ',
+        )}
+      >
         <div className="border-b border-[var(--sami-border)] p-4 sm:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -6267,6 +6454,7 @@ function Items({
   data,
   pending,
   run,
+  mode = 'list',
 }: {
   data:
     InvoicingWorkspaceData;
@@ -6283,6 +6471,9 @@ function Items({
         string,
     ) =>
       Promise<boolean>;
+  mode?:
+    'create' |
+    'list';
 }) {
   const [
     query,
@@ -6338,13 +6529,21 @@ function Items({
     );
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[390px_minmax(0,1fr)]">
+    <div className="min-w-0">
       {
         data.capabilities
           .canManageCatalog &&
         (
           <form
-            className="sami-surface h-fit rounded-[24px] p-4 sm:p-5"
+            className={[
+              'sami-surface mx-auto h-fit max-w-4xl rounded-[24px] p-4 sm:p-5',
+              mode ===
+                'create'
+                ? ''
+                : 'hidden',
+            ].join(
+              ' ',
+            )}
             onSubmit={
               async event => {
                 event
@@ -6577,7 +6776,17 @@ function Items({
         )
       }
 
-      <div className="sami-surface overflow-hidden rounded-[24px]">
+      <div
+        className={[
+          'sami-surface overflow-hidden rounded-[24px]',
+          mode ===
+            'list'
+            ? ''
+            : 'hidden',
+        ].join(
+          ' ',
+        )}
+      >
         <div className="border-b border-[var(--sami-border)] p-4 sm:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -7896,6 +8105,7 @@ function Payments({
   data,
   pending,
   run,
+  mode = 'register',
 }: {
   data:
     InvoicingWorkspaceData;
@@ -7912,6 +8122,9 @@ function Payments({
         string,
     ) =>
       Promise<boolean>;
+  mode?:
+    'receive' |
+    'register';
 }) {
   const postedPayments =
     data.payments.filter(
@@ -7946,7 +8159,17 @@ function Payments({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div
+        className={[
+          'grid gap-3 sm:grid-cols-2 xl:grid-cols-4',
+          mode ===
+            'register'
+            ? ''
+            : 'hidden',
+        ].join(
+          ' ',
+        )}
+      >
         <MetricCard
           label="Posted receipts"
           value={
@@ -8009,7 +8232,15 @@ function Payments({
           .canRecordPayment &&
         (
           <form
-            className="sami-surface rounded-[24px] p-4 sm:p-5"
+            className={[
+              'sami-surface mx-auto max-w-5xl rounded-[24px] p-4 sm:p-5',
+              mode ===
+                'receive'
+                ? ''
+                : 'hidden',
+            ].join(
+              ' ',
+            )}
             onSubmit={
               async event => {
                 event.preventDefault();
@@ -8213,7 +8444,17 @@ function Payments({
         )
       }
 
-      <div className="sami-surface overflow-hidden rounded-[24px]">
+      <div
+        className={[
+          'sami-surface overflow-hidden rounded-[24px]',
+          mode ===
+            'register'
+            ? ''
+            : 'hidden',
+        ].join(
+          ' ',
+        )}
+      >
         <div className="border-b border-[var(--sami-border)] p-4 sm:p-5">
           <p className="text-sm font-black">
             Payment register
