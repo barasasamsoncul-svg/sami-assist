@@ -318,3 +318,66 @@ test('Invoicing releases migrate installed tenants before promotion', async () =
     /migrate:invoicing:release/,
   );
 });
+
+
+test('Accounting 2.4 setup schema is migration-backed and available on fresh installs', async () => {
+  const [
+    firstParty,
+    contract,
+    runtimeMigrations,
+    migration,
+    catalog,
+    specialistCatalog,
+    specialistDepth,
+  ] = await Promise.all([
+    source('lib/modules/first-party.ts'),
+    source('lib/modules/enterprise-contract.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/apps/accounting/migrations/2.3.0-to-2.4.0.ts'),
+    source('lib/apps/enterprise/catalog.ts'),
+    source('lib/apps/enterprise/specialist-catalog.ts'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+  ]);
+
+  assert.match(
+    firstParty,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.4\.0'/,
+  );
+
+  assert.match(
+    contract,
+    /manifest\.version ===[\s\S]*'1\.0\.0'[\s\S]*\? '2\.3\.0'[\s\S]*: manifest\.version/,
+    'Specialist apps must be able to advance beyond the shared 2.3 baseline.',
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /ACCOUNTING_2_3_0_TO_2_4_0/,
+  );
+
+  assert.match(
+    migration,
+    /fromVersion:\s*'2\.3\.0'[\s\S]*toVersion:\s*'2\.4\.0'/,
+  );
+
+  assert.match(
+    migration,
+    /CREATE TABLE IF NOT EXISTS public\.accounting_settings/,
+  );
+
+  assert.match(
+    catalog,
+    /accounting:\s*\[[^\]]*'accounting_settings'/,
+  );
+
+  assert.match(
+    specialistCatalog,
+    /accounting:\s*\[[^\]]*'accounting_settings'/,
+  );
+
+  assert.match(
+    specialistDepth,
+    /CREATE TABLE IF NOT EXISTS public\.accounting_settings/,
+    'Fresh Accounting installs must receive the same setup table without replaying an upgrade migration.',
+  );
+});
