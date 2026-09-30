@@ -624,6 +624,8 @@ CREATE TABLE IF NOT EXISTS public.invoicing_payment_plans (
     CHECK (status IN ('active','cancelled')),
   currency VARCHAR(3) NOT NULL,
   total_amount NUMERIC(19,4) NOT NULL CHECK (total_amount > 0),
+  settled_baseline_amount NUMERIC(19,4) NOT NULL DEFAULT 0
+    CHECK (settled_baseline_amount >= 0),
   installment_count INTEGER NOT NULL CHECK (installment_count BETWEEN 2 AND 120),
   notes TEXT,
   idempotency_key VARCHAR(160),
@@ -1386,7 +1388,8 @@ WITH base AS (
     customer.name AS customer_name,
     GREATEST(
       invoice.total_amount -
-      COALESCE(aging.balance_due, invoice.total_amount),
+      COALESCE(aging.balance_due, invoice.total_amount) -
+      plan.settled_baseline_amount,
       0
     )::numeric(19,4) AS invoice_settled_amount,
     COALESCE(
@@ -1475,6 +1478,7 @@ SELECT
   plan.status AS stored_status,
   plan.currency,
   plan.total_amount,
+  plan.settled_baseline_amount,
   plan.installment_count,
   plan.notes,
   plan.activated_at,
@@ -1512,6 +1516,7 @@ GROUP BY
   plan.status,
   plan.currency,
   plan.total_amount,
+  plan.settled_baseline_amount,
   plan.installment_count,
   plan.notes,
   plan.activated_at,
