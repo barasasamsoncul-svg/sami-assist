@@ -6912,3 +6912,98 @@ test('Invoicing Part 24 makes invoice creation retry-safe and rejects stale draf
     /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.21\.0['"]/s,
   );
 });
+
+
+test('Invoicing Part 25 provides permission-gated base-currency analytics and exportable reports', async () => {
+  const [
+    queries,
+    types,
+    reports,
+    client,
+    navigation,
+    manifest,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/types.ts'),
+    source('app/apps/invoicing/InvoicingReportsWorkspace.tsx'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('lib/apps/invoicing/navigation.ts'),
+    source('lib/modules/first-party.ts'),
+  ]);
+
+  assert.match(
+    queries,
+    /access\.canViewReports[\s\S]*reportKpis/s,
+    'Report analytics must remain behind the server-side report capability.',
+  );
+
+  assert.match(
+    queries,
+    /GENERATE_SERIES\([\s\S]*INTERVAL '11 months'/s,
+    'The trend must include zero-activity months instead of returning only active months.',
+  );
+
+  assert.match(
+    queries,
+    /base_invoice_amount/,
+    'Collections must use the canonical base-currency allocation amount when available.',
+  );
+
+  assert.match(
+    queries,
+    /item\.line_total[\s\S]*invoice[\s\S]*\.exchange_rate/s,
+    'Item performance must normalize transaction-currency revenue to base currency.',
+  );
+
+  for (const reportSet of [
+    'customerExposure',
+    'itemPerformance',
+    'taxSummary',
+    'paymentMethods',
+    'monthlyTrend',
+  ]) {
+    assert.ok(
+      types.includes(reportSet),
+      reportSet + ' must be part of the typed reporting contract.',
+    );
+
+    assert.ok(
+      reports.includes(reportSet),
+      reportSet + ' must be rendered or exported by the reporting workspace.',
+    );
+  }
+
+  assert.match(
+    reports,
+    /canExportReports/,
+    'CSV export must remain permission-gated.',
+  );
+
+  assert.match(
+    reports,
+    /Export analytics CSV/,
+  );
+
+  assert.match(
+    reports,
+    /type ReportTab[\s\S]*'overview'[\s\S]*'customers'[\s\S]*'itemsTax'[\s\S]*'collections'/s,
+    'Reports must stay mobile-focused through tabbed sections instead of one stacked page.',
+  );
+
+  assert.match(
+    client,
+    /InvoicingReportsWorkspace/,
+    'The existing Reports route must reuse the standalone Part 25 reporting workspace.',
+  );
+
+  assert.match(
+    navigation,
+    /reports:[\s\S]*capability:[\s\S]*'canViewReports'/s,
+  );
+
+  assert.match(
+    manifest,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.21\.0['"]/s,
+    'Part 25 is a read-model/UI upgrade and must not invent a tenant schema migration.',
+  );
+});
