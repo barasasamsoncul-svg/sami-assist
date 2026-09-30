@@ -239,6 +239,9 @@ export async function getInvoicingWorkspaceData():
     reminders,
     portalAccess,
     portalMessages,
+    currencies,
+    exchangeRates,
+    currencyExposure,
     settings,
   ] =
     await Promise.all([
@@ -271,7 +274,7 @@ export async function getInvoicingWorkspaceData():
             )::int
               AS overdue_count,
             COALESCE(
-              SUM(total_amount)
+              SUM(base_total_amount)
                 FILTER (
                   WHERE effective_status
                         NOT IN (
@@ -287,8 +290,8 @@ export async function getInvoicingWorkspaceData():
               AS invoiced_total,
             COALESCE(
               SUM(
-                total_amount -
-                balance_due
+                base_total_amount -
+                base_balance_due
               )
                 FILTER (
                   WHERE effective_status
@@ -304,7 +307,7 @@ export async function getInvoicingWorkspaceData():
             )
               AS paid_total,
             COALESCE(
-              SUM(balance_due)
+              SUM(base_balance_due)
                 FILTER (
                   WHERE effective_status
                         NOT IN (
@@ -317,7 +320,7 @@ export async function getInvoicingWorkspaceData():
             )
               AS outstanding_total,
             COALESCE(
-              SUM(balance_due)
+              SUM(base_balance_due)
                 FILTER (
                   WHERE effective_status =
                         'overdue'
@@ -325,7 +328,7 @@ export async function getInvoicingWorkspaceData():
               0
             )
               AS overdue_total
-          FROM invoicing_aging
+          FROM invoicing_aging_base
           WHERE company_id =
                 $1
         `,
@@ -341,14 +344,14 @@ export async function getInvoicingWorkspaceData():
             COUNT(*)::int
               AS count,
             COALESCE(
-              SUM(balance_due),
+              SUM(base_balance_due),
               0
             )
               AS amount
-          FROM invoicing_aging
+          FROM invoicing_aging_base
           WHERE company_id =
                 $1
-            AND balance_due >
+            AND base_balance_due >
                 0
             AND effective_status
                 NOT IN (
@@ -372,11 +375,11 @@ export async function getInvoicingWorkspaceData():
             COUNT(*)::int
               AS count,
             COALESCE(
-              SUM(total_amount),
+              SUM(base_total_amount),
               0
             )
               AS amount
-          FROM invoicing_aging
+          FROM invoicing_aging_base
           WHERE company_id =
                 $1
           GROUP BY
@@ -393,14 +396,32 @@ export async function getInvoicingWorkspaceData():
       context.pool.query(
         `
           SELECT
-            month,
-            invoice_count,
-            invoiced_total
-          FROM invoicing_monthly_summary
+            TO_CHAR(
+              DATE_TRUNC(
+                'month',
+                invoice_date
+              ),
+              'YYYY-MM'
+            ) AS month,
+            COUNT(*)::int
+              AS invoice_count,
+            COALESCE(
+              SUM(base_total_amount),
+              0
+            ) AS invoiced_total
+          FROM invoicing_aging_base
           WHERE company_id =
                 $1
+          GROUP BY
+            DATE_TRUNC(
+              'month',
+              invoice_date
+            )
           ORDER BY
-            month DESC
+            DATE_TRUNC(
+              'month',
+              invoice_date
+            ) DESC
           LIMIT 12
         `,
         [
@@ -435,7 +456,10 @@ export async function getInvoicingWorkspaceData():
               (
                 SELECT
                   SUM(
-                    allocation.amount
+                    COALESCE(
+                      allocation.invoice_amount,
+                      allocation.amount
+                    )
                   )
                 FROM invoicing_payment_allocations allocation
                 INNER JOIN invoicing_payments payment
@@ -1367,7 +1391,81 @@ export async function getInvoicingWorkspaceData():
       context.pool.query(
         `
           SELECT
+            id,
+            code,
+            name,
+            symbol,
+            decimal_places,
+            is_active,
+            is_base
+          FROM invoicing_currencies
+          WHERE company_id =
+                $1
+          ORDER BY
+            is_base DESC,
+            is_active DESC,
+            code ASC
+        `,
+        [
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            id,
+            currency,
+            base_currency,
+            rate_to_base,
+            effective_date,
+            source_type,
+            source_name,
+            note
+          FROM invoicing_exchange_rates
+          WHERE company_id =
+                $1
+            AND is_active =
+                TRUE
+          ORDER BY
+            effective_date DESC,
+            currency ASC
+          LIMIT 500
+        `,
+        [
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            currency,
+            base_currency,
+            open_invoice_count,
+            invoiced_amount,
+            open_amount,
+            invoiced_base_amount,
+            open_base_amount
+          FROM invoicing_currency_exposure
+          WHERE company_id =
+                $1
+          ORDER BY
+            open_base_amount DESC,
+            currency ASC
+        `,
+        [
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
             default_currency,
+            base_currency,
+            exchange_rate_mode,
+            allow_cross_currency_payments,
             default_due_days,
             default_template_id,
             tax_calculation,
@@ -3097,6 +3195,118 @@ export async function getInvoicingWorkspaceData():
       )
         : [],
 
+    currencies:
+      currencies.rows.map(
+        row => ({
+          id:
+            String(
+              row.id,
+            ),
+          code:
+            String(
+              row.code,
+            ),
+          name:
+            String(
+              row.name,
+            ),
+          symbol:
+            String(
+              row.symbol,
+            ),
+          decimalPlaces:
+            Number(
+              row.decimal_places ||
+              2,
+            ),
+          isActive:
+            row.is_active !==
+            false,
+          isBase:
+            row.is_base ===
+            true,
+        }),
+      ),
+
+    exchangeRates:
+      exchangeRates.rows.map(
+        row => ({
+          id:
+            String(
+              row.id,
+            ),
+          currency:
+            String(
+              row.currency,
+            ),
+          baseCurrency:
+            String(
+              row.base_currency,
+            ),
+          rate:
+            Number(
+              row.rate_to_base ||
+              1,
+            ),
+          effectiveDate:
+            String(
+              row.effective_date,
+            ),
+          sourceType:
+            String(
+              row.source_type ||
+              'manual',
+            ),
+          sourceName:
+            row.source_name
+              ? String(
+                  row.source_name,
+                )
+              : null,
+          note:
+            row.note
+              ? String(
+                  row.note,
+                )
+              : null,
+        }),
+      ),
+
+    currencyExposure:
+      currencyExposure.rows.map(
+        row => ({
+          currency:
+            String(
+              row.currency,
+            ),
+          baseCurrency:
+            String(
+              row.base_currency,
+            ),
+          openInvoiceCount:
+            Number(
+              row.open_invoice_count ||
+              0,
+            ),
+          invoicedAmount:
+            money(
+              row.invoiced_amount,
+            ),
+          openAmount:
+            money(
+              row.open_amount,
+            ),
+          invoicedBaseAmount:
+            money(
+              row.invoiced_base_amount,
+            ),
+          openBaseAmount:
+            money(
+              row.open_base_amount,
+            ),
+        }),
+      ),
+
     settings: {
       defaultCurrency:
         String(
@@ -3105,6 +3315,22 @@ export async function getInvoicingWorkspaceData():
             .currentCompany.currency ||
           'KES',
         ),
+      baseCurrency:
+        String(
+          setting.base_currency ||
+          setting.default_currency ||
+          context.company
+            .currentCompany.currency ||
+          'KES',
+        ),
+      exchangeRateMode:
+        String(
+          setting.exchange_rate_mode ||
+          'table',
+        ),
+      allowCrossCurrencyPayments:
+        setting.allow_cross_currency_payments !==
+        false,
       defaultDueDays:
         Number(
           setting.default_due_days ||
