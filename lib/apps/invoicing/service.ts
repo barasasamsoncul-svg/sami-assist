@@ -80,3 +80,8 @@ export {
   cancelInvoicePaymentPlan,
   createInvoicePaymentPlan,
 } from '@/lib/apps/invoicing/payment-plans';
+
+export {
+  saveInvoicingCurrency,
+  saveInvoicingExchangeRate,
+} from '@/lib/apps/invoicing/currencies';
