@@ -3014,7 +3014,7 @@ test('Invoicing v2.7 turns recurring invoices into an observable retry-safe bill
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.16\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
   );
 
   assert.match(
@@ -5418,4 +5418,210 @@ test('Invoicing owns a full-height responsive module shell and focused create/re
     /mode="register"/,
     'Payment register must remain its own focused surface.',
   );
+});
+
+
+
+test('Invoicing Part 16 provides Kenya eTIMS OSCU/VSCU fiscalization with auditable receipt evidence', async () => {
+  const [
+    schema,
+    migration,
+    etims,
+    delivery,
+    snapshots,
+    pdf,
+    queries,
+    types,
+    service,
+    route,
+    sectionPage,
+    workspace,
+    etimsWorkspace,
+    runtimeMigrations,
+    manifest,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/schema.sql'),
+    source('lib/apps/invoicing/migrations/2.16.0-to-2.17.0.ts'),
+    source('lib/apps/invoicing/etims.ts'),
+    source('lib/apps/invoicing/delivery.ts'),
+    source('lib/apps/invoicing/document-snapshots.ts'),
+    source('lib/apps/invoicing/pdf.ts'),
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/types.ts'),
+    source('lib/apps/invoicing/service.ts'),
+    source('app/api/apps/invoicing/route.ts'),
+    source('app/apps/invoicing/InvoicingSectionPage.tsx'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('app/apps/invoicing/EtimsWorkspace.tsx'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+  ]);
+
+  assert.match(
+    manifest,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.17\.0['"]/s,
+  );
+
+  assert.match(
+    migration,
+    /fromVersion:\s*['"]2\.16\.0['"]/,
+  );
+
+  assert.match(
+    migration,
+    /toVersion:\s*['"]2\.17\.0['"]/,
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /INVOICING_2_16_0_TO_2_17_0/,
+  );
+
+  for (const table of [
+    'invoicing_etims_settings',
+    'invoicing_etims_documents',
+    'invoicing_etims_attempts',
+  ]) {
+    assert.match(schema, new RegExp(table));
+    assert.match(migration, new RegExp(table));
+  }
+
+  for (const evidenceField of [
+    'scu_id',
+    'scu_receipt_number',
+    'cu_invoice_number',
+    'receipt_counter',
+    'total_receipt_counter',
+    'internal_data',
+    'receipt_signature',
+    'qr_payload',
+  ]) {
+    assert.match(
+      schema,
+      new RegExp(evidenceField),
+      evidenceField + ' must be preserved as eTIMS receipt evidence.',
+    );
+  }
+
+  assert.match(etims, /SAMI_ETIMS_PROVIDER/);
+  assert.match(etims, /SAMI_ETIMS_API_URL/);
+  assert.match(etims, /SAMI_ETIMS_API_TOKEN/);
+  assert.match(etims, /SAMI_ETIMS_API_KEY/);
+  assert.match(etims, /control_unit_type/);
+  assert.match(etims, /'oscu'/);
+  assert.match(etims, /'vscu'/);
+
+  assert.match(
+    etims,
+    /scuId[\s\S]*receiptSignature[\s\S]*cuInvoiceNumber/,
+    'A provider success flag alone must not be enough for fiscal acceptance.',
+  );
+
+  assert.match(
+    etims,
+    /request_sha256/,
+    'Submission payloads must be hash-addressed for auditability.',
+  );
+
+  assert.match(
+    etims,
+    /invoicing_etims_attempts/,
+    'Every provider attempt must be retained in an audit ledger.',
+  );
+
+  assert.match(
+    delivery,
+    /assertEtimsDeliveryReady/,
+    'Official invoice delivery must honor the company fiscalization gate.',
+  );
+
+  assert.match(
+    snapshots,
+    /createFiscalizedInvoiceDocumentSnapshot/,
+    'Successful fiscalization must create a new immutable PDF version rather than mutate the confirmation snapshot.',
+  );
+
+  assert.match(
+    snapshots,
+    /etims\.cu_invoice_number|etims_cu_invoice_number/,
+  );
+
+  assert.match(
+    pdf,
+    /eTIMS CU invoice/,
+  );
+
+  assert.match(
+    pdf,
+    /eTIMS SCU ID/,
+  );
+
+  assert.match(
+    types,
+    /InvoicingEtimsDocumentSummary/,
+  );
+
+  assert.match(
+    types,
+    /InvoicingEtimsSettingsSummary/,
+  );
+
+  assert.match(
+    queries,
+    /etimsDocuments/,
+  );
+
+  assert.match(
+    queries,
+    /getEtimsProviderRuntimeStatus/,
+  );
+
+  for (const exported of [
+    'fiscalizeInvoiceWithEtims',
+    'saveEtimsSettings',
+  ]) {
+    assert.match(
+      service,
+      new RegExp(exported),
+    );
+  }
+
+  for (const action of [
+    'save_etims_settings',
+    'fiscalize_etims',
+  ]) {
+    assert.match(
+      route,
+      new RegExp("case '" + action + "'"),
+    );
+  }
+
+  assert.match(sectionPage, /'etims'/);
+  assert.match(sectionPage, /\/apps\/invoicing\/etims/);
+  assert.match(workspace, /EtimsWorkspace/);
+
+  for (const control of [
+    'Kenya eTIMS configuration',
+    'Fiscalization queue',
+    'Ready to fiscalize',
+    'OSCU',
+    'VSCU',
+    'Fiscalize',
+  ]) {
+    assert.ok(
+      etimsWorkspace.includes(control),
+      control + ' must be visible in the eTIMS operator workspace.',
+    );
+  }
+
+  for (const resource of [
+    'etims_settings',
+    'etims_document',
+    'etims_attempt',
+  ]) {
+    assert.match(
+      manifest,
+      new RegExp('key:\\s*"' + resource + '"'),
+    );
+  }
 });
