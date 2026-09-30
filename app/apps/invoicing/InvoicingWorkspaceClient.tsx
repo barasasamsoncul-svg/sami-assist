@@ -20,6 +20,7 @@ import InvoiceAppearanceSettings from '@/app/apps/invoicing/InvoiceAppearanceSet
 import PaymentPlansWorkspace from '@/app/apps/invoicing/PaymentPlansWorkspace';
 import CurrencyCenterWorkspace from '@/app/apps/invoicing/CurrencyCenterWorkspace';
 import TaxEngineWorkspace from '@/app/apps/invoicing/TaxEngineWorkspace';
+import EtimsWorkspace from '@/app/apps/invoicing/EtimsWorkspace';
 import SaMiOverlay from '@/app/components/SaMiOverlay';
 import {
   useSaMiOverlay,
@@ -76,6 +77,7 @@ type ViewKey =
   | 'payments'
   | 'currencies'
   | 'taxEngine'
+  | 'etims'
   | 'retainers'
   | 'paymentPlans'
   | 'recurring'
@@ -154,6 +156,14 @@ const NAV:
         'taxEngine',
       label:
         'Tax engine',
+      icon:
+        BadgeCheck,
+    },
+    {
+      key:
+        'etims',
+      label:
+        'Kenya eTIMS',
       icon:
         BadgeCheck,
     },
@@ -243,6 +253,8 @@ const VIEW_PATHS:
       '/apps/invoicing/currencies',
     taxEngine:
       '/apps/invoicing/tax-engine',
+    etims:
+      '/apps/invoicing/etims',
     retainers:
       '/apps/invoicing/retainers',
     paymentPlans:
@@ -333,6 +345,12 @@ const VIEW_COPY:
         'Tax engine',
       description:
         'Manage rates, tax groups, fiscal positions, rules, exemptions and jurisdiction localizations with auditable invoice-line resolution.',
+    },
+    etims: {
+      title:
+        'Kenya eTIMS',
+      description:
+        'Manage OSCU/VSCU fiscalization, receipt evidence, retries and Kenya tax-invoice readiness.',
     },
     retainers: {
       title:
@@ -1977,6 +1995,27 @@ export default function InvoicingWorkspaceClient({
           .canView &&
         (
           <TaxEngineWorkspace
+            data={
+              initialData
+            }
+            pending={
+              busy
+            }
+            run={
+              run
+            }
+          />
+        )
+      }
+
+      {
+        view ===
+          'etims' &&
+        initialData
+          .capabilities
+          .canView &&
+        (
+          <EtimsWorkspace
             data={
               initialData
             }
