@@ -2649,7 +2649,14 @@ test('Invoicing v2.6 separates cash receipts from allocation and reconciliation'
 
   assert.match(
     commands,
-    /Payment currency must match the invoice currency\./,
+    /allow_cross_currency_payments/,
+    'Part 14 may extend the Part 6 allocation authority across currencies only behind an explicit company control.',
+  );
+
+  assert.match(
+    commands,
+    /paymentAmount[\s\S]*paymentExchangeRate[\s\S]*invoiceAmount[\s\S]*invoiceExchangeRate/s,
+    'Cross-currency allocation must preserve both the payment-side and invoice-side values instead of treating unlike currencies as equal.',
   );
 
   assert.match(
