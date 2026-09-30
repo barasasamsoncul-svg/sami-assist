@@ -116,7 +116,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
 
   assert.match(
     invoicing,
-    /version:\s*['"]2\.18\.0['"]/,
+    /version:\s*['"]2\.20\.0['"]/,
   );
 
   assert.match(
@@ -3078,7 +3078,7 @@ test('Invoicing v2.7 turns recurring invoices into an observable retry-safe bill
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
   );
 
   assert.match(
@@ -3278,7 +3278,7 @@ test('Invoicing v2.8 turns reminders into a staged auditable dunning engine', as
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
   );
 
   assert.match(
@@ -3498,7 +3498,7 @@ test('Invoicing Part 8 builds a customer-scoped secure portal', async () => {
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
   );
 
   assert.match(
@@ -3842,7 +3842,7 @@ test('Invoicing Part 9 freezes issued invoice PDFs as immutable document snapsho
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
   );
 
   assert.match(
@@ -4118,7 +4118,7 @@ test('Invoicing Part 10 provides a live renderer-backed invoice template designe
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
   );
 
   assert.match(
@@ -4305,7 +4305,7 @@ test('Invoicing Part 11 deepens credit notes into reusable customer credits and 
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
   );
 
   assert.match(
@@ -4526,7 +4526,7 @@ test('Invoicing Part 12 manages retainers and deposits as auditable customer cre
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
   );
 
   assert.match(
@@ -4698,7 +4698,7 @@ test('Invoicing Part 13 schedules installment plans over the authoritative invoi
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
   );
 
   assert.match(
@@ -4961,7 +4961,7 @@ test('Invoicing Part 14 provides auditable multi-currency billing, base reportin
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
   );
 
   assert.match(
@@ -5250,7 +5250,7 @@ test('Invoicing Part 15 provides a rule-driven tax engine with fiscal mappings, 
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
   );
 
   assert.match(
@@ -5517,7 +5517,7 @@ test('Invoicing Part 16 provides KRA-native OSCU/VSCU fiscalization, immutable f
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
   );
 
   assert.match(
@@ -5789,7 +5789,7 @@ test('Invoicing Part 17 provides international e-invoicing with UBL, Peppol and 
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
   );
 
   assert.match(migration, /fromVersion:\s*['"]2\.17\.0['"]/);
@@ -6063,7 +6063,7 @@ test('Invoicing Part 18 gives SaMi AI deep permission-aware receivables intellig
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
     'Part 18 reuses the existing Invoicing schema and must not force a fake schema version bump.',
   );
 });
@@ -6202,7 +6202,7 @@ test('Invoicing Part 19 centralizes standalone navigation and keeps route struct
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
     'Part 19 changes application navigation only and must not fake a tenant schema version.',
   );
 });
@@ -6332,7 +6332,7 @@ test('Invoicing Part 20 keeps settings focused, mobile-safe and free of nested f
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.18\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
     'Part 20 reorganizes settings without pretending the tenant schema changed.',
   );
 });
@@ -6413,7 +6413,7 @@ test('Invoicing Part 21 enforces company-bound financial relationships and race-
 
   assert.match(
     manifest,
-    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.19\.0['"]/s,
+    /key:\s*["']invoicing["'][\s\S]*version:\s*['"]2\.20\.0['"]/s,
   );
 });
 
@@ -6504,7 +6504,7 @@ test('Invoicing Part 22 owns an append-only hash-chained audit ledger with redac
 
   assert.match(
     queries,
-    /FROM invoicing_audit_log[\s\S]*resource_type =[\s\S]*'invoice'/s,
+    /FROM invoicing_audit_log[\s\S]*resource_type IN[\s\S]*'invoice'[\s\S]*'invoices'/s,
   );
 
   assert.match(
