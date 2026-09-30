@@ -1502,7 +1502,7 @@ export async function postCreditNoteRefundToAccounting(
 }
 
 
-export async function reverseInvoicingAccountingEvent(
+async function reverseInvoicingAccountingEventUnsafe(
   client:
     PoolClient,
   input: {
@@ -1733,6 +1733,23 @@ export async function reverseInvoicingAccountingEvent(
       false,
     journalId,
   };
+}
+
+
+export async function reverseInvoicingAccountingEvent(
+  client: PoolClient,
+  input: Parameters<typeof reverseInvoicingAccountingEventUnsafe>[1],
+) {
+  return runOptionalAccountingBoundary(
+    client,
+    {
+      companyId: input.companyId,
+      eventKey: input.reversalEventKey,
+      sourceType: input.sourceType,
+      sourceId: input.sourceId,
+    },
+    () => reverseInvoicingAccountingEventUnsafe(client, input),
+  );
 }
 
 
