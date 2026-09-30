@@ -3,15 +3,15 @@
   "locks": {
     "invoicing": {
       "status": "locked",
-      "moduleVersion": "2.18.0",
+      "moduleVersion": "2.19.0",
       "referenceStandard": true,
-      "baselineCommit": "33c86fefb319a9fc247b811b1398b7cee1ed8883",
+      "baselineCommit": "c8bdf34c6a2f046e1c66975e9b10d91ea659ff11",
       "baselineBranch": "main",
       "lockedAt": "2026-09-30",
-      "policy": "Invoicing 2.18.0 preserves Parts 1–19, Kenya eTIMS, international e-invoicing, readable responsive surfaces, centralized opt-in tutorials, deep permission-aware SaMi AI, and the standalone permission-aware application shell, and adds Part 20 settings hardening without inventing a schema migration: focused mobile-safe settings sections, explicit boundaries to Currency Center/Tax Engine/eTIMS, company-scoped terminology, preserved all-field saves, independent create/edit forms for payment terms and tax rates, no invalid nested forms, and overflow-safe fields, text areas and toggles. Tutorial activation remains owned only by Workspace Settings.",
+      "policy": "Invoicing 2.19.0 preserves Parts 1–20, the standalone permission-aware shell, focused mobile-safe settings, platform-wide readable light/dark selected states, Kenya eTIMS, international e-invoicing, recurring billing, dunning, portal, payments, credits, retainers and SaMi AI, and adds Part 21 domain hardening: race-safe default dunning seeding plus company-bound foreign-key enforcement across master data, invoices, invoice lines, payments, allocations, refunds, credit notes, retainers, payment plans, recurring billing, reminders, portal records, eTIMS and international e-invoicing. New and updated rows cannot bind a record from another company; clean tenants validate the constraints during upgrade.",
       "protectedTrees": {
-        "lib/apps/invoicing": "b3944820fb073e0bb0ef48c892e6e8ea33827a5f",
-        "app/apps/invoicing": "284dccb18bb0874044f6d24caa7faf6c4861ed8c",
+        "lib/apps/invoicing": "3c7647044db62221ec5c764f17dc4620867ef4ff",
+        "app/apps/invoicing": "a8d1b8b116e523e20f84919e3968a8763e6d8526",
         "app/api/apps/invoicing": "409a0b9b57bb0191747cb4ba3bf6de066eb78dee",
         "app/api/internal/invoicing": "b2b22efc33d3b038495ccdd343845257789334a1",
         "app/i/[tenantId]/[token]": "62510a8ae454347c3d5e211895fdf27fb6a70bc7",
