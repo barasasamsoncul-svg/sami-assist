@@ -2946,6 +2946,79 @@ export async function saveEtimsProfile(
               THEN invoicing_etims_profiles.initialization_payload
               ELSE '{}'::jsonb
             END,
+          kra_sdc_id =
+            CASE
+              WHEN invoicing_etims_profiles.solution_type = EXCLUDED.solution_type
+               AND invoicing_etims_profiles.environment = EXCLUDED.environment
+               AND invoicing_etims_profiles.taxpayer_pin = EXCLUDED.taxpayer_pin
+               AND invoicing_etims_profiles.branch_id = EXCLUDED.branch_id
+               AND invoicing_etims_profiles.device_serial_number = EXCLUDED.device_serial_number
+              THEN invoicing_etims_profiles.kra_sdc_id
+              ELSE NULL
+            END,
+          kra_mrc_no =
+            CASE
+              WHEN invoicing_etims_profiles.solution_type = EXCLUDED.solution_type
+               AND invoicing_etims_profiles.environment = EXCLUDED.environment
+               AND invoicing_etims_profiles.taxpayer_pin = EXCLUDED.taxpayer_pin
+               AND invoicing_etims_profiles.branch_id = EXCLUDED.branch_id
+               AND invoicing_etims_profiles.device_serial_number = EXCLUDED.device_serial_number
+              THEN invoicing_etims_profiles.kra_mrc_no
+              ELSE NULL
+            END,
+          communication_key_sealed =
+            CASE
+              WHEN invoicing_etims_profiles.solution_type = EXCLUDED.solution_type
+               AND invoicing_etims_profiles.environment = EXCLUDED.environment
+               AND invoicing_etims_profiles.taxpayer_pin = EXCLUDED.taxpayer_pin
+               AND invoicing_etims_profiles.branch_id = EXCLUDED.branch_id
+               AND invoicing_etims_profiles.device_serial_number = EXCLUDED.device_serial_number
+              THEN invoicing_etims_profiles.communication_key_sealed
+              ELSE NULL
+            END,
+          communication_key_version =
+            CASE
+              WHEN invoicing_etims_profiles.solution_type = EXCLUDED.solution_type
+               AND invoicing_etims_profiles.environment = EXCLUDED.environment
+               AND invoicing_etims_profiles.taxpayer_pin = EXCLUDED.taxpayer_pin
+               AND invoicing_etims_profiles.branch_id = EXCLUDED.branch_id
+               AND invoicing_etims_profiles.device_serial_number = EXCLUDED.device_serial_number
+              THEN invoicing_etims_profiles.communication_key_version
+              ELSE NULL
+            END,
+          last_device_init_at =
+            CASE
+              WHEN invoicing_etims_profiles.solution_type = EXCLUDED.solution_type
+               AND invoicing_etims_profiles.environment = EXCLUDED.environment
+               AND invoicing_etims_profiles.taxpayer_pin = EXCLUDED.taxpayer_pin
+               AND invoicing_etims_profiles.branch_id = EXCLUDED.branch_id
+               AND invoicing_etims_profiles.device_serial_number = EXCLUDED.device_serial_number
+              THEN invoicing_etims_profiles.last_device_init_at
+              ELSE NULL
+            END,
+          last_reference_sync_at =
+            CASE
+              WHEN invoicing_etims_profiles.solution_type = EXCLUDED.solution_type
+               AND invoicing_etims_profiles.environment = EXCLUDED.environment
+               AND invoicing_etims_profiles.taxpayer_pin = EXCLUDED.taxpayer_pin
+               AND invoicing_etims_profiles.branch_id = EXCLUDED.branch_id
+               AND invoicing_etims_profiles.device_serial_number = EXCLUDED.device_serial_number
+              THEN invoicing_etims_profiles.last_reference_sync_at
+              ELSE NULL
+            END,
+          last_success_at =
+            CASE
+              WHEN invoicing_etims_profiles.solution_type = EXCLUDED.solution_type
+               AND invoicing_etims_profiles.environment = EXCLUDED.environment
+               AND invoicing_etims_profiles.taxpayer_pin = EXCLUDED.taxpayer_pin
+               AND invoicing_etims_profiles.branch_id = EXCLUDED.branch_id
+               AND invoicing_etims_profiles.device_serial_number = EXCLUDED.device_serial_number
+              THEN invoicing_etims_profiles.last_success_at
+              ELSE NULL
+            END,
+          last_error_at = NULL,
+          last_error_code = NULL,
+          last_error_message = NULL,
           updated_by =
             EXCLUDED.updated_by,
           updated_at =
