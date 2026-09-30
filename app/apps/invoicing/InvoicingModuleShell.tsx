@@ -310,10 +310,10 @@ export default function InvoicingModuleShell({
             </Link>
 
             <div className="min-w-0">
-              <p className="truncate text-sm font-black">
+              <p className="break-words whitespace-normal text-sm font-black">
                 Invoicing
               </p>
-              <p className="truncate text-[10px] text-slate-500 sm:hidden">
+              <p className="break-words whitespace-normal text-[10px] text-slate-500 sm:hidden">
                 {companyName}
               </p>
             </div>
