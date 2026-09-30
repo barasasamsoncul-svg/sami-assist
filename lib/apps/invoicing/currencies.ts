@@ -171,6 +171,27 @@ export async function resolveInvoicingExchangeRate(
       new Date(),
     );
 
+  const configuredCurrency =
+    await currencyExists(
+      client,
+      input.companyId,
+      currency,
+    );
+
+  if (
+    !configuredCurrency ||
+    configuredCurrency
+      .is_active !==
+      true
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Currency ' +
+      currency +
+      ' is not active in Currency Center.',
+    );
+  }
+
   if (
     currency ===
     baseCurrency
