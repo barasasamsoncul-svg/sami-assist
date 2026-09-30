@@ -522,6 +522,108 @@ async function resolveTaxRateId(
 }
 
 
+async function resolveTaxGroupId(
+  client:
+    PoolClient,
+  companyId:
+    string,
+  value:
+    unknown,
+  allowInactive =
+    false,
+) {
+  const requested =
+    optionalUuid(
+      value,
+    );
+
+  if (!requested) {
+    return null;
+  }
+
+  const result =
+    await client.query(
+      `
+        SELECT id
+        FROM invoicing_tax_groups
+        WHERE id = $1
+          AND company_id = $2
+          AND (
+            is_active = TRUE
+            OR $3 = TRUE
+          )
+          AND deleted_at IS NULL
+        LIMIT 1
+      `,
+      [
+        requested,
+        companyId,
+        allowInactive,
+      ],
+    );
+
+  if (
+    result.rows.length !==
+      1
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Choose a valid active tax group for this company.',
+    );
+  }
+
+  return requested;
+}
+
+
+async function resolveFiscalPositionId(
+  client:
+    PoolClient,
+  companyId:
+    string,
+  value:
+    unknown,
+) {
+  const requested =
+    optionalUuid(
+      value,
+    );
+
+  if (!requested) {
+    return null;
+  }
+
+  const result =
+    await client.query(
+      `
+        SELECT id
+        FROM invoicing_fiscal_positions
+        WHERE id = $1
+          AND company_id = $2
+          AND is_active = TRUE
+          AND deleted_at IS NULL
+        LIMIT 1
+      `,
+      [
+        requested,
+        companyId,
+      ],
+    );
+
+  if (
+    result.rows.length !==
+      1
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Choose a valid active fiscal position.',
+    );
+  }
+
+  return requested;
+}
+
+
 export async function createInvoicingCustomer(
   input:
     Record<string, unknown>,
@@ -636,6 +738,13 @@ export async function createInvoicingCustomer(
         client,
         context.companyId,
         input.paymentTermsId,
+      );
+
+    const fiscalPositionId =
+      await resolveFiscalPositionId(
+        client,
+        context.companyId,
+        input.fiscalPositionId,
       );
 
     const identityKey =
@@ -774,6 +883,7 @@ export async function createInvoicingCustomer(
             country_code,
             tax_id,
             registration_number,
+            fiscal_position_id,
             currency,
             payment_terms_id,
             credit_limit,
@@ -783,7 +893,7 @@ export async function createInvoicingCustomer(
           )
           VALUES (
             $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
-            $12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$21
+            $12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$22
           )
           RETURNING
             id,
@@ -837,6 +947,7 @@ export async function createInvoicingCustomer(
             input.registrationNumber,
             120,
           ),
+          fiscalPositionId,
           currency,
           paymentTermsId,
           input.creditLimit ===
@@ -1048,6 +1159,13 @@ export async function updateInvoicingCustomer(
             ':',
           );
 
+    const fiscalPositionId =
+      await resolveFiscalPositionId(
+        client,
+        context.companyId,
+        input.fiscalPositionId,
+      );
+
     await lockMasterIdentity(
       client,
       identityKey,
@@ -1161,11 +1279,12 @@ export async function updateInvoicingCustomer(
             country_code = $15,
             tax_id = $16,
             registration_number = $17,
-            currency = $18,
-            payment_terms_id = $19,
-            credit_limit = $20,
-            notes = $21,
-            updated_by = $22,
+            fiscal_position_id = $18,
+            currency = $19,
+            payment_terms_id = $20,
+            credit_limit = $21,
+            notes = $22,
+            updated_by = $23,
             updated_at = NOW()
           WHERE id = $1
             AND company_id = $2
@@ -1221,6 +1340,7 @@ export async function updateInvoicingCustomer(
             input.registrationNumber,
             120,
           ),
+          fiscalPositionId,
           currency,
           paymentTermsId,
           input.creditLimit ===
@@ -1522,6 +1642,25 @@ export async function createInvoicingCatalogItem(
         input.taxRateId,
       );
 
+    const taxGroupId =
+      await resolveTaxGroupId(
+        client,
+        context.companyId,
+        input.taxGroupId,
+      );
+
+    const taxCategory =
+      cleanText(
+        input.taxCategory,
+        80,
+      ) ||
+      null;
+
+    const effectiveTaxRateId =
+      taxGroupId
+        ? null
+        : taxRateId;
+
     const identityKey =
       sku
         ? [
@@ -1625,12 +1764,14 @@ export async function createInvoicingCatalogItem(
             description,
             unit,
             unit_price,
+            tax_category,
             default_tax_rate_id,
+            default_tax_group_id,
             created_by,
             updated_by
           )
           VALUES (
-            $1,$2,$3,$4,$5,$6,$7,$8,$9,$9
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11
           )
           RETURNING
             id,
@@ -1648,7 +1789,9 @@ export async function createInvoicingCatalogItem(
           ),
           unit,
           unitPrice,
-          taxRateId,
+          taxCategory,
+          effectiveTaxRateId,
+          taxGroupId,
           context.userId,
         ],
       );
@@ -1778,6 +1921,26 @@ export async function updateInvoicingCatalogItem(
         true,
       );
 
+    const taxGroupId =
+      await resolveTaxGroupId(
+        client,
+        context.companyId,
+        input.taxGroupId,
+        true,
+      );
+
+    const taxCategory =
+      cleanText(
+        input.taxCategory,
+        80,
+      ) ||
+      null;
+
+    const effectiveTaxRateId =
+      taxGroupId
+        ? null
+        : taxRateId;
+
     await lockMasterIdentity(
       client,
       sku
@@ -1880,8 +2043,10 @@ export async function updateInvoicingCatalogItem(
             description = $6,
             unit = $7,
             unit_price = $8,
-            default_tax_rate_id = $9,
-            updated_by = $10,
+            tax_category = $9,
+            default_tax_rate_id = $10,
+            default_tax_group_id = $11,
+            updated_by = $12,
             updated_at = NOW()
           WHERE id = $1
             AND company_id = $2
@@ -1901,7 +2066,9 @@ export async function updateInvoicingCatalogItem(
           ),
           unit,
           unitPrice,
-          taxRateId,
+          taxCategory,
+          effectiveTaxRateId,
+          taxGroupId,
           context.userId,
         ],
       );
