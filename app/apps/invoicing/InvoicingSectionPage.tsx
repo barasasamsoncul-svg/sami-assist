@@ -38,8 +38,11 @@ export type InvoicingRouteView =
   | 'dashboard'
   | 'newInvoice'
   | 'invoices'
+  | 'newCustomer'
   | 'customers'
+  | 'newItem'
   | 'items'
+  | 'receivePayment'
   | 'payments'
   | 'currencies'
   | 'taxEngine'
@@ -63,10 +66,16 @@ const VIEW_PATHS:
       '/apps/invoicing/new',
     invoices:
       '/apps/invoicing/invoices',
+    newCustomer:
+      '/apps/invoicing/customers/new',
     customers:
       '/apps/invoicing/customers',
+    newItem:
+      '/apps/invoicing/items/new',
     items:
       '/apps/invoicing/items',
+    receivePayment:
+      '/apps/invoicing/payments/new',
     payments:
       '/apps/invoicing/payments',
     currencies:
@@ -108,16 +117,31 @@ function canOpenView(
         .capabilities
         .canCreate;
 
+    case 'newCustomer':
+      return data
+        .capabilities
+        .canManageCustomers;
+
     case 'customers':
     case 'portal':
       return data
         .capabilities
         .canViewCustomers;
 
+    case 'newItem':
+      return data
+        .capabilities
+        .canManageCatalog;
+
     case 'items':
       return data
         .capabilities
         .canViewCatalog;
+
+    case 'receivePayment':
+      return data
+        .capabilities
+        .canRecordPayment;
 
     case 'payments':
     case 'retainers':
@@ -500,7 +524,16 @@ export default async function InvoicingSectionPage({
         )
       }
       activeSidebarKey={
-        view
+        view ===
+          'newCustomer'
+          ? 'customers'
+          : view ===
+              'newItem'
+            ? 'items'
+            : view ===
+                'receivePayment'
+              ? 'payments'
+              : view
       }
       sidebarCapabilities={{
         aiEnabled:
