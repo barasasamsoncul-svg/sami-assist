@@ -2870,54 +2870,6 @@ export async function createInvoice(
         ],
       });
 
-    const fiscalPositionId =
-      lines.find(
-        line =>
-          Boolean(
-            line.fiscalPositionId,
-          ),
-      )
-        ?.fiscalPositionId ||
-      null;
-
-    const taxLocalizationId =
-      lines.find(
-        line =>
-          Boolean(
-            line.localizationId,
-          ),
-      )
-        ?.localizationId ||
-      null;
-
-    const taxContext =
-      JSON.stringify({
-        engineVersion:
-          '2.16.0',
-        fiscalPositionId,
-        taxLocalizationId,
-        exemptionIds: [
-          ...new Set(
-            lines
-              .map(
-                line =>
-                  line.exemptionId,
-              )
-              .filter(
-                Boolean,
-              ),
-          ),
-        ],
-        sources: [
-          ...new Set(
-            lines.map(
-              line =>
-                line.taxSource,
-            ),
-          ),
-        ],
-      });
-
     const subtotal =
       money(
         lines.reduce(
@@ -3934,6 +3886,54 @@ export async function updateInvoiceDraft(
         input.lines,
         taxCalculation,
       );
+
+    const fiscalPositionId =
+      lines.find(
+        line =>
+          Boolean(
+            line.fiscalPositionId,
+          ),
+      )
+        ?.fiscalPositionId ||
+      null;
+
+    const taxLocalizationId =
+      lines.find(
+        line =>
+          Boolean(
+            line.localizationId,
+          ),
+      )
+        ?.localizationId ||
+      null;
+
+    const taxContext =
+      JSON.stringify({
+        engineVersion:
+          '2.16.0',
+        fiscalPositionId,
+        taxLocalizationId,
+        exemptionIds: [
+          ...new Set(
+            lines
+              .map(
+                line =>
+                  line.exemptionId,
+              )
+              .filter(
+                Boolean,
+              ),
+          ),
+        ],
+        sources: [
+          ...new Set(
+            lines.map(
+              line =>
+                line.taxSource,
+            ),
+          ),
+        ],
+      });
 
     const subtotal =
       money(
