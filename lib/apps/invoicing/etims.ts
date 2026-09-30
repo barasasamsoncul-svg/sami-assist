@@ -9,6 +9,11 @@ import type {
 } from 'pg';
 
 import {
+  openIntegrationSecret,
+  sealIntegrationSecret,
+} from '@/lib/integrations/crypto';
+
+import {
   cleanText,
   hasInvoicingPermission,
   INVOICING_PERMISSIONS,
@@ -41,6 +46,8 @@ type EtimsProfileRow = {
   next_transaction_invoice_no: string | number;
   kra_sdc_id: string | null;
   kra_mrc_no: string | null;
+  communication_key_sealed: string | null;
+  communication_key_version: string | null;
   initialization_payload: unknown;
   last_device_init_at: string | null;
   last_reference_sync_at: string | null;
@@ -108,36 +115,79 @@ const CREDIT_REASON_CODES =
     ),
   );
 
-const REFERENCE_ENDPOINTS:
-  Array<{
-    type: string;
-    path: string;
-  }> = [
-    {
-      type:
-        'codes',
-      path:
+const REFERENCE_OPERATIONS = [
+  'codes',
+  'item_classes',
+  'branches',
+  'notices',
+] as const;
+
+type EtimsOperation =
+  | 'initialize'
+  | 'sales'
+  | typeof REFERENCE_OPERATIONS[number];
+
+
+function operationPath(
+  profile:
+    Pick<
+      EtimsProfileRow,
+      'solution_type'
+    >,
+  operation:
+    EtimsOperation,
+) {
+  if (
+    profile.solution_type ===
+      'oscu'
+  ) {
+    const paths:
+      Record<
+        EtimsOperation,
+        string
+      > = {
+        initialize:
+          '/selectInitOsdcInfo',
+        codes:
+          '/selectCodeList',
+        item_classes:
+          '/selectItemClsList',
+        branches:
+          '/selectBhfList',
+        notices:
+          '/selectNoticeList',
+        sales:
+          '/saveTrnsSalesOsdc',
+      };
+
+    return paths[
+      operation
+    ];
+  }
+
+  const paths:
+    Record<
+      EtimsOperation,
+      string
+    > = {
+      initialize:
+        '/initializer/selectInitInfo',
+      codes:
         '/code/selectCodes',
-    },
-    {
-      type:
-        'item_classes',
-      path:
+      item_classes:
         '/itemClass/selectItemsClass',
-    },
-    {
-      type:
-        'branches',
-      path:
+      branches:
         '/branches/selectBranches',
-    },
-    {
-      type:
-        'notices',
-      path:
+      notices:
         '/notices/selectNotices',
-    },
+      sales:
+        '/trnsSales/saveSales',
+    };
+
+  return paths[
+    operation
   ];
+}
 
 
 function bool(
@@ -462,11 +512,172 @@ function requestTimeoutMs() {
 }
 
 
+function findStringDeep(
+  value:
+    unknown,
+  keys:
+    ReadonlySet<string>,
+):
+  string |
+  null {
+  if (
+    !value ||
+    typeof value !==
+      'object'
+  ) {
+    return null;
+  }
+
+  if (
+    Array.isArray(
+      value,
+    )
+  ) {
+    for (
+      const item
+      of value
+    ) {
+      const found =
+        findStringDeep(
+          item,
+          keys,
+        );
+
+      if (found) {
+        return found;
+      }
+    }
+
+    return null;
+  }
+
+  for (
+    const [
+      key,
+      item,
+    ]
+    of Object.entries(
+      value as
+        Record<
+          string,
+          unknown
+        >,
+    )
+  ) {
+    if (
+      keys.has(
+        key.toLowerCase(),
+      ) &&
+      typeof item ===
+        'string' &&
+      item.trim()
+    ) {
+      return item.trim();
+    }
+
+    const nested =
+      findStringDeep(
+        item,
+        keys,
+      );
+
+    if (nested) {
+      return nested;
+    }
+  }
+
+  return null;
+}
+
+
+function communicationKey(
+  profile:
+    EtimsProfileRow,
+) {
+  if (
+    profile.solution_type !==
+      'oscu'
+  ) {
+    return null;
+  }
+
+  if (
+    !profile
+      .communication_key_sealed
+  ) {
+    throw new InvoicingError(
+      'ETIMS_NOT_ACTIVATED',
+      'The OSCU communication key is missing. Initialize the device again.',
+    );
+  }
+
+  try {
+    const opened =
+      openIntegrationSecret<
+        {
+          communicationKey?:
+            string;
+        }
+      >(
+        profile
+          .communication_key_sealed,
+      );
+
+    const key =
+      cleanText(
+        opened
+          .communicationKey,
+        255,
+      );
+
+    if (!key) {
+      throw new Error(
+        'Empty key.',
+      );
+    }
+
+    return key;
+  } catch {
+    throw new InvoicingError(
+      'ETIMS_NOT_ACTIVATED',
+      'SaMi could not open the OSCU communication key. Check the platform integration encryption key.',
+    );
+  }
+}
+
+
+function providerPayload(
+  profile:
+    EtimsProfileRow,
+  operation:
+    EtimsOperation,
+  payload:
+    Record<string, unknown>,
+) {
+  if (
+    profile.solution_type !==
+      'oscu' ||
+    operation ===
+      'initialize'
+  ) {
+    return payload;
+  }
+
+  return {
+    ...payload,
+    cmcKey:
+      communicationKey(
+        profile,
+      ),
+  };
+}
+
+
 async function etimsPost(
   profile:
     EtimsProfileRow,
-  path:
-    string,
+  operation:
+    EtimsOperation,
   payload:
     Record<string, unknown>,
 ):
@@ -487,7 +698,10 @@ async function etimsPost(
         profileBaseUrl(
           profile,
         ) +
-        path,
+        operationPath(
+          profile,
+          operation,
+        ),
         {
           method:
             'POST',
@@ -501,7 +715,11 @@ async function etimsPost(
           },
           body:
             JSON.stringify(
-              payload,
+              providerPayload(
+                profile,
+                operation,
+                payload,
+              ),
             ),
           signal:
             controller.signal,
@@ -1468,7 +1686,7 @@ async function transmitSubmission(
     const remote =
       await etimsPost(
         profile,
-        '/trnsSales/saveSales',
+        'sales',
         payload,
       );
 
@@ -2992,7 +3210,7 @@ export async function initializeEtimsDevice() {
   const remote =
     await etimsPost(
       profile,
-      '/initializer/selectInitInfo',
+      'initialize',
       {
         tin:
           profile.taxpayer_pin,
@@ -3018,6 +3236,12 @@ export async function initializeEtimsDevice() {
       data.sdcId,
       120,
     ) ||
+    findStringDeep(
+      remote.body,
+      new Set([
+        'sdcid',
+      ]),
+    ) ||
     null;
 
   const mrcNo =
@@ -3025,7 +3249,45 @@ export async function initializeEtimsDevice() {
       data.mrcNo,
       120,
     ) ||
+    findStringDeep(
+      remote.body,
+      new Set([
+        'mrcno',
+      ]),
+    ) ||
     null;
+
+  const rawCommunicationKey =
+    profile.solution_type ===
+      'oscu'
+      ? findStringDeep(
+          remote.body,
+          new Set([
+            'cmckey',
+            'communicationkey',
+            'commkey',
+          ]),
+        )
+      : null;
+
+  const sealedCommunicationKey =
+    rawCommunicationKey
+      ? sealIntegrationSecret({
+          communicationKey:
+            rawCommunicationKey,
+        })
+      : null;
+
+  if (
+    profile.solution_type ===
+      'oscu' &&
+    !sealedCommunicationKey
+  ) {
+    throw new InvoicingError(
+      'ETIMS_SUBMISSION_FAILED',
+      'KRA approved the OSCU initialization but did not return a communication key.',
+    );
+  }
 
   await context.pool.query(
     `
@@ -3035,11 +3297,21 @@ export async function initializeEtimsDevice() {
         initialization_payload = $2::jsonb,
         kra_sdc_id = COALESCE($3, kra_sdc_id),
         kra_mrc_no = COALESCE($4, kra_mrc_no),
+        communication_key_sealed =
+          COALESCE(
+            $5,
+            communication_key_sealed
+          ),
+        communication_key_version =
+          COALESCE(
+            $6,
+            communication_key_version
+          ),
         last_device_init_at = NOW(),
         last_error_at = NULL,
         last_error_code = NULL,
         last_error_message = NULL,
-        updated_by = $5,
+        updated_by = $7,
         updated_at = NOW()
       WHERE company_id = $1
     `,
@@ -3050,6 +3322,12 @@ export async function initializeEtimsDevice() {
       ),
       sdcId,
       mrcNo,
+      sealedCommunicationKey
+        ?.sealed ||
+      null,
+      sealedCommunicationKey
+        ?.version ||
+      null,
       context.userId,
     ],
   );
@@ -3102,13 +3380,13 @@ export async function syncEtimsReferenceData() {
       [];
 
   for (
-    const endpoint
-    of REFERENCE_ENDPOINTS
+    const operation
+    of REFERENCE_OPERATIONS
   ) {
     const remote =
       await etimsPost(
         profile,
-        endpoint.path,
+        operation,
         {
           tin:
             profile.taxpayer_pin,
@@ -3150,7 +3428,7 @@ export async function syncEtimsReferenceData() {
       `,
       [
         context.companyId,
-        endpoint.type,
+        operation,
         JSON.stringify(
           remote.body,
         ),
@@ -3160,7 +3438,7 @@ export async function syncEtimsReferenceData() {
 
     synced.push({
       type:
-        endpoint.type,
+        operation,
       resultCode:
         remoteCode(
           remote.body,
