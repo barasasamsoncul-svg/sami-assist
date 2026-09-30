@@ -1363,8 +1363,6 @@ async function loadInvoiceSource(
                 company.address_line1,
                 company.address_line2,
                 company.city,
-                company.state,
-                company.postal_code,
                 company.country
               ),
               ''
@@ -1720,8 +1718,6 @@ async function loadCreditNoteSource(
                 company.address_line1,
                 company.address_line2,
                 company.city,
-                company.state,
-                company.postal_code,
                 company.country
               ),
               ''
@@ -4142,38 +4138,55 @@ export async function submitEInvoiceDocument(
       );
     }
 
+    const customerResult =
+      await client.query(
+        document.document_kind ===
+          'invoice'
+          ? `
+              SELECT customer_id
+              FROM invoicing_invoices
+              WHERE id = $1
+                AND company_id = $2
+              LIMIT 1
+            `
+          : `
+              SELECT customer_id
+              FROM invoicing_credit_notes
+              WHERE id = $1
+                AND company_id = $2
+              LIMIT 1
+            `,
+        [
+          document.document_kind ===
+            'invoice'
+            ? document.invoice_id
+            : document.credit_note_id,
+          context.companyId,
+        ],
+      );
+
+    const customerId =
+      customerResult.rows[0]
+        ?.customer_id
+        ? String(
+            customerResult
+              .rows[0]
+              .customer_id,
+          )
+        : '';
+
+    if (!customerId) {
+      throw new InvoicingError(
+        'EINVOICE_VALIDATION_FAILED',
+        'The source document customer could not be resolved.',
+      );
+    }
+
     participant =
       await participantForCustomer(
         client,
         context.companyId,
-        (
-          await client.query(
-            document.document_kind ===
-              'invoice'
-              ? `
-                  SELECT customer_id
-                  FROM invoicing_invoices
-                  WHERE id = $1
-                    AND company_id = $2
-                  LIMIT 1
-                `
-              : `
-                  SELECT customer_id
-                  FROM invoicing_credit_notes
-                  WHERE id = $1
-                    AND company_id = $2
-                  LIMIT 1
-                `,
-            [
-              document.document_kind ===
-                'invoice'
-                ? document.invoice_id
-                : document.credit_note_id,
-              context.companyId,
-            ],
-          )
-        ).rows[0]
-          ?.customer_id,
+        customerId,
         profile.network_key,
       );
 
@@ -4892,7 +4905,8 @@ export async function getEInvoiceWorkspaceData() {
       name:
         context
           .company
-          .currentCompanyName,
+          .currentCompany
+          .name,
     },
     capabilities: {
       canConfigure,
