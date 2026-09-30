@@ -47,6 +47,7 @@ export type InvoicingRouteView =
   | 'currencies'
   | 'taxEngine'
   | 'etims'
+  | 'eInvoicing'
   | 'retainers'
   | 'paymentPlans'
   | 'recurring'
@@ -85,6 +86,8 @@ const VIEW_PATHS:
       '/apps/invoicing/tax-engine',
     etims:
       '/apps/invoicing/etims',
+    eInvoicing:
+      '/apps/invoicing/e-invoicing',
     retainers:
       '/apps/invoicing/retainers',
     paymentPlans:
@@ -350,6 +353,17 @@ export function buildInvoicingSidebarItems(
           .etims,
       description:
         'KRA fiscalization, mappings, activation and transmission audit.',
+    },
+    {
+      key:
+        'eInvoicing',
+      label:
+        'International e-Invoicing',
+      href:
+        VIEW_PATHS
+          .eInvoicing,
+      description:
+        'Peppol, UBL and provider-routed EDI fiscal documents.',
     },
     ...(
       data.capabilities
