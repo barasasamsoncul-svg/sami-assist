@@ -74,6 +74,150 @@
   opacity: 0.55;
   cursor: not-allowed;
 }
+
+.dashboardHero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(220px, 0.8fr);
+  gap: 18px;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid var(--sami-border);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 92% 8%, color-mix(in srgb, var(--sami-brand) 18%, transparent), transparent 34%),
+    var(--sami-surface);
+  padding: 24px;
+}
+.dashboardHero > div {
+  min-width: 0;
+}
+.heroLabel {
+  display: block;
+  color: var(--sami-muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.heroValue {
+  display: block;
+  margin-top: 10px;
+  font-size: clamp(28px, 5vw, 46px);
+  font-weight: 850;
+  letter-spacing: -0.045em;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+.heroHealth {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  border: 1px solid var(--sami-border);
+  border-radius: 18px;
+  background: var(--sami-surface-soft);
+  padding: 18px;
+}
+.heroHealth strong {
+  margin-top: 8px;
+  font-size: 20px;
+  font-weight: 800;
+}
+.heroHealth small {
+  margin-top: 6px;
+  color: var(--sami-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.financeCards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+.financeCard {
+  min-width: 0;
+  border: 1px solid var(--sami-border);
+  border-radius: 18px;
+  background: var(--sami-surface);
+  padding: 18px;
+  box-shadow: var(--sami-shadow-sm);
+}
+.financeCard span,
+.healthGrid span {
+  display: block;
+  color: var(--sami-muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.financeCard strong {
+  display: block;
+  margin-top: 10px;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  overflow-wrap: anywhere;
+}
+.financeCard small,
+.healthGrid small {
+  display: block;
+  margin-top: 5px;
+  color: var(--sami-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.healthGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--sami-border);
+  border-radius: 18px;
+  background: var(--sami-surface);
+}
+.healthGrid > div {
+  min-width: 0;
+  padding: 15px 17px;
+  border-right: 1px solid var(--sami-border);
+}
+.healthGrid > div:last-child {
+  border-right: 0;
+}
+.healthGrid strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.panelHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.panelHeading h3 {
+  margin: 0;
+}
+.quickActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border: 1px solid var(--sami-border);
+  border-radius: 18px;
+  background: var(--sami-surface-soft);
+  padding: 18px 20px;
+}
+.quickActions h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.quickActions p {
+  max-width: 560px;
+}
+
 .cards {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -287,5 +431,61 @@
   }
   .filters label {
     min-width: 120px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .financeCards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .healthGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .healthGrid > div:nth-child(2) {
+    border-right: 0;
+  }
+  .healthGrid > div:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--sami-border);
+  }
+  .quickActions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+@media (max-width: 760px) {
+  .dashboardHero {
+    grid-template-columns: 1fr;
+    border-radius: 20px;
+    padding: 18px;
+  }
+  .financeCards {
+    grid-template-columns: 1fr 1fr;
+  }
+  .healthGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .panelHeading {
+    flex-direction: column;
+  }
+}
+@media (max-width: 520px) {
+  .financeCards,
+  .healthGrid {
+    grid-template-columns: 1fr;
+  }
+  .healthGrid > div,
+  .healthGrid > div:nth-child(2) {
+    border-right: 0;
+    border-bottom: 1px solid var(--sami-border);
+  }
+  .healthGrid > div:last-child {
+    border-bottom: 0;
+  }
+  .quickActions .actions {
+    width: 100%;
+  }
+  .quickActions .button,
+  .quickActions .primary {
+    width: 100%;
   }
 }

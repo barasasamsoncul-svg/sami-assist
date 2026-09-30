@@ -42,6 +42,29 @@ export default function AccountingFoundationPanel({
   const amount = (value: string) => formatAccountingAmount(value, currency);
   const sum = (field: "debit" | "credit" | "balance") =>
     data.accounts.reduce((total, row) => total + cents(row[field]), BigInt(0));
+  const balanceByType = (predicate: (type: string) => boolean) =>
+    data.accounts.reduce(
+      (total, row) =>
+        predicate(row.account_type)
+          ? total + cents(row.balance)
+          : total,
+      BigInt(0),
+    );
+  const cashBalance = balanceByType(
+    (type) => type === "asset_cash" || type.startsWith("asset_bank"),
+  );
+  const receivableBalance = balanceByType(
+    (type) => type === "asset_receivable",
+  );
+  const incomeBalance = -balanceByType(
+    (type) => type === "income" || type.startsWith("income_"),
+  );
+  const expenseBalance = balanceByType(
+    (type) => type === "expense" || type.startsWith("expense_"),
+  );
+  const netProfit = incomeBalance - expenseBalance;
+  const trialDifference = sum("balance");
+  const booksBalanced = trialDifference === BigInt(0);
   const selected = data.accounts.find((row) => row.id === filters.accountId);
   const qs = (extra: Record<string, string>) =>
     new URLSearchParams({
@@ -51,7 +74,7 @@ export default function AccountingFoundationPanel({
       ...extra,
     }).toString();
   const names = {
-    overview: "Your accounting overview",
+    overview: "Financial command center",
     "trial-balance": "Trial balance",
     "general-ledger": "General ledger",
     "new-journal": "New manual journal",
@@ -59,7 +82,7 @@ export default function AccountingFoundationPanel({
   };
   const descriptions = {
     overview:
-      "A clear view of your books, draft entries and next accounting tasks.",
+      "Monitor financial position, book health and the accounting work that needs attention.",
     "trial-balance":
       "Opening balances, period movements and closing balances from posted journals.",
     "general-ledger":
@@ -86,7 +109,7 @@ export default function AccountingFoundationPanel({
       title: "Bank and cash accounts",
       detail: "Connect your bank and cash records to ledger accounts.",
       href: "/apps/accounting/accounting_bank_accounts",
-      done: false,
+      done: data.bankAccounts > 0,
     },
     {
       title: "Opening balances",
@@ -198,47 +221,89 @@ export default function AccountingFoundationPanel({
           </form>
           {section === "overview" ? (
             <>
-              <div className={styles.cards}>
-                {[
-                  [
-                    "Chart of accounts",
-                    String(data.accounts.length),
-                    "Company ledger accounts",
-                  ],
-                  [
-                    "Posted journals",
-                    String(data.postedCount),
-                    "In the selected period",
-                  ],
-                  [
-                    "Drafts to review",
-                    String(data.draftCount),
-                    "Across all dates",
-                  ],
-                  [
-                    "Trial balance difference",
-                    amount(decimalAmount(sum("balance"))),
-                    "Closing debit less credit",
-                  ],
-                ].map(([label, value, hint]) => (
-                  <div className={styles.card} key={label}>
-                    <span>{label}</span>
-                    <strong>{value}</strong>
-                    <small>{hint}</small>
-                  </div>
-                ))}
+              <section className={styles.dashboardHero}>
+                <div>
+                  <span className={styles.heroLabel}>Net result · selected period</span>
+                  <strong className={styles.heroValue}>
+                    {amount(decimalAmount(netProfit))}
+                  </strong>
+                  <p>
+                    Posted ledger activity from {filters.from} to {filters.to}.
+                    Draft journals are excluded until they are posted.
+                  </p>
+                </div>
+
+                <div className={styles.heroHealth}>
+                  <span className={styles.heroLabel}>Book health</span>
+                  <strong>{booksBalanced ? "Balanced" : "Needs review"}</strong>
+                  <small>
+                    Trial balance difference:{" "}
+                    {amount(decimalAmount(trialDifference))}
+                  </small>
+                </div>
+              </section>
+
+              <div className={styles.financeCards}>
+                <div className={styles.financeCard}>
+                  <span>Cash & bank</span>
+                  <strong>{amount(decimalAmount(cashBalance))}</strong>
+                  <small>Posted cash-type ledger balance</small>
+                </div>
+                <div className={styles.financeCard}>
+                  <span>Receivables</span>
+                  <strong>{amount(decimalAmount(receivableBalance))}</strong>
+                  <small>Customer receivable control accounts</small>
+                </div>
+                <div className={styles.financeCard}>
+                  <span>Income</span>
+                  <strong>{amount(decimalAmount(incomeBalance))}</strong>
+                  <small>Net posted income, including contra income</small>
+                </div>
+                <div className={styles.financeCard}>
+                  <span>Expenses</span>
+                  <strong>{amount(decimalAmount(expenseBalance))}</strong>
+                  <small>Posted expense accounts</small>
+                </div>
               </div>
+
+              <section className={styles.healthGrid}>
+                <div>
+                  <span>Posted journals</span>
+                  <strong>{data.postedCount}</strong>
+                  <small>Selected period</small>
+                </div>
+                <div>
+                  <span>Drafts to review</span>
+                  <strong>{data.draftCount}</strong>
+                  <small>Across all dates</small>
+                </div>
+                <div>
+                  <span>Active bank accounts</span>
+                  <strong>{data.bankAccounts}</strong>
+                  <small>Bank, cash or mobile money</small>
+                </div>
+                <div>
+                  <span>Unreconciled bank lines</span>
+                  <strong>{data.unreconciledBankLines}</strong>
+                  <small>Unmatched or suggested</small>
+                </div>
+              </section>
+
               <div className={styles.columns}>
                 <section className={styles.panel}>
-                  <div className={styles.heading}>
-                    <h3>Recent journals</h3>
+                  <div className={styles.panelHeading}>
+                    <div>
+                      <span className={styles.eyebrow}>Ledger activity</span>
+                      <h3>Recent journal entries</h3>
+                    </div>
                     <Link
                       href="/apps/accounting/journals"
                       className={styles.button}
                     >
-                      View register <ArrowUpRight size={14} />
+                      Journal register <ArrowUpRight size={14} />
                     </Link>
                   </div>
+
                   {data.recent.length ? (
                     <div className={styles.tableWrap}>
                       <table>
@@ -273,31 +338,68 @@ export default function AccountingFoundationPanel({
                     <div className={styles.empty}>
                       <BookOpen size={26} />
                       <p>
-                        No journals yet. Prepare your accounts and fiscal
-                        period, then add your first balanced entry.
+                        No journals yet. Complete Accounting setup and create
+                        the first balanced entry.
                       </p>
                     </div>
                   )}
                 </section>
+
                 <section className={styles.panel}>
-                  <h3>Get your books ready</h3>
+                  <div className={styles.panelHeading}>
+                    <div>
+                      <span className={styles.eyebrow}>Readiness</span>
+                      <h3>Book setup</h3>
+                    </div>
+                    <Link
+                      href="/apps/accounting/setup"
+                      className={styles.button}
+                    >
+                      Open setup
+                    </Link>
+                  </div>
                   {taskList}
                 </section>
               </div>
-              <div className={styles.actions}>
-                <Link
-                  className={styles.button}
-                  href={"/apps/accounting/trial-balance?" + qs({})}
-                >
-                  Open trial balance <ArrowUpRight size={15} />
-                </Link>
-                <Link
-                  className={styles.button}
-                  href="/apps/accounting/general-ledger"
-                >
-                  Explore general ledger <ArrowUpRight size={15} />
-                </Link>
-              </div>
+
+              <section className={styles.quickActions}>
+                <div>
+                  <span className={styles.eyebrow}>Financial controls</span>
+                  <h3>Work directly from the books</h3>
+                  <p>
+                    Use dedicated Accounting pages instead of stacking
+                    unrelated workflows into one long screen.
+                  </p>
+                </div>
+                <div className={styles.actions}>
+                  {canCreate ? (
+                    <Link
+                      className={styles.primary}
+                      href="/apps/accounting/new-journal"
+                    >
+                      <Plus size={15} /> New journal
+                    </Link>
+                  ) : null}
+                  <Link
+                    className={styles.button}
+                    href={"/apps/accounting/trial-balance?" + qs({})}
+                  >
+                    Trial balance <ArrowUpRight size={15} />
+                  </Link>
+                  <Link
+                    className={styles.button}
+                    href="/apps/accounting/general-ledger"
+                  >
+                    General ledger <ArrowUpRight size={15} />
+                  </Link>
+                  <Link
+                    className={styles.button}
+                    href="/apps/accounting/accounting_bank_accounts"
+                  >
+                    Bank & cash <ArrowUpRight size={15} />
+                  </Link>
+                </div>
+              </section>
             </>
           ) : section === "trial-balance" ? (
             <>

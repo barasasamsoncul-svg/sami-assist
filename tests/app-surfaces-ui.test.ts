@@ -203,7 +203,10 @@ test(
 
       assert.match(
         workspace,
-        /AppSurfaceShell/,
+        moduleKey ===
+          'accounting'
+          ? /AccountingModuleShell/
+          : /AppSurfaceShell/,
         moduleKey +
           ' must compose its own standalone app surface.',
       );
@@ -491,38 +494,58 @@ test(
 );
 
 test(
-  'enterprise apps expose profile-driven composition attributes',
+  'Accounting owns a standalone finance shell instead of the generic enterprise composition',
   async () => {
-    const source =
-      await readFile(
-        'app/apps/accounting/AccountingWorkspace.tsx',
-        'utf8',
-      );
-
-    for (
-      const marker
-      of [
-        'data-module',
-        'data-archetype',
-        'data-navigation',
-        'data-density',
-        'data-header',
-        '--sami-module-accent',
-        '--sami-module-secondary',
-      ]
-    ) {
-      assert.match(
-        source,
-        new RegExp(
-          marker.replace(
-            /[-/\\^$*+?.()|[\]{}]/g,
-            '\\$&',
-          ),
+    const [
+      workspace,
+      shell,
+    ] =
+      await Promise.all([
+        readFile(
+          'app/apps/accounting/AccountingWorkspace.tsx',
+          'utf8',
         ),
-        'enterprise module surface must expose ' +
-          marker,
-      );
-    }
+        readFile(
+          'app/apps/accounting/AccountingModuleShell.tsx',
+          'utf8',
+        ),
+      ]);
+
+    assert.match(
+      workspace,
+      /AccountingModuleShell/,
+      'Accounting must render inside its dedicated module shell.',
+    );
+
+    assert.match(
+      shell,
+      /data-sami-app="accounting"/,
+      'The dedicated shell must retain the Accounting app identity.',
+    );
+
+    assert.match(
+      shell,
+      /data-accounting-shell="standalone"/,
+      'Accounting must remain a standalone app surface.',
+    );
+
+    assert.match(
+      shell,
+      /fixed inset-y-0 left-0/,
+      'Desktop Accounting navigation must remain fixed while finance content scrolls.',
+    );
+
+    assert.match(
+      shell,
+      /lg:hidden/,
+      'Accounting must preserve a mobile sidebar drawer.',
+    );
+
+    assert.match(
+      shell,
+      /min-w-0/,
+      'Accounting content must remain shrink-safe on narrow screens.',
+    );
   },
 );
 
