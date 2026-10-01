@@ -16,6 +16,7 @@ import AccountingModuleShell, {
   type AccountingSidebarItem,
 } from '@/app/apps/accounting/AccountingModuleShell';
 import AccountingWorkspaceClient from '@/app/apps/accounting/AccountingWorkspaceClient';
+import AccountingChartOfAccounts from '@/app/apps/accounting/AccountingChartOfAccounts';
 
 import {
   getAccountingFoundation,
@@ -26,6 +27,9 @@ import {
 import {
   getAccountingSetup,
 } from '@/lib/apps/accounting/setup';
+import {
+  getChartOfAccounts,
+} from '@/lib/apps/accounting/chart-of-accounts';
 
 const MODULE_KEY = 'accounting';
 
@@ -89,7 +93,20 @@ export default async function AccountingWorkspace({
     null =
       null;
 
-  if (dedicatedSection) {
+  let chartOfAccounts:
+    Awaited<
+      ReturnType<
+        typeof getChartOfAccounts
+      >
+    > |
+    null =
+      null;
+
+  if (
+    dedicatedSection &&
+    dedicatedSection !==
+      'accounts'
+  ) {
     try {
       foundation =
         await getAccountingFoundation(
@@ -113,6 +130,24 @@ export default async function AccountingWorkspace({
           error,
         );
       }
+    }
+  }
+
+  if (
+    dedicatedSection ===
+      'accounts'
+  ) {
+    try {
+      chartOfAccounts =
+        await getChartOfAccounts();
+    } catch (
+      error
+    ) {
+      foundationError =
+        error instanceof
+          Error
+          ? error.message
+          : 'Chart of Accounts could not be loaded.';
     }
   }
 
@@ -404,8 +439,49 @@ export default async function AccountingWorkspace({
       {
         dedicatedSection
           ? (
-              foundation
+              dedicatedSection ===
+                'accounts'
                 ? (
+                    chartOfAccounts
+                      ? (
+                          <AccountingChartOfAccounts
+                            initialChart={
+                              chartOfAccounts
+                            }
+                            canCreate={
+                              data.capabilities
+                                .canCreate
+                            }
+                            canEdit={
+                              data.capabilities
+                                .canEdit
+                            }
+                            canManageSettings={
+                              data.capabilities
+                                .canManageSettings
+                            }
+                          />
+                        )
+                      : (
+                          <div
+                            role="alert"
+                            className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-6 text-[var(--foreground)]"
+                          >
+                            {
+                              foundationError ||
+                              'Chart of Accounts could not be loaded.'
+                            }{' '}
+                            <Link
+                              href="/apps/accounting"
+                              className="font-bold underline underline-offset-4"
+                            >
+                              Return to Accounting
+                            </Link>
+                          </div>
+                        )
+                  )
+                : foundation
+                  ? (
                     <AccountingFoundationPanel
                       data={
                         foundation
