@@ -73,6 +73,35 @@ function rate(value: unknown) {
   return raw;
 }
 
+function rateUnits(value: unknown) {
+  const raw = rate(value);
+  const [whole, fraction = ""] = raw.split(".");
+  return BigInt(whole) * BigInt(100000000) + BigInt(fraction.padEnd(8, "0"));
+}
+
+function roleAllows(
+  context: {
+    permissions: {
+      isOwner: boolean;
+      roles: Array<{ key: string | null; name: string }>;
+    };
+  },
+  role: unknown,
+) {
+  const required = String(role || "").trim().toLowerCase();
+  if (!required) return true;
+  if (
+    context.permissions.isOwner &&
+    ["owner", "workspace_owner", "workspace owner"].includes(required)
+  ) {
+    return true;
+  }
+  return context.permissions.roles.some((item) =>
+    String(item.key || "").trim().toLowerCase() === required ||
+    String(item.name || "").trim().toLowerCase() === required
+  );
+}
+
 function pageValue(value: unknown) {
   const n=Number(value || 1);
   return Number.isInteger(n) && n>0 ? Math.min(n,100000) : 1;
@@ -102,7 +131,7 @@ export async function getAccountingPurchasing(input: { page?: unknown } = {}): P
   try {
     await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
 
-    const [policies,requisitions,orders,exceptions,counts]=await Promise.all([
+    const [policies,vendors,requisitions,orders,orderLines,bills,exceptions,counts]=await Promise.all([
       client.query(
         `SELECT id::text,name,min_amount::text,max_amount::text,approver_role,approver_user_id::text,
                 require_receipt,require_three_way_match,quantity_tolerance_percent::text,
@@ -110,6 +139,13 @@ export async function getAccountingPurchasing(input: { page?: unknown } = {}): P
          FROM accounting_purchase_policies
          WHERE company_id=$1 AND deleted_at IS NULL
          ORDER BY active DESC,min_amount,name`,
+        [context.companyId],
+      ),
+      client.query(
+        `SELECT id::text,vendor_code,name,currency,status
+         FROM accounting_vendors
+         WHERE company_id=$1 AND deleted_at IS NULL AND status='active'
+         ORDER BY name,vendor_code`,
         [context.companyId],
       ),
       client.query(
@@ -136,6 +172,43 @@ export async function getAccountingPurchasing(input: { page?: unknown } = {}): P
          ORDER BY po.order_date DESC,po.created_at DESC,po.id DESC
          LIMIT 50 OFFSET $2`,
         [context.companyId,(page-1)*50],
+      ),
+      client.query(
+        `SELECT pol.id::text,pol.purchase_order_id::text,po.purchase_order_number,pol.description,
+                pol.quantity::text,pol.unit_price::text,pol.line_total::text,
+                COALESCE(r.accepted_quantity,0)::text AS accepted_quantity,
+                GREATEST(pol.quantity-COALESCE(r.accepted_quantity,0),0)::text AS remaining_quantity
+         FROM accounting_purchase_order_lines pol
+         JOIN accounting_purchase_orders po
+           ON po.company_id=pol.company_id AND po.id=pol.purchase_order_id
+          AND po.deleted_at IS NULL AND po.status IN ('approved','partially_received')
+         LEFT JOIN LATERAL (
+           SELECT COALESCE(SUM(grl.accepted_quantity),0)::numeric(19,4) AS accepted_quantity
+           FROM accounting_goods_receipt_lines grl
+           JOIN accounting_goods_receipts gr
+             ON gr.company_id=grl.company_id AND gr.id=grl.receipt_id
+            AND gr.deleted_at IS NULL AND gr.status='confirmed'
+           WHERE grl.company_id=pol.company_id
+             AND grl.purchase_order_line_id=pol.id
+             AND grl.deleted_at IS NULL
+         ) r ON TRUE
+         WHERE pol.company_id=$1 AND pol.deleted_at IS NULL
+           AND pol.quantity > COALESCE(r.accepted_quantity,0)
+         ORDER BY po.order_date,po.purchase_order_number,pol.sequence,pol.id
+         LIMIT 500`,
+        [context.companyId],
+      ),
+      client.query(
+        `SELECT d.id::text,d.vendor_id::text,v.name AS vendor_name,d.document_number,d.vendor_reference,
+                d.base_total_amount::text,d.status,d.purchase_order_id::text,d.purchase_match_status
+         FROM accounting_vendor_documents d
+         JOIN accounting_vendors v
+           ON v.company_id=d.company_id AND v.id=d.vendor_id AND v.deleted_at IS NULL
+         WHERE d.company_id=$1 AND d.deleted_at IS NULL AND d.document_type='bill'
+           AND d.status IN ('draft','approved')
+         ORDER BY d.document_date DESC,d.created_at DESC
+         LIMIT 200`,
+        [context.companyId],
       ),
       client.query(
         `SELECT id::text,vendor_document_id::text,purchase_order_id::text,match_type,
@@ -165,8 +238,11 @@ export async function getAccountingPurchasing(input: { page?: unknown } = {}): P
       companyId: context.companyId,
       currency: context.company.currentCompany.currency,
       policies: policies.rows as AccountingPurchasingWorkspace["policies"],
+      vendors: vendors.rows as AccountingPurchasingWorkspace["vendors"],
       requisitions: requisitions.rows as AccountingPurchasingWorkspace["requisitions"],
       orders: orders.rows as AccountingPurchasingWorkspace["orders"],
+      orderLines: orderLines.rows as AccountingPurchasingWorkspace["orderLines"],
+      bills: bills.rows as AccountingPurchasingWorkspace["bills"],
       exceptions: exceptions.rows as AccountingPurchasingWorkspace["exceptions"],
       counts: {
         draftRequisitions: Number(counts.rows[0]?.draft_requisitions || 0),
@@ -434,6 +510,13 @@ export async function transitionPurchaseOrder(input: unknown) {
       if (po.approver_user_id && String(po.approver_user_id)!==context.userId) {
         throw new AccountingInputError("This purchase order requires its assigned approver.");
       }
+      if (!po.approver_user_id && !roleAllows(context, po.approver_role)) {
+        throw new AccountingInputError(
+          "This purchase order requires an approver with the " +
+          String(po.approver_role || "configured") +
+          " role.",
+        );
+      }
       await client.query(
         `UPDATE accounting_purchase_orders SET status='approved',approved_by=$3,approved_at=NOW(),updated_by=$3,updated_at=NOW()
          WHERE company_id=$1 AND id=$2`,
@@ -578,7 +661,7 @@ export async function matchVendorBillToPurchaseOrder(input: unknown) {
       [context.companyId,documentId],
     );
     const po=await client.query(
-      `SELECT po.id::text,po.vendor_id::text,po.base_total_amount::text,po.status,
+      `SELECT po.id::text,po.vendor_id::text,po.base_total_amount::text,po.exchange_rate::text,po.status,
               p.require_receipt,p.require_three_way_match,p.quantity_tolerance_percent::text,
               p.price_tolerance_percent::text,p.amount_tolerance::text
        FROM accounting_purchase_orders po
@@ -615,7 +698,10 @@ export async function matchVendorBillToPurchaseOrder(input: unknown) {
 
     const ordered=minorUnits(po.rows[0].base_total_amount);
     const invoiced=minorUnits(bill.rows[0].base_total_amount);
-    const received=minorUnits(receipt.rows[0]?.received_amount||"0");
+    const receivedDocumentCurrency=minorUnits(receipt.rows[0]?.received_amount||"0");
+    const received=
+      (receivedDocumentCurrency * rateUnits(po.rows[0].exchange_rate || "1") + BigInt(50000000)) /
+      BigInt(100000000);
     const amountVariance=invoiced-ordered;
     const absAmount=amountVariance<BigInt(0)?-amountVariance:amountVariance;
     const quantityVariance=Math.max(0,Number(receipt.rows[0]?.ordered_quantity||0)-Number(receipt.rows[0]?.received_quantity||0));
