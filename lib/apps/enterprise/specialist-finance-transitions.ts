@@ -269,6 +269,80 @@ async function reimburseExpenseReport(
   reportId:
     string,
 ) {
+  const accountingEnabled =
+    await tableExists(
+      client,
+      'accounting_expense_report_postings',
+    );
+
+  if (
+    accountingEnabled
+  ) {
+    const financial =
+      await client.query(
+        `
+          SELECT
+            p.status,
+            p.settlement_mode,
+            COALESCE(
+              b.outstanding_amount,
+              0
+            )::text AS outstanding_amount
+          FROM accounting_expense_report_postings p
+          LEFT JOIN accounting_expense_reimbursement_balances b
+            ON b.company_id =
+               p.company_id
+           AND b.expense_report_id =
+               p.expense_report_id
+          WHERE p.company_id =
+                $1
+            AND p.expense_report_id =
+                $2
+            AND p.deleted_at
+                IS NULL
+          LIMIT 1
+          FOR SHARE OF p
+        `,
+        [
+          companyId,
+          reportId,
+        ],
+      );
+
+    const posting =
+      financial.rows[0];
+
+    if (
+      !posting ||
+      String(
+        posting.status ||
+        '',
+      ) !==
+        'posted'
+    ) {
+      throw new Error(
+        'Post this approved expense report through Accounting before marking it reimbursed.',
+      );
+    }
+
+    if (
+      String(
+        posting.settlement_mode ||
+        '',
+      ) ===
+        'employee_reimbursement' &&
+      Number(
+        posting.outstanding_amount ||
+        0,
+      ) >
+        0.000001
+    ) {
+      throw new Error(
+        'This expense report still has an outstanding employee reimbursement in Accounting.',
+      );
+    }
+  }
+
   await client.query(
     `
       UPDATE expenses e
