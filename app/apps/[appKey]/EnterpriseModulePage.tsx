@@ -311,7 +311,11 @@ export default async function EnterpriseModulePage({
 
   // Notification counts hydrate in WorkspaceNotificationCenter after the app
   // shell renders; they must never delay opening an app.
-  const notifications =
+  const notifications:
+    {
+      unreadCount: number;
+    } |
+    null =
     null;
 
   if (
