@@ -1501,6 +1501,8 @@ test('Accounting 2.17 Kenya localization reuses shared eTIMS and is migration-ba
   assert.match(foundation,/"kenya"/);
   assert.match(payables,/recoverable_tax_amount/);
   assert.match(payables,/accounting:vendor-tax:/);
+  assert.match(schema,/accounting_kenya_settings[\s\S]*deleted_at TIMESTAMPTZ/);
+  assert.match(schema,/accounting_kenya_sync_runs[\s\S]*deleted_at TIMESTAMPTZ/);
 });
 
 
@@ -1540,6 +1542,9 @@ test('Accounting 2.18 International Localization is migration-backed and shares 
   assert.match(service,/generic_vat_reporting/);
   assert.match(workspace,/dedicatedSection === 'international'[\s\S]*AccountingInternational/);
   assert.match(foundation,/"international"/);
+  assert.match(schema,/accounting_localization_settings[\s\S]*deleted_at TIMESTAMPTZ/);
+  assert.match(schema,/accounting_localization_report_runs[\s\S]*deleted_at TIMESTAMPTZ/);
+  assert.match(schema,/accounting_localization_pack_history[\s\S]*deleted_at TIMESTAMPTZ/);
 });
 
 
@@ -1565,6 +1570,7 @@ test('Accounting 2.19 Foreign Currency is migration-backed and subledger control
   assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.19\.0'/);
   assert.match(runtime,/ACCOUNTING_2_18_0_TO_2_19_0/);
   assert.match(migration,/fromVersion:\s*'2\.18\.0'[\s\S]*toVersion:\s*'2\.19\.0'/);
+  assert.match(migration,/ACCOUNTING_KENYA_SQL[\s\S]*ACCOUNTING_INTERNATIONAL_LOCALIZATION_SQL[\s\S]*ACCOUNTING_FX_SQL/);
   assert.match(depth,/ACCOUNTING_FX_SQL/);
   for (const marker of [
     'accounting_fx_settings',
@@ -1588,4 +1594,5 @@ test('Accounting 2.19 Foreign Currency is migration-backed and subledger control
   assert.match(statements,/convertForeignToBase[\s\S]*base_amount/);
   assert.match(reconciliation,/statementLedgerAmount[\s\S]*accounting_fx_financial_movements/);
   assert.match(ledger,/accounting_fx_currencies[\s\S]*Manual journals cannot post directly/);
+  assert.ok((schema.match(/deleted_at TIMESTAMPTZ/g) || []).length >= 6,'Every Part 17 enterprise table must be soft-delete boundary ready.');
 });
