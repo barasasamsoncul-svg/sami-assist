@@ -114,6 +114,10 @@ async function nextNumber(
   column: string,
   prefix: string,
 ) {
+  await client.query(
+    "SELECT pg_advisory_xact_lock(hashtext($1))",
+    [companyId + ":" + table],
+  );
   const r=await client.query(
     `SELECT COALESCE(MAX(NULLIF(regexp_replace(${column}, '^.*-', ''), '')::int),0)::int + 1 AS n
      FROM ${table}
@@ -439,7 +443,47 @@ export async function createPurchaseOrder(input: unknown) {
          WHERE company_id=$1 AND id=$2 AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
         [context.companyId,requisitionId],
       );
-      if (!req.rows[0] || req.rows[0].status!=="approved") throw new AccountingInputError("Only an approved requisition can be converted to a purchase order.");
+      if (!req.rows[0] || req.rows[0].status!=="approved") {
+        throw new AccountingInputError("Only an approved requisition can be converted to a purchase order.");
+      }
+
+      if (normalized.some(line => !line.requisitionLineId)) {
+        throw new AccountingInputError(
+          "Every converted purchase-order line must come from the approved requisition.",
+        );
+      }
+
+      const approvedLines=await client.query(
+        `SELECT id::text,description,quantity::text,estimated_unit_price::text,expense_account_id::text
+         FROM accounting_purchase_requisition_lines
+         WHERE company_id=$1 AND requisition_id=$2 AND deleted_at IS NULL
+         ORDER BY sequence,created_at,id
+         FOR SHARE`,
+        [context.companyId,requisitionId],
+      );
+
+      if (approvedLines.rows.length !== normalized.length) {
+        throw new AccountingInputError(
+          "Convert the complete approved requisition. Partial line conversion is not allowed.",
+        );
+      }
+
+      for (const line of normalized) {
+        const approved=approvedLines.rows.find(
+          row => String(row.id) === String(line.requisitionLineId),
+        );
+        if (
+          !approved ||
+          String(approved.description) !== line.description ||
+          Number(approved.quantity) !== Number(line.quantity) ||
+          minorUnits(approved.estimated_unit_price) !== minorUnits(line.unit) ||
+          String(approved.expense_account_id || "") !== String(line.expenseAccountId || "")
+        ) {
+          throw new AccountingInputError(
+            "Purchase-order lines must match the approved requisition exactly. Create a standalone PO for changed scope or pricing.",
+          );
+        }
+      }
     }
 
     const policy=await client.query(
@@ -692,7 +736,17 @@ export async function matchVendorBillToPurchaseOrder(input: unknown) {
       `SELECT
          COALESCE(SUM(pol.line_total * LEAST(COALESCE(r.accepted,0),pol.quantity) / pol.quantity),0)::numeric(19,2)::text AS received_amount,
          COALESCE(SUM(pol.quantity),0)::numeric(19,4)::text AS ordered_quantity,
-         COALESCE(SUM(COALESCE(r.accepted,0)),0)::numeric(19,4)::text AS received_quantity
+         COALESCE(SUM(COALESCE(r.accepted,0)),0)::numeric(19,4)::text AS received_quantity,
+         COALESCE(
+           MAX(
+             CASE
+               WHEN pol.quantity > 0
+                 THEN GREATEST(pol.quantity-COALESCE(r.accepted,0),0) / pol.quantity * 100
+               ELSE 0
+             END
+           ),
+           0
+         )::numeric(9,4)::text AS max_quantity_variance_percent
        FROM accounting_purchase_order_lines pol
        LEFT JOIN LATERAL (
          SELECT SUM(grl.accepted_quantity)::numeric(19,4) AS accepted
@@ -714,10 +768,9 @@ export async function matchVendorBillToPurchaseOrder(input: unknown) {
       BigInt(100000000);
     const amountVariance=invoiced-ordered;
     const absAmount=amountVariance<BigInt(0)?-amountVariance:amountVariance;
-    const quantityVariance=Math.max(0,Number(receipt.rows[0]?.ordered_quantity||0)-Number(receipt.rows[0]?.received_quantity||0));
-    const quantityVariancePct=Number(receipt.rows[0]?.ordered_quantity||0)>0
-      ? quantityVariance/Number(receipt.rows[0].ordered_quantity)*100
-      : 0;
+    const quantityVariancePct=Number(
+      receipt.rows[0]?.max_quantity_variance_percent || 0,
+    );
     const priceVariancePct=ordered>BigInt(0) ? Math.abs(Number(invoiced-ordered)/Number(ordered))*100 : 0;
     const receiptRequired=Boolean(po.rows[0].require_receipt || po.rows[0].require_three_way_match);
     const matched=
@@ -788,26 +841,72 @@ export async function overridePurchaseMatch(input: unknown) {
   const matchId=accountingId(body.matchId);
   const reason=text(body.reason,2000,"Override reason",true);
   const client=await context.pool.connect();
+
   try {
     await client.query("BEGIN");
-    const r=await client.query(
+
+    const match=await client.query(
+      `SELECT m.vendor_document_id::text,p.approver_user_id::text,p.approver_role
+       FROM accounting_purchase_matches m
+       JOIN accounting_purchase_orders po
+         ON po.company_id=m.company_id AND po.id=m.purchase_order_id AND po.deleted_at IS NULL
+       JOIN accounting_purchase_policies p
+         ON p.company_id=po.company_id AND p.id=po.approval_policy_id AND p.deleted_at IS NULL
+       WHERE m.company_id=$1 AND m.id=$2 AND m.deleted_at IS NULL AND m.result='exception'
+       LIMIT 1
+       FOR UPDATE OF m`,
+      [context.companyId,matchId],
+    );
+
+    const row=match.rows[0];
+    if (!row) {
+      throw new AccountingInputError("Only a current match exception can be overridden.");
+    }
+    if (row.approver_user_id && String(row.approver_user_id)!==context.userId) {
+      throw new AccountingInputError("This exception requires its assigned purchasing approver.");
+    }
+    if (!row.approver_user_id && !roleAllows(context,row.approver_role)) {
+      throw new AccountingInputError(
+        "This exception requires an approver with the " +
+        String(row.approver_role || "configured") +
+        " role.",
+      );
+    }
+
+    await client.query(
       `UPDATE accounting_purchase_matches
        SET result='overridden',override_reason=$3,overridden_by=$4,overridden_at=NOW(),updated_by=$4,updated_at=NOW()
-       WHERE company_id=$1 AND id=$2 AND deleted_at IS NULL AND result='exception'
-       RETURNING vendor_document_id::text`,
+       WHERE company_id=$1 AND id=$2`,
       [context.companyId,matchId,reason,context.userId],
     );
-    if (!r.rows[0]) throw new AccountingInputError("Only a current match exception can be overridden.");
+
     await client.query(
       `UPDATE accounting_vendor_documents
        SET purchase_match_status='overridden',updated_by=$3,updated_at=NOW()
        WHERE company_id=$1 AND id=$2`,
-      [context.companyId,String(r.rows[0].vendor_document_id),context.userId],
+      [context.companyId,String(row.vendor_document_id),context.userId],
     );
+
     await client.query("COMMIT");
+
+    await recordWorkspaceAuditEvent({
+      tenantId:context.tenantId,
+      companyId:context.companyId,
+      userId:context.userId,
+      action:"accounting.purchasing.match_override",
+      module:"accounting",
+      resourceType:"accounting_purchase_matches",
+      resourceId:matchId,
+      summary:"Purchasing match exception overridden by an authorized approver",
+      result:"success",
+      metadata:{ reason },
+    }).catch(()=>{});
+
     return { id:matchId,result:"overridden" };
   } catch (error) {
     try { await client.query("ROLLBACK"); } catch {}
     throw error;
-  } finally { client.release(); }
+  } finally {
+    client.release();
+  }
 }
