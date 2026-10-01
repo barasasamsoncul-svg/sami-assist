@@ -1554,6 +1554,8 @@ async function validateBatch(
 export async function getOpeningBalanceWorkspace(
   batchId?:
     string | null,
+  linePageInput?:
+    string | number | null,
 ): Promise<OpeningBalanceWorkspace> {
   const context =
     await requireEnterpriseModuleTableContext(
@@ -1568,6 +1570,27 @@ export async function getOpeningBalanceWorkspace(
           batchId,
         )
       : null;
+
+  const parsedLinePage =
+    Number(
+      linePageInput ||
+        1,
+    );
+
+  const linePage =
+    Number.isInteger(
+      parsedLinePage,
+    ) &&
+    parsedLinePage >
+      0
+      ? Math.min(
+          parsedLinePage,
+          100000,
+        )
+      : 1;
+
+  const linePageSize =
+    100;
 
   const client =
     await context.pool.connect();
@@ -1712,10 +1735,18 @@ export async function getOpeningBalanceWorkspace(
            WHERE l.company_id=$1
              AND l.batch_id=$2
              AND l.deleted_at IS NULL
-           ORDER BY l.row_number,l.id`,
+           ORDER BY l.row_number,l.id
+           LIMIT $3
+           OFFSET $4`,
           [
             context.companyId,
             selectedId,
+            linePageSize,
+            (
+              linePage -
+              1
+            ) *
+              linePageSize,
           ],
         );
 
@@ -1740,14 +1771,34 @@ export async function getOpeningBalanceWorkspace(
           }),
         );
 
+      const reconciliationRows =
+        await client.query(
+          `SELECT
+             l.account_id::text,
+             a.code AS account_code,
+             a.name AS account_name,
+             a.account_type,
+             l.debit::text,
+             l.credit::text,
+             l.subledger_type,
+             l.subledger_reference
+           FROM accounting_opening_balance_lines l
+           JOIN accounts a
+             ON a.company_id=l.company_id
+            AND a.id=l.account_id
+            AND a.deleted_at IS NULL
+           WHERE l.company_id=$1
+             AND l.batch_id=$2
+             AND l.deleted_at IS NULL`,
+          [
+            context.companyId,
+            selectedId,
+          ],
+        );
+
       const reconciliation =
         reconciliationFromRows(
-          typedLines as unknown as Array<
-            Record<
-              string,
-              unknown
-            >
-          >,
+          reconciliationRows.rows,
         );
 
       selected = {
@@ -1772,6 +1823,17 @@ export async function getOpeningBalanceWorkspace(
         lines:
           typedLines,
         reconciliation,
+        line_page:
+          linePage,
+        line_page_size:
+          linePageSize,
+        line_total_count:
+          Number(
+            header.rows[
+              0
+            ].line_count ||
+              0,
+          ),
       } as OpeningBalanceBatchDetail;
     }
 
@@ -2116,6 +2178,269 @@ export async function createOpeningBalanceBatch(
       replayed:
         false,
       validation,
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        "ROLLBACK",
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
+export async function updateOpeningBalanceLine(
+  input: unknown,
+) {
+  const context =
+    await requireEnterpriseModuleTableContext(
+      "accounting",
+      "accounting_opening_balance_lines",
+      "edit",
+    );
+
+  const body =
+    requestBody(
+      input,
+    );
+
+  assertCompany(
+    body,
+    context.companyId,
+  );
+
+  const batchId =
+    accountingId(
+      body.batchId,
+    );
+
+  const lineId =
+    accountingId(
+      body.lineId,
+    );
+
+  const accountCode =
+    requiredText(
+      body.accountCode,
+      50,
+      "Account code",
+    );
+
+  const description =
+    optionalText(
+      body.description,
+      500,
+    );
+
+  const debit =
+    optionalText(
+      body.debit,
+      80,
+    );
+
+  const credit =
+    optionalText(
+      body.credit,
+      80,
+    );
+
+  const subledgerType =
+    optionalText(
+      body.subledgerType,
+      20,
+    )
+      .toLowerCase() ||
+    "none";
+
+  if (
+    !SUBLEDGER_TYPES.has(
+      subledgerType,
+    )
+  ) {
+    throw new AccountingInputError(
+      "Choose a supported subledger type.",
+    );
+  }
+
+  const subledgerReference =
+    optionalText(
+      body.subledgerReference,
+      160,
+    );
+
+  const subledgerName =
+    optionalText(
+      body.subledgerName,
+      255,
+    );
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      "BEGIN",
+    );
+
+    const batch =
+      await client.query(
+        `SELECT status
+         FROM accounting_opening_balance_batches
+         WHERE company_id=$1
+           AND id=$2
+           AND deleted_at IS NULL
+         LIMIT 1
+         FOR UPDATE`,
+        [
+          context.companyId,
+          batchId,
+        ],
+      );
+
+    if (
+      !batch.rows[
+        0
+      ]
+    ) {
+      throw new AccountingInputError(
+        "This opening-balance batch could not be found.",
+      );
+    }
+
+    if (
+      ![
+        "draft",
+        "validated",
+      ].includes(
+        String(
+          batch.rows[
+            0
+          ].status,
+        ),
+      )
+    ) {
+      throw new AccountingInputError(
+        "Only draft or validated opening balances can be corrected.",
+      );
+    }
+
+    const updated =
+      await client.query(
+        `UPDATE accounting_opening_balance_lines
+         SET
+           account_code_input=$4,
+           description=$5,
+           raw_debit=$6,
+           raw_credit=$7,
+           subledger_type=$8,
+           subledger_reference=$9,
+           subledger_name=$10,
+           account_id=NULL,
+           debit=NULL,
+           credit=NULL,
+           validation_status='unchecked',
+           validation_messages='[]'::jsonb,
+           updated_by=$11,
+           updated_at=NOW()
+         WHERE company_id=$1
+           AND batch_id=$2
+           AND id=$3
+           AND deleted_at IS NULL
+         RETURNING id::text`,
+        [
+          context.companyId,
+          batchId,
+          lineId,
+          accountCode,
+          description ||
+            null,
+          debit,
+          credit,
+          subledgerType,
+          subledgerReference ||
+            null,
+          subledgerName ||
+            null,
+          context.userId,
+        ],
+      );
+
+    if (
+      !updated.rows[
+        0
+      ]
+    ) {
+      throw new AccountingInputError(
+        "This opening-balance row could not be found.",
+      );
+    }
+
+    await client.query(
+      `UPDATE accounting_opening_balance_batches
+       SET
+         status='draft',
+         validation_summary='{}'::jsonb,
+         validated_at=NULL,
+         validated_by=NULL,
+         updated_by=$3,
+         updated_at=NOW()
+       WHERE company_id=$1
+         AND id=$2
+         AND deleted_at IS NULL`,
+      [
+        context.companyId,
+        batchId,
+        context.userId,
+      ],
+    );
+
+    await client.query(
+      "COMMIT",
+    );
+
+    await recordWorkspaceAuditEvent({
+      tenantId:
+        context.tenantId,
+      companyId:
+        context.companyId,
+      userId:
+        context.userId,
+      action:
+        "accounting.opening_balance.line_corrected",
+      module:
+        "accounting",
+      resourceType:
+        "accounting_opening_balance_lines",
+      resourceId:
+        lineId,
+      summary:
+        "Opening-balance migration row corrected before posting",
+      result:
+        "success",
+      metadata: {
+        batchId,
+        accountCode,
+      },
+    }).catch(
+      error =>
+        console.error(
+          "[Accounting] Opening-balance row audit delivery failed",
+          error,
+        ),
+    );
+
+    return {
+      id:
+        lineId,
+      batchId,
+      status:
+        "unchecked",
     };
   } catch (
     error
