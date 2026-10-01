@@ -17,6 +17,7 @@ import AccountingModuleShell, {
 } from '@/app/apps/accounting/AccountingModuleShell';
 import AccountingWorkspaceClient from '@/app/apps/accounting/AccountingWorkspaceClient';
 import AccountingChartOfAccounts from '@/app/apps/accounting/AccountingChartOfAccounts';
+import AccountingJournals from '@/app/apps/accounting/AccountingJournals';
 
 import {
   getAccountingFoundation,
@@ -30,6 +31,9 @@ import {
 import {
   getChartOfAccounts,
 } from '@/lib/apps/accounting/chart-of-accounts';
+import {
+  getAccountingJournals,
+} from '@/lib/apps/accounting/journals';
 
 const MODULE_KEY = 'accounting';
 
@@ -43,6 +47,7 @@ export default async function AccountingWorkspace({
     to?: string;
     accountId?: string;
     page?: string;
+    journalId?: string;
   };
 }) {
   const requestedSection =
@@ -102,10 +107,23 @@ export default async function AccountingWorkspace({
     null =
       null;
 
+  let journalWorkspace:
+    Awaited<
+      ReturnType<
+        typeof getAccountingJournals
+      >
+    > |
+    null =
+      null;
+
   if (
     dedicatedSection &&
     dedicatedSection !==
-      'accounts'
+      'accounts' &&
+    dedicatedSection !==
+      'journals' &&
+    dedicatedSection !==
+      'recurring-journals'
   ) {
     try {
       foundation =
@@ -148,6 +166,28 @@ export default async function AccountingWorkspace({
           Error
           ? error.message
           : 'Chart of Accounts could not be loaded.';
+    }
+  }
+
+  if (
+    dedicatedSection ===
+      'journals' ||
+    dedicatedSection ===
+      'recurring-journals'
+  ) {
+    try {
+      journalWorkspace =
+        await getAccountingJournals(
+          filters.journalId,
+        );
+    } catch (
+      error
+    ) {
+      foundationError =
+        error instanceof
+          Error
+          ? error.message
+          : 'Accounting journals could not be loaded.';
     }
   }
 
@@ -256,12 +296,46 @@ export default async function AccountingWorkspace({
         }
       : null,
 
-    tableItem(
-      'journals',
-      'Journal Entries',
-      'Transactions',
-      'Review draft and posted journal entries.',
-    ),
+    {
+      key:
+        'journals',
+      label:
+        'Journal Entries',
+      href:
+        appBaseHref +
+        '/journals',
+      description:
+        'Review, approve, post and reverse journal entries.',
+      sectionLabel:
+        'Transactions',
+      badge:
+        journalWorkspace
+          ?.journals
+          .length ??
+        tableByKey
+          .get(
+            'journals',
+          )
+          ?.count,
+    },
+
+    {
+      key:
+        'recurring-journals',
+      label:
+        'Recurring Journals',
+      href:
+        appBaseHref +
+        '/recurring-journals',
+      description:
+        'Generate controlled repeatable journal drafts.',
+      sectionLabel:
+        'Transactions',
+      badge:
+        journalWorkspace
+          ?.counts
+          .recurringActive,
+    },
 
     tableItem(
       'accounts',
@@ -439,9 +513,53 @@ export default async function AccountingWorkspace({
       {
         dedicatedSection
           ? (
-              dedicatedSection ===
-                'accounts'
+              (
+                dedicatedSection ===
+                  'journals' ||
+                dedicatedSection ===
+                  'recurring-journals'
+              )
                 ? (
+                    journalWorkspace
+                      ? (
+                          <AccountingJournals
+                            data={
+                              journalWorkspace
+                            }
+                            section={
+                              dedicatedSection
+                            }
+                            canCreate={
+                              data.capabilities
+                                .canCreate
+                            }
+                            canEdit={
+                              data.capabilities
+                                .canEdit
+                            }
+                          />
+                        )
+                      : (
+                          <div
+                            role="alert"
+                            className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-6 text-[var(--foreground)]"
+                          >
+                            {
+                              foundationError ||
+                              'Accounting journals could not be loaded.'
+                            }{' '}
+                            <Link
+                              href="/apps/accounting"
+                              className="font-bold underline underline-offset-4"
+                            >
+                              Return to Accounting
+                            </Link>
+                          </div>
+                        )
+                  )
+                : dedicatedSection ===
+                    'accounts'
+                  ? (
                     chartOfAccounts
                       ? (
                           <AccountingChartOfAccounts

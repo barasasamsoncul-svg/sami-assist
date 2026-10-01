@@ -19,10 +19,10 @@ This is the first usable slice, not completion of the full Accounting module. Ne
 1. Accounting setup: full validated company configuration, fiscal-year policy, control-account mappings, tax/cash/FX/write-off/rounding defaults, global lock date, open-period enforcement, dedicated setup UI/API, audited saves and migration-backed fresh-install support.
 2. Chart of accounts: dedicated responsive editor, company-scoped codes, hierarchy, reconciliation/manual-posting controls, protected control/system roles, safe archive/restore, Kenya industry templates, additive setup mapping and migration-backed 2.5 schema.
 3. Double-entry ledger: authoritative balanced-posting engine, company/source idempotency, company-scoped journal numbers, posting provenance, period/lock enforcement, active-account validation, persisted-balance proof, database line constraints, generic-write lockout, and immutable linked compensating reversals. Invoicing automatic postings now use the same engine.
+4. Journals: dedicated journal register/detail, explicit approval metadata, same-record atomic posting through the ledger engine, immutable linked reversals, recurring journal templates and idempotent draft generation.
 
 ## Remaining depth, in the agreed order
 
-4. Journals: dedicated review/detail, approval, atomic posting and reversal, recurring journals.
 5. Opening balances: guided import, subledger reconciliation and migration validation.
 6. Receivables.
 7. Payables.

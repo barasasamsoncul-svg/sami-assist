@@ -21,6 +21,8 @@ export const ACCOUNTING_SECTIONS = [
   "trial-balance",
   "general-ledger",
   "new-journal",
+  "journals",
+  "recurring-journals",
   "setup",
 ] as const;
 export type AccountingSection = (typeof ACCOUNTING_SECTIONS)[number];
@@ -86,6 +88,8 @@ export default function AccountingFoundationPanel({
     "trial-balance": "Trial balance",
     "general-ledger": "General ledger",
     "new-journal": "New manual journal",
+    journals: "Journal register",
+    "recurring-journals": "Recurring journals",
     setup: "Accounting setup",
   };
   const descriptions = {
@@ -99,6 +103,10 @@ export default function AccountingFoundationPanel({
       "Follow an account from its opening balance through every posted movement.",
     "new-journal":
       "Enter a balanced adjustment in company currency. Save it as a draft for review.",
+    journals:
+      "Review, approve, post and reverse controlled accounting journals.",
+    "recurring-journals":
+      "Create repeatable balanced journals and generate reviewable draft occurrences.",
     setup:
       "Configure fiscal policy, control accounts, tax mappings, FX accounts, write-offs and period locks for this company.",
   };

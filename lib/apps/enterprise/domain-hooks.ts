@@ -71,7 +71,11 @@ export function assertEnterpriseDomainMutationAllowed(
       table ===
         'journals' ||
       table ===
-        'journal_lines'
+        'journal_lines' ||
+      table ===
+        'accounting_recurring_journals' ||
+      table ===
+        'accounting_recurring_journal_lines'
     )
   ) {
     throw new Error(
@@ -81,7 +85,11 @@ export function assertEnterpriseDomainMutationAllowed(
         : table ===
             'journals' ||
           table ===
-            'journal_lines'
+            'journal_lines' ||
+          table ===
+            'accounting_recurring_journals' ||
+          table ===
+            'accounting_recurring_journal_lines'
           ? 'Accounting journals must be changed through the validated double-entry journal services.'
           : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
