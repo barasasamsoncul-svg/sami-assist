@@ -19,6 +19,7 @@ import AccountingWorkspaceClient from '@/app/apps/accounting/AccountingWorkspace
 import AccountingChartOfAccounts from '@/app/apps/accounting/AccountingChartOfAccounts';
 import AccountingJournals from '@/app/apps/accounting/AccountingJournals';
 import AccountingOpeningBalances from '@/app/apps/accounting/AccountingOpeningBalances';
+import AccountingReceivables from '@/app/apps/accounting/AccountingReceivables';
 
 import {
   getAccountingFoundation,
@@ -38,6 +39,9 @@ import {
 import {
   getOpeningBalanceWorkspace,
 } from '@/lib/apps/accounting/opening-balances';
+import {
+  getAccountingReceivables,
+} from '@/lib/apps/accounting/receivables';
 
 const MODULE_KEY = 'accounting';
 
@@ -53,6 +57,9 @@ export default async function AccountingWorkspace({
     page?: string;
     journalId?: string;
     batchId?: string;
+    bucket?: string;
+    customerId?: string;
+    search?: string;
   };
 }) {
   const requestedSection =
@@ -130,6 +137,15 @@ export default async function AccountingWorkspace({
     null =
       null;
 
+  let receivablesWorkspace:
+    Awaited<
+      ReturnType<
+        typeof getAccountingReceivables
+      >
+    > |
+    null =
+      null;
+
   if (
     dedicatedSection &&
     dedicatedSection !==
@@ -139,7 +155,9 @@ export default async function AccountingWorkspace({
     dedicatedSection !==
       'recurring-journals' &&
     dedicatedSection !==
-      'opening-balances'
+      'opening-balances' &&
+    dedicatedSection !==
+      'receivables'
   ) {
     try {
       foundation =
@@ -225,6 +243,33 @@ export default async function AccountingWorkspace({
           Error
           ? error.message
           : 'Opening balances could not be loaded.';
+    }
+  }
+
+  if (
+    dedicatedSection ===
+      'receivables'
+  ) {
+    try {
+      receivablesWorkspace =
+        await getAccountingReceivables({
+          page:
+            filters.page,
+          bucket:
+            filters.bucket,
+          customerId:
+            filters.customerId,
+          search:
+            filters.search,
+        });
+    } catch (
+      error
+    ) {
+      foundationError =
+        error instanceof
+          Error
+          ? error.message
+          : 'Accounts receivable could not be loaded.';
     }
   }
 
@@ -400,6 +445,24 @@ export default async function AccountingWorkspace({
     },
 
 
+    {
+      key:
+        'receivables',
+      label:
+        'Accounts Receivable',
+      href:
+        appBaseHref +
+        '/receivables',
+      description:
+        'Customer aging, credits and control reconciliation.',
+      sectionLabel:
+        'Receivables',
+      badge:
+        receivablesWorkspace
+          ?.metrics
+          .overdueInvoiceCount,
+    },
+
     data.capabilities
       .canReport
       ? {
@@ -570,8 +633,37 @@ export default async function AccountingWorkspace({
         dedicatedSection
           ? (
               dedicatedSection ===
-                'opening-balances'
+                'receivables'
                 ? (
+                    receivablesWorkspace
+                      ? (
+                          <AccountingReceivables
+                            data={
+                              receivablesWorkspace
+                            }
+                          />
+                        )
+                      : (
+                          <div
+                            role="alert"
+                            className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-6 text-[var(--foreground)]"
+                          >
+                            {
+                              foundationError ||
+                              'Accounts receivable could not be loaded.'
+                            }{' '}
+                            <Link
+                              href="/apps/accounting"
+                              className="font-bold underline underline-offset-4"
+                            >
+                              Return to Accounting
+                            </Link>
+                          </div>
+                        )
+                  )
+                : dedicatedSection ===
+                    'opening-balances'
+                  ? (
                     openingBalanceWorkspace
                       ? (
                           <AccountingOpeningBalances
