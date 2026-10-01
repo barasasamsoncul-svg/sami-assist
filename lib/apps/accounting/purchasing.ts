@@ -455,7 +455,7 @@ export async function transitionPurchaseRequisition(input: unknown) {
   const context=await requireEnterpriseModuleTableContext("accounting","accounting_purchase_requisitions","edit");
   const body=bodyOf(input);
   const id=accountingId(body.requisitionId);
-  const action=text(body.action,20,"Action",true);
+  const action=text(body.workflowAction,20,"Workflow action",true);
   const map: Record<string,{from:string;to:string;extra:string}> = {
     submit:{from:"draft",to:"submitted",extra:"submitted_at=NOW()"},
     approve:{from:"submitted",to:"approved",extra:"approved_by=$4,approved_at=NOW()"},
@@ -689,7 +689,7 @@ export async function transitionPurchaseOrder(input: unknown) {
   const context=await requireEnterpriseModuleTableContext("accounting","accounting_purchase_orders","edit");
   const body=bodyOf(input);
   const id=accountingId(body.purchaseOrderId);
-  const action=text(body.action,20,"Action",true);
+  const action=text(body.workflowAction,20,"Workflow action",true);
   const client=await context.pool.connect();
 
   try {
