@@ -341,7 +341,7 @@ test('Accounting 2.4 setup schema is migration-backed and available on fresh ins
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.5\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.6\.0'/,
   );
 
   assert.match(
@@ -436,7 +436,7 @@ test('Accounting 2.5 Chart of Accounts is migration-backed and company scoped', 
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.5\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.6\.0'/,
   );
 
   assert.match(
@@ -492,5 +492,113 @@ test('Accounting 2.5 Chart of Accounts is migration-backed and company scoped', 
     journalCommand,
     /allow_manual_posting[\s\S]*only accepts trusted subsystem postings/,
     'Manual journals must honor system-only account controls.',
+  );
+});
+
+
+test('Accounting 2.6 centralizes double-entry posting and reversal invariants', async () => {
+  const [
+    firstParty,
+    runtimeMigrations,
+    migration,
+    specialistDepth,
+    ledgerEngine,
+    domainHooks,
+    invoicingAccounting,
+    journalCommand,
+  ] = await Promise.all([
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/apps/accounting/migrations/2.5.0-to-2.6.0.ts'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+    source('lib/apps/accounting/ledger-engine.ts'),
+    source('lib/apps/enterprise/domain-hooks.ts'),
+    source('lib/apps/invoicing/accounting.ts'),
+    source('lib/apps/accounting/journal-command.ts'),
+  ]);
+
+  assert.match(
+    firstParty,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.6\.0'/,
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /ACCOUNTING_2_5_0_TO_2_6_0/,
+  );
+
+  assert.match(
+    migration,
+    /fromVersion:\s*'2\.5\.0'[\s\S]*toVersion:\s*'2\.6\.0'/,
+  );
+
+  for (const marker of [
+    'source_module',
+    'source_event_key',
+    'posting_kind',
+    'posted_at',
+    'reversal_of_journal_id',
+    'reversed_by_journal_id',
+    'uq_journals_company_number',
+    'uq_journals_company_source_event',
+    'journal_lines_nonnegative_amounts',
+    'journal_lines_one_sided_amount',
+  ]) {
+    assert.match(migration, new RegExp(marker));
+    assert.match(specialistDepth, new RegExp(marker));
+  }
+
+  assert.match(
+    ledgerEngine,
+    /postBalancedLedgerJournal/,
+  );
+  assert.match(
+    ledgerEngine,
+    /reversePostedLedgerJournal/,
+  );
+  assert.match(
+    ledgerEngine,
+    /persisted lines are not balanced/,
+  );
+  assert.match(
+    ledgerEngine,
+    /Create an open fiscal period covering this accounting date first/,
+  );
+  assert.match(
+    ledgerEngine,
+    /company Accounting lock date/,
+  );
+
+  assert.match(
+    domainHooks,
+    /table ===[\s\S]*'journals'[\s\S]*'journal_lines'[\s\S]*validated double-entry journal services/,
+    'Generic enterprise CRUD must not bypass the Accounting journal engine.',
+  );
+
+  assert.match(
+    invoicingAccounting,
+    /postBalancedLedgerJournal/,
+    'Invoicing postings must use the Accounting ledger engine.',
+  );
+  assert.match(
+    invoicingAccounting,
+    /reversePostedLedgerJournal/,
+    'Invoicing reversals must use compensating Accounting journals.',
+  );
+  assert.doesNotMatch(
+    invoicingAccounting,
+    /ON CONFLICT \(code\)/,
+    'Invoicing must not rely on the removed global account-code uniqueness constraint.',
+  );
+  assert.match(
+    invoicingAccounting,
+    /ON CONFLICT \(\s*company_id,\s*code\s*\)[\s\S]*WHERE deleted_at IS NULL/,
+    'Automatic account provisioning must respect company-scoped account codes.',
+  );
+
+  assert.match(
+    journalCommand,
+    /source_module[\s\S]*'accounting'[\s\S]*'manual_journal'/,
+    'Manual drafts must carry Accounting provenance.',
   );
 });
