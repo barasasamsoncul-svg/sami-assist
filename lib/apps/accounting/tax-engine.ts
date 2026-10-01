@@ -343,7 +343,7 @@ export async function calculateAccountingTax(
 }
 
 async function validateTaxAccounts(
-  client: PoolClient,
+  client: Pick<PoolClient, 'query'>,
   companyId: string,
   accountIds: Array<string | null>,
 ) {
@@ -391,7 +391,7 @@ export async function saveAccountingTaxCode(input: unknown) {
     throw new AccountingInputError('Tax validity end date cannot be before the start date.');
   }
 
-  await validateTaxAccounts(context.pool as unknown as PoolClient, context.companyId, [
+  await validateTaxAccounts(context.pool, context.companyId, [
     inputAccountId, outputAccountId, nonrecoverableAccountId,
   ]);
 
@@ -659,7 +659,7 @@ export async function createAccountingTaxAdjustment(input: unknown) {
   const offsetAccountId = accountingId(body.offsetAccountId);
   const reason = shortText(body.reason,500,'Adjustment reason',true);
   const reference = shortText(body.reference,160,'Reference') || null;
-  await validateTaxAccounts(context.pool as unknown as PoolClient,context.companyId,[offsetAccountId]);
+  await validateTaxAccounts(context.pool,context.companyId,[offsetAccountId]);
 
   const validCode = await context.pool.query(
     `SELECT 1 FROM accounting_tax_codes
