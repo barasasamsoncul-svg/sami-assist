@@ -401,6 +401,63 @@ svg {
 }
 
 
+/*
+ * Cross-app visibility hardening.
+ * A few standalone app surfaces still carry old Tailwind slate utilities.
+ * Keep those readable in both themes regardless of component stylesheet
+ * ordering, while preserving explicit semantic/brand selected states.
+ */
+[data-sami-workspace-shell='true'] :where(
+  .text-slate-300,
+  .text-slate-400,
+  .text-slate-500,
+  .text-slate-600,
+  .text-slate-700
+) {
+  color: var(--sami-muted) !important;
+}
+
+.dark [data-sami-workspace-shell='true'] :where(
+  .text-slate-900,
+  .text-slate-950,
+  .text-black
+):not(.sami-contrast-invert):not(.sami-nav-selected):not([class*='dark:text-slate-950']) {
+  color: var(--foreground) !important;
+}
+
+.dark [data-sami-workspace-shell='true'] [class~='bg-white']:not([class*='dark:bg-white']) {
+  background-color: var(--sami-surface) !important;
+  color: var(--foreground);
+}
+
+.dark [data-sami-workspace-shell='true'] :where(
+  [class~='bg-slate-50'],
+  [class~='bg-slate-100']
+):not([class*='dark:bg-']) {
+  background-color: var(--sami-surface-soft) !important;
+  color: var(--foreground);
+}
+
+[data-sami-workspace-shell='true'] :where(
+  input,
+  textarea,
+  select,
+  option,
+  optgroup
+) {
+  background-color: var(--sami-surface);
+  color: var(--foreground) !important;
+}
+
+[data-sami-workspace-shell='true'] :where(
+  .sami-surface,
+  .sami-surface-raised,
+  .sami-soft-surface
+) {
+  color: var(--foreground);
+}
+
+
 /* Semantic selected navigation states */
 .sami-nav-selected,
 .sami-contrast-invert {
