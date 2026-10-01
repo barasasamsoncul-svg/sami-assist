@@ -663,7 +663,8 @@ export default function AccountingExpenses({
           </Link>
 
           {
-            canEdit
+            canEdit &&
+            data.expensesAvailable
               ? (
                   <button
                     type="button"
@@ -717,6 +718,19 @@ export default function AccountingExpenses({
           }
         </div>
       </div>
+
+      {
+        !data.expensesAvailable
+          ? (
+              <section className={styles.notice}>
+                <strong>Expenses integration is not initialized.</strong>
+                <p>
+                  Accounting itself remains available. Install and initialize the Expenses app to load claims, category mappings and reimbursement workflows here.
+                </p>
+              </section>
+            )
+          : null
+      }
 
       <section
         className={
