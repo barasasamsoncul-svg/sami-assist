@@ -53,13 +53,15 @@ const SQL = `
 
   ALTER TABLE public.journal_lines
     ADD CONSTRAINT journal_lines_nonnegative_amounts
-      CHECK (debit >= 0 AND credit >= 0),
+      CHECK (debit >= 0 AND credit >= 0)
+      NOT VALID,
     ADD CONSTRAINT journal_lines_one_sided_amount
       CHECK (
         (debit > 0 AND credit = 0)
         OR
         (credit > 0 AND debit = 0)
-      );
+      )
+      NOT VALID;
 
   CREATE INDEX IF NOT EXISTS idx_journal_lines_company_journal
     ON public.journal_lines(company_id, journal_id, id)
