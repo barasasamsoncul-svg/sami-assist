@@ -25,6 +25,7 @@ export const ACCOUNTING_SECTIONS = [
   "recurring-journals",
   "opening-balances",
   "receivables",
+  "payables",
   "setup",
 ] as const;
 export type AccountingSection = (typeof ACCOUNTING_SECTIONS)[number];
@@ -94,6 +95,7 @@ export default function AccountingFoundationPanel({
     "recurring-journals": "Recurring journals",
     "opening-balances": "Opening balances",
     receivables: "Accounts receivable",
+    payables: "Accounts payable",
     setup: "Accounting setup",
   };
   const descriptions = {
@@ -115,6 +117,8 @@ export default function AccountingFoundationPanel({
       "Import, validate, reconcile and post migration balances without bypassing the authoritative ledger.",
     receivables:
       "Reconcile customer aging and credits from Invoicing to the Accounting control accounts.",
+    payables:
+      "Control vendor bills, credits, aging and the Accounts Payable reconciliation to the ledger.",
     setup:
       "Configure fiscal policy, control accounts, tax mappings, FX accounts, write-offs and period locks for this company.",
   };
