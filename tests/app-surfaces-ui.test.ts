@@ -1156,3 +1156,47 @@ test(
     );
   },
 );
+
+
+test(
+  'dedicated Accounting routes stay fast and workspace visibility is globally hardened',
+  async () => {
+    const [
+      accounting,
+      loader,
+      service,
+      globals,
+    ] = await Promise.all([
+      readFile('app/apps/accounting/AccountingWorkspace.tsx','utf8'),
+      readFile('app/apps/_shared/loadStandaloneEnterpriseApp.ts','utf8'),
+      readFile('lib/apps/enterprise/service.ts','utf8'),
+      readFile('app/globals.css','utf8'),
+    ]);
+
+    await assert.rejects(
+      access('app/apps/loading.tsx'),
+      'Apps must not restore the blocking full-page Loading apps route fallback.',
+    );
+
+    assert.match(
+      accounting,
+      /lightweight:[\s\S]*Boolean[\s\S]*dedicatedSection/,
+      'Dedicated Accounting pages must request the lightweight shell path.',
+    );
+    assert.match(
+      loader,
+      /getEnterpriseModuleShellWorkspace[\s\S]*options\?\.lightweight/,
+      'Standalone app loading must support the lightweight shell path.',
+    );
+    assert.match(
+      service,
+      /Dedicated app routes already own their data queries[\s\S]*getEnterpriseModuleShellWorkspace/,
+      'The lightweight enterprise shell must not introspect every business table.',
+    );
+    assert.match(
+      globals,
+      /Cross-app visibility hardening[\s\S]*text-slate-300[\s\S]*background-color:\s*var\(--sami-surface\)/,
+      'Workspace text and legacy light surfaces must remain readable in both themes.',
+    );
+  },
+);
