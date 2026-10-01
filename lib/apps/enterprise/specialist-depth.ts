@@ -64,6 +64,9 @@ CREATE INDEX IF NOT EXISTS idx_accounting_settings_active
   WHERE deleted_at IS NULL;
 
 ALTER TABLE public.accounts
+  ADD COLUMN IF NOT EXISTS company_id UUID
+    REFERENCES public.companies(id)
+    ON DELETE CASCADE,
   ADD COLUMN IF NOT EXISTS normal_balance VARCHAR(10)
     NOT NULL DEFAULT 'debit'
     CHECK (normal_balance IN ('debit','credit')),
@@ -79,6 +82,13 @@ ALTER TABLE public.accounts
     NOT NULL DEFAULT 100
     CHECK (sequence >= 0),
   ADD COLUMN IF NOT EXISTS template_key VARCHAR(80);
+
+ALTER TABLE public.accounts
+  DROP CONSTRAINT IF EXISTS accounts_code_key;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_accounts_company_code
+  ON public.accounts(company_id, code)
+  WHERE deleted_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_accounts_company_parent
   ON public.accounts(company_id, parent_account_id, code)
