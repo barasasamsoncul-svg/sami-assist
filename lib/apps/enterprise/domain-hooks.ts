@@ -111,7 +111,11 @@ export function assertEnterpriseDomainMutationAllowed(
       table ===
         'accounting_expense_line_postings' ||
       table ===
-        'accounting_expense_reimbursements'
+        'accounting_expense_reimbursements' ||
+      table ===
+        'accounting_bank_accounts' ||
+      table ===
+        'accounting_internal_transfers'
     )
   ) {
     throw new Error(
@@ -167,6 +171,11 @@ export function assertEnterpriseDomainMutationAllowed(
             table ===
               'accounting_expense_reimbursements'
             ? 'Expense accounting must be changed through the validated Accounting expense services.'
+          : table ===
+              'accounting_bank_accounts' ||
+            table ===
+              'accounting_internal_transfers'
+            ? 'Bank, cash and mobile-money controls must be changed through the validated Accounting financial-account services.'
           : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
   }
