@@ -1021,6 +1021,10 @@ export default function AccountingJournals({
                     selected.status ===
                       "posted" &&
                     !selected.reversed_by_journal_id &&
+                    selected.source_module ===
+                      "accounting" &&
+                    selected.posting_kind !==
+                      "system" &&
                     canEdit
                       ? (
                           <section
