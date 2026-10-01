@@ -10,7 +10,7 @@ import {
 
 test('FX conversion uses exact 8-decimal rates and two-decimal base rounding',()=>{
   assert.equal(convertForeignToBase('100.0000','130.00000000'),'13000.00');
-  assert.equal(convertForeignToBase('-12.3456','129.87654321'),'-1603.31');
+  assert.equal(convertForeignToBase('-12.3456','129.87654321'),'-1603.40');
 });
 
 test('vendor settlement calculates realized FX from payment and historical bill rates',()=>{
