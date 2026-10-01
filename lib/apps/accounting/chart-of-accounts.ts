@@ -1661,11 +1661,8 @@ export async function applyAccountingChartTemplate(
               definition.reconcileDefault,
               entry.manualPosting !==
                 false,
-              Boolean(
-                entry.systemRole,
-              ),
-              entry.systemRole ||
-                null,
+              FALSE,
+              NULL,
               entry.description ||
                 null,
               Number(
