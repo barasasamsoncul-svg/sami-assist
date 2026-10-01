@@ -24,6 +24,7 @@ import AccountingPayables from '@/app/apps/accounting/AccountingPayables';
 import AccountingPurchasing from '@/app/apps/accounting/AccountingPurchasing';
 import AccountingExpenses from '@/app/apps/accounting/AccountingExpenses';
 import AccountingBankCash from '@/app/apps/accounting/AccountingBankCash';
+import AccountingStatements from '@/app/apps/accounting/AccountingStatements';
 
 import {
   getAccountingFoundation,
@@ -58,6 +59,9 @@ import {
 import {
   getAccountingBankCash,
 } from '@/lib/apps/accounting/bank-cash';
+import {
+  getAccountingStatements,
+} from '@/lib/apps/accounting/statements';
 
 const MODULE_KEY = 'accounting';
 
@@ -200,6 +204,15 @@ export default async function AccountingWorkspace({
     null =
       null;
 
+  let statementsWorkspace:
+    Awaited<
+      ReturnType<
+        typeof getAccountingStatements
+      >
+    > |
+    null =
+      null;
+
   if (
     dedicatedSection &&
     dedicatedSection !==
@@ -219,7 +232,9 @@ export default async function AccountingWorkspace({
     dedicatedSection !==
       'expenses' &&
     dedicatedSection !==
-      'bank-cash'
+      'bank-cash' &&
+    dedicatedSection !==
+      'statements'
   ) {
     try {
       foundation =
@@ -424,6 +439,29 @@ export default async function AccountingWorkspace({
           Error
           ? error.message
           : 'Bank, cash and mobile-money accounts could not be loaded.';
+    }
+  }
+
+  if (
+    dedicatedSection ===
+      'statements'
+  ) {
+    try {
+      statementsWorkspace =
+        await getAccountingStatements({
+          batchId:
+            filters.batchId,
+          page:
+            filters.page,
+        });
+    } catch (
+      error
+    ) {
+      foundationError =
+        error instanceof
+          Error
+          ? error.message
+          : 'Statement imports and feeds could not be loaded.';
     }
   }
 
@@ -723,12 +761,23 @@ export default async function AccountingWorkspace({
           .activeAccounts,
     },
 
-    tableItem(
-      'accounting_bank_statement_lines',
-      'Bank Statements',
-      'Banking',
-      'Imported statement transactions and matching state.',
-    ),
+    {
+      key:
+        'statements',
+      label:
+        'Statements & Feeds',
+      href:
+        appBaseHref +
+        '/statements',
+      description:
+        'CSV, OFX, QIF and normalized feed intake with duplicate diagnostics.',
+      sectionLabel:
+        'Banking',
+      badge:
+        statementsWorkspace
+          ?.metrics
+          .errorsThisMonth,
+    },
 
     tableItem(
       'accounting_reconciliation_rules',
@@ -907,6 +956,43 @@ export default async function AccountingWorkspace({
                             {
                               foundationError ||
                               'Accounts receivable could not be loaded.'
+                            }{' '}
+                            <Link
+                              href="/apps/accounting"
+                              className="font-bold underline underline-offset-4"
+                            >
+                              Return to Accounting
+                            </Link>
+                          </div>
+                        )
+                  )
+                : dedicatedSection ===
+                    'statements'
+                  ? (
+                    statementsWorkspace
+                      ? (
+                          <AccountingStatements
+                            data={
+                              statementsWorkspace
+                            }
+                            canCreate={
+                              data.capabilities
+                                .canCreate
+                            }
+                            canEdit={
+                              data.capabilities
+                                .canEdit
+                            }
+                          />
+                        )
+                      : (
+                          <div
+                            role="alert"
+                            className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-6 text-[var(--foreground)]"
+                          >
+                            {
+                              foundationError ||
+                              'Statement imports and feeds could not be loaded.'
                             }{' '}
                             <Link
                               href="/apps/accounting"

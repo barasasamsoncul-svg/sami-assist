@@ -115,7 +115,15 @@ export function assertEnterpriseDomainMutationAllowed(
       table ===
         'accounting_bank_accounts' ||
       table ===
-        'accounting_internal_transfers'
+        'accounting_internal_transfers' ||
+      table ===
+        'accounting_bank_feed_connections' ||
+      table ===
+        'accounting_statement_import_batches' ||
+      table ===
+        'accounting_statement_import_rows' ||
+      table ===
+        'accounting_bank_statement_lines'
     )
   ) {
     throw new Error(
@@ -176,6 +184,15 @@ export function assertEnterpriseDomainMutationAllowed(
             table ===
               'accounting_internal_transfers'
             ? 'Bank, cash and mobile-money controls must be changed through the validated Accounting financial-account services.'
+          : table ===
+              'accounting_bank_feed_connections' ||
+            table ===
+              'accounting_statement_import_batches' ||
+            table ===
+              'accounting_statement_import_rows' ||
+            table ===
+              'accounting_bank_statement_lines'
+            ? 'Bank statements must be changed through the validated Accounting statement import services.'
           : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
   }

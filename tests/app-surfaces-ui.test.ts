@@ -1061,3 +1061,51 @@ test(
     );
   },
 );
+
+
+test(
+  'Accounting Statements exposes file imports diagnostics and provider-neutral feeds',
+  async () => {
+    const [workspace, statements] = await Promise.all([
+      readFile('app/apps/accounting/AccountingWorkspace.tsx','utf8'),
+      readFile('app/apps/accounting/AccountingStatements.tsx','utf8'),
+    ]);
+
+    assert.match(
+      workspace,
+      /Statements & Feeds[\s\S]*\/statements/,
+      'Accounting sidebar must use the dedicated statement intake workspace.',
+    );
+
+    for (const marker of [
+      'Statement intake',
+      'Import statement',
+      'CSV',
+      'OFX',
+      'QIF',
+      'Row diagnostics',
+      'Import anyway',
+      'Feed adapter',
+      'Provider-neutral feeds',
+      'Import first, reconcile next',
+    ]) {
+      assert.match(statements,new RegExp(marker),'Statement UI must expose '+marker+'.');
+    }
+
+    assert.match(
+      statements,
+      /file\.size > 5_000_000/,
+      'Statement uploads need a client-side size guard.',
+    );
+    assert.match(
+      statements,
+      /importKey\.current[\s\S]*browserUuid/,
+      'File-import retries must preserve their request key.',
+    );
+    assert.match(
+      statements,
+      /never stores bank credentials[\s\S]*not passwords, API keys or bank secrets/,
+      'Feed UI must make the no-secret boundary explicit.',
+    );
+  },
+);
