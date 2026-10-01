@@ -667,4 +667,11 @@ test('Accounting 2.7 journal workflow is migration-backed and fresh-install comp
   assert.match(journalService, /createRecurringAccountingJournal/);
   assert.match(journalService, /generateRecurringAccountingJournal/);
   assert.match(journalService, /reversePostedLedgerJournal/);
+
+  const domainHooks = await source('lib/apps/enterprise/domain-hooks.ts');
+  assert.match(
+    domainHooks,
+    /accounting_recurring_journals[\s\S]*accounting_recurring_journal_lines[\s\S]*validated double-entry journal services/,
+    'Generic enterprise CRUD must not bypass recurring journal validation.',
+  );
 });
