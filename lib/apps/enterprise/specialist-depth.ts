@@ -711,6 +711,8 @@ CREATE TABLE IF NOT EXISTS public.accounting_purchase_policies (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
     requisition_number VARCHAR(100) NOT NULL,
+    request_key UUID NOT NULL,
+    request_hash VARCHAR(64) NOT NULL,
     requested_by UUID NOT NULL,
     requested_on DATE NOT NULL DEFAULT CURRENT_DATE,
     needed_by DATE,
@@ -737,6 +739,10 @@ CREATE TABLE IF NOT EXISTS public.accounting_purchase_policies (
 
   CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_purchase_requisition_number
     ON public.accounting_purchase_requisitions(company_id, requisition_number)
+    WHERE deleted_at IS NULL;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_purchase_requisition_request
+    ON public.accounting_purchase_requisitions(company_id, request_key)
     WHERE deleted_at IS NULL;
 
   CREATE TABLE IF NOT EXISTS public.accounting_purchase_requisition_lines (
@@ -769,6 +775,8 @@ CREATE TABLE IF NOT EXISTS public.accounting_purchase_policies (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
     purchase_order_number VARCHAR(100) NOT NULL,
+    request_key UUID NOT NULL,
+    request_hash VARCHAR(64) NOT NULL,
     requisition_id UUID REFERENCES public.accounting_purchase_requisitions(id) ON DELETE SET NULL,
     vendor_id UUID NOT NULL REFERENCES public.accounting_vendors(id) ON DELETE RESTRICT,
     order_date DATE NOT NULL DEFAULT CURRENT_DATE,
@@ -800,6 +808,10 @@ CREATE TABLE IF NOT EXISTS public.accounting_purchase_policies (
 
   CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_purchase_order_number
     ON public.accounting_purchase_orders(company_id, purchase_order_number)
+    WHERE deleted_at IS NULL;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_purchase_order_request
+    ON public.accounting_purchase_orders(company_id, request_key)
     WHERE deleted_at IS NULL;
 
   CREATE INDEX IF NOT EXISTS idx_accounting_purchase_orders_vendor_status
@@ -839,6 +851,8 @@ CREATE TABLE IF NOT EXISTS public.accounting_purchase_policies (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
     receipt_number VARCHAR(100) NOT NULL,
+    request_key UUID NOT NULL,
+    request_hash VARCHAR(64) NOT NULL,
     purchase_order_id UUID NOT NULL REFERENCES public.accounting_purchase_orders(id) ON DELETE RESTRICT,
     received_on DATE NOT NULL DEFAULT CURRENT_DATE,
     received_by UUID NOT NULL,
@@ -857,6 +871,10 @@ CREATE TABLE IF NOT EXISTS public.accounting_purchase_policies (
 
   CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_goods_receipt_number
     ON public.accounting_goods_receipts(company_id, receipt_number)
+    WHERE deleted_at IS NULL;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_goods_receipt_request
+    ON public.accounting_goods_receipts(company_id, request_key)
     WHERE deleted_at IS NULL;
 
   CREATE TABLE IF NOT EXISTS public.accounting_goods_receipt_lines (
@@ -955,7 +973,6 @@ CREATE TABLE IF NOT EXISTS public.accounting_purchase_policies (
   ) received ON TRUE
   WHERE po.deleted_at IS NULL
   GROUP BY po.company_id,po.id;
-
 `;
 }
 
