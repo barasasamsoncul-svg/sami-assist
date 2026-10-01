@@ -23,6 +23,7 @@ import AccountingReceivables from '@/app/apps/accounting/AccountingReceivables';
 import AccountingPayables from '@/app/apps/accounting/AccountingPayables';
 import AccountingPurchasing from '@/app/apps/accounting/AccountingPurchasing';
 import AccountingExpenses from '@/app/apps/accounting/AccountingExpenses';
+import AccountingBankCash from '@/app/apps/accounting/AccountingBankCash';
 
 import {
   getAccountingFoundation,
@@ -54,6 +55,9 @@ import {
 import {
   getAccountingExpenses,
 } from '@/lib/apps/accounting/expenses';
+import {
+  getAccountingBankCash,
+} from '@/lib/apps/accounting/bank-cash';
 
 const MODULE_KEY = 'accounting';
 
@@ -187,6 +191,15 @@ export default async function AccountingWorkspace({
     null =
       null;
 
+  let bankCashWorkspace:
+    Awaited<
+      ReturnType<
+        typeof getAccountingBankCash
+      >
+    > |
+    null =
+      null;
+
   if (
     dedicatedSection &&
     dedicatedSection !==
@@ -204,7 +217,9 @@ export default async function AccountingWorkspace({
     dedicatedSection !==
       'purchasing' &&
     dedicatedSection !==
-      'expenses'
+      'expenses' &&
+    dedicatedSection !==
+      'bank-cash'
   ) {
     try {
       foundation =
@@ -388,6 +403,27 @@ export default async function AccountingWorkspace({
           Error
           ? error.message
           : 'Expenses and reimbursements could not be loaded.';
+    }
+  }
+
+  if (
+    dedicatedSection ===
+      'bank-cash'
+  ) {
+    try {
+      bankCashWorkspace =
+        await getAccountingBankCash({
+          page:
+            filters.page,
+        });
+    } catch (
+      error
+    ) {
+      foundationError =
+        error instanceof
+          Error
+          ? error.message
+          : 'Bank, cash and mobile-money accounts could not be loaded.';
     }
   }
 
@@ -669,12 +705,23 @@ export default async function AccountingWorkspace({
         }
       : null,
 
-    tableItem(
-      'accounting_bank_accounts',
-      'Bank & Cash',
-      'Banking',
-      'Bank, cash and mobile-money ledger accounts.',
-    ),
+    {
+      key:
+        'bank-cash',
+      label:
+        'Bank, Cash & Mobile Money',
+      href:
+        appBaseHref +
+        '/bank-cash',
+      description:
+        'Financial accounts, posted balances and internal transfers.',
+      sectionLabel:
+        'Banking',
+      badge:
+        bankCashWorkspace
+          ?.metrics
+          .activeAccounts,
+    },
 
     tableItem(
       'accounting_bank_statement_lines',
@@ -860,6 +907,43 @@ export default async function AccountingWorkspace({
                             {
                               foundationError ||
                               'Accounts receivable could not be loaded.'
+                            }{' '}
+                            <Link
+                              href="/apps/accounting"
+                              className="font-bold underline underline-offset-4"
+                            >
+                              Return to Accounting
+                            </Link>
+                          </div>
+                        )
+                  )
+                : dedicatedSection ===
+                    'bank-cash'
+                  ? (
+                    bankCashWorkspace
+                      ? (
+                          <AccountingBankCash
+                            data={
+                              bankCashWorkspace
+                            }
+                            canCreate={
+                              data.capabilities
+                                .canCreate
+                            }
+                            canEdit={
+                              data.capabilities
+                                .canEdit
+                            }
+                          />
+                        )
+                      : (
+                          <div
+                            role="alert"
+                            className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-6 text-[var(--foreground)]"
+                          >
+                            {
+                              foundationError ||
+                              'Bank, cash and mobile-money accounts could not be loaded.'
                             }{' '}
                             <Link
                               href="/apps/accounting"

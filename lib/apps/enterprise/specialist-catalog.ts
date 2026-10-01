@@ -25,6 +25,7 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
     'accounting_expense_report_postings',
     'accounting_expense_line_postings',
     'accounting_expense_reimbursements',
+    'accounting_internal_transfers',
   ],
   inventory: [
     'inventory_lots',

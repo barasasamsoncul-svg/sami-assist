@@ -341,7 +341,7 @@ test('Accounting 2.4 setup schema is migration-backed and available on fresh ins
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.11\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.12\.0'/,
   );
 
   assert.match(
@@ -436,7 +436,7 @@ test('Accounting 2.5 Chart of Accounts is migration-backed and company scoped', 
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.11\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.12\.0'/,
   );
 
   assert.match(
@@ -519,7 +519,7 @@ test('Accounting 2.6 centralizes double-entry posting and reversal invariants', 
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.11\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.12\.0'/,
   );
 
   assert.match(
@@ -627,7 +627,7 @@ test('Accounting 2.7 journal workflow is migration-backed and fresh-install comp
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.11\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.12\.0'/,
   );
 
   assert.match(runtimeMigrations, /ACCOUNTING_2_6_0_TO_2_7_0/);
@@ -711,7 +711,7 @@ test('Accounting 2.8 opening balances are migration-backed and workflow protecte
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.11\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.12\.0'/,
   );
 
   assert.match(runtimeMigrations, /ACCOUNTING_2_7_0_TO_2_8_0/);
@@ -900,7 +900,7 @@ test('Accounting 2.9 Payables is migration-backed and ledger controlled', async 
     source('lib/apps/enterprise/specialist-depth.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.11\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.12\.0'/);
   assert.match(migrations,/ACCOUNTING_2_8_0_TO_2_9_0/);
 
   for (const marker of [
@@ -957,7 +957,7 @@ test('Accounting 2.10 Purchasing controls are migration-backed and gate PO bills
     source('lib/apps/enterprise/specialist-depth.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.11\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.12\.0'/);
   assert.match(migrations,/ACCOUNTING_2_9_0_TO_2_10_0/);
   assert.match(
     migration,
@@ -1081,7 +1081,7 @@ test('Accounting 2.11 controls approved expenses and employee reimbursements wit
 
   assert.match(
     manifest,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.11\.0'[\s\S]*optionalDepends:\s*\['expenses'\]/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.12\.0'[\s\S]*optionalDepends:\s*\['expenses'\]/,
   );
   assert.match(migrations,/ACCOUNTING_2_10_0_TO_2_11_0/);
   assert.match(
@@ -1143,4 +1143,90 @@ test('Accounting 2.11 controls approved expenses and employee reimbursements wit
   );
   assert.match(workspace,/Expenses & Reimbursements[\s\S]*AccountingExpenses/);
   assert.match(foundation,/"expenses"/);
+});
+
+
+test('Accounting 2.12 controls bank cash mobile money and internal transfers', async () => {
+  const [
+    manifest,
+    migrations,
+    migration,
+    service,
+    workspace,
+    foundation,
+    domainHooks,
+    specialistDepth,
+    catalog,
+    specialistCatalog,
+  ] = await Promise.all([
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/apps/accounting/migrations/2.11.0-to-2.12.0.ts'),
+    source('lib/apps/accounting/bank-cash.ts'),
+    source('app/apps/accounting/AccountingWorkspace.tsx'),
+    source('app/apps/accounting/AccountingFoundationPanel.tsx'),
+    source('lib/apps/enterprise/domain-hooks.ts'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+    source('lib/apps/enterprise/catalog.ts'),
+    source('lib/apps/enterprise/specialist-catalog.ts'),
+  ]);
+
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.12\.0'/);
+  assert.match(migrations,/ACCOUNTING_2_11_0_TO_2_12_0/);
+  assert.match(
+    migration,
+    /fromVersion:\s*'2\.11\.0'[\s\S]*toVersion:\s*'2\.12\.0'/,
+  );
+
+  for (const marker of [
+    'account_type',
+    'mobile_money_provider',
+    'allow_overdraft',
+    'overdraft_limit',
+    'accounting_internal_transfers',
+    'accounting_financial_account_balances',
+    'uq_accounting_internal_transfer_request',
+  ]) {
+    assert.match(migration,new RegExp(marker),'Financial-account migration must own '+marker+'.');
+    assert.match(specialistDepth,new RegExp(marker),'Fresh Accounting installs must include '+marker+'.');
+  }
+
+  for (const marker of [
+    'createFinancialAccount',
+    'updateFinancialAccount',
+    'changeFinancialAccountStatus',
+    'createInternalTransfer',
+    'reverseInternalTransfer',
+    'postBalancedLedgerJournal',
+    'reversePostedLedgerJournal',
+    'signedLedgerCents',
+    'pg_advisory_xact_lock',
+  ]) {
+    assert.match(service,new RegExp(marker));
+  }
+
+  assert.match(
+    service,
+    /Foreign-currency financial accounts will be enabled in the Accounting foreign-currency roadmap item/,
+    'Part 10 must not fake foreign-currency bank accounting before the FX roadmap item.',
+  );
+  assert.match(
+    service,
+    /Bring the linked ledger account to zero before closing[\s\S]*Resolve or exclude outstanding statement lines/,
+    'Financial accounts must not close with ledger balances or unresolved statements.',
+  );
+  assert.match(
+    service,
+    /exceeds the available balance and configured overdraft limit/,
+    'Internal transfers must enforce the source account overdraft policy.',
+  );
+  assert.match(
+    domainHooks,
+    /accounting_bank_accounts[\s\S]*accounting_internal_transfers[\s\S]*validated Accounting financial-account services/,
+    'Generic CRUD must not bypass financial-account controls.',
+  );
+  assert.match(catalog,/accounting_internal_transfers/);
+  assert.match(specialistCatalog,/accounting_internal_transfers/);
+  assert.match(workspace,/Bank, Cash & Mobile Money[\s\S]*AccountingBankCash/);
+  assert.match(foundation,/"bank-cash"/);
 });
