@@ -1272,7 +1272,7 @@ CREATE TABLE IF NOT EXISTS public.accounting_bank_feed_connections (
       REFERENCES public.accounting_bank_accounts(id) ON DELETE CASCADE,
     provider_key VARCHAR(100) NOT NULL,
     provider_label VARCHAR(160) NOT NULL,
-    external_account_reference VARCHAR(255),
+    external_account_reference VARCHAR(255) NOT NULL DEFAULT '',
     status VARCHAR(30) NOT NULL DEFAULT 'active',
     sync_cursor TEXT,
     last_synced_at TIMESTAMPTZ,
@@ -1431,7 +1431,6 @@ CREATE TABLE IF NOT EXISTS public.accounting_bank_feed_connections (
   CREATE INDEX IF NOT EXISTS idx_accounting_statement_batch
     ON public.accounting_bank_statement_lines(company_id,import_batch_id,transaction_date)
     WHERE deleted_at IS NULL;
-
 `;
 }
 
