@@ -172,20 +172,7 @@ async function accountingRuntimeReady(
             AS lines_ready,
           to_regclass('public.invoicing_accounting_links')
             IS NOT NULL
-            AS links_ready,
-          to_regclass('public.accounting_settings')
-            IS NOT NULL
-            AS settings_ready,
-          to_regclass('public.accounting_fiscal_periods')
-            IS NOT NULL
-            AS periods_ready,
-          EXISTS (
-            SELECT 1
-            FROM information_schema.columns
-            WHERE table_schema = 'public'
-              AND table_name = 'journals'
-              AND column_name = 'source_event_key'
-          ) AS ledger_v26_ready
+            AS links_ready
       `,
     );
 
@@ -201,12 +188,6 @@ async function accountingRuntimeReady(
     row.lines_ready ===
       true &&
     row.links_ready ===
-      true &&
-    row.settings_ready ===
-      true &&
-    row.periods_ready ===
-      true &&
-    row.ledger_v26_ready ===
       true
   );
 }
