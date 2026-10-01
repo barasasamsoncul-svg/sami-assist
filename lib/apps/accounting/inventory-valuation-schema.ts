@@ -50,6 +50,23 @@ CREATE INDEX IF NOT EXISTS idx_accounting_inventory_product_mapping_active
   ON public.accounting_inventory_product_mappings(company_id,active)
   WHERE deleted_at IS NULL;
 
+CREATE TABLE IF NOT EXISTS public.accounting_inventory_movement_rules (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  movement_type VARCHAR(80) NOT NULL,
+  treatment VARCHAR(30) NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_by UUID,
+  updated_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
+  CHECK (treatment IN ('issue_cogs','return_cogs','adjustment_gain','adjustment_loss','ignore'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_inventory_movement_rule
+  ON public.accounting_inventory_movement_rules(company_id,movement_type)
+  WHERE deleted_at IS NULL;
+
 CREATE TABLE IF NOT EXISTS public.accounting_inventory_source_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
@@ -60,6 +77,7 @@ CREATE TABLE IF NOT EXISTS public.accounting_inventory_source_events (
   movement_type VARCHAR(80) NOT NULL,
   product_id UUID NOT NULL,
   warehouse_id UUID,
+  source_quantity NUMERIC(19,4) NOT NULL DEFAULT 0,
   quantity_effect NUMERIC(19,4) NOT NULL,
   unit_cost NUMERIC(19,4) NOT NULL DEFAULT 0,
   value_amount NUMERIC(19,2) NOT NULL DEFAULT 0,
@@ -78,6 +96,7 @@ CREATE TABLE IF NOT EXISTS public.accounting_inventory_source_events (
   CHECK (source_type IN ('stock_movement','inventory_adjustment')),
   CHECK (cost_source IN ('movement_snapshot','backfill_current_standard_cost')),
   CHECK (status IN ('pending','posted','review','ignored','reversed')),
+  CHECK (source_quantity >= 0),
   CHECK (unit_cost >= 0),
   CHECK (value_amount >= 0)
 );
