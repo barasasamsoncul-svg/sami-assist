@@ -216,6 +216,17 @@ export default function AccountingStatements({
     );
   }
 
+  async function cancelBatch(batchId: string) {
+    await postAction(
+      {
+        action:"cancel-batch",
+        batchId,
+      },
+      "Statement import undone",
+      "Unreconciled lines from the batch were removed so the statement can be corrected and imported again.",
+    );
+  }
+
   const activeAccounts =
     data.accounts.filter(account => account.status === "active");
 
@@ -518,15 +529,26 @@ export default function AccountingStatements({
                       <span className={styles.badge}>{batch.status}</span>
                     </td>
                     <td>
-                      <Link
-                        className={styles.button}
-                        href={
-                          "/apps/accounting/statements?batchId=" +
-                          encodeURIComponent(batch.id)
-                        }
-                      >
-                        Rows
-                      </Link>
+                      <div className={styles.actions}>
+                        <Link
+                          className={styles.button}
+                          href={
+                            "/apps/accounting/statements?batchId=" +
+                            encodeURIComponent(batch.id)
+                          }
+                        >
+                          Rows
+                        </Link>
+                        {canEdit && batch.status !== "cancelled" ? (
+                          <button
+                            type="button"
+                            className={styles.button}
+                            onClick={() => cancelBatch(batch.id)}
+                          >
+                            Undo import
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))}
