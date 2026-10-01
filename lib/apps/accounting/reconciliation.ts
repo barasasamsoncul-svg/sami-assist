@@ -881,6 +881,7 @@ async function insertReconciliation(
     adjustmentJournalId?: string | null;
     notes?: string | null;
     allocations: AllocationInput[];
+    acceptedSuggestionId?: string | null;
   },
 ) {
   const statementAmount = signedCents(input.statement.amount);
@@ -962,6 +963,25 @@ async function insertReconciliation(
     ],
   );
 
+  if (input.acceptedSuggestionId) {
+    await client.query(
+      `UPDATE accounting_reconciliation_suggestions
+       SET status='accepted',accepted_at=NOW(),accepted_by=$4,
+           updated_by=$4,updated_at=NOW()
+       WHERE company_id=$1
+         AND statement_line_id=$2
+         AND id=$3
+         AND deleted_at IS NULL
+         AND status='pending'`,
+      [
+        input.companyId,
+        input.statement.id,
+        input.acceptedSuggestionId,
+        input.userId,
+      ],
+    );
+  }
+
   await client.query(
     `UPDATE accounting_reconciliation_suggestions
      SET status='stale',updated_by=$3,updated_at=NOW()
@@ -986,6 +1006,9 @@ export async function reconcileStatementLine(input: unknown) {
   const statementLineId = accountingId(body.statementLineId);
   const allocations = allocationsFrom(body.allocations);
   const notes = shortText(body.notes,2000,"Notes") || null;
+  const suggestionId = body.suggestionId
+    ? accountingId(body.suggestionId)
+    : null;
   const client = await context.pool.connect();
 
   try {
@@ -1055,14 +1078,54 @@ export async function reconcileStatementLine(input: unknown) {
       );
     }
 
+    let method: "manual" | "suggestion" | "split" = allocations.length > 1
+      ? "split"
+      : "manual";
+
+    if (suggestionId) {
+      if (allocations.length !== 1) {
+        throw new AccountingInputError(
+          "A saved suggestion can only accept one suggested journal allocation.",
+        );
+      }
+      const suggestion = await client.query(
+        `SELECT id
+         FROM accounting_reconciliation_suggestions
+         WHERE company_id=$1
+           AND id=$2
+           AND statement_line_id=$3
+           AND suggestion_type='existing'
+           AND journal_line_id=$4
+           AND suggested_amount=$5
+           AND deleted_at IS NULL
+           AND status='pending'
+         LIMIT 1
+         FOR UPDATE`,
+        [
+          context.companyId,
+          suggestionId,
+          statementLineId,
+          allocations[0].journalLineId,
+          decimalAmount(allocations[0].amount),
+        ],
+      );
+      if (!suggestion.rows[0]) {
+        throw new AccountingInputError(
+          "This reconciliation suggestion is no longer valid.",
+        );
+      }
+      method = "suggestion";
+    }
+
     const reconciliation = await insertReconciliation(client,{
       companyId:context.companyId,
       userId:context.userId,
       statement,
-      method:allocations.length > 1 ? "split" : "manual",
+      method,
       matchedAmount:sum,
       notes,
       allocations,
+      acceptedSuggestionId:suggestionId,
     });
 
     await client.query("COMMIT");
@@ -1079,7 +1142,7 @@ export async function reconcileStatementLine(input: unknown) {
       result:"success",
       metadata:{
         statementLineId,
-        method:allocations.length > 1 ? "split" : "manual",
+        method,
         allocationCount:allocations.length,
         amount:decimalAmount(sum),
       },
@@ -1224,6 +1287,9 @@ export async function applyReconciliationRule(input: unknown) {
   const body = bodyOf(input);
   const statementLineId = accountingId(body.statementLineId);
   const ruleId = accountingId(body.ruleId);
+  const suggestionId = body.suggestionId
+    ? accountingId(body.suggestionId)
+    : null;
   const client = await context.pool.connect();
 
   try {
@@ -1259,6 +1325,26 @@ export async function applyReconciliationRule(input: unknown) {
 
     if (!rule || !rule.target_account_id || !ruleMatches(rule,statement)) {
       throw new AccountingInputError("This active reconciliation rule does not match the statement line.");
+    }
+
+    if (suggestionId) {
+      const suggestion = await client.query(
+        `SELECT id
+         FROM accounting_reconciliation_suggestions
+         WHERE company_id=$1
+           AND id=$2
+           AND statement_line_id=$3
+           AND suggestion_type='rule'
+           AND rule_id=$4
+           AND deleted_at IS NULL
+           AND status='pending'
+         LIMIT 1
+         FOR UPDATE`,
+        [context.companyId,suggestionId,statementLineId,ruleId],
+      );
+      if (!suggestion.rows[0]) {
+        throw new AccountingInputError("This rule suggestion is no longer valid.");
+      }
     }
 
     const target = await targetAccount(
@@ -1355,6 +1441,7 @@ export async function applyReconciliationRule(input: unknown) {
       adjustmentJournalId:journal.journalId,
       notes:"Created from reconciliation rule " + String(rule.name),
       allocations:[allocation],
+      acceptedSuggestionId:suggestionId,
     });
 
     await client.query("COMMIT");
