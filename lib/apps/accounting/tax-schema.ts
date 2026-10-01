@@ -1,4 +1,4 @@
-export const ACCOUNTING_TAX_SQL = \`
+export const ACCOUNTING_TAX_SQL = `
 CREATE TABLE IF NOT EXISTS public.accounting_tax_codes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
@@ -114,4 +114,4 @@ ALTER TABLE public.accounting_vendor_document_lines
 CREATE INDEX IF NOT EXISTS idx_accounting_vendor_lines_tax
   ON public.accounting_vendor_document_lines(company_id,tax_code_id)
   WHERE deleted_at IS NULL AND tax_code_id IS NOT NULL;
-\`;
+`;
