@@ -7,7 +7,6 @@ import {
 import {
   accountingId,
   decimalAmount,
-  minorUnits,
 } from "./validation";
 
 import type {
@@ -117,24 +116,75 @@ function cents(
     String(
       value ??
         "0",
+    )
+      .trim();
+
+  if (
+    !/^-?\d{1,18}(?:\.\d{1,8})?$/.test(
+      text,
+    )
+  ) {
+    throw new Error(
+      "Receivables amount is not a valid decimal value.",
     );
+  }
 
   const negative =
     text.startsWith(
       "-",
     );
 
-  const normalized =
+  const unsigned =
     negative
       ? text.slice(
           1,
         )
       : text;
 
-  const amount =
-    minorUnits(
-      normalized,
+  const [
+    whole,
+    fraction =
+      "",
+  ] =
+    unsigned.split(
+      ".",
     );
+
+  const padded =
+    fraction.padEnd(
+      3,
+      "0",
+    );
+
+  let amount =
+    BigInt(
+      whole,
+    ) *
+      BigInt(
+        100,
+      ) +
+    BigInt(
+      padded.slice(
+        0,
+        2,
+      ) ||
+      "0",
+    );
+
+  if (
+    Number(
+      padded[
+        2
+      ] ||
+      "0",
+    ) >=
+      5
+  ) {
+    amount +=
+      BigInt(
+        1,
+      );
+  }
 
   return negative
     ? -amount
@@ -457,9 +507,9 @@ export async function getAccountingReceivables(
     const subledgerTotals =
       await client.query(
         `SELECT
-           COALESCE(SUM(base_balance_due),0)::text AS outstanding,
-           COALESCE(SUM(base_balance_due) FILTER (WHERE due_date < CURRENT_DATE),0)::text AS overdue,
-           COALESCE(SUM(base_balance_due) FILTER (WHERE due_date >= CURRENT_DATE),0)::text AS current_amount,
+           COALESCE(SUM(ROUND(base_balance_due,2)),0)::text AS outstanding,
+           COALESCE(SUM(ROUND(base_balance_due,2)) FILTER (WHERE due_date < CURRENT_DATE),0)::text AS overdue,
+           COALESCE(SUM(ROUND(base_balance_due,2)) FILTER (WHERE due_date >= CURRENT_DATE),0)::text AS current_amount,
            COUNT(*) FILTER (WHERE base_balance_due > 0)::int AS open_invoice_count,
            COUNT(*) FILTER (WHERE base_balance_due > 0 AND due_date < CURRENT_DATE)::int AS overdue_invoice_count,
            COUNT(DISTINCT customer_id) FILTER (WHERE base_balance_due > 0)::int AS customers_with_balance
@@ -473,7 +523,7 @@ export async function getAccountingReceivables(
     const paymentCredits =
       await client.query(
         `SELECT
-           COALESCE(SUM(b.unapplied_amount * COALESCE(p.exchange_rate,1)),0)::text AS amount
+           COALESCE(SUM(ROUND(b.unapplied_amount * COALESCE(p.exchange_rate,1),2)),0)::text AS amount
          FROM invoicing_payment_balances b
          JOIN invoicing_payments p
            ON p.company_id=b.company_id
@@ -490,8 +540,11 @@ export async function getAccountingReceivables(
       await client.query(
         `SELECT
            COALESCE(SUM(
-             b.available_amount *
-             COALESCE(source_invoice.exchange_rate,1)
+             ROUND(
+               b.available_amount *
+               COALESCE(source_invoice.exchange_rate,1),
+               2
+             )
            ),0)::text AS amount
          FROM invoicing_credit_note_balances b
          JOIN invoicing_credit_notes cn
@@ -583,7 +636,7 @@ export async function getAccountingReceivables(
       await client.query(
         `SELECT
            aging_bucket AS bucket,
-           COALESCE(SUM(base_balance_due),0)::text AS amount,
+           COALESCE(SUM(ROUND(base_balance_due,2)),0)::text AS amount,
            COUNT(*) FILTER (WHERE base_balance_due > 0)::int AS count
          FROM invoicing_aging_base
          WHERE company_id=$1
@@ -645,8 +698,8 @@ export async function getAccountingReceivables(
            c.currency AS customer_currency,
            c.credit_limit::text,
            COUNT(a.invoice_id) FILTER (WHERE a.base_balance_due > 0)::int AS invoice_count,
-           COALESCE(SUM(a.base_balance_due),0)::text AS outstanding,
-           COALESCE(SUM(a.base_balance_due) FILTER (WHERE a.due_date < CURRENT_DATE),0)::text AS overdue,
+           COALESCE(SUM(ROUND(a.base_balance_due,2)),0)::text AS outstanding,
+           COALESCE(SUM(ROUND(a.base_balance_due,2)) FILTER (WHERE a.due_date < CURRENT_DATE),0)::text AS overdue,
            COALESCE(MAX(a.days_overdue) FILTER (WHERE a.base_balance_due > 0),0)::int AS max_days_overdue
          FROM invoicing_customers c
          LEFT JOIN invoicing_aging_base a
@@ -672,7 +725,7 @@ export async function getAccountingReceivables(
         `WITH payment_credit AS (
            SELECT
              p.customer_id,
-             COALESCE(SUM(b.unapplied_amount * COALESCE(p.exchange_rate,1)),0) AS amount
+             COALESCE(SUM(ROUND(b.unapplied_amount * COALESCE(p.exchange_rate,1),2)),0) AS amount
            FROM invoicing_payment_balances b
            JOIN invoicing_payments p
              ON p.company_id=b.company_id
@@ -687,8 +740,11 @@ export async function getAccountingReceivables(
            SELECT
              b.customer_id,
              COALESCE(SUM(
-               b.available_amount *
-               COALESCE(source_invoice.exchange_rate,1)
+               ROUND(
+                 b.available_amount *
+                 COALESCE(source_invoice.exchange_rate,1),
+                 2
+               )
              ),0) AS amount
            FROM invoicing_credit_note_balances b
            JOIN invoicing_credit_notes cn
@@ -937,7 +993,7 @@ export async function getAccountingReceivables(
     const trailingSales =
       await client.query(
         `SELECT
-           COALESCE(SUM(total_amount * COALESCE(exchange_rate,1)),0)::text AS billed
+           COALESCE(SUM(ROUND(total_amount * COALESCE(exchange_rate,1),2)),0)::text AS billed
          FROM invoicing_invoices
          WHERE company_id=$1
            AND deleted_at IS NULL
