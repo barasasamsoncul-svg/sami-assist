@@ -280,6 +280,10 @@ function emptyWorkspace(
     metrics: {
       outstanding:
         "0.00",
+      invoicingOutstanding:
+        "0.00",
+      legacyOpeningReceivables:
+        "0.00",
       overdue:
         "0.00",
       current:
@@ -520,6 +524,39 @@ export async function getAccountingReceivables(
         ],
       );
 
+    const legacyOpening =
+      await client.query(
+        `SELECT
+           COALESCE(SUM(
+             COALESCE(l.debit,0) -
+             COALESCE(l.credit,0)
+           ),0)::text AS amount
+         FROM accounting_opening_balance_lines l
+         JOIN accounting_opening_balance_batches b
+           ON b.company_id=l.company_id
+          AND b.id=l.batch_id
+          AND b.deleted_at IS NULL
+          AND b.status='posted'
+         JOIN accounts a
+           ON a.company_id=l.company_id
+          AND a.id=l.account_id
+          AND a.deleted_at IS NULL
+          AND a.account_type='asset_receivable'
+         WHERE l.company_id=$1
+           AND l.deleted_at IS NULL`,
+        [
+          context.companyId,
+        ],
+      );
+
+    const legacyOpeningCents =
+      cents(
+        legacyOpening.rows[
+          0
+        ]?.amount ||
+        "0",
+      );
+
     const paymentCredits =
       await client.query(
         `SELECT
@@ -604,11 +641,22 @@ export async function getAccountingReceivables(
         ],
       );
 
-    const receivableSubledger =
+    const invoicingReceivableSubledger =
       subledgerTotals.rows[
         0
       ]?.outstanding ||
       "0";
+
+    const receivableSubledgerCents =
+      cents(
+        invoicingReceivableSubledger,
+      ) +
+      legacyOpeningCents;
+
+    const receivableSubledger =
+      decimalAmount(
+        receivableSubledgerCents,
+      );
 
     const receivableControl =
       reconciliation(
@@ -1006,7 +1054,7 @@ export async function getAccountingReceivables(
 
     const outstandingCents =
       cents(
-        receivableSubledger,
+        invoicingReceivableSubledger,
       );
 
     const billedCents =
@@ -1059,8 +1107,14 @@ export async function getAccountingReceivables(
       filters,
       metrics: {
         outstanding:
+          receivableSubledger,
+        invoicingOutstanding:
           String(
-            receivableSubledger,
+            invoicingReceivableSubledger,
+          ),
+        legacyOpeningReceivables:
+          decimalAmount(
+            legacyOpeningCents,
           ),
         overdue:
           String(
