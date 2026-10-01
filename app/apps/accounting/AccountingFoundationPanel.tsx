@@ -33,6 +33,7 @@ export const ACCOUNTING_SECTIONS = [
   "reconciliation",
   "payments",
   "taxes",
+  "kenya",
   "setup",
 ] as const;
 export type AccountingSection = (typeof ACCOUNTING_SECTIONS)[number];
@@ -110,6 +111,7 @@ export default function AccountingFoundationPanel({
     reconciliation: "Reconciliation",
     payments: "Payments & settlements",
     taxes: "Taxes",
+    kenya: "Kenya accounting & eTIMS",
     setup: "Accounting setup",
   };
   const descriptions = {
@@ -143,6 +145,7 @@ export default function AccountingFoundationPanel({
       "Import CSV, OFX and QIF statements, inspect duplicates and errors, and manage provider-neutral feed adapters before reconciliation.",
     payments: "Prepare vendor payment batches and record provider settlements with their fees.",
     taxes: "Configure effective-dated tax codes, groups, recovery, inclusive pricing and ledger mappings.",
+    kenya: "Control Kenya VAT reporting and synchronize successful KRA eTIMS fiscal evidence without duplicating the Invoicing connector.",
     reconciliation:
       "Match statement lines to posted bank-ledger movement, split allocations, apply controlled adjustment rules and preserve immutable reconciliation history.",
     setup:
