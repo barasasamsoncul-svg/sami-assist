@@ -80,6 +80,7 @@ export type AccountingExpenseAccount = {
 
 export type AccountingExpensesWorkspace = {
   companyId: string;
+  expensesAvailable: boolean;
   currency: string;
   reports: AccountingExpenseReport[];
   lines: AccountingExpenseLine[];
