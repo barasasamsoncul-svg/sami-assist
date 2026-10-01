@@ -29,9 +29,10 @@ This is the first usable slice, not completion of the full Accounting module. Ne
 11. Statement imports and supported feeds: dedicated statement-intake workspace with quoted CSV mapping, OFX FITID support, QIF date-order handling, 5 MB/10,000-transaction limits, file-content hashing and retry keys, serialized same-account imports, authoritative external-ID plus heuristic fingerprint duplicate detection, explicit override only for heuristic duplicates, per-row SQL savepoints, row diagnostics, safe pre-reconciliation batch undo and batch history, provider-neutral feed connections with sync cursor/error state, normalized authenticated feed ingestion that stores no provider secrets, protected statement workflow tables, audit events, executable parser regressions, dedicated UI/API, migration-backed 2.13 schema and fresh-install parity. CAMT.053 is intentionally not advertised until a proper XML parser is introduced.
 12. Reconciliation: dedicated reconciliation control center over imported statement lines and the posted bank ledger, signed amount/date/reference candidate scoring, persisted suggestions with accepted/dismissed/stale provenance, manual and split allocation matching, partial journal-line availability controls, active-statement uniqueness, retry-safe request keys and payload hashes, account-specific adjustment rules, explicit rule acceptance before balanced adjustment journals, exclusions/restores, immutable reconciliation history, compensating reversals, legacy matched-line backfill, reconciliation-journal candidate exclusion, protected workflow tables, audit events, dedicated UI/API, migration-backed 2.14 schema and fresh-install parity.
 
+13. Payments and settlements: company-scoped vendor payment batches and provider settlements, draft/approval/posting/cancellation lifecycle, exact full and partial bill allocations, AP aging/balance integration, original bill control-account debits, retry-key/payload and external-reference duplicate protection, source-balance/overdraft checks with serialized financial-account locks, settlement gross/net/fee posting, reconciliation-aware linked reversals, bill reversal guards, remittance CSV downloads, protected workflow tables, audit events, dedicated Accounting UI/API, and migration-backed 2.15 schema with shared fresh-install SQL. Records externally completed payments; does not initiate bank payouts. Customer receipts remain owned by Invoicing. Cross-currency payments remain item 17.
+
 ## Remaining depth, in the agreed order
 
-13. Payments and settlements.
 14. Tax engine.
 15. Kenya accounting and shared eTIMS integration.
 16. International localization.
@@ -58,7 +59,7 @@ Keep changes scoped to Accounting. Reuse the existing authoritative ledger and t
 
 ## Validation
 
-`node --conditions=react-server --import tsx --test tests/accounting-foundation.test.mjs`
+`node --conditions=react-server --import tsx --test tests/accounting-foundation.test.mjs tests/accounting-statements.test.mjs tests/accounting-payments.test.mjs`
 
 Set `TEST_DATABASE_URL` to a disposable PostgreSQL database to run transaction and reporting tests (including simultaneous duplicate requests). Tests create and remove an isolated random schema. For local embedded PostgreSQL testing, `PGLITE_TEST_MODULE` can point to an installed PGlite module; the simultaneous-connection test requires real PostgreSQL. The Accounting GitHub Actions workflow supplies PostgreSQL automatically.
 
