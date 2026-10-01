@@ -727,3 +727,21 @@ export async function reversePayablesDocument(input: unknown) {
     throw error;
   } finally { client.release(); }
 }
+
+
+export async function cancelPayablesDocument(input: unknown) {
+  const context = await requireEnterpriseModuleTableContext("accounting", "accounting_vendor_documents", "edit");
+  const body = bodyOf(input);
+  const documentId = accountingId(body.documentId);
+  const result = await context.pool.query(
+    `UPDATE accounting_vendor_documents
+     SET status='cancelled',cancelled_by=$3,cancelled_at=NOW(),updated_by=$3,updated_at=NOW()
+     WHERE company_id=$1 AND id=$2 AND deleted_at IS NULL AND status IN ('draft','approved')
+     RETURNING id::text`,
+    [context.companyId,documentId,context.userId],
+  );
+  if (!result.rows[0]) {
+    throw new AccountingInputError("Only a draft or approved vendor document can be cancelled.");
+  }
+  return { id: documentId, status: "cancelled" };
+}
