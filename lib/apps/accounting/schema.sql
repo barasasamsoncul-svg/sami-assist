@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS public.accounts (
 );
 CREATE TABLE IF NOT EXISTS public.journals (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    journal_number VARCHAR(100) NOT NULL UNIQUE,
+    journal_number VARCHAR(100) NOT NULL,
     journal_date DATE NOT NULL DEFAULT CURRENT_DATE,
     reference VARCHAR(255),
     description TEXT,

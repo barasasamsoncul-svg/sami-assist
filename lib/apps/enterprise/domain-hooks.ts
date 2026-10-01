@@ -67,14 +67,23 @@ export function assertEnterpriseDomainMutationAllowed(
       table ===
         'accounting_settings' ||
       table ===
-        'accounts'
+        'accounts' ||
+      table ===
+        'journals' ||
+      table ===
+        'journal_lines'
     )
   ) {
     throw new Error(
       table ===
         'accounts'
         ? 'Chart of Accounts must be changed through the validated Accounting account workspace.'
-        : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
+        : table ===
+            'journals' ||
+          table ===
+            'journal_lines'
+          ? 'Accounting journals must be changed through the validated double-entry journal services.'
+          : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
   }
 

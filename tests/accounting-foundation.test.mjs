@@ -16,6 +16,7 @@ import {
   LEDGER_SQL,
 } from "../lib/apps/accounting/queries.ts";
 import { saveBalancedJournalDraft } from "../lib/apps/accounting/journal-command.ts";
+import { postBalancedLedgerJournal, reversePostedLedgerJournal } from "../lib/apps/accounting/ledger-engine.ts";
 const company = randomUUID(),
   otherCompany = randomUUID(),
   user = randomUUID();
@@ -156,10 +157,12 @@ test(
     try {
       const statements = [
         `CREATE TABLE accounts (id uuid PRIMARY KEY,company_id uuid NOT NULL,code text NOT NULL,name text NOT NULL,account_type text NOT NULL,is_active boolean DEFAULT true,allow_manual_posting boolean NOT NULL DEFAULT true,deleted_at timestamptz)`,
-        `CREATE TABLE journals (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),company_id uuid NOT NULL,journal_number varchar(100) UNIQUE,journal_date date,reference text,description text,status text,created_by uuid,updated_by uuid,created_at timestamptz DEFAULT now(),deleted_at timestamptz)`,
-        `CREATE TABLE journal_lines (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),company_id uuid NOT NULL,journal_id uuid REFERENCES journals(id),account_id uuid REFERENCES accounts(id),description text CHECK(description <> 'FAIL'),debit numeric(15,2),credit numeric(15,2),created_by uuid,updated_by uuid,created_at timestamptz DEFAULT now(),deleted_at timestamptz)`,
+        `CREATE TABLE journals (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),company_id uuid NOT NULL,journal_number varchar(100) NOT NULL,journal_date date,reference text,description text,status text,source_module text,source_type text,source_id text,source_event_key text,posting_kind text DEFAULT 'manual',posted_at timestamptz,reversal_of_journal_id uuid,reversed_by_journal_id uuid,created_by uuid,updated_by uuid,updated_at timestamptz DEFAULT now(),created_at timestamptz DEFAULT now(),deleted_at timestamptz)`,
+        `CREATE TABLE journal_lines (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),company_id uuid NOT NULL,journal_id uuid REFERENCES journals(id),account_id uuid REFERENCES accounts(id),description text CHECK(description <> 'FAIL'),debit numeric(15,2),credit numeric(15,2),created_by uuid,updated_by uuid,updated_at timestamptz DEFAULT now(),created_at timestamptz DEFAULT now(),deleted_at timestamptz,CHECK(debit >= 0 AND credit >= 0),CHECK((debit > 0 AND credit = 0) OR (credit > 0 AND debit = 0)))`,
         `CREATE TABLE accounting_fiscal_periods(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),company_id uuid,name text,starts_on date,ends_on date,lock_date date,status text,deleted_at timestamptz)`,
         `CREATE TABLE accounting_settings(company_id uuid PRIMARY KEY,global_lock_date date,require_open_period boolean NOT NULL DEFAULT true,deleted_at timestamptz)`,
+        `CREATE UNIQUE INDEX uq_test_journals_company_number ON journals(company_id,journal_number) WHERE deleted_at IS NULL`,
+        `CREATE UNIQUE INDEX uq_test_journals_source_event ON journals(company_id,source_module,source_event_key) WHERE deleted_at IS NULL AND source_module IS NOT NULL AND source_event_key IS NOT NULL`,
         `CREATE TABLE sami_enterprise_idempotency(company_id uuid,idempotency_key uuid,module_key text,table_key text,request_hash text,created_by uuid,created_at timestamptz,updated_at timestamptz,record_key text,response_json jsonb,PRIMARY KEY(company_id,idempotency_key))`,
       ];
       for (const sql of statements) await pool.query(sql);
@@ -177,6 +180,7 @@ test(
         `INSERT INTO accounting_fiscal_periods(company_id,name,starts_on,ends_on,status) VALUES($1,'2026','2026-01-01','2026-12-31','open')`,
         [company],
       );
+
       const input = validateJournal(draft());
       const first = await saveBalancedJournalDraft(
         pool,
@@ -406,6 +410,133 @@ test(
         "draft",
         "setup can explicitly allow drafting outside a fiscal period",
       );
+
+      const systemPosting = await (async () => {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          const posted = await postBalancedLedgerJournal(client, {
+            companyId: company,
+            userId: user,
+            journalDate: "2026-05-15",
+            description: "System posting proof",
+            sourceModule: "test",
+            sourceType: "proof",
+            sourceId: "proof-1",
+            sourceEventKey: "proof:event:1",
+            postingKind: "system",
+            lines: [
+              { accountId: cash, description: "Cash", debit: "75.25", credit: "0" },
+              { accountId: revenue, description: "Revenue", debit: "0", credit: "75.25" },
+            ],
+          });
+          const replay = await postBalancedLedgerJournal(client, {
+            companyId: company,
+            userId: user,
+            journalDate: "2026-05-15",
+            description: "System posting proof",
+            sourceModule: "test",
+            sourceType: "proof",
+            sourceId: "proof-1",
+            sourceEventKey: "proof:event:1",
+            postingKind: "system",
+            lines: [
+              { accountId: cash, debit: "75.25", credit: "0" },
+              { accountId: revenue, debit: "0", credit: "75.25" },
+            ],
+          });
+          assert.equal(replay.journalId, posted.journalId);
+          assert.equal(replay.reused, true);
+
+          await assert.rejects(
+            () =>
+              postBalancedLedgerJournal(client, {
+                companyId: company,
+                userId: user,
+                journalDate: "2026-05-15",
+                description: "Unbalanced system posting",
+                sourceModule: "test",
+                sourceType: "proof",
+                sourceId: "proof-bad",
+                sourceEventKey: "proof:event:bad",
+                lines: [
+                  { accountId: cash, debit: "10.00", credit: "0" },
+                  { accountId: revenue, debit: "0", credit: "9.99" },
+                ],
+              }),
+            /unbalanced accounting posting/,
+          );
+
+          const proof = (
+            await client.query(
+              `SELECT status,source_module,source_event_key,posting_kind,
+                      posted_at IS NOT NULL AS posted,
+                      (SELECT SUM(debit) FROM journal_lines WHERE journal_id=j.id) AS debit,
+                      (SELECT SUM(credit) FROM journal_lines WHERE journal_id=j.id) AS credit
+               FROM journals j WHERE id=$1`,
+              [posted.journalId],
+            )
+          ).rows[0];
+          assert.equal(proof.status, "posted");
+          assert.equal(proof.source_module, "test");
+          assert.equal(proof.source_event_key, "proof:event:1");
+          assert.equal(proof.posting_kind, "system");
+          assert.equal(proof.posted, true);
+          assert.equal(String(proof.debit), "75.25");
+          assert.equal(String(proof.credit), "75.25");
+
+          const reversal = await reversePostedLedgerJournal(client, {
+            companyId: company,
+            userId: user,
+            originalJournalId: posted.journalId,
+            journalDate: "2026-05-16",
+            description: "Reverse system posting proof",
+            sourceModule: "test",
+            sourceType: "proof_reversal",
+            sourceId: "proof-1",
+            sourceEventKey: "proof:event:1:reverse",
+          });
+          const reversalAgain = await reversePostedLedgerJournal(client, {
+            companyId: company,
+            userId: user,
+            originalJournalId: posted.journalId,
+            journalDate: "2026-05-16",
+            description: "Reverse system posting proof",
+            sourceModule: "test",
+            sourceType: "proof_reversal",
+            sourceId: "proof-1",
+            sourceEventKey: "proof:event:1:reverse",
+          });
+          assert.equal(reversalAgain.journalId, reversal.journalId);
+          assert.equal(reversalAgain.reused, true);
+
+          const linked = (
+            await client.query(
+              "SELECT reversed_by_journal_id::text AS reversal FROM journals WHERE id=$1",
+              [posted.journalId],
+            )
+          ).rows[0];
+          assert.equal(linked.reversal, reversal.journalId);
+
+          const reversalTotals = (
+            await client.query(
+              "SELECT SUM(debit)::text AS debit,SUM(credit)::text AS credit FROM journal_lines WHERE journal_id=$1",
+              [reversal.journalId],
+            )
+          ).rows[0];
+          assert.equal(reversalTotals.debit, "75.25");
+          assert.equal(reversalTotals.credit, "75.25");
+
+          await client.query("COMMIT");
+          return posted;
+        } catch (error) {
+          await client.query("ROLLBACK");
+          throw error;
+        } finally {
+          client.release();
+        }
+      })();
+      assert.ok(systemPosting.journalId);
     } finally {
       if (embedded) await embedded.close();
       else {
