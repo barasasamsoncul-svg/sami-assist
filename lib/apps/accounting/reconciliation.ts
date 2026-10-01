@@ -1,5 +1,9 @@
 import "server-only";
 
+import {
+  createHash,
+} from "node:crypto";
+
 import type { PoolClient } from "pg";
 
 import {
@@ -50,6 +54,20 @@ function shortText(
     throw new AccountingInputError(label + " must not exceed " + max + " characters.");
   }
   return result;
+}
+
+
+function requestKey(value: unknown) {
+  try {
+    return accountingId(value);
+  } catch {
+    throw new AccountingInputError("A valid reconciliation request key is required.");
+  }
+}
+
+
+function requestHash(value: unknown) {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
 
@@ -884,6 +902,8 @@ async function insertReconciliation(
     notes?: string | null;
     allocations: AllocationInput[];
     acceptedSuggestionId?: string | null;
+    requestKey: string;
+    requestHash: string;
   },
 ) {
   const statementAmount = signedCents(input.statement.amount);
@@ -897,18 +917,20 @@ async function insertReconciliation(
   const number = await nextReconciliationNumber(client,input.companyId);
   const result = await client.query(
     `INSERT INTO accounting_reconciliations (
-       company_id,reconciliation_number,bank_account_id,statement_line_id,
+       company_id,reconciliation_number,request_key,request_hash,bank_account_id,statement_line_id,
        reconciliation_date,method,rule_id,statement_amount,matched_amount,
        difference_amount,status,adjustment_journal_id,notes,reconciled_by,
        created_by,updated_by
      )
      VALUES (
-       $1,$2,$3,$4,$5,$6,$7,$8,$9,0,'matched',$10,$11,$12,$12,$12
+       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,0,'matched',$12,$13,$14,$14,$14
      )
      RETURNING id::text`,
     [
       input.companyId,
       number,
+      input.requestKey,
+      input.requestHash,
       input.statement.bank_account_id,
       input.statement.id,
       input.statement.transaction_date,
