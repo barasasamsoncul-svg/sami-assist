@@ -82,12 +82,47 @@ export type PurchaseMatch = {
   override_reason: string | null;
 };
 
+export type PurchaseVendor = {
+  id: string;
+  vendor_code: string;
+  name: string;
+  currency: string;
+  status: string;
+};
+
+export type PurchaseOrderLine = {
+  id: string;
+  purchase_order_id: string;
+  purchase_order_number: string;
+  description: string;
+  quantity: string;
+  accepted_quantity: string;
+  remaining_quantity: string;
+  unit_price: string;
+  line_total: string;
+};
+
+export type PurchaseBillCandidate = {
+  id: string;
+  vendor_id: string;
+  vendor_name: string;
+  document_number: string;
+  vendor_reference: string | null;
+  base_total_amount: string;
+  status: string;
+  purchase_order_id: string | null;
+  purchase_match_status: string | null;
+};
+
 export type AccountingPurchasingWorkspace = {
   companyId: string;
   currency: string;
   policies: PurchasePolicy[];
+  vendors: PurchaseVendor[];
   requisitions: PurchaseRequisition[];
   orders: PurchaseOrder[];
+  orderLines: PurchaseOrderLine[];
+  bills: PurchaseBillCandidate[];
   exceptions: PurchaseMatch[];
   counts: {
     draftRequisitions: number;
