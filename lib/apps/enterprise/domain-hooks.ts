@@ -131,7 +131,17 @@ export function assertEnterpriseDomainMutationAllowed(
       table ===
         'accounting_reconciliation_matches' ||
       table ===
-        'accounting_reconciliation_suggestions'
+        'accounting_reconciliation_suggestions' ||
+      table ===
+        'accounting_payment_account_mappings' ||
+      table ===
+        'accounting_payment_postings' ||
+      table ===
+        'accounting_payment_allocation_postings' ||
+      table ===
+        'accounting_payment_settlement_batches' ||
+      table ===
+        'accounting_payment_settlement_items'
     )
   ) {
     throw new Error(
@@ -210,6 +220,17 @@ export function assertEnterpriseDomainMutationAllowed(
             table ===
               'accounting_reconciliation_suggestions'
             ? 'Bank reconciliation must be changed through the validated Accounting reconciliation services.'
+          : table ===
+              'accounting_payment_account_mappings' ||
+            table ===
+              'accounting_payment_postings' ||
+            table ===
+              'accounting_payment_allocation_postings' ||
+            table ===
+              'accounting_payment_settlement_batches' ||
+            table ===
+              'accounting_payment_settlement_items'
+            ? 'Payment settlement accounting must be changed through the validated Accounting payment services.'
           : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
   }
