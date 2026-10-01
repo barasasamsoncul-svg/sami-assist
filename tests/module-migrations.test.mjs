@@ -1536,3 +1536,51 @@ test('Accounting 2.18 International Localization is migration-backed and shares 
   assert.match(workspace,/dedicatedSection === 'international'[\s\S]*AccountingInternational/);
   assert.match(foundation,/"international"/);
 });
+
+
+test('Accounting 2.19 Foreign Currency is migration-backed and subledger controlled', async () => {
+  const [manifest,runtime,migration,depth,schema,catalog,specialist,hooks,fx,workspace,foundation,bankCash,payments,statements,reconciliation,ledger] = await Promise.all([
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/apps/accounting/migrations/2.18.0-to-2.19.0.ts'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+    source('lib/apps/accounting/fx-schema.ts'),
+    source('lib/apps/enterprise/catalog.ts'),
+    source('lib/apps/enterprise/specialist-catalog.ts'),
+    source('lib/apps/enterprise/domain-hooks.ts'),
+    source('lib/apps/accounting/fx.ts'),
+    source('app/apps/accounting/AccountingWorkspace.tsx'),
+    source('app/apps/accounting/AccountingFoundationPanel.tsx'),
+    source('lib/apps/accounting/bank-cash.ts'),
+    source('lib/apps/accounting/payment-command.ts'),
+    source('lib/apps/accounting/statements.ts'),
+    source('lib/apps/accounting/reconciliation.ts'),
+    source('lib/apps/accounting/ledger-engine.ts'),
+  ]);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.19\.0'/);
+  assert.match(runtime,/ACCOUNTING_2_18_0_TO_2_19_0/);
+  assert.match(migration,/fromVersion:\s*'2\.18\.0'[\s\S]*toVersion:\s*'2\.19\.0'/);
+  assert.match(depth,/ACCOUNTING_FX_SQL/);
+  for (const marker of [
+    'accounting_fx_settings',
+    'accounting_fx_currencies',
+    'accounting_exchange_rates',
+    'accounting_fx_financial_movements',
+    'accounting_fx_revaluation_runs',
+    'accounting_fx_revaluation_lines',
+  ]) {
+    assert.match(schema,new RegExp(marker));
+    assert.match(catalog,new RegExp(marker));
+    assert.match(specialist,new RegExp(marker));
+  }
+  assert.match(hooks,/accounting_fx_settings[\s\S]*accounting_fx_revaluation_lines/);
+  assert.match(fx,/postForeignVendorPayment[\s\S]*postCrossCurrencyTransfer/);
+  assert.match(fx,/generateFxRevaluation[\s\S]*postFxRevaluation[\s\S]*reverseFxRevaluation/);
+  assert.match(workspace,/dedicatedSection === 'fx'[\s\S]*AccountingFx/);
+  assert.match(foundation,/"fx"/);
+  assert.match(bankCash,/accounting_fx_currencies/);
+  assert.match(payments,/fx_managed/);
+  assert.match(statements,/convertForeignToBase[\s\S]*base_amount/);
+  assert.match(reconciliation,/statementLedgerAmount[\s\S]*accounting_fx_financial_movements/);
+  assert.match(ledger,/foreign_financial_account[\s\S]*Manual journals cannot post directly/);
+});
