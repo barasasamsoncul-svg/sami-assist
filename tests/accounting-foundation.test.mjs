@@ -16,7 +16,11 @@ import {
   LEDGER_SQL,
 } from "../lib/apps/accounting/queries.ts";
 import { saveBalancedJournalDraft } from "../lib/apps/accounting/journal-command.ts";
-import { postBalancedLedgerJournal, reversePostedLedgerJournal } from "../lib/apps/accounting/ledger-engine.ts";
+import {
+  postApprovedManualLedgerJournal,
+  postBalancedLedgerJournal,
+  reversePostedLedgerJournal,
+} from "../lib/apps/accounting/ledger-engine.ts";
 const company = randomUUID(),
   otherCompany = randomUUID(),
   user = randomUUID();
@@ -157,7 +161,7 @@ test(
     try {
       const statements = [
         `CREATE TABLE accounts (id uuid PRIMARY KEY,company_id uuid NOT NULL,code text NOT NULL,name text NOT NULL,account_type text NOT NULL,is_active boolean DEFAULT true,allow_manual_posting boolean NOT NULL DEFAULT true,deleted_at timestamptz)`,
-        `CREATE TABLE journals (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),company_id uuid NOT NULL,journal_number varchar(100) NOT NULL,journal_date date,reference text,description text,status text,source_module text,source_type text,source_id text,source_event_key text,posting_kind text DEFAULT 'manual',posted_at timestamptz,reversal_of_journal_id uuid,reversed_by_journal_id uuid,created_by uuid,updated_by uuid,updated_at timestamptz DEFAULT now(),created_at timestamptz DEFAULT now(),deleted_at timestamptz)`,
+        `CREATE TABLE journals (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),company_id uuid NOT NULL,journal_number varchar(100) NOT NULL,journal_date date,reference text,description text,status text,source_module text,source_type text,source_id text,source_event_key text,posting_kind text DEFAULT 'manual',posted_at timestamptz,posted_by uuid,approved_by uuid,approved_at timestamptz,approval_note text,reversal_of_journal_id uuid,reversed_by_journal_id uuid,created_by uuid,updated_by uuid,updated_at timestamptz DEFAULT now(),created_at timestamptz DEFAULT now(),deleted_at timestamptz)`,
         `CREATE TABLE journal_lines (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),company_id uuid NOT NULL,journal_id uuid REFERENCES journals(id),account_id uuid REFERENCES accounts(id),description text CHECK(description <> 'FAIL'),debit numeric(15,2),credit numeric(15,2),created_by uuid,updated_by uuid,updated_at timestamptz DEFAULT now(),created_at timestamptz DEFAULT now(),deleted_at timestamptz,CHECK(debit >= 0 AND credit >= 0),CHECK((debit > 0 AND credit = 0) OR (credit > 0 AND debit = 0)))`,
         `CREATE TABLE accounting_fiscal_periods(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),company_id uuid,name text,starts_on date,ends_on date,lock_date date,status text,deleted_at timestamptz)`,
         `CREATE TABLE accounting_settings(company_id uuid PRIMARY KEY,global_lock_date date,require_open_period boolean NOT NULL DEFAULT true,deleted_at timestamptz)`,
@@ -298,9 +302,51 @@ test(
         "0",
         "drafts excluded",
       );
-      await pool.query(`UPDATE journals SET status='posted' WHERE id=$1`, [
-        first.id,
-      ]);
+      await pool.query(
+        `UPDATE journals
+         SET status='approved',approved_by=$2,approved_at=NOW()
+         WHERE id=$1`,
+        [first.id, user],
+      );
+      const firstPosted = await (async () => {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          const result = await postApprovedManualLedgerJournal(client, {
+            companyId: company,
+            userId: user,
+            journalId: first.id,
+          });
+          await client.query("COMMIT");
+          return result;
+        } catch (error) {
+          await client.query("ROLLBACK");
+          throw error;
+        } finally {
+          client.release();
+        }
+      })();
+      assert.equal(firstPosted.journalId, first.id);
+      assert.equal(firstPosted.reused, false);
+      assert.equal(
+        (
+          await pool.query(
+            "SELECT COUNT(*)::int AS n FROM journals WHERE id=$1",
+            [first.id],
+          )
+        ).rows[0].n,
+        1,
+        "posting promotes the approved draft instead of duplicating it",
+      );
+      assert.equal(
+        (
+          await pool.query(
+            "SELECT status,posted_at IS NOT NULL AS posted,posted_by::text FROM journals WHERE id=$1",
+            [first.id],
+          )
+        ).rows[0].status,
+        "posted",
+      );
       const next = draft();
       next.journalDate = "2026-07-01";
       const second = await saveBalancedJournalDraft(
@@ -308,9 +354,27 @@ test(
         { companyId: company, userId: user },
         validateJournal(next),
       );
-      await pool.query(`UPDATE journals SET status='posted' WHERE id=$1`, [
-        second.id,
-      ]);
+      await pool.query(
+        `UPDATE journals SET status='approved',approved_by=$2,approved_at=NOW() WHERE id=$1`,
+        [second.id, user],
+      );
+      await (async () => {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          await postApprovedManualLedgerJournal(client, {
+            companyId: company,
+            userId: user,
+            journalId: second.id,
+          });
+          await client.query("COMMIT");
+        } catch (error) {
+          await client.query("ROLLBACK");
+          throw error;
+        } finally {
+          client.release();
+        }
+      })();
       balances = (
         await pool.query(ACCOUNT_BALANCES_SQL, [
           company,
