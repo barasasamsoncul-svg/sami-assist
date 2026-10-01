@@ -724,14 +724,13 @@ export async function postBalancedLedgerJournal(
           source_event_key,
           posting_kind,
           posted_at,
-          posted_by,
           reversal_of_journal_id,
           created_by,
           updated_by
         )
         VALUES (
           $1,$2,$3,$4,$5,'posted',
-          $6,$7,$8,$9,$10,NOW(),$12,$11,$12,$12
+          $6,$7,$8,$9,$10,NOW(),$11,$12,$12
         )
         ON CONFLICT (
           company_id,
