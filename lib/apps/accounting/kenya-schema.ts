@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS public.accounting_kenya_settings (
   updated_by UUID,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
   CHECK (vat_return_day BETWEEN 1 AND 28),
   CHECK (last_sync_status IN ('idle','success','partial','error')),
   CHECK (last_sync_inserted >= 0),
@@ -57,7 +58,10 @@ CREATE TABLE IF NOT EXISTS public.accounting_kenya_sync_runs (
   source_count INTEGER NOT NULL DEFAULT 0,
   error_message TEXT,
   created_by UUID,
+  updated_by UUID,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
   CHECK (status IN ('running','success','partial','error')),
   CHECK (inserted_count >= 0),
   CHECK (replayed_count >= 0),
@@ -66,6 +70,14 @@ CREATE TABLE IF NOT EXISTS public.accounting_kenya_sync_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_accounting_kenya_sync_runs_company
   ON public.accounting_kenya_sync_runs(company_id,started_at DESC);
+
+ALTER TABLE public.accounting_kenya_settings
+  ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+
+ALTER TABLE public.accounting_kenya_sync_runs
+  ADD COLUMN IF NOT EXISTS updated_by UUID,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 
 ALTER TABLE public.accounting_tax_ledger_entries
   ADD COLUMN IF NOT EXISTS entry_effect SMALLINT NOT NULL DEFAULT 1 CHECK (entry_effect IN (-1,1)),
