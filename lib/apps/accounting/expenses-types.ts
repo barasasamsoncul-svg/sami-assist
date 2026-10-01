@@ -49,6 +49,27 @@ export type AccountingExpenseLine = {
   policy_exception: boolean;
 };
 
+export type AccountingExpenseCategory = {
+  id: string;
+  name: string;
+  description: string | null;
+};
+
+export type AccountingExpenseReimbursement = {
+  id: string;
+  expense_report_id: string;
+  report_number: string;
+  payment_date: string;
+  payment_account_id: string;
+  payment_account_code: string;
+  payment_account_name: string;
+  amount: string;
+  status: string;
+  posted_journal_id: string;
+  reversal_journal_id: string | null;
+  notes: string | null;
+};
+
 export type AccountingExpenseAccount = {
   id: string;
   code: string;
@@ -62,7 +83,9 @@ export type AccountingExpensesWorkspace = {
   currency: string;
   reports: AccountingExpenseReport[];
   lines: AccountingExpenseLine[];
+  categories: AccountingExpenseCategory[];
   mappings: AccountingExpenseCategoryMapping[];
+  reimbursements: AccountingExpenseReimbursement[];
   accounts: AccountingExpenseAccount[];
   setup: {
     defaultExpenseAccountId: string | null;
