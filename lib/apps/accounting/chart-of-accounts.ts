@@ -15,6 +15,7 @@ import {
 import {
   ACCOUNTING_CHART_TEMPLATES,
   ACCOUNT_TYPE_BY_KEY,
+  type AccountingChartTemplate,
   type AccountTypeKey,
 } from './chart-config';
 
@@ -87,7 +88,7 @@ export type ChartOfAccountsData = {
   accounts: ChartAccount[];
   templates: Array<
     Pick<
-      ChartTemplate,
+      AccountingChartTemplate,
       'key' |
       'name' |
       'description' |
