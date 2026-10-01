@@ -341,7 +341,7 @@ test('Accounting 2.4 setup schema is migration-backed and available on fresh ins
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.9\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.10\.0'/,
   );
 
   assert.match(
@@ -436,7 +436,7 @@ test('Accounting 2.5 Chart of Accounts is migration-backed and company scoped', 
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.9\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.10\.0'/,
   );
 
   assert.match(
@@ -519,7 +519,7 @@ test('Accounting 2.6 centralizes double-entry posting and reversal invariants', 
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.9\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.10\.0'/,
   );
 
   assert.match(
@@ -627,7 +627,7 @@ test('Accounting 2.7 journal workflow is migration-backed and fresh-install comp
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.9\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.10\.0'/,
   );
 
   assert.match(runtimeMigrations, /ACCOUNTING_2_6_0_TO_2_7_0/);
@@ -711,7 +711,7 @@ test('Accounting 2.8 opening balances are migration-backed and workflow protecte
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.9\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.10\.0'/,
   );
 
   assert.match(runtimeMigrations, /ACCOUNTING_2_7_0_TO_2_8_0/);
@@ -900,7 +900,7 @@ test('Accounting 2.9 Payables is migration-backed and ledger controlled', async 
     source('lib/apps/enterprise/specialist-depth.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.9\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.10\.0'/);
   assert.match(migrations,/ACCOUNTING_2_8_0_TO_2_9_0/);
 
   for (const marker of [
@@ -927,4 +927,130 @@ test('Accounting 2.9 Payables is migration-backed and ledger controlled', async 
   assert.match(domainHooks,/accounting_vendor_documents[\s\S]*validated Accounting payables services/);
   assert.match(catalog,/accounting_vendor_documents/);
   assert.match(specialistCatalog,/accounting_vendor_documents/);
+});
+
+
+test('Accounting 2.10 Purchasing controls are migration-backed and gate PO bills', async () => {
+  const [
+    manifest,
+    migrations,
+    migration,
+    purchasing,
+    payables,
+    workspace,
+    foundation,
+    domainHooks,
+    catalog,
+    specialistCatalog,
+    specialistDepth,
+  ] = await Promise.all([
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/apps/accounting/migrations/2.9.0-to-2.10.0.ts'),
+    source('lib/apps/accounting/purchasing.ts'),
+    source('lib/apps/accounting/payables.ts'),
+    source('app/apps/accounting/AccountingWorkspace.tsx'),
+    source('app/apps/accounting/AccountingFoundationPanel.tsx'),
+    source('lib/apps/enterprise/domain-hooks.ts'),
+    source('lib/apps/enterprise/catalog.ts'),
+    source('lib/apps/enterprise/specialist-catalog.ts'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+  ]);
+
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.10\.0'/);
+  assert.match(migrations,/ACCOUNTING_2_9_0_TO_2_10_0/);
+  assert.match(
+    migration,
+    /fromVersion:\s*'2\.9\.0'[\s\S]*toVersion:\s*'2\.10\.0'/,
+  );
+
+  for (const marker of [
+    'accounting_purchase_policies',
+    'accounting_purchase_requisitions',
+    'accounting_purchase_requisition_lines',
+    'accounting_purchase_orders',
+    'accounting_purchase_order_lines',
+    'accounting_goods_receipts',
+    'accounting_goods_receipt_lines',
+    'accounting_purchase_matches',
+    'accounting_purchase_order_receipt_totals',
+    'purchase_match_status',
+  ]) {
+    assert.match(
+      migration,
+      new RegExp(marker),
+      'Purchasing migration must own ' + marker + '.',
+    );
+    assert.match(
+      specialistDepth,
+      new RegExp(marker),
+      'Fresh Accounting installs must include ' + marker + '.',
+    );
+  }
+
+  for (const marker of [
+    'createPurchasePolicy',
+    'createPurchaseRequisition',
+    'transitionPurchaseRequisition',
+    'createPurchaseOrder',
+    'transitionPurchaseOrder',
+    'createGoodsReceipt',
+    'matchVendorBillToPurchaseOrder',
+    'overridePurchaseMatch',
+  ]) {
+    assert.match(
+      purchasing,
+      new RegExp(marker),
+      'Purchasing service must expose ' + marker + '.',
+    );
+  }
+
+  assert.match(
+    purchasing,
+    /roleAllows[\s\S]*approver_role/,
+    'Purchase-order approval must enforce the configured approver role or user.',
+  );
+  assert.match(
+    purchasing,
+    /require_three_way_match[\s\S]*quantity_tolerance_percent[\s\S]*price_tolerance_percent[\s\S]*amount_tolerance/,
+    'Purchasing matching must honor configured receipt, quantity, price and amount tolerances.',
+  );
+  assert.match(
+    purchasing,
+    /receivedDocumentCurrency[\s\S]*rateUnits/,
+    'Received purchase value must be translated to base currency before comparison.',
+  );
+  assert.match(
+    migration,
+    /request_key[\s\S]*request_hash[\s\S]*uq_accounting_purchase_order_request/,
+    'Purchasing documents must own retry-safe request identity.',
+  );
+  assert.match(
+    purchasing,
+    /requestHash[\s\S]*pg_advisory_xact_lock[\s\S]*request key was already used with different content/,
+    'Purchasing retries must replay identical creates and reject changed payloads.',
+  );
+  assert.match(
+    purchasing,
+    /accounting\.purchasing\.requisition_created[\s\S]*accounting\.purchasing\.order_created[\s\S]*accounting\.purchasing\.receipt_confirmed/,
+    'Core purchasing lifecycle events must be written to the workspace audit trail.',
+  );
+  assert.match(
+    payables,
+    /purchase_order_id[\s\S]*purchase_match_status[\s\S]*matched[\s\S]*overridden[\s\S]*before posting/,
+    'PO-linked vendor bills must not post before passing purchasing controls.',
+  );
+  assert.match(
+    workspace,
+    /dedicatedSection ===[\s\S]*'purchasing'[\s\S]*AccountingPurchasing/,
+    'Purchasing must render as a dedicated Accounting workspace.',
+  );
+  assert.match(foundation,/"purchasing"/);
+  assert.match(
+    domainHooks,
+    /accounting_purchase_orders[\s\S]*accounting_purchase_matches[\s\S]*validated Accounting purchasing services/,
+    'Generic enterprise CRUD must not bypass purchasing workflow controls.',
+  );
+  assert.match(catalog,/accounting_purchase_orders/);
+  assert.match(specialistCatalog,/accounting_purchase_orders/);
 });

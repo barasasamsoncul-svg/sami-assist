@@ -21,6 +21,7 @@ import AccountingJournals from '@/app/apps/accounting/AccountingJournals';
 import AccountingOpeningBalances from '@/app/apps/accounting/AccountingOpeningBalances';
 import AccountingReceivables from '@/app/apps/accounting/AccountingReceivables';
 import AccountingPayables from '@/app/apps/accounting/AccountingPayables';
+import AccountingPurchasing from '@/app/apps/accounting/AccountingPurchasing';
 
 import {
   getAccountingFoundation,
@@ -46,6 +47,9 @@ import {
 import {
   getAccountingPayables,
 } from '@/lib/apps/accounting/payables';
+import {
+  getAccountingPurchasing,
+} from '@/lib/apps/accounting/purchasing';
 
 const MODULE_KEY = 'accounting';
 
@@ -161,6 +165,15 @@ export default async function AccountingWorkspace({
     null =
       null;
 
+  let purchasingWorkspace:
+    Awaited<
+      ReturnType<
+        typeof getAccountingPurchasing
+      >
+    > |
+    null =
+      null;
+
   if (
     dedicatedSection &&
     dedicatedSection !==
@@ -174,7 +187,9 @@ export default async function AccountingWorkspace({
     dedicatedSection !==
       'receivables' &&
     dedicatedSection !==
-      'payables'
+      'payables' &&
+    dedicatedSection !==
+      'purchasing'
   ) {
     try {
       foundation =
@@ -316,6 +331,27 @@ export default async function AccountingWorkspace({
           Error
           ? error.message
           : 'Accounts payable could not be loaded.';
+    }
+  }
+
+  if (
+    dedicatedSection ===
+      'purchasing'
+  ) {
+    try {
+      purchasingWorkspace =
+        await getAccountingPurchasing({
+          page:
+            filters.page,
+        });
+    } catch (
+      error
+    ) {
+      foundationError =
+        error instanceof
+          Error
+          ? error.message
+          : 'Purchasing controls could not be loaded.';
     }
   }
 
@@ -525,6 +561,24 @@ export default async function AccountingWorkspace({
         payablesWorkspace
           ?.metrics
           .overdueBillCount,
+    },
+
+    {
+      key:
+        'purchasing',
+      label:
+        'Purchasing Controls',
+      href:
+        appBaseHref +
+        '/purchasing',
+      description:
+        'Requisitions, purchase orders, receipts and three-way matching.',
+      sectionLabel:
+        'Payables',
+      badge:
+        purchasingWorkspace
+          ?.counts
+          .matchExceptions,
     },
 
     data.capabilities
@@ -752,6 +806,43 @@ export default async function AccountingWorkspace({
                             {
                               foundationError ||
                               'Accounts receivable could not be loaded.'
+                            }{' '}
+                            <Link
+                              href="/apps/accounting"
+                              className="font-bold underline underline-offset-4"
+                            >
+                              Return to Accounting
+                            </Link>
+                          </div>
+                        )
+                  )
+                : dedicatedSection ===
+                    'purchasing'
+                  ? (
+                    purchasingWorkspace
+                      ? (
+                          <AccountingPurchasing
+                            data={
+                              purchasingWorkspace
+                            }
+                            canCreate={
+                              data.capabilities
+                                .canCreate
+                            }
+                            canEdit={
+                              data.capabilities
+                                .canEdit
+                            }
+                          />
+                        )
+                      : (
+                          <div
+                            role="alert"
+                            className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-6 text-[var(--foreground)]"
+                          >
+                            {
+                              foundationError ||
+                              'Purchasing controls could not be loaded.'
                             }{' '}
                             <Link
                               href="/apps/accounting"

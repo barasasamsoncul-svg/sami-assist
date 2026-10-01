@@ -26,6 +26,7 @@ export const ACCOUNTING_SECTIONS = [
   "opening-balances",
   "receivables",
   "payables",
+  "purchasing",
   "setup",
 ] as const;
 export type AccountingSection = (typeof ACCOUNTING_SECTIONS)[number];
@@ -96,6 +97,7 @@ export default function AccountingFoundationPanel({
     "opening-balances": "Opening balances",
     receivables: "Accounts receivable",
     payables: "Accounts payable",
+    purchasing: "Purchasing controls",
     setup: "Accounting setup",
   };
   const descriptions = {
@@ -119,6 +121,8 @@ export default function AccountingFoundationPanel({
       "Reconcile customer aging and credits from Invoicing to the Accounting control accounts.",
     payables:
       "Control vendor bills, credits, aging and the Accounts Payable reconciliation to the ledger.",
+    purchasing:
+      "Control requisitions, purchase orders, goods receipts and vendor-bill matching before Accounts Payable posting.",
     setup:
       "Configure fiscal policy, control accounts, tax mappings, FX accounts, write-offs and period locks for this company.",
   };

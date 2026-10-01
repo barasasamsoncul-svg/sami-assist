@@ -605,7 +605,8 @@ export async function postPayablesDocument(input: unknown) {
     await client.query("BEGIN");
     const d = await client.query(
       `SELECT id::text,vendor_id::text,document_type,document_number,vendor_reference,document_date::text,
-              exchange_rate::text,base_total_amount::text,status,posted_journal_id::text
+              exchange_rate::text,base_total_amount::text,status,posted_journal_id::text,
+              purchase_order_id::text,purchase_match_status
        FROM accounting_vendor_documents
        WHERE company_id=$1 AND id=$2 AND deleted_at IS NULL
        LIMIT 1 FOR UPDATE`,
@@ -618,6 +619,15 @@ export async function postPayablesDocument(input: unknown) {
       return { journalId: String(doc.posted_journal_id), replayed: true };
     }
     if (doc.status !== "approved") throw new AccountingInputError("Approve this vendor document before posting.");
+    if (
+      doc.document_type === "bill" &&
+      doc.purchase_order_id &&
+      !["matched","overridden"].includes(String(doc.purchase_match_status || ""))
+    ) {
+      throw new AccountingInputError(
+        "This purchase-order bill must pass the purchasing match, or have an approved exception override, before posting.",
+      );
+    }
 
     const ap = await payableAccount(client, context.companyId);
     if (!ap) throw new AccountingInputError("Map an Accounts Payable control account in Accounting Setup before posting.");
