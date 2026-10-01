@@ -1109,3 +1109,50 @@ test(
     );
   },
 );
+
+
+test(
+  'Accounting Reconciliation exposes suggestions split matching rules exclusions and immutable history',
+  async () => {
+    const [workspace, reconciliation] = await Promise.all([
+      readFile('app/apps/accounting/AccountingWorkspace.tsx','utf8'),
+      readFile('app/apps/accounting/AccountingReconciliation.tsx','utf8'),
+    ]);
+
+    assert.match(
+      workspace,
+      /Reconciliation[\s\S]*\/reconciliation/,
+      'Accounting sidebar must expose the dedicated reconciliation workspace.',
+    );
+
+    for (const marker of [
+      'Reconciliation control center',
+      'Generate suggestions',
+      'Scored matches & rules',
+      'Manual / split match',
+      'Reconcile selected',
+      'Adjustment rules',
+      'Exclude',
+      'Immutable history',
+      'Reconciliation never edits posted journals',
+    ]) {
+      assert.match(reconciliation,new RegExp(marker),'Reconciliation UI must expose '+marker+'.');
+    }
+
+    assert.match(
+      reconciliation,
+      /allocationAmounts[\s\S]*chosenAllocations/,
+      'The UI must support explicit multi-line split allocations.',
+    );
+    assert.match(
+      reconciliation,
+      /requestKeys\.current[\s\S]*browserUuid/,
+      'Manual, suggestion and rule reconciliation retries must preserve request keys.',
+    );
+    assert.match(
+      reconciliation,
+      /auto-apply eligibility[\s\S]*requires an explicit user acceptance/,
+      'Rule automation must not silently post adjustment journals from this workspace.',
+    );
+  },
+);
