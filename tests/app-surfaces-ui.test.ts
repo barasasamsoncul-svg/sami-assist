@@ -1164,11 +1164,15 @@ test(
     const [
       accounting,
       loader,
+      genericPage,
+      notificationCenter,
       service,
       globals,
     ] = await Promise.all([
       readFile('app/apps/accounting/AccountingWorkspace.tsx','utf8'),
       readFile('app/apps/_shared/loadStandaloneEnterpriseApp.ts','utf8'),
+      readFile('app/apps/[appKey]/EnterpriseModulePage.tsx','utf8'),
+      readFile('app/components/workspace/WorkspaceNotificationCenter.tsx','utf8'),
       readFile('lib/apps/enterprise/service.ts','utf8'),
       readFile('app/globals.css','utf8'),
     ]);
@@ -1197,6 +1201,26 @@ test(
       globals,
       /Cross-app visibility hardening[\s\S]*text-slate-300[\s\S]*background-color:\s*var\(--sami-surface\)/,
       'Workspace text and legacy light surfaces must remain readable in both themes.',
+    );
+    assert.match(
+      globals,
+      /Standalone app visibility contract[\s\S]*\[data-sami-app\][\s\S]*text-slate-300[\s\S]*background-color:\s*var\(--sami-surface\)/,
+      'Standalone app shells must receive the same light/dark visibility hardening as the dashboard workspace shell.',
+    );
+    assert.doesNotMatch(
+      loader,
+      /getWorkspaceNotificationSummary/,
+      'Dedicated app navigation must not block on the server-side notification summary.',
+    );
+    assert.doesNotMatch(
+      genericPage,
+      /getWorkspaceNotificationSummary/,
+      'Generic enterprise app navigation must not block on the server-side notification summary.',
+    );
+    assert.match(
+      notificationCenter,
+      /useEffect[\s\S]*loadSummary\(\)/,
+      'Notification counts must hydrate client-side after the app shell renders.',
     );
   },
 );
