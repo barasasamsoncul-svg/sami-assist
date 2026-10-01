@@ -132,6 +132,11 @@ export function assertEnterpriseDomainMutationAllowed(
         'accounting_reconciliation_matches' ||
       table === 'accounting_payment_batches' ||
       table === 'accounting_payment_allocations' ||
+      table === 'accounting_tax_codes' ||
+      table === 'accounting_tax_groups' ||
+      table === 'accounting_tax_group_components' ||
+      table === 'accounting_vendor_line_tax_components' ||
+      table === 'accounting_tax_adjustments' ||
       table ===
         'accounting_reconciliation_suggestions'
     )
@@ -212,6 +217,17 @@ export function assertEnterpriseDomainMutationAllowed(
             table ===
               'accounting_reconciliation_suggestions'
             ? 'Bank reconciliation must be changed through the validated Accounting reconciliation services.'
+          : table ===
+              'accounting_tax_codes' ||
+            table ===
+              'accounting_tax_groups' ||
+            table ===
+              'accounting_tax_group_components' ||
+            table ===
+              'accounting_vendor_line_tax_components' ||
+            table ===
+              'accounting_tax_adjustments'
+            ? 'Tax records must be changed through the validated Accounting tax engine.'
           : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
   }

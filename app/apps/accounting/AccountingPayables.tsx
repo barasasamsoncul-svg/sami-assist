@@ -30,11 +30,11 @@ type DraftLine = {
   description: string;
   quantity: string;
   unitPrice: string;
-  taxAmount: string;
+  taxSelection: string;
 };
 
 function line(id: number): DraftLine {
-  return { id, accountId:"", description:"", quantity:"1", unitPrice:"", taxAmount:"0" };
+  return { id, accountId:"", description:"", quantity:"1", unitPrice:"", taxSelection:"" };
 }
 
 export default function AccountingPayables({
@@ -122,8 +122,12 @@ export default function AccountingPayables({
       const payload=await request("/api/apps/accounting/payables",{
         action:"create-document",expectedCompanyId:data.companyId,...documentDraft,
         lines:lines.map(row=>({
-          accountId:row.accountId,description:row.description,quantity:row.quantity,
-          unitPrice:row.unitPrice,taxAmount:row.taxAmount,
+          accountId:row.accountId,
+          description:row.description,
+          quantity:row.quantity,
+          unitPrice:row.unitPrice,
+          taxCodeId:row.taxSelection.startsWith("code:") ? row.taxSelection.slice(5) : null,
+          taxGroupId:row.taxSelection.startsWith("group:") ? row.taxSelection.slice(6) : null,
         })),
       });
       const id=String(payload.result?.id||"");
@@ -249,6 +253,7 @@ export default function AccountingPayables({
 
     {showDocument?<form onSubmit={createDocument} className={styles.panel}>
       <div className={styles.panelHeading}><div><span className={styles.eyebrow}>Controlled source document</span><h3>New vendor bill or credit</h3></div></div>
+      <div className={styles.notice}><CheckCircle2 size={16}/> Select a tax code or group per line. SaMi calculates and snapshots the tax server-side; users no longer type the tax amount manually.</div>
       <div className={styles.setupGrid}>
         <label>Type<select value={documentDraft.documentType} onChange={e=>setDocumentDraft({...documentDraft,documentType:e.target.value})}><option value="bill">Vendor bill</option><option value="credit_note">Vendor credit note</option></select></label>
         <label>Vendor<select required value={documentDraft.vendorId} onChange={e=>setDocumentDraft({...documentDraft,vendorId:e.target.value})}><option value="">Choose vendor</option>{data.vendors.filter(v=>v.status==="active").map(v=><option key={v.id} value={v.id}>{v.vendor_code} · {v.name}</option>)}</select></label>
@@ -260,13 +265,17 @@ export default function AccountingPayables({
         <label>Exchange rate to {data.currency}<input required inputMode="decimal" value={documentDraft.exchangeRate} onChange={e=>setDocumentDraft({...documentDraft,exchangeRate:e.target.value})}/></label>
       </div>
       <div className={styles.tableWrap}><table>
-        <thead><tr><th>Account</th><th>Description</th><th>Qty</th><th>Unit</th><th>Tax</th><th></th></tr></thead>
+        <thead><tr><th>Account</th><th>Description</th><th>Qty</th><th>Unit price</th><th>Tax treatment</th><th></th></tr></thead>
         <tbody>{lines.map(row=><tr key={row.id}>
           <td><select required value={row.accountId} onChange={e=>setLines(rows=>rows.map(x=>x.id===row.id?{...x,accountId:e.target.value}:x))}><option value="">Choose</option>{data.accounts.filter(a=>!a.is_control_account).map(a=><option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}</select></td>
           <td><input required value={row.description} onChange={e=>setLines(rows=>rows.map(x=>x.id===row.id?{...x,description:e.target.value}:x))}/></td>
           <td><input required inputMode="decimal" value={row.quantity} onChange={e=>setLines(rows=>rows.map(x=>x.id===row.id?{...x,quantity:e.target.value}:x))}/></td>
           <td><input required inputMode="decimal" value={row.unitPrice} onChange={e=>setLines(rows=>rows.map(x=>x.id===row.id?{...x,unitPrice:e.target.value}:x))}/></td>
-          <td><input required inputMode="decimal" value={row.taxAmount} onChange={e=>setLines(rows=>rows.map(x=>x.id===row.id?{...x,taxAmount:e.target.value}:x))}/></td>
+          <td><select value={row.taxSelection} onChange={e=>setLines(rows=>rows.map(x=>x.id===row.id?{...x,taxSelection:e.target.value}:x))}>
+            <option value="">No tax</option>
+            {data.taxCodes.map(tax=><option key={"code:"+tax.id} value={"code:"+tax.id}>{tax.code} · {tax.rate}% · {tax.calculation}</option>)}
+            {data.taxGroups.map(group=><option key={"group:"+group.id} value={"group:"+group.id}>Group · {group.code} · {group.component_count} component{group.component_count===1?"":"s"}</option>)}
+          </select></td>
           <td>{lines.length>1?<button type="button" className={styles.button} onClick={()=>setLines(rows=>rows.filter(x=>x.id!==row.id))}>Remove</button>:null}</td>
         </tr>)}</tbody>
       </table></div>
@@ -296,7 +305,7 @@ export default function AccountingPayables({
       <section className={styles.panel}>
         <div className={styles.panelHeading}><div><span className={styles.eyebrow}>Document accounting</span><h3>Lines</h3></div></div>
         <div className={styles.tableWrap}><table><thead><tr><th>Account</th><th>Description</th><th>Qty</th><th>Unit</th><th>Tax</th><th>Total</th></tr></thead>
-          <tbody>{selected.lines.map(row=><tr key={row.id}><td>{row.account_code} · {row.account_name}</td><td>{row.description}</td><td>{row.quantity}</td><td>{selected.currency} {row.unit_price}</td><td>{selected.currency} {row.tax_amount}</td><td>{selected.currency} {row.line_total}</td></tr>)}</tbody>
+          <tbody>{selected.lines.map(row=><tr key={row.id}><td>{row.account_code} · {row.account_name}</td><td>{row.description}</td><td>{row.quantity}</td><td>{selected.currency} {row.unit_price}</td><td>{selected.currency} {row.tax_amount}{row.tax_components.length?<div className={styles.meta}>{row.tax_components.map(component=>component.tax_code_snapshot+" "+component.rate_snapshot+"%").join(" · ")}</div>:null}</td><td>{selected.currency} {row.line_total}</td></tr>)}</tbody>
         </table></div>
       </section>
 

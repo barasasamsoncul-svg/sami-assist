@@ -24,6 +24,9 @@ import type {
   PayablesAgingRow,
   PayablesControlReconciliation,
 } from "./payables-types";
+import {
+  calculateAccountingTax,
+} from "./tax-engine";
 
 const BUCKETS = ["current","1-30","31-60","61-90","90+"] as const;
 
@@ -326,6 +329,31 @@ export async function getAccountingPayables(input: {
       [context.companyId],
     );
 
+    const taxCodes = await client.query(
+      `SELECT id::text,code,name,rate::text,calculation,recoverable_rate::text
+       FROM accounting_tax_codes
+       WHERE company_id=$1 AND deleted_at IS NULL AND status='active'
+         AND direction IN ('input','both')
+       ORDER BY code,name`,
+      [context.companyId],
+    );
+
+    const taxGroups = await client.query(
+      `SELECT g.id::text,g.code,g.name,g.calculation,COUNT(m.id)::int AS component_count
+       FROM accounting_tax_groups g
+       JOIN accounting_tax_group_components m
+         ON m.company_id=g.company_id AND m.group_id=g.id AND m.deleted_at IS NULL
+       JOIN accounting_tax_codes t
+         ON t.company_id=m.company_id AND t.id=m.tax_code_id
+        AND t.deleted_at IS NULL AND t.status='active'
+        AND t.direction IN ('input','both')
+       WHERE g.company_id=$1 AND g.deleted_at IS NULL AND g.status='active'
+       GROUP BY g.id,g.code,g.name,g.calculation
+       HAVING COUNT(m.id)>0
+       ORDER BY g.code,g.name`,
+      [context.companyId],
+    );
+
     const gl = controlAccount
       ? await client.query(
           `SELECT COALESCE(SUM(l.credit-l.debit),0)::text AS balance
@@ -389,7 +417,27 @@ export async function getAccountingPayables(input: {
         const lines = await client.query(
           `SELECT l.id::text,l.account_id::text,a.code AS account_code,a.name AS account_name,
                   l.description,l.quantity::text,l.unit_price::text,l.line_subtotal::text,
-                  l.tax_amount::text,l.line_total::text
+                  l.tax_amount::text,l.line_total::text,
+                  COALESCE((
+                    SELECT json_agg(json_build_object(
+                      'id',t.id::text,
+                      'tax_code_id',t.tax_code_id::text,
+                      'tax_group_id',t.tax_group_id::text,
+                      'tax_code_snapshot',t.tax_code_snapshot,
+                      'tax_name_snapshot',t.tax_name_snapshot,
+                      'rate_snapshot',t.rate_snapshot::text,
+                      'recoverable_rate_snapshot',t.recoverable_rate_snapshot::text,
+                      'taxable_amount',t.taxable_amount::text,
+                      'tax_amount',t.tax_amount::text,
+                      'recoverable_tax_amount',t.recoverable_tax_amount::text,
+                      'nonrecoverable_tax_amount',t.nonrecoverable_tax_amount::text,
+                      'calculation',t.calculation,
+                      'sequence_no',t.sequence_no,
+                      'compound',t.compound
+                    ) ORDER BY t.sequence_no,t.id)
+                    FROM accounting_vendor_line_tax_components t
+                    WHERE t.company_id=l.company_id AND t.document_line_id=l.id AND t.deleted_at IS NULL
+                  ),'[]'::json) AS tax_components
            FROM accounting_vendor_document_lines l
            JOIN accounts a ON a.company_id=l.company_id AND a.id=l.account_id
            WHERE l.company_id=$1 AND l.document_id=$2 AND l.deleted_at IS NULL
@@ -437,6 +485,8 @@ export async function getAccountingPayables(input: {
       documents: documents.rows,
       selected,
       accounts: accounts.rows,
+      taxCodes: taxCodes.rows,
+      taxGroups: taxGroups.rows,
       applicationTargets,
       aging,
       control: controlReconciliation(controlAccount, gl.rows[0]?.balance || "0", decimalAmount(subledger)),
@@ -509,31 +559,34 @@ export async function createPayablesDocument(input: unknown) {
     throw new AccountingInputError("A vendor document needs between 1 and 200 lines.");
   }
 
-  const lines = body.lines.map((raw, index) => {
+  const drafts = body.lines.map((raw, index) => {
     const row = bodyOf(raw);
     const quantity = quantityUnits(row.quantity ?? "1");
     const unit = nonNegativeMoney(row.unitPrice, "Unit price");
-    const tax = nonNegativeMoney(row.taxAmount, "Tax amount");
-    const subtotal = multiplyMoneyByQuantity(unit,quantity.units);
-    const total = subtotal + tax;
-    if (total<=BigInt(0)) throw new AccountingInputError("Each vendor document line must have a positive total.");
+    const sourceSubtotal = multiplyMoneyByQuantity(unit,quantity.units);
+    const taxCodeId = maybeId(row.taxCodeId) || null;
+    const taxGroupId = maybeId(row.taxGroupId) || null;
+    if (taxCodeId && taxGroupId) {
+      throw new AccountingInputError("Choose a tax code or tax group for each line, not both.");
+    }
+    const legacyTax = !taxCodeId && !taxGroupId
+      ? nonNegativeMoney(row.taxAmount ?? "0", "Tax amount")
+      : BigInt(0);
+    if (sourceSubtotal + legacyTax <= BigInt(0)) {
+      throw new AccountingInputError("Each vendor document line must have a positive total.");
+    }
     return {
       accountId: accountingId(row.accountId),
       description: text(row.description,500,"Line description",true),
       quantity: quantity.text,
       unitPrice: decimalAmount(unit),
-      subtotal: decimalAmount(subtotal),
-      tax: decimalAmount(tax),
-      total: decimalAmount(total),
+      sourceSubtotal,
+      taxCodeId,
+      taxGroupId,
+      legacyTax,
       sequence: (index + 1) * 10,
-      totalCents: total,
     };
   });
-
-  const subtotal = lines.reduce((n,l)=>n+cents(l.subtotal),BigInt(0));
-  const taxTotal = lines.reduce((n,l)=>n+cents(l.tax),BigInt(0));
-  const total = subtotal + taxTotal;
-  const baseTotal = convertToBase(total,rate.units);
 
   const client = await context.pool.connect();
   try {
@@ -543,13 +596,55 @@ export async function createPayablesDocument(input: unknown) {
       [context.companyId,vendorId],
     );
     if (!validVendor.rows[0]) throw new AccountingInputError("Choose an active vendor.");
+
     const validAccounts = await client.query(
       `SELECT id::text FROM accounts WHERE company_id=$1 AND id=ANY($2::uuid[]) AND deleted_at IS NULL AND is_active=TRUE`,
-      [context.companyId,[...new Set(lines.map(l=>l.accountId))]],
+      [context.companyId,[...new Set(drafts.map(line=>line.accountId))]],
     );
-    if (validAccounts.rows.length !== new Set(lines.map(l=>l.accountId)).size) {
+    if (validAccounts.rows.length !== new Set(drafts.map(line=>line.accountId)).size) {
       throw new AccountingInputError("Every vendor document line must use an active company account.");
     }
+
+    const lines = [];
+    for (const draft of drafts) {
+      if (draft.taxCodeId || draft.taxGroupId) {
+        const calculated = await calculateAccountingTax(client,{
+          companyId:context.companyId,
+          taxCodeId:draft.taxCodeId,
+          taxGroupId:draft.taxGroupId,
+          taxDate:documentDate,
+          direction:"input",
+          amount:decimalAmount(draft.sourceSubtotal),
+        });
+        const subtotal = cents(calculated.netAmount);
+        const tax = cents(calculated.taxAmount);
+        const total = cents(calculated.totalAmount);
+        lines.push({
+          ...draft,
+          subtotal:decimalAmount(subtotal),
+          tax:decimalAmount(tax),
+          total:decimalAmount(total),
+          totalCents:total,
+          components:calculated.components,
+        });
+      } else {
+        const total = draft.sourceSubtotal + draft.legacyTax;
+        lines.push({
+          ...draft,
+          subtotal:decimalAmount(draft.sourceSubtotal),
+          tax:decimalAmount(draft.legacyTax),
+          total:decimalAmount(total),
+          totalCents:total,
+          components:[],
+        });
+      }
+    }
+
+    const subtotal = lines.reduce((sum,line)=>sum+cents(line.subtotal),BigInt(0));
+    const taxTotal = lines.reduce((sum,line)=>sum+cents(line.tax),BigInt(0));
+    const total = lines.reduce((sum,line)=>sum+line.totalCents,BigInt(0));
+    const baseTotal = convertToBase(total,rate.units);
+
     const created = await client.query(
       `INSERT INTO accounting_vendor_documents (
          company_id,vendor_id,document_type,document_number,vendor_reference,document_date,due_date,
@@ -563,14 +658,39 @@ export async function createPayablesDocument(input: unknown) {
       ],
     );
     const id = String(created.rows[0].id);
+
     for (const line of lines) {
-      await client.query(
+      const inserted = await client.query(
         `INSERT INTO accounting_vendor_document_lines (
            company_id,document_id,account_id,description,quantity,unit_price,line_subtotal,tax_amount,line_total,sequence,created_by,updated_by
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11)`,
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11)
+         RETURNING id::text`,
         [context.companyId,id,line.accountId,line.description,line.quantity,line.unitPrice,line.subtotal,line.tax,line.total,line.sequence,context.userId],
       );
+      const lineId = String(inserted.rows[0].id);
+
+      for (const component of line.components) {
+        await client.query(
+          `INSERT INTO accounting_vendor_line_tax_components (
+             company_id,document_id,document_line_id,tax_code_id,tax_group_id,sequence_no,compound,
+             tax_code_snapshot,tax_name_snapshot,rate_snapshot,recoverable_rate_snapshot,
+             input_account_id_snapshot,output_account_id_snapshot,nonrecoverable_account_id_snapshot,
+             taxable_amount,tax_amount,recoverable_tax_amount,nonrecoverable_tax_amount,
+             calculation,created_by
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+          [
+            context.companyId,id,lineId,component.taxCodeId,line.taxGroupId,
+            component.sequenceNo,component.compound,component.taxCode,component.taxName,
+            component.rate,component.recoverableRate,
+            component.inputAccountId,component.outputAccountId,component.nonrecoverableAccountId,
+            component.taxableAmount,component.taxAmount,
+            component.recoverableTaxAmount,component.nonrecoverableTaxAmount,
+            component.calculation,context.userId,
+          ],
+        );
+      }
     }
+
     await client.query("COMMIT");
     return { id, status: "draft" };
   } catch (error) {
@@ -632,30 +752,109 @@ export async function postPayablesDocument(input: unknown) {
     const ap = await payableAccount(client, context.companyId);
     if (!ap) throw new AccountingInputError("Map an Accounts Payable control account in Accounting Setup before posting.");
 
+    const defaultTax = await client.query(
+      `SELECT input_tax_account_id::text
+       FROM accounting_settings
+       WHERE company_id=$1 AND deleted_at IS NULL
+       LIMIT 1`,
+      [context.companyId],
+    );
+    const defaultInputTaxAccountId = defaultTax.rows[0]?.input_tax_account_id
+      ? String(defaultTax.rows[0].input_tax_account_id)
+      : null;
+
     const l = await client.query(
-      `SELECT account_id::text,description,line_total::text
-       FROM accounting_vendor_document_lines
-       WHERE company_id=$1 AND document_id=$2 AND deleted_at IS NULL
-       ORDER BY sequence,created_at,id FOR SHARE`,
+      `SELECT l.id::text,l.account_id::text,l.description,l.line_total::text,
+              COALESCE(json_agg(json_build_object(
+                'recoverable',t.recoverable_tax_amount::text,
+                'nonrecoverable',t.nonrecoverable_tax_amount::text,
+                'inputAccountId',t.input_account_id_snapshot::text,
+                'nonrecoverableAccountId',t.nonrecoverable_account_id_snapshot::text,
+                'taxCode',t.tax_code_snapshot
+              ) ORDER BY t.sequence_no,t.id) FILTER (WHERE t.id IS NOT NULL),'[]'::json) AS taxes
+       FROM accounting_vendor_document_lines l
+       LEFT JOIN accounting_vendor_line_tax_components t
+         ON t.company_id=l.company_id AND t.document_line_id=l.id AND t.deleted_at IS NULL
+       WHERE l.company_id=$1 AND l.document_id=$2 AND l.deleted_at IS NULL
+       GROUP BY l.id,l.account_id,l.description,l.line_total,l.sequence,l.created_at
+       ORDER BY l.sequence,l.created_at,l.id`,
       [context.companyId,documentId],
     );
     if (!l.rows.length) throw new AccountingInputError("Vendor document has no lines.");
 
+    type PostingSource = { accountId:string; description:string; amount:bigint };
+    const sources: PostingSource[] = [];
+    for (const line of l.rows) {
+      const taxes = Array.isArray(line.taxes) ? line.taxes : [];
+      let expenseAmount = cents(line.line_total);
+      const routed = new Map<string,{description:string;amount:bigint}>();
+
+      for (const tax of taxes as Array<Record<string,unknown>>) {
+        const recoverable = cents(tax.recoverable || "0");
+        const nonrecoverable = cents(tax.nonrecoverable || "0");
+        if (recoverable > BigInt(0)) {
+          const accountId = tax.inputAccountId ? String(tax.inputAccountId) : defaultInputTaxAccountId;
+          if (!accountId) {
+            throw new AccountingInputError(
+              "Map an input tax control account in the tax code or Accounting Setup before posting this vendor document.",
+            );
+          }
+          expenseAmount -= recoverable;
+          const current = routed.get(accountId);
+          routed.set(accountId,{
+            description:"Recoverable tax · "+String(tax.taxCode || doc.document_number),
+            amount:(current?.amount || BigInt(0))+recoverable,
+          });
+        }
+        if (nonrecoverable > BigInt(0) && tax.nonrecoverableAccountId) {
+          const accountId=String(tax.nonrecoverableAccountId);
+          expenseAmount -= nonrecoverable;
+          const current = routed.get(accountId);
+          routed.set(accountId,{
+            description:"Non-recoverable tax · "+String(tax.taxCode || doc.document_number),
+            amount:(current?.amount || BigInt(0))+nonrecoverable,
+          });
+        }
+      }
+
+      if (expenseAmount < BigInt(0)) {
+        throw new AccountingInputError("Vendor tax allocation exceeds the line total.");
+      }
+      if (expenseAmount > BigInt(0)) {
+        sources.push({
+          accountId:String(line.account_id),
+          description:String(line.description || doc.document_number),
+          amount:expenseAmount,
+        });
+      }
+      for (const [accountId,value] of routed) {
+        if (value.amount > BigInt(0)) sources.push({accountId,description:value.description,amount:value.amount});
+      }
+    }
+
+    const sourceTotal = sources.reduce((sum,item)=>sum+item.amount,BigInt(0));
+    const documentTotal = l.rows.reduce((sum,line)=>sum+cents(line.line_total),BigInt(0));
+    if (sourceTotal !== documentTotal) {
+      throw new AccountingInputError("Vendor tax allocation does not reconcile to the document total.");
+    }
+
     const baseTotal = cents(doc.base_total_amount);
+    const rateUnits = exchangeRate(doc.exchange_rate || "1").units;
     let allocated = BigInt(0);
-    const expenseLines = l.rows.map((line, index) => {
-      const raw = cents(line.line_total);
-      const converted = index === l.rows.length - 1
+    const postingLines = sources.map((source,index) => {
+      const converted = index === sources.length - 1
         ? baseTotal - allocated
-        : convertToBase(raw,exchangeRate(doc.exchange_rate || "1").units);
+        : convertToBase(source.amount,rateUnits);
       allocated += converted;
+      if (converted < BigInt(0)) throw new AccountingInputError("Vendor document base-currency allocation is invalid.");
       return {
-        accountId: String(line.account_id),
-        description: String(line.description || doc.document_number),
-        debit: doc.document_type === "bill" ? decimalAmount(converted) : "0.00",
-        credit: doc.document_type === "credit_note" ? decimalAmount(converted) : "0.00",
+        accountId:source.accountId,
+        description:source.description,
+        debit:doc.document_type === "bill" ? decimalAmount(converted) : "0.00",
+        credit:doc.document_type === "credit_note" ? decimalAmount(converted) : "0.00",
       };
-    });
+    }).filter(line=>line.debit!=="0.00" || line.credit!=="0.00");
+
     const controlLine = {
       accountId: ap.id,
       description: String(doc.document_number),
@@ -673,7 +872,7 @@ export async function postPayablesDocument(input: unknown) {
       sourceId: documentId,
       sourceEventKey: "accounting:vendor-document:" + documentId,
       postingKind: "system",
-      lines: [...expenseLines,controlLine],
+      lines: [...postingLines,controlLine],
     });
     await client.query(
       `UPDATE accounting_vendor_documents
@@ -687,7 +886,7 @@ export async function postPayablesDocument(input: unknown) {
       action: "accounting.payables.document_posted", module: "accounting",
       resourceType: "accounting_vendor_documents", resourceId: documentId,
       summary: "Vendor document posted to Accounts Payable", result: "success",
-      metadata: { journalId: posting.journalId, documentType: doc.document_type },
+      metadata: { journalId: posting.journalId, documentType: doc.document_type, taxAware:true },
     }).catch(()=>{});
     return { journalId: posting.journalId, replayed: posting.reused };
   } catch (error) {

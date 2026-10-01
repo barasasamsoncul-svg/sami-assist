@@ -48,6 +48,23 @@ export type PayablesDocumentSummary = {
   base_open_amount: string;
 };
 
+export type PayablesTaxComponent = {
+  id: string;
+  tax_code_id: string;
+  tax_group_id: string | null;
+  tax_code_snapshot: string;
+  tax_name_snapshot: string;
+  rate_snapshot: string;
+  recoverable_rate_snapshot: string;
+  taxable_amount: string;
+  tax_amount: string;
+  recoverable_tax_amount: string;
+  nonrecoverable_tax_amount: string;
+  calculation: "exclusive" | "inclusive";
+  sequence_no: number;
+  compound: boolean;
+};
+
 export type PayablesDocumentLine = {
   id: string;
   account_id: string;
@@ -59,6 +76,7 @@ export type PayablesDocumentLine = {
   line_subtotal: string;
   tax_amount: string;
   line_total: string;
+  tax_components: PayablesTaxComponent[];
 };
 
 export type PayablesCreditApplication = {
@@ -116,6 +134,23 @@ export type PayablesControlReconciliation = {
   reconciled: boolean;
 };
 
+export type PayablesTaxCodeOption = {
+  id: string;
+  code: string;
+  name: string;
+  rate: string;
+  calculation: "exclusive" | "inclusive";
+  recoverable_rate: string;
+};
+
+export type PayablesTaxGroupOption = {
+  id: string;
+  code: string;
+  name: string;
+  calculation: "exclusive" | "inclusive";
+  component_count: number;
+};
+
 export type AccountingPayablesWorkspace = {
   companyId: string;
   currency: string;
@@ -130,6 +165,8 @@ export type AccountingPayablesWorkspace = {
   documents: PayablesDocumentSummary[];
   selected: PayablesDocumentDetail | null;
   accounts: PayablesAccountOption[];
+  taxCodes: PayablesTaxCodeOption[];
+  taxGroups: PayablesTaxGroupOption[];
   applicationTargets: PayablesApplicationTarget[];
   aging: PayablesAgingRow[];
   control: PayablesControlReconciliation;

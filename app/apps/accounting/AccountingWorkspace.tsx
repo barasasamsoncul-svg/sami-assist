@@ -1,5 +1,7 @@
 import AccountingPayments from './AccountingPayments';
 import { getAccountingPayments } from '@/lib/apps/accounting/payments';
+import AccountingTaxes from './AccountingTaxes';
+import { getAccountingTaxes } from '@/lib/apps/accounting/tax-engine';
 import Link from 'next/link';
 
 import {
@@ -222,6 +224,8 @@ export default async function AccountingWorkspace({
 
   let paymentsWorkspace: Awaited<ReturnType<typeof getAccountingPayments>> | null = null;
 
+  let taxWorkspace: Awaited<ReturnType<typeof getAccountingTaxes>> | null = null;
+
   let reconciliationWorkspace:
     Awaited<
       ReturnType<
@@ -254,6 +258,7 @@ export default async function AccountingWorkspace({
     dedicatedSection !==
       'statements' &&
     dedicatedSection !== 'payments' &&
+    dedicatedSection !== 'taxes' &&
     dedicatedSection !==
       'reconciliation'
   ) {
@@ -489,6 +494,20 @@ export default async function AccountingWorkspace({
   if (dedicatedSection === 'payments') {
     try { paymentsWorkspace = await getAccountingPayments(filters.page); }
     catch (error) { foundationError = error instanceof AccountingInputError ? error.message : 'Payments could not be loaded. Retry this page.'; }
+  }
+
+  if (dedicatedSection === 'taxes') {
+    try {
+      taxWorkspace = await getAccountingTaxes({
+        from: filters.from,
+        to: filters.to,
+        page: filters.page,
+      });
+    } catch (error) {
+      foundationError = error instanceof AccountingInputError
+        ? error.message
+        : 'Tax engine could not be loaded. Retry this page.';
+    }
   }
 
   if (
@@ -848,6 +867,25 @@ export default async function AccountingWorkspace({
           .unmatched,
     },
 
+    {
+      key:
+        'taxes',
+      label:
+        'Tax Engine',
+      href:
+        appBaseHref +
+        '/taxes',
+      description:
+        'Tax codes, compound groups, source registers and control-account reconciliation.',
+      sectionLabel:
+        'Compliance',
+      badge:
+        taxWorkspace
+          ?.codes
+          .filter(code => code.status === 'active')
+          .length,
+    },
+
     data.capabilities
       .canReport
       ? {
@@ -1030,6 +1068,15 @@ export default async function AccountingWorkspace({
                   )
                 : dedicatedSection === 'payments'
                   ? (paymentsWorkspace ? <AccountingPayments data={paymentsWorkspace} canCreate={data.capabilities.canCreate} canTransition={data.capabilities.canTransition}/> : <div role="alert">{foundationError || 'Payments could not be loaded.'}</div>)
+                : dedicatedSection === 'taxes'
+                  ? (taxWorkspace
+                      ? <AccountingTaxes
+                          data={taxWorkspace}
+                          canCreate={data.capabilities.canCreate}
+                          canEdit={data.capabilities.canEdit}
+                          canManageSettings={data.capabilities.canManageSettings}
+                        />
+                      : <div role="alert" className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-6 text-[var(--foreground)]">{foundationError || 'Tax engine could not be loaded.'}</div>)
                 : dedicatedSection ===
                     'reconciliation'
                   ? (
