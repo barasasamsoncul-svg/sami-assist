@@ -23,6 +23,10 @@ import {
   specialistBreadthDepthSql,
 } from '../lib/apps/enterprise/specialist-breadth-depth';
 
+import {
+  specialistDepthSql,
+} from '../lib/apps/enterprise/specialist-depth';
+
 
 const DATABASE_URL =
   process.env
@@ -220,6 +224,12 @@ integration(
       );
 
       await client.query(
+        specialistDepthSql(
+          'accounting',
+        ),
+      );
+
+      await client.query(
         `
           INSERT INTO companies (
             id,
@@ -228,6 +238,28 @@ integration(
           VALUES (
             $1,
             'ERP Integration Co'
+          )
+        `,
+        [
+          companyId,
+        ],
+      );
+
+      await client.query(
+        `
+          INSERT INTO accounting_fiscal_periods (
+            company_id,
+            name,
+            starts_on,
+            ends_on,
+            status
+          )
+          VALUES (
+            $1,
+            'FY 2026',
+            '2026-01-01',
+            '2026-12-31',
+            'open'
           )
         `,
         [
