@@ -973,3 +973,109 @@
     text-align: center;
   }
 }
+
+
+.receivableControlGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.receivableControlValues {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.receivableControlValues > div {
+  min-width: 0;
+  border: 1px solid var(--sami-border);
+  border-radius: 12px;
+  background: var(--sami-surface-soft);
+  padding: 12px;
+}
+
+.receivableControlValues span {
+  display: block;
+  color: var(--sami-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.receivableControlValues strong {
+  display: block;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+  font-size: 16px;
+}
+
+.receivableAgingGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.receivableAgingCard {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--sami-border);
+  border-radius: 14px;
+  background: var(--sami-surface-soft);
+  padding: 14px;
+  color: var(--foreground);
+  text-decoration: none;
+}
+
+.receivableAgingCard[aria-current="page"] {
+  border-color: var(--sami-border-strong);
+  box-shadow: inset 0 0 0 1px var(--sami-border-strong);
+}
+
+.receivableAgingCard span,
+.receivableAgingCard small {
+  display: block;
+  color: var(--sami-muted);
+}
+
+.receivableAgingCard span {
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.receivableAgingCard strong {
+  display: block;
+  margin: 7px 0 3px;
+  overflow-wrap: anywhere;
+  font-size: 15px;
+}
+
+.receivableAgingCard small {
+  font-size: 9px;
+}
+
+.receivableAgingCard i {
+  display: block;
+  height: 4px;
+  margin-top: 12px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.28;
+}
+
+@media (max-width: 900px) {
+  .receivableControlGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .receivableAgingGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .receivableControlValues,
+  .receivableAgingGrid {
+    grid-template-columns: 1fr;
+  }
+}

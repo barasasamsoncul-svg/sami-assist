@@ -796,3 +796,80 @@ test('Accounting 2.8 opening balances are migration-backed and workflow protecte
     'Opening journals must not expose the generic reversal button.',
   );
 });
+
+
+test('Accounting Receivables reuses the authoritative Invoicing subledger', async () => {
+  const [
+    receivables,
+    workspace,
+    foundation,
+    invoicingAccounting,
+  ] = await Promise.all([
+    source('lib/apps/accounting/receivables.ts'),
+    source('app/apps/accounting/AccountingWorkspace.tsx'),
+    source('app/apps/accounting/AccountingFoundationPanel.tsx'),
+    source('lib/apps/invoicing/accounting.ts'),
+  ]);
+
+  for (const marker of [
+    'invoicing_aging_base',
+    'invoicing_payment_balances',
+    'invoicing_credit_note_balances',
+    'invoicing_customers',
+    'invoicing_invoices',
+  ]) {
+    assert.match(
+      receivables,
+      new RegExp(marker),
+      'Receivables must read ' + marker + ' instead of creating a duplicate customer ledger.',
+    );
+  }
+
+  assert.doesNotMatch(
+    receivables,
+    /INSERT\s+INTO\s+invoicing_|UPDATE\s+invoicing_|DELETE\s+FROM\s+invoicing_/i,
+    'Accounting Receivables must not mutate locked Invoicing transactions.',
+  );
+
+  assert.match(
+    receivables,
+    /system_role='receivable_control'/,
+    'AR must reconcile the configured or canonical receivable control account.',
+  );
+
+  assert.match(
+    receivables,
+    /system_role='invoicing_customer_credit'/,
+    'Customer credits must reconcile their dedicated Accounting liability account.',
+  );
+
+  assert.match(
+    receivables,
+    /accounting_opening_balance_lines[\s\S]*asset_receivable/,
+    'Posted legacy opening AR must be visible in the control reconciliation.',
+  );
+
+  assert.match(
+    receivables,
+    /ROUND\(base_balance_due,2\)/,
+    'Subledger control totals must align to the two-decimal ledger posting boundary.',
+  );
+
+  assert.match(
+    workspace,
+    /dedicatedSection ===[\s\S]*'receivables'[\s\S]*AccountingReceivables/,
+    'Receivables must render as a dedicated Accounting workspace.',
+  );
+
+  assert.match(
+    foundation,
+    /"receivables"/,
+    'Receivables must be a registered Accounting section.',
+  );
+
+  assert.match(
+    invoicingAccounting,
+    /Accounts receivable[\s\S]*customer_credit/,
+    'The Accounting control model must remain aligned with Invoicing journal semantics.',
+  );
+});

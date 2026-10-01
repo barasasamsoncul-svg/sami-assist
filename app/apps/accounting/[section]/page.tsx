@@ -8,7 +8,15 @@ export default async function AccountingSectionPage({
   searchParams,
 }: {
   params: Promise<{ section: string }>;
-  searchParams: Promise<{ from?: string; to?: string; accountId?: string; page?: string }>;
+  searchParams: Promise<{
+    from?: string;
+    to?: string;
+    accountId?: string;
+    page?: string;
+    bucket?: string;
+    customerId?: string;
+    search?: string;
+  }>;
 }) {
   const { section } = await params;
 
