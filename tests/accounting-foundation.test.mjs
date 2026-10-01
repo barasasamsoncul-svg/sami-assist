@@ -601,6 +601,84 @@ test(
         }
       })();
       assert.ok(systemPosting.journalId);
+
+      const migrationLines = [
+        ...Array.from({ length: 101 }, (_, index) => ({
+          accountId: cash,
+          description: `Opening debit ${index + 1}`,
+          debit: "1.00",
+          credit: "0",
+        })),
+        ...Array.from({ length: 101 }, (_, index) => ({
+          accountId: revenue,
+          description: `Opening credit ${index + 1}`,
+          debit: "0",
+          credit: "1.00",
+        })),
+      ];
+
+      await assert.rejects(
+        async () => {
+          const client = await pool.connect();
+          try {
+            await client.query("BEGIN");
+            await postBalancedLedgerJournal(client, {
+              companyId: company,
+              userId: user,
+              journalDate: "2026-08-02",
+              description: "Oversized ordinary journal",
+              sourceModule: "test",
+              sourceType: "ordinary_large",
+              sourceId: "ordinary-large",
+              sourceEventKey: "ordinary:large",
+              postingKind: "system",
+              lines: migrationLines,
+            });
+          } finally {
+            await client.query("ROLLBACK");
+            client.release();
+          }
+        },
+        /between 2 and 200 accounting lines/,
+        "ordinary postings keep the 200-line safety cap",
+      );
+
+      const largeOpening = await (async () => {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          const posted = await postBalancedLedgerJournal(client, {
+            companyId: company,
+            userId: user,
+            journalDate: "2026-08-02",
+            description: "Opening migration scale proof",
+            sourceModule: "accounting",
+            sourceType: "opening_balance_batch",
+            sourceId: "opening-scale",
+            sourceEventKey: "opening:scale",
+            postingKind: "opening",
+            lines: migrationLines,
+          });
+          await client.query("COMMIT");
+          return posted;
+        } catch (error) {
+          await client.query("ROLLBACK");
+          throw error;
+        } finally {
+          client.release();
+        }
+      })();
+
+      assert.equal(
+        (
+          await pool.query(
+            "SELECT COUNT(*)::int AS n FROM journal_lines WHERE journal_id=$1",
+            [largeOpening.journalId],
+          )
+        ).rows[0].n,
+        202,
+        "opening migrations can post beyond the ordinary journal line cap",
+      );
     } finally {
       if (embedded) await embedded.close();
       else {

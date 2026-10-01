@@ -1025,6 +1025,8 @@ export default function AccountingJournals({
                       "accounting" &&
                     selected.posting_kind !==
                       "system" &&
+                    selected.source_type !==
+                      "opening_balance_batch" &&
                     canEdit
                       ? (
                           <section

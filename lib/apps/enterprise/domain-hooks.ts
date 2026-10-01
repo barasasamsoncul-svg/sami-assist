@@ -75,7 +75,11 @@ export function assertEnterpriseDomainMutationAllowed(
       table ===
         'accounting_recurring_journals' ||
       table ===
-        'accounting_recurring_journal_lines'
+        'accounting_recurring_journal_lines' ||
+      table ===
+        'accounting_opening_balance_batches' ||
+      table ===
+        'accounting_opening_balance_lines'
     )
   ) {
     throw new Error(
@@ -91,6 +95,11 @@ export function assertEnterpriseDomainMutationAllowed(
           table ===
             'accounting_recurring_journal_lines'
           ? 'Accounting journals must be changed through the validated double-entry journal services.'
+          : table ===
+              'accounting_opening_balance_batches' ||
+            table ===
+              'accounting_opening_balance_lines'
+            ? 'Opening balances must be changed through the validated Accounting migration workspace.'
           : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
   }
