@@ -70,11 +70,36 @@ function nonNegativeMoney(value: unknown, label: string) {
 }
 
 function exchangeRate(value: unknown) {
-  const n = Number(value ?? 1);
-  if (!Number.isFinite(n) || n <= 0 || n > 1000000000) {
-    throw new AccountingInputError("Enter a valid exchange rate.");
+  const raw=String(value ?? "1").trim();
+  if (!/^\d{1,9}(?:\.\d{1,8})?$/.test(raw)) {
+    throw new AccountingInputError("Enter a valid exchange rate with at most eight decimal places.");
   }
-  return n.toFixed(8);
+  const [whole,fraction=""]=raw.split(".");
+  const units=BigInt(whole)*BigInt(100000000)+BigInt(fraction.padEnd(8,"0"));
+  if (units<=BigInt(0)) throw new AccountingInputError("Exchange rate must be greater than zero.");
+  return {
+    text: whole+"."+fraction.padEnd(8,"0"),
+    units,
+  };
+}
+
+function quantityUnits(value: unknown) {
+  const raw=String(value ?? "1").trim();
+  if (!/^\d{1,9}(?:\.\d{1,4})?$/.test(raw)) {
+    throw new AccountingInputError("Line quantity must be a positive number with at most four decimal places.");
+  }
+  const [whole,fraction=""]=raw.split(".");
+  const units=BigInt(whole)*BigInt(10000)+BigInt(fraction.padEnd(4,"0"));
+  if (units<=BigInt(0)) throw new AccountingInputError("Line quantity must be greater than zero.");
+  return { text: whole+"."+fraction.padEnd(4,"0"), units };
+}
+
+function multiplyMoneyByQuantity(moneyCents: bigint, quantity: bigint) {
+  return (moneyCents*quantity+BigInt(5000))/BigInt(10000);
+}
+
+function convertToBase(amountCents: bigint, rateUnits: bigint) {
+  return (amountCents*rateUnits+BigInt(50000000))/BigInt(100000000);
 }
 
 function pageValue(value: unknown) {
@@ -486,18 +511,16 @@ export async function createPayablesDocument(input: unknown) {
 
   const lines = body.lines.map((raw, index) => {
     const row = bodyOf(raw);
-    const quantity = Number(row.quantity ?? 1);
-    const unit = positiveMoney(row.unitPrice, "Unit price");
+    const quantity = quantityUnits(row.quantity ?? "1");
+    const unit = nonNegativeMoney(row.unitPrice, "Unit price");
     const tax = nonNegativeMoney(row.taxAmount, "Tax amount");
-    if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1000000000) {
-      throw new AccountingInputError("Line quantity must be greater than zero.");
-    }
-    const subtotal = BigInt(Math.round(Number(unit) * quantity));
+    const subtotal = multiplyMoneyByQuantity(unit,quantity.units);
     const total = subtotal + tax;
+    if (total<=BigInt(0)) throw new AccountingInputError("Each vendor document line must have a positive total.");
     return {
       accountId: accountingId(row.accountId),
       description: text(row.description,500,"Line description",true),
-      quantity: quantity.toFixed(4),
+      quantity: quantity.text,
       unitPrice: decimalAmount(unit),
       subtotal: decimalAmount(subtotal),
       tax: decimalAmount(tax),
@@ -510,7 +533,7 @@ export async function createPayablesDocument(input: unknown) {
   const subtotal = lines.reduce((n,l)=>n+cents(l.subtotal),BigInt(0));
   const taxTotal = lines.reduce((n,l)=>n+cents(l.tax),BigInt(0));
   const total = subtotal + taxTotal;
-  const baseTotal = BigInt(Math.round(Number(total) * Number(rate)));
+  const baseTotal = convertToBase(total,rate.units);
 
   const client = await context.pool.connect();
   try {
@@ -535,7 +558,7 @@ export async function createPayablesDocument(input: unknown) {
        RETURNING id::text`,
       [
         context.companyId,vendorId,documentType,documentNumber,vendorReference,documentDate,dueDate,
-        docCurrency,rate,context.company.currentCompany.currency,decimalAmount(subtotal),decimalAmount(taxTotal),
+        docCurrency,rate.text,context.company.currentCompany.currency,decimalAmount(subtotal),decimalAmount(taxTotal),
         decimalAmount(total),decimalAmount(baseTotal),context.userId,
       ],
     );
@@ -614,7 +637,7 @@ export async function postPayablesDocument(input: unknown) {
       const raw = cents(line.line_total);
       const converted = index === l.rows.length - 1
         ? baseTotal - allocated
-        : BigInt(Math.round(Number(raw) * Number(doc.exchange_rate || 1)));
+        : convertToBase(raw,exchangeRate(doc.exchange_rate || "1").units);
       allocated += converted;
       return {
         accountId: String(line.account_id),
@@ -674,7 +697,7 @@ export async function applyPayablesCredit(input: unknown) {
   try {
     await client.query("BEGIN");
     const docs = await client.query(
-      `SELECT id::text,vendor_id::text,document_type,currency
+      `SELECT id::text,vendor_id::text,document_type,currency,exchange_rate::text
        FROM accounting_vendor_documents
        WHERE company_id=$1 AND id=ANY($2::uuid[]) AND deleted_at IS NULL
          AND status IN ('posted','partially_settled','settled')
@@ -688,6 +711,9 @@ export async function applyPayablesCredit(input: unknown) {
     }
     if (String(credit.vendor_id)!==String(bill.vendor_id)) throw new AccountingInputError("Vendor credit and bill must belong to the same vendor.");
     if (String(credit.currency)!==String(bill.currency)) throw new AccountingInputError("Apply vendor credits only to bills in the same currency.");
+    if (String(credit.exchange_rate)!==String(bill.exchange_rate)) {
+      throw new AccountingInputError("Vendor credits with a different exchange rate require the foreign-currency settlement workflow.");
+    }
     const balances = await client.query(
       `SELECT document_id::text,open_amount::text
        FROM accounting_vendor_document_balances
