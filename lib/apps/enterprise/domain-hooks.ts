@@ -150,6 +150,13 @@ export function assertEnterpriseDomainMutationAllowed(
       table === 'accounting_fx_financial_movements' ||
       table === 'accounting_fx_revaluation_runs' ||
       table === 'accounting_fx_revaluation_lines' ||
+      table === 'accounting_inventory_settings' ||
+      table === 'accounting_inventory_product_mappings' ||
+      table === 'accounting_inventory_movement_rules' ||
+      table === 'accounting_inventory_source_events' ||
+      table === 'accounting_inventory_sync_runs' ||
+      table === 'accounting_inventory_reconciliation_runs' ||
+      table === 'accounting_inventory_reconciliation_lines' ||
       table ===
         'accounting_reconciliation_suggestions'
     )
