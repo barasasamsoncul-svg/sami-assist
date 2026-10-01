@@ -38,7 +38,7 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
     autoInstall: false,
     recommended: true,
     depends: [],
-    optionalDepends: [],
+    optionalDepends: ['expenses'],
     schemaPath: "lib/apps/accounting/schema.sql",
     migrationNamespace: "accounting",
     navigation: [
