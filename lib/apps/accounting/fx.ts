@@ -7,7 +7,6 @@ import { recordWorkspaceAuditEvent } from '@/lib/services/workspace-activity';
 import { postBalancedLedgerJournal, reversePostedLedgerJournal } from './ledger-engine';
 import { AccountingInputError, accountingDate, accountingId, decimalAmount, minorUnits } from './validation';
 import {
-  AccountingFxError,
   calculateRealizedFx,
   calculateRevaluation,
   centsDecimal,
@@ -588,7 +587,7 @@ export async function postForeignVendorPayment(input:unknown){
     const bills=await client.query(`SELECT d.* FROM accounting_vendor_documents d WHERE d.company_id=$1 AND d.id=ANY($2::uuid[]) AND d.deleted_at IS NULL ORDER BY d.id FOR UPDATE`,[context.companyId,allocations.map(row=>row.billId)]);
     if(bills.rows.length!==allocations.length)throw new AccountingInputError('A selected vendor bill could not be found.');
     const apByAccount=new Map<string,bigint>();
-    let sourceForeign=BigInt(0),sourceBase=BigInt(0),billBase=BigInt(0),realized=BigInt(0);
+    let sourceForeign=BigInt(0),sourceBase=BigInt(0),realized=BigInt(0);
     const calcRows:Array<Record<string,unknown>>=[];
     for(const bill of bills.rows){
       if(bill.document_type!=='bill'||!['posted','partially_settled'].includes(String(bill.status)))throw new AccountingInputError('Choose only open posted vendor bills.');
@@ -599,7 +598,7 @@ export async function postForeignVendorPayment(input:unknown){
       const paymentBaseCents=fxMoney(calculated.paymentBase),billBaseCents=fxMoney(calculated.billBase),realizedCents=fxMoney(calculated.realized);
       const ap=await payableControlForBill(client,context.companyId,bill);
       apByAccount.set(ap,(apByAccount.get(ap)||BigInt(0))+billBaseCents);
-      sourceForeign+=fxForeignUnits(allocation.sourceAmount);sourceBase+=paymentBaseCents;billBase+=billBaseCents;realized+=realizedCents;
+      sourceForeign+=fxForeignUnits(allocation.sourceAmount);sourceBase+=paymentBaseCents;realized+=realizedCents;
       calcRows.push({bill,allocation,paymentBase:calculated.paymentBase,billBase:calculated.billBase,realized:calculated.realized,ap});
     }
     checkForeignFunds(source,foreignDecimal(sourceForeign),base);
