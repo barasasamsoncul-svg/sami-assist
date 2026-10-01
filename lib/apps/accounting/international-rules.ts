@@ -71,6 +71,7 @@ export function nextLocalizationDueDate(input:{
   filingDay:number;
 }){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(input.periodEnd))throw new LocalizationRuleError('Period end date is invalid.');
+  if(!['monthly','quarterly','annual','custom'].includes(input.filingFrequency))throw new LocalizationRuleError('Filing frequency is invalid.');
   const day=Math.max(1,Math.min(28,Math.trunc(input.filingDay)));
   const [year,month]=input.periodEnd.split('-').map(Number);
   const d=new Date(Date.UTC(year,month,day));
