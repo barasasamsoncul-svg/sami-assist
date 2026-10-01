@@ -341,7 +341,7 @@ test('Accounting 2.4 setup schema is migration-backed and available on fresh ins
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.4\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.5\.0'/,
   );
 
   assert.match(
@@ -411,5 +411,86 @@ test('Accounting policy writes cannot bypass the validated Setup service', async
     domainHooks,
     /moduleKey ===[\s\S]*'accounting'[\s\S]*table ===[\s\S]*'accounting_settings'[\s\S]*validated Accounting Setup workspace/,
     'The generic enterprise editor must not write Accounting policy directly.',
+  );
+});
+
+
+test('Accounting 2.5 Chart of Accounts is migration-backed and company scoped', async () => {
+  const [
+    firstParty,
+    runtimeMigrations,
+    migration,
+    specialistDepth,
+    chartService,
+    domainHooks,
+    journalCommand,
+  ] = await Promise.all([
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/apps/accounting/migrations/2.4.0-to-2.5.0.ts'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+    source('lib/apps/accounting/chart-of-accounts.ts'),
+    source('lib/apps/enterprise/domain-hooks.ts'),
+    source('lib/apps/accounting/journal-command.ts'),
+  ]);
+
+  assert.match(
+    firstParty,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.5\.0'/,
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /ACCOUNTING_2_4_0_TO_2_5_0/,
+  );
+
+  assert.match(
+    migration,
+    /fromVersion:\s*'2\.4\.0'[\s\S]*toVersion:\s*'2\.5\.0'/,
+  );
+
+  assert.match(
+    migration,
+    /DROP CONSTRAINT IF EXISTS accounts_code_key[\s\S]*uq_accounts_company_code[\s\S]*company_id, code/,
+    'Account codes must be unique inside a company, not across all SaMi tenants.',
+  );
+
+  for (const marker of [
+    'normal_balance',
+    'reconcile',
+    'allow_manual_posting',
+    'is_control_account',
+    'system_role',
+    'template_key',
+  ]) {
+    assert.match(migration, new RegExp(marker));
+    assert.match(specialistDepth, new RegExp(marker));
+  }
+
+  assert.match(
+    chartService,
+    /ACCOUNTING_CHART_TEMPLATES/,
+  );
+
+  assert.match(
+    chartService,
+    /An account already used by journal entries cannot change account type or normal balance/,
+  );
+
+  assert.match(
+    chartService,
+    /Bring this account to a zero posted balance before archiving it/,
+  );
+
+  assert.match(
+    domainHooks,
+    /table ===[\s\S]*'accounts'[\s\S]*validated Accounting account workspace/,
+    'Generic enterprise mutations must not bypass Chart of Accounts validation.',
+  );
+
+  assert.match(
+    journalCommand,
+    /allow_manual_posting[\s\S]*only accepts trusted subsystem postings/,
+    'Manual journals must honor system-only account controls.',
   );
 });

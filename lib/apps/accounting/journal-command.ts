@@ -36,12 +36,22 @@ export async function saveBalancedJournalDraft(
     }
     const ids = [...new Set(input.lines.map((line) => line.accountId))];
     const accounts = await client.query(
-      `SELECT id FROM accounts WHERE company_id=$1 AND id=ANY($2::uuid[]) AND is_active=TRUE AND deleted_at IS NULL FOR SHARE`,
+      `SELECT id,allow_manual_posting FROM accounts WHERE company_id=$1 AND id=ANY($2::uuid[]) AND is_active=TRUE AND deleted_at IS NULL FOR SHARE`,
       [scope.companyId, ids],
     );
     if (accounts.rows.length !== ids.length)
       throw new AccountingInputError(
         "Every line must use an active account belonging to this company.",
+      );
+    if (
+      accounts.rows.some(
+        (row) =>
+          row.allow_manual_posting ===
+          false,
+      )
+    )
+      throw new AccountingInputError(
+        "A selected control account only accepts trusted subsystem postings. Choose an account that allows manual journals.",
       );
     const settings = await client.query(
       `

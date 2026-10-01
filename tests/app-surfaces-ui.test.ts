@@ -551,6 +551,62 @@ test(
 
 
 test(
+  'Accounting Chart of Accounts owns a dedicated responsive surface',
+  async () => {
+    const [
+      workspace,
+      chart,
+      styles,
+    ] =
+      await Promise.all([
+        readFile(
+          'app/apps/accounting/AccountingWorkspace.tsx',
+          'utf8',
+        ),
+        readFile(
+          'app/apps/accounting/AccountingChartOfAccounts.tsx',
+          'utf8',
+        ),
+        readFile(
+          'app/apps/accounting/AccountingFoundation.module.css',
+          'utf8',
+        ),
+      ]);
+
+    assert.match(
+      workspace,
+      /dedicatedSection ===[\s\S]*'accounts'[\s\S]*AccountingChartOfAccounts/,
+      'The accounts route must bypass the generic enterprise record editor.',
+    );
+
+    for (const marker of [
+      'apply-template',
+      'archive',
+      'restore',
+      'ACCOUNT_TYPE_OPTIONS',
+      'SaMiOverlay',
+    ]) {
+      assert.match(
+        chart,
+        new RegExp(marker),
+        'Chart of Accounts must expose ' + marker + '.',
+      );
+    }
+
+    assert.match(
+      styles,
+      /\.chartEditorBackdrop[\s\S]*position:\s*fixed/,
+    );
+
+    assert.match(
+      styles,
+      /@media \(max-width: 620px\)[\s\S]*\.chartEditor[\s\S]*width:\s*100%/,
+      'The Chart of Accounts editor must become a full-width mobile sheet.',
+    );
+  },
+);
+
+test(
   'SaMi design system enforces readable foregrounds across every app surface',
   async () => {
     const [

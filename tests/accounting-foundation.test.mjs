@@ -155,7 +155,7 @@ test(
     }
     try {
       const statements = [
-        `CREATE TABLE accounts (id uuid PRIMARY KEY,company_id uuid NOT NULL,code text NOT NULL,name text NOT NULL,account_type text NOT NULL,is_active boolean DEFAULT true,deleted_at timestamptz)`,
+        `CREATE TABLE accounts (id uuid PRIMARY KEY,company_id uuid NOT NULL,code text NOT NULL,name text NOT NULL,account_type text NOT NULL,is_active boolean DEFAULT true,allow_manual_posting boolean NOT NULL DEFAULT true,deleted_at timestamptz)`,
         `CREATE TABLE journals (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),company_id uuid NOT NULL,journal_number varchar(100) UNIQUE,journal_date date,reference text,description text,status text,created_by uuid,updated_by uuid,created_at timestamptz DEFAULT now(),deleted_at timestamptz)`,
         `CREATE TABLE journal_lines (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),company_id uuid NOT NULL,journal_id uuid REFERENCES journals(id),account_id uuid REFERENCES accounts(id),description text CHECK(description <> 'FAIL'),debit numeric(15,2),credit numeric(15,2),created_by uuid,updated_by uuid,created_at timestamptz DEFAULT now(),deleted_at timestamptz)`,
         `CREATE TABLE accounting_fiscal_periods(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),company_id uuid,name text,starts_on date,ends_on date,lock_date date,status text,deleted_at timestamptz)`,
@@ -170,7 +170,7 @@ test(
         [inactive, company, "5000", "expense", false],
       ])
         await pool.query(
-          "INSERT INTO accounts VALUES($1,$2,$3,$3,$4,$5,NULL)",
+          "INSERT INTO accounts (id,company_id,code,name,account_type,is_active,allow_manual_posting,deleted_at) VALUES($1,$2,$3,$3,$4,$5,true,NULL)",
           [id, c, code, type, active],
         );
       await pool.query(
@@ -216,6 +216,24 @@ test(
           /active account/,
         );
       }
+      await pool.query(
+        `UPDATE accounts SET allow_manual_posting=false WHERE id=$1`,
+        [cash],
+      );
+      await assert.rejects(
+        () =>
+          saveBalancedJournalDraft(
+            pool,
+            { companyId: company, userId: user },
+            validateJournal(draft()),
+          ),
+        /only accepts trusted subsystem postings/,
+      );
+      await pool.query(
+        `UPDATE accounts SET allow_manual_posting=true WHERE id=$1`,
+        [cash],
+      );
+
       await pool.query(
         `UPDATE accounting_fiscal_periods SET lock_date='2026-06-30'`,
       );

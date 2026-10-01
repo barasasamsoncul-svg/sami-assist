@@ -17,10 +17,10 @@ This is the first usable slice, not completion of the full Accounting module. Ne
 ## Completed depth
 
 1. Accounting setup: full validated company configuration, fiscal-year policy, control-account mappings, tax/cash/FX/write-off/rounding defaults, global lock date, open-period enforcement, dedicated setup UI/API, audited saves and migration-backed fresh-install support.
+2. Chart of accounts: dedicated responsive editor, company-scoped codes, hierarchy, reconciliation/manual-posting controls, protected control/system roles, safe archive/restore, Kenya industry templates, additive setup mapping and migration-backed 2.5 schema.
 
 ## Remaining depth, in the agreed order
 
-2. Chart of accounts: dedicated editor, industry templates, account protections and hierarchy.
 3. Double-entry ledger: enforce posting invariants across every writer; review existing status/reversal semantics.
 4. Journals: dedicated review/detail, approval, atomic posting and reversal, recurring journals.
 5. Opening balances: guided import, subledger reconciliation and migration validation.

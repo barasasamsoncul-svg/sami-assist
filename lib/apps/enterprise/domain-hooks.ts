@@ -63,11 +63,18 @@ export function assertEnterpriseDomainMutationAllowed(
   if (
     moduleKey ===
       'accounting' &&
-    table ===
-      'accounting_settings'
+    (
+      table ===
+        'accounting_settings' ||
+      table ===
+        'accounts'
+    )
   ) {
     throw new Error(
-      'Accounting policy must be changed through the validated Accounting Setup workspace.',
+      table ===
+        'accounts'
+        ? 'Chart of Accounts must be changed through the validated Accounting account workspace.'
+        : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
   }
 
