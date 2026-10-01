@@ -124,6 +124,12 @@ export default async function AccountingWorkspace({
       dedicatedSection
         ? undefined
         : section,
+      {
+        lightweight:
+          Boolean(
+            dedicatedSection,
+          ),
+      },
     );
 
   let foundation:
