@@ -1018,3 +1018,46 @@ test(
     );
   },
 );
+
+
+test(
+  'Accounting Bank Cash exposes a standalone financial-account and transfer workspace',
+  async () => {
+    const [workspace, bankCash] = await Promise.all([
+      readFile('app/apps/accounting/AccountingWorkspace.tsx','utf8'),
+      readFile('app/apps/accounting/AccountingBankCash.tsx','utf8'),
+    ]);
+
+    assert.match(
+      workspace,
+      /Bank, Cash & Mobile Money[\s\S]*\/bank-cash/,
+      'Accounting sidebar must use the dedicated bank/cash workspace instead of the generic table screen.',
+    );
+
+    for (const marker of [
+      'Financial accounts',
+      'New account',
+      'Internal transfer',
+      'Bank balance',
+      'Cash balance',
+      'Mobile money',
+      'Account register',
+      'Transfer register',
+      'Opening balances are not entered here',
+      'Statement files/feeds are Part 11',
+    ]) {
+      assert.match(bankCash,new RegExp(marker),'Bank/cash UI must expose '+marker+'.');
+    }
+
+    assert.match(
+      bankCash,
+      /accountType === "mobile_money"[\s\S]*Mobile-money provider/,
+      'Mobile-money accounts must have provider-aware setup.',
+    );
+    assert.match(
+      bankCash,
+      /transferKey\.current[\s\S]*browserUuid/,
+      'Internal-transfer retries must preserve a request key.',
+    );
+  },
+);
