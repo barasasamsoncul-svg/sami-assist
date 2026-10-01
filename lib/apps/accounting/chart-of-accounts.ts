@@ -15,9 +15,12 @@ import {
 import {
   ACCOUNTING_CHART_TEMPLATES,
   ACCOUNT_TYPE_BY_KEY,
-  type AccountingChartTemplate,
   type AccountTypeKey,
 } from './chart-config';
+
+import type {
+  ChartOfAccountsData,
+} from './chart-types';
 
 import {
   AccountingInputError,
@@ -56,47 +59,6 @@ const SETTING_ROLE_COLUMNS:
     rounding:
       'rounding_account_id',
   };
-
-
-export type ChartAccount = {
-  id: string;
-  code: string;
-  name: string;
-  accountType: string;
-  normalBalance: 'debit' | 'credit';
-  parentAccountId: string | null;
-  parentCode: string | null;
-  parentName: string | null;
-  isActive: boolean;
-  reconcile: boolean;
-  allowManualPosting: boolean;
-  isControlAccount: boolean;
-  systemRole: string | null;
-  description: string;
-  sequence: number;
-  templateKey: string | null;
-  childCount: number;
-  journalLineCount: number;
-  postedBalance: string;
-  usedBySetup: boolean;
-};
-
-
-export type ChartOfAccountsData = {
-  companyId: string;
-  currency: string;
-  accounts: ChartAccount[];
-  templates: Array<
-    Pick<
-      AccountingChartTemplate,
-      'key' |
-      'name' |
-      'description' |
-      'country' |
-      'industry'
-    >
-  >;
-};
 
 
 function textValue(
