@@ -181,133 +181,6 @@ test(
         [company],
       );
 
-      const systemPosting = await (async () => {
-        const client = await pool.connect();
-        try {
-          await client.query("BEGIN");
-          const posted = await postBalancedLedgerJournal(client, {
-            companyId: company,
-            userId: user,
-            journalDate: "2026-05-15",
-            description: "System posting proof",
-            sourceModule: "test",
-            sourceType: "proof",
-            sourceId: "proof-1",
-            sourceEventKey: "proof:event:1",
-            postingKind: "system",
-            lines: [
-              { accountId: cash, description: "Cash", debit: "75.25", credit: "0" },
-              { accountId: revenue, description: "Revenue", debit: "0", credit: "75.25" },
-            ],
-          });
-          const replay = await postBalancedLedgerJournal(client, {
-            companyId: company,
-            userId: user,
-            journalDate: "2026-05-15",
-            description: "System posting proof",
-            sourceModule: "test",
-            sourceType: "proof",
-            sourceId: "proof-1",
-            sourceEventKey: "proof:event:1",
-            postingKind: "system",
-            lines: [
-              { accountId: cash, debit: "75.25", credit: "0" },
-              { accountId: revenue, debit: "0", credit: "75.25" },
-            ],
-          });
-          assert.equal(replay.journalId, posted.journalId);
-          assert.equal(replay.reused, true);
-
-          await assert.rejects(
-            () =>
-              postBalancedLedgerJournal(client, {
-                companyId: company,
-                userId: user,
-                journalDate: "2026-05-15",
-                description: "Unbalanced system posting",
-                sourceModule: "test",
-                sourceType: "proof",
-                sourceId: "proof-bad",
-                sourceEventKey: "proof:event:bad",
-                lines: [
-                  { accountId: cash, debit: "10.00", credit: "0" },
-                  { accountId: revenue, debit: "0", credit: "9.99" },
-                ],
-              }),
-            /unbalanced accounting posting/,
-          );
-
-          const proof = (
-            await client.query(
-              `SELECT status,source_module,source_event_key,posting_kind,
-                      posted_at IS NOT NULL AS posted,
-                      (SELECT SUM(debit) FROM journal_lines WHERE journal_id=j.id) AS debit,
-                      (SELECT SUM(credit) FROM journal_lines WHERE journal_id=j.id) AS credit
-               FROM journals j WHERE id=$1`,
-              [posted.journalId],
-            )
-          ).rows[0];
-          assert.equal(proof.status, "posted");
-          assert.equal(proof.source_module, "test");
-          assert.equal(proof.source_event_key, "proof:event:1");
-          assert.equal(proof.posting_kind, "system");
-          assert.equal(proof.posted, true);
-          assert.equal(String(proof.debit), "75.25");
-          assert.equal(String(proof.credit), "75.25");
-
-          const reversal = await reversePostedLedgerJournal(client, {
-            companyId: company,
-            userId: user,
-            originalJournalId: posted.journalId,
-            journalDate: "2026-05-16",
-            description: "Reverse system posting proof",
-            sourceModule: "test",
-            sourceType: "proof_reversal",
-            sourceId: "proof-1",
-            sourceEventKey: "proof:event:1:reverse",
-          });
-          const reversalAgain = await reversePostedLedgerJournal(client, {
-            companyId: company,
-            userId: user,
-            originalJournalId: posted.journalId,
-            journalDate: "2026-05-16",
-            description: "Reverse system posting proof",
-            sourceModule: "test",
-            sourceType: "proof_reversal",
-            sourceId: "proof-1",
-            sourceEventKey: "proof:event:1:reverse",
-          });
-          assert.equal(reversalAgain.journalId, reversal.journalId);
-          assert.equal(reversalAgain.reused, true);
-
-          const linked = (
-            await client.query(
-              "SELECT reversed_by_journal_id::text AS reversal FROM journals WHERE id=$1",
-              [posted.journalId],
-            )
-          ).rows[0];
-          assert.equal(linked.reversal, reversal.journalId);
-
-          const reversalTotals = (
-            await client.query(
-              "SELECT SUM(debit)::text AS debit,SUM(credit)::text AS credit FROM journal_lines WHERE journal_id=$1",
-              [reversal.journalId],
-            )
-          ).rows[0];
-          assert.equal(reversalTotals.debit, "75.25");
-          assert.equal(reversalTotals.credit, "75.25");
-
-          await client.query("COMMIT");
-          return posted;
-        } catch (error) {
-          await client.query("ROLLBACK");
-          throw error;
-        } finally {
-          client.release();
-        }
-      })();
-      assert.ok(systemPosting.journalId);
-
       const input = validateJournal(draft());
       const first = await saveBalancedJournalDraft(
         pool,
@@ -537,6 +410,133 @@ test(
         "draft",
         "setup can explicitly allow drafting outside a fiscal period",
       );
+
+      const systemPosting = await (async () => {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          const posted = await postBalancedLedgerJournal(client, {
+            companyId: company,
+            userId: user,
+            journalDate: "2026-05-15",
+            description: "System posting proof",
+            sourceModule: "test",
+            sourceType: "proof",
+            sourceId: "proof-1",
+            sourceEventKey: "proof:event:1",
+            postingKind: "system",
+            lines: [
+              { accountId: cash, description: "Cash", debit: "75.25", credit: "0" },
+              { accountId: revenue, description: "Revenue", debit: "0", credit: "75.25" },
+            ],
+          });
+          const replay = await postBalancedLedgerJournal(client, {
+            companyId: company,
+            userId: user,
+            journalDate: "2026-05-15",
+            description: "System posting proof",
+            sourceModule: "test",
+            sourceType: "proof",
+            sourceId: "proof-1",
+            sourceEventKey: "proof:event:1",
+            postingKind: "system",
+            lines: [
+              { accountId: cash, debit: "75.25", credit: "0" },
+              { accountId: revenue, debit: "0", credit: "75.25" },
+            ],
+          });
+          assert.equal(replay.journalId, posted.journalId);
+          assert.equal(replay.reused, true);
+
+          await assert.rejects(
+            () =>
+              postBalancedLedgerJournal(client, {
+                companyId: company,
+                userId: user,
+                journalDate: "2026-05-15",
+                description: "Unbalanced system posting",
+                sourceModule: "test",
+                sourceType: "proof",
+                sourceId: "proof-bad",
+                sourceEventKey: "proof:event:bad",
+                lines: [
+                  { accountId: cash, debit: "10.00", credit: "0" },
+                  { accountId: revenue, debit: "0", credit: "9.99" },
+                ],
+              }),
+            /unbalanced accounting posting/,
+          );
+
+          const proof = (
+            await client.query(
+              `SELECT status,source_module,source_event_key,posting_kind,
+                      posted_at IS NOT NULL AS posted,
+                      (SELECT SUM(debit) FROM journal_lines WHERE journal_id=j.id) AS debit,
+                      (SELECT SUM(credit) FROM journal_lines WHERE journal_id=j.id) AS credit
+               FROM journals j WHERE id=$1`,
+              [posted.journalId],
+            )
+          ).rows[0];
+          assert.equal(proof.status, "posted");
+          assert.equal(proof.source_module, "test");
+          assert.equal(proof.source_event_key, "proof:event:1");
+          assert.equal(proof.posting_kind, "system");
+          assert.equal(proof.posted, true);
+          assert.equal(String(proof.debit), "75.25");
+          assert.equal(String(proof.credit), "75.25");
+
+          const reversal = await reversePostedLedgerJournal(client, {
+            companyId: company,
+            userId: user,
+            originalJournalId: posted.journalId,
+            journalDate: "2026-05-16",
+            description: "Reverse system posting proof",
+            sourceModule: "test",
+            sourceType: "proof_reversal",
+            sourceId: "proof-1",
+            sourceEventKey: "proof:event:1:reverse",
+          });
+          const reversalAgain = await reversePostedLedgerJournal(client, {
+            companyId: company,
+            userId: user,
+            originalJournalId: posted.journalId,
+            journalDate: "2026-05-16",
+            description: "Reverse system posting proof",
+            sourceModule: "test",
+            sourceType: "proof_reversal",
+            sourceId: "proof-1",
+            sourceEventKey: "proof:event:1:reverse",
+          });
+          assert.equal(reversalAgain.journalId, reversal.journalId);
+          assert.equal(reversalAgain.reused, true);
+
+          const linked = (
+            await client.query(
+              "SELECT reversed_by_journal_id::text AS reversal FROM journals WHERE id=$1",
+              [posted.journalId],
+            )
+          ).rows[0];
+          assert.equal(linked.reversal, reversal.journalId);
+
+          const reversalTotals = (
+            await client.query(
+              "SELECT SUM(debit)::text AS debit,SUM(credit)::text AS credit FROM journal_lines WHERE journal_id=$1",
+              [reversal.journalId],
+            )
+          ).rows[0];
+          assert.equal(reversalTotals.debit, "75.25");
+          assert.equal(reversalTotals.credit, "75.25");
+
+          await client.query("COMMIT");
+          return posted;
+        } catch (error) {
+          await client.query("ROLLBACK");
+          throw error;
+        } finally {
+          client.release();
+        }
+      })();
+      assert.ok(systemPosting.journalId);
     } finally {
       if (embedded) await embedded.close();
       else {
