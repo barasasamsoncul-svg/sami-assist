@@ -5,7 +5,7 @@ import type { PoolClient } from 'pg';
 import { requireEnterpriseModuleTableContext } from '@/lib/apps/enterprise/service';
 import { recordWorkspaceAuditEvent } from '@/lib/services/workspace-activity';
 import { postBalancedLedgerJournal, reversePostedLedgerJournal } from './ledger-engine';
-import { AccountingInputError, accountingDate, accountingId, decimalAmount, minorUnits } from './validation';
+import { AccountingInputError, accountingDate, accountingId, minorUnits } from './validation';
 import {
   calculateRealizedFx,
   calculateRevaluation,
