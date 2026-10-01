@@ -61,7 +61,7 @@ export default function AccountingPayments({data,canCreate,canTransition}: {
   return <div className={styles.workspace}>
     <div className={styles.heading}><div><div className={styles.eyebrow}>Accounting · Payments</div><h2>Payments & settlements</h2>
       <p>Prepare vendor payments and record provider settlements with their fees. Customer receipts remain in Invoicing.</p></div>
-      <div className={styles.actions}><Link className={styles.button} href='/apps/invoicing/payments'>Customer receipts</Link>
+      <div className={styles.actions}><Link className={styles.button} href='/apps/invoicing/payments'>Customer receipts</Link><Link className={styles.button} href='/apps/accounting/fx'>Foreign-currency payments</Link>
         {mode==='list' && canCreate && <><button className={styles.primary} onClick={()=>{key.current='';setSelected(null);setMode('vendor_payment');}}>Prepare payment</button>
           <button className={styles.button} onClick={()=>{key.current='';setSelected(null);setMode('settlement');}}>Prepare settlement</button></>}
         {mode!=='list' && <button disabled={busy} className={styles.button} onClick={()=>setMode('list')}>Back to payments</button>}</div></div>
@@ -91,16 +91,17 @@ export default function AccountingPayments({data,canCreate,canTransition}: {
         {batch.allocations.length>0 && <><ul>{batch.allocations.map((a:{billNumber:string;vendor:string;amount:string},i:number)=><li key={i}>{a.vendor} · {a.billNumber} · {money(a.amount)}</li>)}</ul><button className={styles.button} onClick={remittance}>Download remittance CSV</button></>}
         <div className={styles.actions} style={{marginTop:16}}>
           {batch.posted_journal_id && <Link className={styles.button} href='/apps/accounting/general-ledger'>View general ledger</Link>}
-          {canTransition && <>{batch.status==='draft' && <button disabled={busy} className={styles.primary} onClick={()=>action('approve',batch.id)}>Approve</button>}
+          {batch.fx_managed ? <Link className={styles.primary} href='/apps/accounting/fx'>Manage in Foreign Currency</Link> : null}
+          {canTransition && !batch.fx_managed && <>{batch.status==='draft' && <button disabled={busy} className={styles.primary} onClick={()=>action('approve',batch.id)}>Approve</button>}
             {batch.status==='approved' && <button disabled={busy} className={styles.primary} onClick={()=>action('post',batch.id)}>Record completed payment</button>}
             {['draft','approved'].includes(batch.status) && <button disabled={busy} className={styles.button} onClick={()=>action('cancel',batch.id)}>Cancel batch</button>}
             {batch.status==='posted' && <><label>Reversal date<input type='date' value={reversalDate} onChange={e=>setReversalDate(e.target.value)}/></label><button disabled={busy || !reversalDate} className={styles.button} onClick={()=>action('reverse',batch.id)}>Reverse payment</button></>}</>}
         </div></section>}
       <section className={styles.panel}><h3>Payment history</h3><div className={styles.tableWrap}><table><thead><tr><th>Reference</th><th>Date</th><th>Type</th><th>Source</th><th>Gross</th><th>Fees</th><th>Status</th></tr></thead><tbody>
-        {data.batches.map(b=><tr key={b.id}><td><button className={styles.button} onClick={()=>setSelected(b.id)}>{b.reference}</button></td><td>{b.payment_date}</td><td>{b.kind==='settlement'?'Settlement':'Vendor payment'}</td><td>{b.source_name}</td><td>{money(b.gross_amount)}</td><td>{money(b.fee_amount)}</td><td><span className={styles.badge}>{b.status}</span></td></tr>)}
+        {data.batches.map(b=><tr key={b.id}><td><button className={styles.button} onClick={()=>setSelected(b.id)}>{b.reference}</button></td><td>{b.payment_date}</td><td>{b.kind==='settlement'?'Settlement':b.fx_managed?'FX vendor payment':'Vendor payment'}</td><td>{b.source_name}</td><td>{money(b.gross_amount)}</td><td>{money(b.fee_amount)}</td><td><span className={styles.badge}>{b.status}</span></td></tr>)}
         {!data.batches.length && <tr><td colSpan={7}>No payment batches yet. Prepare a vendor payment or provider settlement to begin.</td></tr>}
       </tbody></table></div><div className={styles.actions} style={{marginTop:16}}>{data.page>1 && <Link className={styles.button} href={'/apps/accounting/payments?page='+(data.page-1)}>Previous</Link>}<span>Page {data.page}</span>{data.hasMore && <Link className={styles.button} href={'/apps/accounting/payments?page='+(data.page+1)}>Next</Link>}</div></section>
-      <p>These actions record payments made outside SaMi. Base-currency payments are supported; cross-currency payments will follow with foreign-currency accounting.</p>
+      <p>These actions record payments made outside SaMi. Base-currency batches remain here; foreign and cross-currency vendor payments are posted and reversed through the dedicated Foreign Currency workspace.</p>
     </>}
     <SaMiOverlay {...overlay} onClose={closeOverlay}/>
   </div>;
