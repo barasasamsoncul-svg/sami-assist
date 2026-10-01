@@ -538,7 +538,7 @@ export async function postPayablesDocument(input: unknown) {
     await client.query("BEGIN");
     const d = await client.query(
       `SELECT id::text,vendor_id::text,document_type,document_number,vendor_reference,document_date::text,
-              base_total_amount::text,status,posted_journal_id::text
+              exchange_rate::text,base_total_amount::text,status,posted_journal_id::text
        FROM accounting_vendor_documents
        WHERE company_id=$1 AND id=$2 AND deleted_at IS NULL
        LIMIT 1 FOR UPDATE`,
@@ -570,7 +570,7 @@ export async function postPayablesDocument(input: unknown) {
       const raw = cents(line.line_total);
       let converted = index === l.rows.length - 1
         ? baseTotal - allocated
-        : BigInt(Math.round(Number(raw) * Number((d.rows[0] as any).exchange_rate || 1)));
+        : BigInt(Math.round(Number(raw) * Number(doc.exchange_rate || 1)));
       allocated += converted;
       return {
         accountId: String(line.account_id),
