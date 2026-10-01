@@ -1,3 +1,4 @@
+import { ACCOUNTING_INTERNATIONAL_LOCALIZATION_SQL } from '@/lib/apps/accounting/international-schema';
 import { ACCOUNTING_KENYA_SQL } from '@/lib/apps/accounting/kenya-schema';
 import { ACCOUNTING_TAX_SQL } from '@/lib/apps/accounting/tax-schema';
 import { ACCOUNTING_PAYMENTS_SQL } from '@/lib/apps/accounting/payments-schema';
@@ -1753,6 +1754,7 @@ ALTER TABLE public.accounting_bank_statement_lines
 ${ACCOUNTING_PAYMENTS_SQL}
 ${ACCOUNTING_TAX_SQL}
 ${ACCOUNTING_KENYA_SQL}
+${ACCOUNTING_INTERNATIONAL_LOCALIZATION_SQL}
 `;
 }
 
