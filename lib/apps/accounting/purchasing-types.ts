@@ -50,6 +50,17 @@ export type PurchaseRequisition = {
   status: PurchaseRequisitionStatus;
 };
 
+export type PurchaseRequisitionLine = {
+  id: string;
+  requisition_id: string;
+  description: string;
+  quantity: string;
+  estimated_unit_price: string;
+  estimated_total: string;
+  preferred_vendor_id: string | null;
+  expense_account_id: string | null;
+};
+
 export type PurchaseOrder = {
   id: string;
   purchase_order_number: string;
@@ -120,6 +131,7 @@ export type AccountingPurchasingWorkspace = {
   policies: PurchasePolicy[];
   vendors: PurchaseVendor[];
   requisitions: PurchaseRequisition[];
+  requisitionLines: PurchaseRequisitionLine[];
   orders: PurchaseOrder[];
   orderLines: PurchaseOrderLine[];
   bills: PurchaseBillCandidate[];
