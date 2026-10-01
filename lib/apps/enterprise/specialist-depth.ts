@@ -1485,7 +1485,7 @@ ALTER TABLE public.accounting_bank_statement_lines
     adjustment_journal_id UUID REFERENCES public.journals(id) ON DELETE RESTRICT,
     reversal_journal_id UUID REFERENCES public.journals(id) ON DELETE RESTRICT,
     notes TEXT,
-    reconciled_by UUID NOT NULL,
+    reconciled_by UUID,
     reconciled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     reversed_by UUID,
     reversed_at TIMESTAMPTZ,
@@ -1587,6 +1587,95 @@ ALTER TABLE public.accounting_bank_statement_lines
     )
     WHERE deleted_at IS NULL;
 
+  INSERT INTO public.accounting_reconciliations (
+    company_id,
+    reconciliation_number,
+    bank_account_id,
+    statement_line_id,
+    reconciliation_date,
+    method,
+    statement_amount,
+    matched_amount,
+    difference_amount,
+    status,
+    reconciled_by,
+    reconciled_at,
+    created_by,
+    updated_by
+  )
+  SELECT
+    s.company_id,
+    'LEGACY-' || UPPER(SUBSTRING(s.id::text,1,8)),
+    s.bank_account_id,
+    s.id,
+    s.transaction_date,
+    'manual',
+    s.amount::numeric(19,2),
+    (l.debit-l.credit)::numeric(19,2),
+    (s.amount-(l.debit-l.credit))::numeric(19,2),
+    'matched',
+    COALESCE(s.updated_by,s.created_by),
+    COALESCE(s.updated_at,s.created_at,NOW()),
+    COALESCE(s.created_by,s.updated_by),
+    COALESCE(s.updated_by,s.created_by)
+  FROM public.accounting_bank_statement_lines s
+  JOIN public.journal_lines l
+    ON l.company_id=s.company_id
+   AND l.id=s.matched_journal_line_id
+   AND l.deleted_at IS NULL
+  WHERE s.deleted_at IS NULL
+    AND s.reconciliation_status='matched'
+    AND s.matched_journal_line_id IS NOT NULL
+    AND NOT EXISTS (
+      SELECT 1
+      FROM public.accounting_reconciliations r
+      WHERE r.company_id=s.company_id
+        AND r.statement_line_id=s.id
+        AND r.deleted_at IS NULL
+        AND r.status='matched'
+    )
+  ON CONFLICT DO NOTHING;
+
+  INSERT INTO public.accounting_reconciliation_matches (
+    company_id,
+    reconciliation_id,
+    journal_line_id,
+    match_amount,
+    sequence,
+    created_by,
+    updated_by
+  )
+  SELECT
+    r.company_id,
+    r.id,
+    s.matched_journal_line_id,
+    (l.debit-l.credit)::numeric(19,2),
+    10,
+    COALESCE(s.created_by,s.updated_by),
+    COALESCE(s.updated_by,s.created_by)
+  FROM public.accounting_reconciliations r
+  JOIN public.accounting_bank_statement_lines s
+    ON s.company_id=r.company_id
+   AND s.id=r.statement_line_id
+   AND s.deleted_at IS NULL
+  JOIN public.journal_lines l
+    ON l.company_id=s.company_id
+   AND l.id=s.matched_journal_line_id
+   AND l.deleted_at IS NULL
+  WHERE r.deleted_at IS NULL
+    AND r.status='matched'
+    AND r.reconciliation_number LIKE 'LEGACY-%'
+    AND s.matched_journal_line_id IS NOT NULL
+    AND NOT EXISTS (
+      SELECT 1
+      FROM public.accounting_reconciliation_matches m
+      WHERE m.company_id=r.company_id
+        AND m.reconciliation_id=r.id
+        AND m.journal_line_id=s.matched_journal_line_id
+        AND m.deleted_at IS NULL
+    )
+  ON CONFLICT DO NOTHING;
+
   CREATE OR REPLACE VIEW public.accounting_reconciliation_journal_availability AS
   SELECT
     l.company_id,
@@ -1644,7 +1733,6 @@ ALTER TABLE public.accounting_bank_statement_lines
     l.description,
     l.debit,
     l.credit;
-
 `;
 }
 
