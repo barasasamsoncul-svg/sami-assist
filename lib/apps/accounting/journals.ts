@@ -97,15 +97,34 @@ function nextOccurrence(
 
   if (frequency === "weekly") {
     date.setUTCDate(date.getUTCDate() + 7);
-  } else if (frequency === "monthly") {
-    date.setUTCMonth(date.getUTCMonth() + 1);
-  } else if (frequency === "quarterly") {
-    date.setUTCMonth(date.getUTCMonth() + 3);
-  } else {
-    date.setUTCFullYear(date.getUTCFullYear() + 1);
+    return date.toISOString().slice(0, 10);
   }
 
-  return date.toISOString().slice(0, 10);
+  const months =
+    frequency === "monthly"
+      ? 1
+      : frequency === "quarterly"
+        ? 3
+        : 12;
+
+  const originalDay = date.getUTCDate();
+  const targetMonth = date.getUTCMonth() + months;
+  const targetYear =
+    date.getUTCFullYear() + Math.floor(targetMonth / 12);
+  const normalizedMonth = ((targetMonth % 12) + 12) % 12;
+  const lastDay = new Date(
+    Date.UTC(targetYear, normalizedMonth + 1, 0),
+  ).getUTCDate();
+
+  return new Date(
+    Date.UTC(
+      targetYear,
+      normalizedMonth,
+      Math.min(originalDay, lastDay),
+    ),
+  )
+    .toISOString()
+    .slice(0, 10);
 }
 
 
@@ -173,7 +192,7 @@ export async function getAccountingJournals(
   const context = await requireEnterpriseModuleTableContext(
     "accounting",
     "journals",
-    "report",
+    "view",
   );
 
   const selectedId =
