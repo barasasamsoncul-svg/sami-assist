@@ -28,7 +28,7 @@ export default function AccountingInternational({
   canEdit:boolean;
 }){
   const router=useRouter();
-  const {overlay,showSuccess,showError,showWarning,closeOverlay}=useSaMiOverlay();
+  const {overlay,showSuccess,showError,closeOverlay}=useSaMiOverlay();
   const [busy,setBusy]=useState('');
   const [settings,setSettings]=useState({
     enabled:Boolean(data.settings.enabled),
