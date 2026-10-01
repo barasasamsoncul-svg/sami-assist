@@ -93,6 +93,29 @@ function requestHash(value: unknown) {
 }
 
 
+function ledgerCents(value: unknown) {
+  const raw = String(value ?? "0").trim();
+  const negative = raw.startsWith("-");
+  const unsigned = negative ? raw.slice(1) : raw;
+
+  if (!/^\d{1,18}(?:\.\d{1,8})?$/.test(unsigned)) {
+    throw new AccountingInputError("Expense amount is not a valid decimal value.");
+  }
+
+  const [whole, fraction = ""] = unsigned.split(".");
+  const padded = fraction.padEnd(3, "0");
+  let amount =
+    BigInt(whole || "0") * BigInt(100) +
+    BigInt(padded.slice(0, 2) || "0");
+
+  if (Number(padded[2] || "0") >= 5) {
+    amount += BigInt(1);
+  }
+
+  return negative ? -amount : amount;
+}
+
+
 function percentage(value: unknown) {
   const raw = String(value ?? "0").trim();
 
@@ -1143,7 +1166,7 @@ export async function postExpenseReport(
           line,
         ) =>
           sum +
-          minorUnits(
+          ledgerCents(
             line.amount,
           ),
         BigInt(0),
@@ -1151,7 +1174,7 @@ export async function postExpenseReport(
 
     if (
       gross !==
-      minorUnits(
+      ledgerCents(
         report.total_amount,
       )
     ) {
