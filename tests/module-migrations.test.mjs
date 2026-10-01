@@ -341,7 +341,7 @@ test('Accounting 2.4 setup schema is migration-backed and available on fresh ins
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.7\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.8\.0'/,
   );
 
   assert.match(
@@ -436,7 +436,7 @@ test('Accounting 2.5 Chart of Accounts is migration-backed and company scoped', 
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.7\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.8\.0'/,
   );
 
   assert.match(
@@ -519,7 +519,7 @@ test('Accounting 2.6 centralizes double-entry posting and reversal invariants', 
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.7\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.8\.0'/,
   );
 
   assert.match(
@@ -627,7 +627,7 @@ test('Accounting 2.7 journal workflow is migration-backed and fresh-install comp
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.7\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.8\.0'/,
   );
 
   assert.match(runtimeMigrations, /ACCOUNTING_2_6_0_TO_2_7_0/);
@@ -678,5 +678,108 @@ test('Accounting 2.7 journal workflow is migration-backed and fresh-install comp
     domainHooks,
     /accounting_recurring_journals[\s\S]*accounting_recurring_journal_lines[\s\S]*validated double-entry journal services/,
     'Generic enterprise CRUD must not bypass recurring journal validation.',
+  );
+});
+
+
+test('Accounting 2.8 opening balances are migration-backed and workflow protected', async () => {
+  const [
+    firstParty,
+    runtimeMigrations,
+    migration,
+    specialistDepth,
+    catalog,
+    specialistCatalog,
+    domainHooks,
+    ledgerEngine,
+    openingService,
+    openingUi,
+    accountingWorkspace,
+  ] = await Promise.all([
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/apps/accounting/migrations/2.7.0-to-2.8.0.ts'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+    source('lib/apps/enterprise/catalog.ts'),
+    source('lib/apps/enterprise/specialist-catalog.ts'),
+    source('lib/apps/enterprise/domain-hooks.ts'),
+    source('lib/apps/accounting/ledger-engine.ts'),
+    source('lib/apps/accounting/opening-balances.ts'),
+    source('app/apps/accounting/AccountingOpeningBalances.tsx'),
+    source('app/apps/accounting/AccountingWorkspace.tsx'),
+  ]);
+
+  assert.match(
+    firstParty,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.8\.0'/,
+  );
+
+  assert.match(runtimeMigrations, /ACCOUNTING_2_7_0_TO_2_8_0/);
+  assert.match(
+    migration,
+    /fromVersion:\s*'2\.7\.0'[\s\S]*toVersion:\s*'2\.8\.0'/,
+  );
+
+  for (const marker of [
+    'accounting_opening_balance_batches',
+    'accounting_opening_balance_lines',
+    'uq_accounting_opening_import_key',
+    'idx_accounting_opening_lines_subledger',
+    'validation_summary',
+    'posted_journal_id',
+  ]) {
+    assert.match(migration, new RegExp(marker));
+    assert.match(specialistDepth, new RegExp(marker));
+  }
+
+  assert.match(
+    catalog,
+    /accounting_opening_balance_batches[\s\S]*accounting_opening_balance_lines/,
+  );
+  assert.match(
+    specialistCatalog,
+    /accounting_opening_balance_batches[\s\S]*accounting_opening_balance_lines/,
+  );
+  assert.match(
+    domainHooks,
+    /accounting_opening_balance_batches[\s\S]*accounting_opening_balance_lines[\s\S]*validated Accounting migration workspace/,
+    'Generic enterprise CRUD must not bypass opening-balance migration validation.',
+  );
+
+  assert.match(
+    ledgerEngine,
+    /input\.postingKind ===[\s\S]*'opening'[\s\S]*10000[\s\S]*200/,
+    'Only opening postings may exceed the ordinary 200-line journal limit.',
+  );
+
+  assert.match(openingService, /createOpeningBalanceBatch/);
+  assert.match(openingService, /updateOpeningBalanceLine/);
+  assert.match(openingService, /revalidateOpeningBalanceBatch/);
+  assert.match(openingService, /postOpeningBalanceBatch/);
+  assert.match(openingService, /cancelOpeningBalanceBatch/);
+  assert.match(
+    openingService,
+    /asset_receivable[\s\S]*customer[\s\S]*liability_payable[\s\S]*vendor/,
+    'AR/AP opening balances must require matching subledger detail.',
+  );
+  assert.match(
+    openingService,
+    /postBalancedLedgerJournal[\s\S]*postingKind:[\s\S]*"opening"/,
+    'Opening balances must post through the authoritative ledger engine.',
+  );
+  assert.match(
+    openingService,
+    /LIMIT \$3[\s\S]*OFFSET \$4/,
+    'Opening-balance detail must be paginated for large migrations.',
+  );
+
+  assert.match(openingUi, /CSV import/);
+  assert.match(openingUi, /Manual entry/);
+  assert.match(openingUi, /Save & revalidate/);
+  assert.match(openingUi, /Receivables & payables reconciliation/);
+  assert.match(
+    accountingWorkspace,
+    /opening-balances[\s\S]*AccountingOpeningBalances/,
+    'Opening Balances must be a dedicated Accounting workspace surface.',
   );
 });
