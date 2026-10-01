@@ -9,6 +9,10 @@ import {
 } from '@/lib/apps/accounting/migrations/2.3.0-to-2.4.0';
 
 import {
+  ACCOUNTING_2_4_0_TO_2_5_0,
+} from '@/lib/apps/accounting/migrations/2.4.0-to-2.5.0';
+
+import {
   INVOICING_1_0_0_TO_2_0_0,
 } from '@/lib/apps/invoicing/migrations/1.0.0-to-2.0.0';
 
@@ -133,6 +137,7 @@ export const ENTERPRISE_RUNTIME_MIGRATIONS:
     ...ENTERPRISE_SPECIALIST_DEPTH_MIGRATIONS,
     ...ENTERPRISE_STRICT_PARITY_MIGRATIONS,
     ACCOUNTING_2_3_0_TO_2_4_0,
+    ACCOUNTING_2_4_0_TO_2_5_0,
   ];
 
 export const SALES_RUNTIME_MIGRATIONS:
