@@ -243,7 +243,7 @@ export default function AccountingStatements({
           </div>
           <h2>Statement intake</h2>
           <p>
-            Import CSV, OFX or QIF statements in each financial account's own currency. Foreign lines retain their original amount and dated exchange rate while reconciliation uses the translated base-currency value.
+            Import CSV, OFX or QIF statements in each financial account&apos;s own currency. Foreign lines retain their original amount and dated exchange rate while reconciliation uses the translated base-currency value.
           </p>
         </div>
 
