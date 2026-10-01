@@ -144,6 +144,12 @@ export function assertEnterpriseDomainMutationAllowed(
       table === 'accounting_localization_report_rules' ||
       table === 'accounting_localization_report_runs' ||
       table === 'accounting_localization_pack_history' ||
+      table === 'accounting_fx_settings' ||
+      table === 'accounting_fx_currencies' ||
+      table === 'accounting_exchange_rates' ||
+      table === 'accounting_fx_financial_movements' ||
+      table === 'accounting_fx_revaluation_runs' ||
+      table === 'accounting_fx_revaluation_lines' ||
       table ===
         'accounting_reconciliation_suggestions'
     )
