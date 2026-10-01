@@ -243,6 +243,8 @@ function postingText(
 function normalizeLines(
   lines:
     LedgerPostingLine[],
+  maxLines =
+    200,
 ) {
   if (
     !Array.isArray(
@@ -251,10 +253,12 @@ function normalizeLines(
     lines.length <
       2 ||
     lines.length >
-      200
+      maxLines
   ) {
     throw new LedgerPostingError(
-      'A posted journal needs between 2 and 200 accounting lines.',
+      'A posted journal needs between 2 and ' +
+      maxLines +
+      ' accounting lines.',
     );
   }
 
@@ -651,6 +655,10 @@ export async function postBalancedLedgerJournal(
   const normalized =
     normalizeLines(
       input.lines,
+      input.postingKind ===
+        'opening'
+        ? 10000
+        : 200,
     );
 
   const previous =
