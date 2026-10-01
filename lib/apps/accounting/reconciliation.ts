@@ -185,6 +185,7 @@ async function statementForUpdate(
        b.name AS bank_account_name,
        b.ledger_account_id::text,
        b.currency AS account_currency,
+       c.currency AS base_currency,
        b.status AS bank_account_status,
        s.transaction_date::text,
        s.value_date::text,
@@ -201,6 +202,8 @@ async function statementForUpdate(
        ON b.company_id=s.company_id
       AND b.id=s.bank_account_id
       AND b.deleted_at IS NULL
+     JOIN companies c
+       ON c.id=s.company_id
      WHERE s.company_id=$1
        AND s.id=$2
        AND s.deleted_at IS NULL
@@ -221,6 +224,42 @@ async function statementForUpdate(
   }
 
   return row;
+}
+
+
+async function recordForeignReconciliationMovement(
+  client: PoolClient,
+  input: {
+    companyId: string;
+    bankAccountId: string;
+    sourceType: string;
+    sourceId: string;
+    eventKey: string;
+    movementDate: string;
+    currency: string;
+    baseCurrency: string;
+    foreignAmount: string;
+    baseAmount: string;
+    exchangeRate: string;
+    userId: string;
+    metadata?: Record<string,unknown>;
+  },
+) {
+  if (input.currency.toUpperCase() === input.baseCurrency.toUpperCase()) return;
+
+  await client.query(
+    `INSERT INTO accounting_fx_financial_movements(
+       company_id,bank_account_id,source_type,source_id,source_event_key,
+       movement_date,currency,foreign_amount,base_amount,rate_to_base,status,created_by,metadata
+     )
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'posted',$11,$12::jsonb)
+     ON CONFLICT(company_id,bank_account_id,source_event_key) DO NOTHING`,
+    [
+      input.companyId,input.bankAccountId,input.sourceType,input.sourceId,input.eventKey,
+      input.movementDate,input.currency,input.foreignAmount,input.baseAmount,input.exchangeRate,
+      input.userId,JSON.stringify(input.metadata || {}),
+    ],
+  );
 }
 
 
@@ -1628,6 +1667,22 @@ export async function applyReconciliationRule(input: unknown) {
       requestHash:hash,
     });
 
+    await recordForeignReconciliationMovement(client,{
+      companyId:context.companyId,
+      bankAccountId:String(statement.bank_account_id),
+      sourceType:"bank_reconciliation_adjustment",
+      sourceId:reconciliation.id,
+      eventKey:"bank-reconciliation:"+reconciliation.id+":adjustment",
+      movementDate:String(statement.transaction_date),
+      currency:String(statement.currency),
+      baseCurrency:String(statement.base_currency),
+      foreignAmount:String(statement.amount),
+      baseAmount:String(statement.base_amount),
+      exchangeRate:String(statement.exchange_rate),
+      userId:context.userId,
+      metadata:{ statementLineId,ruleId,journalId:journal.journalId },
+    });
+
     await client.query("COMMIT");
 
     await recordWorkspaceAuditEvent({
@@ -1829,8 +1884,20 @@ export async function reverseReconciliation(input: unknown) {
          r.status,
          r.adjustment_journal_id::text,
          r.reversal_journal_id::text,
-         r.reconciliation_number
+         r.reconciliation_number,
+         s.bank_account_id::text,
+         COALESCE(s.currency,b.currency)::text AS statement_currency,
+         s.amount::text AS statement_foreign_amount,
+         COALESCE(s.base_amount,s.amount)::text AS statement_base_amount,
+         COALESCE(s.exchange_rate,1)::text AS statement_exchange_rate,
+         c.currency AS base_currency
        FROM accounting_reconciliations r
+       JOIN accounting_bank_statement_lines s
+         ON s.company_id=r.company_id AND s.id=r.statement_line_id
+       JOIN accounting_bank_accounts b
+         ON b.company_id=s.company_id AND b.id=s.bank_account_id
+       JOIN companies c
+         ON c.id=r.company_id
        WHERE r.company_id=$1
          AND r.id=$2
          AND r.deleted_at IS NULL
@@ -1881,6 +1948,24 @@ export async function reverseReconciliation(input: unknown) {
         sourceEventKey:"accounting:bank-reconciliation:"+id+":reverse",
       });
       reversalJournalId = reversal.journalId;
+
+      const reverseForeign = signedCents(reconciliation.statement_foreign_amount) * BigInt(-1);
+      const reverseBase = signedCents(reconciliation.statement_base_amount) * BigInt(-1);
+      await recordForeignReconciliationMovement(client,{
+        companyId:context.companyId,
+        bankAccountId:String(reconciliation.bank_account_id),
+        sourceType:"bank_reconciliation_reversal",
+        sourceId:id,
+        eventKey:"bank-reconciliation:"+id+":adjustment:reverse",
+        movementDate:reversalDate,
+        currency:String(reconciliation.statement_currency),
+        baseCurrency:String(reconciliation.base_currency),
+        foreignAmount:decimalAmount(reverseForeign),
+        baseAmount:decimalAmount(reverseBase),
+        exchangeRate:String(reconciliation.statement_exchange_rate),
+        userId:context.userId,
+        metadata:{ reversalOf:id,reversalJournalId },
+      });
     }
 
     await client.query(
