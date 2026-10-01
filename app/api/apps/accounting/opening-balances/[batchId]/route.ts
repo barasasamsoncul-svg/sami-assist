@@ -7,6 +7,7 @@ import {
   cancelOpeningBalanceBatch,
   postOpeningBalanceBatch,
   revalidateOpeningBalanceBatch,
+  updateOpeningBalanceLine,
 } from "@/lib/apps/accounting/opening-balances";
 import {
   LedgerPostingError,
@@ -137,7 +138,12 @@ export async function POST(
             ? await cancelOpeningBalanceBatch(
                 payload,
               )
-            : null;
+            : body.action ===
+                "update-line"
+              ? await updateOpeningBalanceLine(
+                  payload,
+                )
+              : null;
 
     if (!result) {
       return respond(
