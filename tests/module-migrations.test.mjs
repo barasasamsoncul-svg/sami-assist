@@ -341,7 +341,7 @@ test('Accounting 2.4 setup schema is migration-backed and available on fresh ins
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.10\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.11\.0'/,
   );
 
   assert.match(
@@ -436,7 +436,7 @@ test('Accounting 2.5 Chart of Accounts is migration-backed and company scoped', 
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.10\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.11\.0'/,
   );
 
   assert.match(
@@ -519,7 +519,7 @@ test('Accounting 2.6 centralizes double-entry posting and reversal invariants', 
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.10\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.11\.0'/,
   );
 
   assert.match(
@@ -627,7 +627,7 @@ test('Accounting 2.7 journal workflow is migration-backed and fresh-install comp
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.10\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.11\.0'/,
   );
 
   assert.match(runtimeMigrations, /ACCOUNTING_2_6_0_TO_2_7_0/);
@@ -711,7 +711,7 @@ test('Accounting 2.8 opening balances are migration-backed and workflow protecte
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.10\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.11\.0'/,
   );
 
   assert.match(runtimeMigrations, /ACCOUNTING_2_7_0_TO_2_8_0/);
@@ -900,7 +900,7 @@ test('Accounting 2.9 Payables is migration-backed and ledger controlled', async 
     source('lib/apps/enterprise/specialist-depth.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.10\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.11\.0'/);
   assert.match(migrations,/ACCOUNTING_2_8_0_TO_2_9_0/);
 
   for (const marker of [
@@ -957,7 +957,7 @@ test('Accounting 2.10 Purchasing controls are migration-backed and gate PO bills
     source('lib/apps/enterprise/specialist-depth.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.10\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.11\.0'/);
   assert.match(migrations,/ACCOUNTING_2_9_0_TO_2_10_0/);
   assert.match(
     migration,
@@ -1053,4 +1053,94 @@ test('Accounting 2.10 Purchasing controls are migration-backed and gate PO bills
   );
   assert.match(catalog,/accounting_purchase_orders/);
   assert.match(specialistCatalog,/accounting_purchase_orders/);
+});
+
+
+test('Accounting 2.11 controls approved expenses and employee reimbursements without duplicating claims', async () => {
+  const [
+    manifest,
+    migrations,
+    migration,
+    expenses,
+    workspace,
+    foundation,
+    domainHooks,
+    financeTransitions,
+    specialistDepth,
+  ] = await Promise.all([
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/apps/accounting/migrations/2.10.0-to-2.11.0.ts'),
+    source('lib/apps/accounting/expenses.ts'),
+    source('app/apps/accounting/AccountingWorkspace.tsx'),
+    source('app/apps/accounting/AccountingFoundationPanel.tsx'),
+    source('lib/apps/enterprise/domain-hooks.ts'),
+    source('lib/apps/enterprise/specialist-finance-transitions.ts'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+  ]);
+
+  assert.match(
+    manifest,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.11\.0'[\s\S]*optionalDepends:\s*\['expenses'\]/,
+  );
+  assert.match(migrations,/ACCOUNTING_2_10_0_TO_2_11_0/);
+  assert.match(
+    migration,
+    /fromVersion:\s*'2\.10\.0'[\s\S]*toVersion:\s*'2\.11\.0'/,
+  );
+
+  for (const marker of [
+    'accounting_expense_category_mappings',
+    'accounting_expense_report_postings',
+    'accounting_expense_line_postings',
+    'accounting_expense_reimbursements',
+    'accounting_expense_reimbursement_balances',
+    'employee_expense_payable_account_id',
+    'corporate_card_clearing_account_id',
+  ]) {
+    assert.match(migration,new RegExp(marker),'Expense accounting migration must own '+marker+'.');
+    assert.match(specialistDepth,new RegExp(marker),'Fresh Accounting installs must include '+marker+'.');
+  }
+
+  assert.doesNotMatch(
+    migration,
+    /REFERENCES public\.expense_(?:categories|reports|report_lines)/,
+    'Accounting migrations must not require optional Expenses tables to exist.',
+  );
+
+  for (const marker of [
+    'postExpenseReport',
+    'reverseExpenseReportPosting',
+    'reimburseExpenseReport',
+    'reverseExpenseReimbursement',
+    'postBalancedLedgerJournal',
+    'reversePostedLedgerJournal',
+    'requestHash',
+    'expensesTablesAvailable',
+  ]) {
+    assert.match(expenses,new RegExp(marker));
+  }
+
+  assert.match(
+    expenses,
+    /status[\s\S]*approved[\s\S]*before posting it to Accounting/,
+    'Only approved operational expense reports may reach the ledger.',
+  );
+  assert.match(
+    expenses,
+    /outstanding[\s\S]*Reimbursement exceeds the outstanding employee expense balance/,
+    'Employee reimbursements must not over-settle the Accounting payable.',
+  );
+  assert.match(
+    financeTransitions,
+    /accounting_expense_report_postings[\s\S]*outstanding employee reimbursement in Accounting/,
+    'Expenses cannot mark a report reimbursed while Accounting still carries a payable.',
+  );
+  assert.match(
+    domainHooks,
+    /accounting_expense_category_mappings[\s\S]*accounting_expense_reimbursements[\s\S]*validated Accounting expense services/,
+    'Generic CRUD must not bypass expense accounting controls.',
+  );
+  assert.match(workspace,/Expenses & Reimbursements[\s\S]*AccountingExpenses/);
+  assert.match(foundation,/"expenses"/);
 });

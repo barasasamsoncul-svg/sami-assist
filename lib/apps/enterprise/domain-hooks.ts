@@ -103,7 +103,15 @@ export function assertEnterpriseDomainMutationAllowed(
       table ===
         'accounting_goods_receipt_lines' ||
       table ===
-        'accounting_purchase_matches'
+        'accounting_purchase_matches' ||
+      table ===
+        'accounting_expense_category_mappings' ||
+      table ===
+        'accounting_expense_report_postings' ||
+      table ===
+        'accounting_expense_line_postings' ||
+      table ===
+        'accounting_expense_reimbursements'
     )
   ) {
     throw new Error(
@@ -150,6 +158,15 @@ export function assertEnterpriseDomainMutationAllowed(
             table ===
               'accounting_purchase_matches'
             ? 'Purchasing controls must be changed through the validated Accounting purchasing services.'
+          : table ===
+              'accounting_expense_category_mappings' ||
+            table ===
+              'accounting_expense_report_postings' ||
+            table ===
+              'accounting_expense_line_postings' ||
+            table ===
+              'accounting_expense_reimbursements'
+            ? 'Expense accounting must be changed through the validated Accounting expense services.'
           : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
   }

@@ -24,10 +24,10 @@ This is the first usable slice, not completion of the full Accounting module. Ne
 6. Receivables: dedicated Accounting AR control workspace over the authoritative Invoicing subledger, base-currency open-item aging, customer exposure, customer credits, 90-day DSO estimate, invoice drill-through, filters/pagination, receivable and customer-credit GL reconciliation, and explicit legacy opening-AR treatment without duplicating or mutating Invoicing transactions.
 7. Payables: company-scoped vendor master, vendor bills and credits, draft/approval/posting/reversal lifecycle, authoritative double-entry posting to the configured AP control account, vendor-credit applications, server-side filters/pagination, AP aging, legacy opening-AP inclusion, GL-to-subledger control reconciliation, exact quantity/FX arithmetic, protected workflow tables, dedicated standalone Accounting UI/API routes, and migration-backed 2.9 schema.
 8. Purchasing controls: approval-band policies with role/user approvers, purchase requisitions, controlled requisition conversion, purchase orders, serialized document numbering, retry-safe create keys with payload hashes, goods/service receipts, partial receiving, receipt overrun protection, two-way/three-way vendor-bill matching, base-currency and per-line receipt variance checks, configurable quantity/price/amount tolerances, authorized exception overrides, AP posting guard for PO-linked bills, protected workflow tables, complete audit events, dedicated standalone Accounting UI/API routes, and migration-backed 2.10 schema with fresh-install parity.
+9. Expenses and reimbursements: Accounting control layer over the existing Expenses subledger, optional-app-safe 2.11 migration, category-to-ledger mappings, default expense/employee payable/corporate-card control accounts, approved-report-only ledger posting, immutable posting provenance, partial retry-safe employee reimbursements, outstanding payable balances, linked compensating reversals, cross-app reimbursement-state protection, dedicated responsive Accounting UI/API, protected workflow tables, audit events, and fresh-install parity without duplicating expense claims.
 
 ## Remaining depth, in the agreed order
 
-9. Expenses and reimbursements.
 10. Bank, cash and mobile money.
 11. Statement imports and supported feeds.
 12. Reconciliation.

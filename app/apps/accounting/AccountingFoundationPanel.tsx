@@ -27,6 +27,7 @@ export const ACCOUNTING_SECTIONS = [
   "receivables",
   "payables",
   "purchasing",
+  "expenses",
   "setup",
 ] as const;
 export type AccountingSection = (typeof ACCOUNTING_SECTIONS)[number];
@@ -98,6 +99,7 @@ export default function AccountingFoundationPanel({
     receivables: "Accounts receivable",
     payables: "Accounts payable",
     purchasing: "Purchasing controls",
+    expenses: "Expenses & reimbursements",
     setup: "Accounting setup",
   };
   const descriptions = {
@@ -123,6 +125,8 @@ export default function AccountingFoundationPanel({
       "Control vendor bills, credits, aging and the Accounts Payable reconciliation to the ledger.",
     purchasing:
       "Control requisitions, purchase orders, goods receipts and vendor-bill matching before Accounts Payable posting.",
+    expenses:
+      "Post approved employee expenses, classify categories and control reimbursement settlement without duplicating the Expenses app.",
     setup:
       "Configure fiscal policy, control accounts, tax mappings, FX accounts, write-offs and period locks for this company.",
   };

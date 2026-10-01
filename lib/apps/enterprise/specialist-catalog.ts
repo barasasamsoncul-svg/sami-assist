@@ -21,6 +21,10 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
     'accounting_goods_receipts',
     'accounting_goods_receipt_lines',
     'accounting_purchase_matches',
+    'accounting_expense_category_mappings',
+    'accounting_expense_report_postings',
+    'accounting_expense_line_postings',
+    'accounting_expense_reimbursements',
   ],
   inventory: [
     'inventory_lots',
