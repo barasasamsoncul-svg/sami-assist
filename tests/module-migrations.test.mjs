@@ -782,4 +782,17 @@ test('Accounting 2.8 opening balances are migration-backed and workflow protecte
     /opening-balances[\s\S]*AccountingOpeningBalances/,
     'Opening Balances must be a dedicated Accounting workspace surface.',
   );
+
+  const journalService = await source('lib/apps/accounting/journals.ts');
+  const journalUi = await source('app/apps/accounting/AccountingJournals.tsx');
+  assert.match(
+    journalService,
+    /opening_balance_batch/,
+    'Generic journal reversal must not desynchronize a posted opening-balance batch.',
+  );
+  assert.match(
+    journalUi,
+    /selected\.source_type !==[\s\S]*"opening_balance_batch"/,
+    'Opening journals must not expose the generic reversal button.',
+  );
 });
