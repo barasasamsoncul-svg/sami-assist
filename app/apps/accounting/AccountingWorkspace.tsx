@@ -18,6 +18,7 @@ import AccountingModuleShell, {
 import AccountingWorkspaceClient from '@/app/apps/accounting/AccountingWorkspaceClient';
 import AccountingChartOfAccounts from '@/app/apps/accounting/AccountingChartOfAccounts';
 import AccountingJournals from '@/app/apps/accounting/AccountingJournals';
+import AccountingOpeningBalances from '@/app/apps/accounting/AccountingOpeningBalances';
 
 import {
   getAccountingFoundation,
@@ -34,6 +35,9 @@ import {
 import {
   getAccountingJournals,
 } from '@/lib/apps/accounting/journals';
+import {
+  getOpeningBalanceWorkspace,
+} from '@/lib/apps/accounting/opening-balances';
 
 const MODULE_KEY = 'accounting';
 
@@ -48,6 +52,7 @@ export default async function AccountingWorkspace({
     accountId?: string;
     page?: string;
     journalId?: string;
+    batchId?: string;
   };
 }) {
   const requestedSection =
@@ -116,6 +121,15 @@ export default async function AccountingWorkspace({
     null =
       null;
 
+  let openingBalanceWorkspace:
+    Awaited<
+      ReturnType<
+        typeof getOpeningBalanceWorkspace
+      >
+    > |
+    null =
+      null;
+
   if (
     dedicatedSection &&
     dedicatedSection !==
@@ -123,7 +137,9 @@ export default async function AccountingWorkspace({
     dedicatedSection !==
       'journals' &&
     dedicatedSection !==
-      'recurring-journals'
+      'recurring-journals' &&
+    dedicatedSection !==
+      'opening-balances'
   ) {
     try {
       foundation =
@@ -188,6 +204,27 @@ export default async function AccountingWorkspace({
           Error
           ? error.message
           : 'Accounting journals could not be loaded.';
+    }
+  }
+
+  if (
+    dedicatedSection ===
+      'opening-balances'
+  ) {
+    try {
+      openingBalanceWorkspace =
+        await getOpeningBalanceWorkspace(
+          filters.batchId,
+          filters.page,
+        );
+    } catch (
+      error
+    ) {
+      foundationError =
+        error instanceof
+          Error
+          ? error.message
+          : 'Opening balances could not be loaded.';
     }
   }
 
@@ -343,6 +380,25 @@ export default async function AccountingWorkspace({
       'Ledger',
       'Open the company chart of accounts.',
     ),
+
+    {
+      key:
+        'opening-balances',
+      label:
+        'Opening Balances',
+      href:
+        appBaseHref +
+        '/opening-balances',
+      description:
+        'Import, validate and post migration balances.',
+      sectionLabel:
+        'Ledger',
+      badge:
+        openingBalanceWorkspace
+          ?.counts
+          .validated,
+    },
+
 
     data.capabilities
       .canReport
@@ -513,7 +569,44 @@ export default async function AccountingWorkspace({
       {
         dedicatedSection
           ? (
-              (
+              dedicatedSection ===
+                'opening-balances'
+                ? (
+                    openingBalanceWorkspace
+                      ? (
+                          <AccountingOpeningBalances
+                            data={
+                              openingBalanceWorkspace
+                            }
+                            canCreate={
+                              data.capabilities
+                                .canCreate
+                            }
+                            canEdit={
+                              data.capabilities
+                                .canEdit
+                            }
+                          />
+                        )
+                      : (
+                          <div
+                            role="alert"
+                            className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-6 text-[var(--foreground)]"
+                          >
+                            {
+                              foundationError ||
+                              'Opening balances could not be loaded.'
+                            }{' '}
+                            <Link
+                              href="/apps/accounting"
+                              className="font-bold underline underline-offset-4"
+                            >
+                              Return to Accounting
+                            </Link>
+                          </div>
+                        )
+                  )
+                : (
                 dedicatedSection ===
                   'journals' ||
                 dedicatedSection ===
