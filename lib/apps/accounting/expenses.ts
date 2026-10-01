@@ -1071,11 +1071,36 @@ export async function saveExpenseCategoryMapping(
       "COMMIT",
     );
 
+    const mappingId =
+      String(
+        result.rows[0].id,
+      );
+
+    await recordWorkspaceAuditEvent({
+      tenantId: context.tenantId,
+      companyId: context.companyId,
+      userId: context.userId,
+      action: "accounting.expenses.category_mapping_saved",
+      module: "accounting",
+      resourceType: "accounting_expense_category_mappings",
+      resourceId: mappingId,
+      summary: "Expense category ledger mapping saved",
+      result: "success",
+      metadata: {
+        categoryId,
+        expenseAccountId,
+        inputTaxAccountId,
+        recoverableTaxPercent,
+      },
+    }).catch(error =>
+      console.error(
+        "[Accounting] Expense category mapping audit delivery failed",
+        error,
+      ),
+    );
+
     return {
-      id:
-        String(
-          result.rows[0].id,
-        ),
+      id: mappingId,
     };
   } catch (error) {
     try {
@@ -1939,6 +1964,27 @@ export async function reverseExpenseReportPosting(
       "COMMIT",
     );
 
+    await recordWorkspaceAuditEvent({
+      tenantId: context.tenantId,
+      companyId: context.companyId,
+      userId: context.userId,
+      action: "accounting.expenses.report_reversed",
+      module: "accounting",
+      resourceType: "accounting_expense_report_postings",
+      resourceId: String(posting.id),
+      summary: "Expense report ledger posting reversed",
+      result: "success",
+      metadata: {
+        expenseReportId: reportId,
+        reversalJournalId: reversal.journalId,
+      },
+    }).catch(error =>
+      console.error(
+        "[Accounting] Expense posting reversal audit delivery failed",
+        error,
+      ),
+    );
+
     return {
       journalId:
         reversal.journalId,
@@ -2598,6 +2644,27 @@ export async function reverseExpenseReimbursement(
 
     await client.query(
       "COMMIT",
+    );
+
+    await recordWorkspaceAuditEvent({
+      tenantId: context.tenantId,
+      companyId: context.companyId,
+      userId: context.userId,
+      action: "accounting.expenses.reimbursement_reversed",
+      module: "accounting",
+      resourceType: "accounting_expense_reimbursements",
+      resourceId: reimbursementId,
+      summary: "Employee expense reimbursement reversed",
+      result: "success",
+      metadata: {
+        expenseReportId: String(reimbursement.expense_report_id),
+        reversalJournalId: reversal.journalId,
+      },
+    }).catch(error =>
+      console.error(
+        "[Accounting] Expense reimbursement reversal audit delivery failed",
+        error,
+      ),
     );
 
     return {
