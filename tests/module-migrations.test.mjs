@@ -1304,6 +1304,16 @@ test('Accounting 2.13 imports statements and protects normalized feed intake', a
     'Imports for one financial account must be serialized before duplicate checks.',
   );
   assert.match(
+    statements,
+    /SAVEPOINT[\s\S]*ROLLBACK TO SAVEPOINT[\s\S]*RELEASE SAVEPOINT/,
+    'A bad statement row must not abort the entire PostgreSQL import batch.',
+  );
+  assert.match(
+    statements,
+    /cancelStatementImportBatch[\s\S]*matched reconciliation lines cannot be undone/,
+    'Statement imports may be undone only before matched reconciliation exists.',
+  );
+  assert.match(
     domainHooks,
     /accounting_bank_feed_connections[\s\S]*accounting_statement_import_batches[\s\S]*accounting_bank_statement_lines[\s\S]*validated Accounting statement import services/,
     'Generic CRUD must not bypass statement intake controls.',
