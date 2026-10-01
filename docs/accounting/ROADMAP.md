@@ -31,9 +31,10 @@ This is the first usable slice, not completion of the full Accounting module. Ne
 
 13. Payments and settlements: company-scoped vendor payment batches and provider settlements, draft/approval/posting/cancellation lifecycle, exact full and partial bill allocations, AP aging/balance integration, original bill control-account debits, retry-key/payload and external-reference duplicate protection, source-balance/overdraft checks with serialized financial-account locks, settlement gross/net/fee posting, reconciliation-aware linked reversals, bill reversal guards, remittance CSV downloads, protected workflow tables, audit events, dedicated Accounting UI/API, and migration-backed 2.15 schema with shared fresh-install SQL. Records externally completed payments; does not initiate bank payouts. Customer receipts remain owned by Invoicing. Cross-currency payments remain item 17.
 
+14. Tax engine: company-scoped tax codes with effective dates, input/output/both direction, exclusive/inclusive calculation, up to four-decimal rates, recoverability percentages, per-code control-account mappings, compound tax groups with ordered components, immutable vendor-line tax snapshots, exact server-side AP tax calculation, recoverable/non-recoverable purchase-tax splitting, input-tax posting into the authoritative ledger, source-to-GL input/output reconciliation, Accounting-owned purchase tax register, read-only Invoicing-owned sales tax register, controlled draft/approval/post/reversal tax adjustments, protected workflow tables, dedicated responsive Tax Engine UI/API, migration-backed 2.16 schema, and verified 2.15→2.16 tenant upgrade rehearsal. Kenya fiscal/eTIMS behavior remains item 15; international jurisdiction/localization rules remain item 16.
+
 ## Remaining depth, in the agreed order
 
-14. Tax engine.
 15. Kenya accounting and shared eTIMS integration.
 16. International localization.
 17. Foreign currency accounting.
@@ -59,7 +60,7 @@ Keep changes scoped to Accounting. Reuse the existing authoritative ledger and t
 
 ## Validation
 
-`node --conditions=react-server --import tsx --test tests/accounting-foundation.test.mjs tests/accounting-statements.test.mjs tests/accounting-payments.test.mjs`
+`node --conditions=react-server --import tsx --test tests/accounting-foundation.test.mjs tests/accounting-statements.test.mjs tests/accounting-payments.test.mjs tests/accounting-tax.test.mjs`
 
 Set `TEST_DATABASE_URL` to a disposable PostgreSQL database to run transaction and reporting tests (including simultaneous duplicate requests). Tests create and remove an isolated random schema. For local embedded PostgreSQL testing, `PGLITE_TEST_MODULE` can point to an installed PGlite module; the simultaneous-connection test requires real PostgreSQL. The Accounting GitHub Actions workflow supplies PostgreSQL automatically.
 
