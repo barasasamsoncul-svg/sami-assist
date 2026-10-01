@@ -1415,6 +1415,16 @@ test('Accounting 2.14 provides immutable bank reconciliation with split matches 
   );
   assert.match(
     reconciliation,
+    /sourceEventKey:"accounting:bank-reconciliation-rule:"\+key/,
+    'Rule adjustment journals must use the reconciliation request key so retries replay but post-reversal reposts create a new journal.',
+  );
+  assert.match(
+    reconciliation,
+    /cannot target another bank, cash or mobile-money ledger[\s\S]*Use Internal Transfer instead/,
+    'Reconciliation rules must not bypass the controlled internal-transfer workflow.',
+  );
+  assert.match(
+    reconciliation,
     /status='accepted'[\s\S]*status='stale'/,
     'Accepted suggestion provenance must be retained while alternatives become stale.',
   );
