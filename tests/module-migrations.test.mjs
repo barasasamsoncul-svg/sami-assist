@@ -341,7 +341,7 @@ test('Accounting 2.4 setup schema is migration-backed and available on fresh ins
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.12\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.13\.0'/,
   );
 
   assert.match(
@@ -436,7 +436,7 @@ test('Accounting 2.5 Chart of Accounts is migration-backed and company scoped', 
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.12\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.13\.0'/,
   );
 
   assert.match(
@@ -519,7 +519,7 @@ test('Accounting 2.6 centralizes double-entry posting and reversal invariants', 
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.12\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.13\.0'/,
   );
 
   assert.match(
@@ -627,7 +627,7 @@ test('Accounting 2.7 journal workflow is migration-backed and fresh-install comp
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.12\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.13\.0'/,
   );
 
   assert.match(runtimeMigrations, /ACCOUNTING_2_6_0_TO_2_7_0/);
@@ -711,7 +711,7 @@ test('Accounting 2.8 opening balances are migration-backed and workflow protecte
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.12\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.13\.0'/,
   );
 
   assert.match(runtimeMigrations, /ACCOUNTING_2_7_0_TO_2_8_0/);
@@ -900,7 +900,7 @@ test('Accounting 2.9 Payables is migration-backed and ledger controlled', async 
     source('lib/apps/enterprise/specialist-depth.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.12\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.13\.0'/);
   assert.match(migrations,/ACCOUNTING_2_8_0_TO_2_9_0/);
 
   for (const marker of [
@@ -957,7 +957,7 @@ test('Accounting 2.10 Purchasing controls are migration-backed and gate PO bills
     source('lib/apps/enterprise/specialist-depth.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.12\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.13\.0'/);
   assert.match(migrations,/ACCOUNTING_2_9_0_TO_2_10_0/);
   assert.match(
     migration,
@@ -1081,7 +1081,7 @@ test('Accounting 2.11 controls approved expenses and employee reimbursements wit
 
   assert.match(
     manifest,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.12\.0'[\s\S]*optionalDepends:\s*\['expenses'\]/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.13\.0'[\s\S]*optionalDepends:\s*\['expenses'\]/,
   );
   assert.match(migrations,/ACCOUNTING_2_10_0_TO_2_11_0/);
   assert.match(
@@ -1171,7 +1171,7 @@ test('Accounting 2.12 controls bank cash mobile money and internal transfers', a
     source('lib/apps/enterprise/specialist-catalog.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.12\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.13\.0'/);
   assert.match(migrations,/ACCOUNTING_2_11_0_TO_2_12_0/);
   assert.match(
     migration,
@@ -1229,4 +1229,87 @@ test('Accounting 2.12 controls bank cash mobile money and internal transfers', a
   assert.match(specialistCatalog,/accounting_internal_transfers/);
   assert.match(workspace,/Bank, Cash & Mobile Money[\s\S]*AccountingBankCash/);
   assert.match(foundation,/"bank-cash"/);
+});
+
+
+test('Accounting 2.13 imports statements and protects normalized feed intake', async () => {
+  const [
+    manifest,
+    migrations,
+    migration,
+    statements,
+    workspace,
+    foundation,
+    domainHooks,
+    specialistDepth,
+    catalog,
+    specialistCatalog,
+  ] = await Promise.all([
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/apps/accounting/migrations/2.12.0-to-2.13.0.ts'),
+    source('lib/apps/accounting/statements.ts'),
+    source('app/apps/accounting/AccountingWorkspace.tsx'),
+    source('app/apps/accounting/AccountingFoundationPanel.tsx'),
+    source('lib/apps/enterprise/domain-hooks.ts'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+    source('lib/apps/enterprise/catalog.ts'),
+    source('lib/apps/enterprise/specialist-catalog.ts'),
+  ]);
+
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.13\.0'/);
+  assert.match(migrations,/ACCOUNTING_2_12_0_TO_2_13_0/);
+  assert.match(
+    migration,
+    /fromVersion:\s*'2\.12\.0'[\s\S]*toVersion:\s*'2\.13\.0'/,
+  );
+
+  for (const marker of [
+    'accounting_bank_feed_connections',
+    'accounting_statement_import_batches',
+    'accounting_statement_import_rows',
+    'external_transaction_id',
+    'fingerprint',
+    'raw_details',
+    'uq_accounting_statement_import_request',
+    'uq_accounting_statement_source_file',
+    'uq_accounting_statement_external_transaction',
+  ]) {
+    assert.match(migration,new RegExp(marker),'Statement migration must own '+marker+'.');
+    assert.match(specialistDepth,new RegExp(marker),'Fresh Accounting installs must include '+marker+'.');
+  }
+
+  for (const marker of [
+    'parseCsv',
+    'parseOfx',
+    'parseQif',
+    'importStatementFile',
+    'createFeedConnection',
+    'ingestNormalizedFeed',
+    'acceptPossibleDuplicate',
+    'pg_advisory_xact_lock',
+    'sourceSha',
+  ]) {
+    assert.match(statements,new RegExp(marker));
+  }
+
+  assert.match(
+    statements,
+    /duplicate external transaction ID cannot be force-imported/,
+    'Authoritative provider transaction IDs must never be bypassed as duplicates.',
+  );
+  assert.match(
+    statements,
+    /statement-account:/,
+    'Imports for one financial account must be serialized before duplicate checks.',
+  );
+  assert.match(
+    domainHooks,
+    /accounting_bank_feed_connections[\s\S]*accounting_statement_import_batches[\s\S]*accounting_bank_statement_lines[\s\S]*validated Accounting statement import services/,
+    'Generic CRUD must not bypass statement intake controls.',
+  );
+  assert.match(catalog,/accounting_statement_import_batches/);
+  assert.match(specialistCatalog,/accounting_statement_import_rows/);
+  assert.match(workspace,/Statements & Feeds[\s\S]*AccountingStatements/);
+  assert.match(foundation,/"statements"/);
 });
