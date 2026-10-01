@@ -29,6 +29,7 @@ export const ACCOUNTING_SECTIONS = [
   "purchasing",
   "expenses",
   "bank-cash",
+  "statements",
   "setup",
 ] as const;
 export type AccountingSection = (typeof ACCOUNTING_SECTIONS)[number];
@@ -102,6 +103,7 @@ export default function AccountingFoundationPanel({
     purchasing: "Purchasing controls",
     expenses: "Expenses & reimbursements",
     "bank-cash": "Bank, cash & mobile money",
+    statements: "Statements & feeds",
     setup: "Accounting setup",
   };
   const descriptions = {
@@ -131,6 +133,8 @@ export default function AccountingFoundationPanel({
       "Post approved employee expenses, classify categories and control reimbursement settlement without duplicating the Expenses app.",
     "bank-cash":
       "Manage bank accounts, cash tills and mobile-money wallets against the authoritative ledger, including controlled internal transfers.",
+    statements:
+      "Import CSV, OFX and QIF statements, inspect duplicates and errors, and manage provider-neutral feed adapters before reconciliation.",
     setup:
       "Configure fiscal policy, control accounts, tax mappings, FX accounts, write-offs and period locks for this company.",
   };
