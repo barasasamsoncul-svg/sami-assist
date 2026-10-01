@@ -139,6 +139,11 @@ export function assertEnterpriseDomainMutationAllowed(
       table === 'accounting_kenya_settings' ||
       table === 'accounting_kenya_tax_mappings' ||
       table === 'accounting_kenya_sync_runs' ||
+      table === 'accounting_localization_settings' ||
+      table === 'accounting_localization_report_boxes' ||
+      table === 'accounting_localization_report_rules' ||
+      table === 'accounting_localization_report_runs' ||
+      table === 'accounting_localization_pack_history' ||
       table ===
         'accounting_reconciliation_suggestions'
     )
