@@ -12,6 +12,9 @@ import {
   AccountingInputError,
 } from "@/lib/apps/accounting/validation";
 import {
+  LedgerPostingError,
+} from "@/lib/apps/accounting/ledger-engine";
+import {
   EnterpriseModuleError,
 } from "@/lib/apps/enterprise/service";
 import {
@@ -158,6 +161,8 @@ export async function POST(
       error instanceof
         AccountingInputError ||
       error instanceof
+        LedgerPostingError ||
+      error instanceof
         SyntaxError
     ) {
       return respond(
@@ -168,7 +173,10 @@ export async function POST(
               ? "Enter a valid journal action."
               : error.message,
         },
-        400,
+        error instanceof
+          LedgerPostingError
+          ? 409
+          : 400,
       );
     }
 
