@@ -1441,16 +1441,17 @@ export async function acceptPossibleDuplicate(input: unknown) {
       `INSERT INTO accounting_bank_statement_lines (
          company_id,bank_account_id,transaction_date,description,external_reference,amount,
          reconciliation_status,import_batch_id,import_row_id,source_type,
-         fingerprint,value_date,counterparty,raw_details,created_by,updated_by
+         fingerprint,value_date,counterparty,raw_details,currency,exchange_rate,base_amount,created_by,updated_by
        )
        VALUES (
-         $1,$2,$3,$4,$5,$6,'unmatched',$7,$8,$9,$10,$11,$12,$13,$14,$14
+         $1,$2,$3,$4,$5,$6,'unmatched',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$17
        )
        RETURNING id::text`,
       [
         context.companyId,row.bank_account_id,row.transaction_date,row.description,
         row.external_reference,row.amount,row.batch_id,rowId,row.source_type,row.fingerprint,
-        row.value_date,row.counterparty,JSON.stringify(row.raw_payload || {}),context.userId,
+        row.value_date,row.counterparty,JSON.stringify(row.raw_payload || {}),
+        row.currency,row.exchange_rate,row.base_amount,context.userId,
       ],
     );
 
