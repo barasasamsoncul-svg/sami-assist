@@ -67,6 +67,9 @@ ALTER TABLE public.accounts
   ADD COLUMN IF NOT EXISTS company_id UUID
     REFERENCES public.companies(id)
     ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS created_by UUID,
+  ADD COLUMN IF NOT EXISTS updated_by UUID,
+  ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS normal_balance VARCHAR(10)
     NOT NULL DEFAULT 'debit'
     CHECK (normal_balance IN ('debit','credit')),
@@ -107,6 +110,11 @@ ALTER TABLE public.journals
   ADD COLUMN IF NOT EXISTS company_id UUID
     REFERENCES public.companies(id)
     ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS created_by UUID,
+  ADD COLUMN IF NOT EXISTS updated_by UUID,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ
+    NOT NULL DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS source_module VARCHAR(80),
   ADD COLUMN IF NOT EXISTS source_type VARCHAR(120),
   ADD COLUMN IF NOT EXISTS source_id VARCHAR(160),
@@ -142,7 +150,12 @@ CREATE INDEX IF NOT EXISTS idx_journals_company_source
 ALTER TABLE public.journal_lines
   ADD COLUMN IF NOT EXISTS company_id UUID
     REFERENCES public.companies(id)
-    ON DELETE CASCADE;
+    ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS created_by UUID,
+  ADD COLUMN IF NOT EXISTS updated_by UUID,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ
+    NOT NULL DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 
 ALTER TABLE public.journal_lines
   DROP CONSTRAINT IF EXISTS journal_lines_one_sided_amount,
@@ -150,13 +163,15 @@ ALTER TABLE public.journal_lines
 
 ALTER TABLE public.journal_lines
   ADD CONSTRAINT journal_lines_nonnegative_amounts
-    CHECK (debit >= 0 AND credit >= 0),
+    CHECK (debit >= 0 AND credit >= 0)
+    NOT VALID,
   ADD CONSTRAINT journal_lines_one_sided_amount
     CHECK (
       (debit > 0 AND credit = 0)
       OR
       (credit > 0 AND debit = 0)
-    );
+    )
+    NOT VALID;
 
 CREATE INDEX IF NOT EXISTS idx_journal_lines_company_journal
   ON public.journal_lines(company_id, journal_id, id)
