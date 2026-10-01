@@ -961,7 +961,7 @@ test('Accounting 2.10 Purchasing controls are migration-backed and gate PO bills
   assert.match(migrations,/ACCOUNTING_2_9_0_TO_2_10_0/);
   assert.match(
     migration,
-    /fromVersion:\s*'2\.9\.0'[\s\S]*toVersion:\s*'2\.11\.0'/,
+    /fromVersion:\s*'2\.9\.0'[\s\S]*toVersion:\s*'2\.10\.0'/,
   );
 
   for (const marker of [
