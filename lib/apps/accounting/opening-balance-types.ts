@@ -68,6 +68,9 @@ export type OpeningBalanceBatchDetail =
     validation_summary: Record<string, unknown>;
     lines: OpeningBalanceLine[];
     reconciliation: OpeningBalanceReconciliation[];
+    line_page: number;
+    line_page_size: number;
+    line_total_count: number;
   };
 
 export type OpeningBalanceAccount = {
