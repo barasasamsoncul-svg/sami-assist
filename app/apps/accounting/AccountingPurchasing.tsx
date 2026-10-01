@@ -497,7 +497,7 @@ export default function AccountingPurchasing({
         )}
       </section>
 
-      <SaMiOverlay overlay={overlay} onClose={closeOverlay} />
+      <SaMiOverlay {...overlay} onClose={closeOverlay} />
     </div>
   );
 }
