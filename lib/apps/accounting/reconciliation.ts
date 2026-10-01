@@ -1357,10 +1357,50 @@ export async function applyReconciliationRule(input: unknown) {
   const suggestionId = body.suggestionId
     ? accountingId(body.suggestionId)
     : null;
+  const key = requestKey(body.requestKey);
+  const hash = requestHash({
+    statementLineId,
+    ruleId,
+    suggestionId,
+  });
   const client = await context.pool.connect();
 
   try {
     await client.query("BEGIN");
+
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtext($1))",
+      ["accounting:reconciliation-request:"+key],
+    );
+
+    const replay = await client.query(
+      `SELECT id::text,reconciliation_number,request_hash,adjustment_journal_id::text
+       FROM accounting_reconciliations
+       WHERE company_id=$1
+         AND request_key=$2
+         AND deleted_at IS NULL
+       LIMIT 1`,
+      [context.companyId,key],
+    );
+
+    if (replay.rows[0]) {
+      if (String(replay.rows[0].request_hash) !== hash) {
+        throw new AccountingInputError(
+          "This reconciliation request key was already used with different content.",
+        );
+      }
+
+      await client.query("COMMIT");
+
+      return {
+        id:String(replay.rows[0].id),
+        reconciliationNumber:String(replay.rows[0].reconciliation_number),
+        adjustmentJournalId:replay.rows[0].adjustment_journal_id
+          ? String(replay.rows[0].adjustment_journal_id)
+          : null,
+        replayed:true,
+      };
+    }
 
     await client.query(
       "SELECT pg_advisory_xact_lock(hashtext($1))",
@@ -1509,6 +1549,8 @@ export async function applyReconciliationRule(input: unknown) {
       notes:"Created from reconciliation rule " + String(rule.name),
       allocations:[allocation],
       acceptedSuggestionId:suggestionId,
+      requestKey:key,
+      requestHash:hash,
     });
 
     await client.query("COMMIT");
@@ -1687,15 +1729,22 @@ export async function reverseReconciliation(input: unknown) {
     );
     const reconciliation = result.rows[0];
 
-    if (!reconciliation || reconciliation.status !== "matched") {
-      if (reconciliation?.reversal_journal_id) {
-        await client.query("COMMIT");
-        return {
-          id,
-          reversalJournalId:String(reconciliation.reversal_journal_id),
-          replayed:true,
-        };
-      }
+    if (!reconciliation) {
+      throw new AccountingInputError("Reconciliation not found.");
+    }
+
+    if (reconciliation.status === "reversed") {
+      await client.query("COMMIT");
+      return {
+        id,
+        reversalJournalId:reconciliation.reversal_journal_id
+          ? String(reconciliation.reversal_journal_id)
+          : null,
+        replayed:true,
+      };
+    }
+
+    if (reconciliation.status !== "matched") {
       throw new AccountingInputError("Only an active reconciliation can be reversed.");
     }
 
