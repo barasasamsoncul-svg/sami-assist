@@ -132,6 +132,10 @@ export function assertEnterpriseDomainMutationAllowed(
         'accounting_reconciliation_matches' ||
       table === 'accounting_payment_batches' ||
       table === 'accounting_payment_allocations' ||
+      table === 'accounting_tax_codes' ||
+      table === 'accounting_tax_groups' ||
+      table === 'accounting_tax_group_lines' ||
+      table === 'accounting_tax_ledger_entries' ||
       table ===
         'accounting_reconciliation_suggestions'
     )

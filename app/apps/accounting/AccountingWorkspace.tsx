@@ -1,3 +1,5 @@
+import AccountingTaxes from './AccountingTaxes';
+import { getAccountingTaxes } from '@/lib/apps/accounting/taxes';
 import AccountingPayments from './AccountingPayments';
 import { getAccountingPayments } from '@/lib/apps/accounting/payments';
 import Link from 'next/link';
@@ -221,6 +223,7 @@ export default async function AccountingWorkspace({
       null;
 
   let paymentsWorkspace: Awaited<ReturnType<typeof getAccountingPayments>> | null = null;
+  let taxesWorkspace: Awaited<ReturnType<typeof getAccountingTaxes>> | null = null;
 
   let reconciliationWorkspace:
     Awaited<
@@ -254,6 +257,7 @@ export default async function AccountingWorkspace({
     dedicatedSection !==
       'statements' &&
     dedicatedSection !== 'payments' &&
+    dedicatedSection !== 'taxes' &&
     dedicatedSection !==
       'reconciliation'
   ) {
@@ -489,6 +493,11 @@ export default async function AccountingWorkspace({
   if (dedicatedSection === 'payments') {
     try { paymentsWorkspace = await getAccountingPayments(filters.page); }
     catch (error) { foundationError = error instanceof AccountingInputError ? error.message : 'Payments could not be loaded. Retry this page.'; }
+  }
+
+  if (dedicatedSection === 'taxes') {
+    try { taxesWorkspace = await getAccountingTaxes(); }
+    catch (error) { foundationError = error instanceof AccountingInputError ? error.message : 'Taxes could not be loaded. Retry this page.'; }
   }
 
   if (
@@ -830,6 +839,8 @@ export default async function AccountingWorkspace({
 
     {key: 'payments',label: 'Payments & settlements',href: appBaseHref + '/payments',description: 'Vendor payment batches and provider settlements.',sectionLabel: 'Banking'},
 
+    {key:'taxes',label:'Taxes',href:appBaseHref+'/taxes',description:'Tax codes, groups, calculations and tax register.',sectionLabel:'Configuration'},
+
     {
       key:
         'reconciliation',
@@ -1030,6 +1041,8 @@ export default async function AccountingWorkspace({
                   )
                 : dedicatedSection === 'payments'
                   ? (paymentsWorkspace ? <AccountingPayments data={paymentsWorkspace} canCreate={data.capabilities.canCreate} canTransition={data.capabilities.canTransition}/> : <div role="alert">{foundationError || 'Payments could not be loaded.'}</div>)
+                : dedicatedSection === 'taxes'
+                  ? (taxesWorkspace ? <AccountingTaxes data={taxesWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Taxes could not be loaded.'}</div>)
                 : dedicatedSection ===
                     'reconciliation'
                   ? (
