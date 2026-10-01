@@ -1207,8 +1207,13 @@ test('Accounting 2.12 controls bank cash mobile money and internal transfers', a
 
   assert.match(
     service,
-    /Foreign-currency financial accounts will be enabled in the Accounting foreign-currency roadmap item/,
-    'Part 10 must not fake foreign-currency bank accounting before the FX roadmap item.',
+    /accounting_fx_currencies[\s\S]*Enable this currency in Accounting → Foreign Currency/,
+    'Foreign financial accounts must require an explicitly enabled Accounting FX currency.',
+  );
+  assert.match(
+    service,
+    /Cross-currency internal transfers require the foreign-currency accounting workflow/,
+    'The ordinary Bank/Cash transfer path must continue routing cross-currency movement to Accounting FX.',
   );
   assert.match(
     service,
