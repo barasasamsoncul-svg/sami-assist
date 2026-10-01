@@ -19,6 +19,7 @@ import {
   accountingId,
   decimalAmount,
 } from "./validation";
+import { convertForeignToBase } from "./fx-rules";
 import type {
   AccountingStatementSourceType,
   AccountingStatementsWorkspace,
