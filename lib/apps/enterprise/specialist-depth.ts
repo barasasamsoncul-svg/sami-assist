@@ -103,6 +103,69 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_accounts_company_system_role
   WHERE deleted_at IS NULL
     AND system_role IS NOT NULL;
 
+ALTER TABLE public.journals
+  ADD COLUMN IF NOT EXISTS company_id UUID
+    REFERENCES public.companies(id)
+    ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS source_module VARCHAR(80),
+  ADD COLUMN IF NOT EXISTS source_type VARCHAR(120),
+  ADD COLUMN IF NOT EXISTS source_id VARCHAR(160),
+  ADD COLUMN IF NOT EXISTS source_event_key VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS posting_kind VARCHAR(30)
+    NOT NULL DEFAULT 'manual'
+    CHECK (posting_kind IN ('manual','system','reversal','opening')),
+  ADD COLUMN IF NOT EXISTS posted_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS reversal_of_journal_id UUID
+    REFERENCES public.journals(id)
+    ON DELETE RESTRICT,
+  ADD COLUMN IF NOT EXISTS reversed_by_journal_id UUID
+    REFERENCES public.journals(id)
+    ON DELETE RESTRICT;
+
+ALTER TABLE public.journals
+  DROP CONSTRAINT IF EXISTS journals_journal_number_key;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_journals_company_number
+  ON public.journals(company_id, journal_number)
+  WHERE deleted_at IS NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_journals_company_source_event
+  ON public.journals(company_id, source_module, source_event_key)
+  WHERE deleted_at IS NULL
+    AND source_module IS NOT NULL
+    AND source_event_key IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_journals_company_source
+  ON public.journals(company_id, source_module, source_type, source_id)
+  WHERE deleted_at IS NULL;
+
+ALTER TABLE public.journal_lines
+  ADD COLUMN IF NOT EXISTS company_id UUID
+    REFERENCES public.companies(id)
+    ON DELETE CASCADE;
+
+ALTER TABLE public.journal_lines
+  DROP CONSTRAINT IF EXISTS journal_lines_one_sided_amount,
+  DROP CONSTRAINT IF EXISTS journal_lines_nonnegative_amounts;
+
+ALTER TABLE public.journal_lines
+  ADD CONSTRAINT journal_lines_nonnegative_amounts
+    CHECK (debit >= 0 AND credit >= 0),
+  ADD CONSTRAINT journal_lines_one_sided_amount
+    CHECK (
+      (debit > 0 AND credit = 0)
+      OR
+      (credit > 0 AND debit = 0)
+    );
+
+CREATE INDEX IF NOT EXISTS idx_journal_lines_company_journal
+  ON public.journal_lines(company_id, journal_id, id)
+  WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_journal_lines_company_account
+  ON public.journal_lines(company_id, account_id, id)
+  WHERE deleted_at IS NULL;
+
 CREATE TABLE IF NOT EXISTS public.accounting_fiscal_periods (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
