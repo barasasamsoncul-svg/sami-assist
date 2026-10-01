@@ -87,7 +87,23 @@ export function assertEnterpriseDomainMutationAllowed(
       table ===
         'accounting_vendor_document_lines' ||
       table ===
-        'accounting_vendor_credit_applications'
+        'accounting_vendor_credit_applications' ||
+      table ===
+        'accounting_purchase_policies' ||
+      table ===
+        'accounting_purchase_requisitions' ||
+      table ===
+        'accounting_purchase_requisition_lines' ||
+      table ===
+        'accounting_purchase_orders' ||
+      table ===
+        'accounting_purchase_order_lines' ||
+      table ===
+        'accounting_goods_receipts' ||
+      table ===
+        'accounting_goods_receipt_lines' ||
+      table ===
+        'accounting_purchase_matches'
     )
   ) {
     throw new Error(
@@ -117,6 +133,23 @@ export function assertEnterpriseDomainMutationAllowed(
             table ===
               'accounting_vendor_credit_applications'
             ? 'Accounts Payable must be changed through the validated Accounting payables services.'
+          : table ===
+              'accounting_purchase_policies' ||
+            table ===
+              'accounting_purchase_requisitions' ||
+            table ===
+              'accounting_purchase_requisition_lines' ||
+            table ===
+              'accounting_purchase_orders' ||
+            table ===
+              'accounting_purchase_order_lines' ||
+            table ===
+              'accounting_goods_receipts' ||
+            table ===
+              'accounting_goods_receipt_lines' ||
+            table ===
+              'accounting_purchase_matches'
+            ? 'Purchasing controls must be changed through the validated Accounting purchasing services.'
           : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
   }
