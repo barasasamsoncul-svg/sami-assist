@@ -107,14 +107,33 @@ export async function saveBalancedJournalDraft(
     const number =
       "MAN-" + input.idempotencyKey.replaceAll("-", "").toUpperCase();
     const journal = await client.query(
-      `INSERT INTO journals (company_id,journal_number,journal_date,reference,description,status,created_by,updated_by)
-      VALUES ($1,$2,$3,$4,$5,'draft',$6,$6) RETURNING id,journal_number,status`,
+      `INSERT INTO journals (
+        company_id,
+        journal_number,
+        journal_date,
+        reference,
+        description,
+        status,
+        source_module,
+        source_type,
+        source_id,
+        source_event_key,
+        posting_kind,
+        created_by,
+        updated_by
+      )
+      VALUES (
+        $1,$2,$3,$4,$5,'draft',
+        'accounting','manual_journal',$6,$6,'manual',$7,$7
+      )
+      RETURNING id,journal_number,status`,
       [
         scope.companyId,
         number,
         input.journalDate,
         input.reference,
         input.description,
+        input.idempotencyKey,
         scope.userId,
       ],
     );
