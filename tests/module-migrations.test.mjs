@@ -873,3 +873,58 @@ test('Accounting Receivables reuses the authoritative Invoicing subledger', asyn
     'The Accounting control model must remain aligned with Invoicing journal semantics.',
   );
 });
+
+
+test('Accounting 2.9 Payables is migration-backed and ledger controlled', async () => {
+  const [
+    manifest,
+    migrations,
+    migration,
+    payables,
+    workspace,
+    foundation,
+    domainHooks,
+    catalog,
+    specialistCatalog,
+    specialistDepth,
+  ] = await Promise.all([
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/apps/accounting/migrations/2.8.0-to-2.9.0.ts'),
+    source('lib/apps/accounting/payables.ts'),
+    source('app/apps/accounting/AccountingWorkspace.tsx'),
+    source('app/apps/accounting/AccountingFoundationPanel.tsx'),
+    source('lib/apps/enterprise/domain-hooks.ts'),
+    source('lib/apps/enterprise/catalog.ts'),
+    source('lib/apps/enterprise/specialist-catalog.ts'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+  ]);
+
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.9\.0'/);
+  assert.match(migrations,/ACCOUNTING_2_8_0_TO_2_9_0/);
+
+  for (const marker of [
+    'accounting_vendors',
+    'accounting_vendor_documents',
+    'accounting_vendor_document_lines',
+    'accounting_vendor_credit_applications',
+    'accounting_payables_aging',
+    'accounting_vendor_balances',
+  ]) {
+    assert.match(migration,new RegExp(marker),'Payables migration must own '+marker+'.');
+    assert.match(specialistDepth,new RegExp(marker),'Fresh Accounting installs must include '+marker+'.');
+  }
+
+  assert.match(payables,/postBalancedLedgerJournal/);
+  assert.match(payables,/reversePostedLedgerJournal/);
+  assert.match(payables,/default_payable_account_id[\s\S]*payable_control[\s\S]*liability_payable/);
+  assert.match(payables,/accounting_opening_balance_lines/);
+  assert.match(payables,/accounting_payables_aging/);
+  assert.match(payables,/accounting_vendor_credit_applications/);
+
+  assert.match(workspace,/dedicatedSection ===[\s\S]*'payables'[\s\S]*AccountingPayables/);
+  assert.match(foundation,/"payables"/);
+  assert.match(domainHooks,/accounting_vendor_documents[\s\S]*validated Accounting payables services/);
+  assert.match(catalog,/accounting_vendor_documents/);
+  assert.match(specialistCatalog,/accounting_vendor_documents/);
+});
