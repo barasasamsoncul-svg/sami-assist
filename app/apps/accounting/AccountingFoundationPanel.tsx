@@ -17,6 +17,7 @@ import type { AccountingSetup } from "@/lib/apps/accounting/setup";
 import styles from "./AccountingFoundation.module.css";
 export const ACCOUNTING_SECTIONS = [
   "overview",
+  "accounts",
   "trial-balance",
   "general-ledger",
   "new-journal",
@@ -81,6 +82,7 @@ export default function AccountingFoundationPanel({
     }).toString();
   const names = {
     overview: "Financial command center",
+    accounts: "Chart of accounts",
     "trial-balance": "Trial balance",
     "general-ledger": "General ledger",
     "new-journal": "New manual journal",
@@ -89,6 +91,8 @@ export default function AccountingFoundationPanel({
   const descriptions = {
     overview:
       "Monitor financial position, book health and the accounting work that needs attention.",
+    accounts:
+      "Manage the company ledger hierarchy, classification and posting controls.",
     "trial-balance":
       "Opening balances, period movements and closing balances from posted journals.",
     "general-ledger":
