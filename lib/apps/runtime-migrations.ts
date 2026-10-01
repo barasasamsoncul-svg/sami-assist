@@ -1,3 +1,4 @@
+import { ACCOUNTING_2_17_0_TO_2_18_0 } from '@/lib/apps/accounting/migrations/2.17.0-to-2.18.0';
 import { ACCOUNTING_2_16_0_TO_2_17_0 } from '@/lib/apps/accounting/migrations/2.16.0-to-2.17.0';
 import { ACCOUNTING_2_15_0_TO_2_16_0 } from '@/lib/apps/accounting/migrations/2.15.0-to-2.16.0';
 import { ACCOUNTING_2_14_0_TO_2_15_0 } from '@/lib/apps/accounting/migrations/2.14.0-to-2.15.0';
@@ -189,6 +190,7 @@ export const ENTERPRISE_RUNTIME_MIGRATIONS:
   ACCOUNTING_2_14_0_TO_2_15_0,
     ACCOUNTING_2_15_0_TO_2_16_0,
     ACCOUNTING_2_16_0_TO_2_17_0,
+    ACCOUNTING_2_17_0_TO_2_18_0,
   ];
 
 export const SALES_RUNTIME_MIGRATIONS:
