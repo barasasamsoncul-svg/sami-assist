@@ -1567,7 +1567,7 @@ export default function AccountingOpeningBalances({
                       {
                         selected.status ===
                           "posted"
-                          ? "Corrections now require a controlled accounting adjustment or reversal workflow."
+                          ? "Corrections now require a controlled accounting adjustment; the posted migration batch itself remains immutable."
                           : "Nothing reaches the ledger until this batch passes validation and you explicitly post it."
                       }
                     </p>
