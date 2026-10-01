@@ -29,6 +29,7 @@ import type {
   AccountingStatementSourceType,
   AccountingStatementsWorkspace,
 } from "@/lib/apps/accounting/statements-types";
+import { formatAccountingAmount } from "@/lib/apps/accounting/validation";
 
 import styles from "./AccountingFoundation.module.css";
 
@@ -71,6 +72,9 @@ export default function AccountingStatements({
   const [source,setSource] = useState<Exclude<AccountingStatementSourceType,"feed"|"manual">>("csv");
   const [file,setFile] = useState<File | null>(null);
   const importKey = useRef("");
+
+  const money = (value: string | null | undefined,currency: string | null | undefined) =>
+    formatAccountingAmount(value || "0.00",currency || data.currency);
 
   async function postAction(
     body: Record<string,unknown>,
@@ -239,7 +243,7 @@ export default function AccountingStatements({
           </div>
           <h2>Statement intake</h2>
           <p>
-            Import CSV, OFX or QIF statements, review row-level duplicates/errors, and manage provider-neutral feed adapters before reconciliation.
+            Import CSV, OFX or QIF statements in each financial account's own currency. Foreign lines retain their original amount and dated exchange rate while reconciliation uses the translated base-currency value.
           </p>
         </div>
 
@@ -318,7 +322,7 @@ export default function AccountingStatements({
                 <option value="">Choose account</option>
                 {activeAccounts.map(account => (
                   <option key={account.id} value={account.id}>
-                    {account.name} · {account.account_type}
+                    {account.name} · {account.account_type} · {account.currency}
                   </option>
                 ))}
               </select>
@@ -515,7 +519,7 @@ export default function AccountingStatements({
                         {batch.source_type.toUpperCase()} · {batch.imported_at}
                       </span>
                     </td>
-                    <td>{batch.bank_account_name}</td>
+                    <td>{batch.bank_account_name}<span className={styles.meta}>{batch.currency || data.currency}</span></td>
                     <td>
                       {batch.statement_from || "—"} → {batch.statement_to || "—"}
                     </td>
@@ -599,7 +603,12 @@ export default function AccountingStatements({
                     <td>
                       {row.external_transaction_id || row.external_reference || "—"}
                     </td>
-                    <td>{row.amount || "—"}</td>
+                    <td>
+                      {row.amount ? money(row.amount,row.currency) : "—"}
+                      {row.base_amount && row.currency && row.currency !== data.currency ? (
+                        <span className={styles.meta}>Base {money(row.base_amount,data.currency)} · rate {row.exchange_rate}</span>
+                      ) : null}
+                    </td>
                     <td>
                       <span className={styles.badge}>
                         {row.import_status === "imported" ? (
