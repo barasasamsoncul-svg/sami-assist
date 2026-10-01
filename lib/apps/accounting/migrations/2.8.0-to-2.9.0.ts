@@ -54,6 +54,7 @@ const SQL = `
     subtotal NUMERIC(19,4) NOT NULL DEFAULT 0,
     tax_total NUMERIC(19,4) NOT NULL DEFAULT 0,
     total_amount NUMERIC(19,4) NOT NULL DEFAULT 0,
+    base_total_amount NUMERIC(19,2) NOT NULL DEFAULT 0,
     status VARCHAR(30) NOT NULL DEFAULT 'draft',
     source_module VARCHAR(80),
     source_type VARCHAR(120),
@@ -74,6 +75,7 @@ const SQL = `
     CHECK (document_type IN ('bill','credit_note')),
     CHECK (exchange_rate > 0),
     CHECK (subtotal >= 0 AND tax_total >= 0 AND total_amount >= 0),
+    CHECK (base_total_amount >= 0),
     CHECK (total_amount = subtotal + tax_total),
     CHECK (
       status IN (
@@ -191,6 +193,7 @@ const SQL = `
     d.exchange_rate,
     d.base_currency,
     d.total_amount,
+    d.base_total_amount,
     d.status,
     CASE
       WHEN d.document_type='bill'
@@ -206,17 +209,17 @@ const SQL = `
       END,
       0
     )::numeric(19,4) AS open_amount,
-    ROUND(
-      GREATEST(
-        d.total_amount -
+    GREATEST(
+      d.base_total_amount -
+      ROUND(
         CASE
           WHEN d.document_type='bill'
             THEN COALESCE(bill_credit.applied_amount,0)
           ELSE COALESCE(credit_use.applied_amount,0)
-        END,
-        0
-      ) * d.exchange_rate,
-      2
+        END * d.exchange_rate,
+        2
+      ),
+      0
     )::numeric(19,2) AS base_open_amount
   FROM public.accounting_vendor_documents d
   LEFT JOIN LATERAL (
