@@ -17,6 +17,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
+import Link from "next/link";
 import {
   useRouter,
 } from "next/navigation";
@@ -110,6 +111,19 @@ export default function AccountingBankCash({
     () => data.accounts.filter(row => row.status === "active"),
     [data.accounts],
   );
+
+  const baseActiveAccounts = useMemo(
+    () => activeAccounts.filter(row => row.currency.toUpperCase() === data.currency.toUpperCase()),
+    [activeAccounts,data.currency],
+  );
+
+  const accountAmount = (account: AccountingFinancialAccount) =>
+    formatAccountingAmount(
+      account.currency.toUpperCase() === data.currency.toUpperCase()
+        ? account.book_balance
+        : account.foreign_balance,
+      account.currency,
+    );
 
   const bankLedgerAccounts = useMemo(
     () => data.ledgerAccounts.filter(row =>
@@ -212,7 +226,7 @@ export default function AccountingBankCash({
             accountReferenceMasked:form.get("accountReferenceMasked"),
             mobileMoneyProvider:form.get("mobileMoneyProvider"),
             countryCode:form.get("countryCode"),
-            currency:data.currency,
+            currency:form.get("currency"),
             allowOverdraft:form.get("allowOverdraft") === "on",
             overdraftLimit:form.get("overdraftLimit"),
           },
@@ -293,7 +307,7 @@ export default function AccountingBankCash({
           </div>
           <h2>Financial accounts</h2>
           <p>
-            Manage bank accounts, cash tills and mobile-money wallets against the authoritative ledger. Statement imports and reconciliation remain separate workflows.
+            Manage base and foreign-currency bank accounts, cash tills and mobile-money wallets against the authoritative ledger. Use Foreign Currency for conversions, realized FX and revaluation.
           </p>
         </div>
 
@@ -304,7 +318,11 @@ export default function AccountingBankCash({
               New account
             </button>
           ) : null}
-          {canEdit && activeAccounts.length >= 2 ? (
+          <Link className={styles.button} href="/apps/accounting/fx">
+            <ArrowRightLeft size={16} />
+            Foreign currency
+          </Link>
+          {canEdit && baseActiveAccounts.length >= 2 ? (
             <button
               type="button"
               className={styles.button}
@@ -369,6 +387,10 @@ export default function AccountingBankCash({
                     <option value="cash">Cash</option>
                     <option value="mobile_money">Mobile money</option>
                   </select>
+                </label>
+                <label>
+                  Currency
+                  <input name="currency" required maxLength={3} defaultValue={data.currency} style={{textTransform:"uppercase"}} />
                 </label>
                 <label>
                   Linked ledger account
@@ -532,7 +554,7 @@ export default function AccountingBankCash({
               From
               <select name="sourceAccountId" required defaultValue="">
                 <option value="">Choose source</option>
-                {activeAccounts.map(account => (
+                {baseActiveAccounts.map(account => (
                   <option key={account.id} value={account.id}>
                     {account.name} · {amount(account.book_balance)}
                   </option>
@@ -543,7 +565,7 @@ export default function AccountingBankCash({
               To
               <select name="destinationAccountId" required defaultValue="">
                 <option value="">Choose destination</option>
-                {activeAccounts.map(account => (
+                {baseActiveAccounts.map(account => (
                   <option key={account.id} value={account.id}>
                     {account.name}
                   </option>
@@ -615,7 +637,12 @@ export default function AccountingBankCash({
                         ? account.ledger_code + " · " + account.ledger_name
                         : "Not linked"}
                     </td>
-                    <td className={styles.number}>{amount(account.book_balance)}</td>
+                    <td className={styles.number}>
+                      {accountAmount(account)}
+                      {account.currency.toUpperCase() !== data.currency.toUpperCase() ? (
+                        <span className={styles.meta}>Base ledger: {amount(account.book_balance)}</span>
+                      ) : null}
+                    </td>
                     <td>
                       <span className={styles.badge}>{account.status}</span>
                       {account.unreconciled_count ? (
@@ -747,7 +774,7 @@ export default function AccountingBankCash({
           <span className={styles.eyebrow}>Roadmap boundary</span>
           <h3>Balances are ledger-authoritative</h3>
           <p>
-            Part 10 controls the financial accounts and internal movements. Statement files/feeds are Part 11; matching and reconciliation are Part 12.
+            Financial accounts remain ledger-authoritative. Statement files/feeds are Part 11. Same-currency base transfers stay here; cross-currency transfers, foreign balances and revaluation are controlled from Foreign Currency.
           </p>
         </div>
         <div className={styles.actions}>

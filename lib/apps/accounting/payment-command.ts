@@ -117,6 +117,7 @@ export async function transitionPaymentBatchCommand(context: PaymentContext, inp
     await client.query('BEGIN');
     const result=await client.query('SELECT * FROM accounting_payment_batches WHERE company_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE',[context.companyId,id]);
     const batch=result.rows[0]; if (!batch) throw new AccountingInputError('Payment batch not found.');
+    if (batch.fx_managed) throw new AccountingInputError('This foreign-currency payment is managed from Accounting → Foreign Currency. Use that workspace to reverse or inspect it.');
     if ((action==='approve' && batch.status==='approved') || (action==='post' && batch.status==='posted') ||
       (action==='reverse' && batch.status==='reversed') || (action==='cancel' && batch.status==='cancelled')) {
       await client.query('COMMIT'); return {id,replayed:true};

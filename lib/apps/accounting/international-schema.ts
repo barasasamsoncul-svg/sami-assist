@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS public.accounting_localization_settings (
   updated_by UUID,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
   CHECK (country_code IS NULL OR country_code ~ '^[A-Z]{2}$'),
   CHECK (accounting_framework IN ('ifrs','local_gaap','us_gaap','other')),
   CHECK (filing_frequency IN ('monthly','quarterly','annual','custom')),
@@ -98,6 +99,8 @@ CREATE TABLE IF NOT EXISTS public.accounting_localization_report_runs (
   finalized_at TIMESTAMPTZ,
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
   CHECK (period_end >= period_start),
   CHECK (country_code IS NULL OR country_code ~ '^[A-Z]{2}$'),
   CHECK (currency ~ '^[A-Z]{3}$'),
@@ -116,9 +119,22 @@ CREATE TABLE IF NOT EXISTS public.accounting_localization_pack_history (
   installed_by UUID,
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
   CHECK (country_code IS NULL OR country_code ~ '^[A-Z]{2}$'),
   CHECK (action IN ('installed','updated','reinstalled'))
 );
 CREATE INDEX IF NOT EXISTS idx_accounting_localization_pack_history
   ON public.accounting_localization_pack_history(company_id,created_at DESC);
+
+ALTER TABLE public.accounting_localization_settings
+  ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+
+ALTER TABLE public.accounting_localization_report_runs
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+
+ALTER TABLE public.accounting_localization_pack_history
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 `;

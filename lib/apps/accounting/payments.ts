@@ -31,7 +31,8 @@ export async function getAccountingPayments(pageInput?: string) {
   const page=Number(pageInput||1), currency=context.company.currentCompany.currency.toUpperCase();
   const [batches,accounts,bills,fees]=await Promise.all([
     context.pool.query(`SELECT b.id::text,b.kind,b.reference,b.payment_date::text,b.currency,b.gross_amount::text,b.fee_amount::text,b.net_amount::text,
-      b.status,b.notes,b.posted_journal_id::text,b.reversal_journal_id::text,s.name AS source_name,d.name AS destination_name,
+      b.status,b.notes,b.fx_managed,b.exchange_rate::text,b.base_currency,b.base_gross_amount::text,b.rate_source,b.rate_date::text,
+      b.posted_journal_id::text,b.reversal_journal_id::text,s.name AS source_name,d.name AS destination_name,
       COALESCE((SELECT json_agg(json_build_object('billNumber',v.document_number,'vendor',n.name,'amount',a.amount::text))
         FROM accounting_payment_allocations a JOIN accounting_vendor_documents v ON v.company_id=a.company_id AND v.id=a.bill_document_id
         JOIN accounting_vendors n ON n.company_id=v.company_id AND n.id=v.vendor_id WHERE a.company_id=b.company_id AND a.batch_id=b.id AND a.deleted_at IS NULL),'[]'::json) AS allocations

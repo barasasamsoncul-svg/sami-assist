@@ -2067,6 +2067,201 @@ async function readTable(
 }
 
 
+export async function getEnterpriseModuleShellWorkspace(
+  moduleKey:
+    string,
+): Promise<EnterpriseWorkspaceData> {
+  const context =
+    await requireContext(
+      moduleKey,
+      'view',
+    );
+
+  const profile =
+    getEnterpriseDomainProfile(
+      context.moduleKey,
+    );
+
+  if (
+    !profile
+  ) {
+    throw new EnterpriseModuleError(
+      'MODULE_NOT_SUPPORTED',
+      'SaMi could not resolve the operating profile for this app.',
+    );
+  }
+
+  const capabilities = {
+    canView:
+      true,
+    canCreate:
+      permissionAllows(
+        context.permissions,
+        context.moduleKey,
+        'create',
+      ),
+    canEdit:
+      permissionAllows(
+        context.permissions,
+        context.moduleKey,
+        'edit',
+      ),
+    canTransition:
+      permissionAllows(
+        context.permissions,
+        context.moduleKey,
+        'transition',
+      ),
+    canExecute:
+      context.permissions
+        .isOwner ||
+      context.permissions
+        .permissionSet
+        .has(
+          context.moduleKey +
+          '.record.execute',
+        ),
+    canApprove:
+      context.permissions
+        .isOwner ||
+      context.permissions
+        .permissionSet
+        .has(
+          context.moduleKey +
+          '.record.approve',
+        ),
+    canClose:
+      context.permissions
+        .isOwner ||
+      context.permissions
+        .permissionSet
+        .has(
+          context.moduleKey +
+          '.record.close',
+        ),
+    canDelete:
+      permissionAllows(
+        context.permissions,
+        context.moduleKey,
+        'delete',
+      ),
+    canReport:
+      permissionAllows(
+        context.permissions,
+        context.moduleKey,
+        'report',
+      ),
+    canManageSettings:
+      permissionAllows(
+        context.permissions,
+        context.moduleKey,
+        'settings',
+      ),
+  };
+
+  /*
+   * Dedicated app routes already own their data queries. Do not introspect
+   * and read every generic enterprise table merely to render the shared shell.
+   * This keeps route transitions fast and isolates a dedicated page from an
+   * unrelated record table that may still be undergoing a runtime migration.
+   */
+  const tables =
+    enterpriseModuleTables(
+      context.moduleKey,
+    )
+      .map(
+        table => {
+          const settingTable =
+            table.endsWith(
+              '_settings',
+            );
+
+          return {
+            key:
+              table,
+            label:
+              label(
+                table,
+              ),
+            companyScoped:
+              true,
+            settingTable,
+            recordKey:
+              settingTable
+                ? 'company_id'
+                : 'id',
+            supportsCreate:
+              false,
+            supportsEdit:
+              false,
+            supportsDelete:
+              false,
+            fields:
+              [],
+            displayFields:
+              [],
+            workflows:
+              [],
+            numericMetrics:
+              [],
+            count:
+              0,
+            records:
+              [],
+          } satisfies EnterpriseTable;
+        },
+      );
+
+  return {
+    module: {
+      key:
+        context.moduleKey,
+      name:
+        context.manifest
+          .name,
+      description:
+        context.manifest
+          .description,
+      category:
+        context.manifest
+          .category,
+      iconKey:
+        context.manifest
+          .icon,
+    },
+    company: {
+      id:
+        context.companyId,
+      name:
+        context.company
+          .currentCompany
+          .name,
+    },
+    capabilities,
+    profile,
+    activity:
+      [],
+    metrics: {
+      primaryRecords:
+        0,
+      attentionRecords:
+        0,
+      successRecords:
+        0,
+      workflowTrackedRecords:
+        0,
+      totalRecords:
+        0,
+      tables:
+        tables.length,
+      activeTables:
+        0,
+    },
+    tables,
+  };
+}
+
+
 export async function getEnterpriseModuleWorkspace(
   moduleKey:
     string,

@@ -25,6 +25,7 @@ import {
 } from '@/lib/services/workspace-notifications';
 
 import {
+  getEnterpriseModuleShellWorkspace,
   getEnterpriseModuleWorkspace,
   type EnterpriseWorkspaceData,
 } from '@/lib/apps/enterprise/service';
@@ -169,6 +170,9 @@ export async function loadStandaloneEnterpriseApp(
     string,
   section?:
     string | null,
+  options?: {
+    lightweight?: boolean;
+  },
 ) {
   const requestedPath =
     '/apps/' +
@@ -227,8 +231,14 @@ export async function loadStandaloneEnterpriseApp(
     notifications,
   ] =
     await Promise.all([
-      getEnterpriseModuleWorkspace(
-        moduleKey,
+      (
+        options?.lightweight
+          ? getEnterpriseModuleShellWorkspace(
+              moduleKey,
+            )
+          : getEnterpriseModuleWorkspace(
+              moduleKey,
+            )
       )
         .catch(
           error => {

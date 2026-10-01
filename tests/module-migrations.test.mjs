@@ -341,7 +341,7 @@ test('Accounting 2.4 setup schema is migration-backed and available on fresh ins
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.18\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.19\.0'/,
   );
 
   assert.match(
@@ -436,7 +436,7 @@ test('Accounting 2.5 Chart of Accounts is migration-backed and company scoped', 
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.18\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.19\.0'/,
   );
 
   assert.match(
@@ -519,7 +519,7 @@ test('Accounting 2.6 centralizes double-entry posting and reversal invariants', 
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.18\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.19\.0'/,
   );
 
   assert.match(
@@ -627,7 +627,7 @@ test('Accounting 2.7 journal workflow is migration-backed and fresh-install comp
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.18\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.19\.0'/,
   );
 
   assert.match(runtimeMigrations, /ACCOUNTING_2_6_0_TO_2_7_0/);
@@ -711,7 +711,7 @@ test('Accounting 2.8 opening balances are migration-backed and workflow protecte
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.18\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.19\.0'/,
   );
 
   assert.match(runtimeMigrations, /ACCOUNTING_2_7_0_TO_2_8_0/);
@@ -900,7 +900,7 @@ test('Accounting 2.9 Payables is migration-backed and ledger controlled', async 
     source('lib/apps/enterprise/specialist-depth.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.18\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.19\.0'/);
   assert.match(migrations,/ACCOUNTING_2_8_0_TO_2_9_0/);
 
   for (const marker of [
@@ -957,7 +957,7 @@ test('Accounting 2.10 Purchasing controls are migration-backed and gate PO bills
     source('lib/apps/enterprise/specialist-depth.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.18\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.19\.0'/);
   assert.match(migrations,/ACCOUNTING_2_9_0_TO_2_10_0/);
   assert.match(
     migration,
@@ -1081,7 +1081,7 @@ test('Accounting 2.11 controls approved expenses and employee reimbursements wit
 
   assert.match(
     manifest,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.18\.0'[\s\S]*optionalDepends:\s*\['expenses'\]/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.19\.0'[\s\S]*optionalDepends:\s*\['expenses'\]/,
   );
   assert.match(migrations,/ACCOUNTING_2_10_0_TO_2_11_0/);
   assert.match(
@@ -1171,7 +1171,7 @@ test('Accounting 2.12 controls bank cash mobile money and internal transfers', a
     source('lib/apps/enterprise/specialist-catalog.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.18\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.19\.0'/);
   assert.match(migrations,/ACCOUNTING_2_11_0_TO_2_12_0/);
   assert.match(
     migration,
@@ -1207,8 +1207,13 @@ test('Accounting 2.12 controls bank cash mobile money and internal transfers', a
 
   assert.match(
     service,
-    /Foreign-currency financial accounts will be enabled in the Accounting foreign-currency roadmap item/,
-    'Part 10 must not fake foreign-currency bank accounting before the FX roadmap item.',
+    /accounting_fx_currencies[\s\S]*Enable this currency in Accounting → Foreign Currency/,
+    'Foreign financial accounts must require an explicitly enabled Accounting FX currency.',
+  );
+  assert.match(
+    service,
+    /Cross-currency internal transfers require the foreign-currency accounting workflow/,
+    'The ordinary Bank/Cash transfer path must continue routing cross-currency movement to Accounting FX.',
   );
   assert.match(
     service,
@@ -1257,7 +1262,7 @@ test('Accounting 2.13 imports statements and protects normalized feed intake', a
     source('lib/apps/enterprise/specialist-catalog.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.18\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.19\.0'/);
   assert.match(migrations,/ACCOUNTING_2_12_0_TO_2_13_0/);
   assert.match(
     migration,
@@ -1350,7 +1355,7 @@ test('Accounting 2.14 provides immutable bank reconciliation with split matches 
     source('lib/apps/enterprise/specialist-catalog.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.18\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.19\.0'/);
   assert.match(migrations,/ACCOUNTING_2_13_0_TO_2_14_0/);
   assert.match(
     migration,
@@ -1449,7 +1454,7 @@ test('Accounting 2.16 Tax Engine is migration-backed and fresh-install complete'
     source('lib/apps/accounting/taxes.ts'),source('app/apps/accounting/AccountingWorkspace.tsx'),
     source('app/apps/accounting/AccountingFoundationPanel.tsx'),
   ]);
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.18\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.19\.0'/);
   assert.match(runtime,/ACCOUNTING_2_15_0_TO_2_16_0/);
   assert.match(migration,/fromVersion:\s*'2\.15\.0'[\s\S]*toVersion:\s*'2\.16\.0'/);
   assert.match(depth,/ACCOUNTING_TAX_SQL/);
@@ -1479,7 +1484,7 @@ test('Accounting 2.17 Kenya localization reuses shared eTIMS and is migration-ba
     source('app/apps/accounting/AccountingFoundationPanel.tsx'),
     source('lib/apps/accounting/payables.ts'),
   ]);
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.18\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.19\.0'/);
   assert.match(runtime,/ACCOUNTING_2_16_0_TO_2_17_0/);
   assert.match(migration,/fromVersion:\s*'2\.16\.0'[\s\S]*toVersion:\s*'2\.17\.0'/);
   assert.match(depth,/ACCOUNTING_KENYA_SQL/);
@@ -1496,6 +1501,8 @@ test('Accounting 2.17 Kenya localization reuses shared eTIMS and is migration-ba
   assert.match(foundation,/"kenya"/);
   assert.match(payables,/recoverable_tax_amount/);
   assert.match(payables,/accounting:vendor-tax:/);
+  assert.match(schema,/accounting_kenya_settings[\s\S]*deleted_at TIMESTAMPTZ/);
+  assert.match(schema,/accounting_kenya_sync_runs[\s\S]*deleted_at TIMESTAMPTZ/);
 });
 
 
@@ -1513,7 +1520,7 @@ test('Accounting 2.18 International Localization is migration-backed and shares 
     source('app/apps/accounting/AccountingWorkspace.tsx'),
     source('app/apps/accounting/AccountingFoundationPanel.tsx'),
   ]);
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.18\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.19\.0'/);
   assert.match(runtime,/ACCOUNTING_2_17_0_TO_2_18_0/);
   assert.match(migration,/fromVersion:\s*'2\.17\.0'[\s\S]*toVersion:\s*'2\.18\.0'/);
   assert.match(depth,/ACCOUNTING_INTERNATIONAL_LOCALIZATION_SQL/);
@@ -1535,4 +1542,57 @@ test('Accounting 2.18 International Localization is migration-backed and shares 
   assert.match(service,/generic_vat_reporting/);
   assert.match(workspace,/dedicatedSection === 'international'[\s\S]*AccountingInternational/);
   assert.match(foundation,/"international"/);
+  assert.match(schema,/accounting_localization_settings[\s\S]*deleted_at TIMESTAMPTZ/);
+  assert.match(schema,/accounting_localization_report_runs[\s\S]*deleted_at TIMESTAMPTZ/);
+  assert.match(schema,/accounting_localization_pack_history[\s\S]*deleted_at TIMESTAMPTZ/);
+});
+
+
+test('Accounting 2.19 Foreign Currency is migration-backed and subledger controlled', async () => {
+  const [manifest,runtime,migration,depth,schema,catalog,specialist,hooks,fx,workspace,foundation,bankCash,payments,statements,reconciliation,ledger] = await Promise.all([
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/apps/accounting/migrations/2.18.0-to-2.19.0.ts'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+    source('lib/apps/accounting/fx-schema.ts'),
+    source('lib/apps/enterprise/catalog.ts'),
+    source('lib/apps/enterprise/specialist-catalog.ts'),
+    source('lib/apps/enterprise/domain-hooks.ts'),
+    source('lib/apps/accounting/fx.ts'),
+    source('app/apps/accounting/AccountingWorkspace.tsx'),
+    source('app/apps/accounting/AccountingFoundationPanel.tsx'),
+    source('lib/apps/accounting/bank-cash.ts'),
+    source('lib/apps/accounting/payment-command.ts'),
+    source('lib/apps/accounting/statements.ts'),
+    source('lib/apps/accounting/reconciliation.ts'),
+    source('lib/apps/accounting/ledger-engine.ts'),
+  ]);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.19\.0'/);
+  assert.match(runtime,/ACCOUNTING_2_18_0_TO_2_19_0/);
+  assert.match(migration,/fromVersion:\s*'2\.18\.0'[\s\S]*toVersion:\s*'2\.19\.0'/);
+  assert.match(migration,/ACCOUNTING_KENYA_SQL[\s\S]*ACCOUNTING_INTERNATIONAL_LOCALIZATION_SQL[\s\S]*ACCOUNTING_FX_SQL/);
+  assert.match(depth,/ACCOUNTING_FX_SQL/);
+  for (const marker of [
+    'accounting_fx_settings',
+    'accounting_fx_currencies',
+    'accounting_exchange_rates',
+    'accounting_fx_financial_movements',
+    'accounting_fx_revaluation_runs',
+    'accounting_fx_revaluation_lines',
+  ]) {
+    assert.match(schema,new RegExp(marker));
+    assert.match(catalog,new RegExp(marker));
+    assert.match(specialist,new RegExp(marker));
+  }
+  assert.match(hooks,/accounting_fx_settings[\s\S]*accounting_fx_revaluation_lines/);
+  assert.match(fx,/postForeignVendorPayment[\s\S]*postCrossCurrencyTransfer/);
+  assert.match(fx,/generateFxRevaluation[\s\S]*postFxRevaluation[\s\S]*reverseFxRevaluation/);
+  assert.match(workspace,/dedicatedSection === 'fx'[\s\S]*AccountingFx/);
+  assert.match(foundation,/"fx"/);
+  assert.match(bankCash,/accounting_fx_currencies/);
+  assert.match(payments,/fx_managed/);
+  assert.match(statements,/convertForeignToBase[\s\S]*base_amount/);
+  assert.match(reconciliation,/statementLedgerAmount[\s\S]*accounting_fx_financial_movements/);
+  assert.match(ledger,/accounting_fx_currencies[\s\S]*Manual journals cannot post directly/);
+  assert.ok((schema.match(/deleted_at TIMESTAMPTZ/g) || []).length >= 6,'Every Part 17 enterprise table must be soft-delete boundary ready.');
 });

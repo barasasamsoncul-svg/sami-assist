@@ -23,6 +23,7 @@ import {
   decimalAmount,
   minorUnits,
 } from "./validation";
+import { foreignDecimal,fxForeignUnits } from "./fx-rules";
 import type {
   AccountingReconciliationCandidate,
   AccountingReconciliationWorkspace,
@@ -95,6 +96,11 @@ function signedCents(value: unknown) {
   }
 
   return negative ? -amount : amount;
+}
+
+
+function statementLedgerAmount(statement: Record<string,unknown>) {
+  return signedCents(statement.base_amount ?? statement.amount);
 }
 
 
@@ -179,7 +185,8 @@ async function statementForUpdate(
        s.bank_account_id::text,
        b.name AS bank_account_name,
        b.ledger_account_id::text,
-       b.currency,
+       b.currency AS account_currency,
+       c.currency AS base_currency,
        b.status AS bank_account_status,
        s.transaction_date::text,
        s.value_date::text,
@@ -187,12 +194,17 @@ async function statementForUpdate(
        s.external_reference,
        s.counterparty,
        s.amount::text,
+       COALESCE(s.currency,b.currency)::text AS currency,
+       COALESCE(s.exchange_rate,1)::text AS exchange_rate,
+       COALESCE(s.base_amount,s.amount)::text AS base_amount,
        s.reconciliation_status
      FROM accounting_bank_statement_lines s
      JOIN accounting_bank_accounts b
        ON b.company_id=s.company_id
       AND b.id=s.bank_account_id
       AND b.deleted_at IS NULL
+     JOIN companies c
+       ON c.id=s.company_id
      WHERE s.company_id=$1
        AND s.id=$2
        AND s.deleted_at IS NULL
@@ -213,6 +225,42 @@ async function statementForUpdate(
   }
 
   return row;
+}
+
+
+async function recordForeignReconciliationMovement(
+  client: PoolClient,
+  input: {
+    companyId: string;
+    bankAccountId: string;
+    sourceType: string;
+    sourceId: string;
+    eventKey: string;
+    movementDate: string;
+    currency: string;
+    baseCurrency: string;
+    foreignAmount: string;
+    baseAmount: string;
+    exchangeRate: string;
+    userId: string;
+    metadata?: Record<string,unknown>;
+  },
+) {
+  if (input.currency.toUpperCase() === input.baseCurrency.toUpperCase()) return;
+
+  await client.query(
+    `INSERT INTO accounting_fx_financial_movements(
+       company_id,bank_account_id,source_type,source_id,source_event_key,
+       movement_date,currency,foreign_amount,base_amount,rate_to_base,status,created_by,metadata
+     )
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'posted',$11,$12::jsonb)
+     ON CONFLICT(company_id,bank_account_id,source_event_key) DO NOTHING`,
+    [
+      input.companyId,input.bankAccountId,input.sourceType,input.sourceId,input.eventKey,
+      input.movementDate,input.currency,input.foreignAmount,input.baseAmount,input.exchangeRate,
+      input.userId,JSON.stringify(input.metadata || {}),
+    ],
+  );
 }
 
 
@@ -283,7 +331,7 @@ function ruleMatches(
   rule: Record<string,unknown>,
   statement: Record<string,unknown>,
 ) {
-  const amount = signedCents(statement.amount);
+  const amount = statementLedgerAmount(statement);
   const absoluteAmount = absolute(amount);
   const direction = String(rule.direction || "any");
 
@@ -329,7 +377,7 @@ function candidateConfidence(
   statement: Record<string,unknown>,
   candidate: AccountingReconciliationCandidate,
 ) {
-  const statementAmount = signedCents(statement.amount);
+  const statementAmount = statementLedgerAmount(statement);
   const remaining = signedCents(candidate.remaining_amount);
 
   if (!sameDirection(statementAmount,remaining)) {
@@ -398,7 +446,7 @@ async function candidatesForStatement(
   companyId: string,
   statement: Record<string,unknown>,
 ) {
-  const amount = signedCents(statement.amount);
+  const amount = statementLedgerAmount(statement);
   const rows = await client.query(
     `SELECT
        v.journal_line_id::text,
@@ -470,7 +518,7 @@ export async function getAccountingReconciliation(
       metrics,
     ] = await Promise.all([
       client.query(
-        `SELECT id::text,name,ledger_account_id::text,account_type,status
+        `SELECT id::text,name,ledger_account_id::text,account_type,currency,status
          FROM accounting_bank_accounts
          WHERE company_id=$1
            AND deleted_at IS NULL
@@ -488,6 +536,9 @@ export async function getAccountingReconciliation(
            s.external_reference,
            s.counterparty,
            s.amount::text,
+           COALESCE(s.currency,b.currency)::text AS currency,
+           COALESCE(s.exchange_rate,1)::text AS exchange_rate,
+           COALESCE(s.base_amount,s.amount)::text AS base_amount,
            s.reconciliation_status,
            s.source_type,
            COUNT(g.id) FILTER (
@@ -510,7 +561,7 @@ export async function getAccountingReconciliation(
          WHERE s.company_id=$1
            AND s.deleted_at IS NULL
            AND s.reconciliation_status IN ('unmatched','suggested','excluded')
-         GROUP BY s.id,b.name
+         GROUP BY s.id,b.name,b.currency
          ORDER BY
            CASE s.reconciliation_status
              WHEN 'suggested' THEN 0
@@ -561,6 +612,9 @@ export async function getAccountingReconciliation(
            r.reconciliation_date::text,
            r.method,
            r.statement_amount::text,
+           r.statement_currency,
+           r.statement_foreign_amount::text,
+           r.statement_exchange_rate::text,
            r.matched_amount::text,
            r.difference_amount::text,
            r.status,
@@ -629,6 +683,9 @@ export async function getAccountingReconciliation(
            s.external_reference,
            s.counterparty,
            s.amount::text,
+           COALESCE(s.currency,b.currency)::text AS currency,
+           COALESCE(s.exchange_rate,1)::text AS exchange_rate,
+           COALESCE(s.base_amount,s.amount)::text AS base_amount,
            s.reconciliation_status,
            s.source_type,
            0::int AS suggestion_count,
@@ -780,7 +837,7 @@ export async function generateReconciliationSuggestions(input: unknown) {
       const confidence = candidateConfidence(statement,candidate);
       if (confidence < 45) continue;
 
-      const statementAmount = signedCents(statement.amount);
+      const statementAmount = statementLedgerAmount(statement);
       const available = signedCents(candidate.remaining_amount);
 
       if (absolute(available) < absolute(statementAmount)) {
@@ -836,7 +893,7 @@ export async function generateReconciliationSuggestions(input: unknown) {
           statementLineId,
           rule.id,
           confidence,
-          decimalAmount(signedCents(statement.amount)),
+          decimalAmount(statementLedgerAmount(statement)),
           "Active reconciliation rule '" + String(rule.name) + "' matches this statement line.",
           context.userId,
         ],
@@ -925,11 +982,11 @@ async function insertReconciliation(
     requestHash: string;
   },
 ) {
-  const statementAmount = signedCents(input.statement.amount);
+  const statementAmount = statementLedgerAmount(input.statement);
 
   if (input.matchedAmount !== statementAmount) {
     throw new AccountingInputError(
-      "A statement line can only be marked reconciled when its full signed amount is allocated.",
+      "A statement line can only be marked reconciled when its full signed base-currency amount is allocated.",
     );
   }
 
@@ -937,12 +994,13 @@ async function insertReconciliation(
   const result = await client.query(
     `INSERT INTO accounting_reconciliations (
        company_id,reconciliation_number,request_key,request_hash,bank_account_id,statement_line_id,
-       reconciliation_date,method,rule_id,statement_amount,matched_amount,
+       reconciliation_date,method,rule_id,statement_amount,statement_currency,
+       statement_foreign_amount,statement_exchange_rate,matched_amount,
        difference_amount,status,adjustment_journal_id,notes,reconciled_by,
        created_by,updated_by
      )
      VALUES (
-       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,0,'matched',$12,$13,$14,$14,$14
+       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,0,'matched',$15,$16,$17,$17,$17
      )
      RETURNING id::text`,
     [
@@ -956,6 +1014,9 @@ async function insertReconciliation(
       input.method,
       input.ruleId || null,
       decimalAmount(statementAmount),
+      String(input.statement.currency || ""),
+      String(input.statement.amount || "0"),
+      String(input.statement.exchange_rate || "1"),
       decimalAmount(input.matchedAmount),
       input.adjustmentJournalId || null,
       input.notes || null,
@@ -1116,7 +1177,7 @@ export async function reconcileStatementLine(input: unknown) {
       throw new AccountingInputError("This statement line is no longer available to reconcile.");
     }
 
-    const statementAmount = signedCents(statement.amount);
+    const statementAmount = statementLedgerAmount(statement);
     let sum = BigInt(0);
 
     for (const id of allocations.map(item=>item.journalLineId).sort()) {
@@ -1518,7 +1579,7 @@ export async function applyReconciliationRule(input: unknown) {
       throw new AccountingInputError("Adjustment target cannot be the same bank ledger account.");
     }
 
-    const amount = signedCents(statement.amount);
+    const amount = statementLedgerAmount(statement);
     const positive = amount > BigInt(0);
     const absoluteAmount = absolute(amount);
     const description =
@@ -1605,6 +1666,22 @@ export async function applyReconciliationRule(input: unknown) {
       acceptedSuggestionId:suggestionId,
       requestKey:key,
       requestHash:hash,
+    });
+
+    await recordForeignReconciliationMovement(client,{
+      companyId:context.companyId,
+      bankAccountId:String(statement.bank_account_id),
+      sourceType:"bank_reconciliation_adjustment",
+      sourceId:reconciliation.id,
+      eventKey:"bank-reconciliation:"+reconciliation.id+":adjustment",
+      movementDate:String(statement.transaction_date),
+      currency:String(statement.currency),
+      baseCurrency:String(statement.base_currency),
+      foreignAmount:String(statement.amount),
+      baseAmount:String(statement.base_amount),
+      exchangeRate:String(statement.exchange_rate),
+      userId:context.userId,
+      metadata:{ statementLineId,ruleId,journalId:journal.journalId },
     });
 
     await client.query("COMMIT");
@@ -1808,8 +1885,20 @@ export async function reverseReconciliation(input: unknown) {
          r.status,
          r.adjustment_journal_id::text,
          r.reversal_journal_id::text,
-         r.reconciliation_number
+         r.reconciliation_number,
+         s.bank_account_id::text,
+         COALESCE(s.currency,b.currency)::text AS statement_currency,
+         s.amount::text AS statement_foreign_amount,
+         COALESCE(s.base_amount,s.amount)::text AS statement_base_amount,
+         COALESCE(s.exchange_rate,1)::text AS statement_exchange_rate,
+         c.currency AS base_currency
        FROM accounting_reconciliations r
+       JOIN accounting_bank_statement_lines s
+         ON s.company_id=r.company_id AND s.id=r.statement_line_id
+       JOIN accounting_bank_accounts b
+         ON b.company_id=s.company_id AND b.id=s.bank_account_id
+       JOIN companies c
+         ON c.id=r.company_id
        WHERE r.company_id=$1
          AND r.id=$2
          AND r.deleted_at IS NULL
@@ -1860,6 +1949,24 @@ export async function reverseReconciliation(input: unknown) {
         sourceEventKey:"accounting:bank-reconciliation:"+id+":reverse",
       });
       reversalJournalId = reversal.journalId;
+
+      const reverseForeign = fxForeignUnits(reconciliation.statement_foreign_amount) * BigInt(-1);
+      const reverseBase = signedCents(reconciliation.statement_base_amount) * BigInt(-1);
+      await recordForeignReconciliationMovement(client,{
+        companyId:context.companyId,
+        bankAccountId:String(reconciliation.bank_account_id),
+        sourceType:"bank_reconciliation_reversal",
+        sourceId:id,
+        eventKey:"bank-reconciliation:"+id+":adjustment:reverse",
+        movementDate:reversalDate,
+        currency:String(reconciliation.statement_currency),
+        baseCurrency:String(reconciliation.base_currency),
+        foreignAmount:foreignDecimal(reverseForeign),
+        baseAmount:decimalAmount(reverseBase),
+        exchangeRate:String(reconciliation.statement_exchange_rate),
+        userId:context.userId,
+        metadata:{ reversalOf:id,reversalJournalId },
+      });
     }
 
     await client.query(

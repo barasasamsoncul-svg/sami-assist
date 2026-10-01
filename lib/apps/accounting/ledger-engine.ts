@@ -569,8 +569,97 @@ async function assertPostingAccounts(
       'A manual journal cannot post to a system-only control account.',
     );
   }
-}
 
+  /*
+   * Foreign financial-account protection is intentionally optional-table-aware.
+   *
+   * The ledger engine is also used by bootstrap/migration tests that create
+   * only the core journals/accounts schema. It must therefore never require
+   * later Accounting surfaces merely to validate an ordinary journal.
+   *
+   * When the FX and Bank/Cash subledgers are installed, however, a manual
+   * journal must not touch a foreign financial account because doing so would
+   * change the base GL without changing its foreign-amount subledger.
+   */
+  if (
+    manualOnly
+  ) {
+    const optionalTables =
+      await client.query(
+        `
+          SELECT
+            to_regclass(
+              'public.accounting_bank_accounts'
+            ) IS NOT NULL
+              AS bank_accounts_present,
+            to_regclass(
+              'public.accounting_fx_currencies'
+            ) IS NOT NULL
+              AS fx_currencies_present
+        `,
+      );
+
+    if (
+      optionalTables.rows[0]
+        ?.bank_accounts_present ===
+        true &&
+      optionalTables.rows[0]
+        ?.fx_currencies_present ===
+        true
+    ) {
+      const foreignFinancial =
+        await client.query(
+          `
+            SELECT
+              b.ledger_account_id::text
+            FROM accounting_bank_accounts b
+
+            INNER JOIN accounting_fx_currencies base
+              ON base.company_id =
+                 b.company_id
+
+             AND base.is_base =
+                 TRUE
+
+            WHERE b.company_id =
+                  $1
+
+              AND b.ledger_account_id =
+                  ANY(
+                    $2::uuid[]
+                  )
+
+              AND b.deleted_at
+                  IS NULL
+
+              AND b.status <>
+                  'closed'
+
+              AND UPPER(
+                    b.currency
+                  ) <>
+                  UPPER(
+                    base.code
+                  )
+
+            LIMIT 1
+          `,
+          [
+            companyId,
+            ids,
+          ],
+        );
+
+      if (
+        foreignFinancial.rows[0]
+      ) {
+        throw new LedgerPostingError(
+          'Manual journals cannot post directly to a foreign-currency financial account. Use Accounting → Foreign Currency so the base ledger and foreign subledger stay synchronized.',
+        );
+      }
+    }
+  }
+}
 
 function deterministicJournalNumber(
   sourceModule:

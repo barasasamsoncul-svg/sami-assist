@@ -15,6 +15,7 @@ export type AccountingStatementBatch = {
   statement_to: string | null;
   opening_balance: string | null;
   closing_balance: string | null;
+  currency: string | null;
   total_rows: number;
   imported_rows: number;
   duplicate_rows: number;
@@ -34,6 +35,9 @@ export type AccountingStatementImportRow = {
   external_transaction_id: string | null;
   counterparty: string | null;
   amount: string | null;
+  currency: string | null;
+  exchange_rate: string | null;
+  base_amount: string | null;
   import_status: string;
   error_message: string | null;
   statement_line_id: string | null;

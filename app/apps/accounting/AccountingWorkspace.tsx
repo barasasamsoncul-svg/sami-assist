@@ -1,3 +1,5 @@
+import AccountingFx from './AccountingFx';
+import { getAccountingFx } from '@/lib/apps/accounting/fx';
 import AccountingInternational from './AccountingInternational';
 import { getAccountingInternational } from '@/lib/apps/accounting/international';
 import AccountingKenya from './AccountingKenya';
@@ -122,6 +124,12 @@ export default async function AccountingWorkspace({
       dedicatedSection
         ? undefined
         : section,
+      {
+        lightweight:
+          Boolean(
+            dedicatedSection,
+          ),
+      },
     );
 
   let foundation:
@@ -230,6 +238,7 @@ export default async function AccountingWorkspace({
   let taxesWorkspace: Awaited<ReturnType<typeof getAccountingTaxes>> | null = null;
   let kenyaWorkspace: Awaited<ReturnType<typeof getAccountingKenya>> | null = null;
   let internationalWorkspace: Awaited<ReturnType<typeof getAccountingInternational>> | null = null;
+  let fxWorkspace: Awaited<ReturnType<typeof getAccountingFx>> | null = null;
 
   let reconciliationWorkspace:
     Awaited<
@@ -266,6 +275,7 @@ export default async function AccountingWorkspace({
     dedicatedSection !== 'taxes' &&
     dedicatedSection !== 'kenya' &&
     dedicatedSection !== 'international' &&
+    dedicatedSection !== 'fx' &&
     dedicatedSection !==
       'reconciliation'
   ) {
@@ -516,6 +526,11 @@ export default async function AccountingWorkspace({
   if (dedicatedSection === 'international') {
     try { internationalWorkspace = await getAccountingInternational({from:filters.from,to:filters.to}); }
     catch (error) { foundationError = error instanceof AccountingInputError ? error.message : 'International localization could not be loaded. Retry this page.'; }
+  }
+
+  if (dedicatedSection === 'fx') {
+    try { fxWorkspace = await getAccountingFx({asOf:filters.to || filters.from}); }
+    catch (error) { foundationError = error instanceof AccountingInputError ? error.message : 'Foreign currency could not be loaded. Retry this page.'; }
   }
 
   if (
@@ -863,6 +878,8 @@ export default async function AccountingWorkspace({
 
     {key:'international',label:'International localization',href:appBaseHref+'/international',description:'Country packs, tax report boxes and shared UBL/Peppol evidence.',sectionLabel:'Configuration'},
 
+    {key:'fx',label:'Foreign currency',href:appBaseHref+'/fx',description:'Exchange rates, foreign positions, FX settlements and revaluation.',sectionLabel:'Banking'},
+
     {
       key:
         'reconciliation',
@@ -1069,6 +1086,8 @@ export default async function AccountingWorkspace({
                   ? (kenyaWorkspace ? <AccountingKenya data={kenyaWorkspace} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Kenya accounting could not be loaded.'}</div>)
                 : dedicatedSection === 'international'
                   ? (internationalWorkspace ? <AccountingInternational data={internationalWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'International localization could not be loaded.'}</div>)
+                : dedicatedSection === 'fx'
+                  ? (fxWorkspace ? <AccountingFx data={fxWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Foreign currency could not be loaded.'}</div>)
                 : dedicatedSection ===
                     'reconciliation'
                   ? (
