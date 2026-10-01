@@ -158,6 +158,39 @@ function settlementMode(
 }
 
 
+async function expensesTablesAvailable(
+  client: PoolClient,
+) {
+  const result = await client.query(
+    `SELECT
+       to_regclass('public.expense_categories') AS categories,
+       to_regclass('public.expenses') AS expenses,
+       to_regclass('public.expense_reports') AS reports,
+       to_regclass('public.expense_report_lines') AS lines`,
+  );
+
+  const row = result.rows[0] || {};
+
+  return Boolean(
+    row.categories &&
+    row.expenses &&
+    row.reports &&
+    row.lines,
+  );
+}
+
+
+async function assertExpensesAvailable(
+  client: PoolClient,
+) {
+  if (!(await expensesTablesAvailable(client))) {
+    throw new AccountingInputError(
+      "Install and initialize the Expenses app before using Accounting expense mappings, posting or reimbursements.",
+    );
+  }
+}
+
+
 function pageValue(value: unknown) {
   const page = Number(value || 1);
 
@@ -291,6 +324,79 @@ export async function getAccountingExpenses(
     await client.query(
       "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY",
     );
+
+    const dependencyAvailable =
+      await expensesTablesAvailable(
+        client,
+      );
+
+    if (!dependencyAvailable) {
+      const [setupOnly, accountsOnly] =
+        await Promise.all([
+          client.query(
+            `SELECT
+               default_expense_account_id::text,
+               employee_expense_payable_account_id::text,
+               corporate_card_clearing_account_id::text
+             FROM accounting_settings
+             WHERE company_id=$1
+               AND deleted_at IS NULL
+             LIMIT 1`,
+            [context.companyId],
+          ),
+          client.query(
+            `SELECT
+               id::text,
+               code,
+               name,
+               account_type,
+               system_role
+             FROM accounts
+             WHERE company_id=$1
+               AND deleted_at IS NULL
+               AND is_active=TRUE
+             ORDER BY code,name`,
+            [context.companyId],
+          ),
+        ]);
+
+      await client.query("COMMIT");
+
+      const setupRow = setupOnly.rows[0] || {};
+
+      return {
+        companyId: context.companyId,
+        expensesAvailable: false,
+        currency: context.company.currentCompany.currency,
+        reports: [],
+        lines: [],
+        categories: [],
+        mappings: [],
+        reimbursements: [],
+        accounts: accountsOnly.rows as AccountingExpensesWorkspace["accounts"],
+        setup: {
+          defaultExpenseAccountId:
+            setupRow.default_expense_account_id
+              ? String(setupRow.default_expense_account_id)
+              : null,
+          employeeExpensePayableAccountId:
+            setupRow.employee_expense_payable_account_id
+              ? String(setupRow.employee_expense_payable_account_id)
+              : null,
+          corporateCardClearingAccountId:
+            setupRow.corporate_card_clearing_account_id
+              ? String(setupRow.corporate_card_clearing_account_id)
+              : null,
+        },
+        metrics: {
+          approvedUnposted: 0,
+          postedOutstanding: "0.00",
+          reimbursedThisMonth: "0.00",
+          policyExceptions: 0,
+          missingReceipts: 0,
+        },
+      };
+    }
 
     const [
       setup,
@@ -607,6 +713,8 @@ export async function getAccountingExpenses(
     return {
       companyId:
         context.companyId,
+      expensesAvailable:
+        true,
       currency:
         context.company
           .currentCompany
@@ -877,6 +985,10 @@ export async function saveExpenseCategoryMapping(
       "BEGIN",
     );
 
+    await assertExpensesAvailable(
+      client,
+    );
+
     const category =
       await client.query(
         `SELECT id::text,name
@@ -1052,6 +1164,10 @@ export async function postExpenseReport(
   try {
     await client.query(
       "BEGIN",
+    );
+
+    await assertExpensesAvailable(
+      client,
     );
 
     const existing =
@@ -1696,6 +1812,10 @@ export async function reverseExpenseReportPosting(
       "BEGIN",
     );
 
+    await assertExpensesAvailable(
+      client,
+    );
+
     const result =
       await client.query(
         `SELECT
@@ -1914,6 +2034,10 @@ export async function reimburseExpenseReport(
   try {
     await client.query(
       "BEGIN",
+    );
+
+    await assertExpensesAvailable(
+      client,
     );
 
     await client.query(
@@ -2319,6 +2443,10 @@ export async function reverseExpenseReimbursement(
   try {
     await client.query(
       "BEGIN",
+    );
+
+    await assertExpensesAvailable(
+      client,
     );
 
     const result =
