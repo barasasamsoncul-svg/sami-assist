@@ -717,7 +717,7 @@ test('Accounting 2.8 opening balances are migration-backed and workflow protecte
   assert.match(runtimeMigrations, /ACCOUNTING_2_7_0_TO_2_8_0/);
   assert.match(
     migration,
-    /fromVersion:\s*'2\.7\.0'[\s\S]*toVersion:\s*'2\.9\.0'/,
+    /fromVersion:\s*'2\.7\.0'[\s\S]*toVersion:\s*'2\.8\.0'/,
   );
 
   for (const marker of [
