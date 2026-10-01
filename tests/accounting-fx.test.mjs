@@ -73,6 +73,6 @@ test('foreign statement reconciliation translates to base and preserves FX suble
 
 test('manual journal posting cannot bypass a foreign financial-account subledger',async()=>{
   const source=await fs.readFile(new URL('../lib/apps/accounting/ledger-engine.ts',import.meta.url),'utf8');
-  assert.match(source,/foreign_financial_account/);
+  assert.match(source,/accounting_fx_currencies/);
   assert.match(source,/Manual journals cannot post directly to a foreign-currency financial account/);
 });
