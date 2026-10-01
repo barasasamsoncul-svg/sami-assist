@@ -1190,7 +1190,7 @@ test(
     );
     assert.match(
       service,
-      /Dedicated app routes already own their data queries[\s\S]*getEnterpriseModuleShellWorkspace/,
+      /getEnterpriseModuleShellWorkspace[\s\S]*Dedicated app routes already own their data queries/,
       'The lightweight enterprise shell must not introspect every business table.',
     );
     assert.match(
