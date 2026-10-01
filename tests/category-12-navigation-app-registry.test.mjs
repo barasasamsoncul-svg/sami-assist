@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  access,
   readFile,
   readdir,
 } from 'node:fs/promises';
@@ -785,16 +786,12 @@ test('Category 12: shared app visuals stay registry-driven across shell, dashboa
   );
 });
 
-test('Category 12: Apps routes have stable loading, error and unavailable states', async () => {
+test('Category 12: Apps routes avoid a blocking loader while preserving error and unavailable states', async () => {
   const [
-    loading,
     error,
     notFound,
   ] =
     await Promise.all([
-      source(
-        'app/apps/loading.tsx',
-      ),
       source(
         'app/apps/error.tsx',
       ),
@@ -803,9 +800,14 @@ test('Category 12: Apps routes have stable loading, error and unavailable states
       ),
     ]);
 
-  assert.match(
-    loading,
-    /WorkspaceRouteLoading/,
+  await assert.rejects(
+    access(
+      path.join(
+        root,
+        'app/apps/loading.tsx',
+      ),
+    ),
+    'Apps must not restore the removed full-page Loading apps route fallback.',
   );
 
   assert.match(
