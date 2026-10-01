@@ -320,7 +320,7 @@ export default function AccountingTaxes({
         <thead><tr><th>Code</th><th>Name</th><th>Calculation</th><th>Components</th><th>Status</th><th></th></tr></thead>
         <tbody>{data.groups.length?data.groups.map(group=><tr key={group.id}>
           <td><strong>{group.code}</strong></td><td>{group.name}</td><td>{group.calculation}</td>
-          <td>{Array.isArray(group.components)?group.components.map((item:any)=><span key={item.id} className={styles.meta}>{item.taxCode} {item.rate}%{item.compound?" · compound":""}<br/></span>):null}</td>
+          <td>{Array.isArray(group.components)?group.components.map(item=><span key={item.id} className={styles.meta}>{item.taxCode} {item.rate}%{item.compound?" · compound":""}<br/></span>):null}</td>
           <td>{group.status}</td>
           <td>{canManageSettings?<button className={styles.button} type="button" disabled={busy==="group:"+group.id} onClick={()=>changeStatus("group",group.id,group.status==="active"?"inactive":"active")}>{group.status==="active"?"Deactivate":"Activate"}</button>:null}</td>
         </tr>):<tr><td colSpan={6}>No tax groups yet.</td></tr>}</tbody>
