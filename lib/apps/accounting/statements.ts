@@ -691,6 +691,9 @@ async function importNormalizedTransactions(
     const transaction = input.transactions[index];
     const rowNumber = index+1;
     const fp = fingerprint(transaction);
+    const savepoint = "statement_import_row_" + rowNumber;
+
+    await client.query("SAVEPOINT " + savepoint);
 
     try {
       const duplicate = await client.query(
@@ -779,8 +782,10 @@ async function importNormalizedTransactions(
          WHERE company_id=$1 AND batch_id=$2 AND id=$3`,
         [input.companyId,input.batchId,rowId,String(line.rows[0].id),input.userId],
       );
+      await client.query("RELEASE SAVEPOINT " + savepoint);
       imported += 1;
     } catch (error) {
+      await client.query("ROLLBACK TO SAVEPOINT " + savepoint);
       await client.query(
         `INSERT INTO accounting_statement_import_rows (
            company_id,batch_id,row_number,transaction_date,value_date,description,
@@ -805,6 +810,7 @@ async function importNormalizedTransactions(
           JSON.stringify(transaction.raw),input.userId,
         ],
       );
+      await client.query("RELEASE SAVEPOINT " + savepoint);
       errors += 1;
     }
   }
@@ -1224,6 +1230,112 @@ export async function ingestNormalizedFeed(input: unknown) {
         ],
       ).catch(()=>{});
     } catch {}
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
+export async function cancelStatementImportBatch(input: unknown) {
+  const context = await requireEnterpriseModuleTableContext(
+    "accounting",
+    "accounting_statement_import_batches",
+    "edit",
+  );
+  const body = bodyOf(input);
+  const batchId = accountingId(body.batchId);
+  const client = await context.pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const batchResult = await client.query(
+      `SELECT id::text,status,bank_account_id::text,source_filename
+       FROM accounting_statement_import_batches
+       WHERE company_id=$1 AND id=$2 AND deleted_at IS NULL
+       LIMIT 1
+       FOR UPDATE`,
+      [context.companyId,batchId],
+    );
+    const batch = batchResult.rows[0];
+
+    if (!batch) {
+      throw new AccountingInputError("Statement import batch not found.");
+    }
+
+    if (batch.status === "cancelled") {
+      await client.query("COMMIT");
+      return { batchId,replayed:true };
+    }
+
+    const used = await client.query(
+      `SELECT 1
+       FROM accounting_bank_statement_lines
+       WHERE company_id=$1
+         AND import_batch_id=$2
+         AND deleted_at IS NULL
+         AND reconciliation_status='matched'
+       LIMIT 1`,
+      [context.companyId,batchId],
+    );
+
+    if (used.rows[0]) {
+      throw new AccountingInputError(
+        "A statement batch with matched reconciliation lines cannot be undone.",
+      );
+    }
+
+    await client.query(
+      `UPDATE accounting_bank_statement_lines
+       SET deleted_at=NOW(),updated_by=$3,updated_at=NOW()
+       WHERE company_id=$1
+         AND import_batch_id=$2
+         AND deleted_at IS NULL
+         AND reconciliation_status IN ('unmatched','suggested','excluded')`,
+      [context.companyId,batchId,context.userId],
+    );
+
+    await client.query(
+      `UPDATE accounting_statement_import_rows
+       SET import_status='ignored',updated_by=$3,updated_at=NOW()
+       WHERE company_id=$1
+         AND batch_id=$2
+         AND deleted_at IS NULL
+         AND import_status IN ('imported','duplicate','error','pending')`,
+      [context.companyId,batchId,context.userId],
+    );
+
+    await client.query(
+      `UPDATE accounting_statement_import_batches
+       SET status='cancelled',updated_by=$3,updated_at=NOW()
+       WHERE company_id=$1 AND id=$2`,
+      [context.companyId,batchId,context.userId],
+    );
+
+    await client.query("COMMIT");
+
+    await recordWorkspaceAuditEvent({
+      tenantId:context.tenantId,
+      companyId:context.companyId,
+      userId:context.userId,
+      action:"accounting.statement.import_cancelled",
+      module:"accounting",
+      resourceType:"accounting_statement_import_batches",
+      resourceId:batchId,
+      summary:"Statement import batch undone before reconciliation",
+      result:"success",
+      metadata:{
+        bankAccountId:String(batch.bank_account_id),
+        sourceFilename:batch.source_filename || null,
+      },
+    }).catch(error =>
+      console.error("[Accounting] Statement import cancellation audit delivery failed",error),
+    );
+
+    return { batchId,replayed:false };
+  } catch (error) {
+    try { await client.query("ROLLBACK"); } catch {}
     throw error;
   } finally {
     client.release();
