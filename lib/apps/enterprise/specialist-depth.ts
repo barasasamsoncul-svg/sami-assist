@@ -1471,6 +1471,8 @@ ALTER TABLE public.accounting_bank_statement_lines
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
     reconciliation_number VARCHAR(100) NOT NULL,
+    request_key UUID NOT NULL,
+    request_hash VARCHAR(64) NOT NULL,
     bank_account_id UUID NOT NULL
       REFERENCES public.accounting_bank_accounts(id) ON DELETE RESTRICT,
     statement_line_id UUID NOT NULL
@@ -1501,6 +1503,10 @@ ALTER TABLE public.accounting_bank_statement_lines
 
   CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_reconciliation_number
     ON public.accounting_reconciliations(company_id,reconciliation_number)
+    WHERE deleted_at IS NULL;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_reconciliation_request
+    ON public.accounting_reconciliations(company_id,request_key)
     WHERE deleted_at IS NULL;
 
   CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_active_statement_reconciliation
@@ -1590,6 +1596,8 @@ ALTER TABLE public.accounting_bank_statement_lines
   INSERT INTO public.accounting_reconciliations (
     company_id,
     reconciliation_number,
+    request_key,
+    request_hash,
     bank_account_id,
     statement_line_id,
     reconciliation_date,
@@ -1606,6 +1614,8 @@ ALTER TABLE public.accounting_bank_statement_lines
   SELECT
     s.company_id,
     'LEGACY-' || UPPER(SUBSTRING(s.id::text,1,8)),
+    gen_random_uuid(),
+    'legacy-' || s.id::text,
     s.bank_account_id,
     s.id,
     s.transaction_date,
@@ -1721,6 +1731,10 @@ ALTER TABLE public.accounting_bank_statement_lines
     ON r.company_id=m.company_id
    AND r.id=m.reconciliation_id
   WHERE l.deleted_at IS NULL
+    AND COALESCE(j.source_type,'') NOT IN (
+      'bank_reconciliation_adjustment',
+      'bank_reconciliation_reversal'
+    )
   GROUP BY
     l.company_id,
     l.id,
