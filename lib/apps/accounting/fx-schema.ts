@@ -240,12 +240,14 @@ SELECT
   COALESCE(l.base_book_balance,0)::numeric(19,2) AS book_balance,
   COALESCE(l.base_book_balance,0)::numeric(19,2) AS base_book_balance,
   CASE
-    WHEN UPPER(b.currency)=UPPER(c.currency)
+    WHEN base.code IS NULL OR UPPER(b.currency)=UPPER(base.code)
       THEN COALESCE(l.base_book_balance,0)::numeric(19,4)
     ELSE COALESCE(f.foreign_balance,0)::numeric(19,4)
   END AS foreign_balance
 FROM public.accounting_bank_accounts b
-JOIN public.companies c ON c.id=b.company_id
+LEFT JOIN public.accounting_fx_currencies base
+  ON base.company_id=b.company_id
+ AND base.is_base=TRUE
 LEFT JOIN ledger l ON l.company_id=b.company_id AND l.bank_account_id=b.id
 LEFT JOIN foreign_moves f ON f.company_id=b.company_id AND f.bank_account_id=b.id
 WHERE b.deleted_at IS NULL;
