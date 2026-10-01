@@ -1067,8 +1067,12 @@ async function currentReconciliation(
               account.name,
               COALESCE(
                 SUM(
-                  line.debit -
-                  line.credit
+                  CASE
+                    WHEN journal.id IS NOT NULL
+                      THEN line.debit -
+                           line.credit
+                    ELSE 0
+                  END
                 ),
                 0
               )::numeric(19,2)::text
