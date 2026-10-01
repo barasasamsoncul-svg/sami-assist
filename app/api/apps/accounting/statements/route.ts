@@ -5,6 +5,7 @@ import {
 
 import {
   acceptPossibleDuplicate,
+  cancelStatementImportBatch,
   changeFeedConnectionStatus,
   createFeedConnection,
   getAccountingStatements,
@@ -84,7 +85,9 @@ export async function POST(request: NextRequest) {
               ? await ingestNormalizedFeed(body)
               : action === "accept-duplicate"
                 ? await acceptPossibleDuplicate(body)
-                : null;
+                : action === "cancel-batch"
+                  ? await cancelStatementImportBatch(body)
+                  : null;
 
     if (!result) {
       return respond({error:"Choose a supported statement action."},400);
