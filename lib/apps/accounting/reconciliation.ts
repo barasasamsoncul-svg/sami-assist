@@ -745,10 +745,12 @@ export async function generateReconciliationSuggestions(input: unknown) {
 
       const statementAmount = signedCents(statement.amount);
       const available = signedCents(candidate.remaining_amount);
-      const suggestionAmount =
-        absolute(available) > absolute(statementAmount)
-          ? statementAmount
-          : available;
+
+      if (absolute(available) < absolute(statementAmount)) {
+        continue;
+      }
+
+      const suggestionAmount = statementAmount;
 
       await client.query(
         `INSERT INTO accounting_reconciliation_suggestions (
