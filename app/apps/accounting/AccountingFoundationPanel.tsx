@@ -28,6 +28,7 @@ export const ACCOUNTING_SECTIONS = [
   "payables",
   "purchasing",
   "expenses",
+  "bank-cash",
   "setup",
 ] as const;
 export type AccountingSection = (typeof ACCOUNTING_SECTIONS)[number];
@@ -100,6 +101,7 @@ export default function AccountingFoundationPanel({
     payables: "Accounts payable",
     purchasing: "Purchasing controls",
     expenses: "Expenses & reimbursements",
+    "bank-cash": "Bank, cash & mobile money",
     setup: "Accounting setup",
   };
   const descriptions = {
@@ -127,6 +129,8 @@ export default function AccountingFoundationPanel({
       "Control requisitions, purchase orders, goods receipts and vendor-bill matching before Accounts Payable posting.",
     expenses:
       "Post approved employee expenses, classify categories and control reimbursement settlement without duplicating the Expenses app.",
+    "bank-cash":
+      "Manage bank accounts, cash tills and mobile-money wallets against the authoritative ledger, including controlled internal transfers.",
     setup:
       "Configure fiscal policy, control accounts, tax mappings, FX accounts, write-offs and period locks for this company.",
   };
