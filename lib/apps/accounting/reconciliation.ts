@@ -98,6 +98,11 @@ function signedCents(value: unknown) {
 }
 
 
+function statementLedgerAmount(statement: Record<string,unknown>) {
+  return signedCents(statement.base_amount ?? statement.amount);
+}
+
+
 function absolute(value: bigint) {
   return value < BigInt(0) ? -value : value;
 }
@@ -179,7 +184,7 @@ async function statementForUpdate(
        s.bank_account_id::text,
        b.name AS bank_account_name,
        b.ledger_account_id::text,
-       b.currency,
+       b.currency AS account_currency,
        b.status AS bank_account_status,
        s.transaction_date::text,
        s.value_date::text,
@@ -187,6 +192,9 @@ async function statementForUpdate(
        s.external_reference,
        s.counterparty,
        s.amount::text,
+       COALESCE(s.currency,b.currency)::text AS currency,
+       COALESCE(s.exchange_rate,1)::text AS exchange_rate,
+       COALESCE(s.base_amount,s.amount)::text AS base_amount,
        s.reconciliation_status
      FROM accounting_bank_statement_lines s
      JOIN accounting_bank_accounts b
@@ -283,7 +291,7 @@ function ruleMatches(
   rule: Record<string,unknown>,
   statement: Record<string,unknown>,
 ) {
-  const amount = signedCents(statement.amount);
+  const amount = statementLedgerAmount(statement);
   const absoluteAmount = absolute(amount);
   const direction = String(rule.direction || "any");
 
@@ -329,7 +337,7 @@ function candidateConfidence(
   statement: Record<string,unknown>,
   candidate: AccountingReconciliationCandidate,
 ) {
-  const statementAmount = signedCents(statement.amount);
+  const statementAmount = statementLedgerAmount(statement);
   const remaining = signedCents(candidate.remaining_amount);
 
   if (!sameDirection(statementAmount,remaining)) {
@@ -398,7 +406,7 @@ async function candidatesForStatement(
   companyId: string,
   statement: Record<string,unknown>,
 ) {
-  const amount = signedCents(statement.amount);
+  const amount = statementLedgerAmount(statement);
   const rows = await client.query(
     `SELECT
        v.journal_line_id::text,
@@ -470,7 +478,7 @@ export async function getAccountingReconciliation(
       metrics,
     ] = await Promise.all([
       client.query(
-        `SELECT id::text,name,ledger_account_id::text,account_type,status
+        `SELECT id::text,name,ledger_account_id::text,account_type,currency,status
          FROM accounting_bank_accounts
          WHERE company_id=$1
            AND deleted_at IS NULL
@@ -488,6 +496,9 @@ export async function getAccountingReconciliation(
            s.external_reference,
            s.counterparty,
            s.amount::text,
+           COALESCE(s.currency,b.currency)::text AS currency,
+           COALESCE(s.exchange_rate,1)::text AS exchange_rate,
+           COALESCE(s.base_amount,s.amount)::text AS base_amount,
            s.reconciliation_status,
            s.source_type,
            COUNT(g.id) FILTER (
@@ -510,7 +521,7 @@ export async function getAccountingReconciliation(
          WHERE s.company_id=$1
            AND s.deleted_at IS NULL
            AND s.reconciliation_status IN ('unmatched','suggested','excluded')
-         GROUP BY s.id,b.name
+         GROUP BY s.id,b.name,b.currency
          ORDER BY
            CASE s.reconciliation_status
              WHEN 'suggested' THEN 0
@@ -561,6 +572,9 @@ export async function getAccountingReconciliation(
            r.reconciliation_date::text,
            r.method,
            r.statement_amount::text,
+           r.statement_currency,
+           r.statement_foreign_amount::text,
+           r.statement_exchange_rate::text,
            r.matched_amount::text,
            r.difference_amount::text,
            r.status,
@@ -629,6 +643,9 @@ export async function getAccountingReconciliation(
            s.external_reference,
            s.counterparty,
            s.amount::text,
+           COALESCE(s.currency,b.currency)::text AS currency,
+           COALESCE(s.exchange_rate,1)::text AS exchange_rate,
+           COALESCE(s.base_amount,s.amount)::text AS base_amount,
            s.reconciliation_status,
            s.source_type,
            0::int AS suggestion_count,
@@ -780,7 +797,7 @@ export async function generateReconciliationSuggestions(input: unknown) {
       const confidence = candidateConfidence(statement,candidate);
       if (confidence < 45) continue;
 
-      const statementAmount = signedCents(statement.amount);
+      const statementAmount = statementLedgerAmount(statement);
       const available = signedCents(candidate.remaining_amount);
 
       if (absolute(available) < absolute(statementAmount)) {
@@ -836,7 +853,7 @@ export async function generateReconciliationSuggestions(input: unknown) {
           statementLineId,
           rule.id,
           confidence,
-          decimalAmount(signedCents(statement.amount)),
+          decimalAmount(statementLedgerAmount(statement)),
           "Active reconciliation rule '" + String(rule.name) + "' matches this statement line.",
           context.userId,
         ],
@@ -925,11 +942,11 @@ async function insertReconciliation(
     requestHash: string;
   },
 ) {
-  const statementAmount = signedCents(input.statement.amount);
+  const statementAmount = statementLedgerAmount(input.statement);
 
   if (input.matchedAmount !== statementAmount) {
     throw new AccountingInputError(
-      "A statement line can only be marked reconciled when its full signed amount is allocated.",
+      "A statement line can only be marked reconciled when its full signed base-currency amount is allocated.",
     );
   }
 
@@ -937,12 +954,13 @@ async function insertReconciliation(
   const result = await client.query(
     `INSERT INTO accounting_reconciliations (
        company_id,reconciliation_number,request_key,request_hash,bank_account_id,statement_line_id,
-       reconciliation_date,method,rule_id,statement_amount,matched_amount,
+       reconciliation_date,method,rule_id,statement_amount,statement_currency,
+       statement_foreign_amount,statement_exchange_rate,matched_amount,
        difference_amount,status,adjustment_journal_id,notes,reconciled_by,
        created_by,updated_by
      )
      VALUES (
-       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,0,'matched',$12,$13,$14,$14,$14
+       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,0,'matched',$15,$16,$17,$17,$17
      )
      RETURNING id::text`,
     [
@@ -956,6 +974,9 @@ async function insertReconciliation(
       input.method,
       input.ruleId || null,
       decimalAmount(statementAmount),
+      String(input.statement.currency || ""),
+      String(input.statement.amount || "0"),
+      String(input.statement.exchange_rate || "1"),
       decimalAmount(input.matchedAmount),
       input.adjustmentJournalId || null,
       input.notes || null,
@@ -1116,7 +1137,7 @@ export async function reconcileStatementLine(input: unknown) {
       throw new AccountingInputError("This statement line is no longer available to reconcile.");
     }
 
-    const statementAmount = signedCents(statement.amount);
+    const statementAmount = statementLedgerAmount(statement);
     let sum = BigInt(0);
 
     for (const id of allocations.map(item=>item.journalLineId).sort()) {
@@ -1518,7 +1539,7 @@ export async function applyReconciliationRule(input: unknown) {
       throw new AccountingInputError("Adjustment target cannot be the same bank ledger account.");
     }
 
-    const amount = signedCents(statement.amount);
+    const amount = statementLedgerAmount(statement);
     const positive = amount > BigInt(0);
     const absoluteAmount = absolute(amount);
     const description =
