@@ -26,6 +26,7 @@ import {
 import {
   ACCOUNT_TYPE_OPTIONS,
   ACCOUNT_TYPE_BY_KEY,
+  type AccountTypeKey,
 } from '@/lib/apps/accounting/chart-config';
 
 import type {
@@ -1000,7 +1001,7 @@ export default function AccountingChartOfAccounts({
                             account => {
                               const definition =
                                 ACCOUNT_TYPE_BY_KEY.get(
-                                  account.accountType as never,
+                                  account.accountType as AccountTypeKey,
                                 );
 
                               return (
@@ -1439,7 +1440,7 @@ export default function AccountingChartOfAccounts({
 
                             const definition =
                               ACCOUNT_TYPE_BY_KEY.get(
-                                nextType as never,
+                                nextType as AccountTypeKey,
                               );
 
                             setEditor({
