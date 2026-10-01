@@ -82,7 +82,7 @@ function pageValue(value: unknown) {
   return Number.isInteger(n) && n > 0 ? Math.min(n, 100000) : 1;
 }
 
-function bucketValue(value: unknown) {
+function bucketValue(value: unknown): "" | (typeof BUCKETS)[number] {
   return typeof value === "string" && BUCKETS.includes(value as (typeof BUCKETS)[number])
     ? value as (typeof BUCKETS)[number]
     : "";
@@ -612,7 +612,7 @@ export async function postPayablesDocument(input: unknown) {
     let allocated = BigInt(0);
     const expenseLines = l.rows.map((line, index) => {
       const raw = cents(line.line_total);
-      let converted = index === l.rows.length - 1
+      const converted = index === l.rows.length - 1
         ? baseTotal - allocated
         : BigInt(Math.round(Number(raw) * Number(doc.exchange_rate || 1)));
       allocated += converted;
