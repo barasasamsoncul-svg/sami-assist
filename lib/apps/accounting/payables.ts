@@ -7,7 +7,7 @@ import {
 } from "@/lib/apps/enterprise/service";
 import {
   recordWorkspaceAuditEvent,
-} from "@/lib/audit/workspace-audit";
+} from "@/lib/services/workspace-activity";
 import {
   postBalancedLedgerJournal,
   reversePostedLedgerJournal,
