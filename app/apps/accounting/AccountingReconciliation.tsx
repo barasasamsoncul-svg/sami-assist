@@ -114,6 +114,11 @@ export default function AccountingReconciliation({
   const amount = (value: string | null | undefined) =>
     formatAccountingAmount(value || "0.00",data.currency);
 
+  const statementAmount = (
+    value: string | null | undefined,
+    currency: string | null | undefined,
+  ) => formatAccountingAmount(value || "0.00",currency || data.currency);
+
   const chosenAllocations = useMemo(
     () =>
       Object.entries(allocationAmounts)
@@ -252,7 +257,7 @@ export default function AccountingReconciliation({
         delete next[candidate.journal_line_id];
       } else {
         next[candidate.journal_line_id] = defaultAllocation(
-          selected.amount,
+          selected.base_amount,
           candidate.remaining_amount,
         );
       }
@@ -284,7 +289,7 @@ export default function AccountingReconciliation({
       chosenAllocations.length > 1
         ? "Split reconciliation completed"
         : "Statement reconciled",
-      "The full signed statement amount is now allocated to posted bank-ledger movement.",
+      "The full translated base-currency statement amount is now allocated to posted bank-ledger movement.",
     );
 
     if (result) {
@@ -566,7 +571,14 @@ export default function AccountingReconciliation({
                           {line.external_reference ? " · " + line.external_reference : ""}
                         </span>
                       </td>
-                      <td className={styles.number}>{amount(line.amount)}</td>
+                      <td className={styles.number}>
+                        {statementAmount(line.amount,line.currency)}
+                        {line.currency !== data.currency ? (
+                          <span className={styles.meta}>
+                            Base {amount(line.base_amount)} · rate {line.exchange_rate}
+                          </span>
+                        ) : null}
+                      </td>
                       <td>
                         <span className={styles.badge}>{line.reconciliation_status}</span>
                         {line.top_confidence != null ? (
@@ -685,7 +697,8 @@ export default function AccountingReconciliation({
               <span className={styles.eyebrow}>Selected statement line</span>
               <h3>{selected.description || "Bank transaction"}</h3>
               <p>
-                {selected.transaction_date} · {selected.bank_account_name} · {amount(selected.amount)}
+                {selected.transaction_date} · {selected.bank_account_name} · {statementAmount(selected.amount,selected.currency)}
+                {selected.currency !== data.currency ? " · Base " + amount(selected.base_amount) + " @ " + selected.exchange_rate : ""}
               </p>
             </div>
             <div className={styles.actions}>
@@ -920,7 +933,14 @@ export default function AccountingReconciliation({
                     </td>
                     <td>{record.bank_account_name}</td>
                     <td>{record.method}</td>
-                    <td className={styles.number}>{amount(record.statement_amount)}</td>
+                    <td className={styles.number}>
+                      {record.statement_currency && record.statement_currency !== data.currency
+                        ? statementAmount(record.statement_foreign_amount,record.statement_currency)
+                        : amount(record.statement_amount)}
+                      {record.statement_currency && record.statement_currency !== data.currency ? (
+                        <span className={styles.meta}>Base {amount(record.statement_amount)} · rate {record.statement_exchange_rate}</span>
+                      ) : null}
+                    </td>
                     <td>
                       <span className={styles.badge}>{record.status}</span>
                       {record.adjustment_journal_id ? (
