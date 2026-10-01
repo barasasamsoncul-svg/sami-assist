@@ -20,6 +20,7 @@ export type AccountingFinancialAccount = {
   overdraft_limit: string;
   status: string;
   book_balance: string;
+  foreign_balance: string;
   unreconciled_count: number;
 };
 
