@@ -163,9 +163,11 @@ integration(
             code VARCHAR(50) NOT NULL UNIQUE,
             name TEXT NOT NULL,
             account_type TEXT NOT NULL,
+            parent_account_id UUID,
             is_active BOOLEAN NOT NULL DEFAULT TRUE,
             created_by UUID,
             updated_by UUID,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             deleted_at TIMESTAMPTZ
           );
