@@ -1,5 +1,9 @@
 import 'server-only';
 
+import {
+  createHash,
+} from 'node:crypto';
+
 import type {
   PoolClient,
 } from 'pg';
@@ -551,31 +555,27 @@ function deterministicJournalNumber(
   sourceEventKey:
     string,
 ) {
-  const seed =
-    (
-      sourceModule +
-      ':' +
-      sourceEventKey
+  const digest =
+    createHash(
+      'sha256',
     )
-      .replace(
-        /[^A-Za-z0-9]/g,
-        '',
+      .update(
+        sourceModule +
+        ':' +
+        sourceEventKey,
+      )
+      .digest(
+        'hex',
+      )
+      .slice(
+        0,
+        28,
       )
       .toUpperCase();
 
-  const suffix =
-    seed
-      .slice(
-        -24,
-      )
-      .padStart(
-        8,
-        '0',
-      );
-
   return (
     'SYS-' +
-    suffix
+    digest
   ).slice(
     0,
     100,
