@@ -32,6 +32,7 @@ export const ACCOUNTING_SECTIONS = [
   "statements",
   "reconciliation",
   "payments",
+  "taxes",
   "setup",
 ] as const;
 export type AccountingSection = (typeof ACCOUNTING_SECTIONS)[number];
@@ -108,6 +109,7 @@ export default function AccountingFoundationPanel({
     statements: "Statements & feeds",
     reconciliation: "Reconciliation",
     payments: "Payments & settlements",
+    taxes: "Tax engine",
     setup: "Accounting setup",
   };
   const descriptions = {
