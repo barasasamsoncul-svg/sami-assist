@@ -460,7 +460,7 @@ export async function generateFxRevaluation(input:unknown){
         VALUES($1,$2,$3,$4,'draft',$5) RETURNING id::text`,[context.companyId,asOf,base,rateType,context.userId]);
       runId=String(run.rows[0].id);
     }
-    let totalGain=BigInt(0),totalLoss=BigInt(0),net=BigInt(0),count=0;
+    let totalGain=BigInt(0),totalLoss=BigInt(0),count=0;
     for(const p of positions){
       const adjustment=fxMoney(String(p.adjustmentAmount));
       if(adjustment===BigInt(0))continue;
@@ -468,7 +468,7 @@ export async function generateFxRevaluation(input:unknown){
       const gain=(nature==='asset'&&adjustment>0)||(nature==='liability'&&adjustment<0);
       if(gain)totalGain+=adjustment<0?-adjustment:adjustment;
       else totalLoss+=adjustment<0?-adjustment:adjustment;
-      net+=adjustment;count+=1;
+      count+=1;
       await client.query(`INSERT INTO accounting_fx_revaluation_lines(company_id,run_id,source_type,source_id,source_reference,account_id,
           position_nature,currency,foreign_balance,historical_base_balance,closing_rate,revalued_base_balance,adjustment_amount,created_by,metadata)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb)`,[
@@ -479,7 +479,7 @@ export async function generateFxRevaluation(input:unknown){
     }
     if(!count)throw new AccountingInputError('Foreign monetary positions are already equal to their closing-rate carrying values.');
     await client.query(`UPDATE accounting_fx_revaluation_runs SET source_count=$3,total_gain=$4,total_loss=$5,net_adjustment=$6,generated_by=$7,generated_at=NOW(),metadata=$8::jsonb
-      WHERE company_id=$1 AND id=$2`,[context.companyId,runId,count,centsDecimal(totalGain),centsDecimal(totalLoss),centsDecimal(net),context.userId,JSON.stringify({positionCount:positions.length})]);
+      WHERE company_id=$1 AND id=$2`,[context.companyId,runId,count,centsDecimal(totalGain),centsDecimal(totalLoss),centsDecimal(totalGain-totalLoss),context.userId,JSON.stringify({positionCount:positions.length})]);
     await client.query('COMMIT');
     await audit(context,'revaluation_generated','accounting_fx_revaluation_runs',runId,'FX revaluation preview generated',{asOf,rateType,count});
     return {id:runId,count,totalGain:centsDecimal(totalGain),totalLoss:centsDecimal(totalLoss)};
