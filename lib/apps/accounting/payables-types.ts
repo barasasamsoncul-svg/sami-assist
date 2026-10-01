@@ -59,6 +59,11 @@ export type PayablesDocumentLine = {
   line_subtotal: string;
   tax_amount: string;
   line_total: string;
+  tax_code_id: string | null;
+  tax_code: string | null;
+  tax_name: string | null;
+  recoverable_tax_amount: string;
+  nonrecoverable_tax_amount: string;
 };
 
 export type PayablesCreditApplication = {
@@ -96,6 +101,22 @@ export type PayablesAccountOption = {
   is_control_account: boolean;
 };
 
+export type PayablesTaxCodeOption = {
+  id: string;
+  code: string;
+  name: string;
+  scope: string;
+  behavior: string;
+  computation: string;
+  rate: string;
+  fixed_amount: string;
+  price_included: boolean;
+  include_base_amount: boolean;
+  recoverable_percent: string;
+  jurisdiction_code: string | null;
+  reporting_code: string | null;
+};
+
 export type PayablesApplicationTarget = {
   id: string;
   document_number: string;
@@ -130,6 +151,7 @@ export type AccountingPayablesWorkspace = {
   documents: PayablesDocumentSummary[];
   selected: PayablesDocumentDetail | null;
   accounts: PayablesAccountOption[];
+  taxCodes: PayablesTaxCodeOption[];
   applicationTargets: PayablesApplicationTarget[];
   aging: PayablesAgingRow[];
   control: PayablesControlReconciliation;
