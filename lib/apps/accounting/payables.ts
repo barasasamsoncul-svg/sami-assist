@@ -198,6 +198,47 @@ export async function getAccountingPayables(input: {
       [context.companyId],
     );
 
+    const documentWhere = [
+      "d.company_id=$1",
+      "d.deleted_at IS NULL",
+    ];
+    const documentParams: unknown[] = [context.companyId];
+
+    if (filters.vendorId) {
+      documentParams.push(filters.vendorId);
+      documentWhere.push("d.vendor_id=$" + documentParams.length);
+    }
+    if (filters.search) {
+      documentParams.push("%" + filters.search + "%");
+      documentWhere.push(
+        "(d.document_number ILIKE $" + documentParams.length +
+        " OR COALESCE(d.vendor_reference,'') ILIKE $" + documentParams.length +
+        " OR v.name ILIKE $" + documentParams.length + ")",
+      );
+    }
+    if (filters.bucket) {
+      documentParams.push(filters.bucket);
+      documentWhere.push(
+        "d.document_type='bill' AND EXISTS (" +
+        "SELECT 1 FROM accounting_payables_aging age " +
+        "WHERE age.company_id=d.company_id AND age.document_id=d.id " +
+        "AND age.aging_bucket=$" + documentParams.length + ")",
+      );
+    }
+
+    const documentCountResult = await client.query(
+      `SELECT COUNT(*)::int AS count
+       FROM accounting_vendor_documents d
+       JOIN accounting_vendors v
+         ON v.company_id=d.company_id AND v.id=d.vendor_id AND v.deleted_at IS NULL
+       WHERE ${documentWhere.join(" AND ")}`,
+      documentParams,
+    );
+
+    const pageSize = 50;
+    const offset = (filters.page - 1) * pageSize;
+    const pagedParams = [...documentParams, pageSize, offset];
+
     const documents = await client.query(
       `SELECT
          d.id::text,d.vendor_id::text,v.name AS vendor_name,d.document_type,
@@ -211,10 +252,11 @@ export async function getAccountingPayables(input: {
          ON v.company_id=d.company_id AND v.id=d.vendor_id AND v.deleted_at IS NULL
        LEFT JOIN accounting_vendor_document_balances b
          ON b.company_id=d.company_id AND b.document_id=d.id
-       WHERE d.company_id=$1 AND d.deleted_at IS NULL
+       WHERE ${documentWhere.join(" AND ")}
        ORDER BY d.document_date DESC,d.created_at DESC,d.id DESC
-       LIMIT 200`,
-      [context.companyId],
+       LIMIT ${pagedParams.length - 1}
+       OFFSET ${pagedParams.length}`,
+      pagedParams,
     );
 
     const metrics = await client.query(
@@ -364,6 +406,8 @@ export async function getAccountingPayables(input: {
     return {
       companyId: context.companyId,
       currency: context.company.currentCompany.currency,
+      filters,
+      documentCount: Number(documentCountResult.rows[0]?.count || 0),
       vendors: vendors.rows,
       documents: documents.rows,
       selected,
