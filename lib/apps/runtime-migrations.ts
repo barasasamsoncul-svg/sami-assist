@@ -1,4 +1,5 @@
 import { ACCOUNTING_2_14_0_TO_2_15_0 } from '@/lib/apps/accounting/migrations/2.14.0-to-2.15.0';
+import { ACCOUNTING_2_15_0_TO_2_16_0 } from '@/lib/apps/accounting/migrations/2.15.0-to-2.16.0';
 import 'server-only';
 
 import type {
@@ -184,7 +185,8 @@ export const ENTERPRISE_RUNTIME_MIGRATIONS:
     ACCOUNTING_2_11_0_TO_2_12_0,
     ACCOUNTING_2_12_0_TO_2_13_0,
     ACCOUNTING_2_13_0_TO_2_14_0,
-  ACCOUNTING_2_14_0_TO_2_15_0,
+    ACCOUNTING_2_14_0_TO_2_15_0,
+    ACCOUNTING_2_15_0_TO_2_16_0,
   ];
 
 export const SALES_RUNTIME_MIGRATIONS:
