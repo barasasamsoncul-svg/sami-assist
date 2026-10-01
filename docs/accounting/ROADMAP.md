@@ -21,10 +21,10 @@ This is the first usable slice, not completion of the full Accounting module. Ne
 3. Double-entry ledger: authoritative balanced-posting engine, company/source idempotency, company-scoped journal numbers, posting provenance, period/lock enforcement, active-account validation, persisted-balance proof, database line constraints, generic-write lockout, and immutable linked compensating reversals. Invoicing automatic postings now use the same engine.
 4. Journals: dedicated journal register/detail, explicit approval metadata, same-record atomic posting through the ledger engine, immutable linked reversals, recurring journal templates and idempotent draft generation.
 5. Opening balances: dedicated migration workspace, CSV/manual import, idempotent batch creation, row-level correction and validation, 10,000-line migration support, AR/AP subledger reconciliation, controlled posting into one immutable opening journal, pagination, audit history and migration-backed 2.8 schema.
+6. Receivables: dedicated Accounting AR control workspace over the authoritative Invoicing subledger, base-currency open-item aging, customer exposure, customer credits, 90-day DSO estimate, invoice drill-through, filters/pagination, receivable and customer-credit GL reconciliation, and explicit legacy opening-AR treatment without duplicating or mutating Invoicing transactions.
 
 ## Remaining depth, in the agreed order
 
-6. Receivables.
 7. Payables.
 8. Purchasing controls.
 9. Expenses and reimbursements.
