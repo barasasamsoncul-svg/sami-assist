@@ -733,6 +733,7 @@ async function importNormalizedTransactions(
             fp,String(duplicate.rows[0].id),JSON.stringify(transaction.raw),input.userId,
           ],
         );
+        await client.query("RELEASE SAVEPOINT " + savepoint);
         duplicates += 1;
         continue;
       }
