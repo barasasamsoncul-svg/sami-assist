@@ -334,8 +334,6 @@ export async function getAccountingPayables(input: {
        FROM accounting_tax_codes
        WHERE company_id=$1 AND deleted_at IS NULL AND status='active'
          AND direction IN ('input','both')
-         AND (valid_from IS NULL OR valid_from <= CURRENT_DATE)
-         AND (valid_to IS NULL OR valid_to >= CURRENT_DATE)
        ORDER BY code,name`,
       [context.companyId],
     );
@@ -778,8 +776,7 @@ export async function postPayablesDocument(input: unknown) {
          ON c.company_id=t.company_id AND c.id=t.tax_code_id AND c.deleted_at IS NULL
        WHERE l.company_id=$1 AND l.document_id=$2 AND l.deleted_at IS NULL
        GROUP BY l.id,l.account_id,l.description,l.line_total,l.sequence,l.created_at
-       ORDER BY l.sequence,l.created_at,l.id
-       FOR SHARE OF l`,
+       ORDER BY l.sequence,l.created_at,l.id`,
       [context.companyId,documentId],
     );
     if (!l.rows.length) throw new AccountingInputError("Vendor document has no lines.");
