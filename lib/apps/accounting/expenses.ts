@@ -294,9 +294,11 @@ export async function getAccountingExpenses(
 
     const [
       setup,
+      categories,
       mappings,
       reports,
       accounts,
+      reimbursements,
       metrics,
     ] =
       await Promise.all([
@@ -309,6 +311,20 @@ export async function getAccountingExpenses(
            WHERE company_id=$1
              AND deleted_at IS NULL
            LIMIT 1`,
+          [
+            context.companyId,
+          ],
+        ),
+
+        client.query(
+          `SELECT
+             id::text,
+             name,
+             description
+           FROM expense_categories
+           WHERE company_id=$1
+             AND deleted_at IS NULL
+           ORDER BY name,id`,
           [
             context.companyId,
           ],
@@ -442,6 +458,38 @@ export async function getAccountingExpenses(
 
         client.query(
           `SELECT
+             r.id::text,
+             r.expense_report_id::text,
+             er.report_number,
+             r.payment_date::text,
+             r.payment_account_id::text,
+             a.code AS payment_account_code,
+             a.name AS payment_account_name,
+             r.amount::text,
+             r.status,
+             r.posted_journal_id::text,
+             r.reversal_journal_id::text,
+             r.notes
+           FROM accounting_expense_reimbursements r
+           JOIN expense_reports er
+             ON er.company_id=r.company_id
+            AND er.id=r.expense_report_id
+            AND er.deleted_at IS NULL
+           JOIN accounts a
+             ON a.company_id=r.company_id
+            AND a.id=r.payment_account_id
+            AND a.deleted_at IS NULL
+           WHERE r.company_id=$1
+             AND r.deleted_at IS NULL
+           ORDER BY r.payment_date DESC,r.created_at DESC,r.id DESC
+           LIMIT 100`,
+          [
+            context.companyId,
+          ],
+        ),
+
+        client.query(
+          `SELECT
              (
                SELECT COUNT(*)::int
                FROM expense_reports r
@@ -567,8 +615,12 @@ export async function getAccountingExpenses(
         reports.rows as AccountingExpensesWorkspace["reports"],
       lines:
         lines.rows as AccountingExpensesWorkspace["lines"],
+      categories:
+        categories.rows as AccountingExpensesWorkspace["categories"],
       mappings:
         mappings.rows as AccountingExpensesWorkspace["mappings"],
+      reimbursements:
+        reimbursements.rows as AccountingExpensesWorkspace["reimbursements"],
       accounts:
         accounts.rows as AccountingExpensesWorkspace["accounts"],
       setup: {
