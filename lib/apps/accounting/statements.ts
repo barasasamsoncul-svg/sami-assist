@@ -315,7 +315,7 @@ function findHeader(
 }
 
 
-function parseCsv(
+export function parseCsv(
   content: string,
   mappingInput: unknown,
 ): NormalizedStatementTransaction[] {
@@ -411,7 +411,7 @@ function tagValue(block: string, tag: string) {
 }
 
 
-function parseOfx(content: string): NormalizedStatementTransaction[] {
+export function parseOfx(content: string): NormalizedStatementTransaction[] {
   const blocks =
     content.match(/<STMTTRN>[\s\S]*?(?=<STMTTRN>|<\/BANKTRANLIST>|$)/gi) ||
     content.match(/<STMTTRN>[\s\S]*?<\/STMTTRN>/gi) ||
@@ -451,7 +451,7 @@ function parseOfx(content: string): NormalizedStatementTransaction[] {
 }
 
 
-function parseQif(
+export function parseQif(
   content: string,
   dateFormat: "auto" | "ymd" | "dmy" | "mdy" = "mdy",
 ): NormalizedStatementTransaction[] {
