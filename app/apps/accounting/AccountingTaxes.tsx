@@ -373,6 +373,6 @@ export default function AccountingTaxes({
       </table></div>
     </section>
 
-    <SaMiOverlay overlay={overlay} onClose={closeOverlay}/>
+    <SaMiOverlay {...overlay} onClose={closeOverlay}/>
   </div>;
 }
