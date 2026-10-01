@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS public.accounts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    code VARCHAR(50) NOT NULL UNIQUE,
+    code VARCHAR(50) NOT NULL,
     name VARCHAR(255) NOT NULL,
     account_type VARCHAR(50) NOT NULL,
     parent_account_id UUID,
