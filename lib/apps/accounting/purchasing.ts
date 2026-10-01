@@ -1,6 +1,10 @@
 import "server-only";
 
 import {
+  createHash,
+} from "node:crypto";
+
+import {
   requireEnterpriseModuleTableContext,
 } from "@/lib/apps/enterprise/service";
 import {
@@ -23,6 +27,20 @@ function bodyOf(input: unknown) {
     throw new AccountingInputError("Enter valid purchasing data.");
   }
   return input as Record<string, unknown>;
+}
+
+function requestKey(value: unknown) {
+  try {
+    return accountingId(value);
+  } catch {
+    throw new AccountingInputError("A valid purchasing request key is required.");
+  }
+}
+
+function requestHash(value: unknown) {
+  return createHash("sha256")
+    .update(JSON.stringify(value))
+    .digest("hex");
 }
 
 function text(value: unknown, max: number, label: string, required = false) {
@@ -332,21 +350,58 @@ export async function createPurchaseRequisition(input: unknown) {
     };
   });
   const estimated=normalized.reduce((sum,line)=>sum+minorUnits(line.total),BigInt(0));
+  const department=text(body.department,160,"Department")||null;
+  const costCenter=text(body.costCenter,160,"Cost center")||null;
+  const key=requestKey(body.requestKey);
+  const hash=requestHash({
+    purpose,
+    requestedOn,
+    neededBy,
+    department,
+    costCenter,
+    currency,
+    lines: normalized,
+  });
   const client=await context.pool.connect();
 
   try {
     await client.query("BEGIN");
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtext($1))",
+      ["accounting:purchase-requisition:" + key],
+    );
+    const replay=await client.query(
+      `SELECT id::text,requisition_number,status,request_hash
+       FROM accounting_purchase_requisitions
+       WHERE company_id=$1 AND request_key=$2 AND deleted_at IS NULL
+       LIMIT 1`,
+      [context.companyId,key],
+    );
+    if (replay.rows[0]) {
+      if (String(replay.rows[0].request_hash)!==hash) {
+        throw new AccountingInputError(
+          "This requisition request key was already used with different content.",
+        );
+      }
+      await client.query("COMMIT");
+      return {
+        id:String(replay.rows[0].id),
+        requisitionNumber:String(replay.rows[0].requisition_number),
+        status:String(replay.rows[0].status),
+        replayed:true,
+      };
+    }
+
     const number=await nextNumber(client,context.companyId,"accounting_purchase_requisitions","requisition_number","PR-");
     const r=await client.query(
       `INSERT INTO accounting_purchase_requisitions (
-         company_id,requisition_number,requested_by,requested_on,needed_by,department,cost_center,
+         company_id,requisition_number,request_key,request_hash,requested_by,requested_on,needed_by,department,cost_center,
          purpose,currency,estimated_total,status,created_by,updated_by
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'draft',$3,$3)
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft',$5,$5)
        RETURNING id::text`,
       [
-        context.companyId,number,context.userId,requestedOn,neededBy,
-        text(body.department,160,"Department")||null,text(body.costCenter,160,"Cost center")||null,
-        purpose,currency,decimalAmount(estimated),
+        context.companyId,number,key,hash,context.userId,requestedOn,neededBy,
+        department,costCenter,purpose,currency,decimalAmount(estimated),
       ],
     );
     const id=String(r.rows[0].id);
@@ -360,7 +415,7 @@ export async function createPurchaseRequisition(input: unknown) {
       );
     }
     await client.query("COMMIT");
-    return { id, requisitionNumber:number, status:"draft" };
+    return { id, requisitionNumber:number, status:"draft", replayed:false };
   } catch (error) {
     try { await client.query("ROLLBACK"); } catch {}
     throw error;
@@ -426,10 +481,46 @@ export async function createPurchaseOrder(input: unknown) {
   const total=subtotal+tax;
   const rateUnits=BigInt(exchange.replace(".","").padEnd(exchange.includes(".")?exchange.split(".")[0].length+8:exchange.length+8,"0"));
   const base=(total*rateUnits+BigInt(50000000))/BigInt(100000000);
+  const key=requestKey(body.requestKey);
+  const hash=requestHash({
+    vendorId,
+    requisitionId,
+    orderDate,
+    expectedDate,
+    currency,
+    exchange,
+    lines: normalized,
+  });
   const client=await context.pool.connect();
 
   try {
     await client.query("BEGIN");
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtext($1))",
+      ["accounting:purchase-order:" + key],
+    );
+    const replay=await client.query(
+      `SELECT id::text,purchase_order_number,status,request_hash
+       FROM accounting_purchase_orders
+       WHERE company_id=$1 AND request_key=$2 AND deleted_at IS NULL
+       LIMIT 1`,
+      [context.companyId,key],
+    );
+    if (replay.rows[0]) {
+      if (String(replay.rows[0].request_hash)!==hash) {
+        throw new AccountingInputError(
+          "This purchase-order request key was already used with different content.",
+        );
+      }
+      await client.query("COMMIT");
+      return {
+        id:String(replay.rows[0].id),
+        purchaseOrderNumber:String(replay.rows[0].purchase_order_number),
+        status:String(replay.rows[0].status),
+        replayed:true,
+      };
+    }
+
     const vendor=await client.query(
       `SELECT id::text,status FROM accounting_vendors
        WHERE company_id=$1 AND id=$2 AND deleted_at IS NULL LIMIT 1 FOR SHARE`,
@@ -499,11 +590,11 @@ export async function createPurchaseOrder(input: unknown) {
     const number=await nextNumber(client,context.companyId,"accounting_purchase_orders","purchase_order_number","PO-");
     const r=await client.query(
       `INSERT INTO accounting_purchase_orders (
-         company_id,purchase_order_number,requisition_id,vendor_id,order_date,expected_date,currency,
+         company_id,purchase_order_number,request_key,request_hash,requisition_id,vendor_id,order_date,expected_date,currency,
          exchange_rate,subtotal,tax_total,total_amount,base_total_amount,status,approval_policy_id,created_by,updated_by
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft',$13,$14,$14)
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'draft',$15,$16,$16)
        RETURNING id::text`,
-      [context.companyId,number,requisitionId,vendorId,orderDate,expectedDate,currency,exchange,
+      [context.companyId,number,key,hash,requisitionId,vendorId,orderDate,expectedDate,currency,exchange,
        decimalAmount(subtotal),decimalAmount(tax),decimalAmount(total),decimalAmount(base),String(policy.rows[0].id),context.userId],
     );
     const id=String(r.rows[0].id);
@@ -524,7 +615,7 @@ export async function createPurchaseOrder(input: unknown) {
       );
     }
     await client.query("COMMIT");
-    return { id,purchaseOrderNumber:number,status:"draft" };
+    return { id,purchaseOrderNumber:number,status:"draft",replayed:false };
   } catch (error) {
     try { await client.query("ROLLBACK"); } catch {}
     throw error;
@@ -626,10 +717,46 @@ export async function createGoodsReceipt(input: unknown) {
       rejectionReason:text(line.rejectionReason,2000,"Rejection reason")||null,sequence:(index+1)*10,
     };
   });
+  const key=requestKey(body.requestKey);
+  const deliveryReference=text(body.deliveryReference,160,"Delivery reference")||null;
+  const notes=text(body.notes,4000,"Notes")||null;
+  const hash=requestHash({
+    purchaseOrderId,
+    receivedOn,
+    deliveryReference,
+    notes,
+    lines: normalized,
+  });
   const client=await context.pool.connect();
 
   try {
     await client.query("BEGIN");
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtext($1))",
+      ["accounting:goods-receipt:" + key],
+    );
+    const replay=await client.query(
+      `SELECT id::text,receipt_number,status,request_hash
+       FROM accounting_goods_receipts
+       WHERE company_id=$1 AND request_key=$2 AND deleted_at IS NULL
+       LIMIT 1`,
+      [context.companyId,key],
+    );
+    if (replay.rows[0]) {
+      if (String(replay.rows[0].request_hash)!==hash) {
+        throw new AccountingInputError(
+          "This goods-receipt request key was already used with different content.",
+        );
+      }
+      await client.query("COMMIT");
+      return {
+        id:String(replay.rows[0].id),
+        receiptNumber:String(replay.rows[0].receipt_number),
+        status:String(replay.rows[0].status),
+        replayed:true,
+      };
+    }
+
     const po=await client.query(
       `SELECT status FROM accounting_purchase_orders
        WHERE company_id=$1 AND id=$2 AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
@@ -661,12 +788,12 @@ export async function createGoodsReceipt(input: unknown) {
     const number=await nextNumber(client,context.companyId,"accounting_goods_receipts","receipt_number","GRN-");
     const r=await client.query(
       `INSERT INTO accounting_goods_receipts (
-         company_id,receipt_number,purchase_order_id,received_on,received_by,delivery_reference,notes,
+         company_id,receipt_number,request_key,request_hash,purchase_order_id,received_on,received_by,delivery_reference,notes,
          status,confirmed_at,created_by,updated_by
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,'confirmed',NOW(),$5,$5)
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'confirmed',NOW(),$7,$7)
        RETURNING id::text`,
-      [context.companyId,number,purchaseOrderId,receivedOn,context.userId,
-       text(body.deliveryReference,160,"Delivery reference")||null,text(body.notes,4000,"Notes")||null],
+      [context.companyId,number,key,hash,purchaseOrderId,receivedOn,context.userId,
+       deliveryReference,notes],
     );
     const id=String(r.rows[0].id);
     for (const line of normalized) {
@@ -692,7 +819,7 @@ export async function createGoodsReceipt(input: unknown) {
       [context.companyId,purchaseOrderId,complete?"received":"partially_received",context.userId],
     );
     await client.query("COMMIT");
-    return { id,receiptNumber:number,purchaseOrderStatus:complete?"received":"partially_received" };
+    return { id,receiptNumber:number,purchaseOrderStatus:complete?"received":"partially_received",replayed:false };
   } catch (error) {
     try { await client.query("ROLLBACK"); } catch {}
     throw error;
