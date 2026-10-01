@@ -861,3 +861,64 @@ test(
     );
   },
 );
+
+
+test(
+  'Accounting Receivables keeps financial controls inside Accounting and operations in Invoicing',
+  async () => {
+    const [
+      workspace,
+      receivables,
+      styles,
+    ] =
+      await Promise.all([
+        readFile(
+          'app/apps/accounting/AccountingWorkspace.tsx',
+          'utf8',
+        ),
+        readFile(
+          'app/apps/accounting/AccountingReceivables.tsx',
+          'utf8',
+        ),
+        readFile(
+          'app/apps/accounting/AccountingFoundation.module.css',
+          'utf8',
+        ),
+      ]);
+
+    assert.match(
+      workspace,
+      /Accounts Receivable[\s\S]*\/receivables/,
+      'Accounting sidebar must expose a first-class Receivables workspace.',
+    );
+
+    for (const marker of [
+      'Open receivables',
+      'Receivables aging',
+      'Customer balances',
+      'Unapplied customer credits',
+      'Invoice receivables',
+      'Control reconciliation',
+    ]) {
+      assert.match(
+        receivables,
+        new RegExp(marker),
+        'Receivables UI must expose ' + marker + '.',
+      );
+    }
+
+    assert.match(receivables, /\/apps\/invoicing\/new/);
+    assert.match(receivables, /\/apps\/invoicing\/payments\/new/);
+    assert.match(receivables, /\/apps\/invoicing\/reminders/);
+
+    assert.match(
+      styles,
+      /\.receivableControlGrid[\s\S]*grid-template-columns/,
+    );
+    assert.match(
+      styles,
+      /@media \(max-width: 620px\)[\s\S]*\.receivableControlValues,[\s\S]*\.receivableAgingGrid[\s\S]*grid-template-columns:\s*1fr/,
+      'Receivables controls must collapse safely on mobile.',
+    );
+  },
+);
