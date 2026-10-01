@@ -1,3 +1,5 @@
+import AccountingInternational from './AccountingInternational';
+import { getAccountingInternational } from '@/lib/apps/accounting/international';
 import AccountingKenya from './AccountingKenya';
 import { getAccountingKenya } from '@/lib/apps/accounting/kenya';
 import AccountingTaxes from './AccountingTaxes';
@@ -227,6 +229,7 @@ export default async function AccountingWorkspace({
   let paymentsWorkspace: Awaited<ReturnType<typeof getAccountingPayments>> | null = null;
   let taxesWorkspace: Awaited<ReturnType<typeof getAccountingTaxes>> | null = null;
   let kenyaWorkspace: Awaited<ReturnType<typeof getAccountingKenya>> | null = null;
+  let internationalWorkspace: Awaited<ReturnType<typeof getAccountingInternational>> | null = null;
 
   let reconciliationWorkspace:
     Awaited<
@@ -262,6 +265,7 @@ export default async function AccountingWorkspace({
     dedicatedSection !== 'payments' &&
     dedicatedSection !== 'taxes' &&
     dedicatedSection !== 'kenya' &&
+    dedicatedSection !== 'international' &&
     dedicatedSection !==
       'reconciliation'
   ) {
@@ -507,6 +511,11 @@ export default async function AccountingWorkspace({
   if (dedicatedSection === 'kenya') {
     try { kenyaWorkspace = await getAccountingKenya({from:filters.from,to:filters.to}); }
     catch (error) { foundationError = error instanceof AccountingInputError ? error.message : 'Kenya accounting could not be loaded. Retry this page.'; }
+  }
+
+  if (dedicatedSection === 'international') {
+    try { internationalWorkspace = await getAccountingInternational({from:filters.from,to:filters.to}); }
+    catch (error) { foundationError = error instanceof AccountingInputError ? error.message : 'International localization could not be loaded. Retry this page.'; }
   }
 
   if (
@@ -852,6 +861,8 @@ export default async function AccountingWorkspace({
 
     {key:'kenya',label:'Kenya accounting & eTIMS',href:appBaseHref+'/kenya',description:'Kenya VAT controls and shared KRA eTIMS fiscal evidence.',sectionLabel:'Configuration'},
 
+    {key:'international',label:'International localization',href:appBaseHref+'/international',description:'Country packs, tax report boxes and shared UBL/Peppol evidence.',sectionLabel:'Configuration'},
+
     {
       key:
         'reconciliation',
@@ -1056,6 +1067,8 @@ export default async function AccountingWorkspace({
                   ? (taxesWorkspace ? <AccountingTaxes data={taxesWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Taxes could not be loaded.'}</div>)
                 : dedicatedSection === 'kenya'
                   ? (kenyaWorkspace ? <AccountingKenya data={kenyaWorkspace} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Kenya accounting could not be loaded.'}</div>)
+                : dedicatedSection === 'international'
+                  ? (internationalWorkspace ? <AccountingInternational data={internationalWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'International localization could not be loaded.'}</div>)
                 : dedicatedSection ===
                     'reconciliation'
                   ? (
