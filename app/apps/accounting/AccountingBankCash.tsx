@@ -774,7 +774,7 @@ export default function AccountingBankCash({
           <span className={styles.eyebrow}>Roadmap boundary</span>
           <h3>Balances are ledger-authoritative</h3>
           <p>
-            Financial accounts remain ledger-authoritative. Same-currency base transfers stay here; cross-currency transfers, foreign balances and revaluation are controlled from Foreign Currency.
+            Financial accounts remain ledger-authoritative. Statement files/feeds are Part 11. Same-currency base transfers stay here; cross-currency transfers, foreign balances and revaluation are controlled from Foreign Currency.
           </p>
         </div>
         <div className={styles.actions}>
