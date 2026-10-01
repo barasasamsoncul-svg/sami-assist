@@ -16,6 +16,7 @@ import {
   LEDGER_SQL,
 } from "../lib/apps/accounting/queries.ts";
 import { saveBalancedJournalDraft } from "../lib/apps/accounting/journal-command.ts";
+import { postBalancedLedgerJournal, reversePostedLedgerJournal } from "../lib/apps/accounting/ledger-engine.ts";
 const company = randomUUID(),
   otherCompany = randomUUID(),
   user = randomUUID();
@@ -156,10 +157,12 @@ test(
     try {
       const statements = [
         `CREATE TABLE accounts (id uuid PRIMARY KEY,company_id uuid NOT NULL,code text NOT NULL,name text NOT NULL,account_type text NOT NULL,is_active boolean DEFAULT true,allow_manual_posting boolean NOT NULL DEFAULT true,deleted_at timestamptz)`,
-        `CREATE TABLE journals (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),company_id uuid NOT NULL,journal_number varchar(100) UNIQUE,journal_date date,reference text,description text,status text,created_by uuid,updated_by uuid,created_at timestamptz DEFAULT now(),deleted_at timestamptz)`,
-        `CREATE TABLE journal_lines (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),company_id uuid NOT NULL,journal_id uuid REFERENCES journals(id),account_id uuid REFERENCES accounts(id),description text CHECK(description <> 'FAIL'),debit numeric(15,2),credit numeric(15,2),created_by uuid,updated_by uuid,created_at timestamptz DEFAULT now(),deleted_at timestamptz)`,
+        `CREATE TABLE journals (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),company_id uuid NOT NULL,journal_number varchar(100) NOT NULL,journal_date date,reference text,description text,status text,source_module text,source_type text,source_id text,source_event_key text,posting_kind text DEFAULT 'manual',posted_at timestamptz,reversal_of_journal_id uuid,reversed_by_journal_id uuid,created_by uuid,updated_by uuid,updated_at timestamptz DEFAULT now(),created_at timestamptz DEFAULT now(),deleted_at timestamptz)`,
+        `CREATE TABLE journal_lines (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),company_id uuid NOT NULL,journal_id uuid REFERENCES journals(id),account_id uuid REFERENCES accounts(id),description text CHECK(description <> 'FAIL'),debit numeric(15,2),credit numeric(15,2),created_by uuid,updated_by uuid,updated_at timestamptz DEFAULT now(),created_at timestamptz DEFAULT now(),deleted_at timestamptz,CHECK(debit >= 0 AND credit >= 0),CHECK((debit > 0 AND credit = 0) OR (credit > 0 AND debit = 0)))`,
         `CREATE TABLE accounting_fiscal_periods(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),company_id uuid,name text,starts_on date,ends_on date,lock_date date,status text,deleted_at timestamptz)`,
         `CREATE TABLE accounting_settings(company_id uuid PRIMARY KEY,global_lock_date date,require_open_period boolean NOT NULL DEFAULT true,deleted_at timestamptz)`,
+        `CREATE UNIQUE INDEX uq_test_journals_company_number ON journals(company_id,journal_number) WHERE deleted_at IS NULL`,
+        `CREATE UNIQUE INDEX uq_test_journals_source_event ON journals(company_id,source_module,source_event_key) WHERE deleted_at IS NULL AND source_module IS NOT NULL AND source_event_key IS NOT NULL`,
         `CREATE TABLE sami_enterprise_idempotency(company_id uuid,idempotency_key uuid,module_key text,table_key text,request_hash text,created_by uuid,created_at timestamptz,updated_at timestamptz,record_key text,response_json jsonb,PRIMARY KEY(company_id,idempotency_key))`,
       ];
       for (const sql of statements) await pool.query(sql);
