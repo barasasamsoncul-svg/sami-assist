@@ -22,6 +22,7 @@ import AccountingOpeningBalances from '@/app/apps/accounting/AccountingOpeningBa
 import AccountingReceivables from '@/app/apps/accounting/AccountingReceivables';
 import AccountingPayables from '@/app/apps/accounting/AccountingPayables';
 import AccountingPurchasing from '@/app/apps/accounting/AccountingPurchasing';
+import AccountingExpenses from '@/app/apps/accounting/AccountingExpenses';
 
 import {
   getAccountingFoundation,
@@ -50,6 +51,9 @@ import {
 import {
   getAccountingPurchasing,
 } from '@/lib/apps/accounting/purchasing';
+import {
+  getAccountingExpenses,
+} from '@/lib/apps/accounting/expenses';
 
 const MODULE_KEY = 'accounting';
 
@@ -174,6 +178,15 @@ export default async function AccountingWorkspace({
     null =
       null;
 
+  let expensesWorkspace:
+    Awaited<
+      ReturnType<
+        typeof getAccountingExpenses
+      >
+    > |
+    null =
+      null;
+
   if (
     dedicatedSection &&
     dedicatedSection !==
@@ -189,7 +202,9 @@ export default async function AccountingWorkspace({
     dedicatedSection !==
       'payables' &&
     dedicatedSection !==
-      'purchasing'
+      'purchasing' &&
+    dedicatedSection !==
+      'expenses'
   ) {
     try {
       foundation =
@@ -352,6 +367,27 @@ export default async function AccountingWorkspace({
           Error
           ? error.message
           : 'Purchasing controls could not be loaded.';
+    }
+  }
+
+  if (
+    dedicatedSection ===
+      'expenses'
+  ) {
+    try {
+      expensesWorkspace =
+        await getAccountingExpenses({
+          page:
+            filters.page,
+        });
+    } catch (
+      error
+    ) {
+      foundationError =
+        error instanceof
+          Error
+          ? error.message
+          : 'Expenses and reimbursements could not be loaded.';
     }
   }
 
@@ -581,6 +617,24 @@ export default async function AccountingWorkspace({
           .matchExceptions,
     },
 
+    {
+      key:
+        'expenses',
+      label:
+        'Expenses & Reimbursements',
+      href:
+        appBaseHref +
+        '/expenses',
+      description:
+        'Approved expense posting, employee payable and reimbursements.',
+      sectionLabel:
+        'Expenses',
+      badge:
+        expensesWorkspace
+          ?.metrics
+          .approvedUnposted,
+    },
+
     data.capabilities
       .canReport
       ? {
@@ -806,6 +860,43 @@ export default async function AccountingWorkspace({
                             {
                               foundationError ||
                               'Accounts receivable could not be loaded.'
+                            }{' '}
+                            <Link
+                              href="/apps/accounting"
+                              className="font-bold underline underline-offset-4"
+                            >
+                              Return to Accounting
+                            </Link>
+                          </div>
+                        )
+                  )
+                : dedicatedSection ===
+                    'expenses'
+                  ? (
+                    expensesWorkspace
+                      ? (
+                          <AccountingExpenses
+                            data={
+                              expensesWorkspace
+                            }
+                            canEdit={
+                              data.capabilities
+                                .canEdit
+                            }
+                            canManageSettings={
+                              data.capabilities
+                                .canManageSettings
+                            }
+                          />
+                        )
+                      : (
+                          <div
+                            role="alert"
+                            className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-6 text-[var(--foreground)]"
+                          >
+                            {
+                              foundationError ||
+                              'Expenses and reimbursements could not be loaded.'
                             }{' '}
                             <Link
                               href="/apps/accounting"
