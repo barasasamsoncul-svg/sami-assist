@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import {
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
@@ -38,6 +39,21 @@ import styles from "./AccountingFoundation.module.css";
 
 function today() {
   return new Date().toISOString().slice(0,10);
+}
+
+
+function browserUuid() {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
+    return crypto.randomUUID();
+  }
+
+  return (
+    "00000000-0000-4000-8000-" +
+    String(Date.now()).padStart(12,"0").slice(-12)
+  );
 }
 
 
@@ -79,6 +95,19 @@ export default function AccountingReconciliation({
   const [ruleOpen,setRuleOpen] = useState(false);
   const [excludeOpen,setExcludeOpen] = useState(false);
   const [allocationAmounts,setAllocationAmounts] = useState<Record<string,string>>({});
+  const requestKeys = useRef({
+    manual:"",
+    suggestion:"",
+    rule:"",
+  });
+
+  function reconciliationRequestKey(
+    kind: "manual" | "suggestion" | "rule",
+  ) {
+    requestKeys.current[kind] =
+      requestKeys.current[kind] || browserUuid();
+    return requestKeys.current[kind];
+  }
 
   const selected = data.selectedStatementLine;
 
@@ -159,6 +188,7 @@ export default function AccountingReconciliation({
     const result = await postAction(
       {
         action:"reconcile",
+        requestKey:reconciliationRequestKey("suggestion"),
         statementLineId:selected.id,
         suggestionId:suggestion.id,
         allocations:[
@@ -173,6 +203,7 @@ export default function AccountingReconciliation({
     );
 
     if (result) {
+      requestKeys.current.suggestion = "";
       setAllocationAmounts({});
       router.push("/apps/accounting/reconciliation");
     }
@@ -186,6 +217,7 @@ export default function AccountingReconciliation({
     const result = await postAction(
       {
         action:"apply-rule",
+        requestKey:reconciliationRequestKey("rule"),
         statementLineId:selected.id,
         ruleId:suggestion.rule_id,
         suggestionId:suggestion.id,
@@ -195,6 +227,7 @@ export default function AccountingReconciliation({
     );
 
     if (result) {
+      requestKeys.current.rule = "";
       router.push("/apps/accounting/reconciliation");
     }
   }
@@ -243,6 +276,7 @@ export default function AccountingReconciliation({
     const result = await postAction(
       {
         action:"reconcile",
+        requestKey:reconciliationRequestKey("manual"),
         statementLineId:selected.id,
         allocations:chosenAllocations,
         notes:form.get("notes"),
@@ -254,6 +288,7 @@ export default function AccountingReconciliation({
     );
 
     if (result) {
+      requestKeys.current.manual = "";
       setAllocationAmounts({});
       router.push("/apps/accounting/reconciliation");
     }
