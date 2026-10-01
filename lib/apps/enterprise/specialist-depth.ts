@@ -1,3 +1,4 @@
+import { ACCOUNTING_TAX_SQL } from '@/lib/apps/accounting/tax-schema';
 import { ACCOUNTING_PAYMENTS_SQL } from '@/lib/apps/accounting/payments-schema';
 import 'server-only';
 
@@ -1749,6 +1750,7 @@ ALTER TABLE public.accounting_bank_statement_lines
     l.debit,
     l.credit;
 ${ACCOUNTING_PAYMENTS_SQL}
+${ACCOUNTING_TAX_SQL}
 `;
 }
 
