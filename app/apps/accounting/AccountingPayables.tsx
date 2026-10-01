@@ -31,10 +31,11 @@ type DraftLine = {
   quantity: string;
   unitPrice: string;
   taxAmount: string;
+  taxCodeId: string;
 };
 
 function line(id: number): DraftLine {
-  return { id, accountId:"", description:"", quantity:"1", unitPrice:"", taxAmount:"0" };
+  return { id, accountId:"", description:"", quantity:"1", unitPrice:"", taxAmount:"0", taxCodeId:"" };
 }
 
 export default function AccountingPayables({
@@ -123,7 +124,7 @@ export default function AccountingPayables({
         action:"create-document",expectedCompanyId:data.companyId,...documentDraft,
         lines:lines.map(row=>({
           accountId:row.accountId,description:row.description,quantity:row.quantity,
-          unitPrice:row.unitPrice,taxAmount:row.taxAmount,
+          unitPrice:row.unitPrice,taxAmount:row.taxAmount,taxCodeId:row.taxCodeId||null,
         })),
       });
       const id=String(payload.result?.id||"");
@@ -260,16 +261,18 @@ export default function AccountingPayables({
         <label>Exchange rate to {data.currency}<input required inputMode="decimal" value={documentDraft.exchangeRate} onChange={e=>setDocumentDraft({...documentDraft,exchangeRate:e.target.value})}/></label>
       </div>
       <div className={styles.tableWrap}><table>
-        <thead><tr><th>Account</th><th>Description</th><th>Qty</th><th>Unit</th><th>Tax</th><th></th></tr></thead>
+        <thead><tr><th>Account</th><th>Description</th><th>Qty</th><th>Unit</th><th>Tax treatment</th><th>Manual tax</th><th></th></tr></thead>
         <tbody>{lines.map(row=><tr key={row.id}>
           <td><select required value={row.accountId} onChange={e=>setLines(rows=>rows.map(x=>x.id===row.id?{...x,accountId:e.target.value}:x))}><option value="">Choose</option>{data.accounts.filter(a=>!a.is_control_account).map(a=><option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}</select></td>
           <td><input required value={row.description} onChange={e=>setLines(rows=>rows.map(x=>x.id===row.id?{...x,description:e.target.value}:x))}/></td>
           <td><input required inputMode="decimal" value={row.quantity} onChange={e=>setLines(rows=>rows.map(x=>x.id===row.id?{...x,quantity:e.target.value}:x))}/></td>
           <td><input required inputMode="decimal" value={row.unitPrice} onChange={e=>setLines(rows=>rows.map(x=>x.id===row.id?{...x,unitPrice:e.target.value}:x))}/></td>
-          <td><input required inputMode="decimal" value={row.taxAmount} onChange={e=>setLines(rows=>rows.map(x=>x.id===row.id?{...x,taxAmount:e.target.value}:x))}/></td>
+          <td><select value={row.taxCodeId} onChange={e=>setLines(rows=>rows.map(x=>x.id===row.id?{...x,taxCodeId:e.target.value,taxAmount:e.target.value?"0":x.taxAmount}:x))}><option value="">Manual / no tax code</option>{data.taxCodes.map(t=><option key={t.id} value={t.id}>{t.code} · {t.name}{t.computation==="percent"?" · "+t.rate+"%":""}</option>)}</select></td>
+          <td><input required inputMode="decimal" disabled={Boolean(row.taxCodeId)} value={row.taxAmount} onChange={e=>setLines(rows=>rows.map(x=>x.id===row.id?{...x,taxAmount:e.target.value}:x))}/></td>
           <td>{lines.length>1?<button type="button" className={styles.button} onClick={()=>setLines(rows=>rows.filter(x=>x.id!==row.id))}>Remove</button>:null}</td>
         </tr>)}</tbody>
       </table></div>
+      <p className={styles.meta}>Choose an Accounting purchase tax to calculate VAT server-side and post recoverable tax to the Input Tax control account. Manual tax remains available for non-standard documents but is treated as nonrecoverable unless a tax code is selected.</p>
       <div className={styles.actions}>
         <button type="button" className={styles.button} onClick={()=>{setLines(rows=>[...rows,line(nextLine)]);setNextLine(n=>n+1);}}><Plus size={15}/> Add line</button>
         <button type="button" className={styles.button} onClick={()=>setShowDocument(false)}>Cancel</button>
@@ -295,8 +298,8 @@ export default function AccountingPayables({
 
       <section className={styles.panel}>
         <div className={styles.panelHeading}><div><span className={styles.eyebrow}>Document accounting</span><h3>Lines</h3></div></div>
-        <div className={styles.tableWrap}><table><thead><tr><th>Account</th><th>Description</th><th>Qty</th><th>Unit</th><th>Tax</th><th>Total</th></tr></thead>
-          <tbody>{selected.lines.map(row=><tr key={row.id}><td>{row.account_code} · {row.account_name}</td><td>{row.description}</td><td>{row.quantity}</td><td>{selected.currency} {row.unit_price}</td><td>{selected.currency} {row.tax_amount}</td><td>{selected.currency} {row.line_total}</td></tr>)}</tbody>
+        <div className={styles.tableWrap}><table><thead><tr><th>Account</th><th>Description</th><th>Qty</th><th>Unit</th><th>Tax</th><th>Recoverable</th><th>Total</th></tr></thead>
+          <tbody>{selected.lines.map(row=><tr key={row.id}><td>{row.account_code} · {row.account_name}</td><td>{row.description}<span className={styles.meta}>{row.tax_code?row.tax_code+" · "+row.tax_name:"Manual / no tax code"}</span></td><td>{row.quantity}</td><td>{selected.currency} {row.unit_price}</td><td>{selected.currency} {row.tax_amount}</td><td>{selected.currency} {row.recoverable_tax_amount}</td><td>{selected.currency} {row.line_total}</td></tr>)}</tbody>
         </table></div>
       </section>
 
