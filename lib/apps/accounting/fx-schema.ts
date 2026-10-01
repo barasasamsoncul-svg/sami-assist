@@ -179,6 +179,24 @@ ALTER TABLE public.accounting_payment_allocations
   ADD COLUMN IF NOT EXISTS base_bill_amount NUMERIC(19,2),
   ADD COLUMN IF NOT EXISTS realized_fx_amount NUMERIC(19,2) NOT NULL DEFAULT 0;
 
+ALTER TABLE public.accounting_statement_import_batches
+  ADD COLUMN IF NOT EXISTS currency VARCHAR(3);
+
+ALTER TABLE public.accounting_statement_import_rows
+  ADD COLUMN IF NOT EXISTS currency VARCHAR(3),
+  ADD COLUMN IF NOT EXISTS exchange_rate NUMERIC(19,8),
+  ADD COLUMN IF NOT EXISTS base_amount NUMERIC(19,2);
+
+ALTER TABLE public.accounting_bank_statement_lines
+  ADD COLUMN IF NOT EXISTS currency VARCHAR(3),
+  ADD COLUMN IF NOT EXISTS exchange_rate NUMERIC(19,8),
+  ADD COLUMN IF NOT EXISTS base_amount NUMERIC(19,2);
+
+ALTER TABLE public.accounting_reconciliations
+  ADD COLUMN IF NOT EXISTS statement_currency VARCHAR(3),
+  ADD COLUMN IF NOT EXISTS statement_foreign_amount NUMERIC(19,4),
+  ADD COLUMN IF NOT EXISTS statement_exchange_rate NUMERIC(19,8);
+
 ALTER TABLE public.accounting_internal_transfers
   ADD COLUMN IF NOT EXISTS source_currency VARCHAR(3),
   ADD COLUMN IF NOT EXISTS destination_currency VARCHAR(3),
