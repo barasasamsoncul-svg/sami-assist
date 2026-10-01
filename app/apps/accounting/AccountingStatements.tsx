@@ -479,7 +479,7 @@ export default function AccountingStatements({
           </form>
 
           <div className={styles.notice}>
-            This stores connection identity and sync state only—not passwords, API keys or bank secrets. Provider adapters push normalized transactions through SaMi's authenticated feed-ingestion contract.
+            This stores connection identity and sync state only—not passwords, API keys or bank secrets. Provider adapters push normalized transactions through the authenticated SaMi feed-ingestion contract.
           </div>
         </section>
       ) : null}
