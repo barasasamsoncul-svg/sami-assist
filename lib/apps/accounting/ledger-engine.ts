@@ -502,6 +502,8 @@ async function assertPostingAccounts(
     string,
   lines:
     NormalizedLine[],
+  manualOnly =
+    false,
 ) {
   const ids =
     [
@@ -518,7 +520,8 @@ async function assertPostingAccounts(
       `
         SELECT
           id::text,
-          is_active
+          is_active,
+          allow_manual_posting
         FROM accounts
         WHERE company_id = $1
           AND id = ANY(
@@ -544,6 +547,19 @@ async function assertPostingAccounts(
   ) {
     throw new Error(
       'Every posted journal line must use an active account belonging to this company.',
+    );
+  }
+
+  if (
+    manualOnly &&
+    accounts.rows.some(
+      row =>
+        row.allow_manual_posting ===
+        false,
+    )
+  ) {
+    throw new Error(
+      'A manual journal cannot post to a system-only control account.',
     );
   }
 }
@@ -708,13 +724,14 @@ export async function postBalancedLedgerJournal(
           source_event_key,
           posting_kind,
           posted_at,
+          posted_by,
           reversal_of_journal_id,
           created_by,
           updated_by
         )
         VALUES (
           $1,$2,$3,$4,$5,'posted',
-          $6,$7,$8,$9,$10,NOW(),$11,$12,$12
+          $6,$7,$8,$9,$10,NOW(),$12,$11,$12,$12
         )
         ON CONFLICT (
           company_id,
@@ -884,6 +901,260 @@ export async function postBalancedLedgerJournal(
 
   return {
     journalId,
+    reused:
+      false,
+    total:
+      normalized.total,
+  };
+}
+
+
+
+export async function postApprovedManualLedgerJournal(
+  client:
+    PoolClient,
+  input: {
+    companyId: string;
+    userId: string;
+    journalId: string;
+  },
+) {
+  const journalResult =
+    await client.query(
+      `
+        SELECT
+          id::text,
+          journal_date::text,
+          status,
+          posting_kind,
+          posted_at::text
+        FROM journals
+        WHERE id = $1
+          AND company_id = $2
+          AND deleted_at IS NULL
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [
+        input.journalId,
+        input.companyId,
+      ],
+    );
+
+  const journal =
+    journalResult.rows[0];
+
+  if (!journal) {
+    throw new Error(
+      'This Accounting journal could not be found.',
+    );
+  }
+
+  if (
+    String(
+      journal.status,
+    ) ===
+      'posted'
+  ) {
+    const totals =
+      await client.query(
+        `
+          SELECT
+            COALESCE(
+              SUM(debit),
+              0
+            )::text
+              AS debit_total
+          FROM journal_lines
+          WHERE company_id = $1
+            AND journal_id = $2
+            AND deleted_at IS NULL
+        `,
+        [
+          input.companyId,
+          input.journalId,
+        ],
+      );
+
+    return {
+      journalId:
+        input.journalId,
+      reused:
+        true,
+      total:
+        String(
+          totals.rows[0]
+            ?.debit_total ||
+          '0.00',
+        ),
+    };
+  }
+
+  if (
+    String(
+      journal.status,
+    ) !==
+      'approved'
+  ) {
+    throw new Error(
+      'Approve this manual journal before posting it.',
+    );
+  }
+
+  if (
+    ![
+      'manual',
+      'opening',
+    ].includes(
+      String(
+        journal.posting_kind,
+      ),
+    )
+  ) {
+    throw new Error(
+      'Only approved manual or opening journals can use this posting workflow.',
+    );
+  }
+
+  const linesResult =
+    await client.query(
+      `
+        SELECT
+          account_id::text,
+          description,
+          debit::text,
+          credit::text
+        FROM journal_lines
+        WHERE company_id = $1
+          AND journal_id = $2
+          AND deleted_at IS NULL
+        ORDER BY
+          created_at,
+          id
+        FOR SHARE
+      `,
+      [
+        input.companyId,
+        input.journalId,
+      ],
+    );
+
+  const normalized =
+    normalizeLines(
+      linesResult.rows.map(
+        line => ({
+          accountId:
+            String(
+              line.account_id,
+            ),
+          description:
+            line.description,
+          debit:
+            String(
+              line.debit,
+            ),
+          credit:
+            String(
+              line.credit,
+            ),
+        }),
+      ),
+    );
+
+  await assertPostingPeriod(
+    client,
+    input.companyId,
+    String(
+      journal.journal_date,
+    ),
+  );
+
+  await assertPostingAccounts(
+    client,
+    input.companyId,
+    normalized.lines,
+    true,
+  );
+
+  const proof =
+    await client.query(
+      `
+        SELECT
+          COUNT(*)::int AS line_count,
+          COALESCE(
+            SUM(debit),
+            0
+          )::text
+            AS debit_total,
+          COALESCE(
+            SUM(credit),
+            0
+          )::text
+            AS credit_total
+        FROM journal_lines
+        WHERE company_id = $1
+          AND journal_id = $2
+          AND deleted_at IS NULL
+      `,
+      [
+        input.companyId,
+        input.journalId,
+      ],
+    );
+
+  if (
+    Number(
+      proof.rows[0]
+        ?.line_count ||
+      0,
+    ) <
+      2 ||
+    moneyCents(
+      String(
+        proof.rows[0]
+          ?.debit_total ||
+        '0',
+      ),
+      'Journal debit total',
+    ) !==
+      moneyCents(
+        String(
+          proof.rows[0]
+            ?.credit_total ||
+          '0',
+      ),
+      'Journal credit total',
+    )
+  ) {
+    throw new Error(
+      'SaMi refused to post a journal whose persisted lines are not balanced.',
+    );
+  }
+
+  await client.query(
+    `
+      UPDATE journals
+      SET
+        status = 'posted',
+        posted_at = NOW(),
+        posted_by = $3,
+        updated_by = $3,
+        updated_at = NOW()
+      WHERE id = $1
+        AND company_id = $2
+        AND deleted_at IS NULL
+        AND status = 'approved'
+    `,
+    [
+      input.journalId,
+      input.companyId,
+      input.userId,
+    ],
+  );
+
+  return {
+    journalId:
+      input.journalId,
     reused:
       false,
     total:
