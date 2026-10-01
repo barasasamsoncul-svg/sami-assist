@@ -142,6 +142,7 @@ export default function AccountingFoundationPanel({
     statements:
       "Import CSV, OFX and QIF statements, inspect duplicates and errors, and manage provider-neutral feed adapters before reconciliation.",
     payments: "Prepare vendor payment batches and record provider settlements with their fees.",
+    taxes: "Configure tax codes and groups, reconcile source tax to control accounts, and manage controlled tax adjustments.",
     reconciliation:
       "Match statement lines to posted bank-ledger movement, split allocations, apply controlled adjustment rules and preserve immutable reconciliation history.",
     setup:
