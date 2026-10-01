@@ -13,6 +13,9 @@ export type LedgerAmount =
   | number
   | string;
 
+
+export class LedgerPostingError extends Error {}
+
 export type LedgerPostingLine = {
   accountId: string;
   description?: string | null;
@@ -77,7 +80,7 @@ function moneyCents(
       text,
     )
   ) {
-    throw new Error(
+    throw new LedgerPostingError(
       label +
       ' must be a valid amount with at most two decimal places.',
     );
@@ -174,7 +177,7 @@ function accountingDate(
       value,
     )
   ) {
-    throw new Error(
+    throw new LedgerPostingError(
       'Accounting posting date must use YYYY-MM-DD.',
     );
   }
@@ -197,7 +200,7 @@ function accountingDate(
       ) !==
       value
   ) {
-    throw new Error(
+    throw new LedgerPostingError(
       'Accounting posting date is invalid.',
     );
   }
@@ -225,7 +228,7 @@ function postingText(
     text.length >
       max
   ) {
-    throw new Error(
+    throw new LedgerPostingError(
       label +
       ' is required and must not exceed ' +
       max +
@@ -250,7 +253,7 @@ function normalizeLines(
     lines.length >
       200
   ) {
-    throw new Error(
+    throw new LedgerPostingError(
       'A posted journal needs between 2 and 200 accounting lines.',
     );
   }
@@ -295,7 +298,7 @@ function normalizeLines(
           0,
         )
     ) {
-      throw new Error(
+      throw new LedgerPostingError(
         'Journal amounts cannot be negative.',
       );
     }
@@ -316,7 +319,7 @@ function normalizeLines(
       hasDebit ===
       hasCredit
     ) {
-      throw new Error(
+      throw new LedgerPostingError(
         'Each posted journal line needs exactly one debit or one credit.',
       );
     }
@@ -334,7 +337,7 @@ function normalizeLines(
         accountId,
       )
     ) {
-      throw new Error(
+      throw new LedgerPostingError(
         'Every posted journal line needs a valid account.',
       );
     }
@@ -378,7 +381,7 @@ function normalizeLines(
     debitTotal !==
       creditTotal
   ) {
-    throw new Error(
+    throw new LedgerPostingError(
       'SaMi refused an unbalanced accounting posting.',
     );
   }
@@ -435,7 +438,7 @@ async function assertPostingPeriod(
         policy.global_lock_date,
       )
   ) {
-    throw new Error(
+    throw new LedgerPostingError(
       'This accounting date is on or before the company Accounting lock date.',
     );
   }
@@ -466,7 +469,7 @@ async function assertPostingPeriod(
     periods.rows.length ===
       0
   ) {
-    throw new Error(
+    throw new LedgerPostingError(
       'Create an open fiscal period covering this accounting date first.',
     );
   }
@@ -488,7 +491,7 @@ async function assertPostingPeriod(
         ),
     )
   ) {
-    throw new Error(
+    throw new LedgerPostingError(
       'This accounting date belongs to a locked or closing fiscal period.',
     );
   }
@@ -545,7 +548,7 @@ async function assertPostingAccounts(
         true,
     )
   ) {
-    throw new Error(
+    throw new LedgerPostingError(
       'Every posted journal line must use an active account belonging to this company.',
     );
   }
@@ -558,7 +561,7 @@ async function assertPostingAccounts(
         false,
     )
   ) {
-    throw new Error(
+    throw new LedgerPostingError(
       'A manual journal cannot post to a system-only control account.',
     );
   }
@@ -788,7 +791,7 @@ export async function postBalancedLedgerJournal(
       !concurrent.rows[0]
         ?.id
     ) {
-      throw new Error(
+      throw new LedgerPostingError(
         'SaMi could not resolve the idempotent Accounting posting.',
       );
     }
@@ -893,7 +896,7 @@ export async function postBalancedLedgerJournal(
         'Journal credit total',
       )
   ) {
-    throw new Error(
+    throw new LedgerPostingError(
       'SaMi refused to finalize a journal whose persisted lines are not balanced.',
     );
   }
@@ -944,7 +947,7 @@ export async function postApprovedManualLedgerJournal(
     journalResult.rows[0];
 
   if (!journal) {
-    throw new Error(
+    throw new LedgerPostingError(
       'This Accounting journal could not be found.',
     );
   }
@@ -995,7 +998,7 @@ export async function postApprovedManualLedgerJournal(
     ) !==
       'approved'
   ) {
-    throw new Error(
+    throw new LedgerPostingError(
       'Approve this manual journal before posting it.',
     );
   }
@@ -1010,7 +1013,7 @@ export async function postApprovedManualLedgerJournal(
       ),
     )
   ) {
-    throw new Error(
+    throw new LedgerPostingError(
       'Only approved manual or opening journals can use this posting workflow.',
     );
   }
@@ -1125,7 +1128,7 @@ export async function postApprovedManualLedgerJournal(
       'Journal credit total',
     )
   ) {
-    throw new Error(
+    throw new LedgerPostingError(
       'SaMi refused to post a journal whose persisted lines are not balanced.',
     );
   }
@@ -1208,7 +1211,7 @@ export async function reversePostedLedgerJournal(
     ) !==
       'posted'
   ) {
-    throw new Error(
+    throw new LedgerPostingError(
       'Only an existing posted journal can be reversed.',
     );
   }
@@ -1253,7 +1256,7 @@ export async function reversePostedLedgerJournal(
     originalLines.rows.length <
       2
   ) {
-    throw new Error(
+    throw new LedgerPostingError(
       'The original posted journal does not contain a valid accounting entry.',
     );
   }
