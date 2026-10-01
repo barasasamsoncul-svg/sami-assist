@@ -180,6 +180,8 @@ test("Accounting tax engine is migration-backed, first-class UI, and AP no longe
   assert.match(payables,/calculateAccountingTax/);
   assert.match(payables,/accounting_vendor_line_tax_components/);
   assert.match(payables,/recoverable_tax_amount/);
+  assert.match(payables,/input_account_id_snapshot/);
+  assert.match(payables,/nonrecoverable_account_id_snapshot/);
   assert.match(payables,/input_tax_account_id/);
   assert.match(payablesUi,/taxSelection/);
   assert.match(payablesUi,/Select a tax code or group per line/);
