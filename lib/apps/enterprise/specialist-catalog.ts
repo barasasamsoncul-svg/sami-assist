@@ -7,6 +7,8 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
     'accounting_reconciliation_rules',
     'accounting_recurring_journals',
     'accounting_recurring_journal_lines',
+    'accounting_opening_balance_batches',
+    'accounting_opening_balance_lines',
   ],
   inventory: [
     'inventory_lots',
