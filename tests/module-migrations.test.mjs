@@ -1441,10 +1441,10 @@ test('Accounting 2.14 provides immutable bank reconciliation with split matches 
 
 
 test('Accounting 2.16 Tax Engine is migration-backed and fresh-install complete', async () => {
-  const [manifest,runtime,migration,depth,catalog,specialist,hooks,engine,taxes,workspace,foundation] = await Promise.all([
+  const [manifest,runtime,migration,depth,schema,catalog,specialist,hooks,engine,taxes,workspace,foundation] = await Promise.all([
     source('lib/modules/first-party.ts'),source('lib/apps/runtime-migrations.ts'),
     source('lib/apps/accounting/migrations/2.15.0-to-2.16.0.ts'),source('lib/apps/enterprise/specialist-depth.ts'),
-    source('lib/apps/enterprise/catalog.ts'),source('lib/apps/enterprise/specialist-catalog.ts'),
+    source('lib/apps/accounting/tax-schema.ts'),source('lib/apps/enterprise/catalog.ts'),source('lib/apps/enterprise/specialist-catalog.ts'),
     source('lib/apps/enterprise/domain-hooks.ts'),source('lib/apps/accounting/tax-engine.ts'),
     source('lib/apps/accounting/taxes.ts'),source('app/apps/accounting/AccountingWorkspace.tsx'),
     source('app/apps/accounting/AccountingFoundationPanel.tsx'),
@@ -1452,8 +1452,9 @@ test('Accounting 2.16 Tax Engine is migration-backed and fresh-install complete'
   assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.16\.0'/);
   assert.match(runtime,/ACCOUNTING_2_15_0_TO_2_16_0/);
   assert.match(migration,/fromVersion:\s*'2\.15\.0'[\s\S]*toVersion:\s*'2\.16\.0'/);
+  assert.match(depth,/ACCOUNTING_TAX_SQL/);
   for (const marker of ['accounting_tax_codes','accounting_tax_groups','accounting_tax_group_lines','accounting_tax_ledger_entries']) {
-    assert.match(depth,new RegExp(marker));assert.match(catalog,new RegExp(marker));assert.match(specialist,new RegExp(marker));
+    assert.match(schema,new RegExp(marker));assert.match(catalog,new RegExp(marker));assert.match(specialist,new RegExp(marker));
   }
   assert.match(hooks,/accounting_tax_codes[\s\S]*accounting_tax_ledger_entries/);
   assert.match(engine,/calculateAccountingTaxes/);assert.match(engine,/priceIncluded/);assert.match(engine,/recoverableAmount/);
