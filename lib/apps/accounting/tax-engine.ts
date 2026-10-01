@@ -487,7 +487,7 @@ export async function getAccountingTaxes(input: { from?: string; to?: string; pa
   try {
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
 
-    const [codes, groups, purchase, purchaseCount, settings, adjustments] = await Promise.all([
+    const [codes, groups, purchase, purchaseCount, settings, adjustments, accounts] = await Promise.all([
       client.query(
         `SELECT id::text,code,name,tax_type,direction,rate::text,calculation,recoverable_rate::text,
                 input_account_id::text,output_account_id::text,nonrecoverable_account_id::text,
@@ -545,6 +545,13 @@ export async function getAccountingTaxes(input: { from?: string; to?: string; pa
          ORDER BY adjustment_date DESC,created_at DESC LIMIT 100`,
         [context.companyId,selected.from,selected.to],
       ),
+      client.query(
+        `SELECT id::text,code,name,account_type,is_control_account
+         FROM accounts
+         WHERE company_id=$1 AND deleted_at IS NULL AND is_active=TRUE
+         ORDER BY code,name`,
+        [context.companyId],
+      ),
     ]);
 
     const inputIds = new Set<string>();
@@ -598,17 +605,40 @@ export async function getAccountingTaxes(input: { from?: string; to?: string; pa
     );
     let salesTax = BigInt(0);
     let salesSourceAvailable = false;
+    let salesRegister: Array<Record<string,unknown>> = [];
     if (hasInvoices.rows[0]?.available) {
       salesSourceAvailable = true;
-      const sales = await client.query(
-        `SELECT COALESCE(SUM(ROUND(i.tax_total * i.exchange_rate,2)),0)::text AS tax
-         FROM invoicing_invoices i
-         WHERE i.company_id=$1 AND i.deleted_at IS NULL
-           AND i.invoice_date BETWEEN $2::date AND $3::date
-           AND i.status IN ('confirmed','sent','viewed','partially_paid','paid','overdue')`,
-        [context.companyId,selected.from,selected.to],
-      );
+      const [sales,salesRows] = await Promise.all([
+        client.query(
+          `SELECT COALESCE(SUM(ROUND(i.tax_total * i.exchange_rate,2)),0)::text AS tax
+           FROM invoicing_invoices i
+           WHERE i.company_id=$1 AND i.deleted_at IS NULL
+             AND i.invoice_date BETWEEN $2::date AND $3::date
+             AND i.status IN ('confirmed','sent','viewed','partially_paid','paid','overdue')`,
+          [context.companyId,selected.from,selected.to],
+        ),
+        client.query(
+          `SELECT i.id::text AS invoice_id,i.invoice_number,i.invoice_date::text,i.currency,
+                  i.exchange_rate::text,c.name AS customer,
+                  li.tax_name_snapshot,li.tax_rate::text,
+                  li.subtotal::text AS taxable_amount,li.tax_amount::text,
+                  ROUND(li.tax_amount * i.exchange_rate,2)::text AS base_tax_amount
+           FROM invoicing_invoice_items li
+           JOIN invoicing_invoices i
+             ON i.company_id=li.company_id AND i.id=li.invoice_id
+           JOIN invoicing_customers c
+             ON c.company_id=i.company_id AND c.id=i.customer_id
+           WHERE i.company_id=$1 AND i.deleted_at IS NULL
+             AND i.invoice_date BETWEEN $2::date AND $3::date
+             AND i.status IN ('confirmed','sent','viewed','partially_paid','paid','overdue')
+             AND li.tax_amount > 0
+           ORDER BY i.invoice_date DESC,i.invoice_number,li.sort_order,li.id
+           LIMIT 100`,
+          [context.companyId,selected.from,selected.to],
+        ),
+      ]);
       salesTax = minorUnits(String(sales.rows[0]?.tax || '0'));
+      salesRegister = salesRows.rows;
     }
 
     const sourceInput = minorUnits(String(purchaseTotals.rows[0]?.recoverable || '0'));
@@ -620,7 +650,9 @@ export async function getAccountingTaxes(input: { from?: string; to?: string; pa
       filters: selected,
       codes: codes.rows,
       groups: groups.rows,
+      accounts: accounts.rows,
       purchaseRegister: purchase.rows.slice(0,50),
+      salesRegister,
       purchaseCount: Number(purchaseCount.rows[0]?.count || 0),
       hasMore: purchase.rows.length > 50,
       adjustments: adjustments.rows,
@@ -642,6 +674,26 @@ export async function getAccountingTaxes(input: { from?: string; to?: string; pa
   } finally {
     client.release();
   }
+}
+
+export async function setAccountingTaxStatus(input: unknown) {
+  const body = bodyOf(input);
+  const kind = body.kind === 'group' ? 'group' : body.kind === 'code' ? 'code' : null;
+  if (!kind) throw new AccountingInputError('Choose tax code or tax group.');
+  const table = kind === 'code' ? 'accounting_tax_codes' : 'accounting_tax_groups';
+  const context = await requireEnterpriseModuleTableContext('accounting', table, 'settings');
+  if (accountingId(body.expectedCompanyId) !== context.companyId) {
+    throw new AccountingInputError('Your active company changed. Reload Accounting before saving.');
+  }
+  const id = accountingId(body.id);
+  const status = body.status === 'active' ? 'active' : body.status === 'inactive' ? 'inactive' : null;
+  if (!status) throw new AccountingInputError('Choose active or inactive tax status.');
+  const result = await context.pool.query(
+    'UPDATE '+table+' SET status=$3,updated_by=$4,updated_at=NOW() WHERE company_id=$1 AND id=$2 AND deleted_at IS NULL RETURNING id::text',
+    [context.companyId,id,status,context.userId],
+  );
+  if (!result.rows[0]) throw new AccountingInputError('Tax record not found.');
+  return { id,status,kind };
 }
 
 export async function createAccountingTaxAdjustment(input: unknown) {
@@ -791,3 +843,5 @@ export async function transitionAccountingTaxAdjustment(input: unknown) {
     client.release();
   }
 }
+
+export type AccountingTaxWorkspace = Awaited<ReturnType<typeof getAccountingTaxes>>;
