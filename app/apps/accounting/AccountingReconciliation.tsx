@@ -311,10 +311,7 @@ export default function AccountingReconciliation({
         minAmount:form.get("minAmount"),
         maxAmount:form.get("maxAmount"),
         targetAccountId:form.get("targetAccountId"),
-        daysTolerance:form.get("daysTolerance"),
-        amountTolerance:form.get("amountTolerance"),
         priority:form.get("priority"),
-        autoApply:form.get("autoApply") === "on",
         descriptionTemplate:form.get("descriptionTemplate"),
       },
       "Reconciliation rule created",
@@ -518,14 +515,6 @@ export default function AccountingReconciliation({
               </select>
             </label>
             <label>
-              Date tolerance · days
-              <input name="daysTolerance" type="number" min={0} max={365} defaultValue={7} required />
-            </label>
-            <label>
-              Amount tolerance
-              <input name="amountTolerance" inputMode="decimal" defaultValue="0.00" required />
-            </label>
-            <label>
               Priority
               <input name="priority" type="number" min={0} max={999999} defaultValue={100} required />
             </label>
@@ -533,17 +522,13 @@ export default function AccountingReconciliation({
               Adjustment description
               <input name="descriptionTemplate" maxLength={500} placeholder="Bank charge" />
             </label>
-            <label>
-              <input type="checkbox" name="autoApply" />
-              Mark as auto-apply eligible
-            </label>
             <button className={styles.primary} disabled={busy.startsWith("create-rule")}>
               Create rule
             </button>
           </form>
 
           <div className={styles.notice}>
-            Auto-apply eligibility is stored for controlled future automation; this workspace still requires an explicit user acceptance before creating an adjustment journal.
+            Rules only generate suggestions here. A user must explicitly accept a rule before SaMi creates the balanced adjustment journal.
           </div>
         </section>
       ) : null}
