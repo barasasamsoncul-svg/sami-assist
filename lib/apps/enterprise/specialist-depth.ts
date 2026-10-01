@@ -1,3 +1,4 @@
+import { ACCOUNTING_FX_SQL } from '@/lib/apps/accounting/fx-schema';
 import { ACCOUNTING_INTERNATIONAL_LOCALIZATION_SQL } from '@/lib/apps/accounting/international-schema';
 import { ACCOUNTING_KENYA_SQL } from '@/lib/apps/accounting/kenya-schema';
 import { ACCOUNTING_TAX_SQL } from '@/lib/apps/accounting/tax-schema';
@@ -1755,6 +1756,7 @@ ${ACCOUNTING_PAYMENTS_SQL}
 ${ACCOUNTING_TAX_SQL}
 ${ACCOUNTING_KENYA_SQL}
 ${ACCOUNTING_INTERNATIONAL_LOCALIZATION_SQL}
+${ACCOUNTING_FX_SQL}
 `;
 }
 
