@@ -23,6 +23,7 @@ export const ACCOUNTING_SECTIONS = [
   "new-journal",
   "journals",
   "recurring-journals",
+  "opening-balances",
   "setup",
 ] as const;
 export type AccountingSection = (typeof ACCOUNTING_SECTIONS)[number];
@@ -90,6 +91,7 @@ export default function AccountingFoundationPanel({
     "new-journal": "New manual journal",
     journals: "Journal register",
     "recurring-journals": "Recurring journals",
+    "opening-balances": "Opening balances",
     setup: "Accounting setup",
   };
   const descriptions = {
@@ -107,6 +109,8 @@ export default function AccountingFoundationPanel({
       "Review, approve, post and reverse controlled accounting journals.",
     "recurring-journals":
       "Create repeatable balanced journals and generate reviewable draft occurrences.",
+    "opening-balances":
+      "Import, validate, reconcile and post migration balances without bypassing the authoritative ledger.",
     setup:
       "Configure fiscal policy, control accounts, tax mappings, FX accounts, write-offs and period locks for this company.",
   };
@@ -132,10 +136,8 @@ export default function AccountingFoundationPanel({
     {
       title: "Opening balances",
       detail: "Prepare and review a balanced opening journal.",
-      href: canCreate
-        ? "/apps/accounting/new-journal"
-        : "/apps/accounting/journals",
-      done: false,
+      href: "/apps/accounting/opening-balances",
+      done: data.openingBalancePostedCount > 0,
     },
   ];
   const taskList = (
