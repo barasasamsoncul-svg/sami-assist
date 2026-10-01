@@ -299,6 +299,10 @@ const SQL = `
     ON r.company_id=m.company_id
    AND r.id=m.reconciliation_id
   WHERE l.deleted_at IS NULL
+    AND COALESCE(j.source_type,'') NOT IN (
+      'bank_reconciliation_adjustment',
+      'bank_reconciliation_reversal'
+    )
   GROUP BY
     l.company_id,
     l.id,
