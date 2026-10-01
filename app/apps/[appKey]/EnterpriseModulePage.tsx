@@ -51,10 +51,6 @@ import {
 } from '@/lib/auth/workspace-shell';
 
 import {
-  getWorkspaceNotificationSummary,
-} from '@/lib/services/workspace-notifications';
-
-import {
   getEnterpriseModuleWorkspace,
   type EnterpriseWorkspaceData,
 } from '@/lib/apps/enterprise/service';
@@ -291,36 +287,33 @@ export default async function EnterpriseModulePage({
           permission,
         );
 
-  const [
-    data,
-    notifications,
-  ] =
-    await Promise.all([
-      getEnterpriseModuleWorkspace(
-        canonicalKey,
-      )
-        .catch(
-          error => {
-            console.error(
-              '[SaMi] Enterprise workspace load failed:',
-              {
-                moduleKey:
-                  canonicalKey,
-                section:
-                  section ||
-                  'overview',
-                error,
-              },
-            );
+  const data =
+    await getEnterpriseModuleWorkspace(
+      canonicalKey,
+    )
+      .catch(
+        error => {
+          console.error(
+            '[SaMi] Enterprise workspace load failed:',
+            {
+              moduleKey:
+                canonicalKey,
+              section:
+                section ||
+                'overview',
+              error,
+            },
+          );
 
-            return null;
-          },
-        ),
-      getWorkspaceNotificationSummary()
-        .catch(
-          () => null,
-        ),
-    ]);
+          return null;
+        },
+      );
+
+  // Notification counts hydrate in WorkspaceNotificationCenter after the app
+  // shell renders; they must never delay opening an app.
+  const notifications = {
+    unreadCount: 0,
+  };
 
   if (
     !data

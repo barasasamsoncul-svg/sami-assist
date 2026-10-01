@@ -21,10 +21,6 @@ import {
 } from '@/lib/auth/workspace-shell';
 
 import {
-  getWorkspaceNotificationSummary,
-} from '@/lib/services/workspace-notifications';
-
-import {
   getEnterpriseModuleShellWorkspace,
   getEnterpriseModuleWorkspace,
   type EnterpriseWorkspaceData,
@@ -226,42 +222,42 @@ export async function loadStandaloneEnterpriseApp(
     notFound();
   }
 
-  const [
-    data,
-    notifications,
-  ] =
-    await Promise.all([
-      (
-        options?.lightweight
-          ? getEnterpriseModuleShellWorkspace(
+  const data =
+    await (
+      options?.lightweight
+        ? getEnterpriseModuleShellWorkspace(
+            moduleKey,
+          )
+        : getEnterpriseModuleWorkspace(
+            moduleKey,
+          )
+    )
+      .catch(
+        error => {
+          console.error(
+            '[SaMi] Standalone app workspace load failed:',
+            {
               moduleKey,
-            )
-          : getEnterpriseModuleWorkspace(
-              moduleKey,
-            )
-      )
-        .catch(
-          error => {
-            console.error(
-              '[SaMi] Standalone app workspace load failed:',
-              {
-                moduleKey,
-                section:
-                  section ||
-                  'overview',
-                error,
-              },
-            );
+              section:
+                section ||
+                'overview',
+              error,
+            },
+          );
 
-            return null;
-          },
-        ),
-      getWorkspaceNotificationSummary()
-        .catch(
-          () =>
-            null,
-        ),
-    ]);
+          return null;
+        },
+      );
+
+  /*
+   * Do not make app navigation wait for notification counts. The client-side
+   * WorkspaceNotificationCenter immediately refreshes its own summary and keeps
+   * polling/focus refresh afterwards. Starting from zero keeps the app shell
+   * fast without losing notification functionality.
+   */
+  const notifications = {
+    unreadCount: 0,
+  };
 
   if (
     !data
