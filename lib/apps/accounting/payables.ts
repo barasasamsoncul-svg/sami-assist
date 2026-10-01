@@ -898,6 +898,23 @@ export async function reversePayablesDocument(input: unknown) {
       sourceId: documentId,sourceEventKey: "accounting:vendor-document-reversal:" + documentId,
     });
     await client.query(
+      `INSERT INTO accounting_tax_ledger_entries(
+         company_id,tax_code_id,journal_id,source_module,source_type,source_id,source_event_key,
+         transaction_date,taxable_amount,tax_amount,recoverable_amount,nonrecoverable_amount,
+         currency,direction,entry_effect,metadata,created_by
+       )
+       SELECT company_id,tax_code_id,$3,'accounting','vendor_document_reversal',source_id,
+              'accounting:vendor-tax-reversal:'||$2||':'||id::text,$4,
+              taxable_amount,tax_amount,recoverable_amount,nonrecoverable_amount,
+              currency,direction,(entry_effect * -1),
+              jsonb_build_object('reversalOfTaxEntryId',id::text),$5
+       FROM accounting_tax_ledger_entries
+       WHERE company_id=$1 AND source_module='accounting' AND source_id=$2
+         AND source_type IN ('vendor_bill','vendor_credit_note') AND deleted_at IS NULL
+       ON CONFLICT(company_id,source_module,source_event_key,tax_code_id) WHERE deleted_at IS NULL DO NOTHING`,
+      [context.companyId,documentId,reversal.journalId,reversalDate,context.userId],
+    );
+    await client.query(
       `UPDATE accounting_vendor_documents
        SET status='reversed',reversed_journal_id=$3,reversed_at=NOW(),updated_by=$4,updated_at=NOW()
        WHERE company_id=$1 AND id=$2`,
