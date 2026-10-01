@@ -1652,7 +1652,7 @@ export async function createInternalTransfer(
         companyCurrency
     ) {
       throw new AccountingInputError(
-        "Cross-currency internal transfers will be enabled with foreign-currency accounting.",
+        "Cross-currency internal transfers require the foreign-currency accounting workflow.",
       );
     }
 
