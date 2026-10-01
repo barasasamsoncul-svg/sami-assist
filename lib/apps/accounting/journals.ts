@@ -378,7 +378,7 @@ export async function approveAccountingJournal(
   const context = await requireEnterpriseModuleTableContext(
     "accounting",
     "journals",
-    "update",
+    "edit",
   );
 
   const body = actionBody(input);
@@ -481,7 +481,12 @@ export async function approveAccountingJournal(
     summary: "Accounting journal approved for posting",
     result: "success",
     metadata: { note: note || null },
-  });
+  }).catch((error) =>
+    console.error("[Accounting] Approval audit delivery failed", {
+      journalId,
+      error,
+    }),
+  );
 
   return { journalId, status: "approved", replayed: false };
 }
@@ -493,7 +498,7 @@ export async function postAccountingJournal(
   const context = await requireEnterpriseModuleTableContext(
     "accounting",
     "journals",
-    "update",
+    "edit",
   );
 
   const body = actionBody(input);
@@ -530,7 +535,12 @@ export async function postAccountingJournal(
         total: result.total,
         replayed: result.reused,
       },
-    });
+    }).catch((error) =>
+      console.error("[Accounting] Posting audit delivery failed", {
+        journalId,
+        error,
+      }),
+    );
 
     return result;
   } catch (error) {
@@ -548,7 +558,7 @@ export async function reverseAccountingJournal(
   const context = await requireEnterpriseModuleTableContext(
     "accounting",
     "journals",
-    "update",
+    "edit",
   );
 
   const body = actionBody(input);
@@ -597,7 +607,12 @@ export async function reverseAccountingJournal(
         reversalJournalId: result.journalId,
         reversalDate,
       },
-    });
+    }).catch((error) =>
+      console.error("[Accounting] Reversal audit delivery failed", {
+        journalId,
+        error,
+      }),
+    );
 
     return result;
   } catch (error) {
@@ -762,7 +777,12 @@ export async function createRecurringAccountingJournal(
       summary: "Recurring Accounting journal template created",
       result: "success",
       metadata: { frequency, startsOn, endsOn },
-    });
+    }).catch((error) =>
+      console.error("[Accounting] Recurring journal audit delivery failed", {
+        recurringId,
+        error,
+      }),
+    );
 
     return { id: recurringId, status: "active" };
   } catch (error) {
@@ -1022,7 +1042,13 @@ export async function generateRecurringAccountingJournal(
       summary: "Recurring Accounting journal generated as a reviewable draft",
       result: "success",
       metadata: { recurringId, occurrenceDate },
-    });
+    }).catch((error) =>
+      console.error("[Accounting] Recurring generation audit delivery failed", {
+        journalId,
+        recurringId,
+        error,
+      }),
+    );
 
     return {
       journalId,
