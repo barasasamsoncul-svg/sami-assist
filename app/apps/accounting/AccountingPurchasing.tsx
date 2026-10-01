@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import {
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
@@ -36,6 +37,20 @@ import styles from "./AccountingFoundation.module.css";
 
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function browserUuid() {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
+    return crypto.randomUUID();
+  }
+
+  return (
+    "00000000-0000-4000-8000-" +
+    String(Date.now()).padStart(12, "0").slice(-12)
+  );
 }
 
 
@@ -64,6 +79,21 @@ export default function AccountingPurchasing({
   const [matchOpen, setMatchOpen] = useState(false);
   const [orderRequisitionId, setOrderRequisitionId] = useState("");
   const [receiptOrderId, setReceiptOrderId] = useState("");
+
+  const requestKeys = useRef({
+    requisition: "",
+    order: "",
+    receipt: "",
+  });
+
+  const requestKey = (
+    kind: "requisition" | "order" | "receipt",
+  ) => {
+    if (!requestKeys.current[kind]) {
+      requestKeys.current[kind] = browserUuid();
+    }
+    return requestKeys.current[kind];
+  };
 
   const amount = (value: string) =>
     formatAccountingAmount(value || "0.00", data.currency);
@@ -165,11 +195,13 @@ export default function AccountingPurchasing({
     event.preventDefault();
     if (!canCreate) return;
 
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
 
     const result = await postAction(
       {
         action: "create-requisition",
+        requestKey: requestKey("requisition"),
         purpose: form.get("purpose"),
         requestedOn: form.get("requestedOn"),
         neededBy: form.get("neededBy"),
@@ -189,7 +221,8 @@ export default function AccountingPurchasing({
     );
 
     if (result) {
-      event.currentTarget.reset();
+      requestKeys.current.requisition = "";
+      formElement.reset();
       setRequisitionOpen(false);
     }
   }
@@ -198,7 +231,8 @@ export default function AccountingPurchasing({
     event.preventDefault();
     if (!canCreate) return;
 
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const requisitionId = String(form.get("requisitionId") || "");
     const requisitionLines = requisitionId
       ? data.requisitionLines.filter(
@@ -235,6 +269,7 @@ export default function AccountingPurchasing({
     const result = await postAction(
       {
         action: "create-order",
+        requestKey: requestKey("order"),
         requisitionId: requisitionId || undefined,
         vendorId: form.get("vendorId"),
         orderDate: form.get("orderDate"),
@@ -250,7 +285,8 @@ export default function AccountingPurchasing({
     );
 
     if (result) {
-      event.currentTarget.reset();
+      requestKeys.current.order = "";
+      formElement.reset();
       setOrderRequisitionId("");
       setOrderOpen(false);
     }
@@ -260,7 +296,8 @@ export default function AccountingPurchasing({
     event.preventDefault();
     if (!canEdit) return;
 
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const lineId = String(form.get("purchaseOrderLineId") || "");
     const line = data.orderLines.find((row) => row.id === lineId);
 
@@ -275,6 +312,7 @@ export default function AccountingPurchasing({
     const result = await postAction(
       {
         action: "create-receipt",
+        requestKey: requestKey("receipt"),
         purchaseOrderId: line.purchase_order_id,
         receivedOn: form.get("receivedOn"),
         deliveryReference: form.get("deliveryReference"),
@@ -294,7 +332,8 @@ export default function AccountingPurchasing({
     );
 
     if (result) {
-      event.currentTarget.reset();
+      requestKeys.current.receipt = "";
+      formElement.reset();
       setReceiptOrderId("");
       setReceiptOpen(false);
     }
