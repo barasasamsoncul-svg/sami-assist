@@ -119,6 +119,13 @@ export type PayablesControlReconciliation = {
 export type AccountingPayablesWorkspace = {
   companyId: string;
   currency: string;
+  filters: {
+    page: number;
+    bucket: "" | "current" | "1-30" | "31-60" | "61-90" | "90+";
+    vendorId: string;
+    search: string;
+  };
+  documentCount: number;
   vendors: PayablesVendor[];
   documents: PayablesDocumentSummary[];
   selected: PayablesDocumentDetail | null;
