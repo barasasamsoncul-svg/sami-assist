@@ -900,7 +900,7 @@ test('Accounting 2.9 Payables is migration-backed and ledger controlled', async 
     source('lib/apps/enterprise/specialist-depth.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.16\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.17\.0'/);
   assert.match(migrations,/ACCOUNTING_2_8_0_TO_2_9_0/);
 
   for (const marker of [
@@ -1461,4 +1461,39 @@ test('Accounting 2.16 Tax Engine is migration-backed and fresh-install complete'
   assert.match(taxes,/recordAccountingTaxLedgerEntries/);
   assert.match(workspace,/dedicatedSection === 'taxes'[\s\S]*AccountingTaxes/);
   assert.match(foundation,/"taxes"/);
+});
+
+
+test('Accounting 2.17 Kenya localization reuses shared eTIMS and is migration-backed', async () => {
+  const [manifest,runtime,migration,depth,schema,catalog,specialist,hooks,service,workspace,foundation,payables] = await Promise.all([
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/apps/accounting/migrations/2.16.0-to-2.17.0.ts'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+    source('lib/apps/accounting/kenya-schema.ts'),
+    source('lib/apps/enterprise/catalog.ts'),
+    source('lib/apps/enterprise/specialist-catalog.ts'),
+    source('lib/apps/enterprise/domain-hooks.ts'),
+    source('lib/apps/accounting/kenya.ts'),
+    source('app/apps/accounting/AccountingWorkspace.tsx'),
+    source('app/apps/accounting/AccountingFoundationPanel.tsx'),
+    source('lib/apps/accounting/payables.ts'),
+  ]);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.17\.0'/);
+  assert.match(runtime,/ACCOUNTING_2_16_0_TO_2_17_0/);
+  assert.match(migration,/fromVersion:\s*'2\.16\.0'[\s\S]*toVersion:\s*'2\.17\.0'/);
+  assert.match(depth,/ACCOUNTING_KENYA_SQL/);
+  for (const marker of ['accounting_kenya_settings','accounting_kenya_tax_mappings','accounting_kenya_sync_runs']) {
+    assert.match(schema,new RegExp(marker));
+    assert.match(catalog,new RegExp(marker));
+    assert.match(specialist,new RegExp(marker));
+  }
+  assert.match(hooks,/accounting_kenya_settings[\s\S]*accounting_kenya_sync_runs/);
+  assert.match(service,/invoicing_etims_profiles/);
+  assert.match(service,/invoicing_etims_submissions/);
+  assert.doesNotMatch(service,/SAMI_ETIMS_[A-Z_]+_BASE_URL/);
+  assert.match(workspace,/dedicatedSection === 'kenya'[\s\S]*AccountingKenya/);
+  assert.match(foundation,/"kenya"/);
+  assert.match(payables,/recoverable_tax_amount/);
+  assert.match(payables,/accounting:vendor-tax:/);
 });
