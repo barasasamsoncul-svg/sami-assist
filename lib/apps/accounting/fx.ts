@@ -165,7 +165,7 @@ export async function getAccountingFx(input:{asOf?:unknown}={}){
   const context=await requireEnterpriseModuleTableContext('accounting','accounting_exchange_rates','view');
   const baseCurrency=await ensureBaseCurrency(context);
   const asOf=input.asOf?accountingDate(input.asOf):new Date().toISOString().slice(0,10);
-  const [settings,currencies,rates,accounts,runs,payments,transfers,setup]=await Promise.all([
+  const [settings,currencies,rates,accounts,runs,payments,transfers,setup,openBills,ledgerAccounts]=await Promise.all([
     context.pool.query(`SELECT company_id::text,base_currency,rate_source_mode,default_rate_type,auto_reverse_revaluation,revaluation_reversal_days,
       unrealized_gain_account_id::text,unrealized_loss_account_id::text,provider_key,status,metadata
       FROM accounting_fx_settings WHERE company_id=$1 LIMIT 1`,[context.companyId]),
@@ -199,6 +199,15 @@ export async function getAccountingFx(input:{asOf?:unknown}={}){
       WHERE t.company_id=$1 AND t.deleted_at IS NULL AND t.fx_managed=TRUE ORDER BY t.transfer_date DESC,t.created_at DESC LIMIT 30`,[context.companyId]),
     context.pool.query(`SELECT fx_gain_account_id::text,fx_loss_account_id::text,fx_unrealized_gain_account_id::text,fx_unrealized_loss_account_id::text
       FROM accounting_settings WHERE company_id=$1 AND deleted_at IS NULL LIMIT 1`,[context.companyId]),
+    context.pool.query(`SELECT b.document_id::text AS id,b.document_number,b.currency,b.exchange_rate::text,b.open_amount::text,b.base_open_amount::text,
+      b.due_date::text,v.name AS vendor
+      FROM accounting_vendor_document_balances b JOIN accounting_vendors v ON v.company_id=b.company_id AND v.id=b.vendor_id
+      WHERE b.company_id=$1 AND b.document_type='bill' AND b.open_amount>0 AND b.status IN ('posted','partially_settled')
+      ORDER BY b.due_date,b.document_number LIMIT 500`,[context.companyId]),
+    context.pool.query(`SELECT id::text,code,name,account_type FROM accounts
+      WHERE company_id=$1 AND deleted_at IS NULL AND is_active=TRUE
+        AND (account_type LIKE 'income%' OR account_type LIKE 'expense%')
+      ORDER BY account_type,code`,[context.companyId]),
   ]);
 
   const positions=await getFxPositions(context,asOf,baseCurrency,'closing');
@@ -219,7 +228,7 @@ export async function getAccountingFx(input:{asOf?:unknown}={}){
       revaluation_reversal_days:1,unrealized_gain_account_id:null,unrealized_loss_account_id:null,provider_key:null,status:'active',metadata:{},
     },
     setup:setup.rows[0]||{},
-    currencies:currencies.rows,rates:rates.rows,accounts:accounts.rows,
+    currencies:currencies.rows,rates:rates.rows,accounts:accounts.rows,openBills:openBills.rows,ledgerAccounts:ledgerAccounts.rows,
     positions,diagnostics,runs:runs.rows,fxPayments:payments.rows,fxTransfers:transfers.rows,
     invoicingRateImportAvailable:await tableAvailable(context,'invoicing_exchange_rates'),
   };
