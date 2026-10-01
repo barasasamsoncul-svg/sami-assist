@@ -674,13 +674,16 @@ export async function createPayablesDocument(input: unknown) {
           `INSERT INTO accounting_vendor_line_tax_components (
              company_id,document_id,document_line_id,tax_code_id,tax_group_id,sequence_no,compound,
              tax_code_snapshot,tax_name_snapshot,rate_snapshot,recoverable_rate_snapshot,
+             input_account_id_snapshot,output_account_id_snapshot,nonrecoverable_account_id_snapshot,
              taxable_amount,tax_amount,recoverable_tax_amount,nonrecoverable_tax_amount,
              calculation,created_by
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
           [
             context.companyId,id,lineId,component.taxCodeId,line.taxGroupId,
             component.sequenceNo,component.compound,component.taxCode,component.taxName,
-            component.rate,component.recoverableRate,component.taxableAmount,component.taxAmount,
+            component.rate,component.recoverableRate,
+            component.inputAccountId,component.outputAccountId,component.nonrecoverableAccountId,
+            component.taxableAmount,component.taxAmount,
             component.recoverableTaxAmount,component.nonrecoverableTaxAmount,
             component.calculation,context.userId,
           ],
@@ -765,15 +768,13 @@ export async function postPayablesDocument(input: unknown) {
               COALESCE(json_agg(json_build_object(
                 'recoverable',t.recoverable_tax_amount::text,
                 'nonrecoverable',t.nonrecoverable_tax_amount::text,
-                'inputAccountId',c.input_account_id::text,
-                'nonrecoverableAccountId',c.nonrecoverable_account_id::text,
+                'inputAccountId',t.input_account_id_snapshot::text,
+                'nonrecoverableAccountId',t.nonrecoverable_account_id_snapshot::text,
                 'taxCode',t.tax_code_snapshot
               ) ORDER BY t.sequence_no,t.id) FILTER (WHERE t.id IS NOT NULL),'[]'::json) AS taxes
        FROM accounting_vendor_document_lines l
        LEFT JOIN accounting_vendor_line_tax_components t
          ON t.company_id=l.company_id AND t.document_line_id=l.id AND t.deleted_at IS NULL
-       LEFT JOIN accounting_tax_codes c
-         ON c.company_id=t.company_id AND c.id=t.tax_code_id AND c.deleted_at IS NULL
        WHERE l.company_id=$1 AND l.document_id=$2 AND l.deleted_at IS NULL
        GROUP BY l.id,l.account_id,l.description,l.line_total,l.sequence,l.created_at
        ORDER BY l.sequence,l.created_at,l.id`,
