@@ -4,6 +4,11 @@ import type {
   PoolClient,
 } from 'pg';
 
+import {
+  postBalancedLedgerJournal,
+  reversePostedLedgerJournal,
+} from '@/lib/apps/accounting/ledger-engine';
+
 
 function accountingDate(
   value: unknown,
@@ -167,7 +172,20 @@ async function accountingRuntimeReady(
             AS lines_ready,
           to_regclass('public.invoicing_accounting_links')
             IS NOT NULL
-            AS links_ready
+            AS links_ready,
+          to_regclass('public.accounting_settings')
+            IS NOT NULL
+            AS settings_ready,
+          to_regclass('public.accounting_fiscal_periods')
+            IS NOT NULL
+            AS periods_ready,
+          EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'journals'
+              AND column_name = 'source_event_key'
+          ) AS ledger_v26_ready
       `,
     );
 
@@ -183,6 +201,12 @@ async function accountingRuntimeReady(
     row.lines_ready ===
       true &&
     row.links_ready ===
+      true &&
+    row.settings_ready ===
+      true &&
+    row.periods_ready ===
+      true &&
+    row.ledger_v26_ready ===
       true
   );
 }
@@ -227,19 +251,137 @@ async function ensureAccount(
       key
     ];
 
+  const setupRole =
+    {
+      receivable:
+        'default_receivable_account_id',
+      tax:
+        'output_tax_account_id',
+      cash:
+        'default_cash_account_id',
+      bad_debt:
+        'write_off_account_id',
+    } as const;
+
+  const systemRole =
+    {
+      receivable:
+        'receivable_control',
+      revenue:
+        'invoicing_revenue',
+      tax:
+        'output_tax',
+      cash:
+        'cash_default',
+      customer_credit:
+        'invoicing_customer_credit',
+      returns:
+        'invoicing_returns',
+      bad_debt:
+        'write_off',
+      fx_gain_loss:
+        'invoicing_fx_gain_loss',
+    } as const;
+
+  const setupColumn =
+    setupRole[
+      key as
+        keyof typeof setupRole
+    ];
+
+  if (
+    setupColumn
+  ) {
+    const mapped =
+      await client.query(
+        `
+          SELECT
+            CASE $2::text
+              WHEN 'default_receivable_account_id'
+                THEN default_receivable_account_id
+              WHEN 'output_tax_account_id'
+                THEN output_tax_account_id
+              WHEN 'default_cash_account_id'
+                THEN default_cash_account_id
+              WHEN 'write_off_account_id'
+                THEN write_off_account_id
+              ELSE NULL
+            END::text AS account_id
+          FROM accounting_settings
+          WHERE company_id = $1
+            AND deleted_at IS NULL
+          LIMIT 1
+        `,
+        [
+          companyId,
+          setupColumn,
+        ],
+      );
+
+    const mappedId =
+      mapped.rows[0]
+        ?.account_id;
+
+    if (
+      mappedId
+    ) {
+      const active =
+        await client.query(
+          `
+            SELECT id::text
+            FROM accounts
+            WHERE id = $1
+              AND company_id = $2
+              AND is_active = TRUE
+              AND deleted_at IS NULL
+            LIMIT 1
+          `,
+          [
+            mappedId,
+            companyId,
+          ],
+        );
+
+      if (
+        active.rows[0]
+          ?.id
+      ) {
+        return String(
+          active.rows[0].id,
+        );
+      }
+    }
+  }
+
   const existing =
     await client.query(
       `
-        SELECT id
+        SELECT id::text
         FROM accounts
         WHERE company_id = $1
-          AND name = $2
-          AND deleted_at
-              IS NULL
+          AND deleted_at IS NULL
+          AND (
+            system_role = $2
+            OR (
+              system_role IS NULL
+              AND name = $3
+            )
+          )
+        ORDER BY
+          CASE
+            WHEN system_role = $2
+              THEN 0
+            ELSE 1
+          END,
+          id
         LIMIT 1
+        FOR UPDATE
       `,
       [
         companyId,
+        systemRole[
+          key
+        ],
         blueprint.name,
       ],
     );
@@ -248,9 +390,50 @@ async function ensureAccount(
     existing.rows[0]
       ?.id
   ) {
-    return String(
-      existing.rows[0].id,
+    const id =
+      String(
+        existing.rows[0].id,
+      );
+
+    await client.query(
+      `
+        UPDATE accounts
+        SET
+          is_control_account = TRUE,
+          system_role =
+            COALESCE(
+              system_role,
+              $3
+            ),
+          allow_manual_posting =
+            FALSE,
+          reconcile =
+            CASE
+              WHEN account_type IN (
+                'asset_receivable',
+                'liability_payable',
+                'asset_cash'
+              )
+              THEN TRUE
+              ELSE reconcile
+            END,
+          updated_by = $4,
+          updated_at = NOW()
+        WHERE id = $1
+          AND company_id = $2
+          AND deleted_at IS NULL
+      `,
+      [
+        id,
+        companyId,
+        systemRole[
+          key
+        ],
+        userId,
+      ],
     );
+
+    return id;
   }
 
   const code =
@@ -272,6 +455,24 @@ async function ensureAccount(
       50,
     );
 
+  const normalBalance =
+    (
+      blueprint.accountType
+        .startsWith(
+          'liability',
+        ) ||
+      blueprint.accountType
+        .startsWith(
+          'equity',
+        ) ||
+      blueprint.accountType
+        .startsWith(
+          'income',
+        )
+    )
+      ? 'credit'
+      : 'debit';
+
   const created =
     await client.query(
       `
@@ -280,27 +481,49 @@ async function ensureAccount(
           code,
           name,
           account_type,
+          normal_balance,
           is_active,
+          reconcile,
+          allow_manual_posting,
+          is_control_account,
+          system_role,
           created_by,
           updated_by
         )
         VALUES (
-          $1,$2,$3,$4,TRUE,$5,$5
+          $1,$2,$3,$4,$5,TRUE,$6,FALSE,TRUE,$7,$8,$8
         )
-        ON CONFLICT (code)
+        ON CONFLICT (
+          company_id,
+          code
+        )
+        WHERE deleted_at IS NULL
         DO UPDATE
         SET
           updated_at =
             NOW(),
           updated_by =
-            EXCLUDED.updated_by
-        RETURNING id
+            EXCLUDED.updated_by,
+          is_active =
+            TRUE
+        RETURNING id::text
       `,
       [
         companyId,
         code,
         blueprint.name,
         blueprint.accountType,
+        normalBalance,
+        [
+          'asset_receivable',
+          'liability_payable',
+          'asset_cash',
+        ].includes(
+          blueprint.accountType,
+        ),
+        systemRole[
+          key
+        ],
         userId,
       ],
     );
@@ -380,46 +603,6 @@ async function postJournalUnsafe(
     };
   }
 
-  const debit =
-    money(
-      input.lines.reduce(
-        (
-          total,
-          line,
-        ) =>
-          total +
-          line.debit,
-        0,
-      ),
-    );
-
-  const credit =
-    money(
-      input.lines.reduce(
-        (
-          total,
-          line,
-        ) =>
-          total +
-          line.credit,
-        0,
-      ),
-    );
-
-  if (
-    Math.abs(
-      debit -
-      credit,
-    ) >
-      0.01 ||
-    debit <=
-      0
-  ) {
-    throw new Error(
-      'SaMi refused an unbalanced accounting posting.',
-    );
-  }
-
   const accountIds =
     new Map<
       AccountingLine['account'],
@@ -447,106 +630,65 @@ async function postJournalUnsafe(
     }
   }
 
-  const journal =
-    await client.query(
-      `
-        INSERT INTO journals (
-          company_id,
-          journal_number,
-          journal_date,
-          reference,
-          description,
-          status,
-          created_by,
-          updated_by
-        )
-        VALUES (
-          $1,
-          'SAMI-' ||
-          UPPER(
-            SUBSTRING(
-              MD5($2),
-              1,
-              16
-            )
+  const posting =
+    await postBalancedLedgerJournal(
+      client,
+      {
+        companyId:
+          input.companyId,
+        userId:
+          input.userId,
+        journalDate:
+          accountingDate(
+            input.journalDate,
           ),
-          $3,
-          $2,
-          $4,
-          'posted',
-          $5,
-          $5
-        )
-        RETURNING id
-      `,
-      [
-        input.companyId,
-        input.eventKey,
-        accountingDate(
-          input.journalDate,
-        ),
-        input.description,
-        input.userId,
-      ],
+        description:
+          input.description,
+        reference:
+          input.eventKey,
+        sourceModule:
+          'invoicing',
+        sourceType:
+          input.sourceType,
+        sourceId:
+          input.sourceId,
+        sourceEventKey:
+          input.eventKey,
+        postingKind:
+          'system',
+        lines:
+          input.lines
+            .map(
+              line => ({
+                accountId:
+                  accountIds.get(
+                    line.account,
+                  )!,
+                description:
+                  line.description,
+                debit:
+                  money(
+                    line.debit,
+                  ),
+                credit:
+                  money(
+                    line.credit,
+                  ),
+              }),
+            )
+            .filter(
+              line =>
+                Number(
+                  line.debit,
+                ) >
+                  0 ||
+                Number(
+                  line.credit,
+                ) >
+                  0,
+            ),
+      },
     );
-
-  const journalId =
-    String(
-      journal.rows[0].id,
-    );
-
-  for (
-    const line
-    of input.lines
-  ) {
-    const lineDebit =
-      money(
-        line.debit,
-      );
-
-    const lineCredit =
-      money(
-        line.credit,
-      );
-
-    if (
-      lineDebit ===
-        0 &&
-      lineCredit ===
-        0
-    ) {
-      continue;
-    }
-
-    await client.query(
-      `
-        INSERT INTO journal_lines (
-          company_id,
-          journal_id,
-          account_id,
-          description,
-          debit,
-          credit,
-          created_by,
-          updated_by
-        )
-        VALUES (
-          $1,$2,$3,$4,$5,$6,$7,$7
-        )
-      `,
-      [
-        input.companyId,
-        journalId,
-        accountIds.get(
-          line.account,
-        ),
-        line.description,
-        lineDebit,
-        lineCredit,
-        input.userId,
-      ],
-    );
-  }
 
   await client.query(
     `
@@ -572,7 +714,7 @@ async function postJournalUnsafe(
       input.eventKey,
       input.sourceType,
       input.sourceId,
-      journalId,
+      posting.journalId,
       input.userId,
     ],
   );
@@ -581,8 +723,9 @@ async function postJournalUnsafe(
     integrated:
       true,
     reused:
-      false,
-    journalId,
+      posting.reused,
+    journalId:
+      posting.journalId,
   };
 }
 
@@ -1572,25 +1715,11 @@ async function reverseInvoicingAccountingEventUnsafe(
   const original =
     await client.query(
       `
-        SELECT
-          link.journal_id,
-          line.account_id,
-          line.description,
-          line.debit,
-          line.credit
-        FROM invoicing_accounting_links link
-        INNER JOIN journal_lines line
-          ON line.journal_id =
-             link.journal_id
-         AND line.company_id =
-             link.company_id
-         AND line.deleted_at
-             IS NULL
-        WHERE link.company_id = $1
-          AND link.event_key = $2
-        ORDER BY
-          line.created_at,
-          line.id
+        SELECT journal_id::text
+        FROM invoicing_accounting_links
+        WHERE company_id = $1
+          AND event_key = $2
+        LIMIT 1
       `,
       [
         input.companyId,
@@ -1599,8 +1728,8 @@ async function reverseInvoicingAccountingEventUnsafe(
     );
 
   if (
-    original.rows.length ===
-      0
+    !original.rows[0]
+      ?.journal_id
   ) {
     return {
       integrated:
@@ -1612,90 +1741,38 @@ async function reverseInvoicingAccountingEventUnsafe(
     };
   }
 
-  const journal =
-    await client.query(
-      `
-        INSERT INTO journals (
-          company_id,
-          journal_number,
-          journal_date,
-          reference,
-          description,
-          status,
-          created_by,
-          updated_by
-        )
-        VALUES (
-          $1,
-          'SAMI-' ||
-          UPPER(
-            SUBSTRING(
-              MD5($2),
-              1,
-              16
-            )
+  const reversal =
+    await reversePostedLedgerJournal(
+      client,
+      {
+        companyId:
+          input.companyId,
+        userId:
+          input.userId,
+        originalJournalId:
+          String(
+            original.rows[0]
+              .journal_id,
           ),
-          CURRENT_DATE,
-          $2,
-          $3,
-          'posted',
-          $4,
-          $4
-        )
-        RETURNING id
-      `,
-      [
-        input.companyId,
-        input.reversalEventKey,
-        input.description,
-        input.userId,
-      ],
-    );
-
-  const journalId =
-    String(
-      journal.rows[0].id,
-    );
-
-  for (
-    const line
-    of original.rows
-  ) {
-    await client.query(
-      `
-        INSERT INTO journal_lines (
-          company_id,
-          journal_id,
-          account_id,
-          description,
-          debit,
-          credit,
-          created_by,
-          updated_by
-        )
-        VALUES (
-          $1,$2,$3,$4,$5,$6,$7,$7
-        )
-      `,
-      [
-        input.companyId,
-        journalId,
-        line.account_id,
-        'Reversal · ' +
-        String(
-          line.description ||
+        journalDate:
+          new Date()
+            .toISOString()
+            .slice(
+              0,
+              10,
+            ),
+        description:
           input.description,
-        ),
-        money(
-          line.credit,
-        ),
-        money(
-          line.debit,
-        ),
-        input.userId,
-      ],
+        sourceModule:
+          'invoicing',
+        sourceType:
+          input.sourceType,
+        sourceId:
+          input.sourceId,
+        sourceEventKey:
+          input.reversalEventKey,
+      },
     );
-  }
 
   await client.query(
     `
@@ -1721,7 +1798,7 @@ async function reverseInvoicingAccountingEventUnsafe(
       input.reversalEventKey,
       input.sourceType,
       input.sourceId,
-      journalId,
+      reversal.journalId,
       input.userId,
     ],
   );
@@ -1730,8 +1807,9 @@ async function reverseInvoicingAccountingEventUnsafe(
     integrated:
       true,
     reused:
-      false,
-    journalId,
+      reversal.reused,
+    journalId:
+      reversal.journalId,
   };
 }
 
