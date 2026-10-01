@@ -523,6 +523,7 @@ export async function getAccountingBankCash(
              b.overdraft_limit::text,
              b.status,
              COALESCE(v.book_balance,0)::text AS book_balance,
+             COALESCE(v.foreign_balance,0)::text AS foreign_balance,
              (
                SELECT COUNT(*)::int
                FROM accounting_bank_statement_lines s
@@ -826,18 +827,21 @@ export async function createFinancialAccount(
       "0",
     );
 
-  if (
-    currency !==
-    String(
-      context.company
-        .currentCompany
-        .currency,
-    )
-      .toUpperCase()
-  ) {
-    throw new AccountingInputError(
-      "Foreign-currency financial accounts will be enabled in the Accounting foreign-currency roadmap item.",
+  const companyCurrency =
+    String(context.company.currentCompany.currency).toUpperCase();
+
+  if (currency !== companyCurrency) {
+    const enabledCurrency = await context.pool.query(
+      `SELECT 1 FROM accounting_fx_currencies
+       WHERE company_id=$1 AND code=$2 AND is_active=TRUE
+       LIMIT 1`,
+      [context.companyId,currency],
     );
+    if (!enabledCurrency.rows[0]) {
+      throw new AccountingInputError(
+        "Enable this currency in Accounting → Foreign Currency before creating a foreign financial account.",
+      );
+    }
   }
 
   if (
