@@ -543,9 +543,16 @@ export async function getAccountingReceivables(
           AND a.deleted_at IS NULL
           AND a.account_type='asset_receivable'
          WHERE l.company_id=$1
-           AND l.deleted_at IS NULL`,
+           AND l.deleted_at IS NULL
+           AND (
+             $2::uuid IS NULL
+             OR l.account_id=$2
+           )`,
         [
           context.companyId,
+          receivableAccount
+            ?.id ||
+            null,
         ],
       );
 
