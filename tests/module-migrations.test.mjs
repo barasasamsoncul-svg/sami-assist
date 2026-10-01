@@ -341,7 +341,7 @@ test('Accounting 2.4 setup schema is migration-backed and available on fresh ins
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.13\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.14\.0'/,
   );
 
   assert.match(
@@ -436,7 +436,7 @@ test('Accounting 2.5 Chart of Accounts is migration-backed and company scoped', 
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.13\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.14\.0'/,
   );
 
   assert.match(
@@ -519,7 +519,7 @@ test('Accounting 2.6 centralizes double-entry posting and reversal invariants', 
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.13\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.14\.0'/,
   );
 
   assert.match(
@@ -627,7 +627,7 @@ test('Accounting 2.7 journal workflow is migration-backed and fresh-install comp
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.13\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.14\.0'/,
   );
 
   assert.match(runtimeMigrations, /ACCOUNTING_2_6_0_TO_2_7_0/);
@@ -711,7 +711,7 @@ test('Accounting 2.8 opening balances are migration-backed and workflow protecte
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.13\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.14\.0'/,
   );
 
   assert.match(runtimeMigrations, /ACCOUNTING_2_7_0_TO_2_8_0/);
@@ -900,7 +900,7 @@ test('Accounting 2.9 Payables is migration-backed and ledger controlled', async 
     source('lib/apps/enterprise/specialist-depth.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.13\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.14\.0'/);
   assert.match(migrations,/ACCOUNTING_2_8_0_TO_2_9_0/);
 
   for (const marker of [
@@ -957,7 +957,7 @@ test('Accounting 2.10 Purchasing controls are migration-backed and gate PO bills
     source('lib/apps/enterprise/specialist-depth.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.13\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.14\.0'/);
   assert.match(migrations,/ACCOUNTING_2_9_0_TO_2_10_0/);
   assert.match(
     migration,
@@ -1081,7 +1081,7 @@ test('Accounting 2.11 controls approved expenses and employee reimbursements wit
 
   assert.match(
     manifest,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.13\.0'[\s\S]*optionalDepends:\s*\['expenses'\]/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.14\.0'[\s\S]*optionalDepends:\s*\['expenses'\]/,
   );
   assert.match(migrations,/ACCOUNTING_2_10_0_TO_2_11_0/);
   assert.match(
@@ -1171,7 +1171,7 @@ test('Accounting 2.12 controls bank cash mobile money and internal transfers', a
     source('lib/apps/enterprise/specialist-catalog.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.13\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.14\.0'/);
   assert.match(migrations,/ACCOUNTING_2_11_0_TO_2_12_0/);
   assert.match(
     migration,
@@ -1257,7 +1257,7 @@ test('Accounting 2.13 imports statements and protects normalized feed intake', a
     source('lib/apps/enterprise/specialist-catalog.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.13\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.14\.0'/);
   assert.match(migrations,/ACCOUNTING_2_12_0_TO_2_13_0/);
   assert.match(
     migration,
@@ -1322,4 +1322,119 @@ test('Accounting 2.13 imports statements and protects normalized feed intake', a
   assert.match(specialistCatalog,/accounting_statement_import_rows/);
   assert.match(workspace,/Statements & Feeds[\s\S]*AccountingStatements/);
   assert.match(foundation,/"statements"/);
+});
+
+
+test('Accounting 2.14 provides immutable bank reconciliation with split matches and controlled adjustments', async () => {
+  const [
+    manifest,
+    migrations,
+    migration,
+    reconciliation,
+    workspace,
+    foundation,
+    domainHooks,
+    specialistDepth,
+    catalog,
+    specialistCatalog,
+  ] = await Promise.all([
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/apps/accounting/migrations/2.13.0-to-2.14.0.ts'),
+    source('lib/apps/accounting/reconciliation.ts'),
+    source('app/apps/accounting/AccountingWorkspace.tsx'),
+    source('app/apps/accounting/AccountingFoundationPanel.tsx'),
+    source('lib/apps/enterprise/domain-hooks.ts'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+    source('lib/apps/enterprise/catalog.ts'),
+    source('lib/apps/enterprise/specialist-catalog.ts'),
+  ]);
+
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.14\.0'/);
+  assert.match(migrations,/ACCOUNTING_2_13_0_TO_2_14_0/);
+  assert.match(
+    migration,
+    /fromVersion:\s*'2\.13\.0'[\s\S]*toVersion:\s*'2\.14\.0'/,
+  );
+
+  for (const marker of [
+    'accounting_reconciliations',
+    'accounting_reconciliation_matches',
+    'accounting_reconciliation_suggestions',
+    'accounting_reconciliation_journal_availability',
+    'uq_accounting_active_statement_reconciliation',
+    'uq_accounting_reconciliation_request',
+    'excluded_reason',
+    'auto_apply',
+  ]) {
+    assert.match(migration,new RegExp(marker),'Reconciliation migration must own '+marker+'.');
+    assert.match(specialistDepth,new RegExp(marker),'Fresh Accounting installs must include '+marker+'.');
+  }
+
+  assert.match(
+    migration,
+    /LEGACY-[\s\S]*matched_journal_line_id/,
+    'Existing generic matched statement lines must be preserved during migration.',
+  );
+  assert.match(
+    migration,
+    /bank_reconciliation_adjustment[\s\S]*bank_reconciliation_reversal/,
+    'Reconciliation-created journals must not re-enter the ordinary candidate pool.',
+  );
+
+  for (const marker of [
+    'generateReconciliationSuggestions',
+    'reconcileStatementLine',
+    'createReconciliationRule',
+    'applyReconciliationRule',
+    'excludeStatementLine',
+    'dismissReconciliationSuggestion',
+    'reverseReconciliation',
+    'postBalancedLedgerJournal',
+    'reversePostedLedgerJournal',
+    'candidateConfidence',
+    'requestHash',
+  ]) {
+    assert.match(reconciliation,new RegExp(marker));
+  }
+
+  assert.match(
+    reconciliation,
+    /Split allocations must add exactly to the signed statement amount/,
+    'Split reconciliation must fully allocate the signed statement amount.',
+  );
+  assert.match(
+    reconciliation,
+    /allocation exceeds the remaining unreconciled journal amount/,
+    'A split allocation must not consume more than the journal line has available.',
+  );
+  assert.match(
+    reconciliation,
+    /request key was already used with different content/,
+    'Reconciliation creates must be retry-safe and payload-bound.',
+  );
+  assert.match(
+    reconciliation,
+    /sourceEventKey:"accounting:bank-reconciliation-rule:"\+key/,
+    'Rule adjustment journals must use the reconciliation request key so retries replay but post-reversal reposts create a new journal.',
+  );
+  assert.match(
+    reconciliation,
+    /cannot target another bank, cash or mobile-money ledger[\s\S]*Use Internal Transfer instead/,
+    'Reconciliation rules must not bypass the controlled internal-transfer workflow.',
+  );
+  assert.match(
+    reconciliation,
+    /status='accepted'[\s\S]*status='stale'/,
+    'Accepted suggestion provenance must be retained while alternatives become stale.',
+  );
+  assert.match(
+    domainHooks,
+    /accounting_reconciliation_rules[\s\S]*accounting_reconciliations[\s\S]*validated Accounting reconciliation services/,
+    'Generic CRUD must not bypass reconciliation controls.',
+  );
+  assert.match(catalog,/accounting_reconciliations/);
+  assert.match(specialistCatalog,/accounting_reconciliation_suggestions/);
+  assert.match(workspace,/Reconciliation[\s\S]*AccountingReconciliation/);
+  assert.match(foundation,/"reconciliation"/);
 });

@@ -29,6 +29,9 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
     'accounting_bank_feed_connections',
     'accounting_statement_import_batches',
     'accounting_statement_import_rows',
+    'accounting_reconciliations',
+    'accounting_reconciliation_matches',
+    'accounting_reconciliation_suggestions',
   ],
   inventory: [
     'inventory_lots',

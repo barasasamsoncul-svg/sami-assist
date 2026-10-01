@@ -123,7 +123,15 @@ export function assertEnterpriseDomainMutationAllowed(
       table ===
         'accounting_statement_import_rows' ||
       table ===
-        'accounting_bank_statement_lines'
+        'accounting_bank_statement_lines' ||
+      table ===
+        'accounting_reconciliation_rules' ||
+      table ===
+        'accounting_reconciliations' ||
+      table ===
+        'accounting_reconciliation_matches' ||
+      table ===
+        'accounting_reconciliation_suggestions'
     )
   ) {
     throw new Error(
@@ -193,6 +201,15 @@ export function assertEnterpriseDomainMutationAllowed(
             table ===
               'accounting_bank_statement_lines'
             ? 'Bank statements must be changed through the validated Accounting statement import services.'
+          : table ===
+              'accounting_reconciliation_rules' ||
+            table ===
+              'accounting_reconciliations' ||
+            table ===
+              'accounting_reconciliation_matches' ||
+            table ===
+              'accounting_reconciliation_suggestions'
+            ? 'Bank reconciliation must be changed through the validated Accounting reconciliation services.'
           : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
   }

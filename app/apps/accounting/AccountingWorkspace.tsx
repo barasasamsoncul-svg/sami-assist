@@ -25,6 +25,7 @@ import AccountingPurchasing from '@/app/apps/accounting/AccountingPurchasing';
 import AccountingExpenses from '@/app/apps/accounting/AccountingExpenses';
 import AccountingBankCash from '@/app/apps/accounting/AccountingBankCash';
 import AccountingStatements from '@/app/apps/accounting/AccountingStatements';
+import AccountingReconciliation from '@/app/apps/accounting/AccountingReconciliation';
 
 import {
   getAccountingFoundation,
@@ -62,6 +63,9 @@ import {
 import {
   getAccountingStatements,
 } from '@/lib/apps/accounting/statements';
+import {
+  getAccountingReconciliation,
+} from '@/lib/apps/accounting/reconciliation';
 
 const MODULE_KEY = 'accounting';
 
@@ -82,6 +86,7 @@ export default async function AccountingWorkspace({
     vendorId?: string;
     documentId?: string;
     search?: string;
+    statementLineId?: string;
   };
 }) {
   const requestedSection =
@@ -213,6 +218,15 @@ export default async function AccountingWorkspace({
     null =
       null;
 
+  let reconciliationWorkspace:
+    Awaited<
+      ReturnType<
+        typeof getAccountingReconciliation
+      >
+    > |
+    null =
+      null;
+
   if (
     dedicatedSection &&
     dedicatedSection !==
@@ -234,7 +248,9 @@ export default async function AccountingWorkspace({
     dedicatedSection !==
       'bank-cash' &&
     dedicatedSection !==
-      'statements'
+      'statements' &&
+    dedicatedSection !==
+      'reconciliation'
   ) {
     try {
       foundation =
@@ -462,6 +478,29 @@ export default async function AccountingWorkspace({
           Error
           ? error.message
           : 'Statement imports and feeds could not be loaded.';
+    }
+  }
+
+  if (
+    dedicatedSection ===
+      'reconciliation'
+  ) {
+    try {
+      reconciliationWorkspace =
+        await getAccountingReconciliation({
+          statementLineId:
+            filters.statementLineId,
+          page:
+            filters.page,
+        });
+    } catch (
+      error
+    ) {
+      foundationError =
+        error instanceof
+          Error
+          ? error.message
+          : 'Bank reconciliation could not be loaded.';
     }
   }
 
@@ -779,12 +818,23 @@ export default async function AccountingWorkspace({
           .errorsThisMonth,
     },
 
-    tableItem(
-      'accounting_reconciliation_rules',
-      'Reconciliation Rules',
-      'Banking',
-      'Rules used to classify and match bank transactions.',
-    ),
+    {
+      key:
+        'reconciliation',
+      label:
+        'Reconciliation',
+      href:
+        appBaseHref +
+        '/reconciliation',
+      description:
+        'Match statement lines to posted ledger movement, split allocations and controlled adjustments.',
+      sectionLabel:
+        'Banking',
+      badge:
+        reconciliationWorkspace
+          ?.metrics
+          .unmatched,
+    },
 
     data.capabilities
       .canReport
@@ -956,6 +1006,43 @@ export default async function AccountingWorkspace({
                             {
                               foundationError ||
                               'Accounts receivable could not be loaded.'
+                            }{' '}
+                            <Link
+                              href="/apps/accounting"
+                              className="font-bold underline underline-offset-4"
+                            >
+                              Return to Accounting
+                            </Link>
+                          </div>
+                        )
+                  )
+                : dedicatedSection ===
+                    'reconciliation'
+                  ? (
+                    reconciliationWorkspace
+                      ? (
+                          <AccountingReconciliation
+                            data={
+                              reconciliationWorkspace
+                            }
+                            canCreate={
+                              data.capabilities
+                                .canCreate
+                            }
+                            canEdit={
+                              data.capabilities
+                                .canEdit
+                            }
+                          />
+                        )
+                      : (
+                          <div
+                            role="alert"
+                            className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-6 text-[var(--foreground)]"
+                          >
+                            {
+                              foundationError ||
+                              'Bank reconciliation could not be loaded.'
                             }{' '}
                             <Link
                               href="/apps/accounting"
