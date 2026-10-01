@@ -134,12 +134,6 @@ CREATE INDEX IF NOT EXISTS idx_accounting_inventory_sync_runs
   ON public.accounting_inventory_sync_runs(company_id,started_at DESC)
   WHERE deleted_at IS NULL;
 
-ALTER TABLE public.accounting_inventory_source_events
-  ADD CONSTRAINT accounting_inventory_source_events_sync_run_id_fkey
-  FOREIGN KEY (sync_run_id)
-  REFERENCES public.accounting_inventory_sync_runs(id)
-  ON DELETE SET NULL;
-
 CREATE TABLE IF NOT EXISTS public.accounting_inventory_reconciliation_runs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
