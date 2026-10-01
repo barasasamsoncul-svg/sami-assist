@@ -222,11 +222,25 @@ async function targetAccount(
   accountId: string,
 ) {
   const result = await client.query(
-    `SELECT id::text,code,name,account_type,is_active,allow_manual_posting
-     FROM accounts
-     WHERE company_id=$1
-       AND id=$2
-       AND deleted_at IS NULL
+    `SELECT
+       a.id::text,
+       a.code,
+       a.name,
+       a.account_type,
+       a.is_active,
+       a.allow_manual_posting,
+       EXISTS (
+         SELECT 1
+         FROM accounting_bank_accounts b
+         WHERE b.company_id=a.company_id
+           AND b.ledger_account_id=a.id
+           AND b.deleted_at IS NULL
+           AND b.status <> 'closed'
+       ) AS linked_financial_account
+     FROM accounts a
+     WHERE a.company_id=$1
+       AND a.id=$2
+       AND a.deleted_at IS NULL
      LIMIT 1`,
     [companyId,accountId],
   );
@@ -238,6 +252,11 @@ async function targetAccount(
   if (row.allow_manual_posting === false) {
     throw new AccountingInputError(
       "The selected account does not allow reconciliation adjustment posting.",
+    );
+  }
+  if (row.linked_financial_account) {
+    throw new AccountingInputError(
+      "Reconciliation adjustment rules cannot target another bank, cash or mobile-money ledger. Use Internal Transfer instead.",
     );
   }
 
@@ -1036,10 +1055,13 @@ export async function reconcileStatementLine(input: unknown) {
   const key = requestKey(body.requestKey);
   const hash = requestHash({
     statementLineId,
-    allocations: allocations.map(row => ({
-      journalLineId:row.journalLineId,
-      amount:decimalAmount(row.amount),
-    })),
+    allocations: allocations
+      .slice()
+      .sort((a,b) => a.journalLineId.localeCompare(b.journalLineId))
+      .map(row => ({
+        journalLineId:row.journalLineId,
+        amount:decimalAmount(row.amount),
+      })),
     notes,
     suggestionId,
   });
@@ -1480,7 +1502,7 @@ export async function applyReconciliationRule(input: unknown) {
       sourceModule:"accounting",
       sourceType:"bank_reconciliation_adjustment",
       sourceId:statementLineId,
-      sourceEventKey:"accounting:bank-reconciliation-rule:"+statementLineId+":"+ruleId,
+      sourceEventKey:"accounting:bank-reconciliation-rule:"+key,
       postingKind:"system",
       lines: positive
         ? [
