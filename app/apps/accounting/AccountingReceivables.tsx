@@ -424,7 +424,23 @@ export default function AccountingReceivables({
             } open invoices across {
               data.metrics
                 .customersWithBalance
-            } customers.
+            } customers
+            {
+              cents(
+                data.metrics
+                  .legacyOpeningReceivables,
+              ) !==
+                BigInt(
+                  0,
+                )
+                ? " · plus " +
+                  amount(
+                    data.metrics
+                      .legacyOpeningReceivables,
+                  ) +
+                  " legacy opening AR"
+                : ""
+            }.
           </p>
         </div>
 
@@ -514,6 +530,27 @@ export default function AccountingReceivables({
           }
         >
           <span>
+            Legacy opening AR
+          </span>
+          <strong>
+            {
+              amount(
+                data.metrics
+                  .legacyOpeningReceivables,
+              )
+            }
+          </strong>
+          <small>
+            Posted migration AR without Invoicing documents
+          </small>
+        </div>
+
+        <div
+          className={
+            styles.financeCard
+          }
+        >
+          <span>
             90-day DSO estimate
           </span>
           <strong>
@@ -532,24 +569,6 @@ export default function AccountingReceivables({
           </small>
         </div>
 
-        <div
-          className={
-            styles.financeCard
-          }
-        >
-          <span>
-            Customers owing
-          </span>
-          <strong>
-            {
-              data.metrics
-                .customersWithBalance
-            }
-          </strong>
-          <small>
-            Active customer exposures
-          </small>
-        </div>
       </section>
 
       <section
@@ -619,7 +638,7 @@ export default function AccountingReceivables({
             </div>
             <div>
               <span>
-                Customer subledger
+                Subledger + opening AR
               </span>
               <strong>
                 {
