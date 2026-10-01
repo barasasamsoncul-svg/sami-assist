@@ -276,7 +276,11 @@ export async function installGenericVatLocalizationPack(input:unknown){
   try{
     await client.query('BEGIN');
     const prior=await client.query(`SELECT pack_key,pack_version FROM accounting_localization_settings WHERE company_id=$1 FOR UPDATE`,[context.companyId]);
-    const action=prior.rows[0]?.pack_key===PACK_KEY?'reinstalled':'installed';
+    const action=!prior.rows[0]?.pack_key
+      ? 'installed'
+      : prior.rows[0]?.pack_key===PACK_KEY&&prior.rows[0]?.pack_version!==PACK_VERSION
+        ? 'updated'
+        : 'reinstalled';
     await client.query(`INSERT INTO accounting_localization_settings(company_id,enabled,country_code,jurisdiction_code,locale,pack_key,pack_version,status,created_by,updated_by)
       VALUES($1,TRUE,$2,$3,$4,$5,$6,'active',$7,$7)
       ON CONFLICT(company_id) DO UPDATE SET enabled=TRUE,country_code=EXCLUDED.country_code,jurisdiction_code=EXCLUDED.jurisdiction_code,
