@@ -18,6 +18,7 @@ export default async function AccountingSectionPage({
     vendorId?: string;
     documentId?: string;
     search?: string;
+    statementLineId?: string;
   }>;
 }) {
   const { section } = await params;
