@@ -1587,5 +1587,5 @@ test('Accounting 2.19 Foreign Currency is migration-backed and subledger control
   assert.match(payments,/fx_managed/);
   assert.match(statements,/convertForeignToBase[\s\S]*base_amount/);
   assert.match(reconciliation,/statementLedgerAmount[\s\S]*accounting_fx_financial_movements/);
-  assert.match(ledger,/foreign_financial_account[\s\S]*Manual journals cannot post directly/);
+  assert.match(ledger,/accounting_fx_currencies[\s\S]*Manual journals cannot post directly/);
 });
