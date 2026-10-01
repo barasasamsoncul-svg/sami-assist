@@ -575,6 +575,34 @@ export async function reverseAccountingJournal(
   try {
     await client.query("BEGIN");
 
+    const source = await client.query(
+      `SELECT source_module,source_type,posting_kind
+       FROM journals
+       WHERE company_id=$1
+         AND id=$2
+         AND deleted_at IS NULL
+       LIMIT 1
+       FOR UPDATE`,
+      [context.companyId, journalId],
+    );
+
+    const journal = source.rows[0];
+
+    if (!journal) {
+      throw new AccountingInputError("This journal could not be found.");
+    }
+
+    if (
+      String(journal.source_module || "") !== "accounting" ||
+      String(journal.posting_kind || "") === "system"
+    ) {
+      throw new AccountingInputError(
+        "This journal was posted by " +
+          String(journal.source_module || "another app") +
+          ". Correct or reverse the source document in that app so its subledger stays synchronized.",
+      );
+    }
+
     const result = await reversePostedLedgerJournal(
       client,
       {
