@@ -1513,8 +1513,8 @@ export async function applyAccountingChartTemplate(
               definition.reconcileDefault,
               entry.manualPosting !==
                 false,
-              FALSE,
-              NULL,
+              false,
+              null,
               entry.description ||
                 null,
               Number(
