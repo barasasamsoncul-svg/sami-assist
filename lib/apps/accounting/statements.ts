@@ -311,7 +311,7 @@ function findHeader(
     return index;
   }
 
-  return headers.findIndex(header => aliases.includes(header));
+  return headers.findIndex(header => aliases.some(alias => alias === header));
 }
 
 
@@ -451,8 +451,16 @@ function parseOfx(content: string): NormalizedStatementTransaction[] {
 }
 
 
-function parseQif(content: string): NormalizedStatementTransaction[] {
-  const entries = content
+function parseQif(
+  content: string,
+  dateFormat: "auto" | "ymd" | "dmy" | "mdy" = "mdy",
+): NormalizedStatementTransaction[] {
+  const cleaned = content
+    .split(/\r?\n/)
+    .filter(line => !line.trim().startsWith("!Type:"))
+    .join("\n");
+
+  const entries = cleaned
     .split(/^\^\s*$/m)
     .map(value => value.trim())
     .filter(value => value && !value.startsWith("!Type:"));
@@ -481,7 +489,7 @@ function parseQif(content: string): NormalizedStatementTransaction[] {
     const memo = values.get("M") || "";
 
     return {
-      transactionDate: dateValue(values.get("D") || "","auto"),
+      transactionDate: dateValue(values.get("D") || "",dateFormat),
       valueDate: null,
       description: memo || payee || "QIF transaction",
       externalReference: values.get("N") || null,
@@ -963,7 +971,14 @@ export async function importStatementFile(input: unknown) {
       ? parseCsv(content,body.csvMapping)
       : type === "ofx"
         ? parseOfx(content)
-        : parseQif(content);
+        : parseQif(
+            content,
+            String(body.qifDateFormat || "mdy").toLowerCase() === "dmy"
+              ? "dmy"
+              : String(body.qifDateFormat || "mdy").toLowerCase() === "ymd"
+                ? "ymd"
+                : "mdy",
+          );
 
   const sourceSha = sha256(content);
   const hash = requestHash({
@@ -975,6 +990,10 @@ export async function importStatementFile(input: unknown) {
   try {
     await client.query("BEGIN");
     await financialAccount(client,context.companyId,bankAccountId);
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtext($1))",
+      ["accounting:statement-account:" + bankAccountId],
+    );
 
     const batch = await createImportBatch(client,{
       companyId:context.companyId,userId:context.userId,bankAccountId,
@@ -1030,9 +1049,10 @@ export async function createFeedConnection(input: unknown) {
   const bankAccountId = accountingId(body.bankAccountId);
   const providerKey = shortText(body.providerKey,100,"Provider key",true).toLowerCase();
   const providerLabel = shortText(body.providerLabel,160,"Provider name",true);
-  const externalAccountReference = optionalText(
-    body.externalAccountReference,255,"External account reference",
-  );
+  const externalAccountReference =
+    optionalText(
+      body.externalAccountReference,255,"External account reference",
+    ) || "";
   const client = await context.pool.connect();
 
   try {
@@ -1135,6 +1155,10 @@ export async function ingestNormalizedFeed(input: unknown) {
 
     await financialAccount(
       client,context.companyId,String(connection.bank_account_id),
+    );
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtext($1))",
+      ["accounting:statement-account:" + String(connection.bank_account_id)],
     );
 
     const hash = requestHash({
