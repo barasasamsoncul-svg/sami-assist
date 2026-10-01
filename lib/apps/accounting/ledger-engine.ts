@@ -526,15 +526,26 @@ async function assertPostingAccounts(
     await client.query(
       `
         SELECT
-          id::text,
-          is_active,
-          allow_manual_posting
-        FROM accounts
-        WHERE company_id = $1
-          AND id = ANY(
+          a.id::text,
+          a.is_active,
+          a.allow_manual_posting,
+          EXISTS (
+            SELECT 1
+            FROM accounting_bank_accounts b
+            JOIN companies c
+              ON c.id=b.company_id
+            WHERE b.company_id=a.company_id
+              AND b.ledger_account_id=a.id
+              AND b.deleted_at IS NULL
+              AND b.status <> 'closed'
+              AND UPPER(b.currency) <> UPPER(c.currency)
+          ) AS foreign_financial_account
+        FROM accounts a
+        WHERE a.company_id = $1
+          AND a.id = ANY(
             $2::uuid[]
           )
-          AND deleted_at IS NULL
+          AND a.deleted_at IS NULL
         FOR SHARE
       `,
       [
@@ -567,6 +578,19 @@ async function assertPostingAccounts(
   ) {
     throw new LedgerPostingError(
       'A manual journal cannot post to a system-only control account.',
+    );
+  }
+
+  if (
+    manualOnly &&
+    accounts.rows.some(
+      row =>
+        row.foreign_financial_account ===
+        true,
+    )
+  ) {
+    throw new LedgerPostingError(
+      'Manual journals cannot post directly to a foreign-currency financial account. Use Accounting → Foreign Currency so the base ledger and foreign subledger stay synchronized.',
     );
   }
 }
