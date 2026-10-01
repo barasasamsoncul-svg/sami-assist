@@ -137,7 +137,7 @@ test("Accounting 2.16 tax engine calculates exact exclusive, inclusive, recovera
 });
 
 test("Accounting tax engine is migration-backed, first-class UI, and AP no longer asks users to type tax", async () => {
-  const [manifest,migrations,migration,workspace,ui,payables,payablesUi,catalog]=await Promise.all([
+  const [manifest,migrations,migration,workspace,ui,payables,payablesUi,catalog,specialistCatalog,domainHooks]=await Promise.all([
     readFile("lib/modules/first-party.ts","utf8"),
     readFile("lib/apps/runtime-migrations.ts","utf8"),
     readFile("lib/apps/accounting/migrations/2.15.0-to-2.16.0.ts","utf8"),
@@ -146,6 +146,8 @@ test("Accounting tax engine is migration-backed, first-class UI, and AP no longe
     readFile("lib/apps/accounting/payables.ts","utf8"),
     readFile("app/apps/accounting/AccountingPayables.tsx","utf8"),
     readFile("lib/apps/enterprise/catalog.ts","utf8"),
+    readFile("lib/apps/enterprise/specialist-catalog.ts","utf8"),
+    readFile("lib/apps/enterprise/domain-hooks.ts","utf8"),
   ]);
 
   assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.16\.0'/);
@@ -160,8 +162,11 @@ test("Accounting tax engine is migration-backed, first-class UI, and AP no longe
     "accounting_tax_adjustments",
   ]) {
     assert.match(catalog,new RegExp(marker));
+    assert.match(specialistCatalog,new RegExp(marker));
+    assert.match(domainHooks,new RegExp(marker));
   }
 
+  assert.match(domainHooks,/validated Accounting tax engine/);
   assert.match(workspace,/Tax Engine[\s\S]*\/taxes/);
   assert.match(workspace,/dedicatedSection === 'taxes'[\s\S]*AccountingTaxes/);
   for (const marker of [
