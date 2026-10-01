@@ -13,6 +13,10 @@ import {
   reversePostedLedgerJournal,
 } from "./ledger-engine";
 import {
+  calculateAccountingTaxes,
+  type AccountingTaxRule,
+} from "./tax-engine";
+import {
   AccountingInputError,
   accountingDate,
   accountingId,
@@ -134,6 +138,18 @@ function cents(value: unknown) {
   let amount = BigInt(whole || "0") * BigInt(100) + BigInt(padded.slice(0, 2) || "0");
   if (Number(padded[2] || "0") >= 5) amount += BigInt(1);
   return negative ? -amount : amount;
+}
+
+function taxRuleFromRow(row:Record<string,unknown>):AccountingTaxRule {
+  return {
+    id:String(row.id),code:String(row.code),name:String(row.name),
+    scope:String(row.scope) as AccountingTaxRule["scope"],
+    behavior:String(row.behavior) as AccountingTaxRule["behavior"],
+    computation:String(row.computation) as AccountingTaxRule["computation"],
+    rate:String(row.rate),fixedAmount:String(row.fixed_amount),
+    priceIncluded:Boolean(row.price_included),includeBaseAmount:Boolean(row.include_base_amount),
+    recoverablePercent:String(row.recoverable_percent),sequence:Number(row.sequence||100),
+  };
 }
 
 function controlReconciliation(
@@ -326,6 +342,17 @@ export async function getAccountingPayables(input: {
       [context.companyId],
     );
 
+    const taxCodes = await client.query(
+      `SELECT id::text,code,name,scope,behavior,computation,rate::text,fixed_amount::text,
+              price_included,include_base_amount,recoverable_percent::text,
+              tax_account_id::text,recoverable_account_id::text,jurisdiction_code,reporting_code
+       FROM accounting_tax_codes
+       WHERE company_id=$1 AND deleted_at IS NULL AND status='active'
+         AND scope IN ('purchase','both')
+       ORDER BY jurisdiction_code NULLS LAST,sequence,code`,
+      [context.companyId],
+    );
+
     const gl = controlAccount
       ? await client.query(
           `SELECT COALESCE(SUM(l.credit-l.debit),0)::text AS balance
@@ -389,9 +416,12 @@ export async function getAccountingPayables(input: {
         const lines = await client.query(
           `SELECT l.id::text,l.account_id::text,a.code AS account_code,a.name AS account_name,
                   l.description,l.quantity::text,l.unit_price::text,l.line_subtotal::text,
-                  l.tax_amount::text,l.line_total::text
+                  l.tax_amount::text,l.line_total::text,l.tax_code_id::text,
+                  l.recoverable_tax_amount::text,l.nonrecoverable_tax_amount::text,
+                  t.code AS tax_code,t.name AS tax_name
            FROM accounting_vendor_document_lines l
            JOIN accounts a ON a.company_id=l.company_id AND a.id=l.account_id
+           LEFT JOIN accounting_tax_codes t ON t.company_id=l.company_id AND t.id=l.tax_code_id
            WHERE l.company_id=$1 AND l.document_id=$2 AND l.deleted_at IS NULL
            ORDER BY l.sequence,l.created_at,l.id`,
           [context.companyId, documentId],
@@ -437,6 +467,7 @@ export async function getAccountingPayables(input: {
       documents: documents.rows,
       selected,
       accounts: accounts.rows,
+      taxCodes: taxCodes.rows,
       applicationTargets,
       aging,
       control: controlReconciliation(controlAccount, gl.rows[0]?.balance || "0", decimalAmount(subledger)),
@@ -509,31 +540,22 @@ export async function createPayablesDocument(input: unknown) {
     throw new AccountingInputError("A vendor document needs between 1 and 200 lines.");
   }
 
-  const lines = body.lines.map((raw, index) => {
-    const row = bodyOf(raw);
-    const quantity = quantityUnits(row.quantity ?? "1");
-    const unit = nonNegativeMoney(row.unitPrice, "Unit price");
-    const tax = nonNegativeMoney(row.taxAmount, "Tax amount");
-    const subtotal = multiplyMoneyByQuantity(unit,quantity.units);
-    const total = subtotal + tax;
-    if (total<=BigInt(0)) throw new AccountingInputError("Each vendor document line must have a positive total.");
+  const drafts = body.lines.map((raw,index)=>{
+    const row=bodyOf(raw);
+    const quantity=quantityUnits(row.quantity??"1");
+    const unit=nonNegativeMoney(row.unitPrice,"Unit price");
+    const grossBase=multiplyMoneyByQuantity(unit,quantity.units);
     return {
-      accountId: accountingId(row.accountId),
-      description: text(row.description,500,"Line description",true),
-      quantity: quantity.text,
-      unitPrice: decimalAmount(unit),
-      subtotal: decimalAmount(subtotal),
-      tax: decimalAmount(tax),
-      total: decimalAmount(total),
-      sequence: (index + 1) * 10,
-      totalCents: total,
+      accountId:accountingId(row.accountId),
+      taxCodeId:row.taxCodeId?accountingId(row.taxCodeId):null,
+      description:text(row.description,500,"Line description",true),
+      quantity:quantity.text,
+      unitPrice:decimalAmount(unit),
+      sourceAmount:decimalAmount(grossBase),
+      manualTax:decimalAmount(nonNegativeMoney(row.taxAmount??"0","Tax amount")),
+      sequence:(index+1)*10,
     };
   });
-
-  const subtotal = lines.reduce((n,l)=>n+cents(l.subtotal),BigInt(0));
-  const taxTotal = lines.reduce((n,l)=>n+cents(l.tax),BigInt(0));
-  const total = subtotal + taxTotal;
-  const baseTotal = convertToBase(total,rate.units);
 
   const client = await context.pool.connect();
   try {
@@ -543,13 +565,57 @@ export async function createPayablesDocument(input: unknown) {
       [context.companyId,vendorId],
     );
     if (!validVendor.rows[0]) throw new AccountingInputError("Choose an active vendor.");
+    const accountIds=[...new Set(drafts.map(line=>line.accountId))];
     const validAccounts = await client.query(
       `SELECT id::text FROM accounts WHERE company_id=$1 AND id=ANY($2::uuid[]) AND deleted_at IS NULL AND is_active=TRUE`,
-      [context.companyId,[...new Set(lines.map(l=>l.accountId))]],
+      [context.companyId,accountIds],
     );
-    if (validAccounts.rows.length !== new Set(lines.map(l=>l.accountId)).size) {
+    if (validAccounts.rows.length !== accountIds.length) {
       throw new AccountingInputError("Every vendor document line must use an active company account.");
     }
+
+    const taxIds=[...new Set(drafts.map(line=>line.taxCodeId).filter((id):id is string=>Boolean(id)))];
+    const taxResult=taxIds.length
+      ? await client.query(
+          `SELECT * FROM accounting_tax_codes
+           WHERE company_id=$1 AND id=ANY($2::uuid[]) AND deleted_at IS NULL AND status='active'
+             AND scope IN ('purchase','both')
+             AND (effective_from IS NULL OR effective_from<=$3)
+             AND (effective_to IS NULL OR effective_to>=$3)
+           FOR SHARE`,
+          [context.companyId,taxIds,documentDate],
+        )
+      : {rows:[]};
+    if(taxResult.rows.length!==taxIds.length)throw new AccountingInputError("Every selected purchase tax must be active and effective on the document date.");
+    const taxById=new Map(taxResult.rows.map(row=>[String(row.id),row]));
+
+    const lines=drafts.map(row=>{
+      if(!row.taxCodeId){
+        const tax=cents(row.manualTax);
+        const subtotal=cents(row.sourceAmount),total=subtotal+tax;
+        if(total<=BigInt(0))throw new AccountingInputError("Each vendor document line must have a positive total.");
+        return {...row,subtotal:decimalAmount(subtotal),tax:decimalAmount(tax),recoverableTax:"0.00",nonrecoverableTax:decimalAmount(tax),total:decimalAmount(total)};
+      }
+      const taxRow=taxById.get(row.taxCodeId);
+      if(!taxRow)throw new AccountingInputError("Selected purchase tax was not found.");
+      const calculated=calculateAccountingTaxes(row.sourceAmount,[taxRuleFromRow(taxRow)]);
+      if(calculated.components.length!==1)throw new AccountingInputError("A vendor document line currently supports one Accounting tax code.");
+      const component=calculated.components[0];
+      return {
+        ...row,
+        subtotal:calculated.untaxedAmount,
+        tax:component.taxAmount,
+        recoverableTax:component.recoverableAmount,
+        nonrecoverableTax:component.nonrecoverableAmount,
+        total:calculated.totalAmount,
+      };
+    });
+
+    const subtotal=lines.reduce((n,line)=>n+cents(line.subtotal),BigInt(0));
+    const taxTotal=lines.reduce((n,line)=>n+cents(line.tax),BigInt(0));
+    const total=lines.reduce((n,line)=>n+cents(line.total),BigInt(0));
+    const baseTotal=convertToBase(total,rate.units);
+
     const created = await client.query(
       `INSERT INTO accounting_vendor_documents (
          company_id,vendor_id,document_type,document_number,vendor_reference,document_date,due_date,
@@ -566,9 +632,11 @@ export async function createPayablesDocument(input: unknown) {
     for (const line of lines) {
       await client.query(
         `INSERT INTO accounting_vendor_document_lines (
-           company_id,document_id,account_id,description,quantity,unit_price,line_subtotal,tax_amount,line_total,sequence,created_by,updated_by
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11)`,
-        [context.companyId,id,line.accountId,line.description,line.quantity,line.unitPrice,line.subtotal,line.tax,line.total,line.sequence,context.userId],
+           company_id,document_id,account_id,description,quantity,unit_price,line_subtotal,tax_amount,line_total,sequence,
+           tax_code_id,recoverable_tax_amount,nonrecoverable_tax_amount,created_by,updated_by
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$14)`,
+        [context.companyId,id,line.accountId,line.description,line.quantity,line.unitPrice,line.subtotal,line.tax,line.total,line.sequence,
+         line.taxCodeId,line.recoverableTax,line.nonrecoverableTax,context.userId],
       );
     }
     await client.query("COMMIT");
@@ -605,7 +673,7 @@ export async function postPayablesDocument(input: unknown) {
     await client.query("BEGIN");
     const d = await client.query(
       `SELECT id::text,vendor_id::text,document_type,document_number,vendor_reference,document_date::text,
-              exchange_rate::text,base_total_amount::text,status,posted_journal_id::text,
+              currency,exchange_rate::text,base_currency,base_total_amount::text,status,posted_journal_id::text,
               purchase_order_id::text,purchase_match_status
        FROM accounting_vendor_documents
        WHERE company_id=$1 AND id=$2 AND deleted_at IS NULL
@@ -633,48 +701,75 @@ export async function postPayablesDocument(input: unknown) {
     if (!ap) throw new AccountingInputError("Map an Accounts Payable control account in Accounting Setup before posting.");
 
     const l = await client.query(
-      `SELECT account_id::text,description,line_total::text
-       FROM accounting_vendor_document_lines
-       WHERE company_id=$1 AND document_id=$2 AND deleted_at IS NULL
-       ORDER BY sequence,created_at,id FOR SHARE`,
+      `SELECT l.id::text,l.account_id::text,l.description,l.line_subtotal::text,l.tax_amount::text,l.line_total::text,
+              l.tax_code_id::text,l.recoverable_tax_amount::text,l.nonrecoverable_tax_amount::text,
+              t.recoverable_account_id::text,t.code AS tax_code
+       FROM accounting_vendor_document_lines l
+       LEFT JOIN accounting_tax_codes t ON t.company_id=l.company_id AND t.id=l.tax_code_id
+       WHERE l.company_id=$1 AND l.document_id=$2 AND l.deleted_at IS NULL
+       ORDER BY l.sequence,l.created_at,l.id FOR SHARE`,
       [context.companyId,documentId],
     );
     if (!l.rows.length) throw new AccountingInputError("Vendor document has no lines.");
 
-    const baseTotal = cents(doc.base_total_amount);
-    let allocated = BigInt(0);
-    const expenseLines = l.rows.map((line, index) => {
-      const raw = cents(line.line_total);
-      const converted = index === l.rows.length - 1
-        ? baseTotal - allocated
-        : convertToBase(raw,exchangeRate(doc.exchange_rate || "1").units);
-      allocated += converted;
+    const rate=exchangeRate(doc.exchange_rate || "1");
+    const baseTotal=cents(doc.base_total_amount);
+    const postingParts:Array<{accountId:string;description:string;raw:bigint}>=[];
+    for(const line of l.rows){
+      const expenseRaw=cents(line.line_subtotal)+cents(line.nonrecoverable_tax_amount||"0");
+      if(expenseRaw>BigInt(0))postingParts.push({accountId:String(line.account_id),description:String(line.description||doc.document_number),raw:expenseRaw});
+      const recoverableRaw=cents(line.recoverable_tax_amount||"0");
+      if(recoverableRaw>BigInt(0)){
+        if(!line.recoverable_account_id)throw new AccountingInputError("A recoverable purchase tax is missing its Input Tax control account mapping.");
+        postingParts.push({accountId:String(line.recoverable_account_id),description:String(line.tax_code||"Recoverable input tax")+" · "+String(doc.document_number),raw:recoverableRaw});
+      }
+    }
+    if(!postingParts.length)throw new AccountingInputError("Vendor document has no accounting value to post.");
+
+    let allocated=BigInt(0);
+    const expenseLines=postingParts.map((part,index)=>{
+      const converted=index===postingParts.length-1?baseTotal-allocated:convertToBase(part.raw,rate.units);
+      allocated+=converted;
       return {
-        accountId: String(line.account_id),
-        description: String(line.description || doc.document_number),
-        debit: doc.document_type === "bill" ? decimalAmount(converted) : "0.00",
-        credit: doc.document_type === "credit_note" ? decimalAmount(converted) : "0.00",
+        accountId:part.accountId,description:part.description,
+        debit:doc.document_type==="bill"?decimalAmount(converted):"0.00",
+        credit:doc.document_type==="credit_note"?decimalAmount(converted):"0.00",
       };
     });
-    const controlLine = {
-      accountId: ap.id,
-      description: String(doc.document_number),
-      debit: doc.document_type === "credit_note" ? decimalAmount(baseTotal) : "0.00",
-      credit: doc.document_type === "bill" ? decimalAmount(baseTotal) : "0.00",
+    const controlLine={
+      accountId:ap.id,description:String(doc.document_number),
+      debit:doc.document_type==="credit_note"?decimalAmount(baseTotal):"0.00",
+      credit:doc.document_type==="bill"?decimalAmount(baseTotal):"0.00",
     };
-    const posting = await postBalancedLedgerJournal(client,{
-      companyId: context.companyId,
-      userId: context.userId,
-      journalDate: String(doc.document_date),
-      description: (doc.document_type === "bill" ? "Vendor bill · " : "Vendor credit · ") + String(doc.document_number),
-      reference: doc.vendor_reference || doc.document_number,
-      sourceModule: "accounting",
-      sourceType: "vendor_" + String(doc.document_type),
-      sourceId: documentId,
-      sourceEventKey: "accounting:vendor-document:" + documentId,
-      postingKind: "system",
-      lines: [...expenseLines,controlLine],
+    const posting=await postBalancedLedgerJournal(client,{
+      companyId:context.companyId,userId:context.userId,journalDate:String(doc.document_date),
+      description:(doc.document_type==="bill"?"Vendor bill · ":"Vendor credit · ")+String(doc.document_number),
+      reference:doc.vendor_reference||doc.document_number,sourceModule:"accounting",
+      sourceType:"vendor_"+String(doc.document_type),sourceId:documentId,
+      sourceEventKey:"accounting:vendor-document:"+documentId,postingKind:"system",
+      lines:[...expenseLines,controlLine],
     });
+
+    for(const line of l.rows){
+      if(!line.tax_code_id||cents(line.tax_amount)<=BigInt(0))continue;
+      const taxableBase=convertToBase(cents(line.line_subtotal),rate.units);
+      const taxBase=convertToBase(cents(line.tax_amount),rate.units);
+      const recoverableBase=convertToBase(cents(line.recoverable_tax_amount||"0"),rate.units);
+      const nonrecoverableBase=taxBase-recoverableBase;
+      await client.query(
+        `INSERT INTO accounting_tax_ledger_entries(
+          company_id,tax_code_id,journal_id,source_module,source_type,source_id,source_event_key,transaction_date,
+          taxable_amount,tax_amount,recoverable_amount,nonrecoverable_amount,currency,direction,entry_effect,metadata,created_by
+        ) VALUES($1,$2,$3,'accounting',$4,$5,$6,$7,$8,$9,$10,$11,$12,'purchase',$13,$14::jsonb,$15)
+        ON CONFLICT(company_id,source_module,source_event_key,tax_code_id) WHERE deleted_at IS NULL DO NOTHING`,
+        [context.companyId,String(line.tax_code_id),posting.journalId,"vendor_"+String(doc.document_type),documentId,
+         "accounting:vendor-tax:"+documentId+":"+String(line.id),String(doc.document_date),
+         decimalAmount(taxableBase),decimalAmount(taxBase),decimalAmount(recoverableBase),decimalAmount(nonrecoverableBase),
+         String(doc.base_currency),doc.document_type==="credit_note"?-1:1,
+         JSON.stringify({sourceCurrency:doc.currency,exchangeRate:doc.exchange_rate,lineId:line.id,documentNumber:doc.document_number}),context.userId],
+      );
+    }
+
     await client.query(
       `UPDATE accounting_vendor_documents
        SET status='posted',posted_journal_id=$3,posted_at=NOW(),updated_by=$4,updated_at=NOW()
@@ -802,6 +897,23 @@ export async function reversePayablesDocument(input: unknown) {
       sourceModule: "accounting",sourceType: "vendor_document_reversal",
       sourceId: documentId,sourceEventKey: "accounting:vendor-document-reversal:" + documentId,
     });
+    await client.query(
+      `INSERT INTO accounting_tax_ledger_entries(
+         company_id,tax_code_id,journal_id,source_module,source_type,source_id,source_event_key,
+         transaction_date,taxable_amount,tax_amount,recoverable_amount,nonrecoverable_amount,
+         currency,direction,entry_effect,metadata,created_by
+       )
+       SELECT company_id,tax_code_id,$3,'accounting','vendor_document_reversal',source_id,
+              'accounting:vendor-tax-reversal:'||$2||':'||id::text,$4,
+              taxable_amount,tax_amount,recoverable_amount,nonrecoverable_amount,
+              currency,direction,(entry_effect * -1),
+              jsonb_build_object('reversalOfTaxEntryId',id::text),$5
+       FROM accounting_tax_ledger_entries
+       WHERE company_id=$1 AND source_module='accounting' AND source_id=$2
+         AND source_type IN ('vendor_bill','vendor_credit_note') AND deleted_at IS NULL
+       ON CONFLICT(company_id,source_module,source_event_key,tax_code_id) WHERE deleted_at IS NULL DO NOTHING`,
+      [context.companyId,documentId,reversal.journalId,reversalDate,context.userId],
+    );
     await client.query(
       `UPDATE accounting_vendor_documents
        SET status='reversed',reversed_journal_id=$3,reversed_at=NOW(),updated_by=$4,updated_at=NOW()

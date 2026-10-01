@@ -1,3 +1,5 @@
+import AccountingKenya from './AccountingKenya';
+import { getAccountingKenya } from '@/lib/apps/accounting/kenya';
 import AccountingTaxes from './AccountingTaxes';
 import { getAccountingTaxes } from '@/lib/apps/accounting/taxes';
 import AccountingPayments from './AccountingPayments';
@@ -224,6 +226,7 @@ export default async function AccountingWorkspace({
 
   let paymentsWorkspace: Awaited<ReturnType<typeof getAccountingPayments>> | null = null;
   let taxesWorkspace: Awaited<ReturnType<typeof getAccountingTaxes>> | null = null;
+  let kenyaWorkspace: Awaited<ReturnType<typeof getAccountingKenya>> | null = null;
 
   let reconciliationWorkspace:
     Awaited<
@@ -258,6 +261,7 @@ export default async function AccountingWorkspace({
       'statements' &&
     dedicatedSection !== 'payments' &&
     dedicatedSection !== 'taxes' &&
+    dedicatedSection !== 'kenya' &&
     dedicatedSection !==
       'reconciliation'
   ) {
@@ -498,6 +502,11 @@ export default async function AccountingWorkspace({
   if (dedicatedSection === 'taxes') {
     try { taxesWorkspace = await getAccountingTaxes(); }
     catch (error) { foundationError = error instanceof AccountingInputError ? error.message : 'Taxes could not be loaded. Retry this page.'; }
+  }
+
+  if (dedicatedSection === 'kenya') {
+    try { kenyaWorkspace = await getAccountingKenya({from:filters.from,to:filters.to}); }
+    catch (error) { foundationError = error instanceof AccountingInputError ? error.message : 'Kenya accounting could not be loaded. Retry this page.'; }
   }
 
   if (
@@ -841,6 +850,8 @@ export default async function AccountingWorkspace({
 
     {key:'taxes',label:'Taxes',href:appBaseHref+'/taxes',description:'Tax codes, groups, calculations and tax register.',sectionLabel:'Configuration'},
 
+    {key:'kenya',label:'Kenya accounting & eTIMS',href:appBaseHref+'/kenya',description:'Kenya VAT controls and shared KRA eTIMS fiscal evidence.',sectionLabel:'Configuration'},
+
     {
       key:
         'reconciliation',
@@ -1043,6 +1054,8 @@ export default async function AccountingWorkspace({
                   ? (paymentsWorkspace ? <AccountingPayments data={paymentsWorkspace} canCreate={data.capabilities.canCreate} canTransition={data.capabilities.canTransition}/> : <div role="alert">{foundationError || 'Payments could not be loaded.'}</div>)
                 : dedicatedSection === 'taxes'
                   ? (taxesWorkspace ? <AccountingTaxes data={taxesWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Taxes could not be loaded.'}</div>)
+                : dedicatedSection === 'kenya'
+                  ? (kenyaWorkspace ? <AccountingKenya data={kenyaWorkspace} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Kenya accounting could not be loaded.'}</div>)
                 : dedicatedSection ===
                     'reconciliation'
                   ? (

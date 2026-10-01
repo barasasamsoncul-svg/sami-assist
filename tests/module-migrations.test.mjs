@@ -341,7 +341,7 @@ test('Accounting 2.4 setup schema is migration-backed and available on fresh ins
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.16\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.17\.0'/,
   );
 
   assert.match(
@@ -436,7 +436,7 @@ test('Accounting 2.5 Chart of Accounts is migration-backed and company scoped', 
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.16\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.17\.0'/,
   );
 
   assert.match(
@@ -519,7 +519,7 @@ test('Accounting 2.6 centralizes double-entry posting and reversal invariants', 
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.16\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.17\.0'/,
   );
 
   assert.match(
@@ -627,7 +627,7 @@ test('Accounting 2.7 journal workflow is migration-backed and fresh-install comp
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.16\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.17\.0'/,
   );
 
   assert.match(runtimeMigrations, /ACCOUNTING_2_6_0_TO_2_7_0/);
@@ -711,7 +711,7 @@ test('Accounting 2.8 opening balances are migration-backed and workflow protecte
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.16\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.17\.0'/,
   );
 
   assert.match(runtimeMigrations, /ACCOUNTING_2_7_0_TO_2_8_0/);
@@ -900,7 +900,7 @@ test('Accounting 2.9 Payables is migration-backed and ledger controlled', async 
     source('lib/apps/enterprise/specialist-depth.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.16\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.17\.0'/);
   assert.match(migrations,/ACCOUNTING_2_8_0_TO_2_9_0/);
 
   for (const marker of [
@@ -957,7 +957,7 @@ test('Accounting 2.10 Purchasing controls are migration-backed and gate PO bills
     source('lib/apps/enterprise/specialist-depth.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.16\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.17\.0'/);
   assert.match(migrations,/ACCOUNTING_2_9_0_TO_2_10_0/);
   assert.match(
     migration,
@@ -1081,7 +1081,7 @@ test('Accounting 2.11 controls approved expenses and employee reimbursements wit
 
   assert.match(
     manifest,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.16\.0'[\s\S]*optionalDepends:\s*\['expenses'\]/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.17\.0'[\s\S]*optionalDepends:\s*\['expenses'\]/,
   );
   assert.match(migrations,/ACCOUNTING_2_10_0_TO_2_11_0/);
   assert.match(
@@ -1171,7 +1171,7 @@ test('Accounting 2.12 controls bank cash mobile money and internal transfers', a
     source('lib/apps/enterprise/specialist-catalog.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.16\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.17\.0'/);
   assert.match(migrations,/ACCOUNTING_2_11_0_TO_2_12_0/);
   assert.match(
     migration,
@@ -1257,7 +1257,7 @@ test('Accounting 2.13 imports statements and protects normalized feed intake', a
     source('lib/apps/enterprise/specialist-catalog.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.16\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.17\.0'/);
   assert.match(migrations,/ACCOUNTING_2_12_0_TO_2_13_0/);
   assert.match(
     migration,
@@ -1350,7 +1350,7 @@ test('Accounting 2.14 provides immutable bank reconciliation with split matches 
     source('lib/apps/enterprise/specialist-catalog.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.16\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.17\.0'/);
   assert.match(migrations,/ACCOUNTING_2_13_0_TO_2_14_0/);
   assert.match(
     migration,
@@ -1449,7 +1449,7 @@ test('Accounting 2.16 Tax Engine is migration-backed and fresh-install complete'
     source('lib/apps/accounting/taxes.ts'),source('app/apps/accounting/AccountingWorkspace.tsx'),
     source('app/apps/accounting/AccountingFoundationPanel.tsx'),
   ]);
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.16\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.17\.0'/);
   assert.match(runtime,/ACCOUNTING_2_15_0_TO_2_16_0/);
   assert.match(migration,/fromVersion:\s*'2\.15\.0'[\s\S]*toVersion:\s*'2\.16\.0'/);
   assert.match(depth,/ACCOUNTING_TAX_SQL/);
@@ -1461,4 +1461,39 @@ test('Accounting 2.16 Tax Engine is migration-backed and fresh-install complete'
   assert.match(taxes,/recordAccountingTaxLedgerEntries/);
   assert.match(workspace,/dedicatedSection === 'taxes'[\s\S]*AccountingTaxes/);
   assert.match(foundation,/"taxes"/);
+});
+
+
+test('Accounting 2.17 Kenya localization reuses shared eTIMS and is migration-backed', async () => {
+  const [manifest,runtime,migration,depth,schema,catalog,specialist,hooks,service,workspace,foundation,payables] = await Promise.all([
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/apps/accounting/migrations/2.16.0-to-2.17.0.ts'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+    source('lib/apps/accounting/kenya-schema.ts'),
+    source('lib/apps/enterprise/catalog.ts'),
+    source('lib/apps/enterprise/specialist-catalog.ts'),
+    source('lib/apps/enterprise/domain-hooks.ts'),
+    source('lib/apps/accounting/kenya.ts'),
+    source('app/apps/accounting/AccountingWorkspace.tsx'),
+    source('app/apps/accounting/AccountingFoundationPanel.tsx'),
+    source('lib/apps/accounting/payables.ts'),
+  ]);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.17\.0'/);
+  assert.match(runtime,/ACCOUNTING_2_16_0_TO_2_17_0/);
+  assert.match(migration,/fromVersion:\s*'2\.16\.0'[\s\S]*toVersion:\s*'2\.17\.0'/);
+  assert.match(depth,/ACCOUNTING_KENYA_SQL/);
+  for (const marker of ['accounting_kenya_settings','accounting_kenya_tax_mappings','accounting_kenya_sync_runs']) {
+    assert.match(schema,new RegExp(marker));
+    assert.match(catalog,new RegExp(marker));
+    assert.match(specialist,new RegExp(marker));
+  }
+  assert.match(hooks,/accounting_kenya_settings[\s\S]*accounting_kenya_sync_runs/);
+  assert.match(service,/invoicing_etims_profiles/);
+  assert.match(service,/invoicing_etims_submissions/);
+  assert.doesNotMatch(service,/SAMI_ETIMS_[A-Z_]+_BASE_URL/);
+  assert.match(workspace,/dedicatedSection === 'kenya'[\s\S]*AccountingKenya/);
+  assert.match(foundation,/"kenya"/);
+  assert.match(payables,/recoverable_tax_amount/);
+  assert.match(payables,/accounting:vendor-tax:/);
 });

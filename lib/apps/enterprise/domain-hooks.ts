@@ -136,6 +136,9 @@ export function assertEnterpriseDomainMutationAllowed(
       table === 'accounting_tax_groups' ||
       table === 'accounting_tax_group_lines' ||
       table === 'accounting_tax_ledger_entries' ||
+      table === 'accounting_kenya_settings' ||
+      table === 'accounting_kenya_tax_mappings' ||
+      table === 'accounting_kenya_sync_runs' ||
       table ===
         'accounting_reconciliation_suggestions'
     )
