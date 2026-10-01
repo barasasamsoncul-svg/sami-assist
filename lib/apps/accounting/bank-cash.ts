@@ -570,6 +570,7 @@ export async function getAccountingBankCash(
              t.reference,
              t.notes,
              t.status,
+             t.fx_managed,
              t.posted_journal_id::text,
              t.reversal_journal_id::text
            FROM accounting_internal_transfers t
@@ -1912,6 +1913,7 @@ export async function reverseInternalTransfer(
            id::text,
            transfer_number,
            status,
+           fx_managed,
            posted_journal_id::text,
            reversal_journal_id::text
          FROM accounting_internal_transfers
@@ -1935,6 +1937,15 @@ export async function reverseInternalTransfer(
     ) {
       throw new AccountingInputError(
         "Only a posted internal transfer can be reversed.",
+      );
+    }
+
+    if (
+      transfer.fx_managed ===
+      true
+    ) {
+      throw new AccountingInputError(
+        "This cross-currency transfer is managed from Accounting → Foreign Currency. Use that workspace to reverse it so the foreign subledger stays synchronized.",
       );
     }
 
