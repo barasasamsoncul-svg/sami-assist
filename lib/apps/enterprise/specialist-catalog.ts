@@ -32,6 +32,11 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
     'accounting_reconciliations',
     'accounting_reconciliation_matches',
     'accounting_reconciliation_suggestions',
+    'accounting_payment_account_mappings',
+    'accounting_payment_postings',
+    'accounting_payment_allocation_postings',
+    'accounting_payment_settlement_batches',
+    'accounting_payment_settlement_items',
   ],
   inventory: [
     'inventory_lots',
