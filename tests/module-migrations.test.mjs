@@ -667,6 +667,11 @@ test('Accounting 2.7 journal workflow is migration-backed and fresh-install comp
   assert.match(journalService, /createRecurringAccountingJournal/);
   assert.match(journalService, /generateRecurringAccountingJournal/);
   assert.match(journalService, /reversePostedLedgerJournal/);
+  assert.match(
+    journalService,
+    /source_module[\s\S]*another app[\s\S]*subledger stays synchronized/,
+    'Source-generated journals must be corrected through their originating app.',
+  );
 
   const domainHooks = await source('lib/apps/enterprise/domain-hooks.ts');
   assert.match(
