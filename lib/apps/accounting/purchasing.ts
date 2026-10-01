@@ -319,7 +319,22 @@ export async function createPurchasePolicy(input: unknown) {
       quantityTolerance,priceTolerance,decimalAmount(amountTolerance),context.userId,
     ],
   );
-  return { id:String(r.rows[0].id) };
+  const id=String(r.rows[0].id);
+  await recordWorkspaceAuditEvent({
+    tenantId:context.tenantId,
+    companyId:context.companyId,
+    userId:context.userId,
+    action:"accounting.purchasing.policy_created",
+    module:"accounting",
+    resourceType:"accounting_purchase_policies",
+    resourceId:id,
+    summary:"Purchasing approval and matching policy created",
+    result:"success",
+    metadata:{ name, minAmount:decimalAmount(min), maxAmount:max===null?null:decimalAmount(max) },
+  }).catch(error =>
+    console.error("[Accounting] Purchasing policy audit delivery failed",error),
+  );
+  return { id };
 }
 
 export async function createPurchaseRequisition(input: unknown) {
@@ -415,6 +430,20 @@ export async function createPurchaseRequisition(input: unknown) {
       );
     }
     await client.query("COMMIT");
+    await recordWorkspaceAuditEvent({
+      tenantId:context.tenantId,
+      companyId:context.companyId,
+      userId:context.userId,
+      action:"accounting.purchasing.requisition_created",
+      module:"accounting",
+      resourceType:"accounting_purchase_requisitions",
+      resourceId:id,
+      summary:"Purchase requisition created",
+      result:"success",
+      metadata:{ requisitionNumber:number, estimatedTotal:decimalAmount(estimated), lineCount:normalized.length },
+    }).catch(error =>
+      console.error("[Accounting] Purchase requisition audit delivery failed",error),
+    );
     return { id, requisitionNumber:number, status:"draft", replayed:false };
   } catch (error) {
     try { await client.query("ROLLBACK"); } catch {}
@@ -444,6 +473,20 @@ export async function transitionPurchaseRequisition(input: unknown) {
     [context.companyId,id,t.to,context.userId,reason,t.from],
   );
   if (!r.rows[0]) throw new AccountingInputError("This requisition is no longer in the required workflow state.");
+  await recordWorkspaceAuditEvent({
+    tenantId:context.tenantId,
+    companyId:context.companyId,
+    userId:context.userId,
+    action:"accounting.purchasing.requisition_" + action,
+    module:"accounting",
+    resourceType:"accounting_purchase_requisitions",
+    resourceId:id,
+    summary:"Purchase requisition moved to " + t.to,
+    result:"success",
+    metadata:{ from:t.from, to:t.to, reason },
+  }).catch(error =>
+    console.error("[Accounting] Purchase requisition transition audit delivery failed",error),
+  );
   return { id,status:t.to };
 }
 
@@ -615,6 +658,26 @@ export async function createPurchaseOrder(input: unknown) {
       );
     }
     await client.query("COMMIT");
+    await recordWorkspaceAuditEvent({
+      tenantId:context.tenantId,
+      companyId:context.companyId,
+      userId:context.userId,
+      action:"accounting.purchasing.order_created",
+      module:"accounting",
+      resourceType:"accounting_purchase_orders",
+      resourceId:id,
+      summary:"Purchase order created",
+      result:"success",
+      metadata:{
+        purchaseOrderNumber:number,
+        vendorId,
+        requisitionId,
+        baseTotal:decimalAmount(base),
+        lineCount:normalized.length,
+      },
+    }).catch(error =>
+      console.error("[Accounting] Purchase order audit delivery failed",error),
+    );
     return { id,purchaseOrderNumber:number,status:"draft",replayed:false };
   } catch (error) {
     try { await client.query("ROLLBACK"); } catch {}
@@ -685,8 +748,23 @@ export async function transitionPurchaseOrder(input: unknown) {
       throw new AccountingInputError("Choose submit, approve or cancel.");
     }
 
+    const nextStatus=action==="submit"?"submitted":action==="approve"?"approved":"cancelled";
     await client.query("COMMIT");
-    return { id,status:action==="submit"?"submitted":action==="approve"?"approved":"cancelled" };
+    await recordWorkspaceAuditEvent({
+      tenantId:context.tenantId,
+      companyId:context.companyId,
+      userId:context.userId,
+      action:"accounting.purchasing.order_" + action,
+      module:"accounting",
+      resourceType:"accounting_purchase_orders",
+      resourceId:id,
+      summary:"Purchase order moved to " + nextStatus,
+      result:"success",
+      metadata:{ from:String(po.status), to:nextStatus },
+    }).catch(error =>
+      console.error("[Accounting] Purchase order transition audit delivery failed",error),
+    );
+    return { id,status:nextStatus };
   } catch (error) {
     try { await client.query("ROLLBACK"); } catch {}
     throw error;
@@ -818,8 +896,28 @@ export async function createGoodsReceipt(input: unknown) {
        WHERE company_id=$1 AND id=$2`,
       [context.companyId,purchaseOrderId,complete?"received":"partially_received",context.userId],
     );
+    const purchaseOrderStatus=complete?"received":"partially_received";
     await client.query("COMMIT");
-    return { id,receiptNumber:number,purchaseOrderStatus:complete?"received":"partially_received",replayed:false };
+    await recordWorkspaceAuditEvent({
+      tenantId:context.tenantId,
+      companyId:context.companyId,
+      userId:context.userId,
+      action:"accounting.purchasing.receipt_confirmed",
+      module:"accounting",
+      resourceType:"accounting_goods_receipts",
+      resourceId:id,
+      summary:"Goods or service receipt confirmed against purchase order",
+      result:"success",
+      metadata:{
+        receiptNumber:number,
+        purchaseOrderId,
+        purchaseOrderStatus,
+        lineCount:normalized.length,
+      },
+    }).catch(error =>
+      console.error("[Accounting] Goods receipt audit delivery failed",error),
+    );
+    return { id,receiptNumber:number,purchaseOrderStatus,replayed:false };
   } catch (error) {
     try { await client.query("ROLLBACK"); } catch {}
     throw error;
