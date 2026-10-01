@@ -1021,6 +1021,21 @@ test('Accounting 2.10 Purchasing controls are migration-backed and gate PO bills
     'Received purchase value must be translated to base currency before comparison.',
   );
   assert.match(
+    migration,
+    /request_key[\s\S]*request_hash[\s\S]*uq_accounting_purchase_order_request/,
+    'Purchasing documents must own retry-safe request identity.',
+  );
+  assert.match(
+    purchasing,
+    /requestHash[\s\S]*pg_advisory_xact_lock[\s\S]*request key was already used with different content/,
+    'Purchasing retries must replay identical creates and reject changed payloads.',
+  );
+  assert.match(
+    purchasing,
+    /accounting\.purchasing\.requisition_created[\s\S]*accounting\.purchasing\.order_created[\s\S]*accounting\.purchasing\.receipt_confirmed/,
+    'Core purchasing lifecycle events must be written to the workspace audit trail.',
+  );
+  assert.match(
     payables,
     /purchase_order_id[\s\S]*purchase_match_status[\s\S]*matched[\s\S]*overridden[\s\S]*before posting/,
     'PO-linked vendor bills must not post before passing purchasing controls.',
