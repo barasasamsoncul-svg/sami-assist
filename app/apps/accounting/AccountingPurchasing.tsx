@@ -375,7 +375,7 @@ export default function AccountingPurchasing({
       {
         action: "transition-requisition",
         requisitionId,
-        action,
+        workflowAction: action,
         reason,
       },
       "Requisition updated",
@@ -398,7 +398,7 @@ export default function AccountingPurchasing({
       {
         action: "transition-order",
         purchaseOrderId,
-        action,
+        workflowAction: action,
         reason,
       },
       "Purchase order updated",
