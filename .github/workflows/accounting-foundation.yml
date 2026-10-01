@@ -18,6 +18,7 @@ on:
       - 'tests/accounting-tax.test.mjs'
       - 'tests/accounting-kenya.test.mjs'
       - 'tests/accounting-international.test.mjs'
+      - 'tests/accounting-fx.test.mjs'
       - 'tests/accounting-statements.test.mjs'
       - 'tests/module-migrations.test.mjs'
       - '.github/workflows/accounting-foundation.yml'
@@ -66,7 +67,7 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
-      - run: node --conditions=react-server --import tsx --test tests/accounting-foundation.test.mjs tests/accounting-statements.test.mjs tests/accounting-payments.test.mjs tests/accounting-tax.test.mjs tests/accounting-kenya.test.mjs tests/accounting-international.test.mjs
+      - run: node --conditions=react-server --import tsx --test tests/accounting-foundation.test.mjs tests/accounting-statements.test.mjs tests/accounting-payments.test.mjs tests/accounting-tax.test.mjs tests/accounting-kenya.test.mjs tests/accounting-international.test.mjs tests/accounting-fx.test.mjs
       - run: npx eslint app/apps/accounting app/api/apps/accounting lib/apps/accounting
       - run: npm run test:module-migrations && npm run test:app-ui && npm run test:invoicing
       - run: npx tsc --noEmit
