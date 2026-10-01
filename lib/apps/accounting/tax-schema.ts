@@ -98,6 +98,9 @@ CREATE TABLE IF NOT EXISTS public.accounting_vendor_line_tax_components (
   tax_name_snapshot VARCHAR(160) NOT NULL,
   rate_snapshot NUMERIC(9,4) NOT NULL,
   recoverable_rate_snapshot NUMERIC(9,4) NOT NULL,
+  input_account_id_snapshot UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
+  output_account_id_snapshot UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
+  nonrecoverable_account_id_snapshot UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
   taxable_amount NUMERIC(19,4) NOT NULL,
   tax_amount NUMERIC(19,4) NOT NULL,
   recoverable_tax_amount NUMERIC(19,4) NOT NULL,
@@ -116,6 +119,11 @@ CREATE TABLE IF NOT EXISTS public.accounting_vendor_line_tax_components (
   CHECK (tax_amount = recoverable_tax_amount + nonrecoverable_tax_amount),
   CHECK (calculation IN ('exclusive','inclusive'))
 );
+
+ALTER TABLE public.accounting_vendor_line_tax_components
+  ADD COLUMN IF NOT EXISTS input_account_id_snapshot UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
+  ADD COLUMN IF NOT EXISTS output_account_id_snapshot UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
+  ADD COLUMN IF NOT EXISTS nonrecoverable_account_id_snapshot UUID REFERENCES public.accounts(id) ON DELETE RESTRICT;
 
 CREATE INDEX IF NOT EXISTS idx_accounting_vendor_line_tax_document
   ON public.accounting_vendor_line_tax_components(company_id, document_id, document_line_id, sequence_no, id)
