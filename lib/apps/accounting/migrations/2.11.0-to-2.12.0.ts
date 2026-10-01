@@ -21,6 +21,20 @@ const SQL = `
     ADD COLUMN IF NOT EXISTS allow_overdraft BOOLEAN NOT NULL DEFAULT FALSE,
     ADD COLUMN IF NOT EXISTS overdraft_limit NUMERIC(19,2) NOT NULL DEFAULT 0;
 
+  UPDATE public.accounting_bank_accounts
+  SET
+    institution_name=COALESCE(institution_name,bank_name),
+    account_reference_masked=COALESCE(
+      account_reference_masked,
+      CASE
+        WHEN account_number_last4 IS NOT NULL
+          THEN '••••' || account_number_last4
+        ELSE NULL
+      END
+    )
+  WHERE institution_name IS NULL
+     OR account_reference_masked IS NULL;
+
   ALTER TABLE public.accounting_bank_accounts
     DROP CONSTRAINT IF EXISTS accounting_bank_accounts_account_type_check,
     DROP CONSTRAINT IF EXISTS accounting_bank_accounts_overdraft_limit_check;
