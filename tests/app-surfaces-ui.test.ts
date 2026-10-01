@@ -1151,7 +1151,7 @@ test(
     );
     assert.match(
       reconciliation,
-      /auto-apply eligibility[\s\S]*requires an explicit user acceptance/,
+      /Rules only generate suggestions here[\s\S]*explicitly accept a rule/,
       'Rule automation must not silently post adjustment journals from this workspace.',
     );
   },
