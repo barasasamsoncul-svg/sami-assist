@@ -233,9 +233,11 @@ async function taxDefinitions(
   }
 
   const group = await client.query(
-    `SELECT id::text,calculation
-     FROM accounting_tax_groups
-     WHERE company_id=$1 AND id=$2 AND deleted_at IS NULL AND status='active'
+    `SELECT g.id::text,g.calculation,
+            (SELECT COUNT(*)::int FROM accounting_tax_group_components m
+             WHERE m.company_id=g.company_id AND m.group_id=g.id AND m.deleted_at IS NULL) AS expected_count
+     FROM accounting_tax_groups g
+     WHERE g.company_id=$1 AND g.id=$2 AND g.deleted_at IS NULL AND g.status='active'
      LIMIT 1`,
     [input.companyId, input.taxGroupId],
   );
@@ -256,8 +258,11 @@ async function taxDefinitions(
      ORDER BY m.sequence_no,m.id`,
     [input.companyId, input.taxGroupId, input.direction, input.taxDate],
   );
-  if (!members.rows.length) {
-    throw new AccountingInputError('The selected tax group has no active tax components for this transaction.');
+  const expectedCount = Number(group.rows[0].expected_count || 0);
+  if (!members.rows.length || members.rows.length !== expectedCount) {
+    throw new AccountingInputError(
+      'Every component in the selected tax group must be active, valid for this date and allowed for this transaction direction.',
+    );
   }
 
   const calculation = String(group.rows[0].calculation) === 'inclusive'
@@ -733,6 +738,9 @@ export async function createAccountingTaxAdjustment(input: unknown) {
 export async function transitionAccountingTaxAdjustment(input: unknown) {
   const context = await requireEnterpriseModuleTableContext('accounting', 'accounting_tax_adjustments', 'transition');
   const body = bodyOf(input);
+  if (accountingId(body.expectedCompanyId) !== context.companyId) {
+    throw new AccountingInputError('Your active company changed. Reload Accounting before continuing.');
+  }
   const id = accountingId(body.adjustmentId);
   const action = String(body.action || '');
   if (!['approve','post','reverse','cancel'].includes(action)) {
@@ -766,7 +774,7 @@ export async function transitionAccountingTaxAdjustment(input: unknown) {
        JOIN accounting_tax_codes c ON c.company_id=a.company_id AND c.id=a.tax_code_id
        LEFT JOIN accounting_settings s ON s.company_id=a.company_id
        WHERE a.company_id=$1 AND a.id=$2 AND a.deleted_at IS NULL
-       LIMIT 1 FOR UPDATE`,
+       LIMIT 1 FOR UPDATE OF a`,
       [context.companyId,id],
     );
     const row = result.rows[0];
