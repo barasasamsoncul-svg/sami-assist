@@ -46,6 +46,7 @@ export type AccountingFoundation = {
   openPeriods: number;
   bankAccounts: number;
   unreconciledBankLines: number;
+  openingBalancePostedCount: number;
   recent: {
     id: string;
     journal_number: string;
@@ -101,6 +102,12 @@ export async function getAccountingFoundation(
       `,
       [context.companyId],
     );
+    const openingStats = await client.query(
+      `SELECT COUNT(*) FILTER (WHERE status='posted')::int AS posted_count
+       FROM accounting_opening_balance_batches
+       WHERE company_id=$1 AND deleted_at IS NULL`,
+      [context.companyId],
+    );
     const recent = await client.query(
       `SELECT id,journal_number,journal_date::text,description,status FROM journals WHERE company_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC,id DESC LIMIT 6`,
       [context.companyId],
@@ -134,6 +141,7 @@ export async function getAccountingFoundation(
       openPeriods: periods.rows[0].count,
       bankAccounts: bankStats.rows[0].bank_accounts,
       unreconciledBankLines: bankStats.rows[0].unreconciled_bank_lines,
+      openingBalancePostedCount: openingStats.rows[0]?.posted_count || 0,
       recent: recent.rows,
     };
   } catch (error) {
