@@ -73,6 +73,8 @@ export type AccountingReceivablesWorkspace = {
   };
   metrics: {
     outstanding: string;
+    invoicingOutstanding: string;
+    legacyOpeningReceivables: string;
     overdue: string;
     current: string;
     customerCredits: string;
