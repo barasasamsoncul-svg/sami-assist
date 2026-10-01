@@ -6,6 +6,7 @@ import {
   saveAccountingTaxCode,
   saveAccountingTaxGroup,
   saveAccountingTaxGroupComponent,
+  setAccountingTaxStatus,
   transitionAccountingTaxAdjustment,
 } from "@/lib/apps/accounting/tax-engine";
 import { AccountingInputError } from "@/lib/apps/accounting/validation";
@@ -71,6 +72,8 @@ export async function POST(request: NextRequest) {
       action==="save-code" ? await saveAccountingTaxCode(body) :
       action==="save-group" ? await saveAccountingTaxGroup(body) :
       action==="save-group-component" ? await saveAccountingTaxGroupComponent(body) :
+      action==="set-code-status" ? await setAccountingTaxStatus({...body,kind:"code"}) :
+      action==="set-group-status" ? await setAccountingTaxStatus({...body,kind:"group"}) :
       action==="create-adjustment" ? await createAccountingTaxAdjustment(body) :
       ["approve-adjustment","post-adjustment","reverse-adjustment","cancel-adjustment"].includes(action)
         ? await transitionAccountingTaxAdjustment({
