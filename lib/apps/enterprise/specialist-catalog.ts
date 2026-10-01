@@ -5,6 +5,8 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
     'accounting_bank_accounts',
     'accounting_bank_statement_lines',
     'accounting_reconciliation_rules',
+    'accounting_recurring_journals',
+    'accounting_recurring_journal_lines',
   ],
   inventory: [
     'inventory_lots',
