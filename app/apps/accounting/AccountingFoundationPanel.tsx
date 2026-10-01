@@ -34,6 +34,7 @@ export const ACCOUNTING_SECTIONS = [
   "payments",
   "taxes",
   "kenya",
+  "international",
   "setup",
 ] as const;
 export type AccountingSection = (typeof ACCOUNTING_SECTIONS)[number];
@@ -112,6 +113,7 @@ export default function AccountingFoundationPanel({
     payments: "Payments & settlements",
     taxes: "Taxes",
     kenya: "Kenya accounting & eTIMS",
+    international: "International localization",
     setup: "Accounting setup",
   };
   const descriptions = {
@@ -146,6 +148,7 @@ export default function AccountingFoundationPanel({
     payments: "Prepare vendor payment batches and record provider settlements with their fees.",
     taxes: "Configure effective-dated tax codes, groups, recovery, inclusive pricing and ledger mappings.",
     kenya: "Control Kenya VAT reporting and synchronize successful KRA eTIMS fiscal evidence without duplicating the Invoicing connector.",
+    international: "Configure country localization, report boxes, filing metadata and shared UBL/Peppol evidence.",
     reconciliation:
       "Match statement lines to posted bank-ledger movement, split allocations, apply controlled adjustment rules and preserve immutable reconciliation history.",
     setup:

@@ -32,10 +32,10 @@ This is the first usable slice, not completion of the full Accounting module. Ne
 13. Payments and settlements: company-scoped vendor payment batches and provider settlements, draft/approval/posting/cancellation lifecycle, exact full and partial bill allocations, AP aging/balance integration, original bill control-account debits, retry-key/payload and external-reference duplicate protection, source-balance/overdraft checks with serialized financial-account locks, settlement gross/net/fee posting, reconciliation-aware linked reversals, bill reversal guards, remittance CSV downloads, protected workflow tables, audit events, dedicated Accounting UI/API, and migration-backed 2.15 schema with shared fresh-install SQL. Records externally completed payments; does not initiate bank payouts. Customer receipts remain owned by Invoicing. Cross-currency payments remain item 17.
 14. Tax engine: company-scoped effective-dated tax codes and ordered tax groups, percentage/fixed calculations, inclusive/exclusive pricing, compound-base controls, withholding behavior, recoverable/nonrecoverable purchase-tax splits, ledger account mappings, jurisdiction/reporting metadata, archive lifecycle, exact minor-unit calculation previews, protected workflow tables, source tax-register contract, dedicated responsive UI/API, migration-backed 2.16 schema and fresh-install parity.
 15. Kenya accounting and shared eTIMS integration: opt-in Kenya localization settings, current VAT defaults, effective-dated KRA A-E mapping with tax type E treated as historical after 30 June 2023, configurable VAT return day, purchase-side input-VAT calculation and recoverability posting, vendor-credit/reversal tax-register effects, KES control summaries, idempotent synchronization of successful Invoicing eTIMS sales and credit-note fiscal evidence, shared OSCU/VSCU profile visibility without duplicating KRA credentials, sync audit history, migration-backed 2.17 schema and fresh-install parity. Invoicing remains the sole owner of KRA device activation, communication keys, item mappings, submissions and fiscal receipts.
+16. International localization: company-scoped ISO country/jurisdiction/locale profile, accounting-framework and filing metadata, configurable e-invoice policy, rate-neutral localization-pack architecture, generic VAT control-pack installer over existing effective-dated tax codes, custom statutory reporting boxes and signed tax-register rules, period diagnostics, auditable draft/finalized report snapshots, pack provenance history, read-only shared UBL 2.1 / Peppol / custom-EDI evidence from Invoicing, participant-country visibility, evidence-gap controls, protected workflow tables, migration-backed 2.18 schema and fresh-install parity. The generic pack is explicitly a reporting/control pack rather than a country-specific tax return; jurisdiction-specific packs can be added as data without changing the Accounting engine.
 
 ## Remaining depth, in the agreed order
 
-16. International localization.
 17. Foreign currency accounting.
 18. Inventory valuation and ledger reconciliation.
 19. Fixed assets.
@@ -59,7 +59,7 @@ Keep changes scoped to Accounting. Reuse the existing authoritative ledger and t
 
 ## Validation
 
-`node --conditions=react-server --import tsx --test tests/accounting-foundation.test.mjs tests/accounting-statements.test.mjs tests/accounting-payments.test.mjs tests/accounting-tax.test.mjs tests/accounting-kenya.test.mjs`
+`node --conditions=react-server --import tsx --test tests/accounting-foundation.test.mjs tests/accounting-statements.test.mjs tests/accounting-payments.test.mjs tests/accounting-tax.test.mjs tests/accounting-kenya.test.mjs tests/accounting-international.test.mjs`
 
 Set `TEST_DATABASE_URL` to a disposable PostgreSQL database to run transaction and reporting tests (including simultaneous duplicate requests). Tests create and remove an isolated random schema. For local embedded PostgreSQL testing, `PGLITE_TEST_MODULE` can point to an installed PGlite module; the simultaneous-connection test requires real PostgreSQL. The Accounting GitHub Actions workflow supplies PostgreSQL automatically.
 

@@ -31,7 +31,7 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
     'accounting_statement_import_rows',
     'accounting_reconciliations',
     'accounting_reconciliation_matches',
-    'accounting_reconciliation_suggestions', 'accounting_payment_batches', 'accounting_payment_allocations','accounting_tax_codes','accounting_tax_groups','accounting_tax_group_lines','accounting_tax_ledger_entries','accounting_kenya_settings','accounting_kenya_tax_mappings','accounting_kenya_sync_runs',
+    'accounting_reconciliation_suggestions', 'accounting_payment_batches', 'accounting_payment_allocations','accounting_tax_codes','accounting_tax_groups','accounting_tax_group_lines','accounting_tax_ledger_entries','accounting_kenya_settings','accounting_kenya_tax_mappings','accounting_kenya_sync_runs','accounting_localization_settings','accounting_localization_report_boxes','accounting_localization_report_rules','accounting_localization_report_runs','accounting_localization_pack_history',
   ],
   inventory: [
     'inventory_lots',
