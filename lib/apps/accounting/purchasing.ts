@@ -131,7 +131,7 @@ export async function getAccountingPurchasing(input: { page?: unknown } = {}): P
   try {
     await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
 
-    const [policies,vendors,requisitions,orders,orderLines,bills,exceptions,counts]=await Promise.all([
+    const [policies,vendors,requisitions,requisitionLines,orders,orderLines,bills,exceptions,counts]=await Promise.all([
       client.query(
         `SELECT id::text,name,min_amount::text,max_amount::text,approver_role,approver_user_id::text,
                 require_receipt,require_three_way_match,quantity_tolerance_percent::text,
@@ -156,6 +156,15 @@ export async function getAccountingPurchasing(input: { page?: unknown } = {}): P
          ORDER BY created_at DESC,id DESC
          LIMIT 50 OFFSET $2`,
         [context.companyId,(page-1)*50],
+      ),
+      client.query(
+        `SELECT id::text,requisition_id::text,description,quantity::text,estimated_unit_price::text,
+                estimated_total::text,preferred_vendor_id::text,expense_account_id::text
+         FROM accounting_purchase_requisition_lines
+         WHERE company_id=$1 AND deleted_at IS NULL
+         ORDER BY requisition_id,sequence,created_at,id
+         LIMIT 1000`,
+        [context.companyId],
       ),
       client.query(
         `SELECT po.id::text,po.purchase_order_number,po.requisition_id::text,po.vendor_id::text,
@@ -240,6 +249,7 @@ export async function getAccountingPurchasing(input: { page?: unknown } = {}): P
       policies: policies.rows as AccountingPurchasingWorkspace["policies"],
       vendors: vendors.rows as AccountingPurchasingWorkspace["vendors"],
       requisitions: requisitions.rows as AccountingPurchasingWorkspace["requisitions"],
+      requisitionLines: requisitionLines.rows as AccountingPurchasingWorkspace["requisitionLines"],
       orders: orders.rows as AccountingPurchasingWorkspace["orders"],
       orderLines: orderLines.rows as AccountingPurchasingWorkspace["orderLines"],
       bills: bills.rows as AccountingPurchasingWorkspace["bills"],
