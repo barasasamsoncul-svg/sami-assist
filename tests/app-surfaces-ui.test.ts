@@ -977,3 +977,44 @@ test(
     );
   },
 );
+
+
+test(
+  'Accounting Expenses keeps claims in Expenses and exposes the financial settlement workflow',
+  async () => {
+    const [workspace, expenses] = await Promise.all([
+      readFile('app/apps/accounting/AccountingWorkspace.tsx','utf8'),
+      readFile('app/apps/accounting/AccountingExpenses.tsx','utf8'),
+    ]);
+
+    assert.match(
+      workspace,
+      /Expenses & Reimbursements[\s\S]*\/expenses/,
+      'Accounting sidebar must expose a dedicated Expenses & Reimbursements route.',
+    );
+
+    for (const marker of [
+      'Expense financial control',
+      'Open Expenses',
+      'Category mapping',
+      'Expense control accounts',
+      'Approval-to-ledger queue',
+      'Post reimbursement',
+      'Reimbursement history',
+      'Claims stay in Expenses',
+    ]) {
+      assert.match(expenses,new RegExp(marker),'Expense Accounting UI must expose '+marker+'.');
+    }
+
+    assert.match(
+      expenses,
+      /!data\.expensesAvailable[\s\S]*Expenses integration is not initialized/,
+      'Accounting must remain usable when the optional Expenses app is unavailable.',
+    );
+    assert.match(
+      expenses,
+      /partial|partially_reimbursed/,
+      'The UI must support partial reimbursement state.',
+    );
+  },
+);
