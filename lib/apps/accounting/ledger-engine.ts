@@ -526,26 +526,15 @@ async function assertPostingAccounts(
     await client.query(
       `
         SELECT
-          a.id::text,
-          a.is_active,
-          a.allow_manual_posting,
-          EXISTS (
-            SELECT 1
-            FROM accounting_bank_accounts b
-            JOIN companies c
-              ON c.id=b.company_id
-            WHERE b.company_id=a.company_id
-              AND b.ledger_account_id=a.id
-              AND b.deleted_at IS NULL
-              AND b.status <> 'closed'
-              AND UPPER(b.currency) <> UPPER(c.currency)
-          ) AS foreign_financial_account
-        FROM accounts a
-        WHERE a.company_id = $1
-          AND a.id = ANY(
+          id::text,
+          is_active,
+          allow_manual_posting
+        FROM accounts
+        WHERE company_id = $1
+          AND id = ANY(
             $2::uuid[]
           )
-          AND a.deleted_at IS NULL
+          AND deleted_at IS NULL
         FOR SHARE
       `,
       [
@@ -581,20 +570,96 @@ async function assertPostingAccounts(
     );
   }
 
+  /*
+   * Foreign financial-account protection is intentionally optional-table-aware.
+   *
+   * The ledger engine is also used by bootstrap/migration tests that create
+   * only the core journals/accounts schema. It must therefore never require
+   * later Accounting surfaces merely to validate an ordinary journal.
+   *
+   * When the FX and Bank/Cash subledgers are installed, however, a manual
+   * journal must not touch a foreign financial account because doing so would
+   * change the base GL without changing its foreign-amount subledger.
+   */
   if (
-    manualOnly &&
-    accounts.rows.some(
-      row =>
-        row.foreign_financial_account ===
-        true,
-    )
+    manualOnly
   ) {
-    throw new LedgerPostingError(
-      'Manual journals cannot post directly to a foreign-currency financial account. Use Accounting → Foreign Currency so the base ledger and foreign subledger stay synchronized.',
-    );
+    const optionalTables =
+      await client.query(
+        `
+          SELECT
+            to_regclass(
+              'public.accounting_bank_accounts'
+            ) IS NOT NULL
+              AS bank_accounts_present,
+            to_regclass(
+              'public.accounting_fx_currencies'
+            ) IS NOT NULL
+              AS fx_currencies_present
+        `,
+      );
+
+    if (
+      optionalTables.rows[0]
+        ?.bank_accounts_present ===
+        true &&
+      optionalTables.rows[0]
+        ?.fx_currencies_present ===
+        true
+    ) {
+      const foreignFinancial =
+        await client.query(
+          `
+            SELECT
+              b.ledger_account_id::text
+            FROM accounting_bank_accounts b
+
+            INNER JOIN accounting_fx_currencies base
+              ON base.company_id =
+                 b.company_id
+
+             AND base.is_base =
+                 TRUE
+
+            WHERE b.company_id =
+                  $1
+
+              AND b.ledger_account_id =
+                  ANY(
+                    $2::uuid[]
+                  )
+
+              AND b.deleted_at
+                  IS NULL
+
+              AND b.status <>
+                  'closed'
+
+              AND UPPER(
+                    b.currency
+                  ) <>
+                  UPPER(
+                    base.code
+                  )
+
+            LIMIT 1
+          `,
+          [
+            companyId,
+            ids,
+          ],
+        );
+
+      if (
+        foreignFinancial.rows[0]
+      ) {
+        throw new LedgerPostingError(
+          'Manual journals cannot post directly to a foreign-currency financial account. Use Accounting → Foreign Currency so the base ledger and foreign subledger stay synchronized.',
+        );
+      }
+    }
   }
 }
-
 
 function deterministicJournalNumber(
   sourceModule:
