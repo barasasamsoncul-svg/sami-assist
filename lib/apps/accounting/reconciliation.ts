@@ -23,6 +23,7 @@ import {
   decimalAmount,
   minorUnits,
 } from "./validation";
+import { foreignDecimal,fxForeignUnits } from "./fx-rules";
 import type {
   AccountingReconciliationCandidate,
   AccountingReconciliationWorkspace,
@@ -1949,7 +1950,7 @@ export async function reverseReconciliation(input: unknown) {
       });
       reversalJournalId = reversal.journalId;
 
-      const reverseForeign = signedCents(reconciliation.statement_foreign_amount) * BigInt(-1);
+      const reverseForeign = fxForeignUnits(reconciliation.statement_foreign_amount) * BigInt(-1);
       const reverseBase = signedCents(reconciliation.statement_base_amount) * BigInt(-1);
       await recordForeignReconciliationMovement(client,{
         companyId:context.companyId,
@@ -1960,7 +1961,7 @@ export async function reverseReconciliation(input: unknown) {
         movementDate:reversalDate,
         currency:String(reconciliation.statement_currency),
         baseCurrency:String(reconciliation.base_currency),
-        foreignAmount:decimalAmount(reverseForeign),
+        foreignAmount:foreignDecimal(reverseForeign),
         baseAmount:decimalAmount(reverseBase),
         exchangeRate:String(reconciliation.statement_exchange_rate),
         userId:context.userId,
