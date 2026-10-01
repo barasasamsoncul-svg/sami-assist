@@ -255,7 +255,11 @@ export async function loadStandaloneEnterpriseApp(
    * polling/focus refresh afterwards. Starting from zero keeps the app shell
    * fast without losing notification functionality.
    */
-  const notifications =
+  const notifications:
+    {
+      unreadCount: number;
+    } |
+    null =
     null;
 
   if (
