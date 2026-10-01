@@ -557,9 +557,10 @@ async function financialAccount(
   id: string,
 ) {
   const result = await client.query(
-    `SELECT id::text,name,account_type,currency,status
-     FROM accounting_bank_accounts
-     WHERE company_id=$1 AND id=$2 AND deleted_at IS NULL
+    `SELECT b.id::text,b.name,b.account_type,b.currency,b.status,c.currency AS company_currency
+     FROM accounting_bank_accounts b
+     JOIN companies c ON c.id=b.company_id
+     WHERE b.company_id=$1 AND b.id=$2 AND b.deleted_at IS NULL
      LIMIT 1`,
     [companyId,id],
   );
@@ -575,6 +576,43 @@ async function financialAccount(
   }
 
   return row;
+}
+
+
+async function statementRate(
+  client: PoolClient,
+  companyId: string,
+  accountCurrency: string,
+  baseCurrency: string,
+  transactionDate: string,
+) {
+  if (accountCurrency === baseCurrency) return "1.00000000";
+
+  const result = await client.query(
+    `SELECT rate_to_base::text
+     FROM accounting_exchange_rates
+     WHERE company_id=$1
+       AND currency=$2
+       AND base_currency=$3
+       AND is_active=TRUE
+       AND effective_date<=$4
+       AND rate_type='spot'
+     ORDER BY effective_date DESC,
+       CASE source_type WHEN 'manual' THEN 0 WHEN 'provider' THEN 1 WHEN 'invoicing' THEN 2 ELSE 3 END,
+       id DESC
+     LIMIT 1`,
+    [companyId,accountCurrency,baseCurrency,transactionDate],
+  );
+
+  if (!result.rows[0]) {
+    throw new AccountingInputError(
+      "No spot exchange rate is available for " +
+      accountCurrency + "/" + baseCurrency +
+      " on or before " + transactionDate + ". Add the rate in Accounting → Foreign Currency.",
+    );
+  }
+
+  return String(result.rows[0].rate_to_base);
 }
 
 
@@ -594,6 +632,7 @@ async function createImportBatch(
     statementTo?: string | null;
     openingBalance?: string | null;
     closingBalance?: string | null;
+    currency: string;
   },
 ) {
   await client.query(
@@ -647,17 +686,17 @@ async function createImportBatch(
     `INSERT INTO accounting_statement_import_batches (
        company_id,bank_account_id,feed_connection_id,request_key,request_hash,
        source_type,source_filename,source_sha256,statement_from,statement_to,
-       opening_balance,closing_balance,status,imported_by,created_by,updated_by
+       opening_balance,closing_balance,currency,status,imported_by,created_by,updated_by
      )
      VALUES (
-       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'imported',$13,$13,$13
+       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'imported',$14,$14,$14
      )
      RETURNING id::text`,
     [
       input.companyId,input.bankAccountId,input.feedConnectionId || null,
       input.key,input.hash,input.sourceType,input.filename || null,input.sourceSha || null,
       input.statementFrom || null,input.statementTo || null,
-      input.openingBalance || null,input.closingBalance || null,input.userId,
+      input.openingBalance || null,input.closingBalance || null,input.currency,input.userId,
     ],
   );
 
@@ -676,6 +715,8 @@ async function importNormalizedTransactions(
     bankAccountId: string;
     batchId: string;
     sourceType: AccountingStatementSourceType;
+    accountCurrency: string;
+    baseCurrency: string;
     transactions: NormalizedStatementTransaction[];
   },
 ) {
@@ -696,6 +737,11 @@ async function importNormalizedTransactions(
     await client.query("SAVEPOINT " + savepoint);
 
     try {
+      const exchangeRate = await statementRate(
+        client,input.companyId,input.accountCurrency,input.baseCurrency,transaction.transactionDate,
+      );
+      const baseAmount = convertForeignToBase(transaction.amount,exchangeRate);
+
       const duplicate = await client.query(
         `SELECT id::text
          FROM accounting_bank_statement_lines
@@ -721,16 +767,18 @@ async function importNormalizedTransactions(
           `INSERT INTO accounting_statement_import_rows (
              company_id,batch_id,row_number,transaction_date,value_date,description,
              external_reference,external_transaction_id,counterparty,amount,fingerprint,
+             currency,exchange_rate,base_amount,
              import_status,duplicate_of_line_id,raw_payload,created_by,updated_by
            )
            VALUES (
-             $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'duplicate',$12,$13::jsonb,$14,$14
+             $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'duplicate',$15,$16::jsonb,$17,$17
            )`,
           [
             input.companyId,input.batchId,rowNumber,transaction.transactionDate,
             transaction.valueDate,transaction.description,transaction.externalReference,
             transaction.externalTransactionId,transaction.counterparty,transaction.amount,
-            fp,String(duplicate.rows[0].id),JSON.stringify(transaction.raw),input.userId,
+            fp,input.accountCurrency,exchangeRate,baseAmount,
+            String(duplicate.rows[0].id),JSON.stringify(transaction.raw),input.userId,
           ],
         );
         await client.query("RELEASE SAVEPOINT " + savepoint);
@@ -742,17 +790,18 @@ async function importNormalizedTransactions(
         `INSERT INTO accounting_statement_import_rows (
            company_id,batch_id,row_number,transaction_date,value_date,description,
            external_reference,external_transaction_id,counterparty,amount,fingerprint,
+           currency,exchange_rate,base_amount,
            import_status,raw_payload,created_by,updated_by
          )
          VALUES (
-           $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'pending',$12::jsonb,$13,$13
+           $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'pending',$15::jsonb,$16,$16
          )
          RETURNING id::text`,
         [
           input.companyId,input.batchId,rowNumber,transaction.transactionDate,
           transaction.valueDate,transaction.description,transaction.externalReference,
           transaction.externalTransactionId,transaction.counterparty,transaction.amount,
-          fp,JSON.stringify(transaction.raw),input.userId,
+          fp,input.accountCurrency,exchangeRate,baseAmount,JSON.stringify(transaction.raw),input.userId,
         ],
       );
 
@@ -762,10 +811,10 @@ async function importNormalizedTransactions(
            company_id,bank_account_id,transaction_date,description,external_reference,amount,
            reconciliation_status,import_batch_id,import_row_id,source_type,
            external_transaction_id,fingerprint,value_date,counterparty,raw_details,
-           created_by,updated_by
+           currency,exchange_rate,base_amount,created_by,updated_by
          )
          VALUES (
-           $1,$2,$3,$4,$5,$6,'unmatched',$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$15
+           $1,$2,$3,$4,$5,$6,'unmatched',$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17,$18,$18
          )
          RETURNING id::text`,
         [
@@ -773,7 +822,7 @@ async function importNormalizedTransactions(
           transaction.description,transaction.externalReference,transaction.amount,
           input.batchId,rowId,input.sourceType,transaction.externalTransactionId,fp,
           transaction.valueDate,transaction.counterparty,JSON.stringify(transaction.raw),
-          input.userId,
+          input.accountCurrency,exchangeRate,baseAmount,input.userId,
         ],
       );
 
@@ -864,7 +913,7 @@ export async function getAccountingStatements(
       client.query(
         `SELECT b.id::text,b.bank_account_id::text,a.name AS bank_account_name,b.source_type,
                 b.source_filename,b.statement_from::text,b.statement_to::text,
-                b.opening_balance::text,b.closing_balance::text,b.total_rows,b.imported_rows,
+                b.opening_balance::text,b.closing_balance::text,b.currency,b.total_rows,b.imported_rows,
                 b.duplicate_rows,b.error_rows,b.status,b.imported_at::text
          FROM accounting_statement_import_batches b
          JOIN accounting_bank_accounts a
@@ -915,6 +964,7 @@ export async function getAccountingStatements(
       ? await client.query(
           `SELECT id::text,batch_id::text,row_number,transaction_date::text,value_date::text,
                   description,external_reference,external_transaction_id,counterparty,amount::text,
+                  currency,exchange_rate::text,base_amount::text,
                   import_status,error_message,statement_line_id::text,duplicate_of_line_id::text
            FROM accounting_statement_import_rows
            WHERE company_id=$1 AND batch_id=$2 AND deleted_at IS NULL
@@ -996,7 +1046,7 @@ export async function importStatementFile(input: unknown) {
 
   try {
     await client.query("BEGIN");
-    await financialAccount(client,context.companyId,bankAccountId);
+    const account = await financialAccount(client,context.companyId,bankAccountId);
     await client.query(
       "SELECT pg_advisory_xact_lock(hashtext($1))",
       ["accounting:statement-account:" + bankAccountId],
@@ -1007,6 +1057,7 @@ export async function importStatementFile(input: unknown) {
       key,hash,sourceType:type,filename,sourceSha,
       statementFrom:transactions.map(t=>t.transactionDate).sort()[0] || null,
       statementTo:transactions.map(t=>t.transactionDate).sort().at(-1) || null,
+      currency:String(account.currency).toUpperCase(),
     });
 
     if (batch.replayed) {
@@ -1016,7 +1067,10 @@ export async function importStatementFile(input: unknown) {
 
     const result = await importNormalizedTransactions(client,{
       companyId:context.companyId,userId:context.userId,bankAccountId,
-      batchId:batch.id,sourceType:type,transactions,
+      batchId:batch.id,sourceType:type,
+      accountCurrency:String(account.currency).toUpperCase(),
+      baseCurrency:String(account.company_currency).toUpperCase(),
+      transactions,
     });
 
     await client.query("COMMIT");
@@ -1160,7 +1214,7 @@ export async function ingestNormalizedFeed(input: unknown) {
       throw new AccountingInputError("Feed connection must be active before syncing.");
     }
 
-    await financialAccount(
+    const account = await financialAccount(
       client,context.companyId,String(connection.bank_account_id),
     );
     await client.query(
@@ -1178,6 +1232,7 @@ export async function ingestNormalizedFeed(input: unknown) {
       feedConnectionId:connectionId,key,hash,sourceType:"feed",
       statementFrom:transactions.map(t=>t.transactionDate).sort()[0] || null,
       statementTo:transactions.map(t=>t.transactionDate).sort().at(-1) || null,
+      currency:String(account.currency).toUpperCase(),
     });
 
     if (batch.replayed) {
@@ -1188,7 +1243,10 @@ export async function ingestNormalizedFeed(input: unknown) {
     const result = await importNormalizedTransactions(client,{
       companyId:context.companyId,userId:context.userId,
       bankAccountId:String(connection.bank_account_id),
-      batchId:batch.id,sourceType:"feed",transactions,
+      batchId:batch.id,sourceType:"feed",
+      accountCurrency:String(account.currency).toUpperCase(),
+      baseCurrency:String(account.company_currency).toUpperCase(),
+      transactions,
     });
 
     await client.query(
