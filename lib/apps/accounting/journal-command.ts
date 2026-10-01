@@ -43,14 +43,46 @@ export async function saveBalancedJournalDraft(
       throw new AccountingInputError(
         "Every line must use an active account belonging to this company.",
       );
+    const settings = await client.query(
+      `
+        SELECT
+          global_lock_date::text,
+          require_open_period
+        FROM accounting_settings
+        WHERE company_id = $1
+          AND deleted_at IS NULL
+        LIMIT 1
+        FOR SHARE
+      `,
+      [scope.companyId],
+    );
+
+    const policy = settings.rows[0] || {
+      global_lock_date: null,
+      require_open_period: true,
+    };
+
+    if (
+      policy.global_lock_date &&
+      input.journalDate <= policy.global_lock_date
+    )
+      throw new AccountingInputError(
+        "This journal date is on or before the company Accounting lock date.",
+      );
+
     const periods = await client.query(
       `SELECT id,status,lock_date::text FROM accounting_fiscal_periods WHERE company_id=$1 AND deleted_at IS NULL AND $2::date BETWEEN starts_on AND ends_on FOR SHARE`,
       [scope.companyId, input.journalDate],
     );
-    if (!periods.rows.length)
+
+    if (
+      policy.require_open_period !== false &&
+      !periods.rows.length
+    )
       throw new AccountingInputError(
         "Create an open fiscal period covering this journal date first.",
       );
+
     if (
       periods.rows.some(
         (row) =>

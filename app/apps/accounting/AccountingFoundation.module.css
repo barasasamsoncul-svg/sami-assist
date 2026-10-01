@@ -489,3 +489,210 @@
     width: 100%;
   }
 }
+
+
+.setupSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border: 1px solid var(--sami-border);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 90% 0%, color-mix(in srgb, var(--sami-brand) 12%, transparent), transparent 36%),
+    var(--sami-surface);
+  padding: 20px 22px;
+}
+.setupSummary h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+}
+.setupSummaryBadge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--sami-border-strong);
+  border-radius: 999px;
+  background: var(--sami-surface-soft);
+  padding: 9px 12px;
+  color: var(--foreground);
+  font-size: 11px;
+  font-weight: 800;
+}
+.setupSection {
+  min-width: 0;
+  border: 1px solid var(--sami-border);
+  border-radius: 18px;
+  background: var(--sami-surface);
+  padding: 22px;
+}
+.setupSectionHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.setupSectionHeading h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+}
+.setupGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.setupAccountGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.fieldHint {
+  display: block;
+  color: var(--sami-muted);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.toggleField {
+  display: flex !important;
+  min-width: 0 !important;
+  flex-direction: row !important;
+  align-items: flex-start;
+  gap: 10px !important;
+  border: 1px solid var(--sami-border);
+  border-radius: 12px;
+  background: var(--sami-surface-soft);
+  padding: 13px;
+}
+.toggleField input {
+  width: 18px !important;
+  min-height: 18px !important;
+  height: 18px;
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+.toggleField span {
+  min-width: 0;
+}
+.toggleField strong {
+  display: block;
+  font-size: 12px;
+}
+.toggleField small {
+  display: block;
+  margin-top: 4px;
+  color: var(--sami-muted);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.setupSaveBar {
+  position: sticky;
+  bottom: 12px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border: 1px solid var(--sami-border-strong);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--sami-surface) 94%, transparent);
+  padding: 14px 16px;
+  box-shadow: var(--sami-shadow-lg);
+  backdrop-filter: blur(14px);
+}
+.setupSaveBar strong {
+  font-size: 12px;
+}
+.setupSaveBar p {
+  margin-top: 3px;
+  font-size: 10px;
+}
+.feedbackOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 18px;
+}
+.feedbackCard {
+  pointer-events: auto;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: flex-start;
+  width: min(430px, calc(100vw - 36px));
+  border: 1px solid var(--sami-border-strong);
+  border-radius: 16px;
+  background: var(--sami-surface);
+  padding: 14px;
+  box-shadow: var(--sami-shadow-lg);
+}
+.feedbackCard strong {
+  display: block;
+  font-size: 12px;
+}
+.feedbackCard p {
+  margin-top: 3px;
+  font-size: 11px;
+}
+.feedbackCard button {
+  display: inline-flex;
+  height: 28px;
+  width: 28px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--sami-border);
+  border-radius: 8px;
+  background: var(--sami-surface-soft);
+  color: var(--foreground);
+  font-size: 18px;
+  line-height: 1;
+}
+.feedbackSuccess {
+  border-left: 4px solid #16a34a;
+}
+.feedbackError {
+  border-left: 4px solid #dc2626;
+}
+
+@media (max-width: 900px) {
+  .setupGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .setupAccountGrid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 620px) {
+  .setupSummary,
+  .setupSaveBar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .setupSummaryBadge {
+    max-width: 100%;
+  }
+  .setupSection {
+    padding: 16px;
+  }
+  .setupGrid {
+    grid-template-columns: 1fr;
+  }
+  .setupSaveBar .primary {
+    width: 100%;
+  }
+  .feedbackOverlay {
+    padding: 12px;
+  }
+  .feedbackCard {
+    width: 100%;
+  }
+}

@@ -1,5 +1,6 @@
 export const SPECIALIST_ENTERPRISE_TABLES = {
   accounting: [
+    'accounting_settings',
     'accounting_fiscal_periods',
     'accounting_bank_accounts',
     'accounting_bank_statement_lines',

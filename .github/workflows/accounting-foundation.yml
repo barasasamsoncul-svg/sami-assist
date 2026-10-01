@@ -6,7 +6,15 @@ on:
       - 'app/apps/accounting/**'
       - 'app/api/apps/accounting/**'
       - 'lib/apps/accounting/**'
+      - 'lib/apps/enterprise/catalog.ts'
+      - 'lib/apps/enterprise/domain-hooks.ts'
+      - 'lib/apps/enterprise/specialist-catalog.ts'
+      - 'lib/apps/enterprise/specialist-depth.ts'
+      - 'lib/apps/runtime-migrations.ts'
+      - 'lib/modules/enterprise-contract.ts'
+      - 'lib/modules/first-party.ts'
       - 'tests/accounting-foundation.test.mjs'
+      - 'tests/module-migrations.test.mjs'
       - '.github/workflows/accounting-foundation.yml'
   push:
     branches: [main]
@@ -14,7 +22,15 @@ on:
       - 'app/apps/accounting/**'
       - 'app/api/apps/accounting/**'
       - 'lib/apps/accounting/**'
+      - 'lib/apps/enterprise/catalog.ts'
+      - 'lib/apps/enterprise/domain-hooks.ts'
+      - 'lib/apps/enterprise/specialist-catalog.ts'
+      - 'lib/apps/enterprise/specialist-depth.ts'
+      - 'lib/apps/runtime-migrations.ts'
+      - 'lib/modules/enterprise-contract.ts'
+      - 'lib/modules/first-party.ts'
       - 'tests/accounting-foundation.test.mjs'
+      - 'tests/module-migrations.test.mjs'
       - '.github/workflows/accounting-foundation.yml'
 permissions:
   contents: read

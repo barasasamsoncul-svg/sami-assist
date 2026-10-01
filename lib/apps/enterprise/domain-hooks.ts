@@ -62,6 +62,17 @@ export function assertEnterpriseDomainMutationAllowed(
 ) {
   if (
     moduleKey ===
+      'accounting' &&
+    table ===
+      'accounting_settings'
+  ) {
+    throw new Error(
+      'Accounting policy must be changed through the validated Accounting Setup workspace.',
+    );
+  }
+
+  if (
+    moduleKey ===
       'inventory' &&
     table ===
       'stock_movements' &&

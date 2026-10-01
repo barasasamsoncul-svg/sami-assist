@@ -28,7 +28,7 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
   defineSamiModule({
     key: "accounting",
     name: "Accounting",
-    version: '1.0.0',
+    version: '2.4.0',
     description: "Manage accounts, journals, balances and financial reporting.",
     category: "finance",
     icon: "calculator",

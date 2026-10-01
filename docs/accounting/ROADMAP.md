@@ -14,9 +14,12 @@ Implemented in this change:
 
 This is the first usable slice, not completion of the full Accounting module. New manual entries are saved as drafts; this change does not introduce a new posting/reversal/approval engine. Invoicing's existing postings continue to feed the same ledger. Financial reports currently select `status = 'posted'` and use the existing two-decimal ledger amounts in company currency.
 
+## Completed depth
+
+1. Accounting setup: full validated company configuration, fiscal-year policy, control-account mappings, tax/cash/FX/write-off/rounding defaults, global lock date, open-period enforcement, dedicated setup UI/API, audited saves and migration-backed fresh-install support.
+
 ## Remaining depth, in the agreed order
 
-1. Accounting setup: full validated configuration and account mappings.
 2. Chart of accounts: dedicated editor, industry templates, account protections and hierarchy.
 3. Double-entry ledger: enforce posting invariants across every writer; review existing status/reversal semantics.
 4. Journals: dedicated review/detail, approval, atomic posting and reversal, recurring journals.
