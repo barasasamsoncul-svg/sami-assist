@@ -341,7 +341,7 @@ test('Accounting 2.4 setup schema is migration-backed and available on fresh ins
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.6\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.7\.0'/,
   );
 
   assert.match(
@@ -436,7 +436,7 @@ test('Accounting 2.5 Chart of Accounts is migration-backed and company scoped', 
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.6\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.7\.0'/,
   );
 
   assert.match(
@@ -519,7 +519,7 @@ test('Accounting 2.6 centralizes double-entry posting and reversal invariants', 
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.6\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.7\.0'/,
   );
 
   assert.match(
@@ -601,4 +601,70 @@ test('Accounting 2.6 centralizes double-entry posting and reversal invariants', 
     /source_module[\s\S]*'accounting'[\s\S]*'manual_journal'/,
     'Manual drafts must carry Accounting provenance.',
   );
+});
+
+
+test('Accounting 2.7 journal workflow is migration-backed and fresh-install complete', async () => {
+  const [
+    firstParty,
+    runtimeMigrations,
+    migration,
+    specialistDepth,
+    catalog,
+    specialistCatalog,
+    ledgerEngine,
+    journalService,
+  ] = await Promise.all([
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/apps/accounting/migrations/2.6.0-to-2.7.0.ts'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+    source('lib/apps/enterprise/catalog.ts'),
+    source('lib/apps/enterprise/specialist-catalog.ts'),
+    source('lib/apps/accounting/ledger-engine.ts'),
+    source('lib/apps/accounting/journals.ts'),
+  ]);
+
+  assert.match(
+    firstParty,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.7\.0'/,
+  );
+
+  assert.match(runtimeMigrations, /ACCOUNTING_2_6_0_TO_2_7_0/);
+  assert.match(
+    migration,
+    /fromVersion:\s*'2\.6\.0'[\s\S]*toVersion:\s*'2\.7\.0'/,
+  );
+
+  for (const marker of [
+    'approved_by',
+    'approved_at',
+    'approval_note',
+    'posted_by',
+    'accounting_recurring_journals',
+    'accounting_recurring_journal_lines',
+    'idx_accounting_recurring_due',
+  ]) {
+    assert.match(migration, new RegExp(marker));
+    assert.match(specialistDepth, new RegExp(marker));
+  }
+
+  assert.match(
+    catalog,
+    /accounting_recurring_journals[\s\S]*accounting_recurring_journal_lines/,
+  );
+  assert.match(
+    specialistCatalog,
+    /accounting_recurring_journals[\s\S]*accounting_recurring_journal_lines/,
+  );
+  assert.match(ledgerEngine, /postApprovedManualLedgerJournal/);
+  assert.match(
+    ledgerEngine,
+    /status = 'posted'[\s\S]*posted_at = NOW\(\)[\s\S]*posted_by = \$3/,
+    'Approved manual journals must be promoted atomically on the same record.',
+  );
+  assert.match(journalService, /approveAccountingJournal/);
+  assert.match(journalService, /createRecurringAccountingJournal/);
+  assert.match(journalService, /generateRecurringAccountingJournal/);
+  assert.match(journalService, /reversePostedLedgerJournal/);
 });
