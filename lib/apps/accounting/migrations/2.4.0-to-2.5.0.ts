@@ -27,6 +27,25 @@ const SQL = `
       CHECK (sequence >= 0),
     ADD COLUMN IF NOT EXISTS template_key VARCHAR(80);
 
+  UPDATE public.accounts
+  SET normal_balance =
+    CASE
+      WHEN account_type LIKE 'liability%'
+        OR account_type LIKE 'equity%'
+        OR account_type LIKE 'income%'
+      THEN 'credit'
+      ELSE 'debit'
+    END
+  WHERE normal_balance IS NULL
+     OR normal_balance = 'debit';
+
+  ALTER TABLE public.accounts
+    DROP CONSTRAINT IF EXISTS accounts_code_key;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_accounts_company_code
+    ON public.accounts(company_id, code)
+    WHERE deleted_at IS NULL;
+
   CREATE INDEX IF NOT EXISTS idx_accounts_company_parent
     ON public.accounts(company_id, parent_account_id, code)
     WHERE deleted_at IS NULL;
