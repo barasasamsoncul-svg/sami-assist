@@ -787,6 +787,14 @@ export async function reversePayablesDocument(input: unknown) {
       [context.companyId,documentId],
     );
     if (apps.rows[0]) throw new AccountingInputError("Reverse vendor credit applications before reversing this document.");
+    const payments = await client.query(
+      `SELECT 1 FROM accounting_payment_allocations a
+       JOIN accounting_payment_batches b ON b.company_id=a.company_id AND b.id=a.batch_id
+       WHERE a.company_id=$1 AND a.bill_document_id=$2 AND b.status='posted'
+         AND a.deleted_at IS NULL AND b.deleted_at IS NULL LIMIT 1`,
+      [context.companyId,documentId],
+    );
+    if (payments.rows[0]) throw new AccountingInputError("Reverse the vendor payment before reversing this bill.");
     const reversal = await reversePostedLedgerJournal(client,{
       companyId: context.companyId,userId: context.userId,
       originalJournalId: String(doc.posted_journal_id),journalDate: reversalDate,

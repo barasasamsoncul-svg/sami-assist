@@ -1,3 +1,4 @@
+import { ACCOUNTING_PAYMENTS_SQL } from '@/lib/apps/accounting/payments-schema';
 import 'server-only';
 
 import {
@@ -1747,6 +1748,7 @@ ALTER TABLE public.accounting_bank_statement_lines
     l.description,
     l.debit,
     l.credit;
+${ACCOUNTING_PAYMENTS_SQL}
 `;
 }
 

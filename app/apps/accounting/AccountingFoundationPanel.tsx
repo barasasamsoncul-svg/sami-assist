@@ -31,6 +31,7 @@ export const ACCOUNTING_SECTIONS = [
   "bank-cash",
   "statements",
   "reconciliation",
+  "payments",
   "setup",
 ] as const;
 export type AccountingSection = (typeof ACCOUNTING_SECTIONS)[number];
@@ -106,6 +107,7 @@ export default function AccountingFoundationPanel({
     "bank-cash": "Bank, cash & mobile money",
     statements: "Statements & feeds",
     reconciliation: "Reconciliation",
+    payments: "Payments & settlements",
     setup: "Accounting setup",
   };
   const descriptions = {
@@ -137,6 +139,7 @@ export default function AccountingFoundationPanel({
       "Manage bank accounts, cash tills and mobile-money wallets against the authoritative ledger, including controlled internal transfers.",
     statements:
       "Import CSV, OFX and QIF statements, inspect duplicates and errors, and manage provider-neutral feed adapters before reconciliation.",
+    payments: "Prepare vendor payment batches and record provider settlements with their fees.",
     reconciliation:
       "Match statement lines to posted bank-ledger movement, split allocations, apply controlled adjustment rules and preserve immutable reconciliation history.",
     setup:

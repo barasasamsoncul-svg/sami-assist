@@ -1,3 +1,5 @@
+import AccountingPayments from './AccountingPayments';
+import { getAccountingPayments } from '@/lib/apps/accounting/payments';
 import Link from 'next/link';
 
 import {
@@ -218,6 +220,8 @@ export default async function AccountingWorkspace({
     null =
       null;
 
+  let paymentsWorkspace: Awaited<ReturnType<typeof getAccountingPayments>> | null = null;
+
   let reconciliationWorkspace:
     Awaited<
       ReturnType<
@@ -249,6 +253,7 @@ export default async function AccountingWorkspace({
       'bank-cash' &&
     dedicatedSection !==
       'statements' &&
+    dedicatedSection !== 'payments' &&
     dedicatedSection !==
       'reconciliation'
   ) {
@@ -479,6 +484,11 @@ export default async function AccountingWorkspace({
           ? error.message
           : 'Statement imports and feeds could not be loaded.';
     }
+  }
+
+  if (dedicatedSection === 'payments') {
+    try { paymentsWorkspace = await getAccountingPayments(filters.page); }
+    catch (error) { foundationError = error instanceof AccountingInputError ? error.message : 'Payments could not be loaded. Retry this page.'; }
   }
 
   if (
@@ -818,6 +828,8 @@ export default async function AccountingWorkspace({
           .errorsThisMonth,
     },
 
+    {key: 'payments',label: 'Payments & settlements',href: appBaseHref + '/payments',description: 'Vendor payment batches and provider settlements.',sectionLabel: 'Banking'},
+
     {
       key:
         'reconciliation',
@@ -1016,6 +1028,8 @@ export default async function AccountingWorkspace({
                           </div>
                         )
                   )
+                : dedicatedSection === 'payments'
+                  ? (paymentsWorkspace ? <AccountingPayments data={paymentsWorkspace} canCreate={data.capabilities.canCreate} canTransition={data.capabilities.canTransition}/> : <div role="alert">{foundationError || 'Payments could not be loaded.'}</div>)
                 : dedicatedSection ===
                     'reconciliation'
                   ? (

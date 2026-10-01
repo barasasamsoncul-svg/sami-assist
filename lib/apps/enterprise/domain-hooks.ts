@@ -130,6 +130,8 @@ export function assertEnterpriseDomainMutationAllowed(
         'accounting_reconciliations' ||
       table ===
         'accounting_reconciliation_matches' ||
+      table === 'accounting_payment_batches' ||
+      table === 'accounting_payment_allocations' ||
       table ===
         'accounting_reconciliation_suggestions'
     )
