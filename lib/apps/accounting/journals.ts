@@ -613,7 +613,8 @@ export async function reverseAccountingJournal(
 
     if (
       String(journal.source_module || "") !== "accounting" ||
-      String(journal.posting_kind || "") === "system"
+      String(journal.posting_kind || "") === "system" ||
+      String(journal.source_type || "") === "opening_balance_batch"
     ) {
       throw new AccountingInputError(
         "This journal was posted by " +
