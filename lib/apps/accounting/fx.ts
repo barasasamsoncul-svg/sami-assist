@@ -201,7 +201,7 @@ export async function getAccountingFx(input:{asOf?:unknown}={}){
       FROM accounting_settings WHERE company_id=$1 AND deleted_at IS NULL LIMIT 1`,[context.companyId]),
   ]);
 
-  const positions=await getFxPositions(context,asOf,baseCurrency);
+  const positions=await getFxPositions(context,asOf,baseCurrency,'closing');
   const diagnostics:Array<{level:'info'|'warning'|'error';code:string;message:string}>=[];
   if(!setup.rows[0]?.fx_gain_account_id||!setup.rows[0]?.fx_loss_account_id)diagnostics.push({level:'error',code:'REALIZED_FX_ACCOUNTS_MISSING',message:'Map FX Gain and FX Loss accounts in Accounting Setup before posting foreign-currency settlements.'});
   const unrealizedGain=settings.rows[0]?.unrealized_gain_account_id||setup.rows[0]?.fx_unrealized_gain_account_id||setup.rows[0]?.fx_gain_account_id;
@@ -226,7 +226,7 @@ export async function getAccountingFx(input:{asOf?:unknown}={}){
 }
 export type AccountingFxWorkspace=Awaited<ReturnType<typeof getAccountingFx>>;
 
-async function getFxPositions(context:Context,asOf:string,baseCurrency:string){
+async function getFxPositions(context:Context,asOf:string,baseCurrency:string,rateType:'spot'|'closing'|'average'='closing'){
   const client=await context.pool.connect();
   try{
     const positions:Array<Record<string,unknown>>=[];
@@ -276,7 +276,7 @@ async function getFxPositions(context:Context,asOf:string,baseCurrency:string){
     for(const position of positions){
       const code=String(position.currency).toUpperCase();
       if(!rateCache.has(code)){
-        try{rateCache.set(code,await resolveRate(client,{companyId:context.companyId,baseCurrency,foreignCurrency:code,date:asOf,rateType:'closing'}));}
+        try{rateCache.set(code,await resolveRate(client,{companyId:context.companyId,baseCurrency,foreignCurrency:code,date:asOf,rateType}));}
         catch{rateCache.set(code,null);}
       }
       const resolved=rateCache.get(code);
@@ -432,7 +432,7 @@ export async function importInvoicingRates(){
 export async function generateFxRevaluation(input:unknown){
   const context=await requireEnterpriseModuleTableContext('accounting','accounting_fx_revaluation_runs','create');
   const body=bodyOf(input),asOf=accountingDate(body.asOf),rateType=choice(body.rateType||'closing',['closing','spot','average'] as const,'revaluation rate type');
-  const base=await ensureBaseCurrency(context),positions=await getFxPositions(context,asOf,base);
+  const base=await ensureBaseCurrency(context),positions=await getFxPositions(context,asOf,base,rateType);
   if(!positions.length)throw new AccountingInputError('No open foreign monetary positions require revaluation on this date.');
   const missing=positions.filter(row=>!row.closingRate);
   if(missing.length)throw new AccountingInputError(String(missing.length)+' foreign monetary position(s) are missing an exchange rate for '+asOf+'.');
