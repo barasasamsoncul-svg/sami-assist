@@ -1008,6 +1008,7 @@ ALTER TABLE public.accounting_settings
     expense_report_id UUID NOT NULL REFERENCES public.expense_reports(id) ON DELETE RESTRICT,
     employee_reference UUID,
     settlement_mode VARCHAR(30) NOT NULL,
+    settlement_account_id UUID NOT NULL REFERENCES public.accounts(id) ON DELETE RESTRICT,
     base_currency VARCHAR(3) NOT NULL,
     gross_base_amount NUMERIC(19,2) NOT NULL,
     net_expense_base_amount NUMERIC(19,2) NOT NULL,
@@ -1140,7 +1141,6 @@ ALTER TABLE public.accounting_settings
     p.employee_reference,
     p.base_currency,
     p.gross_base_amount;
-
 `;
 }
 
