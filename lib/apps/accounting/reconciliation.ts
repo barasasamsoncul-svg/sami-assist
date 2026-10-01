@@ -1327,7 +1327,24 @@ export async function createReconciliationRule(input: unknown) {
     );
 
     await client.query("COMMIT");
-    return { id:String(result.rows[0].id) };
+    const id = String(result.rows[0].id);
+
+    await recordWorkspaceAuditEvent({
+      tenantId:context.tenantId,
+      companyId:context.companyId,
+      userId:context.userId,
+      action:"accounting.reconciliation.rule_created",
+      module:"accounting",
+      resourceType:"accounting_reconciliation_rules",
+      resourceId:id,
+      summary:"Bank reconciliation adjustment rule created",
+      result:"success",
+      metadata:{ bankAccountId,targetAccountId,direction,priority },
+    }).catch(error =>
+      console.error("[Accounting] Reconciliation rule audit delivery failed",error),
+    );
+
+    return { id };
   } catch (error) {
     try { await client.query("ROLLBACK"); } catch {}
     throw error;
@@ -1362,6 +1379,21 @@ export async function changeReconciliationRuleStatus(input: unknown) {
   if (!result.rows[0]) {
     throw new AccountingInputError("Reconciliation rule not found.");
   }
+
+  await recordWorkspaceAuditEvent({
+    tenantId:context.tenantId,
+    companyId:context.companyId,
+    userId:context.userId,
+    action:"accounting.reconciliation.rule_status_changed",
+    module:"accounting",
+    resourceType:"accounting_reconciliation_rules",
+    resourceId:id,
+    summary:"Reconciliation rule status changed to " + status,
+    result:"success",
+    metadata:{ status },
+  }).catch(error =>
+    console.error("[Accounting] Reconciliation rule status audit delivery failed",error),
+  );
 
   return { id,status };
 }
@@ -1674,6 +1706,25 @@ export async function excludeStatementLine(input: unknown) {
 
     await client.query("COMMIT");
 
+    await recordWorkspaceAuditEvent({
+      tenantId:context.tenantId,
+      companyId:context.companyId,
+      userId:context.userId,
+      action:excluded
+        ? "accounting.reconciliation.statement_excluded"
+        : "accounting.reconciliation.statement_restored",
+      module:"accounting",
+      resourceType:"accounting_bank_statement_lines",
+      resourceId:statementLineId,
+      summary:excluded
+        ? "Statement line excluded from reconciliation"
+        : "Statement line restored to reconciliation",
+      result:"success",
+      metadata:{ reason },
+    }).catch(error =>
+      console.error("[Accounting] Statement exclusion audit delivery failed",error),
+    );
+
     return {
       statementLineId,
       reconciliationStatus:excluded ? "excluded" : "unmatched",
@@ -1712,9 +1763,26 @@ export async function dismissReconciliationSuggestion(input: unknown) {
     throw new AccountingInputError("Pending reconciliation suggestion not found.");
   }
 
+  const statementLineId = String(result.rows[0].statement_line_id);
+
+  await recordWorkspaceAuditEvent({
+    tenantId:context.tenantId,
+    companyId:context.companyId,
+    userId:context.userId,
+    action:"accounting.reconciliation.suggestion_dismissed",
+    module:"accounting",
+    resourceType:"accounting_reconciliation_suggestions",
+    resourceId:id,
+    summary:"Bank reconciliation suggestion dismissed",
+    result:"success",
+    metadata:{ statementLineId },
+  }).catch(error =>
+    console.error("[Accounting] Reconciliation suggestion audit delivery failed",error),
+  );
+
   return {
     id,
-    statementLineId:String(result.rows[0].statement_line_id),
+    statementLineId,
   };
 }
 
