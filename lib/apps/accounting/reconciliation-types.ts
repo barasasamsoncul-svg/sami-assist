@@ -44,6 +44,9 @@ export type AccountingReconciliationStatementLine = {
   external_reference: string | null;
   counterparty: string | null;
   amount: string;
+  currency: string;
+  exchange_rate: string;
+  base_amount: string;
   reconciliation_status: string;
   source_type: string;
   suggestion_count: number;
@@ -71,6 +74,9 @@ export type AccountingReconciliationRecord = {
   reconciliation_date: string;
   method: string;
   statement_amount: string;
+  statement_currency: string | null;
+  statement_foreign_amount: string | null;
+  statement_exchange_rate: string | null;
   matched_amount: string;
   difference_amount: string;
   status: string;
@@ -87,6 +93,7 @@ export type AccountingReconciliationWorkspace = {
     name: string;
     ledger_account_id: string | null;
     account_type: string;
+    currency: string;
     status: string;
   }>;
   statementLines: AccountingReconciliationStatementLine[];
