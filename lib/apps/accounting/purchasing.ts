@@ -286,7 +286,7 @@ export async function transitionPurchaseRequisition(input: unknown) {
     submit:{from:"draft",to:"submitted",extra:"submitted_at=NOW()"},
     approve:{from:"submitted",to:"approved",extra:"approved_by=$4,approved_at=NOW()"},
     reject:{from:"submitted",to:"rejected",extra:"rejected_by=$4,rejected_at=NOW(),rejection_reason=$5"},
-    cancel:{from:"draft",to:"cancelled",extra:"updated_at=NOW()"},
+    cancel:{from:"draft",to:"cancelled",extra:"submitted_at=submitted_at"},
   };
   const t=map[action];
   if (!t) throw new AccountingInputError("Choose submit, approve, reject or cancel.");
@@ -617,12 +617,12 @@ export async function matchVendorBillToPurchaseOrder(input: unknown) {
     const invoiced=minorUnits(bill.rows[0].base_total_amount);
     const received=minorUnits(receipt.rows[0]?.received_amount||"0");
     const amountVariance=invoiced-ordered;
-    const absAmount=amountVariance<0n?-amountVariance:amountVariance;
+    const absAmount=amountVariance<BigInt(0)?-amountVariance:amountVariance;
     const quantityVariance=Math.max(0,Number(receipt.rows[0]?.ordered_quantity||0)-Number(receipt.rows[0]?.received_quantity||0));
     const quantityVariancePct=Number(receipt.rows[0]?.ordered_quantity||0)>0
       ? quantityVariance/Number(receipt.rows[0].ordered_quantity)*100
       : 0;
-    const priceVariancePct=ordered>0n ? Math.abs(Number(invoiced-ordered)/Number(ordered))*100 : 0;
+    const priceVariancePct=ordered>BigInt(0) ? Math.abs(Number(invoiced-ordered)/Number(ordered))*100 : 0;
     const receiptRequired=Boolean(po.rows[0].require_receipt || po.rows[0].require_three_way_match);
     const matched=
       (!receiptRequired || Number(receipt.rows[0]?.received_quantity||0)>0) &&
