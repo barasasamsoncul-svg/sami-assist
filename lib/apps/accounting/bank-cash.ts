@@ -108,6 +108,33 @@ function shortText(
 }
 
 
+function signedLedgerCents(
+  value: unknown,
+) {
+  const raw = String(value ?? "0").trim();
+  const negative = raw.startsWith("-");
+  const unsigned = negative ? raw.slice(1) : raw;
+
+  if (!/^\d{1,18}(?:\.\d{1,8})?$/.test(unsigned)) {
+    throw new AccountingInputError(
+      "Financial-account balance is not a valid decimal value.",
+    );
+  }
+
+  const [whole, fraction = ""] = unsigned.split(".");
+  const padded = fraction.padEnd(3, "0");
+  let amount =
+    BigInt(whole || "0") * BigInt(100) +
+    BigInt(padded.slice(0, 2) || "0");
+
+  if (Number(padded[2] || "0") >= 5) {
+    amount += BigInt(1);
+  }
+
+  return negative ? -amount : amount;
+}
+
+
 function financialAccountType(
   value:
     unknown,
@@ -1287,7 +1314,7 @@ export async function changeFinancialAccountStatus(
         "closed"
     ) {
       if (
-        minorUnits(
+        signedLedgerCents(
           account.book_balance,
         ) !==
         BigInt(0)
@@ -1556,6 +1583,13 @@ export async function createInternalTransfer(
       };
     }
 
+    for (const lockId of [sourceId,destinationId].sort()) {
+      await client.query(
+        "SELECT pg_advisory_xact_lock(hashtext($1))",
+        ["accounting:financial-account:" + lockId],
+      );
+    }
+
     const [
       source,
       destination,
@@ -1619,7 +1653,7 @@ export async function createInternalTransfer(
     }
 
     const sourceBalance =
-      minorUnits(
+      signedLedgerCents(
         source.book_balance,
       );
 
