@@ -922,3 +922,58 @@ test(
     );
   },
 );
+
+
+test(
+  'Accounting Purchasing exposes the full procure-to-pay control workflow',
+  async () => {
+    const [
+      workspace,
+      purchasing,
+    ] = await Promise.all([
+      readFile(
+        'app/apps/accounting/AccountingWorkspace.tsx',
+        'utf8',
+      ),
+      readFile(
+        'app/apps/accounting/AccountingPurchasing.tsx',
+        'utf8',
+      ),
+    ]);
+
+    assert.match(
+      workspace,
+      /Purchasing Controls[\s\S]*\/purchasing/,
+      'Accounting sidebar must expose a first-class Purchasing workspace.',
+    );
+
+    for (const marker of [
+      'Procure-to-pay control center',
+      'New requisition',
+      'New PO',
+      'Receive',
+      'Match bill',
+      'Create PO',
+      'Confirm receipt',
+      'Run match',
+      'Override',
+    ]) {
+      assert.match(
+        purchasing,
+        new RegExp(marker),
+        'Purchasing UI must expose ' + marker + '.',
+      );
+    }
+
+    assert.match(
+      purchasing,
+      /approvedRequisitions[\s\S]*requisitionLines/,
+      'Approved requisitions must be convertible without retyping their lines.',
+    );
+    assert.match(
+      purchasing,
+      /match-bill[\s\S]*override-match/,
+      'Purchasing UI must expose controlled match and exception-override actions.',
+    );
+  },
+);
