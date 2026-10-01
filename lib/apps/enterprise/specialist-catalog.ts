@@ -9,6 +9,10 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
     'accounting_recurring_journal_lines',
     'accounting_opening_balance_batches',
     'accounting_opening_balance_lines',
+    'accounting_vendors',
+    'accounting_vendor_documents',
+    'accounting_vendor_document_lines',
+    'accounting_vendor_credit_applications',
   ],
   inventory: [
     'inventory_lots',

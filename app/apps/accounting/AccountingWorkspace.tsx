@@ -20,6 +20,7 @@ import AccountingChartOfAccounts from '@/app/apps/accounting/AccountingChartOfAc
 import AccountingJournals from '@/app/apps/accounting/AccountingJournals';
 import AccountingOpeningBalances from '@/app/apps/accounting/AccountingOpeningBalances';
 import AccountingReceivables from '@/app/apps/accounting/AccountingReceivables';
+import AccountingPayables from '@/app/apps/accounting/AccountingPayables';
 
 import {
   getAccountingFoundation,
@@ -42,6 +43,9 @@ import {
 import {
   getAccountingReceivables,
 } from '@/lib/apps/accounting/receivables';
+import {
+  getAccountingPayables,
+} from '@/lib/apps/accounting/payables';
 
 const MODULE_KEY = 'accounting';
 
@@ -59,6 +63,8 @@ export default async function AccountingWorkspace({
     batchId?: string;
     bucket?: string;
     customerId?: string;
+    vendorId?: string;
+    documentId?: string;
     search?: string;
   };
 }) {
@@ -146,6 +152,15 @@ export default async function AccountingWorkspace({
     null =
       null;
 
+  let payablesWorkspace:
+    Awaited<
+      ReturnType<
+        typeof getAccountingPayables
+      >
+    > |
+    null =
+      null;
+
   if (
     dedicatedSection &&
     dedicatedSection !==
@@ -157,7 +172,9 @@ export default async function AccountingWorkspace({
     dedicatedSection !==
       'opening-balances' &&
     dedicatedSection !==
-      'receivables'
+      'receivables' &&
+    dedicatedSection !==
+      'payables'
   ) {
     try {
       foundation =
@@ -270,6 +287,35 @@ export default async function AccountingWorkspace({
           Error
           ? error.message
           : 'Accounts receivable could not be loaded.';
+    }
+  }
+
+  if (
+    dedicatedSection ===
+      'payables'
+  ) {
+    try {
+      payablesWorkspace =
+        await getAccountingPayables({
+          page:
+            filters.page,
+          bucket:
+            filters.bucket,
+          vendorId:
+            filters.vendorId,
+          search:
+            filters.search,
+          documentId:
+            filters.documentId,
+        });
+    } catch (
+      error
+    ) {
+      foundationError =
+        error instanceof
+          Error
+          ? error.message
+          : 'Accounts payable could not be loaded.';
     }
   }
 
@@ -463,6 +509,24 @@ export default async function AccountingWorkspace({
           .overdueInvoiceCount,
     },
 
+    {
+      key:
+        'payables',
+      label:
+        'Accounts Payable',
+      href:
+        appBaseHref +
+        '/payables',
+      description:
+        'Vendor bills, credits, aging and AP control reconciliation.',
+      sectionLabel:
+        'Payables',
+      badge:
+        payablesWorkspace
+          ?.metrics
+          .overdueBillCount,
+    },
+
     data.capabilities
       .canReport
       ? {
@@ -633,6 +697,43 @@ export default async function AccountingWorkspace({
         dedicatedSection
           ? (
               dedicatedSection ===
+                'payables'
+                ? (
+                    payablesWorkspace
+                      ? (
+                          <AccountingPayables
+                            data={
+                              payablesWorkspace
+                            }
+                            canCreate={
+                              data.capabilities
+                                .canCreate
+                            }
+                            canEdit={
+                              data.capabilities
+                                .canEdit
+                            }
+                          />
+                        )
+                      : (
+                          <div
+                            role="alert"
+                            className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-6 text-[var(--foreground)]"
+                          >
+                            {
+                              foundationError ||
+                              'Accounts payable could not be loaded.'
+                            }{' '}
+                            <Link
+                              href="/apps/accounting"
+                              className="font-bold underline underline-offset-4"
+                            >
+                              Return to Accounting
+                            </Link>
+                          </div>
+                        )
+                  )
+                :               dedicatedSection ===
                 'receivables'
                 ? (
                     receivablesWorkspace

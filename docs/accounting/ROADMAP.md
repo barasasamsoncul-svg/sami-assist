@@ -22,10 +22,10 @@ This is the first usable slice, not completion of the full Accounting module. Ne
 4. Journals: dedicated journal register/detail, explicit approval metadata, same-record atomic posting through the ledger engine, immutable linked reversals, recurring journal templates and idempotent draft generation.
 5. Opening balances: dedicated migration workspace, CSV/manual import, idempotent batch creation, row-level correction and validation, 10,000-line migration support, AR/AP subledger reconciliation, controlled posting into one immutable opening journal, pagination, audit history and migration-backed 2.8 schema.
 6. Receivables: dedicated Accounting AR control workspace over the authoritative Invoicing subledger, base-currency open-item aging, customer exposure, customer credits, 90-day DSO estimate, invoice drill-through, filters/pagination, receivable and customer-credit GL reconciliation, and explicit legacy opening-AR treatment without duplicating or mutating Invoicing transactions.
+7. Payables: company-scoped vendor master, vendor bills and credits, draft/approval/posting/reversal lifecycle, authoritative double-entry posting to the configured AP control account, vendor-credit applications, server-side filters/pagination, AP aging, legacy opening-AP inclusion, GL-to-subledger control reconciliation, exact quantity/FX arithmetic, protected workflow tables, dedicated standalone Accounting UI/API routes, and migration-backed 2.9 schema.
 
 ## Remaining depth, in the agreed order
 
-7. Payables.
 8. Purchasing controls.
 9. Expenses and reimbursements.
 10. Bank, cash and mobile money.

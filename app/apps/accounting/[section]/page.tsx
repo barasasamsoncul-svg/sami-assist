@@ -15,6 +15,8 @@ export default async function AccountingSectionPage({
     page?: string;
     bucket?: string;
     customerId?: string;
+    vendorId?: string;
+    documentId?: string;
     search?: string;
   }>;
 }) {

@@ -79,7 +79,15 @@ export function assertEnterpriseDomainMutationAllowed(
       table ===
         'accounting_opening_balance_batches' ||
       table ===
-        'accounting_opening_balance_lines'
+        'accounting_opening_balance_lines' ||
+      table ===
+        'accounting_vendors' ||
+      table ===
+        'accounting_vendor_documents' ||
+      table ===
+        'accounting_vendor_document_lines' ||
+      table ===
+        'accounting_vendor_credit_applications'
     )
   ) {
     throw new Error(
@@ -100,6 +108,15 @@ export function assertEnterpriseDomainMutationAllowed(
             table ===
               'accounting_opening_balance_lines'
             ? 'Opening balances must be changed through the validated Accounting migration workspace.'
+          : table ===
+              'accounting_vendors' ||
+            table ===
+              'accounting_vendor_documents' ||
+            table ===
+              'accounting_vendor_document_lines' ||
+            table ===
+              'accounting_vendor_credit_applications'
+            ? 'Accounts Payable must be changed through the validated Accounting payables services.'
           : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
   }
