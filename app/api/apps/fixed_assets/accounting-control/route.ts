@@ -15,6 +15,7 @@ import {
   disposeFixedAsset,
   getFixedAssetsAccountingControl,
   linkFixedAssetSource,
+  linkFixedAssetVendorBill,
   postFixedAssetImpairment,
   postFixedAssetRevaluation,
   reverseFixedAssetCapitalization,
@@ -260,6 +261,11 @@ export async function POST(
                               ? await linkFixedAssetSource(
                                   body,
                                 )
+                              : body.action ===
+                                  'link-vendor-bill'
+                                ? await linkFixedAssetVendorBill(
+                                    body,
+                                  )
                               : (() => {
                                   throw new FixedAssetInputError(
                                     'Choose a supported Fixed Asset accounting action.',
