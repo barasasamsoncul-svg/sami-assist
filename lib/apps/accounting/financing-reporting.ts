@@ -509,15 +509,9 @@ export async function getAccountingFinancingReporting(
           ORDER BY
             facility.direction,
             facility.currency,
-            CASE bucket
-              WHEN '0_30'
-                THEN 1
-              WHEN '31_90'
-                THEN 2
-              WHEN '91_365'
-                THEN 3
-              ELSE 4
-            END
+            MIN(
+              line.due_date
+            )
         `,
         [
           companyId,
