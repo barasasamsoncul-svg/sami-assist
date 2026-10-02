@@ -1797,3 +1797,21 @@ test('Accounting roadmap closes Fixed Assets before Accruals', async () => {
     /## Remaining depth, in the agreed order[\s\S]*19\. Fixed assets\./,
   );
 });
+
+
+test('Fixed Assets depreciation cannot survive a capitalization reversal or reuse a reversed posting key', async () => {
+  const service = await source('lib/apps/fixed_assets/accounting-control.ts');
+
+  assert.match(
+    service,
+    /capitalization_reversal_journal_id[\s\S]*IS NULL[\s\S]*asset\.status IN/,
+  );
+  assert.match(
+    service,
+    /previousReversed[\s\S]*reversal_journal_id[\s\S]*sourceEventKey:[\s\S]*fixed_assets:depreciation:/,
+  );
+  assert.match(
+    service,
+    /status <>[\s\S]*'disposed'[\s\S]*AS capitalized_count/,
+  );
+});
