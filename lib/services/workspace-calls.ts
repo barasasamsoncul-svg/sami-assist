@@ -196,6 +196,14 @@ async function callForParticipant(
     await pool.connect();
 
   try {
+    if (
+      lock
+    ) {
+      await client.query(
+        'BEGIN',
+      );
+    }
+
     const result =
       await client.query(
         `
@@ -255,6 +263,16 @@ async function callForParticipant(
   } catch (
     error
   ) {
+    if (
+      lock
+    ) {
+      await client.query(
+        'ROLLBACK',
+      ).catch(
+        () =>
+          undefined,
+      );
+    }
     client.release();
     throw error;
   }
@@ -765,10 +783,6 @@ export async function updateWorkspaceCall(
       : '';
 
   try {
-    await client.query(
-      'BEGIN',
-    );
-
     const caller =
       String(
         row.caller_user_id,
