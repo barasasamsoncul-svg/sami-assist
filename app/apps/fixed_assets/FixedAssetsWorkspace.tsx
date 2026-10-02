@@ -33,6 +33,16 @@ import {
 
 const MODULE_KEY = 'fixed_assets';
 
+const CONTROLLED_FIXED_ASSET_TABLES =
+  new Set([
+    'asset_depreciation_entries',
+    'asset_depreciation_runs',
+    'asset_impairments',
+    'asset_revaluations',
+    'asset_disposals',
+    'asset_source_links',
+  ]);
+
 export default async function FixedAssetsWorkspace({
   section,
 }: {
@@ -68,7 +78,10 @@ export default async function FixedAssetsWorkspace({
     ...data.tables
       .filter(
         table =>
-          !table.settingTable,
+          !table.settingTable &&
+          !CONTROLLED_FIXED_ASSET_TABLES.has(
+            table.key,
+          ),
       )
       .map(
         table => ({
