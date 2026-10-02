@@ -39,6 +39,7 @@ export const ACCOUNTING_SECTIONS = [
   "inventory-valuation",
   "accruals-deferrals",
   "loans-financing",
+  "budgets-forecasts",
   "setup",
 ] as const;
 export type AccountingSection = (typeof ACCOUNTING_SECTIONS)[number];
@@ -122,6 +123,7 @@ export default function AccountingFoundationPanel({
     "inventory-valuation": "Inventory valuation",
     "accruals-deferrals": "Accruals & deferrals",
     "loans-financing": "Loans & financing",
+    "budgets-forecasts": "Budgets & forecasts",
     setup: "Accounting setup",
   };
   const descriptions = {
@@ -161,6 +163,7 @@ export default function AccountingFoundationPanel({
     "inventory-valuation": "Reconcile Inventory standard-cost value to the ledger and post COGS, returns and approved stock adjustments.",
     "accruals-deferrals": "Schedule prepaid expenses, deferred revenue, accrued expenses and accrued revenue with controlled recognition and reversal journals.",
     "loans-financing": "Manage borrowings and loan receivables, drawdowns, interest, repayments, rate resets and current/non-current classification.",
+    "budgets-forecasts": "Build versioned monthly budgets, rolling forecasts, planning assumptions and actual-versus-plan variance controls.",
     reconciliation:
       "Match statement lines to posted bank-ledger movement, split allocations, apply controlled adjustment rules and preserve immutable reconciliation history.",
     setup:
