@@ -2091,8 +2091,6 @@ export async function postFinancingDrawdown(
           financingForeignDecimal(
             amount,
           ),
-        fxRate:
-          fx.rate,
         reference,
         notes,
       });
