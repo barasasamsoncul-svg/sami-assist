@@ -1,5 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {
+  Pool,
+} from 'pg';
+
+import {
+  ACCOUNTING_ACCRUALS_SQL,
+} from '../lib/apps/accounting/accruals-schema';
 
 import {
   accrualAutoReversalDate,
@@ -188,5 +195,92 @@ test(
       }).length,
       2,
     );
+  },
+);
+
+
+test(
+  'Accounting 2.21 accrual schema executes twice on PostgreSQL',
+  {
+    skip:
+      !process.env.TEST_DATABASE_URL,
+  },
+  async () => {
+    const pool =
+      new Pool({
+        connectionString:
+          process.env.TEST_DATABASE_URL,
+      });
+    const client =
+      await pool.connect();
+
+    try {
+      await client.query(
+        'BEGIN',
+      );
+
+      await client.query(
+        `
+          CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+          CREATE TABLE IF NOT EXISTS public.companies (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+          );
+
+          CREATE TABLE IF NOT EXISTS public.accounts (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+          );
+
+          CREATE TABLE IF NOT EXISTS public.journals (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+          );
+        `,
+      );
+
+      await client.query(
+        ACCOUNTING_ACCRUALS_SQL,
+      );
+      await client.query(
+        ACCOUNTING_ACCRUALS_SQL,
+      );
+
+      const tables =
+        await client.query(
+          `
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema='public'
+              AND table_name IN (
+                'accounting_accrual_settings',
+                'accounting_accrual_schedules',
+                'accounting_accrual_schedule_lines',
+                'accounting_accrual_runs'
+              )
+            ORDER BY table_name
+          `,
+        );
+
+      assert.deepEqual(
+        tables.rows.map(
+          row =>
+            row.table_name,
+        ),
+        [
+          'accounting_accrual_runs',
+          'accounting_accrual_schedule_lines',
+          'accounting_accrual_schedules',
+          'accounting_accrual_settings',
+        ],
+      );
+    } finally {
+      await client.query(
+        'ROLLBACK',
+      ).catch(
+        () =>
+          undefined,
+      );
+      client.release();
+      await pool.end();
+    }
   },
 );
