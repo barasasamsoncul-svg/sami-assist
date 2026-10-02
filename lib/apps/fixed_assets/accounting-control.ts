@@ -565,6 +565,13 @@ export type FixedAssetsAccountingWorkspace = {
         unknown
       >
     >;
+  sourceCandidates:
+    Array<
+      Record<
+        string,
+        unknown
+      >
+    >;
   summary: {
     assetCount:
       number;
@@ -605,6 +612,7 @@ export async function getFixedAssetsAccountingControl():
     revaluations,
     disposals,
     sourceLinks,
+    sourceCandidates,
     summary,
   ] =
     await Promise.all([
@@ -880,6 +888,48 @@ export async function getFixedAssetsAccountingControl():
       context.pool.query(
         `
           SELECT
+            document.id::text,
+            document.document_number,
+            document.vendor_reference,
+            document.document_date::text,
+            document.base_total_amount::text,
+            document.purchase_order_id::text,
+            document.posted_journal_id::text,
+            vendor.name AS vendor_name
+          FROM accounting_vendor_documents document
+          INNER JOIN accounting_vendors vendor
+            ON vendor.id = document.vendor_id
+           AND vendor.company_id = document.company_id
+           AND vendor.deleted_at IS NULL
+          WHERE document.company_id = $1
+            AND document.deleted_at IS NULL
+            AND document.document_type = 'bill'
+            AND document.status IN (
+              'posted',
+              'partially_settled',
+              'settled'
+            )
+            AND document.posted_journal_id IS NOT NULL
+            AND document.reversed_journal_id IS NULL
+            AND NOT EXISTS (
+              SELECT 1
+              FROM asset_source_links link
+              WHERE link.company_id = document.company_id
+                AND link.source_module = 'accounting'
+                AND link.source_type = 'vendor_bill'
+                AND link.source_id = document.id::text
+                AND link.deleted_at IS NULL
+            )
+          ORDER BY document.document_date DESC, document.created_at DESC
+          LIMIT 100
+        `,
+        [
+          context.companyId,
+        ],
+      ),
+      context.pool.query(
+        `
+          SELECT
             COUNT(*)::int
               AS asset_count,
             COUNT(*) FILTER (
@@ -954,6 +1004,8 @@ export async function getFixedAssetsAccountingControl():
       disposals.rows,
     sourceLinks:
       sourceLinks.rows,
+    sourceCandidates:
+      sourceCandidates.rows,
     summary: {
       assetCount:
         Number(
@@ -6016,4 +6068,273 @@ export async function linkFixedAssetSource(
     id,
     assetId,
   };
+}
+
+
+export async function linkFixedAssetVendorBill(
+  input:
+    unknown,
+) {
+  const context =
+    await requireEnterpriseModuleTableContext(
+      'fixed_assets',
+      'asset_source_links',
+      'edit',
+    );
+  const body =
+    bodyOf(
+      input,
+    );
+  const assetId =
+    accountingId(
+      body.assetId,
+    );
+  const documentId =
+    accountingId(
+      body.documentId,
+    );
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const asset =
+      await client.query(
+        `
+          SELECT
+            id::text,
+            asset_code
+          FROM fixed_assets
+          WHERE company_id = $1
+            AND id = $2
+            AND deleted_at IS NULL
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [
+          context.companyId,
+          assetId,
+        ],
+      );
+
+    if (
+      !asset.rows[0]
+    ) {
+      throw new FixedAssetInputError(
+        'Fixed Asset not found.',
+      );
+    }
+
+    const document =
+      await client.query(
+        `
+          SELECT
+            document.id::text,
+            document.document_number,
+            document.vendor_reference,
+            document.document_date::text,
+            document.base_total_amount::text,
+            document.purchase_order_id::text,
+            document.posted_journal_id::text,
+            vendor.name AS vendor_name
+          FROM accounting_vendor_documents document
+          INNER JOIN accounting_vendors vendor
+            ON vendor.id = document.vendor_id
+           AND vendor.company_id = document.company_id
+           AND vendor.deleted_at IS NULL
+          WHERE document.company_id = $1
+            AND document.id = $2
+            AND document.deleted_at IS NULL
+            AND document.document_type = 'bill'
+            AND document.status IN (
+              'posted',
+              'partially_settled',
+              'settled'
+            )
+            AND document.posted_journal_id IS NOT NULL
+            AND document.reversed_journal_id IS NULL
+          LIMIT 1
+          FOR SHARE OF document, vendor
+        `,
+        [
+          context.companyId,
+          documentId,
+        ],
+      );
+
+    const bill =
+      document.rows[0];
+
+    if (
+      !bill
+    ) {
+      throw new FixedAssetInputError(
+        'Choose a posted vendor bill that has not been reversed.',
+      );
+    }
+
+    const linked =
+      await client.query(
+        `
+          INSERT INTO asset_source_links (
+            company_id,
+            asset_id,
+            source_module,
+            source_type,
+            source_id,
+            source_reference,
+            source_amount,
+            metadata,
+            created_by,
+            updated_by
+          )
+          VALUES (
+            $1,$2,
+            'accounting',
+            'vendor_bill',
+            $3,$4,$5,$6::jsonb,$7,$7
+          )
+          ON CONFLICT (
+            company_id,
+            source_module,
+            source_type,
+            source_id
+          )
+          WHERE deleted_at IS NULL
+          DO UPDATE
+          SET
+            asset_id =
+              EXCLUDED.asset_id,
+            source_reference =
+              EXCLUDED.source_reference,
+            source_amount =
+              EXCLUDED.source_amount,
+            metadata =
+              EXCLUDED.metadata,
+            updated_by =
+              EXCLUDED.updated_by,
+            updated_at =
+              NOW()
+          RETURNING id::text
+        `,
+        [
+          context.companyId,
+          assetId,
+          documentId,
+          String(
+            bill.document_number ||
+            bill.vendor_reference ||
+            documentId,
+          ),
+          String(
+            bill.base_total_amount ||
+            '0',
+          ),
+          JSON.stringify({
+            vendorName:
+              bill.vendor_name,
+            vendorReference:
+              bill.vendor_reference,
+            documentDate:
+              bill.document_date,
+            purchaseOrderId:
+              bill.purchase_order_id,
+            postedJournalId:
+              bill.posted_journal_id,
+          }),
+          context.userId,
+        ],
+      );
+
+    await client.query(
+      `
+        UPDATE fixed_assets
+        SET
+          source_module =
+            'accounting',
+          source_type =
+            'vendor_bill',
+          source_id =
+            $3,
+          source_reference =
+            $4,
+          updated_by =
+            $5,
+          updated_at =
+            NOW()
+        WHERE company_id =
+              $1
+          AND id =
+              $2
+      `,
+      [
+        context.companyId,
+        assetId,
+        documentId,
+        String(
+          bill.document_number ||
+          bill.vendor_reference ||
+          documentId,
+        ),
+        context.userId,
+      ],
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    const id =
+      String(
+        linked.rows[0].id,
+      );
+
+    await audit(
+      context,
+      'source.vendor_bill_linked',
+      'asset_source_links',
+      id,
+      'Posted vendor bill linked to Fixed Asset acquisition evidence',
+      {
+        assetId,
+        documentId,
+        documentNumber:
+          bill.document_number,
+        purchaseOrderId:
+          bill.purchase_order_id,
+      },
+    );
+
+    return {
+      id,
+      assetId,
+      documentId,
+      documentNumber:
+        String(
+          bill.document_number ||
+          '',
+        ),
+      amount:
+        String(
+          bill.base_total_amount ||
+          '0',
+        ),
+    };
+  } catch (
+    error
+  ) {
+    await client.query(
+      'ROLLBACK',
+    ).catch(
+      () =>
+        undefined,
+    );
+    throw error;
+  } finally {
+    client.release();
+  }
 }
