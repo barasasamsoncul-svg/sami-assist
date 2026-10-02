@@ -548,6 +548,24 @@ export default async function AccountingWorkspace({
 
   if (
     dedicatedSection ===
+      'accruals-deferrals'
+  ) {
+    try {
+      accrualsWorkspace =
+        await getAccountingAccruals();
+    } catch (
+      error
+    ) {
+      foundationError =
+        error instanceof
+          AccountingInputError
+          ? error.message
+          : 'Accruals and deferrals could not be loaded. Retry this page.';
+    }
+  }
+
+  if (
+    dedicatedSection ===
       'reconciliation'
   ) {
     try {
