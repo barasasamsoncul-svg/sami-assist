@@ -1141,6 +1141,8 @@ export default async function AccountingWorkspace({
                   ? (fxWorkspace ? <AccountingFx data={fxWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Foreign currency could not be loaded.'}</div>)
                 : dedicatedSection === 'inventory-valuation'
                   ? (inventoryValuationWorkspace ? <AccountingInventoryValuation data={inventoryValuationWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Inventory valuation could not be loaded.'}</div>)
+                : dedicatedSection === 'accruals-deferrals'
+                  ? (accrualsWorkspace ? <AccountingAccruals data={accrualsWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Accruals and deferrals could not be loaded.'}</div>)
                 : dedicatedSection ===
                     'reconciliation'
                   ? (
