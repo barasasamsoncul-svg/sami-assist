@@ -48,7 +48,9 @@
     "migrate:invoicing:release": "node --conditions=react-server --import tsx scripts/migrate-invoicing-before-release.ts",
     "test:invoicing:release": "npm run test:invoicing && npm run test:locks && npm run test:module-migrations && npm run test:responsive && npm run test:app-ui && npm run test:erp-integration && npx tsc --noEmit && npm run build",
     "test:accounting:inventory": "node --import tsx --test tests/accounting-inventory-valuation.test.ts",
-    "test:fixed-assets": "node --import tsx --test tests/fixed-assets-accounting.test.ts"
+    "test:fixed-assets": "node --import tsx --test tests/fixed-assets-accounting.test.ts",
+    "migrate:fixed-assets:release": "node --conditions=react-server --import tsx scripts/migrate-fixed-assets-before-release.ts",
+    "test:fixed-assets:release": "npm run test:fixed-assets && npm run test:module-migrations && npm run test:app-ui && npx tsc --noEmit && npm run build"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1133.0",
