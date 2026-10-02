@@ -1,5 +1,3 @@
-import 'server-only';
-
 export const FIXED_ASSETS_ACCOUNTING_SQL = `
 ALTER TABLE public.fixed_assets_settings
   ADD COLUMN IF NOT EXISTS capitalization_threshold NUMERIC(19,2)
