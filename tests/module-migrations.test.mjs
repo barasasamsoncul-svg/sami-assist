@@ -2023,7 +2023,13 @@ test('Accounting 2.22 Loans and Financing are migration-backed and ledger contro
   assert.match(lifecycle,/reverseFinancingTransaction/);
   assert.match(lifecycle,/closeFinancingFacility/);
   assert.match(classification,/financing_current_classification/);
-  assert.match(classification,/closing/);
+  assert.match(classification,/financingPrincipalCarryingCents/);
+  assert.match(classification,/financingProportionalCents/);
+  assert.match(schema,/principal_carrying_base/);
+  assert.match(schema,/current_principal_foreign/);
+  assert.match(schema,/interest_carrying_base/);
+  assert.match(schema,/realized_fx_base/);
+  assert.match(service,/assertFinancingFxRevaluationCleared/);
   assert.match(customSchedule,/replaceFinancingCustomSchedule/);
   assert.match(customSchedule,/schedule_source[\s\S]*custom/);
   assert.match(reporting,/ledger_balance/);
