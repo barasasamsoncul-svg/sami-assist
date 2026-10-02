@@ -578,19 +578,6 @@ export default function WorkspaceNotificationCenter({
                 ),
               );
 
-            if (
-              hasLoadedSummaryRef
-                .current &&
-              nextMessageUnread >
-                messageUnreadRef
-                  .current &&
-              preferences.soundEnabled
-            ) {
-              void playSamiSound(
-                preferences.messageSound,
-              );
-            }
-
             messageUnreadRef
               .current =
               nextMessageUnread;
@@ -778,6 +765,61 @@ export default function WorkspaceNotificationCenter({
       },
       [],
     );
+
+  useEffect(
+    () => {
+      const controller =
+        new AbortController();
+
+      const timer =
+        window.setTimeout(
+          () => {
+            void fetch(
+              '/api/workspace/notifications/preferences',
+              {
+                credentials:
+                  'same-origin',
+                cache:
+                  'no-store',
+                signal:
+                  controller.signal,
+              },
+            )
+              .then(
+                response =>
+                  readJson(
+                    response,
+                  ),
+              )
+              .then(
+                data => {
+                  if (
+                    data.success &&
+                    data.preferences
+                  ) {
+                    setPreferences(
+                      data.preferences,
+                    );
+                  }
+                },
+              )
+              .catch(
+                () =>
+                  undefined,
+              );
+          },
+          300,
+        );
+
+      return () => {
+        window.clearTimeout(
+          timer,
+        );
+        controller.abort();
+      };
+    },
+    [],
+  );
 
   useEffect(
     () => {
@@ -1025,6 +1067,14 @@ export default function WorkspaceNotificationCenter({
           ),
       );
 
+      setSelectedAlert(
+        current =>
+          current?.id ===
+            item.id
+            ? data.notification
+            : current,
+      );
+
       await loadSummary();
     } catch (
       candidate
@@ -1085,6 +1135,14 @@ export default function WorkspaceNotificationCenter({
               candidate.id !==
               item.id,
           ),
+      );
+
+      setSelectedAlert(
+        current =>
+          current?.id ===
+            item.id
+            ? null
+            : current,
       );
 
       await loadSummary();
@@ -1148,6 +1206,21 @@ export default function WorkspaceNotificationCenter({
                   .toISOString(),
             }),
           ),
+      );
+
+      setSelectedAlert(
+        current =>
+          current
+            ? {
+                ...current,
+                isRead:
+                  true,
+                readAt:
+                  current.readAt ||
+                  new Date()
+                    .toISOString(),
+              }
+            : null,
       );
 
       await loadSummary();
