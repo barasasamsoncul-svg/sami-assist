@@ -1827,6 +1827,7 @@ test('Accounting 2.21 Accruals and Deferrals are migration-backed and ledger con
     catalog,
     hooks,
     service,
+    reporting,
     workspace,
     foundation,
     route,
@@ -1839,6 +1840,7 @@ test('Accounting 2.21 Accruals and Deferrals are migration-backed and ledger con
     source('lib/apps/enterprise/catalog.ts'),
     source('lib/apps/enterprise/domain-hooks.ts'),
     source('lib/apps/accounting/accruals.ts'),
+    source('lib/apps/accounting/accruals-reporting.ts'),
     source('app/apps/accounting/AccountingWorkspace.tsx'),
     source('app/apps/accounting/AccountingFoundationPanel.tsx'),
     source('app/api/apps/accounting/accruals/route.ts'),
@@ -1887,6 +1889,16 @@ test('Accounting 2.21 Accruals and Deferrals are migration-backed and ledger con
     /status IN \(\s*'pending',\s*'failed'\s*\)/,
     'Cancelling a schedule must preserve already-reversed recognition history.',
   );
+  assert.match(schema,/request_hash VARCHAR\(64\) NOT NULL/);
+  assert.match(service,/createHash[\s\S]*requestHash/);
+  assert.match(
+    service,
+    /line\.status IN \([\s\S]*'pending',[\s\S]*'failed'/,
+    'Failed recognition lines must remain retryable.',
+  );
+  assert.match(reporting,/managed_gl_balance/);
+  assert.match(reporting,/source_journal_id/);
+  assert.match(reporting,/INTERVAL '365 days'/);
   assert.match(
     workspace,
     /accruals-deferrals[\s\S]*AccountingAccruals/,
