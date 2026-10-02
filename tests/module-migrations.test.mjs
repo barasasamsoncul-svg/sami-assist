@@ -1953,6 +1953,7 @@ test('Accounting 2.22 Loans and Financing are migration-backed and ledger contro
     lifecycle,
     classification,
     customSchedule,
+    reporting,
     workspace,
     foundation,
     route,
@@ -1969,6 +1970,7 @@ test('Accounting 2.22 Loans and Financing are migration-backed and ledger contro
     source('lib/apps/accounting/financing-lifecycle.ts'),
     source('lib/apps/accounting/financing-classification.ts'),
     source('lib/apps/accounting/financing-custom-schedule.ts'),
+    source('lib/apps/accounting/financing-reporting.ts'),
     source('app/apps/accounting/AccountingWorkspace.tsx'),
     source('app/apps/accounting/AccountingFoundationPanel.tsx'),
     source('app/api/apps/accounting/financing/route.ts'),
@@ -2020,6 +2022,9 @@ test('Accounting 2.22 Loans and Financing are migration-backed and ledger contro
   assert.match(classification,/closing/);
   assert.match(customSchedule,/replaceFinancingCustomSchedule/);
   assert.match(customSchedule,/schedule_source[\s\S]*custom/);
+  assert.match(reporting,/ledger_balance/);
+  assert.match(reporting,/missingRates/);
+  assert.match(reporting,/INTERVAL '365 days'/);
   assert.match(workspace,/loans-financing[\s\S]*AccountingFinancing/);
   assert.match(foundation,/"loans-financing"/);
 
