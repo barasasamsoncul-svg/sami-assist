@@ -232,8 +232,10 @@ CREATE TABLE IF NOT EXISTS public.accounting_financing_transactions (
   CHECK (foreign_amount >= 0),
   CHECK (base_amount >= 0),
   CHECK (exchange_rate > 0),
-  CHECK (principal_foreign >= 0 AND principal_base >= 0),
-  CHECK (interest_foreign >= 0 AND interest_base >= 0),
+  CHECK (principal_foreign >= 0 AND principal_base >= 0 AND principal_carrying_base >= 0),
+  CHECK (current_principal_foreign >= 0 AND current_principal_base >= 0),
+  CHECK (noncurrent_principal_foreign >= 0 AND noncurrent_principal_base >= 0),
+  CHECK (interest_foreign >= 0 AND interest_base >= 0 AND interest_carrying_base >= 0),
   CHECK (fee_foreign >= 0 AND fee_base >= 0),
   CHECK (status IN ('posted','reversed'))
 );
@@ -305,7 +307,9 @@ CREATE TABLE IF NOT EXISTS public.accounting_financing_reclassifications (
   classification_days INTEGER NOT NULL,
   target_current_principal_foreign NUMERIC(19,4) NOT NULL DEFAULT 0,
   target_current_principal NUMERIC(19,2) NOT NULL,
+  target_current_principal_foreign NUMERIC(19,4) NOT NULL DEFAULT 0,
   prior_current_principal NUMERIC(19,2) NOT NULL,
+  prior_current_principal_foreign NUMERIC(19,4) NOT NULL DEFAULT 0,
   adjustment_amount NUMERIC(19,2) NOT NULL,
   journal_id UUID REFERENCES public.journals(id) ON DELETE RESTRICT,
   reversal_journal_id UUID REFERENCES public.journals(id) ON DELETE RESTRICT,
@@ -322,7 +326,9 @@ CREATE TABLE IF NOT EXISTS public.accounting_financing_reclassifications (
   CHECK (classification_days BETWEEN 1 AND 730),
   CHECK (target_current_principal_foreign >= 0),
   CHECK (target_current_principal >= 0),
+  CHECK (target_current_principal_foreign >= 0),
   CHECK (prior_current_principal >= 0),
+  CHECK (prior_current_principal_foreign >= 0),
   CHECK (status IN ('posted','reversed'))
 );
 
