@@ -915,6 +915,24 @@ export default async function AccountingWorkspace({
 
     {
       key:
+        'accruals-deferrals',
+      label:
+        'Accruals & Deferrals',
+      href:
+        appBaseHref +
+        '/accruals-deferrals',
+      description:
+        'Prepayments, deferred revenue, accrual recognition and controlled reversals.',
+      sectionLabel:
+        'Operations',
+      badge:
+        accrualsWorkspace
+          ?.metrics
+          .due_count,
+    },
+
+    {
+      key:
         'reconciliation',
       label:
         'Reconciliation',
