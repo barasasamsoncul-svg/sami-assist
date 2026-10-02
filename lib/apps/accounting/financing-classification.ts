@@ -543,7 +543,8 @@ export async function runFinancingCurrentClassification(
           await client.query(
             `
               SELECT
-                target_current_principal::text
+                target_current_principal::text,
+                target_current_principal_foreign::text
               FROM accounting_financing_reclassifications
               WHERE company_id =
                     $1
@@ -576,15 +577,26 @@ export async function runFinancingCurrentClassification(
             : BigInt(
                 0,
               );
+        const priorForeign =
+          prior.rows[0]
+            ? signedForeignUnits(
+                prior.rows[0]
+                  .target_current_principal_foreign,
+              )
+            : BigInt(
+                0,
+              );
         const delta =
           targetBase -
           priorBase;
 
         if (
           delta ===
-          BigInt(
-            0,
-          )
+            BigInt(
+              0,
+            ) &&
+          targetForeign ===
+            priorForeign
         ) {
           skipped +=
             1;
@@ -668,7 +680,9 @@ export async function runFinancingCurrentClassification(
               as_of_date,
               classification_days,
               target_current_principal,
+              target_current_principal_foreign,
               prior_current_principal,
+              prior_current_principal_foreign,
               adjustment_amount,
               journal_id,
               request_key,
@@ -680,7 +694,7 @@ export async function runFinancingCurrentClassification(
             )
             VALUES (
               $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-              $11,'posted',NOW(),$12,$12
+              $11,$12,$13,'posted',NOW(),$14,$14
             )
           `,
           [
@@ -692,9 +706,25 @@ export async function runFinancingCurrentClassification(
             decimalAmount(
               targetBase,
             ),
+            targetForeign >
+              BigInt(
+                0,
+              )
+              ? financingForeignDecimal(
+                  targetForeign,
+                )
+              : '0.0000',
             decimalAmount(
               priorBase,
             ),
+            priorForeign >
+              BigInt(
+                0,
+              )
+              ? financingForeignDecimal(
+                  priorForeign,
+                )
+              : '0.0000',
             financingCentsDecimal(
               delta,
             ),
