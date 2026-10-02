@@ -1,6 +1,7 @@
 import 'server-only';
 
 import {
+  createHash,
   randomUUID,
 } from 'node:crypto';
 import type {
@@ -166,6 +167,31 @@ function optionalId(
         value,
       );
 }
+
+function positiveMoneyCents(
+  value:
+    unknown,
+  label:
+    string,
+) {
+  try {
+    return accrualMoneyCents(
+      value,
+      label,
+    );
+  } catch (
+    error
+  ) {
+    throw new AccountingInputError(
+      error instanceof
+        Error
+        ? error.message
+        : label +
+          ' is invalid.',
+    );
+  }
+}
+
 
 function scheduleType(
   value:
@@ -696,7 +722,7 @@ export async function createAccrualSchedule(
       body.endDate,
     );
   const amount =
-    accrualMoneyCents(
+    positiveMoneyCents(
       body.totalAmount,
       'Schedule total',
     );
