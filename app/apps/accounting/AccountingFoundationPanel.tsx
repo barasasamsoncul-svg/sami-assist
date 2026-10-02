@@ -37,6 +37,7 @@ export const ACCOUNTING_SECTIONS = [
   "international",
   "fx",
   "inventory-valuation",
+  "accruals-deferrals",
   "setup",
 ] as const;
 export type AccountingSection = (typeof ACCOUNTING_SECTIONS)[number];
@@ -118,6 +119,7 @@ export default function AccountingFoundationPanel({
     international: "International localization",
     fx: "Foreign currency",
     "inventory-valuation": "Inventory valuation",
+    "accruals-deferrals": "Accruals & deferrals",
     setup: "Accounting setup",
   };
   const descriptions = {
@@ -155,6 +157,7 @@ export default function AccountingFoundationPanel({
     international: "Configure country localization, report boxes, filing metadata and shared UBL/Peppol evidence.",
     fx: "Manage exchange rates, foreign monetary positions, realized FX, revaluation and cross-currency settlement.",
     "inventory-valuation": "Reconcile Inventory standard-cost value to the ledger and post COGS, returns and approved stock adjustments.",
+    "accruals-deferrals": "Schedule prepaid expenses, deferred revenue, accrued expenses and accrued revenue with controlled recognition and reversal journals.",
     reconciliation:
       "Match statement lines to posted bank-ledger movement, split allocations, apply controlled adjustment rules and preserve immutable reconciliation history.",
     setup:

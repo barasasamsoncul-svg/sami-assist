@@ -341,7 +341,7 @@ test('Accounting 2.4 setup schema is migration-backed and available on fresh ins
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.20\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.21\.0'/,
   );
 
   assert.match(
@@ -436,7 +436,7 @@ test('Accounting 2.5 Chart of Accounts is migration-backed and company scoped', 
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.20\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.21\.0'/,
   );
 
   assert.match(
@@ -519,7 +519,7 @@ test('Accounting 2.6 centralizes double-entry posting and reversal invariants', 
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.20\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.21\.0'/,
   );
 
   assert.match(
@@ -627,7 +627,7 @@ test('Accounting 2.7 journal workflow is migration-backed and fresh-install comp
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.20\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.21\.0'/,
   );
 
   assert.match(runtimeMigrations, /ACCOUNTING_2_6_0_TO_2_7_0/);
@@ -711,7 +711,7 @@ test('Accounting 2.8 opening balances are migration-backed and workflow protecte
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.20\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.21\.0'/,
   );
 
   assert.match(runtimeMigrations, /ACCOUNTING_2_7_0_TO_2_8_0/);
@@ -900,7 +900,7 @@ test('Accounting 2.9 Payables is migration-backed and ledger controlled', async 
     source('lib/apps/enterprise/specialist-depth.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.20\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.21\.0'/);
   assert.match(migrations,/ACCOUNTING_2_8_0_TO_2_9_0/);
 
   for (const marker of [
@@ -957,7 +957,7 @@ test('Accounting 2.10 Purchasing controls are migration-backed and gate PO bills
     source('lib/apps/enterprise/specialist-depth.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.20\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.21\.0'/);
   assert.match(migrations,/ACCOUNTING_2_9_0_TO_2_10_0/);
   assert.match(
     migration,
@@ -1081,7 +1081,7 @@ test('Accounting 2.11 controls approved expenses and employee reimbursements wit
 
   assert.match(
     manifest,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.20\.0'[\s\S]*optionalDepends:\s*\['expenses'\]/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.21\.0'[\s\S]*optionalDepends:\s*\['expenses'\]/,
   );
   assert.match(migrations,/ACCOUNTING_2_10_0_TO_2_11_0/);
   assert.match(
@@ -1171,7 +1171,7 @@ test('Accounting 2.12 controls bank cash mobile money and internal transfers', a
     source('lib/apps/enterprise/specialist-catalog.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.20\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.21\.0'/);
   assert.match(migrations,/ACCOUNTING_2_11_0_TO_2_12_0/);
   assert.match(
     migration,
@@ -1262,7 +1262,7 @@ test('Accounting 2.13 imports statements and protects normalized feed intake', a
     source('lib/apps/enterprise/specialist-catalog.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.20\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.21\.0'/);
   assert.match(migrations,/ACCOUNTING_2_12_0_TO_2_13_0/);
   assert.match(
     migration,
@@ -1355,7 +1355,7 @@ test('Accounting 2.14 provides immutable bank reconciliation with split matches 
     source('lib/apps/enterprise/specialist-catalog.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.20\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.21\.0'/);
   assert.match(migrations,/ACCOUNTING_2_13_0_TO_2_14_0/);
   assert.match(
     migration,
@@ -1454,7 +1454,7 @@ test('Accounting 2.16 Tax Engine is migration-backed and fresh-install complete'
     source('lib/apps/accounting/taxes.ts'),source('app/apps/accounting/AccountingWorkspace.tsx'),
     source('app/apps/accounting/AccountingFoundationPanel.tsx'),
   ]);
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.20\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.21\.0'/);
   assert.match(runtime,/ACCOUNTING_2_15_0_TO_2_16_0/);
   assert.match(migration,/fromVersion:\s*'2\.15\.0'[\s\S]*toVersion:\s*'2\.16\.0'/);
   assert.match(depth,/ACCOUNTING_TAX_SQL/);
@@ -1484,7 +1484,7 @@ test('Accounting 2.17 Kenya localization reuses shared eTIMS and is migration-ba
     source('app/apps/accounting/AccountingFoundationPanel.tsx'),
     source('lib/apps/accounting/payables.ts'),
   ]);
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.20\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.21\.0'/);
   assert.match(runtime,/ACCOUNTING_2_16_0_TO_2_17_0/);
   assert.match(migration,/fromVersion:\s*'2\.16\.0'[\s\S]*toVersion:\s*'2\.17\.0'/);
   assert.match(depth,/ACCOUNTING_KENYA_SQL/);
@@ -1520,7 +1520,7 @@ test('Accounting 2.18 International Localization is migration-backed and shares 
     source('app/apps/accounting/AccountingWorkspace.tsx'),
     source('app/apps/accounting/AccountingFoundationPanel.tsx'),
   ]);
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.20\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.21\.0'/);
   assert.match(runtime,/ACCOUNTING_2_17_0_TO_2_18_0/);
   assert.match(migration,/fromVersion:\s*'2\.17\.0'[\s\S]*toVersion:\s*'2\.18\.0'/);
   assert.match(depth,/ACCOUNTING_INTERNATIONAL_LOCALIZATION_SQL/);
@@ -1567,7 +1567,7 @@ test('Accounting 2.19 Foreign Currency is migration-backed and subledger control
     source('lib/apps/accounting/reconciliation.ts'),
     source('lib/apps/accounting/ledger-engine.ts'),
   ]);
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.20\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.21\.0'/);
   assert.match(runtime,/ACCOUNTING_2_18_0_TO_2_19_0/);
   assert.match(migration,/fromVersion:\s*'2\.18\.0'[\s\S]*toVersion:\s*'2\.19\.0'/);
   assert.match(migration,/ACCOUNTING_KENYA_SQL[\s\S]*ACCOUNTING_INTERNATIONAL_LOCALIZATION_SQL[\s\S]*ACCOUNTING_FX_SQL/);
@@ -1627,7 +1627,7 @@ test('Accounting 2.20 Inventory Valuation is migration-backed and ledger control
     source('lib/apps/sales/inventory.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.20\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.21\.0'/);
   assert.match(runtime,/ACCOUNTING_2_19_0_TO_2_20_0/);
   assert.match(migration,/fromVersion:\s*'2\.19\.0'[\s\S]*toVersion:\s*'2\.20\.0'/);
   assert.match(depth,/ACCOUNTING_INVENTORY_VALUATION_SQL/);
@@ -1814,4 +1814,126 @@ test('Fixed Assets depreciation cannot survive a capitalization reversal or reus
     service,
     /status <>[\s\S]*'disposed'[\s\S]*AS capitalized_count/,
   );
+});
+
+
+test('Accounting 2.21 Accruals and Deferrals are migration-backed and ledger controlled', async () => {
+  const [
+    manifest,
+    runtime,
+    migration,
+    schema,
+    depth,
+    catalog,
+    hooks,
+    service,
+    reporting,
+    workspace,
+    foundation,
+    route,
+  ] = await Promise.all([
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/apps/accounting/migrations/2.20.0-to-2.21.0.ts'),
+    source('lib/apps/accounting/accruals-schema.ts'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+    source('lib/apps/enterprise/catalog.ts'),
+    source('lib/apps/enterprise/domain-hooks.ts'),
+    source('lib/apps/accounting/accruals.ts'),
+    source('lib/apps/accounting/accruals-reporting.ts'),
+    source('app/apps/accounting/AccountingWorkspace.tsx'),
+    source('app/apps/accounting/AccountingFoundationPanel.tsx'),
+    source('app/api/apps/accounting/accruals/route.ts'),
+  ]);
+
+  assert.match(
+    manifest,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.21\.0'/,
+  );
+  assert.match(runtime,/ACCOUNTING_2_20_0_TO_2_21_0/);
+  assert.match(
+    migration,
+    /fromVersion:\s*'2\.20\.0'[\s\S]*toVersion:\s*'2\.21\.0'/,
+  );
+  assert.match(migration,/ACCOUNTING_ACCRUALS_SQL/);
+  assert.match(depth,/ACCOUNTING_ACCRUALS_SQL/);
+
+  for (const marker of [
+    'accounting_accrual_settings',
+    'accounting_accrual_schedules',
+    'accounting_accrual_schedule_lines',
+    'accounting_accrual_runs',
+  ]) {
+    assert.match(schema,new RegExp(marker));
+    assert.match(catalog,new RegExp(marker));
+    assert.match(hooks,new RegExp(marker));
+  }
+
+  for (const marker of [
+    'prepaid_expense',
+    'deferred_revenue',
+    'accrued_expense',
+    'accrued_revenue',
+    'postBalancedLedgerJournal',
+    'reversePostedLedgerJournal',
+    'SKIP LOCKED',
+    'SAVEPOINT',
+    'initial_reclassification',
+    'auto_reverse_accrual',
+  ]) {
+    assert.match(service,new RegExp(marker));
+  }
+
+  assert.match(
+    service,
+    /status IN \(\s*'pending',\s*'failed'\s*\)/,
+    'Cancelling a schedule must preserve already-reversed recognition history.',
+  );
+  assert.match(schema,/request_hash VARCHAR\(64\) NOT NULL/);
+  assert.match(service,/createHash[\s\S]*requestHash/);
+  assert.match(
+    service,
+    /line\.status IN \([\s\S]*'pending',[\s\S]*'failed'/,
+    'Failed recognition lines must remain retryable.',
+  );
+  assert.match(reporting,/managed_gl_balance/);
+  assert.match(reporting,/source_journal_id/);
+  assert.match(reporting,/INTERVAL '365 days'/);
+  assert.match(
+    workspace,
+    /accruals-deferrals[\s\S]*AccountingAccruals/,
+  );
+  assert.match(foundation,/"accruals-deferrals"/);
+
+  for (const action of [
+    'save-settings',
+    'create-schedule',
+    'activate-schedule',
+    'run-due',
+    'reverse-recognition',
+    'cancel-schedule',
+  ]) {
+    assert.match(route,new RegExp(action));
+  }
+});
+
+
+test('Accounting 2.21 release migration expands tenant schemas before promotion without advancing control versions', async () => {
+  const [script,pkg] = await Promise.all([
+    source('scripts/migrate-accounting-2-21-before-release.ts'),
+    source('package.json'),
+  ]);
+
+  assert.match(script,/runSamiModuleMigrations/);
+  assert.match(script,/moduleKey:\s*'accounting'/);
+  assert.match(script,/targetVersion:\s*manifest\.version/);
+  assert.match(script,/expand-before-promote/);
+  assert.match(script,/controlVersionUpdated:[\s\S]*false/);
+  assert.doesNotMatch(
+    script,
+    /UPDATE\s+tenant_modules/i,
+    'Accounting pre-release expansion must not advertise 2.21 before production code is live.',
+  );
+  assert.match(pkg,/migrate:accounting:2\.21:release/);
+  assert.match(pkg,/test:accounting:2\.21:release/);
 });

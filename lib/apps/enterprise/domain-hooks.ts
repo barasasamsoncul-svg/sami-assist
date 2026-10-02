@@ -157,6 +157,10 @@ export function assertEnterpriseDomainMutationAllowed(
       table === 'accounting_inventory_sync_runs' ||
       table === 'accounting_inventory_reconciliation_runs' ||
       table === 'accounting_inventory_reconciliation_lines' ||
+      table === 'accounting_accrual_settings' ||
+      table === 'accounting_accrual_schedules' ||
+      table === 'accounting_accrual_schedule_lines' ||
+      table === 'accounting_accrual_runs' ||
       table ===
         'accounting_reconciliation_suggestions'
     )
@@ -237,6 +241,15 @@ export function assertEnterpriseDomainMutationAllowed(
             table ===
               'accounting_reconciliation_suggestions'
             ? 'Bank reconciliation must be changed through the validated Accounting reconciliation services.'
+          : table ===
+              'accounting_accrual_settings' ||
+            table ===
+              'accounting_accrual_schedules' ||
+            table ===
+              'accounting_accrual_schedule_lines' ||
+            table ===
+              'accounting_accrual_runs'
+            ? 'Accruals and deferrals must be changed through the validated Accounting recognition services.'
           : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
   }

@@ -1,5 +1,7 @@
 import AccountingInventoryValuation from './AccountingInventoryValuation';
 import { getAccountingInventoryValuation } from '@/lib/apps/accounting/inventory-valuation';
+import AccountingAccruals from './AccountingAccruals';
+import { getAccountingAccruals } from '@/lib/apps/accounting/accruals';
 import AccountingFx from './AccountingFx';
 import { getAccountingFx } from '@/lib/apps/accounting/fx';
 import AccountingInternational from './AccountingInternational';
@@ -242,6 +244,7 @@ export default async function AccountingWorkspace({
   let internationalWorkspace: Awaited<ReturnType<typeof getAccountingInternational>> | null = null;
   let fxWorkspace: Awaited<ReturnType<typeof getAccountingFx>> | null = null;
   let inventoryValuationWorkspace: Awaited<ReturnType<typeof getAccountingInventoryValuation>> | null = null;
+  let accrualsWorkspace: Awaited<ReturnType<typeof getAccountingAccruals>> | null = null;
 
   let reconciliationWorkspace:
     Awaited<
@@ -280,6 +283,7 @@ export default async function AccountingWorkspace({
     dedicatedSection !== 'international' &&
     dedicatedSection !== 'fx' &&
     dedicatedSection !== 'inventory-valuation' &&
+    dedicatedSection !== 'accruals-deferrals' &&
     dedicatedSection !==
       'reconciliation'
   ) {
@@ -540,6 +544,24 @@ export default async function AccountingWorkspace({
   if (dedicatedSection === 'inventory-valuation') {
     try { inventoryValuationWorkspace = await getAccountingInventoryValuation(); }
     catch (error) { foundationError = error instanceof AccountingInputError ? error.message : 'Inventory valuation could not be loaded. Retry this page.'; }
+  }
+
+  if (
+    dedicatedSection ===
+      'accruals-deferrals'
+  ) {
+    try {
+      accrualsWorkspace =
+        await getAccountingAccruals();
+    } catch (
+      error
+    ) {
+      foundationError =
+        error instanceof
+          AccountingInputError
+          ? error.message
+          : 'Accruals and deferrals could not be loaded. Retry this page.';
+    }
   }
 
   if (
@@ -893,6 +915,24 @@ export default async function AccountingWorkspace({
 
     {
       key:
+        'accruals-deferrals',
+      label:
+        'Accruals & Deferrals',
+      href:
+        appBaseHref +
+        '/accruals-deferrals',
+      description:
+        'Prepayments, deferred revenue, accrual recognition and controlled reversals.',
+      sectionLabel:
+        'Operations',
+      badge:
+        accrualsWorkspace
+          ?.metrics
+          .due_count,
+    },
+
+    {
+      key:
         'reconciliation',
       label:
         'Reconciliation',
@@ -1101,6 +1141,8 @@ export default async function AccountingWorkspace({
                   ? (fxWorkspace ? <AccountingFx data={fxWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Foreign currency could not be loaded.'}</div>)
                 : dedicatedSection === 'inventory-valuation'
                   ? (inventoryValuationWorkspace ? <AccountingInventoryValuation data={inventoryValuationWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Inventory valuation could not be loaded.'}</div>)
+                : dedicatedSection === 'accruals-deferrals'
+                  ? (accrualsWorkspace ? <AccountingAccruals data={accrualsWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Accruals and deferrals could not be loaded.'}</div>)
                 : dedicatedSection ===
                     'reconciliation'
                   ? (
