@@ -161,7 +161,7 @@ export async function saveBudgetSettings(input: unknown) {
   let variance: string;
   try {
     const scaled = parseGrowthPercentScaled(body.varianceAlertPercent ?? '10');
-    if (scaled < 0n) throw new Error('negative');
+    if (scaled < BigInt(0)) throw new Error('negative');
     variance = (Number(scaled) / 10000).toFixed(4);
   } catch {
     throw new AccountingInputError('Variance alert percent must be between 0% and 1000%.');
@@ -837,7 +837,7 @@ export async function getAccountingBudgets() {
   }
 
   const total = (rows: Array<Record<string, unknown>>, key: string) =>
-    rows.reduce((sum, row) => sum + budgetMoneyCents(row[key] || '0.00'), 0n);
+    rows.reduce((sum, row) => sum + budgetMoneyCents(row[key] || '0.00'), BigInt(0));
 
   return {
     companyId,
