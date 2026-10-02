@@ -45,7 +45,7 @@ export function budgetMoneyCents(
     BigInt(
       whole,
     ) *
-      100n +
+      BigInt(100) +
     BigInt(
       fraction.padEnd(
         2,
@@ -63,7 +63,7 @@ export function budgetMoneyDecimal(
 ) {
   const negative =
     cents <
-    0n;
+    BigInt(0);
   const amount =
     negative
       ? -cents
@@ -77,12 +77,12 @@ export function budgetMoneyDecimal(
     ) +
     String(
       amount /
-        100n,
+        BigInt(100),
     ) +
     '.' +
     String(
       amount %
-        100n,
+        BigInt(100),
     ).padStart(
       2,
       '0',
@@ -269,7 +269,7 @@ export function parseGrowthPercentScaled(
     BigInt(
       whole,
     ) *
-      10000n +
+      BigInt(10000) +
     BigInt(
       fraction.padEnd(
         4,
@@ -283,9 +283,9 @@ export function parseGrowthPercentScaled(
 
   if (
     signed <
-      -1000000n ||
+      -BigInt(1000000) ||
     signed >
-      10000000n
+      BigInt(10000000)
   ) {
     throw new Error(
       'Growth percent must be between -100% and 1000%.',
@@ -300,7 +300,7 @@ export function applyBudgetGrowth(
   growthPercentScaled: bigint,
 ) {
   const denominator =
-    1000000n;
+    BigInt(1000000);
   const numerator =
     denominator +
     growthPercentScaled;
@@ -310,12 +310,12 @@ export function applyBudgetGrowth(
 
   if (
     raw >=
-    0n
+    BigInt(0)
   ) {
     return (
       raw +
       denominator /
-        2n
+        BigInt(2)
     ) /
       denominator;
   }
@@ -324,7 +324,7 @@ export function applyBudgetGrowth(
     (
       -raw +
       denominator /
-        2n
+        BigInt(2)
     ) /
     denominator
   );
@@ -345,14 +345,14 @@ export function budgetVariance(
         'income_',
       )
       ? amount >=
-        0n
+        BigInt(0)
       : accountType ===
           'expense' ||
         accountType.startsWith(
           'expense_',
         )
         ? amount <=
-          0n
+          BigInt(0)
         : null;
 
   return {
@@ -367,21 +367,21 @@ export function variancePercent(
 ) {
   if (
     planned ===
-    0n
+    BigInt(0)
   ) {
     return null;
   }
 
   const abs =
     planned <
-      0n
+      BigInt(0)
       ? -planned
       : planned;
 
   return Number(
     (
       variance *
-      1000000n
+      BigInt(1000000)
     ) /
       abs,
   ) /
