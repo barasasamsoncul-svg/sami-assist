@@ -1183,6 +1183,8 @@ export default async function AccountingWorkspace({
                   ? (inventoryValuationWorkspace ? <AccountingInventoryValuation data={inventoryValuationWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Inventory valuation could not be loaded.'}</div>)
                 : dedicatedSection === 'accruals-deferrals'
                   ? (accrualsWorkspace ? <AccountingAccruals data={accrualsWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Accruals and deferrals could not be loaded.'}</div>)
+                : dedicatedSection === 'loans-financing'
+                  ? (financingWorkspace ? <AccountingFinancing data={financingWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Loans and financing could not be loaded.'}</div>)
                 : dedicatedSection ===
                     'reconciliation'
                   ? (
