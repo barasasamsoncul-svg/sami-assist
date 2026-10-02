@@ -1270,6 +1270,8 @@ export default function AccountingFinancing({
                   {
                     action:
                       'classify-current',
+                    requestKey:
+                      crypto.randomUUID(),
                     asOf:
                       closeDate,
                     classificationDays:
