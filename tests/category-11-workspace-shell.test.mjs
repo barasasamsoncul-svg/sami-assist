@@ -247,11 +247,7 @@ test('Category 11: dashboard turns recorded activity into operational intelligen
   );
   assert.match(
     aiSummary,
-    /listWorkspaceActivity/,
-  );
-  assert.match(
-    aiSummary,
-    /getWorkspaceActivitySummary/,
+    /getWorkspaceActivityDashboardSnapshot/,
   );
   assert.match(
     aiSummary,
