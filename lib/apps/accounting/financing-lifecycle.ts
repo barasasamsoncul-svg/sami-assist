@@ -370,7 +370,11 @@ export async function reverseFinancingTransaction(
         originalIncoming
       ) {
         assertFinancingFunds(
-          financial,
+          financial as
+            Record<
+              string,
+              unknown
+            >,
           {
             foreignAmount:
               signedForeignUnits(
