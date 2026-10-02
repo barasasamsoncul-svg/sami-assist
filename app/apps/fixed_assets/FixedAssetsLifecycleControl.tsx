@@ -1322,6 +1322,47 @@ export default function FixedAssetsLifecycleControl({
               </tr>
             </thead>
             <tbody>
+              {data.depreciationEntries.map(
+                row => (
+                  <tr key={'dep:' + String(row.id)}>
+                    <td>Depreciation</td>
+                    <td>{assetLabel(row.asset_id)}</td>
+                    <td>{String(row.period_date || '')}</td>
+                    <td>{amount(row.depreciation_amount)}</td>
+                    <td>
+                      <span className={styles.status}>
+                        {String(row.status || '')}
+                      </span>
+                    </td>
+                    <td>
+                      {[
+                        'active',
+                        'posted',
+                      ].includes(String(row.status)) &&
+                      !row.reversal_journal_id ? (
+                        <button
+                          type="button"
+                          className={styles.button}
+                          disabled={!canExecute}
+                          onClick={() =>
+                            reverse(
+                              'reverse-dep',
+                              'reverse-depreciation',
+                              'entryId',
+                              String(row.id),
+                              'Reverse depreciation?',
+                            )
+                          }
+                        >
+                          <Undo2 size={14} />
+                          Reverse
+                        </button>
+                      ) : null}
+                    </td>
+                  </tr>
+                ),
+              )}
+
               {data.impairments.map(
                 row => (
                   <tr
@@ -1564,7 +1605,9 @@ export default function FixedAssetsLifecycleControl({
                 ),
               )}
 
-              {!data.impairments
+              {!data.depreciationEntries
+                .length &&
+              !data.impairments
                 .length &&
               !data.revaluations
                 .length &&
