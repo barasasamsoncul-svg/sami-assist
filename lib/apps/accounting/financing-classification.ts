@@ -27,6 +27,7 @@ import {
   financingBaseAmount,
   financingRateToBase,
   signedForeignUnits,
+  signedLedgerCents,
 } from './financing-helpers';
 
 function hashPayload(
@@ -545,14 +546,9 @@ export async function runFinancingCurrentClassification(
           );
         const priorBase =
           prior.rows[0]
-            ? BigInt(
-                Math.round(
-                  Number(
-                    prior.rows[0]
-                      .target_current_principal,
-                  ) *
-                  100,
-                ),
+            ? signedLedgerCents(
+                prior.rows[0]
+                  .target_current_principal,
               )
             : BigInt(
                 0,
