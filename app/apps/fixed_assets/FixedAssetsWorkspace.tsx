@@ -21,8 +21,27 @@ import {
 } from '@/app/apps/_shared/loadStandaloneEnterpriseApp';
 
 import FixedAssetsWorkspaceClient from '@/app/apps/fixed_assets/FixedAssetsWorkspaceClient';
+import FixedAssetsAccountingControl from '@/app/apps/fixed_assets/FixedAssetsAccountingControl';
+import FixedAssetsReports from '@/app/apps/fixed_assets/FixedAssetsReports';
+
+import {
+  getFixedAssetsAccountingControl,
+} from '@/lib/apps/fixed_assets/accounting-control';
+import {
+  getFixedAssetsReports,
+} from '@/lib/apps/fixed_assets/reports';
 
 const MODULE_KEY = 'fixed_assets';
+
+const CONTROLLED_FIXED_ASSET_TABLES =
+  new Set([
+    'asset_depreciation_entries',
+    'asset_depreciation_runs',
+    'asset_impairments',
+    'asset_revaluations',
+    'asset_disposals',
+    'asset_source_links',
+  ]);
 
 export default async function FixedAssetsWorkspace({
   section,
@@ -52,14 +71,17 @@ export default async function FixedAssetsWorkspace({
   const appSidebarItems = [
     {
       key: 'overview',
-      label: 'Overview',
+      label: 'Asset Accounting',
       href: appBaseHref,
-      description: 'KPIs, priorities and current operating state.',
+      description: 'Capitalization, depreciation, carrying value and lifecycle controls.',
     },
     ...data.tables
       .filter(
         table =>
-          !table.settingTable,
+          !table.settingTable &&
+          !CONTROLLED_FIXED_ASSET_TABLES.has(
+            table.key,
+          ),
       )
       .map(
         table => ({
@@ -86,7 +108,7 @@ export default async function FixedAssetsWorkspace({
             href:
               appBaseHref +
               '/reports',
-            description: 'Module analysis and operational reporting.',
+            description: 'Asset roll-forward, register, forecast and GL reconciliation.',
           }]
         : []
     ),
@@ -120,6 +142,18 @@ export default async function FixedAssetsWorkspace({
     resolved.view === 'records'
       ? resolved.tableKey
       : resolved.view;
+
+  const accountingControl =
+    resolved.view ===
+      'overview'
+      ? await getFixedAssetsAccountingControl()
+      : null;
+
+  const reportData =
+    resolved.view ===
+      'reports'
+      ? await getFixedAssetsReports()
+      : null;
 
   return (
     <AppSurfaceShell
@@ -192,18 +226,36 @@ export default async function FixedAssetsWorkspace({
             uiProfile.secondary,
         } as CSSProperties}
       >
-        <FixedAssetsWorkspaceClient
-          initialData={data}
-          userId={session.user.id}
-          initialView={resolved.view}
-          initialTableKey={resolved.tableKey}
-          accessibleModuleKeys={
-            shell.accessibleModules.map(
-              module =>
-                module.registryKey,
-            )
-          }
-        />
+        {reportData ? (
+          <FixedAssetsReports
+            initialData={reportData}
+          />
+        ) : accountingControl ? (
+          <FixedAssetsAccountingControl
+            data={accountingControl}
+            canEdit={
+              data.capabilities
+                .canEdit
+            }
+            canExecute={
+              data.capabilities
+                .canExecute
+            }
+          />
+        ) : (
+          <FixedAssetsWorkspaceClient
+            initialData={data}
+            userId={session.user.id}
+            initialView={resolved.view}
+            initialTableKey={resolved.tableKey}
+            accessibleModuleKeys={
+              shell.accessibleModules.map(
+                module =>
+                  module.registryKey,
+              )
+            }
+          />
+        )}
       </div>
     </AppSurfaceShell>
   );

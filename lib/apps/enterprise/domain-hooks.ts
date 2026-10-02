@@ -243,6 +243,29 @@ export function assertEnterpriseDomainMutationAllowed(
 
   if (
     moduleKey ===
+      'fixed_assets' &&
+    (
+      table ===
+        'asset_depreciation_entries' ||
+      table ===
+        'asset_impairments' ||
+      table ===
+        'asset_disposals' ||
+      table ===
+        'asset_depreciation_runs' ||
+      table ===
+        'asset_revaluations' ||
+      table ===
+        'asset_source_links'
+    )
+  ) {
+    throw new Error(
+      'Fixed Asset accounting events must be changed through the validated capitalization, depreciation, impairment, revaluation and disposal services.',
+    );
+  }
+
+  if (
+    moduleKey ===
       'inventory' &&
     table ===
       'stock_movements' &&

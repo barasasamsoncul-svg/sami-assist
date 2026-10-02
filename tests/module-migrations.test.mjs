@@ -1681,3 +1681,137 @@ test('Accounting 2.20 Inventory Valuation is migration-backed and ledger control
   );
   assert.match(foundation,/"inventory-valuation"/);
 });
+
+
+test('Fixed Assets 2.4 accounting control is migration-backed and protected', async () => {
+  const [
+    manifests,
+    runtime,
+    migration,
+    schema,
+    depth,
+    catalog,
+    specialist,
+    hooks,
+    service,
+  ] = await Promise.all([
+    source('lib/modules/additional-first-party.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/apps/fixed_assets/migrations/2.3.0-to-2.4.0.ts'),
+    source('lib/apps/fixed_assets/accounting-schema.ts'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+    source('lib/apps/enterprise/catalog.ts'),
+    source('lib/apps/enterprise/specialist-catalog.ts'),
+    source('lib/apps/enterprise/domain-hooks.ts'),
+    source('lib/apps/fixed_assets/accounting-control.ts'),
+  ]);
+
+  assert.match(
+    manifests,
+    /key:\s*"fixed_assets"[\s\S]*version:\s*'2\.4\.0'/,
+    'Fixed Assets must advance beyond the shared specialist 2.3 baseline.',
+  );
+
+  assert.match(runtime,/FIXED_ASSETS_2_3_0_TO_2_4_0/);
+  assert.match(
+    migration,
+    /fromVersion:\s*'2\.3\.0'[\s\S]*toVersion:\s*'2\.4\.0'/,
+  );
+  assert.match(migration,/FIXED_ASSETS_ACCOUNTING_SQL/);
+  assert.match(depth,/FIXED_ASSETS_ACCOUNTING_SQL/);
+
+  for (const marker of [
+    'asset_depreciation_runs',
+    'asset_revaluations',
+    'asset_source_links',
+  ]) {
+    assert.match(schema,new RegExp(marker));
+    assert.match(catalog,new RegExp(marker));
+  }
+
+  for (const marker of [
+    'capitalization_journal_id',
+    'default_accumulated_depreciation_account_id',
+    'reversal_journal_id',
+  ]) {
+    assert.match(schema,new RegExp(marker));
+  }
+
+  for (const marker of [
+    'asset_depreciation_runs',
+    'asset_revaluations',
+    'asset_source_links',
+  ]) {
+    assert.match(specialist,new RegExp(marker));
+    assert.match(hooks,new RegExp(marker));
+  }
+
+  assert.match(service,/postBalancedLedgerJournal/);
+  assert.match(service,/reversePostedLedgerJournal/);
+  assert.match(service,/fixed_assets:capitalization:/);
+  assert.match(service,/fixed_assets:depreciation:/);
+  assert.match(service,/fixed_assets:depreciation-reversal:/);
+  assert.match(service,/fixed_assets:impairment:/);
+  assert.match(service,/fixed_assets:revaluation:/);
+  assert.match(service,/fixed_assets:disposal:/);
+  assert.match(service,/Reverse later depreciation, revaluation or disposal events/);
+  assert.match(service,/SAVEPOINT fixed_asset_depreciation/);
+  assert.match(service,/ROLLBACK TO SAVEPOINT fixed_asset_depreciation/);
+  assert.match(service,/capitalization_threshold/);
+});
+
+
+test('Fixed Assets release migration expands tenant schemas before promotion without advancing control versions', async () => {
+  const [script,pkg] = await Promise.all([
+    source('scripts/migrate-fixed-assets-before-release.ts'),
+    source('package.json'),
+  ]);
+
+  assert.match(script,/runSamiModuleMigrations/);
+  assert.match(script,/fixed_assets/);
+  assert.match(script,/expand-before-promote/);
+  assert.match(script,/controlVersionUpdated:[\s\S]*false/);
+  assert.doesNotMatch(
+    script,
+    /UPDATE\s+tenant_modules/i,
+    'The pre-release expansion must not make the control plane advertise 2.4 before production code is live.',
+  );
+  assert.match(pkg,/migrate:fixed-assets:release/);
+  assert.match(pkg,/test:fixed-assets:release/);
+});
+
+
+test('Accounting roadmap closes Fixed Assets before Accruals', async () => {
+  const roadmap = await source('docs/accounting/ROADMAP.md');
+
+  assert.match(
+    roadmap,
+    /19\. Fixed assets: deepened the existing standalone Fixed Assets domain/,
+  );
+  assert.match(
+    roadmap,
+    /## Remaining depth, in the agreed order[\s\S]*20\. Accruals and deferrals\./,
+  );
+  assert.doesNotMatch(
+    roadmap,
+    /## Remaining depth, in the agreed order[\s\S]*19\. Fixed assets\./,
+  );
+});
+
+
+test('Fixed Assets depreciation cannot survive a capitalization reversal or reuse a reversed posting key', async () => {
+  const service = await source('lib/apps/fixed_assets/accounting-control.ts');
+
+  assert.match(
+    service,
+    /capitalization_reversal_journal_id[\s\S]*IS NULL[\s\S]*asset\.status IN/,
+  );
+  assert.match(
+    service,
+    /previousReversed[\s\S]*reversal_journal_id[\s\S]*sourceEventKey:[\s\S]*fixed_assets:depreciation:/,
+  );
+  assert.match(
+    service,
+    /status <>[\s\S]*'disposed'[\s\S]*AS capitalized_count/,
+  );
+});

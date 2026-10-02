@@ -111,6 +111,9 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
     'asset_categories',
     'asset_impairments',
     'asset_insurance_policies',
+    'asset_depreciation_runs',
+    'asset_revaluations',
+    'asset_source_links',
   ],
   tax: [
     'tax_codes',

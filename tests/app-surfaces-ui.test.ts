@@ -1278,3 +1278,134 @@ test(
     }
   },
 );
+
+
+test(
+  'Fixed Assets overview uses the dedicated accounting control and protected API',
+  async () => {
+    const [workspace, control, route] = await Promise.all([
+      readFile('app/apps/fixed_assets/FixedAssetsWorkspace.tsx','utf8'),
+      readFile('app/apps/fixed_assets/FixedAssetsAccountingControl.tsx','utf8'),
+      readFile('app/api/apps/fixed_assets/accounting-control/route.ts','utf8'),
+    ]);
+
+    assert.match(
+      workspace,
+      /resolved\.view ===[\s\S]*'overview'[\s\S]*getFixedAssetsAccountingControl/,
+    );
+    assert.match(workspace,/FixedAssetsAccountingControl/);
+
+    for (const marker of [
+      'run-depreciation',
+      'save-settings',
+      'save-category',
+      'capitalize',
+      'Capitalization readiness',
+      'Run depreciation',
+    ]) {
+      assert.match(control,new RegExp(marker));
+    }
+
+    assert.match(
+      control,
+      /\/api\/apps\/fixed_assets\/accounting-control/,
+    );
+
+
+    assert.match(
+      control,
+      /FixedAssetsLifecycleControl/,
+      'The Fixed Assets overview must expose the controlled lifecycle surface without reverting to generic CRUD.',
+    );
+
+    for (const marker of [
+      'save-settings',
+      'save-category',
+      'capitalize',
+      'run-depreciation',
+      'reverse-depreciation',
+      'reverse-capitalization',
+      'post-impairment',
+      'reverse-impairment',
+      'post-revaluation',
+      'reverse-revaluation',
+      'dispose',
+      'reverse-disposal',
+      'link-source',
+    ]) {
+      assert.match(route,new RegExp(marker));
+    }
+  },
+);
+
+
+test(
+  'Fixed Assets reports own roll-forward forecast and reconciliation',
+  async () => {
+    const [
+      workspace,
+      reports,
+      reportService,
+      reportRoute,
+      analysis,
+    ] = await Promise.all([
+      readFile('app/apps/fixed_assets/FixedAssetsWorkspace.tsx','utf8'),
+      readFile('app/apps/fixed_assets/FixedAssetsReports.tsx','utf8'),
+      readFile('lib/apps/fixed_assets/reports.ts','utf8'),
+      readFile('app/api/apps/fixed_assets/reports/route.ts','utf8'),
+      readFile('lib/apps/fixed_assets/reporting.ts','utf8'),
+    ]);
+
+    assert.match(
+      workspace,
+      /resolved\.view ===[\s\S]*'reports'[\s\S]*getFixedAssetsReports/,
+    );
+    assert.match(
+      workspace,
+      /FixedAssetsReports/,
+    );
+    assert.match(
+      workspace,
+      /CONTROLLED_FIXED_ASSET_TABLES/,
+      'Accounting-controlled lifecycle tables must stay out of the generic Fixed Assets sidebar.',
+    );
+
+    for (const marker of [
+      'Asset roll-forward',
+      'Register-to-ledger',
+      '12-month depreciation forecast',
+      'Export movements',
+      'Export register',
+    ]) {
+      assert.match(
+        reports,
+        new RegExp(marker),
+      );
+    }
+
+    assert.match(
+      reportService,
+      /BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY/,
+    );
+    assert.match(
+      reportService,
+      /getFixedAssetsReporting/,
+    );
+    assert.match(
+      reportRoute,
+      /getFixedAssetsReports/,
+    );
+    assert.match(
+      analysis,
+      /journal\.status[\s\S]*'posted'/,
+    );
+    assert.match(
+      analysis,
+      /accumulated_depreciation/,
+    );
+    assert.match(
+      analysis,
+      /decliningBalanceDepreciationCents/,
+    );
+  },
+);

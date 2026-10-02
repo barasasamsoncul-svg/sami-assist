@@ -1,4 +1,5 @@
 import { ACCOUNTING_INVENTORY_VALUATION_SQL } from '@/lib/apps/accounting/inventory-valuation-schema';
+import { FIXED_ASSETS_ACCOUNTING_SQL } from '@/lib/apps/fixed_assets/accounting-schema';
 import { ACCOUNTING_FX_SQL } from '@/lib/apps/accounting/fx-schema';
 import { ACCOUNTING_INTERNATIONAL_LOCALIZATION_SQL } from '@/lib/apps/accounting/international-schema';
 import { ACCOUNTING_KENYA_SQL } from '@/lib/apps/accounting/kenya-schema';
@@ -2501,6 +2502,9 @@ export function specialistDepthSql(
     financeSpecialistDepthSql(
       key,
     ),
+    key === 'fixed_assets'
+      ? FIXED_ASSETS_ACCOUNTING_SQL
+      : '',
     peopleSpecialistDepthSql(
       key,
     ),
