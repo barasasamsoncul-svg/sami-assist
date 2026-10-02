@@ -1249,7 +1249,9 @@ async function tableMetadata(
           ].find(
             relation =>
               relation.companyScoped !==
-              true,
+                true ||
+              relation.softDelete !==
+                true,
           );
 
         if (
