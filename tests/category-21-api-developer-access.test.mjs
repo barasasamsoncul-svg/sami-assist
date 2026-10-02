@@ -101,7 +101,7 @@ test('Category 21: API core migration remains additive inside the current tenant
 
   assert.match(
     core,
-    /VALUES \('1\.8\.0'\)/,
+    /VALUES \('1\.9\.0'\)/,
   );
 });
 
