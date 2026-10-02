@@ -56,17 +56,25 @@ function failure(
 ) {
   if (
     error instanceof
-      FixedAssetInputError ||
-    error instanceof
       SyntaxError
   ) {
     return respond(
       {
         error:
-          error instanceof
-            SyntaxError
-            ? 'Enter valid Fixed Asset data.'
-            : error.message,
+          'Enter valid Fixed Asset data.',
+      },
+      400,
+    );
+  }
+
+  if (
+    error instanceof
+      FixedAssetInputError
+  ) {
+    return respond(
+      {
+        error:
+          error.message,
       },
       400,
     );
