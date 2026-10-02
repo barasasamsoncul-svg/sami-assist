@@ -1324,57 +1324,15 @@ export async function activateFinancingFacility(
         .repayment_structure ===
         'custom'
     ) {
-      const custom =
-        await client.query(
-          `
-            SELECT COUNT(*)::int
-              AS count
-            FROM accounting_financing_schedule_lines
-            WHERE company_id =
-                  $1
-              AND facility_id =
-                  $2
-              AND revision =
-                  $3
-              AND deleted_at
-                  IS NULL
-              AND schedule_source =
-                  'custom'
-              AND status =
-                  'projected'
-          `,
-          [
-            context.companyId,
-            facilityId,
-            facility
-              .schedule_revision,
-          ],
-        );
-
-      if (
-        Number(
-          custom.rows[0]
-            ?.count ||
-          0,
-        ) <=
-        0
-      ) {
-        throw new AccountingInputError(
-          'Add a custom financing schedule before activating this facility.',
-        );
-      }
-
       schedule = {
         revision:
           Number(
             facility
-              .schedule_revision,
+              .schedule_revision ||
+            1,
           ),
         periods:
-          Number(
-            custom.rows[0]
-              .count,
-          ),
+          0,
       };
     } else {
       const principal =
