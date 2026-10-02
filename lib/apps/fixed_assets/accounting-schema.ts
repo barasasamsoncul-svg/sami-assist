@@ -82,6 +82,11 @@ ALTER TABLE public.fixed_assets
     REFERENCES public.journals(id) ON DELETE RESTRICT,
   ADD COLUMN IF NOT EXISTS capitalization_reversal_journal_id UUID
     REFERENCES public.journals(id) ON DELETE RESTRICT,
+  ADD COLUMN IF NOT EXISTS disposal_date DATE,
+  ADD COLUMN IF NOT EXISTS disposal_journal_id UUID
+    REFERENCES public.journals(id) ON DELETE RESTRICT,
+  ADD COLUMN IF NOT EXISTS disposal_reversal_journal_id UUID
+    REFERENCES public.journals(id) ON DELETE RESTRICT,
   ADD COLUMN IF NOT EXISTS accumulated_depreciation NUMERIC(19,2)
     NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS accumulated_impairment NUMERIC(19,2)
