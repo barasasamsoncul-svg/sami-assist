@@ -334,6 +334,13 @@ export async function runFinancingCurrentClassification(
       );
 
       try {
+        const requestHash =
+          hashPayload({
+            facilityId:
+              facility.id,
+            asOf,
+            classificationDays,
+          });
         const replay =
           await client.query(
             `
@@ -365,6 +372,18 @@ export async function runFinancingCurrentClassification(
         if (
           replay.rows[0]
         ) {
+          if (
+            String(
+              replay.rows[0]
+                .request_hash,
+            ) !==
+            requestHash
+          ) {
+            throw new AccountingInputError(
+              'This classification request key was already used with different close parameters.',
+            );
+          }
+
           skipped +=
             1;
           await client.query(
@@ -576,27 +595,6 @@ export async function runFinancingCurrentClassification(
           continue;
         }
 
-        const requestHash =
-          hashPayload({
-            facilityId:
-              facility.id,
-            asOf,
-            classificationDays,
-            targetCurrentPrincipal:
-              decimalAmount(
-                targetBase,
-              ),
-            priorCurrentPrincipal:
-              decimalAmount(
-                priorBase,
-              ),
-            delta:
-              financingCentsDecimal(
-                delta,
-              ),
-            fxRate:
-              fx.rate,
-          });
         const journal =
           await postBalancedLedgerJournal(
             client,
