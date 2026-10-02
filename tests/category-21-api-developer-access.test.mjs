@@ -27,7 +27,7 @@ function compact(
   );
 }
 
-test('Category 21: tenant core advances additively from 1.7.0 to 1.8.0', async () => {
+test('Category 21: API core migration remains additive inside the current tenant-core chain', async () => {
   const [
     manifest,
     migration,
@@ -47,7 +47,7 @@ test('Category 21: tenant core advances additively from 1.7.0 to 1.8.0', async (
 
   assert.match(
     manifest,
-    /CURRENT_TENANT_CORE_VERSION\s*=\s*['"]1\.8\.0['"]/s,
+    /CURRENT_TENANT_CORE_VERSION\s*=\s*['"]1\.9\.0['"]/s,
   );
 
   assert.match(
@@ -58,6 +58,11 @@ test('Category 21: tenant core advances additively from 1.7.0 to 1.8.0', async (
   assert.match(
     manifest,
     /008-core-1\.7\.0-to-1\.8\.0\.sql/,
+  );
+
+  assert.match(
+    manifest,
+    /core-1\.8\.0-to-1\.9\.0/,
   );
 
   assert.doesNotMatch(
