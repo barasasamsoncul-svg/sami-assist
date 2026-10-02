@@ -2653,8 +2653,7 @@ export async function cancelAccrualSchedule(
               IS NULL
           AND status IN (
             'pending',
-            'failed',
-            'reversed'
+            'failed'
           )
       `,
       [
