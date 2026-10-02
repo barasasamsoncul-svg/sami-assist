@@ -31,6 +31,9 @@ import {
   runFinancingCurrentClassification,
 } from '@/lib/apps/accounting/financing-classification';
 import {
+  replaceFinancingCustomSchedule,
+} from '@/lib/apps/accounting/financing-custom-schedule';
+import {
   getAccountingFinancing,
 } from '@/lib/apps/accounting/financing-loader';
 
@@ -260,6 +263,11 @@ export async function POST(
                           ? await runFinancingCurrentClassification(
                               body,
                             )
+                          : body.action ===
+                              'replace-custom-schedule'
+                            ? await replaceFinancingCustomSchedule(
+                                body,
+                              )
                           : body.action ===
                               'close-facility'
                             ? await closeFinancingFacility(
