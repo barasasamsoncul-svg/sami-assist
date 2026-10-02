@@ -285,6 +285,72 @@ async function getFxPositions(context:Context,asOf:string,baseCurrency:string,ra
         AND COALESCE(v.foreign_balance,0)<>0 ORDER BY b.currency,b.name`,[context.companyId,baseCurrency]);
     for(const row of banks.rows)if(row.account_id)positions.push({...row,sourceType:'bank',positionNature:'asset',accountId:String(row.account_id)});
 
+    if(await tableAvailable(context,'accounting_financing_facilities')){
+      const facilities=await client.query(`SELECT id::text,facility_number,name,direction,currency,
+          principal_account_id::text,current_principal_account_id::text,accrued_interest_account_id::text
+        FROM accounting_financing_facilities
+        WHERE company_id=$1 AND deleted_at IS NULL AND status IN ('active','closed')
+          AND start_date<=$2::date AND UPPER(currency)<>$3
+        ORDER BY facility_number,id`,[context.companyId,asOf,baseCurrency]);
+      for(const facility of facilities.rows){
+        const facilityId=String(facility.id);
+        const nature=facility.direction==='borrowing'?'liability':'asset';
+        const buckets=await financingPrincipalBuckets(client,{
+          companyId:context.companyId,
+          facilityId,
+          asOf,
+        });
+        if(buckets.currentForeign>BigInt(0)&&facility.current_principal_account_id){
+          positions.push({
+            source_id:facilityId,
+            source_reference:String(facility.facility_number)+' · current principal',
+            currency:String(facility.currency),
+            foreign_balance:foreignDecimal(buckets.currentForeign),
+            historical_base_balance:centsDecimal(buckets.currentBase),
+            sourceType:'financing_principal_current',
+            positionNature:nature,
+            accountId:String(facility.current_principal_account_id),
+          });
+        }
+        if(buckets.noncurrentForeign>BigInt(0)&&facility.principal_account_id){
+          positions.push({
+            source_id:facilityId,
+            source_reference:String(facility.facility_number)+' · non-current principal',
+            currency:String(facility.currency),
+            foreign_balance:foreignDecimal(buckets.noncurrentForeign),
+            historical_base_balance:centsDecimal(buckets.noncurrentBase),
+            sourceType:'financing_principal_noncurrent',
+            positionNature:nature,
+            accountId:String(facility.principal_account_id),
+          });
+        }
+        const interestForeign=await financingOutstandingInterestUnits(
+          client,
+          context.companyId,
+          facilityId,
+          asOf,
+        );
+        if(interestForeign>BigInt(0)&&facility.accrued_interest_account_id){
+          const interestBase=await financingInterestCarryingCents(
+            client,
+            context.companyId,
+            facilityId,
+            asOf,
+          );
+          positions.push({
+            source_id:facilityId,
+            source_reference:String(facility.facility_number)+' · accrued interest',
+            currency:String(facility.currency),
+            foreign_balance:foreignDecimal(interestForeign),
+            historical_base_balance:centsDecimal(interestBase),
+            sourceType:'financing_interest',
+            positionNature:nature,
+            accountId:String(facility.accrued_interest_account_id),
+          });
+        }
+      }
+    }
+
     const rateCache=new Map<string,Awaited<ReturnType<typeof resolveRate>>|null>();
     for(const position of positions){
       const code=String(position.currency).toUpperCase();
