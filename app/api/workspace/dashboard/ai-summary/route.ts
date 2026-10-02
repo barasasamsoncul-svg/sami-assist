@@ -21,8 +21,7 @@ import {
   completeSamiAiChat,
 } from '@/lib/ai/provider';
 import {
-  getWorkspaceActivitySummary,
-  listWorkspaceActivity,
+  getWorkspaceActivityDashboardSnapshot,
 } from '@/lib/services/workspace-activity';
 
 export const runtime =
@@ -34,15 +33,15 @@ function fallbackSummary(
   activity:
     Awaited<
       ReturnType<
-        typeof listWorkspaceActivity
+        typeof getWorkspaceActivityDashboardSnapshot
       >
     >['items'],
   summary:
     Awaited<
       ReturnType<
-        typeof getWorkspaceActivitySummary
+        typeof getWorkspaceActivityDashboardSnapshot
       >
-    >,
+    >['summary'],
 ) {
   if (
     activity.length >
@@ -117,22 +116,24 @@ export async function GET() {
 
     const [
       account,
-      activityResult,
-      activitySummary,
+      activitySnapshot,
     ] =
       await Promise.all([
         getAccountContextForUser(
           session.user.id,
           session.currentTenantId,
         ),
-        listWorkspaceActivity({
-          view:
-            'activity',
-          limit:
-            12,
-        }),
-        getWorkspaceActivitySummary(),
+        getWorkspaceActivityDashboardSnapshot(
+          12,
+        ),
       ]);
+
+    const activityResult = {
+      items:
+        activitySnapshot.items,
+    };
+    const activitySummary =
+      activitySnapshot.summary;
 
     const shell =
       resolveWorkspaceShellAccess({
