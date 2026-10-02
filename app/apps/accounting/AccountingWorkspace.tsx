@@ -244,6 +244,7 @@ export default async function AccountingWorkspace({
   let internationalWorkspace: Awaited<ReturnType<typeof getAccountingInternational>> | null = null;
   let fxWorkspace: Awaited<ReturnType<typeof getAccountingFx>> | null = null;
   let inventoryValuationWorkspace: Awaited<ReturnType<typeof getAccountingInventoryValuation>> | null = null;
+  let accrualsWorkspace: Awaited<ReturnType<typeof getAccountingAccruals>> | null = null;
 
   let reconciliationWorkspace:
     Awaited<
