@@ -1736,6 +1736,15 @@ export default function AccountingFinancing({
                       repaymentStructure:
                         event.target
                           .value,
+                      paymentFrequency:
+                        event.target
+                          .value ===
+                          'custom'
+                          ? 'custom'
+                          : current.paymentFrequency ===
+                              'custom'
+                            ? 'monthly'
+                            : current.paymentFrequency,
                     }),
                   )
               }
@@ -3026,6 +3035,383 @@ export default function AccountingFinancing({
           >
             Save rate
           </button>
+        </form>
+      </section>
+
+      <section
+        className={
+          styles.panel
+        }
+      >
+        <div
+          className={
+            styles.panelHeading
+          }
+        >
+          <div>
+            <div
+              className={
+                styles.eyebrow
+              }
+            >
+              Custom lender schedule
+            </div>
+            <h3>
+              Replace the current manual repayment revision
+            </h3>
+            <p>
+              Use this only for facilities whose repayment structure and frequency are both Custom. Principal across all lines must exactly equal the principal being scheduled.
+            </p>
+          </div>
+          <CalendarClock
+            size={20}
+          />
+        </div>
+
+        <form
+          onSubmit={
+            replaceCustomSchedule
+          }
+        >
+          <div
+            className={
+              styles.formGrid
+            }
+          >
+            <label>
+              Facility
+              <select
+                value={
+                  customSchedule.facilityId
+                }
+                onChange={
+                  event =>
+                    setCustomSchedule(
+                      current => ({
+                        ...current,
+                        facilityId:
+                          event.target
+                            .value,
+                      }),
+                    )
+                }
+                required
+              >
+                <option value="">
+                  Choose custom facility
+                </option>
+                {customFacilities.map(
+                  row => (
+                    <option
+                      key={
+                        String(
+                          row.id,
+                        )
+                      }
+                      value={
+                        String(
+                          row.id,
+                        )
+                      }
+                    >
+                      {String(
+                        row.facility_number,
+                      )} · {String(
+                        row.name,
+                      )}
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+
+            <label>
+              Schedule start date
+              <input
+                type="date"
+                value={
+                  customSchedule.scheduleStartDate
+                }
+                onChange={
+                  event =>
+                    setCustomSchedule(
+                      current => ({
+                        ...current,
+                        scheduleStartDate:
+                          event.target
+                            .value,
+                      }),
+                    )
+                }
+                required
+              />
+            </label>
+          </div>
+
+          <div
+            className={
+              styles.openingManualRows
+            }
+          >
+            {customSchedule.lines.map(
+              (
+                row,
+                index,
+              ) => (
+                <div
+                  key={
+                    index
+                  }
+                  className={
+                    styles.openingManualRow
+                  }
+                >
+                  <div
+                    className={
+                      styles.panelHeading
+                    }
+                  >
+                    <strong>
+                      Payment line {String(
+                        index +
+                        1,
+                      )}
+                    </strong>
+
+                    {customSchedule
+                      .lines
+                      .length >
+                    1 ? (
+                      <button
+                        type="button"
+                        className={
+                          styles.button
+                        }
+                        onClick={
+                          () =>
+                            setCustomSchedule(
+                              current => ({
+                                ...current,
+                                lines:
+                                  current.lines.filter(
+                                    (
+                                      _,
+                                      rowIndex,
+                                    ) =>
+                                      rowIndex !==
+                                      index,
+                                  ),
+                              }),
+                            )
+                        }
+                      >
+                        Remove
+                      </button>
+                    ) : null}
+                  </div>
+
+                  <div
+                    className={
+                      styles.formGrid
+                    }
+                  >
+                    <label>
+                      Due date
+                      <input
+                        type="date"
+                        value={
+                          row.dueDate
+                        }
+                        onChange={
+                          event =>
+                            setCustomSchedule(
+                              current => ({
+                                ...current,
+                                lines:
+                                  current.lines.map(
+                                    (
+                                      line,
+                                      rowIndex,
+                                    ) =>
+                                      rowIndex ===
+                                        index
+                                        ? {
+                                            ...line,
+                                            dueDate:
+                                              event.target
+                                                .value,
+                                          }
+                                        : line,
+                                  ),
+                              }),
+                            )
+                        }
+                        required
+                      />
+                    </label>
+
+                    <label>
+                      Principal
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.0001"
+                        value={
+                          row.principalAmount
+                        }
+                        onChange={
+                          event =>
+                            setCustomSchedule(
+                              current => ({
+                                ...current,
+                                lines:
+                                  current.lines.map(
+                                    (
+                                      line,
+                                      rowIndex,
+                                    ) =>
+                                      rowIndex ===
+                                        index
+                                        ? {
+                                            ...line,
+                                            principalAmount:
+                                              event.target
+                                                .value,
+                                          }
+                                        : line,
+                                  ),
+                              }),
+                            )
+                        }
+                      />
+                    </label>
+
+                    <label>
+                      Interest
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.0001"
+                        value={
+                          row.interestAmount
+                        }
+                        onChange={
+                          event =>
+                            setCustomSchedule(
+                              current => ({
+                                ...current,
+                                lines:
+                                  current.lines.map(
+                                    (
+                                      line,
+                                      rowIndex,
+                                    ) =>
+                                      rowIndex ===
+                                        index
+                                        ? {
+                                            ...line,
+                                            interestAmount:
+                                              event.target
+                                                .value,
+                                          }
+                                        : line,
+                                  ),
+                              }),
+                            )
+                        }
+                      />
+                    </label>
+
+                    <label>
+                      Fee
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.0001"
+                        value={
+                          row.feeAmount
+                        }
+                        onChange={
+                          event =>
+                            setCustomSchedule(
+                              current => ({
+                                ...current,
+                                lines:
+                                  current.lines.map(
+                                    (
+                                      line,
+                                      rowIndex,
+                                    ) =>
+                                      rowIndex ===
+                                        index
+                                        ? {
+                                            ...line,
+                                            feeAmount:
+                                              event.target
+                                                .value,
+                                          }
+                                        : line,
+                                  ),
+                              }),
+                            )
+                        }
+                      />
+                    </label>
+                  </div>
+                </div>
+              ),
+            )}
+          </div>
+
+          <div
+            className={
+              styles.actions
+            }
+          >
+            <button
+              type="button"
+              className={
+                styles.button
+              }
+              onClick={
+                () =>
+                  setCustomSchedule(
+                    current => ({
+                      ...current,
+                      lines: [
+                        ...current.lines,
+                        {
+                          dueDate:
+                            '',
+                          principalAmount:
+                            '',
+                          interestAmount:
+                            '',
+                          feeAmount:
+                            '',
+                        },
+                      ],
+                    }),
+                  )
+              }
+            >
+              Add schedule line
+            </button>
+
+            <button
+              type="submit"
+              className={
+                styles.primary
+              }
+              disabled={
+                !canEdit ||
+                busy ===
+                  'custom-schedule'
+              }
+            >
+              Save custom revision
+            </button>
+          </div>
         </form>
       </section>
 
