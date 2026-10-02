@@ -1724,12 +1724,17 @@ test('Fixed Assets 2.4 accounting control is migration-backed and protected', as
     'asset_depreciation_runs',
     'asset_revaluations',
     'asset_source_links',
+  ]) {
+    assert.match(schema,new RegExp(marker));
+    assert.match(catalog,new RegExp(marker));
+  }
+
+  for (const marker of [
     'capitalization_journal_id',
     'default_accumulated_depreciation_account_id',
     'reversal_journal_id',
   ]) {
     assert.match(schema,new RegExp(marker));
-    assert.match(catalog,new RegExp(marker));
   }
 
   for (const marker of [
