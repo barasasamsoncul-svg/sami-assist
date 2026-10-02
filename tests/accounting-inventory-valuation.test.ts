@@ -107,6 +107,10 @@ test(
           id UUID PRIMARY KEY DEFAULT gen_random_uuid()
         );
 
+        CREATE TABLE IF NOT EXISTS public.journals (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+        );
+
         CREATE TABLE IF NOT EXISTS public.accounting_settings (
           company_id UUID PRIMARY KEY REFERENCES public.companies(id) ON DELETE CASCADE
         );
