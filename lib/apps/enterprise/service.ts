@@ -1248,10 +1248,8 @@ async function tableMetadata(
             ...relations.values(),
           ].find(
             relation =>
-              relation.companyScoped !==
-                true ||
-              relation.softDelete !==
-                true,
+              !relation.companyScoped ||
+              !relation.softDelete,
           );
 
         if (
