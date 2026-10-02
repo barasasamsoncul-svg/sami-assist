@@ -389,6 +389,9 @@ export default function AccountingFinancing({
   const metrics =
     data.metrics as Row;
 
+  const reporting =
+    data.reporting;
+
   const assetAccounts =
     useMemo(
       () =>
@@ -3959,6 +3962,435 @@ export default function AccountingFinancing({
                       colSpan={4}
                     >
                       No current-principal classification run yet.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section
+        className={
+          styles.panel
+        }
+      >
+        <div
+          className={
+            styles.panelHeading
+          }
+        >
+          <div>
+            <div
+              className={
+                styles.eyebrow
+              }
+            >
+              Reconciliation
+            </div>
+            <h3>
+              Financing subledger reconciliation
+            </h3>
+            <p>
+              Expected principal and accrued-interest balances are compared with the actual mapped ledger accounts through {reporting.asOf}. Foreign facilities use the latest closing or spot rate available on that date.
+            </p>
+          </div>
+          <Scale
+            size={20}
+          />
+        </div>
+
+        {reporting
+          .missingRates
+          .length ? (
+          <div
+            className={
+              styles.notice
+            }
+          >
+            Missing closing/spot exchange rates for {String(
+              reporting
+                .missingRates
+                .length,
+            )} active foreign-currency facility/facilities. Add the rates in Accounting → Foreign Currency before relying on the reconciliation.
+          </div>
+        ) : null}
+
+        <div
+          className={
+            styles.tableWrap
+          }
+        >
+          <table>
+            <thead>
+              <tr>
+                <th>
+                  Account
+                </th>
+                <th>
+                  Direction
+                </th>
+                <th>
+                  Balance
+                </th>
+                <th>
+                  Expected
+                </th>
+                <th>
+                  Ledger
+                </th>
+                <th>
+                  Difference
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {reporting
+                .reconciliation
+                .map(
+                  row => (
+                    <tr
+                      key={
+                        String(
+                          row.account_id,
+                        ) +
+                        ':' +
+                        String(
+                          row.balance_kind,
+                        ) +
+                        ':' +
+                        String(
+                          row.direction,
+                        )
+                      }
+                    >
+                      <td>
+                        <strong>
+                          {String(
+                            row.account_code ||
+                            '',
+                          )}
+                        </strong>
+                        <span
+                          className={
+                            styles.meta
+                          }
+                        >
+                          {String(
+                            row.account_name ||
+                            '',
+                          )}
+                        </span>
+                      </td>
+                      <td>
+                        {title(
+                          row.direction,
+                        )}
+                      </td>
+                      <td>
+                        {title(
+                          row.balance_kind,
+                        )}
+                      </td>
+                      <td>
+                        {baseMoney(
+                          row.expected_balance,
+                        )}
+                      </td>
+                      <td>
+                        {baseMoney(
+                          row.ledger_balance,
+                        )}
+                      </td>
+                      <td>
+                        {baseMoney(
+                          row.difference,
+                        )}
+                      </td>
+                    </tr>
+                  ),
+                )}
+
+              {!reporting
+                .reconciliation
+                .length ? (
+                <tr>
+                  <td
+                    colSpan={6}
+                  >
+                    No active or closed financing balance requires reconciliation yet.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section
+        className={
+          styles.columns
+        }
+      >
+        <div
+          className={
+            styles.panel
+          }
+        >
+          <div
+            className={
+              styles.panelHeading
+            }
+          >
+            <div>
+              <div
+                className={
+                  styles.eyebrow
+                }
+              >
+                Debt service forecast
+              </div>
+              <h3>
+                Next 365 days
+              </h3>
+            </div>
+            <TrendingUp
+              size={20}
+            />
+          </div>
+
+          <div
+            className={
+              styles.tableWrap
+            }
+          >
+            <table>
+              <thead>
+                <tr>
+                  <th>
+                    Due
+                  </th>
+                  <th>
+                    Facility
+                  </th>
+                  <th>
+                    Principal
+                  </th>
+                  <th>
+                    Interest
+                  </th>
+                  <th>
+                    Fee
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {reporting
+                  .forecast
+                  .slice(
+                    0,
+                    100,
+                  )
+                  .map(
+                    row => (
+                      <tr
+                        key={
+                          String(
+                            row.id,
+                          )
+                        }
+                      >
+                        <td>
+                          {String(
+                            row.due_date,
+                          )}
+                        </td>
+                        <td>
+                          <strong>
+                            {String(
+                              row.facility_number,
+                            )}
+                          </strong>
+                          <span
+                            className={
+                              styles.meta
+                            }
+                          >
+                            {String(
+                              row.currency,
+                            )} · {title(
+                              row.direction,
+                            )}
+                          </span>
+                        </td>
+                        <td>
+                          {String(
+                            row.scheduled_principal,
+                          )}
+                        </td>
+                        <td>
+                          {String(
+                            row.scheduled_interest,
+                          )}
+                        </td>
+                        <td>
+                          {String(
+                            row.scheduled_fee,
+                          )}
+                        </td>
+                      </tr>
+                    ),
+                  )}
+
+                {!reporting
+                  .forecast
+                  .length ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                    >
+                      No financing payments fall within the next 365 days.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div
+          className={
+            styles.panel
+          }
+        >
+          <div
+            className={
+              styles.panelHeading
+            }
+          >
+            <div>
+              <div
+                className={
+                  styles.eyebrow
+                }
+              >
+                Maturity profile
+              </div>
+              <h3>
+                Principal and interest buckets
+              </h3>
+            </div>
+            <CalendarClock
+              size={20}
+            />
+          </div>
+
+          <div
+            className={
+              styles.tableWrap
+            }
+          >
+            <table>
+              <thead>
+                <tr>
+                  <th>
+                    Direction
+                  </th>
+                  <th>
+                    Currency
+                  </th>
+                  <th>
+                    Bucket
+                  </th>
+                  <th>
+                    Principal
+                  </th>
+                  <th>
+                    Interest
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {reporting
+                  .maturity
+                  .map(
+                    (
+                      row,
+                      index,
+                    ) => (
+                      <tr
+                        key={
+                          String(
+                            row.direction,
+                          ) +
+                          ':' +
+                          String(
+                            row.currency,
+                          ) +
+                          ':' +
+                          String(
+                            row.bucket,
+                          ) +
+                          ':' +
+                          String(
+                            index,
+                          )
+                        }
+                      >
+                        <td>
+                          {title(
+                            row.direction,
+                          )}
+                        </td>
+                        <td>
+                          {String(
+                            row.currency,
+                          )}
+                        </td>
+                        <td>
+                          {String(
+                            row.bucket,
+                          )
+                            .replace(
+                              '0_30',
+                              '0–30 days',
+                            )
+                            .replace(
+                              '31_90',
+                              '31–90 days',
+                            )
+                            .replace(
+                              '91_365',
+                              '91–365 days',
+                            )
+                            .replace(
+                              'over_365',
+                              'Over 365 days',
+                            )}
+                        </td>
+                        <td>
+                          {String(
+                            row.principal,
+                          )}
+                        </td>
+                        <td>
+                          {String(
+                            row.interest,
+                          )}
+                        </td>
+                      </tr>
+                    ),
+                  )}
+
+                {!reporting
+                  .maturity
+                  .length ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                    >
+                      No maturity buckets are available yet.
                     </td>
                   </tr>
                 ) : null}
