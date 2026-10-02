@@ -27,6 +27,7 @@ import {
 import {
   financingForeignDecimal,
   financingRateScaled,
+  financingSignedRateScaled,
   financingRateDecimal,
   type FinancingDayCount,
   type FinancingFrequency,
@@ -689,11 +690,15 @@ export async function createFinancingFacility(
           true,
         )
       : null;
-  const marginRate =
-    financingRate(
+  const marginScaled =
+    financingSignedRateScaled(
       body.marginRate ??
       '0',
       'Margin rate',
+    );
+  const marginRate =
+    financingRateDecimal(
+      marginScaled,
     );
   const initialReferenceRate =
     rateType ===
@@ -1111,14 +1116,26 @@ export async function createFinancingFacility(
         'variable' &&
       initialReferenceRate
     ) {
+      const effectiveRateScaled =
+        financingRateScaled(
+          initialReferenceRate,
+        ) +
+        marginScaled;
+
+      if (
+        effectiveRateScaled <
+        BigInt(
+          0,
+        )
+      ) {
+        throw new AccountingInputError(
+          'Initial effective annual rate cannot be negative.',
+        );
+      }
+
       const effectiveRate =
         financingRateDecimal(
-          financingRateScaled(
-            initialReferenceRate,
-          ) +
-          financingRateScaled(
-            marginRate,
-          ),
+          effectiveRateScaled,
         );
 
       await client.query(
@@ -1412,20 +1429,36 @@ export async function addFinancingRatePeriod(
       body.referenceRate,
       'Reference rate',
     );
-  const marginRate =
-    financingRate(
+  const marginScaled =
+    financingSignedRateScaled(
       body.marginRate ??
       '0',
       'Margin rate',
     );
+  const marginRate =
+    financingRateDecimal(
+      marginScaled,
+    );
+  const effectiveRateScaled =
+    financingRateScaled(
+      referenceRate,
+    ) +
+    marginScaled;
+
+  if (
+    effectiveRateScaled <
+    BigInt(
+      0,
+    )
+  ) {
+    throw new AccountingInputError(
+      'Effective annual rate cannot be negative.',
+    );
+  }
+
   const effectiveRate =
     financingRateDecimal(
-      financingRateScaled(
-        referenceRate,
-      ) +
-      financingRateScaled(
-        marginRate,
-      ),
+      effectiveRateScaled,
     );
   const source =
     financingText(
