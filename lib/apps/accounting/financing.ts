@@ -4026,6 +4026,20 @@ export async function reverseFinancingInterestAccrual(
       );
     }
 
+    if (
+      reversalDate <
+      String(
+        accrual.period_end,
+      ).slice(
+        0,
+        10,
+      )
+    ) {
+      throw new AccountingInputError(
+        'Interest reversal date cannot be before the accrual period end.',
+      );
+    }
+
     const later =
       await client.query(
         `
