@@ -563,20 +563,26 @@ export async function reverseFinancingTransaction(
         ),
       );
 
-    await rebuildFinancingSchedule(
-      client,
-      {
-        companyId:
-          context.companyId,
-        userId:
-          context.userId,
-        facility,
-        principalUnits:
-          outstanding,
-        startDate:
-          reversalDate,
-      },
-    );
+    if (
+      facility
+        .repayment_structure !==
+        'custom'
+    ) {
+      await rebuildFinancingSchedule(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          facility,
+          principalUnits:
+            outstanding,
+          startDate:
+            reversalDate,
+        },
+      );
+    }
 
     await client.query(
       'COMMIT',
