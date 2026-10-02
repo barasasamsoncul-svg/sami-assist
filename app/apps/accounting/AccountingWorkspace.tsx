@@ -955,6 +955,24 @@ export default async function AccountingWorkspace({
 
     {
       key:
+        'loans-financing',
+      label:
+        'Loans & Financing',
+      href:
+        appBaseHref +
+        '/loans-financing',
+      description:
+        'Borrowings, loan receivables, interest, repayments and balance-sheet classification.',
+      sectionLabel:
+        'Operations',
+      badge:
+        financingWorkspace
+          ?.metrics
+          .active_facilities,
+    },
+
+    {
+      key:
         'reconciliation',
       label:
         'Reconciliation',
