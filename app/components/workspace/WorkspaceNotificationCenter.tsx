@@ -6,16 +6,26 @@ import {
   Bell,
   CheckCheck,
   Inbox,
+  ExternalLink,
   Loader2,
   Mail,
   Megaphone,
   Smartphone,
   MessageSquare,
+  Phone,
+  Play,
   Plus,
   Send,
   Settings2,
+  Volume2,
   X,
 } from 'lucide-react';
+
+import {
+  playSamiSound,
+  unlockSamiAudio,
+  type SamiSoundKey,
+} from '@/lib/ui/notification-sounds';
 
 import {
   useCallback,
@@ -79,6 +89,10 @@ type Preferences = {
   emailEnabled: boolean;
   pushEnabled: boolean;
   smsEnabled: boolean;
+  soundEnabled: boolean;
+  alertSound: SamiSoundKey;
+  messageSound: SamiSoundKey;
+  callRingtone: SamiSoundKey;
   muteUntil: string | null;
 };
 
@@ -263,6 +277,16 @@ export default function WorkspaceNotificationCenter({
       null,
     );
 
+  const [
+    selectedAlert,
+    setSelectedAlert,
+  ] =
+    useState<
+      NotificationItem | null
+    >(
+      null,
+    );
+
   const alertUnreadRef =
     useRef(
       Math.max(
@@ -301,6 +325,11 @@ export default function WorkspaceNotificationCenter({
       0,
     );
 
+  const messageUnreadRef =
+    useRef(
+      0,
+    );
+
   const [
     recipients,
     setRecipients,
@@ -328,6 +357,10 @@ export default function WorkspaceNotificationCenter({
       emailEnabled: false,
       pushEnabled: false,
       smsEnabled: false,
+      soundEnabled: true,
+      alertSound: 'chime',
+      messageSound: 'soft',
+      callRingtone: 'classic',
       muteUntil: null,
     });
 
@@ -490,6 +523,17 @@ export default function WorkspaceNotificationCenter({
                 setLiveAlert(
                   latestUnread,
                 );
+
+                if (
+                  preferences.soundEnabled
+                ) {
+                  void playSamiSound(
+                    latestUnread.type ===
+                      'communication.message'
+                      ? preferences.messageSound
+                      : preferences.alertSound,
+                  );
+                }
               }
 
               latestAlertIdRef
@@ -524,19 +568,46 @@ export default function WorkspaceNotificationCenter({
               [],
             );
 
-            setMessageUnread(
-              Number(
-                conversationData
-                  .unreadCount ||
+            const nextMessageUnread =
+              Math.max(
                 0,
-              ),
+                Number(
+                  conversationData
+                    .unreadCount ||
+                  0,
+                ),
+              );
+
+            if (
+              hasLoadedSummaryRef
+                .current &&
+              nextMessageUnread >
+                messageUnreadRef
+                  .current &&
+              preferences.soundEnabled
+            ) {
+              void playSamiSound(
+                preferences.messageSound,
+              );
+            }
+
+            messageUnreadRef
+              .current =
+              nextMessageUnread;
+
+            setMessageUnread(
+              nextMessageUnread,
             );
           }
         } catch {
           // Shell badge failure must never block the workspace.
         }
       },
-      [],
+      [
+        preferences.alertSound,
+        preferences.messageSound,
+        preferences.soundEnabled,
+      ],
     );
 
   const loadPanel =
@@ -1634,35 +1705,26 @@ export default function WorkspaceNotificationCenter({
                         )}
 
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                          {item.href && (
-                            <Link
-                              href={
-                                item.href
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (
+                                !item.isRead
+                              ) {
+                                void markAlert(
+                                  item,
+                                  true,
+                                );
                               }
-                              onClick={() => {
-                                if (
-                                  !item.isRead
-                                ) {
-                                  void markAlert(
-                                    item,
-                                    true,
-                                  );
-                                }
 
-                                if (
-                                  mode ===
-                                  'drawer'
-                                ) {
-                                  setOpen(
-                                    false,
-                                  );
-                                }
-                              }}
-                              className="inline-flex h-7 items-center rounded-lg sami-contrast-invert px-2.5 text-[10px] font-bold   "
-                            >
-                              Open
-                            </Link>
-                          )}
+                              setSelectedAlert(
+                                item,
+                              );
+                            }}
+                            className="inline-flex h-7 items-center rounded-lg sami-contrast-invert px-2.5 text-[10px] font-bold"
+                          >
+                            Details
+                          </button>
 
                           <button
                             type="button"
@@ -2329,26 +2391,37 @@ export default function WorkspaceNotificationCenter({
               )}
 
               <div className="mt-3 flex items-center gap-2">
-                {liveAlert.href && (
-                  <Link
-                    href={
-                      liveAlert.href
-                    }
-                    onClick={() => {
+                <button
+                  type="button"
+                  onClick={() => {
+                    void unlockSamiAudio();
+
+                    if (
+                      !liveAlert.isRead
+                    ) {
                       void markAlert(
                         liveAlert,
                         true,
                       );
+                    }
 
-                      setLiveAlert(
-                        null,
-                      );
-                    }}
-                    className="inline-flex h-8 items-center rounded-lg bg-blue-600 px-3 text-[10px] font-black text-white transition hover:bg-blue-700"
-                  >
-                    Open
-                  </Link>
-                )}
+                    setSelectedAlert(
+                      liveAlert,
+                    );
+                    setTab(
+                      'alerts',
+                    );
+                    setLiveAlert(
+                      null,
+                    );
+                    setOpen(
+                      true,
+                    );
+                  }}
+                  className="inline-flex h-8 items-center rounded-lg bg-blue-600 px-3 text-[10px] font-black text-white transition hover:bg-blue-700"
+                >
+                  View alert
+                </button>
 
                 <button
                   type="button"
@@ -2393,6 +2466,8 @@ export default function WorkspaceNotificationCenter({
             : 'Open notifications'
         }
         onClick={() => {
+          void unlockSamiAudio();
+
           setLiveAlert(
             null,
           );
