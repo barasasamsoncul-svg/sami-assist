@@ -829,19 +829,69 @@ export async function createAccrualSchedule(
     );
   }
 
-  const periods =
-    buildAccrualPeriods({
-      startDate,
-      endDate,
-      frequency:
-        requestedFrequency,
-      allocationMethod:
-        requestedAllocation,
-      totalAmount:
-        accrualMoneyDecimal(
-          amount,
-        ),
-    });
+  let periods:
+    ReturnType<
+      typeof buildAccrualPeriods
+    >;
+
+  try {
+    periods =
+      buildAccrualPeriods({
+        startDate,
+        endDate,
+        frequency:
+          requestedFrequency,
+        allocationMethod:
+          requestedAllocation,
+        totalAmount:
+          accrualMoneyDecimal(
+            amount,
+          ),
+      });
+  } catch (
+    error
+  ) {
+    throw new AccountingInputError(
+      error instanceof
+        Error
+        ? error.message
+        : 'The recognition schedule is invalid.',
+    );
+  }
+
+  const requestHash =
+    createHash(
+      'sha256',
+    )
+      .update(
+        JSON.stringify({
+          type,
+          name,
+          startDate,
+          endDate,
+          amount:
+            accrualMoneyDecimal(
+              amount,
+            ),
+          frequency:
+            requestedFrequency,
+          allocation:
+            requestedAllocation,
+          requestedBalanceAccountId,
+          recognitionAccountId,
+          initialReclassification,
+          autoReverseAccrual,
+          sourceJournalId,
+          sourceModule,
+          sourceType,
+          sourceId,
+          sourceReference,
+          notes,
+        }),
+      )
+      .digest(
+        'hex',
+      );
 
   const client =
     await context.pool.connect();
@@ -856,7 +906,8 @@ export async function createAccrualSchedule(
         `
           SELECT
             id::text,
-            schedule_number
+            schedule_number,
+            request_hash
           FROM accounting_accrual_schedules
           WHERE company_id =
                 $1
@@ -876,6 +927,18 @@ export async function createAccrualSchedule(
     if (
       replay.rows[0]
     ) {
+      if (
+        String(
+          replay.rows[0]
+            .request_hash,
+        ) !==
+        requestHash
+      ) {
+        throw new AccountingInputError(
+          'This request key was already used for different accrual or deferral data.',
+        );
+      }
+
       await client.query(
         'COMMIT',
       );
@@ -1044,25 +1107,34 @@ export async function createAccrualSchedule(
         );
 
       const sourceAmount =
-        type ===
-          'deferred_revenue'
-          ? sourceAmounts.rows[0]
-              ?.recognition_credit
-          : type ===
-              'prepaid_expense'
+        initialReclassification
+          ? type ===
+              'deferred_revenue'
             ? sourceAmounts.rows[0]
-                ?.recognition_debit
+                ?.recognition_credit
             : sourceAmounts.rows[0]
-                ?.total_debit;
+                ?.recognition_debit
+          : sourceAmounts.rows[0]
+              ?.total_debit;
+      const sourceText =
+        String(
+          sourceAmount ||
+          '0',
+        ).trim();
+      const sourceCents =
+        /^0(?:\.0{1,2})?$/.test(
+          sourceText,
+        )
+          ? BigInt(
+              0,
+            )
+          : positiveMoneyCents(
+              sourceText,
+              'Source journal amount',
+            );
 
       if (
-        accrualMoneyCents(
-          String(
-            sourceAmount ||
-            '0',
-          ),
-          'Source journal amount',
-        ) <
+        sourceCents <
         amount
       ) {
         throw new AccountingInputError(
@@ -1110,6 +1182,7 @@ export async function createAccrualSchedule(
           source_reference,
           source_journal_id,
           request_key,
+          request_hash,
           notes,
           created_by,
           updated_by
@@ -1117,7 +1190,7 @@ export async function createAccrualSchedule(
         VALUES (
           $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
           $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-          $21,$22,$22
+          $21,$22,$23,$23
         )
       `,
       [
@@ -1147,6 +1220,7 @@ export async function createAccrualSchedule(
           null,
         sourceJournalId,
         requestKey,
+        requestHash,
         notes ||
           null,
         context.userId,
