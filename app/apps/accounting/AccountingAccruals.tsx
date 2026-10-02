@@ -256,6 +256,9 @@ export default function AccountingAccruals({
         unknown
       >;
 
+  const reporting =
+    data.reporting;
+
   const money = (
     value:
       unknown,
@@ -1840,6 +1843,451 @@ export default function AccountingAccruals({
               ) : null}
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <section
+        className={
+          styles.panel
+        }
+      >
+        <div
+          className={
+            styles.panelHeading
+          }
+        >
+          <div>
+            <div
+              className={
+                styles.eyebrow
+              }
+            >
+              Schedule-to-ledger
+            </div>
+            <h3>
+              Accrual & deferral reconciliation
+            </h3>
+            <p>
+              Compares each controlled balance-sheet account with the journals managed by these schedules and linked source journals through {reporting.asOf}.
+            </p>
+          </div>
+
+          {Number(
+            reporting
+              .reconciliation
+              .difference ||
+            0,
+          ) ===
+          0 ? (
+            <Scale
+              size={20}
+            />
+          ) : (
+            <TriangleAlert
+              size={20}
+            />
+          )}
+        </div>
+
+        <div
+          className={
+            styles.financeCards
+          }
+        >
+          <div
+            className={
+              styles.financeCard
+            }
+          >
+            <span>
+              Schedule balance
+            </span>
+            <strong>
+              {money(
+                reporting
+                  .reconciliation
+                  .expectedBalance,
+              )}
+            </strong>
+          </div>
+
+          <div
+            className={
+              styles.financeCard
+            }
+          >
+            <span>
+              Managed GL balance
+            </span>
+            <strong>
+              {money(
+                reporting
+                  .reconciliation
+                  .managedGlBalance,
+              )}
+            </strong>
+          </div>
+
+          <div
+            className={
+              styles.financeCard
+            }
+          >
+            <span>
+              Difference
+            </span>
+            <strong>
+              {money(
+                reporting
+                  .reconciliation
+                  .difference,
+              )}
+            </strong>
+          </div>
+
+          <div
+            className={
+              styles.financeCard
+            }
+          >
+            <span>
+              Unlinked schedules
+            </span>
+            <strong>
+              {String(
+                reporting
+                  .sourceCoverage
+                  .unlinked_count ||
+                0,
+              )}
+            </strong>
+            <small>
+              No source journal or reference
+            </small>
+          </div>
+        </div>
+
+        <div
+          className={
+            styles.tableWrap
+          }
+        >
+          <table>
+            <thead>
+              <tr>
+                <th>
+                  Balance account
+                </th>
+                <th>
+                  Schedules
+                </th>
+                <th>
+                  Schedule balance
+                </th>
+                <th>
+                  Managed GL
+                </th>
+                <th>
+                  Difference
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {reporting
+                .reconciliation
+                .lines.map(
+                  row => (
+                    <tr
+                      key={
+                        String(
+                          row.account_id,
+                        )
+                      }
+                    >
+                      <td>
+                        <strong>
+                          {String(
+                            row.account_code ||
+                            '',
+                          )}
+                        </strong>
+                        <span
+                          className={
+                            styles.meta
+                          }
+                        >
+                          {String(
+                            row.account_name ||
+                            '',
+                          )}
+                        </span>
+                      </td>
+                      <td>
+                        {String(
+                          row.schedule_count ||
+                          0,
+                        )}
+                      </td>
+                      <td>
+                        {money(
+                          row.expected_balance,
+                        )}
+                      </td>
+                      <td>
+                        {money(
+                          row.managed_gl_balance,
+                        )}
+                      </td>
+                      <td>
+                        {money(
+                          row.difference,
+                        )}
+                      </td>
+                    </tr>
+                  ),
+                )}
+
+              {!reporting
+                .reconciliation
+                .lines.length ? (
+                <tr>
+                  <td
+                    colSpan={5}
+                  >
+                    No active schedule balances need reconciliation yet.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section
+        className={
+          styles.panel
+        }
+      >
+        <div
+          className={
+            styles.panelHeading
+          }
+        >
+          <div>
+            <div
+              className={
+                styles.eyebrow
+              }
+            >
+              Recognition forecast
+            </div>
+            <h3>
+              Upcoming P&L timing
+            </h3>
+            <p>
+              Future pending and retryable recognition lines are projected without creating journals.
+            </p>
+          </div>
+          <TrendingUp
+            size={20}
+          />
+        </div>
+
+        <div
+          className={
+            styles.financeCards
+          }
+        >
+          <div
+            className={
+              styles.financeCard
+            }
+          >
+            <span>
+              Next 90 days
+            </span>
+            <strong>
+              {money(
+                reporting
+                  .forecast
+                  .next90Days,
+              )}
+            </strong>
+          </div>
+
+          <div
+            className={
+              styles.financeCard
+            }
+          >
+            <span>
+              Next 365 days
+            </span>
+            <strong>
+              {money(
+                reporting
+                  .forecast
+                  .next365Days,
+              )}
+            </strong>
+          </div>
+
+          <div
+            className={
+              styles.financeCard
+            }
+          >
+            <span>
+              Source-journal coverage
+            </span>
+            <strong>
+              {String(
+                reporting
+                  .sourceCoverage
+                  .journal_linked_count ||
+                0,
+              )} / {String(
+                reporting
+                  .sourceCoverage
+                  .schedule_count ||
+                0,
+              )}
+            </strong>
+            <small>
+              Schedules linked to posted source journals
+            </small>
+          </div>
+
+          <div
+            className={
+              styles.financeCard
+            }
+          >
+            <span>
+              Reference coverage
+            </span>
+            <strong>
+              {String(
+                reporting
+                  .sourceCoverage
+                  .reference_linked_count ||
+                0,
+              )}
+            </strong>
+            <small>
+              Schedules carrying an external/source reference
+            </small>
+          </div>
+        </div>
+
+        <div
+          className={
+            styles.tableWrap
+          }
+        >
+          <table>
+            <thead>
+              <tr>
+                <th>
+                  Posting date
+                </th>
+                <th>
+                  Schedule
+                </th>
+                <th>
+                  Type
+                </th>
+                <th>
+                  Amount
+                </th>
+                <th>
+                  State
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {reporting
+                .forecast
+                .lines
+                .slice(
+                  0,
+                  50,
+                )
+                .map(
+                  row => (
+                    <tr
+                      key={
+                        String(
+                          row.id,
+                        )
+                      }
+                    >
+                      <td>
+                        {String(
+                          row.posting_date,
+                        )}
+                      </td>
+                      <td>
+                        <strong>
+                          {String(
+                            row.schedule_number,
+                          )}
+                        </strong>
+                        <span
+                          className={
+                            styles.meta
+                          }
+                        >
+                          {String(
+                            row.schedule_name,
+                          )}
+                        </span>
+                      </td>
+                      <td>
+                        {title(
+                          String(
+                            row.schedule_type,
+                          ),
+                        )}
+                      </td>
+                      <td>
+                        {money(
+                          row.amount,
+                        )}
+                      </td>
+                      <td>
+                        {String(
+                          row.status,
+                        )}
+                      </td>
+                    </tr>
+                  ),
+                )}
+
+              {!reporting
+                .forecast
+                .lines.length ? (
+                <tr>
+                  <td
+                    colSpan={5}
+                  >
+                    No future recognition falls within the next 365 days.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+
+        <div
+          className={
+            styles.notice
+          }
+        >
+          <Link2
+            size={16}
+          />
+          Source coverage is diagnostic: a schedule may use a text reference without a source journal, but opening reclassifications linked to a journal are validated against the selected recognition account.
         </div>
       </section>
 
