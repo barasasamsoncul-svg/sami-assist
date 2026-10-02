@@ -10,16 +10,42 @@ ALTER TABLE notification_preferences
   ADD COLUMN IF NOT EXISTS message_sound VARCHAR(40) NOT NULL DEFAULT 'soft',
   ADD COLUMN IF NOT EXISTS call_ringtone VARCHAR(40) NOT NULL DEFAULT 'classic';
 
-ALTER TABLE notification_preferences
-  DROP CONSTRAINT IF EXISTS notification_preferences_alert_sound_check,
-  ADD CONSTRAINT notification_preferences_alert_sound_check
-    CHECK (alert_sound IN ('chime','soft','pulse','classic','silent')),
-  DROP CONSTRAINT IF EXISTS notification_preferences_message_sound_check,
-  ADD CONSTRAINT notification_preferences_message_sound_check
-    CHECK (message_sound IN ('chime','soft','pulse','classic','silent')),
-  DROP CONSTRAINT IF EXISTS notification_preferences_call_ringtone_check,
-  ADD CONSTRAINT notification_preferences_call_ringtone_check
-    CHECK (call_ringtone IN ('classic','chime','pulse','soft','silent'));
+DO $
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'notification_preferences_alert_sound_check'
+      AND conrelid = 'notification_preferences'::regclass
+  ) THEN
+    ALTER TABLE notification_preferences
+      ADD CONSTRAINT notification_preferences_alert_sound_check
+      CHECK (alert_sound IN ('chime','soft','pulse','classic','silent'));
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'notification_preferences_message_sound_check'
+      AND conrelid = 'notification_preferences'::regclass
+  ) THEN
+    ALTER TABLE notification_preferences
+      ADD CONSTRAINT notification_preferences_message_sound_check
+      CHECK (message_sound IN ('chime','soft','pulse','classic','silent'));
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'notification_preferences_call_ringtone_check'
+      AND conrelid = 'notification_preferences'::regclass
+  ) THEN
+    ALTER TABLE notification_preferences
+      ADD CONSTRAINT notification_preferences_call_ringtone_check
+      CHECK (call_ringtone IN ('classic','chime','pulse','soft','silent'));
+  END IF;
+END
+$;
 
 
 CREATE TABLE IF NOT EXISTS workspace_calls (
