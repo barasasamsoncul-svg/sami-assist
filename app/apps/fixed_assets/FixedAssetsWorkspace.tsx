@@ -22,10 +22,14 @@ import {
 
 import FixedAssetsWorkspaceClient from '@/app/apps/fixed_assets/FixedAssetsWorkspaceClient';
 import FixedAssetsAccountingControl from '@/app/apps/fixed_assets/FixedAssetsAccountingControl';
+import FixedAssetsReports from '@/app/apps/fixed_assets/FixedAssetsReports';
 
 import {
   getFixedAssetsAccountingControl,
 } from '@/lib/apps/fixed_assets/accounting-control';
+import {
+  getFixedAssetsReports,
+} from '@/lib/apps/fixed_assets/reports';
 
 const MODULE_KEY = 'fixed_assets';
 
@@ -91,7 +95,7 @@ export default async function FixedAssetsWorkspace({
             href:
               appBaseHref +
               '/reports',
-            description: 'Module analysis and operational reporting.',
+            description: 'Asset roll-forward, register, forecast and GL reconciliation.',
           }]
         : []
     ),
@@ -130,6 +134,12 @@ export default async function FixedAssetsWorkspace({
     resolved.view ===
       'overview'
       ? await getFixedAssetsAccountingControl()
+      : null;
+
+  const reportData =
+    resolved.view ===
+      'reports'
+      ? await getFixedAssetsReports()
       : null;
 
   return (
@@ -203,7 +213,11 @@ export default async function FixedAssetsWorkspace({
             uiProfile.secondary,
         } as CSSProperties}
       >
-        {accountingControl ? (
+        {reportData ? (
+          <FixedAssetsReports
+            initialData={reportData}
+          />
+        ) : accountingControl ? (
           <FixedAssetsAccountingControl
             data={accountingControl}
             canEdit={
