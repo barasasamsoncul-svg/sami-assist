@@ -2447,3 +2447,1754 @@ export async function postFinancingDrawdown(
     client.release();
   }
 }
+
+
+export async function postFinancingRepayment(
+  input:
+    unknown,
+) {
+  const context =
+    await requireEnterpriseModuleTableContext(
+      'accounting',
+      'accounting_financing_transactions',
+      'create',
+    );
+  const body =
+    financingBody(
+      input,
+    );
+  const facilityId =
+    accountingId(
+      body.facilityId,
+    );
+  const requestKey =
+    accountingId(
+      body.requestKey,
+    );
+  const transactionDate =
+    accountingDate(
+      body.transactionDate,
+    );
+  const financialAccountId =
+    accountingId(
+      body.financialAccountId,
+    );
+  const principal =
+    body.principalAmount ===
+        undefined ||
+      body.principalAmount ===
+        null ||
+      body.principalAmount ===
+        ''
+      ? BigInt(
+          0,
+        )
+      : financingPositiveUnits(
+          body.principalAmount,
+          'Principal repayment',
+        );
+  const interest =
+    body.interestAmount ===
+        undefined ||
+      body.interestAmount ===
+        null ||
+      body.interestAmount ===
+        ''
+      ? BigInt(
+          0,
+        )
+      : financingPositiveUnits(
+          body.interestAmount,
+          'Interest payment',
+        );
+  const fee =
+    body.feeAmount ===
+        undefined ||
+      body.feeAmount ===
+        null ||
+      body.feeAmount ===
+        ''
+      ? BigInt(
+          0,
+        )
+      : financingPositiveUnits(
+          body.feeAmount,
+          'Financing fee',
+        );
+
+  if (
+    principal ===
+      BigInt(
+        0,
+      ) &&
+    interest ===
+      BigInt(
+        0,
+      ) &&
+    fee ===
+      BigInt(
+        0,
+      )
+  ) {
+    throw new AccountingInputError(
+      'Enter principal, interest or a financing fee to post.',
+    );
+  }
+
+  const reference =
+    financingText(
+      body.reference,
+      255,
+      'Reference',
+    );
+  const notes =
+    financingText(
+      body.notes,
+      4000,
+      'Notes',
+    );
+  const requestHash =
+    hashPayload({
+      facilityId,
+      transactionDate,
+      financialAccountId,
+      principal:
+        principal ===
+          BigInt(
+            0,
+          )
+          ? '0.0000'
+          : financingForeignDecimal(
+              principal,
+            ),
+      interest:
+        interest ===
+          BigInt(
+            0,
+          )
+          ? '0.0000'
+          : financingForeignDecimal(
+              interest,
+            ),
+      fee:
+        fee ===
+          BigInt(
+            0,
+          )
+          ? '0.0000'
+          : financingForeignDecimal(
+              fee,
+            ),
+      reference,
+      notes,
+    });
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+    await client.query(
+      'SELECT pg_advisory_xact_lock(hashtext($1))',
+      [
+        context.companyId +
+        ':financing-transaction:' +
+        requestKey,
+      ],
+    );
+
+    const facility =
+      await financingFacilityForUpdate(
+        client,
+        context.companyId,
+        facilityId,
+      );
+
+    if (
+      facility.status !==
+        'active'
+    ) {
+      throw new AccountingInputError(
+        'Only an active financing facility can receive a repayment.',
+      );
+    }
+
+    const replay =
+      await client.query(
+        `
+          SELECT
+            id::text,
+            request_hash,
+            journal_id::text
+          FROM accounting_financing_transactions
+          WHERE company_id =
+                $1
+            AND facility_id =
+                $2
+            AND request_key =
+                $3
+            AND deleted_at
+                IS NULL
+          LIMIT 1
+          FOR SHARE
+        `,
+        [
+          context.companyId,
+          facilityId,
+          requestKey,
+        ],
+      );
+
+    if (
+      replay.rows[0]
+    ) {
+      if (
+        String(
+          replay.rows[0]
+            .request_hash,
+        ) !==
+        requestHash
+      ) {
+        throw new AccountingInputError(
+          'This repayment request key was already used with different values.',
+        );
+      }
+
+      await client.query(
+        'COMMIT',
+      );
+
+      return {
+        id:
+          String(
+            replay.rows[0].id,
+          ),
+        journalId:
+          String(
+            replay.rows[0]
+              .journal_id,
+          ),
+        replayed:
+          true,
+      };
+    }
+
+    if (
+      transactionDate <
+        String(
+          facility.start_date,
+        ).slice(
+          0,
+          10,
+        )
+    ) {
+      throw new AccountingInputError(
+        'Repayment date cannot be before the facility start date.',
+      );
+    }
+
+    const outstandingPrincipal =
+      await financingOutstandingPrincipalUnits(
+        client,
+        context.companyId,
+        facilityId,
+      );
+    const outstandingInterest =
+      await financingOutstandingInterestUnits(
+        client,
+        context.companyId,
+        facilityId,
+      );
+
+    if (
+      principal >
+      outstandingPrincipal
+    ) {
+      throw new AccountingInputError(
+        'Principal repayment exceeds the outstanding financing principal.',
+      );
+    }
+
+    if (
+      interest >
+      outstandingInterest
+    ) {
+      throw new AccountingInputError(
+        'Interest payment exceeds posted accrued interest. Run interest accrual first or reduce the payment.',
+      );
+    }
+
+    if (
+      fee >
+        BigInt(
+          0,
+        ) &&
+      !facility
+        .fee_account_id
+    ) {
+      throw new AccountingInputError(
+        'Map a financing fee account before posting a fee.',
+      );
+    }
+
+    const baseCurrency =
+      String(
+        context.company
+          .currentCompany
+          .currency,
+      ).toUpperCase();
+    const facilityCurrency =
+      String(
+        facility.currency,
+      ).toUpperCase();
+    const fx =
+      await financingRateToBase(
+        client,
+        {
+          companyId:
+            context.companyId,
+          foreignCurrency:
+            facilityCurrency,
+          baseCurrency,
+          date:
+            transactionDate,
+          rateType:
+            'spot',
+        },
+      );
+    const principalBase =
+      principal ===
+        BigInt(
+          0,
+        )
+        ? BigInt(
+            0,
+          )
+        : financingBaseAmount(
+            principal,
+            fx.rate,
+          );
+    const interestBase =
+      interest ===
+        BigInt(
+          0,
+        )
+        ? BigInt(
+            0,
+          )
+        : financingBaseAmount(
+            interest,
+            fx.rate,
+          );
+    const feeBase =
+      fee ===
+        BigInt(
+          0,
+        )
+        ? BigInt(
+            0,
+          )
+        : financingBaseAmount(
+            fee,
+            fx.rate,
+          );
+    const total =
+      principal +
+      interest +
+      fee;
+    const totalBase =
+      principalBase +
+      interestBase +
+      feeBase;
+    const financial =
+      await financingFinancialAccountForUpdate(
+        client,
+        context.companyId,
+        financialAccountId,
+      );
+
+    assertFinancingSettlementCurrency(
+      financial,
+      facilityCurrency,
+      baseCurrency,
+    );
+
+    if (
+      facility.direction ===
+        'borrowing'
+    ) {
+      assertFinancingFunds(
+        financial,
+        {
+          foreignAmount:
+            total,
+          baseAmount:
+            totalBase,
+          facilityCurrency,
+          baseCurrency,
+        },
+      );
+    }
+
+    const journal =
+      await postBalancedLedgerJournal(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          journalDate:
+            transactionDate,
+          description:
+            'Financing repayment · ' +
+            String(
+              facility.facility_number,
+            ) +
+            ' · ' +
+            String(
+              facility.name,
+            ),
+          reference:
+            reference ||
+            String(
+              facility.facility_number,
+            ),
+          sourceModule:
+            'accounting',
+          sourceType:
+            'financing_repayment',
+          sourceId:
+            facilityId,
+          sourceEventKey:
+            'accounting:financing:repayment:' +
+            requestKey,
+          postingKind:
+            'system',
+          lines:
+            transactionJournalLines({
+              direction:
+                String(
+                  facility.direction,
+                ) as
+                  FinancingDirection,
+              kind:
+                'repayment',
+              financialLedgerAccountId:
+                String(
+                  financial
+                    .ledger_account_id,
+                ),
+              principalAccountId:
+                String(
+                  facility
+                    .principal_account_id,
+                ),
+              accruedInterestAccountId:
+                String(
+                  facility
+                    .accrued_interest_account_id,
+                ),
+              feeAccountId:
+                facility
+                  .fee_account_id
+                  ? String(
+                      facility
+                        .fee_account_id,
+                    )
+                  : null,
+              principalBase:
+                decimalAmount(
+                  principalBase,
+                ),
+              interestBase:
+                decimalAmount(
+                  interestBase,
+                ),
+              feeBase:
+                decimalAmount(
+                  feeBase,
+                ),
+              totalBase:
+                decimalAmount(
+                  totalBase,
+                ),
+            }),
+        },
+      );
+
+    const id =
+      randomUUID();
+    const transactionType =
+      principal >
+        BigInt(
+          0,
+        )
+        ? 'principal_repayment'
+        : interest >
+            BigInt(
+              0,
+            )
+          ? 'interest_payment'
+          : 'fee_payment';
+
+    await client.query(
+      `
+        INSERT INTO accounting_financing_transactions (
+          id,
+          company_id,
+          facility_id,
+          transaction_type,
+          transaction_date,
+          currency,
+          foreign_amount,
+          base_amount,
+          exchange_rate,
+          principal_foreign,
+          principal_base,
+          interest_foreign,
+          interest_base,
+          fee_foreign,
+          fee_base,
+          financial_account_id,
+          journal_id,
+          request_key,
+          request_hash,
+          status,
+          reference,
+          notes,
+          metadata,
+          posted_at,
+          created_by,
+          updated_by
+        )
+        VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+          $11,$12,$13,$14,$15,$16,$17,$18,$19,'posted',
+          $20,$21,$22::jsonb,NOW(),$23,$23
+        )
+      `,
+      [
+        id,
+        context.companyId,
+        facilityId,
+        transactionType,
+        transactionDate,
+        facilityCurrency,
+        financingForeignDecimal(
+          total,
+        ),
+        decimalAmount(
+          totalBase,
+        ),
+        fx.rate,
+        principal ===
+          BigInt(
+            0,
+          )
+          ? '0.0000'
+          : financingForeignDecimal(
+              principal,
+            ),
+        decimalAmount(
+          principalBase,
+        ),
+        interest ===
+          BigInt(
+            0,
+          )
+          ? '0.0000'
+          : financingForeignDecimal(
+              interest,
+            ),
+        decimalAmount(
+          interestBase,
+        ),
+        fee ===
+          BigInt(
+            0,
+          )
+          ? '0.0000'
+          : financingForeignDecimal(
+              fee,
+            ),
+        decimalAmount(
+          feeBase,
+        ),
+        financialAccountId,
+        journal.journalId,
+        requestKey,
+        requestHash,
+        reference ||
+          null,
+        notes ||
+          null,
+        JSON.stringify({
+          fxSourceType:
+            fx.sourceType,
+          fxSourceName:
+            fx.sourceName,
+          fxRateDate:
+            fx.effectiveDate,
+        }),
+        context.userId,
+      ],
+    );
+
+    const accountCurrency =
+      String(
+        financial.currency,
+      ).toUpperCase();
+    const bankForeign =
+      accountCurrency ===
+        baseCurrency
+        ? BigInt(
+            0,
+          )
+        : total;
+    const incoming =
+      facility.direction ===
+        'lending';
+
+    await recordFinancingFxMovement(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        bankAccountId:
+          financialAccountId,
+        baseCurrency,
+        accountCurrency,
+        sourceType:
+          'financing_repayment',
+        sourceId:
+          id,
+        eventKey:
+          'financing-repayment:' +
+          id,
+        date:
+          transactionDate,
+        foreignAmountUnits:
+          incoming
+            ? bankForeign
+            : -bankForeign,
+        baseAmountCents:
+          incoming
+            ? totalBase
+            : -totalBase,
+        rate:
+          fx.rate,
+        metadata: {
+          facilityId,
+          facilityNumber:
+            facility.facility_number,
+        },
+      },
+    );
+
+    if (
+      principal >
+      BigInt(
+        0,
+      )
+    ) {
+      const newOutstanding =
+        outstandingPrincipal -
+        principal;
+
+      await rebuildFinancingSchedule(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          facility,
+          principalUnits:
+            newOutstanding,
+          startDate:
+            transactionDate,
+        },
+      );
+    }
+
+    await client.query(
+      'COMMIT',
+    );
+
+    await audit(
+      context,
+      'repayment.posted',
+      'accounting_financing_transactions',
+      id,
+      'Financing repayment posted',
+      {
+        facilityId,
+        journalId:
+          journal.journalId,
+        principal:
+          principal ===
+            BigInt(
+              0,
+            )
+            ? '0.0000'
+            : financingForeignDecimal(
+                principal,
+              ),
+        interest:
+          interest ===
+            BigInt(
+              0,
+            )
+            ? '0.0000'
+            : financingForeignDecimal(
+                interest,
+              ),
+        fee:
+          fee ===
+            BigInt(
+              0,
+            )
+            ? '0.0000'
+            : financingForeignDecimal(
+                fee,
+              ),
+      },
+    );
+
+    return {
+      id,
+      journalId:
+        journal.journalId,
+      replayed:
+        false,
+    };
+  } catch (
+    error
+  ) {
+    await client.query(
+      'ROLLBACK',
+    ).catch(
+      () =>
+        undefined,
+    );
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function interestJournalLines(
+  facility:
+    FinancingFacilityRow,
+  baseAmount:
+    string,
+) {
+  return facility.direction ===
+      'borrowing'
+    ? [
+        {
+          accountId:
+            String(
+              facility
+                .interest_account_id,
+            ),
+          description:
+            'Financing interest expense',
+          debit:
+            baseAmount,
+          credit:
+            '0.00',
+        },
+        {
+          accountId:
+            String(
+              facility
+                .accrued_interest_account_id,
+            ),
+          description:
+            'Accrued financing interest',
+          debit:
+            '0.00',
+          credit:
+            baseAmount,
+        },
+      ]
+    : [
+        {
+          accountId:
+            String(
+              facility
+                .accrued_interest_account_id,
+            ),
+          description:
+            'Accrued loan interest receivable',
+          debit:
+            baseAmount,
+          credit:
+            '0.00',
+        },
+        {
+          accountId:
+            String(
+              facility
+                .interest_account_id,
+            ),
+          description:
+            'Financing interest income',
+          debit:
+            '0.00',
+          credit:
+            baseAmount,
+        },
+      ];
+}
+
+export async function runFinancingInterestAccrual(
+  input:
+    unknown = {},
+) {
+  const context =
+    await requireEnterpriseModuleTableContext(
+      'accounting',
+      'accounting_financing_runs',
+      'edit',
+    );
+  const body =
+    financingBody(
+      input,
+    );
+  const asOf =
+    accountingDate(
+      body.asOf ||
+      new Date()
+        .toISOString()
+        .slice(
+          0,
+          10,
+        ),
+    );
+  const client =
+    await context.pool.connect();
+  let runId =
+    '';
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const settings =
+      await financingSettingsForUpdate(
+        client,
+        context.companyId,
+      );
+
+    if (
+      settings &&
+      settings.enabled ===
+        false
+    ) {
+      throw new AccountingInputError(
+        'Enable Loans and Financing before running interest accrual.',
+      );
+    }
+
+    const created =
+      await client.query(
+        `
+          INSERT INTO accounting_financing_runs (
+            company_id,
+            as_of_date,
+            generated_by,
+            created_by,
+            updated_by
+          )
+          VALUES (
+            $1,$2,$3,$3,$3
+          )
+          RETURNING id::text
+        `,
+        [
+          context.companyId,
+          asOf,
+          context.userId,
+        ],
+      );
+    runId =
+      String(
+        created.rows[0].id,
+      );
+
+    const facilities =
+      await client.query(
+        `
+          SELECT *
+          FROM accounting_financing_facilities
+          WHERE company_id =
+                $1
+            AND deleted_at
+                IS NULL
+            AND status =
+                'active'
+            AND start_date <
+                $2::date
+          ORDER BY
+            facility_number,
+            id
+          FOR UPDATE
+          SKIP LOCKED
+        `,
+        [
+          context.companyId,
+          asOf,
+        ],
+      );
+
+    let accrued =
+      0;
+    let skipped =
+      0;
+    let failed =
+      0;
+
+    for (
+      const facility
+      of facilities.rows
+    ) {
+      const savepoint =
+        'fin_accrual_' +
+        String(
+          facility.id,
+        ).replace(
+          /-/g,
+          '',
+        ).slice(
+          0,
+          12,
+        );
+
+      await client.query(
+        'SAVEPOINT ' +
+        savepoint,
+      );
+
+      try {
+        const firstDrawdown =
+          await client.query(
+            `
+              SELECT MIN(
+                transaction_date
+              )::text
+                AS first_drawdown
+              FROM accounting_financing_transactions
+              WHERE company_id =
+                    $1
+                AND facility_id =
+                    $2
+                AND deleted_at
+                    IS NULL
+                AND status =
+                    'posted'
+                AND transaction_type =
+                    'drawdown'
+            `,
+            [
+              context.companyId,
+              facility.id,
+            ],
+          );
+        const firstDate =
+          firstDrawdown
+            .rows[0]
+            ?.first_drawdown
+            ? String(
+                firstDrawdown
+                  .rows[0]
+                  .first_drawdown,
+              ).slice(
+                0,
+                10,
+              )
+            : null;
+
+        if (
+          !firstDate ||
+          firstDate >=
+            asOf
+        ) {
+          skipped +=
+            1;
+          await client.query(
+            'RELEASE SAVEPOINT ' +
+            savepoint,
+          );
+          continue;
+        }
+
+        const lastAccrual =
+          await client.query(
+            `
+              SELECT MAX(
+                period_end
+              )::text
+                AS last_end
+              FROM accounting_financing_interest_accruals
+              WHERE company_id =
+                    $1
+                AND facility_id =
+                    $2
+                AND deleted_at
+                    IS NULL
+                AND status =
+                    'posted'
+            `,
+            [
+              context.companyId,
+              facility.id,
+            ],
+          );
+        const startDate =
+          lastAccrual
+            .rows[0]
+            ?.last_end
+            ? String(
+                lastAccrual
+                  .rows[0]
+                  .last_end,
+              ).slice(
+                0,
+                10,
+              )
+            : firstDate;
+
+        if (
+          startDate >=
+          asOf
+        ) {
+          skipped +=
+            1;
+          await client.query(
+            'RELEASE SAVEPOINT ' +
+            savepoint,
+          );
+          continue;
+        }
+
+        const duplicate =
+          await client.query(
+            `
+              SELECT id::text
+              FROM accounting_financing_interest_accruals
+              WHERE company_id =
+                    $1
+                AND facility_id =
+                    $2
+                AND period_start =
+                    $3::date
+                AND period_end =
+                    $4::date
+                AND deleted_at
+                    IS NULL
+                AND status =
+                    'posted'
+              LIMIT 1
+            `,
+            [
+              context.companyId,
+              facility.id,
+              startDate,
+              asOf,
+            ],
+          );
+
+        if (
+          duplicate.rows[0]
+        ) {
+          skipped +=
+            1;
+          await client.query(
+            'RELEASE SAVEPOINT ' +
+            savepoint,
+          );
+          continue;
+        }
+
+        const calculation =
+          await calculateFinancingInterest(
+            client,
+            {
+              companyId:
+                context.companyId,
+              facility,
+              startDate,
+              endDate:
+                asOf,
+            },
+          );
+
+        if (
+          calculation
+            .interestUnits <=
+          BigInt(
+            0,
+          )
+        ) {
+          skipped +=
+            1;
+          await client.query(
+            'RELEASE SAVEPOINT ' +
+            savepoint,
+          );
+          continue;
+        }
+
+        const baseCurrency =
+          String(
+            context.company
+              .currentCompany
+              .currency,
+          ).toUpperCase();
+        const facilityCurrency =
+          String(
+            facility.currency,
+          ).toUpperCase();
+        const fx =
+          await financingRateToBase(
+            client,
+            {
+              companyId:
+                context.companyId,
+              foreignCurrency:
+                facilityCurrency,
+              baseCurrency,
+              date:
+                asOf,
+              rateType:
+                'spot',
+            },
+          );
+        const baseInterest =
+          financingBaseAmount(
+            calculation
+              .interestUnits,
+            fx.rate,
+          );
+        const baseInterestText =
+          decimalAmount(
+            baseInterest,
+          );
+        const sourceKey =
+          'accounting:financing:interest:' +
+          String(
+            facility.id,
+          ) +
+          ':' +
+          startDate +
+          ':' +
+          asOf;
+        const journal =
+          await postBalancedLedgerJournal(
+            client,
+            {
+              companyId:
+                context.companyId,
+              userId:
+                context.userId,
+              journalDate:
+                asOf,
+              description:
+                'Financing interest accrual · ' +
+                String(
+                  facility
+                    .facility_number,
+                ) +
+                ' · ' +
+                startDate +
+                ' to ' +
+                asOf,
+              reference:
+                String(
+                  facility
+                    .facility_number,
+                ),
+              sourceModule:
+                'accounting',
+              sourceType:
+                'financing_interest_accrual',
+              sourceId:
+                String(
+                  facility.id,
+                ),
+              sourceEventKey:
+                sourceKey,
+              postingKind:
+                'system',
+              lines:
+                interestJournalLines(
+                  facility,
+                  baseInterestText,
+                ),
+            },
+          );
+        const id =
+          randomUUID();
+        const requestKey =
+          randomUUID();
+        const requestHash =
+          hashPayload({
+            facilityId:
+              facility.id,
+            startDate,
+            asOf,
+            foreignInterest:
+              financingForeignDecimal(
+                calculation
+                  .interestUnits,
+              ),
+            baseInterest:
+              baseInterestText,
+            fxRate:
+              fx.rate,
+            segments:
+              calculation
+                .segments,
+          });
+
+        await client.query(
+          `
+            INSERT INTO accounting_financing_interest_accruals (
+              id,
+              company_id,
+              facility_id,
+              period_start,
+              period_end,
+              currency,
+              principal_foreign,
+              annual_rate,
+              day_count,
+              day_count_days,
+              foreign_interest_amount,
+              base_interest_amount,
+              exchange_rate,
+              journal_id,
+              request_key,
+              request_hash,
+              status,
+              metadata,
+              posted_at,
+              created_by,
+              updated_by
+            )
+            VALUES (
+              $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+              $11,$12,$13,$14,$15,$16,'posted',$17::jsonb,
+              NOW(),$18,$18
+            )
+          `,
+          [
+            id,
+            context.companyId,
+            facility.id,
+            startDate,
+            asOf,
+            facilityCurrency,
+            calculation
+              .principalUnits >
+              BigInt(
+                0,
+              )
+              ? financingForeignDecimal(
+                  calculation
+                    .principalUnits,
+                )
+              : '0.0000',
+            calculation
+              .endRate,
+            facility
+              .day_count,
+            Math.max(
+              1,
+              Math.round(
+                (
+                  new Date(
+                    asOf +
+                    'T00:00:00.000Z',
+                  ).getTime() -
+                  new Date(
+                    startDate +
+                    'T00:00:00.000Z',
+                  ).getTime()
+                ) /
+                  86_400_000,
+              ),
+            ),
+            financingForeignDecimal(
+              calculation
+                .interestUnits,
+            ),
+            baseInterestText,
+            fx.rate,
+            journal.journalId,
+            requestKey,
+            requestHash,
+            JSON.stringify({
+              segments:
+                calculation
+                  .segments,
+              fxSourceType:
+                fx.sourceType,
+              fxSourceName:
+                fx.sourceName,
+              fxRateDate:
+                fx.effectiveDate,
+            }),
+            context.userId,
+          ],
+        );
+
+        accrued +=
+          1;
+
+        await client.query(
+          'RELEASE SAVEPOINT ' +
+          savepoint,
+        );
+      } catch (
+        error
+      ) {
+        await client.query(
+          'ROLLBACK TO SAVEPOINT ' +
+          savepoint,
+        );
+        failed +=
+          1;
+        await client.query(
+          'RELEASE SAVEPOINT ' +
+          savepoint,
+        );
+      }
+    }
+
+    const status =
+      failed >
+        0
+        ? 'completed_with_errors'
+        : 'completed';
+
+    await client.query(
+      `
+        UPDATE accounting_financing_runs
+        SET
+          status =
+            $3,
+          facility_count =
+            $4,
+          accrued_count =
+            $5,
+          skipped_count =
+            $6,
+          failed_count =
+            $7,
+          completed_at =
+            NOW(),
+          updated_by =
+            $8,
+          updated_at =
+            NOW()
+        WHERE company_id =
+              $1
+          AND id =
+              $2
+      `,
+      [
+        context.companyId,
+        runId,
+        status,
+        facilities.rows.length,
+        accrued,
+        skipped,
+        failed,
+        context.userId,
+      ],
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    await audit(
+      context,
+      'interest_run.completed',
+      'accounting_financing_runs',
+      runId,
+      'Financing interest accrual run completed',
+      {
+        asOf,
+        facilities:
+          facilities.rows.length,
+        accrued,
+        skipped,
+        failed,
+      },
+    );
+
+    return {
+      id:
+        runId,
+      asOf,
+      facilities:
+        facilities.rows.length,
+      accrued,
+      skipped,
+      failed,
+      status,
+    };
+  } catch (
+    error
+  ) {
+    await client.query(
+      'ROLLBACK',
+    ).catch(
+      () =>
+        undefined,
+    );
+
+    if (
+      runId
+    ) {
+      await context.pool.query(
+        `
+          UPDATE accounting_financing_runs
+          SET
+            status =
+              'failed',
+            completed_at =
+              NOW(),
+            updated_by =
+              $3,
+            updated_at =
+              NOW()
+          WHERE company_id =
+                $1
+            AND id =
+                $2
+        `,
+        [
+          context.companyId,
+          runId,
+          context.userId,
+        ],
+      ).catch(
+        () =>
+          undefined,
+      );
+    }
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function reverseFinancingInterestAccrual(
+  input:
+    unknown,
+) {
+  const context =
+    await requireEnterpriseModuleTableContext(
+      'accounting',
+      'accounting_financing_interest_accruals',
+      'edit',
+    );
+  const body =
+    financingBody(
+      input,
+    );
+  const accrualId =
+    accountingId(
+      body.accrualId,
+    );
+  const reversalDate =
+    accountingDate(
+      body.reversalDate,
+    );
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const result =
+      await client.query(
+        `
+          SELECT
+            accrual.*,
+            facility.facility_number
+          FROM accounting_financing_interest_accruals accrual
+          INNER JOIN accounting_financing_facilities facility
+            ON facility.id =
+               accrual.facility_id
+           AND facility.company_id =
+               accrual.company_id
+           AND facility.deleted_at
+               IS NULL
+          WHERE accrual.company_id =
+                $1
+            AND accrual.id =
+                $2
+            AND accrual.deleted_at
+                IS NULL
+          LIMIT 1
+          FOR UPDATE OF accrual, facility
+        `,
+        [
+          context.companyId,
+          accrualId,
+        ],
+      );
+    const accrual =
+      result.rows[0];
+
+    if (
+      !accrual ||
+      !accrual.journal_id
+    ) {
+      throw new AccountingInputError(
+        'Financing interest accrual not found.',
+      );
+    }
+
+    if (
+      accrual.status ===
+        'reversed' &&
+      accrual
+        .reversal_journal_id
+    ) {
+      await client.query(
+        'COMMIT',
+      );
+
+      return {
+        journalId:
+          String(
+            accrual
+              .reversal_journal_id,
+          ),
+        replayed:
+          true,
+      };
+    }
+
+    if (
+      accrual.status !==
+        'posted'
+    ) {
+      throw new AccountingInputError(
+        'Only a posted financing interest accrual can be reversed.',
+      );
+    }
+
+    const later =
+      await client.query(
+        `
+          SELECT EXISTS (
+            SELECT 1
+            FROM accounting_financing_interest_accruals
+            WHERE company_id =
+                  $1
+              AND facility_id =
+                  $2
+              AND deleted_at
+                  IS NULL
+              AND status =
+                  'posted'
+              AND (
+                period_end >
+                  $3::date
+                OR (
+                  period_end =
+                    $3::date
+                  AND created_at >
+                    $4
+                )
+              )
+          ) AS later_posted
+        `,
+        [
+          context.companyId,
+          accrual.facility_id,
+          accrual.period_end,
+          accrual.created_at,
+        ],
+      );
+
+    if (
+      later.rows[0]
+        ?.later_posted
+    ) {
+      throw new AccountingInputError(
+        'Reverse later interest accruals for this facility first.',
+      );
+    }
+
+    const paid =
+      await client.query(
+        `
+          SELECT COALESCE(
+            SUM(
+              interest_foreign
+            ),
+            0
+          )::numeric(19,4)::text
+            AS paid
+          FROM accounting_financing_transactions
+          WHERE company_id =
+                $1
+            AND facility_id =
+                $2
+            AND deleted_at
+                IS NULL
+            AND status =
+                'posted'
+            AND interest_foreign >
+                0
+            AND transaction_date >
+                $3::date
+        `,
+        [
+          context.companyId,
+          accrual.facility_id,
+          accrual.period_end,
+        ],
+      );
+
+    if (
+      signedForeignUnits(
+        paid.rows[0]
+          ?.paid ||
+        '0',
+      ) >
+      BigInt(
+        0,
+      )
+    ) {
+      throw new AccountingInputError(
+        'Reverse later financing payments before reversing this interest accrual.',
+      );
+    }
+
+    const reversal =
+      await reversePostedLedgerJournal(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          originalJournalId:
+            String(
+              accrual.journal_id,
+            ),
+          journalDate:
+            reversalDate,
+          description:
+            'Reverse financing interest · ' +
+            String(
+              accrual
+                .facility_number,
+            ) +
+            ' · ' +
+            String(
+              accrual.period_start,
+            ).slice(
+              0,
+              10,
+            ) +
+            ' to ' +
+            String(
+              accrual.period_end,
+            ).slice(
+              0,
+              10,
+            ),
+          sourceModule:
+            'accounting',
+          sourceType:
+            'financing_interest_reversal',
+          sourceId:
+            accrualId,
+          sourceEventKey:
+            'accounting:financing:interest-reversal:' +
+            accrualId,
+        },
+      );
+
+    await client.query(
+      `
+        UPDATE accounting_financing_interest_accruals
+        SET
+          status =
+            'reversed',
+          reversal_journal_id =
+            $3,
+          reversed_at =
+            NOW(),
+          updated_by =
+            $4,
+          updated_at =
+            NOW()
+        WHERE company_id =
+              $1
+          AND id =
+              $2
+      `,
+      [
+        context.companyId,
+        accrualId,
+        reversal.journalId,
+        context.userId,
+      ],
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    await audit(
+      context,
+      'interest.reversed',
+      'accounting_financing_interest_accruals',
+      accrualId,
+      'Financing interest accrual reversed',
+      {
+        journalId:
+          reversal.journalId,
+      },
+    );
+
+    return {
+      journalId:
+        reversal.journalId,
+      replayed:
+        reversal.reused,
+    };
+  } catch (
+    error
+  ) {
+    await client.query(
+      'ROLLBACK',
+    ).catch(
+      () =>
+        undefined,
+    );
+    throw error;
+  } finally {
+    client.release();
+  }
+}
