@@ -530,6 +530,34 @@ export type FixedAssetsAccountingWorkspace = {
         unknown
       >
     >;
+  impairments:
+    Array<
+      Record<
+        string,
+        unknown
+      >
+    >;
+  revaluations:
+    Array<
+      Record<
+        string,
+        unknown
+      >
+    >;
+  disposals:
+    Array<
+      Record<
+        string,
+        unknown
+      >
+    >;
+  sourceLinks:
+    Array<
+      Record<
+        string,
+        unknown
+      >
+    >;
   summary: {
     assetCount:
       number;
@@ -565,6 +593,10 @@ export async function getFixedAssetsAccountingControl():
     categories,
     assets,
     runs,
+    impairments,
+    revaluations,
+    disposals,
+    sourceLinks,
     summary,
   ] =
     await Promise.all([
@@ -649,6 +681,9 @@ export async function getFixedAssetsAccountingControl():
             asset.last_depreciation_date::text,
             asset.capitalization_journal_id::text,
             asset.capitalization_reversal_journal_id::text,
+            asset.disposal_date::text,
+            asset.disposal_journal_id::text,
+            asset.disposal_reversal_journal_id::text,
             asset.status,
             (
               asset.acquisition_cost +
@@ -699,6 +734,108 @@ export async function getFixedAssetsAccountingControl():
           ORDER BY
             created_at DESC
           LIMIT 30
+        `,
+        [
+          context.companyId,
+        ],
+      ),
+      context.pool.query(
+        `
+          SELECT
+            id::text,
+            asset_id::text,
+            request_key::text,
+            impairment_date::text,
+            previous_book_value::text,
+            impairment_amount::text,
+            new_book_value::text,
+            reason,
+            journal_reference::text,
+            reversal_journal_id::text,
+            status,
+            posted_at::text,
+            reversed_at::text
+          FROM asset_impairments
+          WHERE company_id = $1
+            AND deleted_at IS NULL
+          ORDER BY impairment_date DESC, created_at DESC
+          LIMIT 60
+        `,
+        [
+          context.companyId,
+        ],
+      ),
+      context.pool.query(
+        `
+          SELECT
+            id::text,
+            asset_id::text,
+            request_key::text,
+            revaluation_date::text,
+            previous_carrying_value::text,
+            fair_value::text,
+            change_amount::text,
+            reserve_effect::text,
+            profit_loss_effect::text,
+            journal_id::text,
+            reversal_journal_id::text,
+            reason,
+            status,
+            posted_at::text,
+            reversed_at::text
+          FROM asset_revaluations
+          WHERE company_id = $1
+            AND deleted_at IS NULL
+          ORDER BY revaluation_date DESC, created_at DESC
+          LIMIT 60
+        `,
+        [
+          context.companyId,
+        ],
+      ),
+      context.pool.query(
+        `
+          SELECT
+            id::text,
+            asset_id::text,
+            request_key::text,
+            disposal_date::text,
+            disposal_method,
+            proceeds::text,
+            carrying_value::text,
+            gain_loss::text,
+            journal_id::text,
+            reversal_journal_id::text,
+            notes,
+            status,
+            posted_at::text,
+            reversed_at::text
+          FROM asset_disposals
+          WHERE company_id = $1
+            AND deleted_at IS NULL
+          ORDER BY disposal_date DESC, created_at DESC
+          LIMIT 60
+        `,
+        [
+          context.companyId,
+        ],
+      ),
+      context.pool.query(
+        `
+          SELECT
+            id::text,
+            asset_id::text,
+            source_module,
+            source_type,
+            source_id,
+            source_reference,
+            source_amount::text,
+            created_at::text
+          FROM asset_source_links
+          WHERE company_id = $1
+            AND deleted_at IS NULL
+          ORDER BY created_at DESC
+          LIMIT 60
         `,
         [
           context.companyId,
@@ -771,6 +908,14 @@ export async function getFixedAssetsAccountingControl():
       assets.rows,
     runs:
       runs.rows,
+    impairments:
+      impairments.rows,
+    revaluations:
+      revaluations.rows,
+    disposals:
+      disposals.rows,
+    sourceLinks:
+      sourceLinks.rows,
     summary: {
       assetCount:
         Number(
@@ -5294,7 +5439,7 @@ export async function linkFixedAssetSource(
       255,
       'Source reference',
     );
-  const sourceAmount =
+  const sourceAmountCents =
     body.sourceAmount ===
         undefined ||
       body.sourceAmount ===
@@ -5302,13 +5447,32 @@ export async function linkFixedAssetSource(
       body.sourceAmount ===
         ''
       ? null
-      : assetMoneyDecimal(
-          assetMoneyCents(
-            String(
-              body.sourceAmount,
-            ),
-            'Source amount',
+      : assetMoneyCents(
+          String(
+            body.sourceAmount,
           ),
+          'Source amount',
+        );
+
+  if (
+    sourceAmountCents !==
+      null &&
+    sourceAmountCents <
+      BigInt(
+        0,
+      )
+  ) {
+    throw new FixedAssetInputError(
+      'Source amount cannot be negative.',
+    );
+  }
+
+  const sourceAmount =
+    sourceAmountCents ===
+      null
+      ? null
+      : assetMoneyDecimal(
+          sourceAmountCents,
         );
 
   const asset =
