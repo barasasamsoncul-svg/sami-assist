@@ -187,6 +187,78 @@ test('Category 11: mobile workspace pages use progressive disclosure instead of 
   assert.match(workspace, /['"]lifecycle['"]/);
 });
 
+test('Category 11: dashboard turns recorded activity into operational intelligence', async () => {
+  const [
+    dashboard,
+    page,
+    composer,
+    aiSummary,
+  ] = await Promise.all([
+    source('app/dashboard/DashboardClient.tsx'),
+    source('app/dashboard/page.tsx'),
+    source('lib/dashboard/composer.ts'),
+    source('app/api/workspace/dashboard/ai-summary/route.ts'),
+  ]);
+
+  assert.match(
+    dashboard,
+    /Operational pulse/,
+  );
+  assert.match(
+    dashboard,
+    /Your actions today/,
+  );
+  assert.match(
+    dashboard,
+    /Failed or denied · 7d/,
+  );
+  assert.match(
+    dashboard,
+    /Modules touched · 7d/,
+  );
+  assert.match(
+    dashboard,
+    /activityBrief/,
+  );
+  assert.match(
+    dashboard,
+    /Live activity summary/,
+  );
+  assert.match(
+    dashboard,
+    /\/api\/workspace\/dashboard\/ai-summary/,
+  );
+  assert.match(
+    page,
+    /aiEnabled:[\s\S]*shell\.aiAvailable/,
+  );
+  assert.match(
+    composer,
+    /input\.aiEnabled ===[\s\S]*true/,
+  );
+  assert.doesNotMatch(
+    composer,
+    /dashboard provider becomes active|dashboard providers become active/,
+    'User-facing dashboard copy must never expose provider implementation state.',
+  );
+  assert.match(
+    aiSummary,
+    /completeSamiAiChat/,
+  );
+  assert.match(
+    aiSummary,
+    /listWorkspaceActivity/,
+  );
+  assert.match(
+    aiSummary,
+    /getWorkspaceActivitySummary/,
+  );
+  assert.match(
+    aiSummary,
+    /Use only supplied facts/,
+  );
+});
+
 test('Category 11: People & Access explains authorization dimensions and keeps mobile summaries compact', async () => {
   const users = compact(
     await source('app/settings/users/UsersSettingsClient.tsx'),
