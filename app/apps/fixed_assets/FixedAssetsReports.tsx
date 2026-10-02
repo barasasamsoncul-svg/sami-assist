@@ -1,10 +1,13 @@
 'use client';
 
 import {
+  Calculator,
   Download,
   FileBarChart2,
   Printer,
   RefreshCw,
+  Scale,
+  TriangleAlert,
 } from 'lucide-react';
 import {
   useState,
@@ -1297,10 +1300,338 @@ export default function FixedAssetsReports({
         </div>
       </section>
 
-      <SaMiOverlay
-        overlay={
-          overlay
+      <section
+        className={
+          styles.panel
         }
+      >
+        <div
+          className={
+            styles.panelHeading
+          }
+        >
+          <div>
+            <div
+              className={
+                styles.eyebrow
+              }
+            >
+              Register-to-ledger
+            </div>
+            <h3>
+              Fixed Asset GL reconciliation
+            </h3>
+            <p>
+              Asset accounts use debit balances. Accumulated depreciation and impairment use credit balances.
+            </p>
+          </div>
+
+          {Number(
+            data.reconciliation
+              .difference ||
+            0,
+          ) !==
+            0 ||
+          data.reconciliation
+              .unmappedAssetCount >
+            0 ? (
+            <TriangleAlert
+              size={20}
+            />
+          ) : (
+            <Scale
+              size={20}
+            />
+          )}
+        </div>
+
+        <section
+          className={
+            styles.cards
+          }
+        >
+          <div
+            className={
+              styles.card
+            }
+          >
+            <span>
+              Register balances
+            </span>
+            <strong>
+              {amount(
+                data.reconciliation
+                  .registerValue,
+              )}
+            </strong>
+          </div>
+
+          <div
+            className={
+              styles.card
+            }
+          >
+            <span>
+              GL balances
+            </span>
+            <strong>
+              {amount(
+                data.reconciliation
+                  .glValue,
+              )}
+            </strong>
+          </div>
+
+          <div
+            className={
+              styles.card
+            }
+          >
+            <span>
+              Difference
+            </span>
+            <strong>
+              {amount(
+                data.reconciliation
+                  .difference,
+              )}
+            </strong>
+          </div>
+
+          <div
+            className={
+              styles.card
+            }
+          >
+            <span>
+              Unmapped assets
+            </span>
+            <strong>
+              {data.reconciliation
+                .unmappedAssetCount}
+            </strong>
+          </div>
+        </section>
+
+        <div
+          className={
+            styles.tableWrap
+          }
+        >
+          <table
+            className={
+              styles.table
+            }
+          >
+            <thead>
+              <tr>
+                <th>
+                  Ledger role
+                </th>
+                <th>
+                  Account
+                </th>
+                <th>
+                  Assets
+                </th>
+                <th>
+                  Register
+                </th>
+                <th>
+                  GL
+                </th>
+                <th>
+                  Difference
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.reconciliation
+                .lines.map(
+                  row => (
+                    <tr
+                      key={
+                        row.kind +
+                        ':' +
+                        (
+                          row.accountId ||
+                          'unmapped'
+                        )
+                      }
+                    >
+                      <td>
+                        {row.kind.replaceAll(
+                          '_',
+                          ' ',
+                        )}
+                      </td>
+                      <td>
+                        {row.accountId
+                          ? (
+                              row.accountCode ||
+                              ''
+                            ) +
+                            ' · ' +
+                            row.accountName
+                          : 'Unmapped'}
+                      </td>
+                      <td>
+                        {row.assetCount}
+                      </td>
+                      <td>
+                        {amount(
+                          row.registerValue,
+                        )}
+                      </td>
+                      <td>
+                        {amount(
+                          row.glValue,
+                        )}
+                      </td>
+                      <td>
+                        {amount(
+                          row.difference,
+                        )}
+                      </td>
+                    </tr>
+                  ),
+                )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section
+        className={
+          styles.panel
+        }
+      >
+        <div
+          className={
+            styles.panelHeading
+          }
+        >
+          <div>
+            <div
+              className={
+                styles.eyebrow
+              }
+            >
+              Forward-looking
+            </div>
+            <h3>
+              12-month depreciation forecast
+            </h3>
+            <p>
+              Projection starts {data.forecast
+                .horizonStart} and ends {data.forecast
+                .horizonEnd}. It uses current carrying value, salvage floor, remaining useful life and the configured depreciation method without posting journals.
+            </p>
+          </div>
+
+          <Calculator
+            size={20}
+          />
+        </div>
+
+        <div
+          className={
+            styles.card
+          }
+        >
+          <span>
+            Projected depreciation
+          </span>
+          <strong>
+            {amount(
+              data.forecast
+                .total,
+            )}
+          </strong>
+          <small>
+            Next 12 months
+          </small>
+        </div>
+
+        <div
+          className={
+            styles.tableWrap
+          }
+        >
+          <table
+            className={
+              styles.table
+            }
+          >
+            <thead>
+              <tr>
+                <th>
+                  Asset
+                </th>
+                <th>
+                  Method
+                </th>
+                <th>
+                  Remaining periods
+                </th>
+                <th>
+                  Next month
+                </th>
+                <th>
+                  Next 12 months
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.forecast
+                .assets.map(
+                  row => (
+                    <tr
+                      key={
+                        row.assetId
+                      }
+                    >
+                      <td>
+                        <strong>
+                          {row.assetCode}
+                        </strong>
+                        <div
+                          className={
+                            styles.muted
+                          }
+                        >
+                          {row.name}
+                        </div>
+                      </td>
+                      <td>
+                        {row.method.replaceAll(
+                          '_',
+                          ' ',
+                        )}
+                      </td>
+                      <td>
+                        {row.remainingPeriods}
+                      </td>
+                      <td>
+                        {amount(
+                          row.nextMonth,
+                        )}
+                      </td>
+                      <td>
+                        {amount(
+                          row.nextTwelveMonths,
+                        )}
+                      </td>
+                    </tr>
+                  ),
+                )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <SaMiOverlay
+        {...overlay}
         onClose={
           closeOverlay
         }
