@@ -17,6 +17,7 @@ import {
 import {
   AccountingInputError,
   accountingDate,
+  accountingId,
   decimalAmount,
 } from './validation';
 import {
@@ -207,6 +208,10 @@ export async function runFinancingCurrentClassification(
           10,
         ),
     );
+  const requestKey =
+    accountingId(
+      body.requestKey,
+    );
   const client =
     await context.pool.connect();
 
@@ -329,23 +334,22 @@ export async function runFinancingCurrentClassification(
       );
 
       try {
-        const existing =
+        const replay =
           await client.query(
             `
               SELECT
                 id::text,
-                journal_id::text
+                journal_id::text,
+                request_hash
               FROM accounting_financing_reclassifications
               WHERE company_id =
                     $1
                 AND facility_id =
                     $2
-                AND as_of_date =
-                    $3::date
+                AND request_key =
+                    $3
                 AND deleted_at
                     IS NULL
-                AND status =
-                    'posted'
               ORDER BY
                 created_at DESC,
                 id DESC
@@ -354,12 +358,12 @@ export async function runFinancingCurrentClassification(
             [
               context.companyId,
               facility.id,
-              asOf,
+              requestKey,
             ],
           );
 
         if (
-          existing.rows[0]
+          replay.rows[0]
         ) {
           skipped +=
             1;
@@ -526,7 +530,7 @@ export async function runFinancingCurrentClassification(
                     $1
                 AND facility_id =
                     $2
-                AND as_of_date <
+                AND as_of_date <=
                     $3::date
                 AND deleted_at
                     IS NULL
@@ -572,8 +576,6 @@ export async function runFinancingCurrentClassification(
           continue;
         }
 
-        const requestKey =
-          randomUUID();
         const requestHash =
           hashPayload({
             facilityId:
@@ -630,7 +632,7 @@ export async function runFinancingCurrentClassification(
                   facility.id,
                 ) +
                 ':' +
-                asOf,
+                requestKey,
               postingKind:
                 'system',
               lines:
