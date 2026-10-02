@@ -935,34 +935,92 @@ export async function getFixedAssetsAccountingControl():
             COUNT(*) FILTER (
               WHERE capitalization_journal_id
                     IS NOT NULL
+                AND capitalization_reversal_journal_id
+                    IS NULL
+                AND status <>
+                    'disposed'
             )::int
               AS capitalized_count,
             COALESCE(
-              SUM(acquisition_cost),
+              SUM(
+                CASE
+                  WHEN capitalization_journal_id
+                         IS NOT NULL
+                   AND capitalization_reversal_journal_id
+                         IS NULL
+                   AND status <>
+                       'disposed'
+                  THEN acquisition_cost
+                  ELSE 0
+                END
+              ),
               0
             )::text
               AS gross_cost,
             COALESCE(
-              SUM(accumulated_depreciation),
+              SUM(
+                CASE
+                  WHEN capitalization_journal_id
+                         IS NOT NULL
+                   AND capitalization_reversal_journal_id
+                         IS NULL
+                   AND status <>
+                       'disposed'
+                  THEN accumulated_depreciation
+                  ELSE 0
+                END
+              ),
               0
             )::text
               AS accumulated_depreciation,
             COALESCE(
-              SUM(accumulated_impairment),
+              SUM(
+                CASE
+                  WHEN capitalization_journal_id
+                         IS NOT NULL
+                   AND capitalization_reversal_journal_id
+                         IS NULL
+                   AND status <>
+                       'disposed'
+                  THEN accumulated_impairment
+                  ELSE 0
+                END
+              ),
               0
             )::text
               AS accumulated_impairment,
             COALESCE(
-              SUM(revaluation_adjustment),
+              SUM(
+                CASE
+                  WHEN capitalization_journal_id
+                         IS NOT NULL
+                   AND capitalization_reversal_journal_id
+                         IS NULL
+                   AND status <>
+                       'disposed'
+                  THEN revaluation_adjustment
+                  ELSE 0
+                END
+              ),
               0
             )::text
               AS revaluation_adjustment,
             COALESCE(
               SUM(
-                acquisition_cost +
-                revaluation_adjustment -
-                accumulated_depreciation -
-                accumulated_impairment
+                CASE
+                  WHEN capitalization_journal_id
+                         IS NOT NULL
+                   AND capitalization_reversal_journal_id
+                         IS NULL
+                   AND status <>
+                       'disposed'
+                  THEN
+                    acquisition_cost +
+                    revaluation_adjustment -
+                    accumulated_depreciation -
+                    accumulated_impairment
+                  ELSE 0
+                END
               ),
               0
             )::text
@@ -2273,6 +2331,8 @@ export async function runFixedAssetDepreciation(
                 IS NULL
             AND asset.capitalization_journal_id
                 IS NOT NULL
+            AND asset.capitalization_reversal_journal_id
+                IS NULL
             AND asset.status IN (
               'active',
               'in_service'
@@ -2326,6 +2386,36 @@ export async function runFixedAssetDepreciation(
                     IS NULL
                 AND status <>
                     'reversed'
+              LIMIT 1
+            `,
+            [
+              context.companyId,
+              asset.id,
+              periodEnd,
+            ],
+          );
+
+        const previousReversed =
+          await client.query(
+            `
+              SELECT
+                reversal_journal_id::text
+              FROM asset_depreciation_entries
+              WHERE company_id =
+                    $1
+                AND asset_id =
+                    $2
+                AND period_date =
+                    $3
+                AND deleted_at
+                    IS NULL
+                AND status =
+                    'reversed'
+                AND reversal_journal_id
+                    IS NOT NULL
+              ORDER BY
+                reversed_at DESC NULLS LAST,
+                created_at DESC
               LIMIT 1
             `,
             [
@@ -2604,7 +2694,14 @@ export async function runFixedAssetDepreciation(
                   asset.id,
                 ) +
                 ':' +
-                periodEnd,
+                periodEnd +
+                ':' +
+                String(
+                  previousReversed
+                    .rows[0]
+                    ?.reversal_journal_id ||
+                  'initial',
+                ),
               postingKind:
                 'system',
               lines: [
