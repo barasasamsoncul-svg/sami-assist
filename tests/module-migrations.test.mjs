@@ -1779,3 +1779,21 @@ test('Fixed Assets release migration expands tenant schemas before promotion wit
   assert.match(pkg,/migrate:fixed-assets:release/);
   assert.match(pkg,/test:fixed-assets:release/);
 });
+
+
+test('Accounting roadmap closes Fixed Assets before Accruals', async () => {
+  const roadmap = await source('docs/accounting/ROADMAP.md');
+
+  assert.match(
+    roadmap,
+    /19\. Fixed assets: deepened the existing standalone Fixed Assets domain/,
+  );
+  assert.match(
+    roadmap,
+    /## Remaining depth, in the agreed order[\s\S]*20\. Accruals and deferrals\./,
+  );
+  assert.doesNotMatch(
+    roadmap,
+    /## Remaining depth, in the agreed order[\s\S]*19\. Fixed assets\./,
+  );
+});
