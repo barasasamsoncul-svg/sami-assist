@@ -7,6 +7,11 @@ import { recordWorkspaceAuditEvent } from '@/lib/services/workspace-activity';
 import { postBalancedLedgerJournal, reversePostedLedgerJournal } from './ledger-engine';
 import { AccountingInputError, accountingDate, accountingId, minorUnits } from './validation';
 import {
+  financingInterestCarryingCents,
+  financingOutstandingInterestUnits,
+  financingPrincipalBuckets,
+} from './financing-helpers';
+import {
   calculateRealizedFx,
   calculateRevaluation,
   centsDecimal,
