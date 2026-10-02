@@ -13,9 +13,9 @@ import {
 import { ACCOUNTING_BUDGETS_SQL } from '../lib/apps/accounting/budgets-schema';
 
 test('budget money keeps exact signed cents', () => {
-  assert.equal(budgetMoneyCents('1234.56'), 123456n);
-  assert.equal(budgetMoneyCents('-10.05'), -1005n);
-  assert.equal(budgetMoneyDecimal(-1005n), '-10.05');
+  assert.equal(budgetMoneyCents('1234.56'), BigInt(123456));
+  assert.equal(budgetMoneyCents('-10.05'), -BigInt(1005));
+  assert.equal(budgetMoneyDecimal(-BigInt(1005)), '-10.05');
   assert.throws(() => budgetMoneyCents('1.001'));
 });
 
@@ -36,30 +36,30 @@ test('budget months require full calendar months and preserve horizon', () => {
 
 test('rolling forecast growth uses deterministic integer rounding', () => {
   const tenPercent = parseGrowthPercentScaled('10');
-  assert.equal(tenPercent,100000n);
-  assert.equal(applyBudgetGrowth(10000n,tenPercent),11000n);
-  assert.equal(applyBudgetGrowth(-10000n,tenPercent),-11000n);
+  assert.equal(tenPercent,BigInt(100000));
+  assert.equal(applyBudgetGrowth(BigInt(10000),tenPercent),BigInt(11000));
+  assert.equal(applyBudgetGrowth(-BigInt(10000),tenPercent),-BigInt(11000));
   assert.equal(
-    applyBudgetGrowth(9999n,parseGrowthPercentScaled('2.5')),
-    10249n,
+    applyBudgetGrowth(BigInt(9999),parseGrowthPercentScaled('2.5')),
+    BigInt(10249),
   );
 });
 
 test('variance direction is favorable for more income and less expense', () => {
   assert.deepEqual(
-    budgetVariance('income',10000n,12000n),
-    {amount:2000n,favorable:true},
+    budgetVariance('income',BigInt(10000),BigInt(12000)),
+    {amount:BigInt(2000),favorable:true},
   );
   assert.deepEqual(
-    budgetVariance('expense',10000n,12000n),
-    {amount:2000n,favorable:false},
+    budgetVariance('expense',BigInt(10000),BigInt(12000)),
+    {amount:BigInt(2000),favorable:false},
   );
   assert.deepEqual(
-    budgetVariance('expense',10000n,8000n),
-    {amount:-2000n,favorable:true},
+    budgetVariance('expense',BigInt(10000),BigInt(8000)),
+    {amount:-BigInt(2000),favorable:true},
   );
-  assert.equal(variancePercent(10000n,2000n),20);
-  assert.equal(variancePercent(0n,2000n),null);
+  assert.equal(variancePercent(BigInt(10000),BigInt(2000)),20);
+  assert.equal(variancePercent(BigInt(0),BigInt(2000)),null);
 });
 
 test('budgets schema is company scoped versioned and non-destructive', () => {
