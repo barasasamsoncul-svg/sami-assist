@@ -900,7 +900,7 @@ test('Accounting 2.9 Payables is migration-backed and ledger controlled', async 
     source('lib/apps/enterprise/specialist-depth.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.20\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.21\.0'/);
   assert.match(migrations,/ACCOUNTING_2_8_0_TO_2_9_0/);
 
   for (const marker of [
@@ -1814,4 +1814,93 @@ test('Fixed Assets depreciation cannot survive a capitalization reversal or reus
     service,
     /status <>[\s\S]*'disposed'[\s\S]*AS capitalized_count/,
   );
+});
+
+
+test('Accounting 2.21 Accruals and Deferrals are migration-backed and ledger controlled', async () => {
+  const [
+    manifest,
+    runtime,
+    migration,
+    schema,
+    depth,
+    catalog,
+    hooks,
+    service,
+    workspace,
+    foundation,
+    route,
+  ] = await Promise.all([
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/apps/accounting/migrations/2.20.0-to-2.21.0.ts'),
+    source('lib/apps/accounting/accruals-schema.ts'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+    source('lib/apps/enterprise/catalog.ts'),
+    source('lib/apps/enterprise/domain-hooks.ts'),
+    source('lib/apps/accounting/accruals.ts'),
+    source('app/apps/accounting/AccountingWorkspace.tsx'),
+    source('app/apps/accounting/AccountingFoundationPanel.tsx'),
+    source('app/api/apps/accounting/accruals/route.ts'),
+  ]);
+
+  assert.match(
+    manifest,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.21\.0'/,
+  );
+  assert.match(runtime,/ACCOUNTING_2_20_0_TO_2_21_0/);
+  assert.match(
+    migration,
+    /fromVersion:\s*'2\.20\.0'[\s\S]*toVersion:\s*'2\.21\.0'/,
+  );
+  assert.match(migration,/ACCOUNTING_ACCRUALS_SQL/);
+  assert.match(depth,/ACCOUNTING_ACCRUALS_SQL/);
+
+  for (const marker of [
+    'accounting_accrual_settings',
+    'accounting_accrual_schedules',
+    'accounting_accrual_schedule_lines',
+    'accounting_accrual_runs',
+  ]) {
+    assert.match(schema,new RegExp(marker));
+    assert.match(catalog,new RegExp(marker));
+    assert.match(hooks,new RegExp(marker));
+  }
+
+  for (const marker of [
+    'prepaid_expense',
+    'deferred_revenue',
+    'accrued_expense',
+    'accrued_revenue',
+    'postBalancedLedgerJournal',
+    'reversePostedLedgerJournal',
+    'SKIP LOCKED',
+    'SAVEPOINT',
+    'initial_reclassification',
+    'auto_reverse_accrual',
+  ]) {
+    assert.match(service,new RegExp(marker));
+  }
+
+  assert.match(
+    service,
+    /status IN \(\s*'pending',\s*'failed'\s*\)/,
+    'Cancelling a schedule must preserve already-reversed recognition history.',
+  );
+  assert.match(
+    workspace,
+    /accruals-deferrals[\s\S]*AccountingAccruals/,
+  );
+  assert.match(foundation,/"accruals-deferrals"/);
+
+  for (const action of [
+    'save-settings',
+    'create-schedule',
+    'activate-schedule',
+    'run-due',
+    'reverse-recognition',
+    'cancel-schedule',
+  ]) {
+    assert.match(route,new RegExp(action));
+  }
 });
