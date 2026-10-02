@@ -1,5 +1,7 @@
 import AccountingInventoryValuation from './AccountingInventoryValuation';
 import { getAccountingInventoryValuation } from '@/lib/apps/accounting/inventory-valuation';
+import AccountingAccruals from './AccountingAccruals';
+import { getAccountingAccruals } from '@/lib/apps/accounting/accruals';
 import AccountingFx from './AccountingFx';
 import { getAccountingFx } from '@/lib/apps/accounting/fx';
 import AccountingInternational from './AccountingInternational';
