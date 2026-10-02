@@ -1547,6 +1547,8 @@ test(
       'Classify current portion',
       'Current / non-current history',
       'Variable rate',
+      'Custom lender schedule',
+      'Save custom revision',
       'SaMiOverlay',
     ]) {
       assert.match(
@@ -1567,6 +1569,7 @@ test(
       'reverse-interest-accrual',
       'reverse-transaction',
       'classify-current',
+      'replace-custom-schedule',
       'close-facility',
       'cancel-facility',
     ]) {
