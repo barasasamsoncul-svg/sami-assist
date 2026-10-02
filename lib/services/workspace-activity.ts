@@ -868,6 +868,186 @@ export async function getWorkspaceActivitySummary(
 }
 
 /**
+ * Dashboard-specific personal activity snapshot.
+ *
+ * Resolves the trusted context once, then reads the recent stream and summary
+ * counters concurrently so the dashboard does not repeat authorization and
+ * company-context work.
+ */
+export async function getWorkspaceActivityDashboardSnapshot(
+  limitInput:
+    number =
+    12,
+) {
+  const context =
+    await resolveActivityContext();
+  const limit =
+    Math.min(
+      Math.max(
+        Math.floor(
+          Number(
+            limitInput,
+          ) ||
+          12,
+        ),
+        1,
+      ),
+      24,
+    );
+  const pool =
+    await getTenantPoolByTenantId(
+      context.tenantId,
+    );
+
+  const [
+    rows,
+    summaryResult,
+  ] =
+    await Promise.all([
+      listTenantRows(
+        context,
+        {
+          limit,
+          cursor:
+            null,
+          search:
+            '',
+          moduleKey:
+            null,
+          resultFilter:
+            null,
+          actorUserId:
+            context.userId,
+          from:
+            null,
+          to:
+            null,
+        },
+      ),
+      pool.query(
+        `
+          SELECT
+            COUNT(*) FILTER (
+              WHERE created_at >=
+                    date_trunc(
+                      'day',
+                      NOW()
+                    )
+            )::int
+              AS today_count,
+
+            COUNT(*) FILTER (
+              WHERE created_at >=
+                    NOW() -
+                    INTERVAL '7 days'
+                AND result IN (
+                  'failed',
+                  'denied'
+                )
+            )::int
+              AS failed_7d,
+
+            COUNT(DISTINCT user_id) FILTER (
+              WHERE created_at >=
+                    NOW() -
+                    INTERVAL '7 days'
+                AND user_id
+                    IS NOT NULL
+            )::int
+              AS actors_7d,
+
+            COUNT(DISTINCT module) FILTER (
+              WHERE created_at >=
+                    NOW() -
+                    INTERVAL '7 days'
+                AND module
+                    IS NOT NULL
+            )::int
+              AS modules_7d
+          FROM audit_logs
+          WHERE company_id =
+                $1
+            AND user_id =
+                $2
+        `,
+        [
+          context.companyId,
+          context.userId,
+        ],
+      ),
+    ]);
+
+  const visible =
+    rows.slice(
+      0,
+      limit,
+    );
+  const actors =
+    await resolveActors(
+      visible
+        .map(
+          row =>
+            row.user_id,
+        )
+        .filter(
+          (
+            id,
+          ): id is string =>
+            Boolean(
+              id,
+            ),
+        ),
+    );
+  const summaryRow =
+    summaryResult
+      .rows[0] ||
+    {};
+
+  return {
+    items:
+      visible.map(
+        row =>
+          mapActivity(
+            row,
+            actors,
+            false,
+          ),
+      ),
+    summary: {
+      view:
+        'activity' as const,
+      canAudit:
+        context.canAudit,
+      todayCount:
+        Number(
+          summaryRow
+            .today_count ||
+          0,
+        ),
+      failed7d:
+        Number(
+          summaryRow
+            .failed_7d ||
+          0,
+        ),
+      actors7d:
+        Number(
+          summaryRow
+            .actors_7d ||
+          0,
+        ),
+      modules7d:
+        Number(
+          summaryRow
+            .modules_7d ||
+          0,
+        ),
+    },
+  };
+}
+
+
+/**
  * Canonical Category 16 tenant audit writer.
  * Server-only. Browser clients never write audit rows.
  * Metadata and change payloads are redacted before persistence.
