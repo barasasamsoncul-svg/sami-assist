@@ -2499,12 +2499,12 @@ export function specialistDepthSql(
 
   return [
     coreSql,
-    key === 'fixed_assets'
-      ? FIXED_ASSETS_ACCOUNTING_SQL
-      : '',
     financeSpecialistDepthSql(
       key,
     ),
+    key === 'fixed_assets'
+      ? FIXED_ASSETS_ACCOUNTING_SQL
+      : '',
     peopleSpecialistDepthSql(
       key,
     ),
