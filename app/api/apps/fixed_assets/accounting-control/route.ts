@@ -12,7 +12,15 @@ import {
 import {
   FixedAssetInputError,
   capitalizeFixedAsset,
+  disposeFixedAsset,
   getFixedAssetsAccountingControl,
+  linkFixedAssetSource,
+  postFixedAssetImpairment,
+  postFixedAssetRevaluation,
+  reverseFixedAssetCapitalization,
+  reverseFixedAssetDisposal,
+  reverseFixedAssetImpairment,
+  reverseFixedAssetRevaluation,
   runFixedAssetDepreciation,
   saveFixedAssetCategoryAccounting,
   saveFixedAssetsAccountingSettings,
@@ -206,6 +214,46 @@ export async function POST(
               ? await runFixedAssetDepreciation(
                   body,
                 )
+              : body.action ===
+                  'reverse-capitalization'
+                ? await reverseFixedAssetCapitalization(
+                    body,
+                  )
+                : body.action ===
+                    'post-impairment'
+                  ? await postFixedAssetImpairment(
+                      body,
+                    )
+                  : body.action ===
+                      'reverse-impairment'
+                    ? await reverseFixedAssetImpairment(
+                        body,
+                      )
+                    : body.action ===
+                        'post-revaluation'
+                      ? await postFixedAssetRevaluation(
+                          body,
+                        )
+                      : body.action ===
+                          'reverse-revaluation'
+                        ? await reverseFixedAssetRevaluation(
+                            body,
+                          )
+                        : body.action ===
+                            'dispose'
+                          ? await disposeFixedAsset(
+                              body,
+                            )
+                          : body.action ===
+                              'reverse-disposal'
+                            ? await reverseFixedAssetDisposal(
+                                body,
+                              )
+                            : body.action ===
+                                'link-source'
+                              ? await linkFixedAssetSource(
+                                  body,
+                                )
               : (() => {
                   throw new FixedAssetInputError(
                     'Choose a supported Fixed Asset accounting action.',
