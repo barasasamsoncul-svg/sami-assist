@@ -486,12 +486,8 @@ export default function AccountingFinancing({
       row =>
         row.repayment_structure ===
           'custom' &&
-        (
-          row.status ===
-            'draft' ||
-          row.status ===
-            'active'
-        ),
+        row.status ===
+          'active',
     );
 
   const variableFacilities =
@@ -3060,7 +3056,7 @@ export default function AccountingFinancing({
               Replace the current manual repayment revision
             </h3>
             <p>
-              Use this only for facilities whose repayment structure and frequency are both Custom. Principal across all lines must exactly equal the principal being scheduled.
+              For Custom facilities, activate the facility and post the drawdown first. Then enter the lender repayment plan here; principal across all lines must exactly equal the drawn principal.
             </p>
           </div>
           <CalendarClock
