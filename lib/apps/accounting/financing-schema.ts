@@ -246,6 +246,7 @@ CREATE TABLE IF NOT EXISTS public.accounting_financing_interest_accruals (
   request_key UUID NOT NULL,
   request_hash VARCHAR(64) NOT NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'posted',
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
   posted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   reversed_at TIMESTAMPTZ,
   created_by UUID,
@@ -267,6 +268,11 @@ CREATE TABLE IF NOT EXISTS public.accounting_financing_interest_accruals (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_financing_accrual_request
   ON public.accounting_financing_interest_accruals(company_id,facility_id,request_key)
   WHERE deleted_at IS NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_financing_accrual_period
+  ON public.accounting_financing_interest_accruals(company_id,facility_id,period_start,period_end)
+  WHERE deleted_at IS NULL
+    AND status='posted';
 
 CREATE INDEX IF NOT EXISTS idx_accounting_financing_accrual_period
   ON public.accounting_financing_interest_accruals(company_id,facility_id,period_end)
