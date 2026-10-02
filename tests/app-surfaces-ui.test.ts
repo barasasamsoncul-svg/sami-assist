@@ -1337,3 +1337,70 @@ test(
     }
   },
 );
+
+
+test(
+  'Fixed Assets reports own roll-forward forecast and reconciliation',
+  async () => {
+    const [
+      workspace,
+      reports,
+      reportService,
+      reportRoute,
+      analysis,
+    ] = await Promise.all([
+      readFile('app/apps/fixed_assets/FixedAssetsWorkspace.tsx','utf8'),
+      readFile('app/apps/fixed_assets/FixedAssetsReports.tsx','utf8'),
+      readFile('lib/apps/fixed_assets/reports.ts','utf8'),
+      readFile('app/api/apps/fixed_assets/reports/route.ts','utf8'),
+      readFile('lib/apps/fixed_assets/reporting.ts','utf8'),
+    ]);
+
+    assert.match(
+      workspace,
+      /resolved\.view ===[\s\S]*'reports'[\s\S]*getFixedAssetsReports/,
+    );
+    assert.match(
+      workspace,
+      /FixedAssetsReports/,
+    );
+
+    for (const marker of [
+      'Asset roll-forward',
+      'Register-to-ledger',
+      '12-month depreciation forecast',
+      'Export movements',
+      'Export register',
+    ]) {
+      assert.match(
+        reports,
+        new RegExp(marker),
+      );
+    }
+
+    assert.match(
+      reportService,
+      /BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY/,
+    );
+    assert.match(
+      reportService,
+      /getFixedAssetsReporting/,
+    );
+    assert.match(
+      reportRoute,
+      /getFixedAssetsReports/,
+    );
+    assert.match(
+      analysis,
+      /journal\.status[\s\S]*'posted'/,
+    );
+    assert.match(
+      analysis,
+      /accumulated_depreciation/,
+    );
+    assert.match(
+      analysis,
+      /decliningBalanceDepreciationCents/,
+    );
+  },
+);
