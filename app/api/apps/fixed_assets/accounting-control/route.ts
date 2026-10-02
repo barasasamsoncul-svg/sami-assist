@@ -18,6 +18,7 @@ import {
   postFixedAssetImpairment,
   postFixedAssetRevaluation,
   reverseFixedAssetCapitalization,
+  reverseFixedAssetDepreciation,
   reverseFixedAssetDisposal,
   reverseFixedAssetImpairment,
   reverseFixedAssetRevaluation,
@@ -215,6 +216,11 @@ export async function POST(
                   body,
                 )
               : body.action ===
+                  'reverse-depreciation'
+                ? await reverseFixedAssetDepreciation(
+                    body,
+                  )
+              : body.action ===
                   'reverse-capitalization'
                 ? await reverseFixedAssetCapitalization(
                     body,
@@ -254,11 +260,11 @@ export async function POST(
                               ? await linkFixedAssetSource(
                                   body,
                                 )
-              : (() => {
-                  throw new FixedAssetInputError(
-                    'Choose a supported Fixed Asset accounting action.',
-                  );
-                })();
+                              : (() => {
+                                  throw new FixedAssetInputError(
+                                    'Choose a supported Fixed Asset accounting action.',
+                                  );
+                                })();
 
     return respond({
       success:
