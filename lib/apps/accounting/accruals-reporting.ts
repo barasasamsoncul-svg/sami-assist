@@ -4,9 +4,64 @@ import {
   requireEnterpriseModuleTableContext,
 } from '@/lib/apps/enterprise/service';
 import {
-  accrualMoneyCents,
   accrualMoneyDecimal,
 } from './accruals-rules';
+
+function ledgerCents(
+  value:
+    unknown,
+) {
+  const text =
+    String(
+      value ?? '0',
+    ).trim();
+
+  if (
+    !/^-?\d{1,13}(?:\.\d{1,2})?$/.test(
+      text,
+    )
+  ) {
+    throw new Error(
+      'Accrual reporting encountered an invalid ledger amount.',
+    );
+  }
+
+  const negative =
+    text.startsWith(
+      '-',
+    );
+  const unsigned =
+    negative
+      ? text.slice(
+          1,
+        )
+      : text;
+  const [
+    whole,
+    fraction =
+      '',
+  ] =
+    unsigned.split(
+      '.',
+    );
+  const cents =
+    BigInt(
+      whole,
+    ) *
+      BigInt(
+        100,
+      ) +
+    BigInt(
+      fraction.padEnd(
+        2,
+        '0',
+      ),
+    );
+
+  return negative
+    ? -cents
+    : cents;
+}
 
 export async function getAccountingAccrualReporting() {
   const context =
@@ -151,6 +206,8 @@ export async function getAccountingAccrualReporting() {
                  IS NULL
              AND journal.status =
                  'posted'
+             AND journal.journal_date <=
+                 $2::date
             WHERE line.company_id =
                   $1
               AND line.account_id =
@@ -188,6 +245,7 @@ export async function getAccountingAccrualReporting() {
         `,
         [
           context.companyId,
+          asOf,
         ],
       ),
       context.pool.query(
@@ -293,28 +351,17 @@ export async function getAccountingAccrualReporting() {
     of reconciliation.rows
   ) {
     expected +=
-      accrualMoneyCents(
+      ledgerCents(
         String(
           row.expected_balance ||
-          '0.01',
+          '0',
         ),
       );
 
     managed +=
-      row.managed_gl_balance &&
-      !/^0(?:\.0+)?$/.test(
-        String(
-          row.managed_gl_balance,
-        ),
-      )
-        ? accrualMoneyCents(
-            String(
-              row.managed_gl_balance,
-            ),
-          )
-        : BigInt(
-            0,
-          );
+      ledgerCents(
+        row.managed_gl_balance,
+      );
   }
 
   let next90 =
@@ -348,7 +395,7 @@ export async function getAccountingAccrualReporting() {
     of forecastRows.rows
   ) {
     const amount =
-      accrualMoneyCents(
+      ledgerCents(
         String(
           row.amount,
         ),
