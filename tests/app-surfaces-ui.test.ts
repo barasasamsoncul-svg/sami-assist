@@ -1604,3 +1604,58 @@ test(
     assert.match(loader,/payments_next_30_days/);
   },
 );
+
+
+test(
+  'Accounting Budgets and Forecasts exposes versioned planning and variance control',
+  async () => {
+    const [workspace,surface,route,rules,service] = await Promise.all([
+      readFile('app/apps/accounting/AccountingWorkspace.tsx','utf8'),
+      readFile('app/apps/accounting/AccountingBudgets.tsx','utf8'),
+      readFile('app/api/apps/accounting/budgets/route.ts','utf8'),
+      readFile('lib/apps/accounting/budgets-rules.ts','utf8'),
+      readFile('lib/apps/accounting/budgets.ts','utf8'),
+    ]);
+
+    assert.match(workspace,/Budgets & Forecasts[\s\S]*\/budgets-forecasts/);
+    assert.match(workspace,/dedicatedSection === 'budgets-forecasts'[\s\S]*AccountingBudgets/);
+
+    for (const marker of [
+      'Planning, rolling forecasts and variance control',
+      'Planning defaults',
+      'Create a planning year',
+      'Generate forecast',
+      'Monthly budget grid',
+      'Save budget grid',
+      'Controlled versions',
+      'Actual vs budget',
+      'Forecast evidence',
+      'Run history',
+      'Project, department and other analytic dimensions',
+      'SaMiOverlay',
+    ]) {
+      assert.match(surface,new RegExp(marker),'Budgets UI must expose ' + marker + '.');
+    }
+
+    for (const action of [
+      'save-settings',
+      'create-plan',
+      'save-lines',
+      'save-assumption',
+      'create-revision',
+      'approve-version',
+      'publish-version',
+      'generate-forecast',
+      'variance-snapshot',
+      'close-plan',
+    ]) {
+      assert.match(route,new RegExp(action));
+    }
+
+    assert.match(rules,/buildBudgetMonths/);
+    assert.match(rules,/applyBudgetGrowth/);
+    assert.match(rules,/budgetVariance/);
+    assert.match(service,/status='posted'/);
+    assert.doesNotMatch(service,/postBalancedLedgerJournal|reversePostedLedgerJournal/);
+  },
+);
