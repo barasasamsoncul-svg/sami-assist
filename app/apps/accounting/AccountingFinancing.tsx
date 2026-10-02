@@ -358,6 +358,34 @@ export default function AccountingFinancing({
         '',
     });
 
+  const [
+    customSchedule,
+    setCustomSchedule,
+  ] =
+    useState({
+      facilityId:
+        '',
+      scheduleStartDate:
+        data.today ||
+        today(),
+      lines: [
+        {
+          dueDate:
+            plusYears(
+              data.today ||
+              today(),
+              1,
+            ),
+          principalAmount:
+            '',
+          interestAmount:
+            '',
+          feeAmount:
+            '',
+        },
+      ],
+    });
+
   const metrics =
     data.metrics as Row;
 
@@ -451,6 +479,19 @@ export default function AccountingFinancing({
       row =>
         row.status ===
         'active',
+    );
+
+  const customFacilities =
+    data.facilities.filter(
+      row =>
+        row.repayment_structure ===
+          'custom' &&
+        (
+          row.status ===
+            'draft' ||
+          row.status ===
+            'active'
+        ),
     );
 
   const variableFacilities =
@@ -804,6 +845,43 @@ export default function AccountingFinancing({
       );
     }
   }
+
+  async function replaceCustomSchedule(
+    event:
+      FormEvent,
+  ) {
+    event.preventDefault();
+
+    await run(
+      'custom-schedule',
+      {
+        action:
+          'replace-custom-schedule',
+        requestKey:
+          crypto.randomUUID(),
+        facilityId:
+          customSchedule.facilityId,
+        scheduleStartDate:
+          customSchedule.scheduleStartDate,
+        lines:
+          customSchedule.lines,
+      },
+      'Custom schedule saved',
+      result =>
+        'Revision ' +
+        String(
+          result.revision ||
+          '',
+        ) +
+        ' was created with ' +
+        String(
+          result.lines ||
+          0,
+        ) +
+        ' custom line(s).',
+    );
+  }
+
 
   function activate(
     row:
