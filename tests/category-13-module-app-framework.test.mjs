@@ -764,7 +764,20 @@ test('Category 13: SaMi exposes one unified 80-app first-party module catalog', 
 
   assert.match(
     additional,
-    /version:\s*['"]1\.0\.0['"]/,
+    /version\s*=\s*['"]1\.0\.0['"]/,
+    'Additional first-party modules must keep 1.0.0 as the default foundation version.',
+  );
+
+  assert.match(
+    additional,
+    /version,\s*\n\s*description,/,
+    'Additional first-party modules may explicitly advance their own manifest version without changing the shared default.',
+  );
+
+  assert.match(
+    additional,
+    /key:\s*["']fixed_assets["'][\s\S]*version:\s*["']2\.4\.0["']/,
+    'Fixed Assets must be allowed to advance independently to its migration-backed 2.4 specialist contract.',
   );
 
   assert.match(
