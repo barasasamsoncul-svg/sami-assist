@@ -167,6 +167,7 @@ export function assertEnterpriseDomainMutationAllowed(
       table === 'accounting_financing_schedule_lines' ||
       table === 'accounting_financing_transactions' ||
       table === 'accounting_financing_interest_accruals' ||
+      table === 'accounting_financing_reclassifications' ||
       table === 'accounting_financing_runs' ||
       table ===
         'accounting_reconciliation_suggestions'
@@ -269,6 +270,8 @@ export function assertEnterpriseDomainMutationAllowed(
               'accounting_financing_transactions' ||
             table ===
               'accounting_financing_interest_accruals' ||
+            table ===
+              'accounting_financing_reclassifications' ||
             table ===
               'accounting_financing_runs'
             ? 'Loans and financing must be changed through the validated Accounting financing services.'
