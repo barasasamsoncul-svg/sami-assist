@@ -107,7 +107,41 @@ export async function getAccountingFinancingReporting(
                 AS outstanding_interest_foreign,
               COALESCE(
                 (
-                  SELECT reclass.target_current_principal
+                  SELECT GREATEST(
+                    reclass.target_current_principal_foreign -
+                    COALESCE(
+                      (
+                        SELECT SUM(
+                          repayment.current_principal_foreign
+                        )
+                        FROM accounting_financing_transactions repayment
+                        WHERE repayment.company_id =
+                              reclass.company_id
+                          AND repayment.facility_id =
+                              reclass.facility_id
+                          AND repayment.deleted_at
+                              IS NULL
+                          AND repayment.status =
+                              'posted'
+                          AND repayment.transaction_type =
+                              'principal_repayment'
+                          AND (
+                            repayment.transaction_date >
+                              reclass.as_of_date
+                            OR (
+                              repayment.transaction_date =
+                                reclass.as_of_date
+                              AND repayment.created_at >
+                                reclass.created_at
+                            )
+                          )
+                          AND repayment.transaction_date <=
+                              $2::date
+                      ),
+                      0
+                    ),
+                    0
+                  )
                   FROM accounting_financing_reclassifications reclass
                   WHERE reclass.company_id =
                         facility.company_id
@@ -126,8 +160,8 @@ export async function getAccountingFinancingReporting(
                   LIMIT 1
                 ),
                 0
-              )::numeric(19,2)
-                AS classified_current_base,
+              )::numeric(19,4)
+                AS classified_current_foreign,
               CASE
                 WHEN facility.currency =
                      $3
@@ -196,18 +230,23 @@ export async function getAccountingFinancingReporting(
                 AS balance_kind,
               GREATEST(
                 ROUND(
-                  outstanding_principal_foreign *
+                  (
+                    outstanding_principal_foreign -
+                    CASE
+                      WHEN current_principal_account_id
+                           IS NOT NULL
+                       AND current_principal_account_id <>
+                           principal_account_id
+                      THEN LEAST(
+                        classified_current_foreign,
+                        outstanding_principal_foreign
+                      )
+                      ELSE 0
+                    END
+                  ) *
                   closing_rate,
                   2
-                ) -
-                CASE
-                  WHEN current_principal_account_id
-                       IS NOT NULL
-                   AND current_principal_account_id <>
-                       principal_account_id
-                  THEN classified_current_base
-                  ELSE 0
-                END,
+                ),
                 0
               )::numeric(19,2)
                 AS expected_balance
@@ -223,13 +262,13 @@ export async function getAccountingFinancingReporting(
               direction,
               'principal_current'
                 AS balance_kind,
-              LEAST(
-                classified_current_base,
-                ROUND(
-                  outstanding_principal_foreign *
-                  closing_rate,
-                  2
-                )
+              ROUND(
+                LEAST(
+                  classified_current_foreign,
+                  outstanding_principal_foreign
+                ) *
+                closing_rate,
+                2
               )::numeric(19,2)
                 AS expected_balance
             FROM facility_balance
