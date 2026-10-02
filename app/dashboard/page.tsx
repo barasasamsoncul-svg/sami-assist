@@ -163,6 +163,8 @@ export default async function DashboardPage() {
       currentCompanyId,
       selectedCompanyIds,
       allowedCompanyIds,
+      aiEnabled:
+        shell.aiAvailable,
     });
 
   let recentActivity:
