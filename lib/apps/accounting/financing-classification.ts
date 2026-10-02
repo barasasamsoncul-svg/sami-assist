@@ -25,8 +25,8 @@ import {
   financingForeignDecimal,
 } from './financing-rules';
 import {
-  financingBaseAmount,
-  financingRateToBase,
+  financingPrincipalCarryingCents,
+  financingProportionalCents,
   signedForeignUnits,
   signedLedgerCents,
 } from './financing-helpers';
@@ -507,37 +507,21 @@ export async function runFinancingCurrentClassification(
             outstanding;
         }
 
-        const facilityCurrency =
-          String(
-            facility.currency,
-          ).toUpperCase();
-        const fx =
-          await financingRateToBase(
+        const carryingBase =
+          await financingPrincipalCarryingCents(
             client,
-            {
-              companyId:
-                context.companyId,
-              foreignCurrency:
-                facilityCurrency,
-              baseCurrency,
-              date:
-                asOf,
-              rateType:
-                'closing',
-            },
+            context.companyId,
+            String(
+              facility.id,
+            ),
+            asOf,
           );
         const targetBase =
-          targetForeign >
-            BigInt(
-              0,
-            )
-            ? financingBaseAmount(
-                targetForeign,
-                fx.rate,
-              )
-            : BigInt(
-                0,
-              );
+          financingProportionalCents(
+            carryingBase,
+            targetForeign,
+            outstanding,
+          );
 
         const prior =
           await client.query(
