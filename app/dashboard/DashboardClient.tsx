@@ -398,6 +398,75 @@ export default function DashboardClient({
         return;
       }
 
+      const latestActivityId =
+        recentActivity[0]
+          ?.id ||
+        'none';
+      const cacheKey =
+        'sami:dashboard-ai-brief:' +
+        (
+          tenant?.id ||
+          'workspace'
+        ) +
+        ':' +
+        (
+          company
+            ?.currentCompany
+            .id ||
+          'company'
+        ) +
+        ':' +
+        latestActivityId;
+
+      try {
+        const cached =
+          window.sessionStorage
+            .getItem(
+              cacheKey,
+            );
+
+        if (
+          cached
+        ) {
+          const parsed =
+            JSON.parse(
+              cached,
+            ) as {
+              message?:
+                string;
+              generatedByAi?:
+                boolean;
+              savedAt?:
+                number;
+            };
+
+          if (
+            typeof parsed.message ===
+              'string' &&
+            parsed.message
+              .trim() &&
+            Number(
+              parsed.savedAt ||
+              0,
+            ) >
+              Date.now() -
+              60_000
+          ) {
+            setAiBrief(
+              parsed.message
+                .trim(),
+            );
+            setAiBriefGenerated(
+              parsed.generatedByAi ===
+              true,
+            );
+            return;
+          }
+        }
+      } catch {
+        // Session cache is only an optimization.
+      }
+
       const controller =
         new AbortController();
 
@@ -429,16 +498,36 @@ export default function DashboardClient({
                     data.summary.message
                       .trim()
                   ) {
-                    setAiBrief(
+                    const message =
                       data.summary
                         .message
-                        .trim(),
-                    );
-                    setAiBriefGenerated(
+                        .trim();
+                    const generatedByAi =
                       data.summary
                         .generatedByAi ===
-                        true,
+                        true;
+
+                    setAiBrief(
+                      message,
                     );
+                    setAiBriefGenerated(
+                      generatedByAi,
+                    );
+
+                    try {
+                      window.sessionStorage
+                        .setItem(
+                          cacheKey,
+                          JSON.stringify({
+                            message,
+                            generatedByAi,
+                            savedAt:
+                              Date.now(),
+                          }),
+                        );
+                    } catch {
+                      // Session cache is only an optimization.
+                    }
                   }
                 },
               )
@@ -459,6 +548,11 @@ export default function DashboardClient({
     },
     [
       capabilities.ai,
+      company
+        ?.currentCompany
+        .id,
+      recentActivity,
+      tenant?.id,
     ],
   );
 
