@@ -12,6 +12,7 @@ import {
 } from '@/lib/services/workspace-activity';
 import {
   postBalancedLedgerJournal,
+  reversePostedLedgerJournal,
 } from '@/lib/apps/accounting/ledger-engine';
 import {
   accountingDate,
@@ -647,6 +648,7 @@ export async function getFixedAssetsAccountingControl():
             asset.revaluation_adjustment::text,
             asset.last_depreciation_date::text,
             asset.capitalization_journal_id::text,
+            asset.capitalization_reversal_journal_id::text,
             asset.status,
             (
               asset.acquisition_cost +
@@ -1545,7 +1547,9 @@ export async function capitalizeFixedAsset(
 
     if (
       asset
-        .capitalization_journal_id
+        .capitalization_journal_id &&
+      !asset
+        .capitalization_reversal_journal_id
     ) {
       await client.query(
         'COMMIT',
@@ -1688,7 +1692,13 @@ export async function capitalizeFixedAsset(
             assetId,
           sourceEventKey:
             'fixed_assets:capitalization:' +
-            assetId,
+            assetId +
+            ':' +
+            (
+              asset
+                .capitalization_reversal_journal_id ||
+              'initial'
+            ),
           postingKind:
             'system',
           lines: [
@@ -1728,6 +1738,8 @@ export async function capitalizeFixedAsset(
             $3,
           capitalization_journal_id =
             $4,
+          capitalization_reversal_journal_id =
+            NULL,
           in_service_date =
             COALESCE(
               in_service_date,
@@ -2597,4 +2609,2804 @@ export async function runFixedAssetDepreciation(
   } finally {
     client.release();
   }
+}
+
+
+export async function reverseFixedAssetCapitalization(
+  input:
+    unknown,
+) {
+  const context =
+    await requireEnterpriseModuleTableContext(
+      'fixed_assets',
+      'fixed_assets',
+      'edit',
+    );
+  const body =
+    bodyOf(
+      input,
+    );
+  const assetId =
+    accountingId(
+      body.assetId,
+    );
+  const reversalDate =
+    date(
+      body.reversalDate,
+      'Capitalization reversal date',
+    );
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const assetResult =
+      await client.query(
+        `
+          SELECT
+            id::text,
+            asset_code,
+            capitalization_journal_id::text,
+            capitalization_reversal_journal_id::text,
+            status
+          FROM fixed_assets
+          WHERE company_id = $1
+            AND id = $2
+            AND deleted_at IS NULL
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [
+          context.companyId,
+          assetId,
+        ],
+      );
+    const asset =
+      assetResult.rows[0];
+
+    if (
+      !asset ||
+      !asset
+        .capitalization_journal_id
+    ) {
+      throw new FixedAssetInputError(
+        'Only a capitalized asset can be reversed.',
+      );
+    }
+
+    if (
+      asset
+        .capitalization_reversal_journal_id
+    ) {
+      await client.query(
+        'COMMIT',
+      );
+
+      return {
+        assetId,
+        journalId:
+          String(
+            asset
+              .capitalization_reversal_journal_id,
+          ),
+        reused:
+          true,
+      };
+    }
+
+    const downstream =
+      await client.query(
+        `
+          SELECT EXISTS (
+            SELECT 1
+            FROM asset_depreciation_entries
+            WHERE company_id = $1
+              AND asset_id = $2
+              AND deleted_at IS NULL
+              AND status IN ('active','posted')
+          ) OR EXISTS (
+            SELECT 1
+            FROM asset_impairments
+            WHERE company_id = $1
+              AND asset_id = $2
+              AND deleted_at IS NULL
+              AND status = 'posted'
+          ) OR EXISTS (
+            SELECT 1
+            FROM asset_revaluations
+            WHERE company_id = $1
+              AND asset_id = $2
+              AND deleted_at IS NULL
+              AND status = 'posted'
+          ) OR EXISTS (
+            SELECT 1
+            FROM asset_disposals
+            WHERE company_id = $1
+              AND asset_id = $2
+              AND deleted_at IS NULL
+              AND status = 'posted'
+          ) AS has_downstream
+        `,
+        [
+          context.companyId,
+          assetId,
+        ],
+      );
+
+    if (
+      downstream.rows[0]
+        ?.has_downstream
+    ) {
+      throw new FixedAssetInputError(
+        'Reverse later depreciation, impairment, revaluation or disposal events before reversing capitalization.',
+      );
+    }
+
+    const reversal =
+      await reversePostedLedgerJournal(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          originalJournalId:
+            String(
+              asset
+                .capitalization_journal_id,
+            ),
+          journalDate:
+            reversalDate,
+          description:
+            'Reverse capitalization · ' +
+            String(
+              asset.asset_code,
+            ),
+          sourceModule:
+            'fixed_assets',
+          sourceType:
+            'capitalization_reversal',
+          sourceId:
+            assetId,
+          sourceEventKey:
+            'fixed_assets:capitalization-reversal:' +
+            assetId,
+        },
+      );
+
+    await client.query(
+      `
+        UPDATE fixed_assets
+        SET
+          capitalization_reversal_journal_id = $3,
+          status = 'active',
+          updated_by = $4,
+          updated_at = NOW()
+        WHERE company_id = $1
+          AND id = $2
+      `,
+      [
+        context.companyId,
+        assetId,
+        reversal.journalId,
+        context.userId,
+      ],
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    await audit(
+      context,
+      'capitalization.reversed',
+      'fixed_assets',
+      assetId,
+      'Fixed Asset capitalization reversed',
+      {
+        journalId:
+          reversal.journalId,
+      },
+    );
+
+    return {
+      assetId,
+      journalId:
+        reversal.journalId,
+      reused:
+        reversal.reused,
+    };
+  } catch (
+    error
+  ) {
+    await client.query(
+      'ROLLBACK',
+    ).catch(
+      () =>
+        undefined,
+    );
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function postFixedAssetImpairment(
+  input:
+    unknown,
+) {
+  const context =
+    await requireEnterpriseModuleTableContext(
+      'fixed_assets',
+      'asset_impairments',
+      'edit',
+    );
+  const body =
+    bodyOf(
+      input,
+    );
+  const assetId =
+    accountingId(
+      body.assetId,
+    );
+  const requestKey =
+    accountingId(
+      body.requestKey,
+    );
+  const impairmentDate =
+    date(
+      body.impairmentDate,
+      'Impairment date',
+    );
+  const reason =
+    text(
+      body.reason,
+      2000,
+      'Impairment reason',
+      true,
+    );
+  const impairment =
+    assetMoneyCents(
+      String(
+        body.impairmentAmount ||
+        '0',
+      ),
+      'Impairment amount',
+    );
+
+  if (
+    impairment <=
+    BigInt(
+      0,
+    )
+  ) {
+    throw new FixedAssetInputError(
+      'Impairment amount must be above zero.',
+    );
+  }
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const previous =
+      await client.query(
+        `
+          SELECT
+            id::text,
+            journal_reference::text
+          FROM asset_impairments
+          WHERE company_id = $1
+            AND request_key = $2
+            AND deleted_at IS NULL
+          LIMIT 1
+          FOR SHARE
+        `,
+        [
+          context.companyId,
+          requestKey,
+        ],
+      );
+
+    if (
+      previous.rows[0]
+    ) {
+      await client.query(
+        'COMMIT',
+      );
+
+      return {
+        id:
+          String(
+            previous.rows[0]
+              .id,
+          ),
+        journalId:
+          String(
+            previous.rows[0]
+              .journal_reference ||
+            '',
+          ),
+        reused:
+          true,
+      };
+    }
+
+    const settings =
+      await settingsRow(
+        client,
+        context.companyId,
+        true,
+      );
+    const assetResult =
+      await client.query(
+        `
+          SELECT
+            asset.id::text,
+            asset.asset_code,
+            asset.name,
+            asset.acquisition_cost::text,
+            asset.accumulated_depreciation::text,
+            asset.accumulated_impairment::text,
+            asset.revaluation_adjustment::text,
+            asset.capitalization_journal_id::text,
+            asset.capitalization_reversal_journal_id::text,
+            asset.status,
+            category.impairment_loss_account_id::text,
+            category.accumulated_impairment_account_id::text
+          FROM fixed_assets asset
+          LEFT JOIN asset_categories category
+            ON category.id = asset.category_id
+           AND category.company_id = asset.company_id
+           AND category.deleted_at IS NULL
+          WHERE asset.company_id = $1
+            AND asset.id = $2
+            AND asset.deleted_at IS NULL
+          LIMIT 1
+          FOR UPDATE OF asset
+        `,
+        [
+          context.companyId,
+          assetId,
+        ],
+      );
+    const asset =
+      assetResult.rows[0];
+
+    if (
+      !asset ||
+      !asset
+        .capitalization_journal_id ||
+      asset
+        .capitalization_reversal_journal_id ||
+      String(
+        asset.status,
+      ) ===
+        'disposed'
+    ) {
+      throw new FixedAssetInputError(
+        'Only an active capitalized asset can be impaired.',
+      );
+    }
+
+    const carrying =
+      assetCarryingValueCents({
+        acquisitionCost:
+          String(
+            asset
+              .acquisition_cost ||
+            '0',
+          ),
+        accumulatedDepreciation:
+          String(
+            asset
+              .accumulated_depreciation ||
+            '0',
+          ),
+        accumulatedImpairment:
+          String(
+            asset
+              .accumulated_impairment ||
+            '0',
+          ),
+        revaluationAdjustment:
+          String(
+            asset
+              .revaluation_adjustment ||
+            '0',
+          ),
+      });
+
+    if (
+      impairment >
+      carrying
+    ) {
+      throw new FixedAssetInputError(
+        'Impairment cannot exceed the current carrying value.',
+      );
+    }
+
+    const lossAccountId =
+      String(
+        asset
+          .impairment_loss_account_id ||
+        settings
+          .default_impairment_loss_account_id ||
+        '',
+      );
+    const accumulatedAccountId =
+      String(
+        asset
+          .accumulated_impairment_account_id ||
+        settings
+          .default_accumulated_impairment_account_id ||
+        '',
+      );
+
+    if (
+      !lossAccountId ||
+      !accumulatedAccountId
+    ) {
+      throw new FixedAssetInputError(
+        'Map Impairment Loss and Accumulated Impairment accounts before posting impairment.',
+      );
+    }
+
+    await activeAccount(
+      client,
+      context.companyId,
+      lossAccountId,
+      'Impairment Loss account',
+      expenseAccount,
+    );
+    await activeAccount(
+      client,
+      context.companyId,
+      accumulatedAccountId,
+      'Accumulated Impairment account',
+      assetAccount,
+    );
+
+    const amountDecimal =
+      assetMoneyDecimal(
+        impairment,
+      );
+    const journal =
+      await postBalancedLedgerJournal(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          journalDate:
+            impairmentDate,
+          description:
+            'Asset impairment · ' +
+            String(
+              asset.asset_code,
+            ),
+          reference:
+            String(
+              asset.asset_code,
+            ),
+          sourceModule:
+            'fixed_assets',
+          sourceType:
+            'impairment',
+          sourceId:
+            assetId,
+          sourceEventKey:
+            'fixed_assets:impairment:' +
+            requestKey,
+          postingKind:
+            'system',
+          lines: [
+            {
+              accountId:
+                lossAccountId,
+              description:
+                'Fixed Asset impairment loss',
+              debit:
+                amountDecimal,
+              credit:
+                '0.00',
+            },
+            {
+              accountId:
+                accumulatedAccountId,
+              description:
+                'Accumulated impairment',
+              debit:
+                '0.00',
+              credit:
+                amountDecimal,
+            },
+          ],
+        },
+      );
+
+    const nextImpairment =
+      assetMoneyCents(
+        String(
+          asset
+            .accumulated_impairment ||
+          '0',
+        ),
+      ) +
+      impairment;
+    const newBook =
+      carrying -
+      impairment;
+
+    const created =
+      await client.query(
+        `
+          INSERT INTO asset_impairments (
+            company_id,
+            asset_id,
+            request_key,
+            impairment_date,
+            previous_book_value,
+            impairment_amount,
+            new_book_value,
+            reason,
+            loss_account_id,
+            accumulated_impairment_account_id,
+            journal_reference,
+            status,
+            posted_at,
+            created_by,
+            updated_by
+          )
+          VALUES (
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
+            'posted',NOW(),$12,$12
+          )
+          RETURNING id::text
+        `,
+        [
+          context.companyId,
+          assetId,
+          requestKey,
+          impairmentDate,
+          assetMoneyDecimal(
+            carrying,
+          ),
+          amountDecimal,
+          assetMoneyDecimal(
+            newBook,
+          ),
+          reason,
+          lossAccountId,
+          accumulatedAccountId,
+          journal.journalId,
+          context.userId,
+        ],
+      );
+
+    await client.query(
+      `
+        UPDATE fixed_assets
+        SET
+          accumulated_impairment = $3,
+          updated_by = $4,
+          updated_at = NOW()
+        WHERE company_id = $1
+          AND id = $2
+      `,
+      [
+        context.companyId,
+        assetId,
+        assetMoneyDecimal(
+          nextImpairment,
+        ),
+        context.userId,
+      ],
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    const id =
+      String(
+        created.rows[0].id,
+      );
+
+    await audit(
+      context,
+      'impairment.posted',
+      'asset_impairments',
+      id,
+      'Fixed Asset impairment posted',
+      {
+        assetId,
+        amount:
+          amountDecimal,
+        journalId:
+          journal.journalId,
+      },
+    );
+
+    return {
+      id,
+      journalId:
+        journal.journalId,
+      carryingValue:
+        assetMoneyDecimal(
+          newBook,
+        ),
+      reused:
+        false,
+    };
+  } catch (
+    error
+  ) {
+    await client.query(
+      'ROLLBACK',
+    ).catch(
+      () =>
+        undefined,
+    );
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function reverseFixedAssetImpairment(
+  input:
+    unknown,
+) {
+  const context =
+    await requireEnterpriseModuleTableContext(
+      'fixed_assets',
+      'asset_impairments',
+      'edit',
+    );
+  const body =
+    bodyOf(
+      input,
+    );
+  const impairmentId =
+    accountingId(
+      body.impairmentId,
+    );
+  const reversalDate =
+    date(
+      body.reversalDate,
+      'Impairment reversal date',
+    );
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const result =
+      await client.query(
+        `
+          SELECT
+            impairment.id::text,
+            impairment.asset_id::text,
+            impairment.impairment_amount::text,
+            impairment.journal_reference::text,
+            impairment.reversal_journal_id::text,
+            impairment.status,
+            asset.asset_code
+          FROM asset_impairments impairment
+          INNER JOIN fixed_assets asset
+            ON asset.id = impairment.asset_id
+           AND asset.company_id = impairment.company_id
+           AND asset.deleted_at IS NULL
+          WHERE impairment.company_id = $1
+            AND impairment.id = $2
+            AND impairment.deleted_at IS NULL
+          LIMIT 1
+          FOR UPDATE OF impairment, asset
+        `,
+        [
+          context.companyId,
+          impairmentId,
+        ],
+      );
+    const impairment =
+      result.rows[0];
+
+    if (
+      !impairment ||
+      String(
+        impairment.status,
+      ) !==
+        'posted' ||
+      !impairment
+        .journal_reference
+    ) {
+      throw new FixedAssetInputError(
+        'Only a posted impairment can be reversed.',
+      );
+    }
+
+    if (
+      impairment
+        .reversal_journal_id
+    ) {
+      await client.query(
+        'COMMIT',
+      );
+
+      return {
+        id:
+          impairmentId,
+        journalId:
+          String(
+            impairment
+              .reversal_journal_id,
+          ),
+        reused:
+          true,
+      };
+    }
+
+    const reversal =
+      await reversePostedLedgerJournal(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          originalJournalId:
+            String(
+              impairment
+                .journal_reference,
+            ),
+          journalDate:
+            reversalDate,
+          description:
+            'Reverse asset impairment · ' +
+            String(
+              impairment.asset_code,
+            ),
+          sourceModule:
+            'fixed_assets',
+          sourceType:
+            'impairment_reversal',
+          sourceId:
+            impairmentId,
+          sourceEventKey:
+            'fixed_assets:impairment-reversal:' +
+            impairmentId,
+        },
+      );
+
+    await client.query(
+      `
+        UPDATE asset_impairments
+        SET
+          status = 'reversed',
+          reversal_journal_id = $3,
+          reversed_at = NOW(),
+          updated_by = $4,
+          updated_at = NOW()
+        WHERE company_id = $1
+          AND id = $2
+      `,
+      [
+        context.companyId,
+        impairmentId,
+        reversal.journalId,
+        context.userId,
+      ],
+    );
+
+    await client.query(
+      `
+        UPDATE fixed_assets
+        SET
+          accumulated_impairment =
+            GREATEST(
+              accumulated_impairment -
+              $3::numeric,
+              0
+            ),
+          updated_by = $4,
+          updated_at = NOW()
+        WHERE company_id = $1
+          AND id = $2
+      `,
+      [
+        context.companyId,
+        impairment.asset_id,
+        impairment.impairment_amount,
+        context.userId,
+      ],
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    await audit(
+      context,
+      'impairment.reversed',
+      'asset_impairments',
+      impairmentId,
+      'Fixed Asset impairment reversed',
+      {
+        journalId:
+          reversal.journalId,
+      },
+    );
+
+    return {
+      id:
+        impairmentId,
+      journalId:
+        reversal.journalId,
+      reused:
+        reversal.reused,
+    };
+  } catch (
+    error
+  ) {
+    await client.query(
+      'ROLLBACK',
+    ).catch(
+      () =>
+        undefined,
+    );
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function postFixedAssetRevaluation(
+  input:
+    unknown,
+) {
+  const context =
+    await requireEnterpriseModuleTableContext(
+      'fixed_assets',
+      'asset_revaluations',
+      'edit',
+    );
+  const body =
+    bodyOf(
+      input,
+    );
+  const assetId =
+    accountingId(
+      body.assetId,
+    );
+  const requestKey =
+    accountingId(
+      body.requestKey,
+    );
+  const revaluationDate =
+    date(
+      body.revaluationDate,
+      'Revaluation date',
+    );
+  const fairValue =
+    assetMoneyCents(
+      String(
+        body.fairValue ||
+        '0',
+      ),
+      'Fair value',
+    );
+  const reason =
+    text(
+      body.reason,
+      2000,
+      'Revaluation reason',
+      true,
+    );
+
+  if (
+    fairValue <
+    BigInt(
+      0,
+    )
+  ) {
+    throw new FixedAssetInputError(
+      'Fair value cannot be negative.',
+    );
+  }
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const previous =
+      await client.query(
+        `
+          SELECT
+            id::text,
+            journal_id::text
+          FROM asset_revaluations
+          WHERE company_id = $1
+            AND request_key = $2
+            AND deleted_at IS NULL
+          LIMIT 1
+          FOR SHARE
+        `,
+        [
+          context.companyId,
+          requestKey,
+        ],
+      );
+
+    if (
+      previous.rows[0]
+    ) {
+      await client.query(
+        'COMMIT',
+      );
+
+      return {
+        id:
+          String(
+            previous.rows[0]
+              .id,
+          ),
+        journalId:
+          String(
+            previous.rows[0]
+              .journal_id ||
+            '',
+          ),
+        reused:
+          true,
+      };
+    }
+
+    const settings =
+      await settingsRow(
+        client,
+        context.companyId,
+        true,
+      );
+    const assetResult =
+      await client.query(
+        `
+          SELECT
+            asset.id::text,
+            asset.asset_code,
+            asset.acquisition_cost::text,
+            asset.accumulated_depreciation::text,
+            asset.accumulated_impairment::text,
+            asset.revaluation_adjustment::text,
+            asset.capitalization_journal_id::text,
+            asset.capitalization_reversal_journal_id::text,
+            asset.status,
+            category.asset_account_reference::text,
+            category.revaluation_reserve_account_id::text,
+            category.revaluation_loss_account_id::text
+          FROM fixed_assets asset
+          LEFT JOIN asset_categories category
+            ON category.id = asset.category_id
+           AND category.company_id = asset.company_id
+           AND category.deleted_at IS NULL
+          WHERE asset.company_id = $1
+            AND asset.id = $2
+            AND asset.deleted_at IS NULL
+          LIMIT 1
+          FOR UPDATE OF asset
+        `,
+        [
+          context.companyId,
+          assetId,
+        ],
+      );
+    const asset =
+      assetResult.rows[0];
+
+    if (
+      !asset ||
+      !asset
+        .capitalization_journal_id ||
+      asset
+        .capitalization_reversal_journal_id ||
+      String(
+        asset.status,
+      ) ===
+        'disposed'
+    ) {
+      throw new FixedAssetInputError(
+        'Only an active capitalized asset can be revalued.',
+      );
+    }
+
+    const carrying =
+      assetCarryingValueCents({
+        acquisitionCost:
+          String(
+            asset
+              .acquisition_cost ||
+            '0',
+          ),
+        accumulatedDepreciation:
+          String(
+            asset
+              .accumulated_depreciation ||
+            '0',
+          ),
+        accumulatedImpairment:
+          String(
+            asset
+              .accumulated_impairment ||
+            '0',
+          ),
+        revaluationAdjustment:
+          String(
+            asset
+              .revaluation_adjustment ||
+            '0',
+          ),
+      });
+    const change =
+      fairValue -
+      carrying;
+
+    if (
+      change ===
+      BigInt(
+        0,
+      )
+    ) {
+      throw new FixedAssetInputError(
+        'Fair value already equals the current carrying value.',
+      );
+    }
+
+    const assetAccountId =
+      String(
+        asset
+          .asset_account_reference ||
+        settings
+          .default_asset_account_id ||
+        '',
+      );
+    const reserveAccountId =
+      String(
+        asset
+          .revaluation_reserve_account_id ||
+        settings
+          .default_revaluation_reserve_account_id ||
+        '',
+      );
+    const lossAccountId =
+      String(
+        asset
+          .revaluation_loss_account_id ||
+        settings
+          .default_revaluation_loss_account_id ||
+        '',
+      );
+
+    if (
+      !assetAccountId
+    ) {
+      throw new FixedAssetInputError(
+        'Map the Asset account before revaluation.',
+      );
+    }
+
+    await activeAccount(
+      client,
+      context.companyId,
+      assetAccountId,
+      'Asset account',
+      assetAccount,
+    );
+
+    const reserveResult =
+      await client.query(
+        `
+          SELECT
+            COALESCE(
+              SUM(reserve_effect),
+              0
+            )::text AS reserve_balance
+          FROM asset_revaluations
+          WHERE company_id = $1
+            AND asset_id = $2
+            AND status = 'posted'
+            AND deleted_at IS NULL
+        `,
+        [
+          context.companyId,
+          assetId,
+        ],
+      );
+    const reserveBalance =
+      assetMoneyCents(
+        String(
+          reserveResult.rows[0]
+            ?.reserve_balance ||
+          '0',
+        ),
+        'Revaluation reserve balance',
+      );
+
+    let reserveEffect =
+      BigInt(
+        0,
+      );
+    let profitLossEffect =
+      BigInt(
+        0,
+      );
+    const lines:
+      Array<{
+        accountId:
+          string;
+        description:
+          string;
+        debit:
+          string;
+        credit:
+          string;
+      }> = [];
+
+    if (
+      change >
+      BigInt(
+        0,
+      )
+    ) {
+      if (
+        !reserveAccountId
+      ) {
+        throw new FixedAssetInputError(
+          'Map the Revaluation Reserve account before posting an upward revaluation.',
+        );
+      }
+
+      await activeAccount(
+        client,
+        context.companyId,
+        reserveAccountId,
+        'Revaluation Reserve account',
+        equityAccount,
+      );
+
+      reserveEffect =
+        change;
+
+      lines.push(
+        {
+          accountId:
+            assetAccountId,
+          description:
+            'Fixed Asset revaluation increase',
+          debit:
+            assetMoneyDecimal(
+              change,
+            ),
+          credit:
+            '0.00',
+        },
+        {
+          accountId:
+            reserveAccountId,
+          description:
+            'Revaluation reserve',
+          debit:
+            '0.00',
+          credit:
+            assetMoneyDecimal(
+              change,
+            ),
+        },
+      );
+    } else {
+      const reduction =
+        -change;
+      const reserveUse =
+        reserveBalance >
+          BigInt(
+            0,
+          )
+          ? (
+              reserveBalance >
+                reduction
+                ? reduction
+                : reserveBalance
+            )
+          : BigInt(
+              0,
+            );
+      const loss =
+        reduction -
+        reserveUse;
+
+      if (
+        reserveUse >
+        BigInt(
+          0,
+        )
+      ) {
+        if (
+          !reserveAccountId
+        ) {
+          throw new FixedAssetInputError(
+            'Map the Revaluation Reserve account before reducing an existing reserve.',
+          );
+        }
+
+        await activeAccount(
+          client,
+          context.companyId,
+          reserveAccountId,
+          'Revaluation Reserve account',
+          equityAccount,
+        );
+
+        lines.push({
+          accountId:
+            reserveAccountId,
+          description:
+            'Use Fixed Asset revaluation reserve',
+          debit:
+            assetMoneyDecimal(
+              reserveUse,
+            ),
+          credit:
+            '0.00',
+        });
+      }
+
+      if (
+        loss >
+        BigInt(
+          0,
+        )
+      ) {
+        if (
+          !lossAccountId
+        ) {
+          throw new FixedAssetInputError(
+            'Map the Revaluation Loss account before posting a downward revaluation beyond the available reserve.',
+          );
+        }
+
+        await activeAccount(
+          client,
+          context.companyId,
+          lossAccountId,
+          'Revaluation Loss account',
+          expenseAccount,
+        );
+
+        lines.push({
+          accountId:
+            lossAccountId,
+          description:
+            'Fixed Asset revaluation loss',
+          debit:
+            assetMoneyDecimal(
+              loss,
+            ),
+          credit:
+            '0.00',
+        });
+      }
+
+      lines.push({
+        accountId:
+          assetAccountId,
+        description:
+          'Fixed Asset revaluation decrease',
+        debit:
+          '0.00',
+        credit:
+          assetMoneyDecimal(
+            reduction,
+          ),
+      });
+
+      reserveEffect =
+        -reserveUse;
+      profitLossEffect =
+        loss;
+    }
+
+    const journal =
+      await postBalancedLedgerJournal(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          journalDate:
+            revaluationDate,
+          description:
+            'Asset revaluation · ' +
+            String(
+              asset.asset_code,
+            ),
+          reference:
+            String(
+              asset.asset_code,
+            ),
+          sourceModule:
+            'fixed_assets',
+          sourceType:
+            'revaluation',
+          sourceId:
+            assetId,
+          sourceEventKey:
+            'fixed_assets:revaluation:' +
+            requestKey,
+          postingKind:
+            'system',
+          lines,
+        },
+      );
+
+    const created =
+      await client.query(
+        `
+          INSERT INTO asset_revaluations (
+            company_id,
+            asset_id,
+            request_key,
+            revaluation_date,
+            previous_carrying_value,
+            fair_value,
+            change_amount,
+            reserve_effect,
+            profit_loss_effect,
+            reserve_account_id,
+            loss_account_id,
+            journal_id,
+            reason,
+            status,
+            posted_at,
+            created_by,
+            updated_by
+          )
+          VALUES (
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
+            'posted',NOW(),$14,$14
+          )
+          RETURNING id::text
+        `,
+        [
+          context.companyId,
+          assetId,
+          requestKey,
+          revaluationDate,
+          assetMoneyDecimal(
+            carrying,
+          ),
+          assetMoneyDecimal(
+            fairValue,
+          ),
+          assetMoneyDecimal(
+            change,
+          ),
+          assetMoneyDecimal(
+            reserveEffect,
+          ),
+          assetMoneyDecimal(
+            profitLossEffect,
+          ),
+          reserveAccountId ||
+          null,
+          lossAccountId ||
+          null,
+          journal.journalId,
+          reason,
+          context.userId,
+        ],
+      );
+
+    const nextAdjustment =
+      assetMoneyCents(
+        String(
+          asset
+            .revaluation_adjustment ||
+          '0',
+        ),
+      ) +
+      change;
+
+    await client.query(
+      `
+        UPDATE fixed_assets
+        SET
+          revaluation_adjustment = $3,
+          updated_by = $4,
+          updated_at = NOW()
+        WHERE company_id = $1
+          AND id = $2
+      `,
+      [
+        context.companyId,
+        assetId,
+        assetMoneyDecimal(
+          nextAdjustment,
+        ),
+        context.userId,
+      ],
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    const id =
+      String(
+        created.rows[0].id,
+      );
+
+    await audit(
+      context,
+      'revaluation.posted',
+      'asset_revaluations',
+      id,
+      'Fixed Asset revaluation posted',
+      {
+        assetId,
+        change:
+          assetMoneyDecimal(
+            change,
+          ),
+        journalId:
+          journal.journalId,
+      },
+    );
+
+    return {
+      id,
+      journalId:
+        journal.journalId,
+      change:
+        assetMoneyDecimal(
+          change,
+        ),
+      carryingValue:
+        assetMoneyDecimal(
+          fairValue,
+        ),
+      reused:
+        false,
+    };
+  } catch (
+    error
+  ) {
+    await client.query(
+      'ROLLBACK',
+    ).catch(
+      () =>
+        undefined,
+    );
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function reverseFixedAssetRevaluation(
+  input:
+    unknown,
+) {
+  const context =
+    await requireEnterpriseModuleTableContext(
+      'fixed_assets',
+      'asset_revaluations',
+      'edit',
+    );
+  const body =
+    bodyOf(
+      input,
+    );
+  const revaluationId =
+    accountingId(
+      body.revaluationId,
+    );
+  const reversalDate =
+    date(
+      body.reversalDate,
+      'Revaluation reversal date',
+    );
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const result =
+      await client.query(
+        `
+          SELECT
+            revaluation.id::text,
+            revaluation.asset_id::text,
+            revaluation.change_amount::text,
+            revaluation.journal_id::text,
+            revaluation.reversal_journal_id::text,
+            revaluation.revaluation_date::text,
+            revaluation.created_at,
+            revaluation.status,
+            asset.asset_code
+          FROM asset_revaluations revaluation
+          INNER JOIN fixed_assets asset
+            ON asset.id = revaluation.asset_id
+           AND asset.company_id = revaluation.company_id
+           AND asset.deleted_at IS NULL
+          WHERE revaluation.company_id = $1
+            AND revaluation.id = $2
+            AND revaluation.deleted_at IS NULL
+          LIMIT 1
+          FOR UPDATE OF revaluation, asset
+        `,
+        [
+          context.companyId,
+          revaluationId,
+        ],
+      );
+    const row =
+      result.rows[0];
+
+    if (
+      !row ||
+      String(
+        row.status,
+      ) !==
+        'posted' ||
+      !row
+        .journal_id
+    ) {
+      throw new FixedAssetInputError(
+        'Only a posted revaluation can be reversed.',
+      );
+    }
+
+    if (
+      row
+        .reversal_journal_id
+    ) {
+      await client.query(
+        'COMMIT',
+      );
+
+      return {
+        id:
+          revaluationId,
+        journalId:
+          String(
+            row
+              .reversal_journal_id,
+          ),
+        reused:
+          true,
+      };
+    }
+
+    const later =
+      await client.query(
+        `
+          SELECT 1
+          FROM asset_revaluations
+          WHERE company_id = $1
+            AND asset_id = $2
+            AND status = 'posted'
+            AND deleted_at IS NULL
+            AND id <> $3
+            AND (
+              revaluation_date > $4::date
+              OR (
+                revaluation_date = $4::date
+                AND created_at > $5
+              )
+            )
+          LIMIT 1
+        `,
+        [
+          context.companyId,
+          row.asset_id,
+          revaluationId,
+          row.revaluation_date,
+          row.created_at,
+        ],
+      );
+
+    if (
+      later.rows[0]
+    ) {
+      throw new FixedAssetInputError(
+        'Reverse later revaluations before reversing this one.',
+      );
+    }
+
+    const reversal =
+      await reversePostedLedgerJournal(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          originalJournalId:
+            String(
+              row.journal_id,
+            ),
+          journalDate:
+            reversalDate,
+          description:
+            'Reverse asset revaluation · ' +
+            String(
+              row.asset_code,
+            ),
+          sourceModule:
+            'fixed_assets',
+          sourceType:
+            'revaluation_reversal',
+          sourceId:
+            revaluationId,
+          sourceEventKey:
+            'fixed_assets:revaluation-reversal:' +
+            revaluationId,
+        },
+      );
+
+    await client.query(
+      `
+        UPDATE asset_revaluations
+        SET
+          status = 'reversed',
+          reversal_journal_id = $3,
+          reversed_at = NOW(),
+          updated_by = $4,
+          updated_at = NOW()
+        WHERE company_id = $1
+          AND id = $2
+      `,
+      [
+        context.companyId,
+        revaluationId,
+        reversal.journalId,
+        context.userId,
+      ],
+    );
+
+    await client.query(
+      `
+        UPDATE fixed_assets
+        SET
+          revaluation_adjustment =
+            revaluation_adjustment -
+            $3::numeric,
+          updated_by = $4,
+          updated_at = NOW()
+        WHERE company_id = $1
+          AND id = $2
+      `,
+      [
+        context.companyId,
+        row.asset_id,
+        row.change_amount,
+        context.userId,
+      ],
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    await audit(
+      context,
+      'revaluation.reversed',
+      'asset_revaluations',
+      revaluationId,
+      'Fixed Asset revaluation reversed',
+      {
+        journalId:
+          reversal.journalId,
+      },
+    );
+
+    return {
+      id:
+        revaluationId,
+      journalId:
+        reversal.journalId,
+      reused:
+        reversal.reused,
+    };
+  } catch (
+    error
+  ) {
+    await client.query(
+      'ROLLBACK',
+    ).catch(
+      () =>
+        undefined,
+    );
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function disposeFixedAsset(
+  input:
+    unknown,
+) {
+  const context =
+    await requireEnterpriseModuleTableContext(
+      'fixed_assets',
+      'asset_disposals',
+      'edit',
+    );
+  const body =
+    bodyOf(
+      input,
+    );
+  const assetId =
+    accountingId(
+      body.assetId,
+    );
+  const requestKey =
+    accountingId(
+      body.requestKey,
+    );
+  const disposalDate =
+    date(
+      body.disposalDate,
+      'Disposal date',
+    );
+  const disposalMethod =
+    text(
+      body.disposalMethod,
+      50,
+      'Disposal method',
+      true,
+    );
+  const notes =
+    text(
+      body.notes,
+      2000,
+      'Disposal notes',
+    );
+  const proceeds =
+    assetMoneyCents(
+      String(
+        body.proceeds ||
+        '0',
+      ),
+      'Disposal proceeds',
+    );
+
+  if (
+    proceeds <
+    BigInt(
+      0,
+    )
+  ) {
+    throw new FixedAssetInputError(
+      'Disposal proceeds cannot be negative.',
+    );
+  }
+
+  const proceedsAccountId =
+    proceeds >
+      BigInt(
+        0,
+      )
+      ? accountingId(
+          body.proceedsAccountId,
+        )
+      : null;
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const previous =
+      await client.query(
+        `
+          SELECT
+            id::text,
+            journal_id::text
+          FROM asset_disposals
+          WHERE company_id = $1
+            AND request_key = $2
+            AND deleted_at IS NULL
+          LIMIT 1
+          FOR SHARE
+        `,
+        [
+          context.companyId,
+          requestKey,
+        ],
+      );
+
+    if (
+      previous.rows[0]
+    ) {
+      await client.query(
+        'COMMIT',
+      );
+
+      return {
+        id:
+          String(
+            previous.rows[0]
+              .id,
+          ),
+        journalId:
+          String(
+            previous.rows[0]
+              .journal_id ||
+            '',
+          ),
+        reused:
+          true,
+      };
+    }
+
+    const settings =
+      await settingsRow(
+        client,
+        context.companyId,
+        true,
+      );
+    const assetResult =
+      await client.query(
+        `
+          SELECT
+            asset.id::text,
+            asset.asset_code,
+            asset.name,
+            asset.acquisition_cost::text,
+            asset.accumulated_depreciation::text,
+            asset.accumulated_impairment::text,
+            asset.revaluation_adjustment::text,
+            asset.capitalization_journal_id::text,
+            asset.capitalization_reversal_journal_id::text,
+            asset.status,
+            category.asset_account_reference::text,
+            category.depreciation_account_reference::text,
+            category.accumulated_impairment_account_id::text,
+            category.disposal_gain_account_id::text,
+            category.disposal_loss_account_id::text
+          FROM fixed_assets asset
+          LEFT JOIN asset_categories category
+            ON category.id = asset.category_id
+           AND category.company_id = asset.company_id
+           AND category.deleted_at IS NULL
+          WHERE asset.company_id = $1
+            AND asset.id = $2
+            AND asset.deleted_at IS NULL
+          LIMIT 1
+          FOR UPDATE OF asset
+        `,
+        [
+          context.companyId,
+          assetId,
+        ],
+      );
+    const asset =
+      assetResult.rows[0];
+
+    if (
+      !asset ||
+      !asset
+        .capitalization_journal_id ||
+      asset
+        .capitalization_reversal_journal_id
+    ) {
+      throw new FixedAssetInputError(
+        'Only a currently capitalized asset can be disposed.',
+      );
+    }
+
+    if (
+      String(
+        asset.status,
+      ) ===
+        'disposed'
+    ) {
+      throw new FixedAssetInputError(
+        'This asset is already disposed.',
+      );
+    }
+
+    const cost =
+      assetMoneyCents(
+        String(
+          asset
+            .acquisition_cost ||
+          '0',
+        ),
+      );
+    const depreciation =
+      assetMoneyCents(
+        String(
+          asset
+            .accumulated_depreciation ||
+          '0',
+        ),
+      );
+    const impairment =
+      assetMoneyCents(
+        String(
+          asset
+            .accumulated_impairment ||
+          '0',
+        ),
+      );
+    const revaluation =
+      assetMoneyCents(
+        String(
+          asset
+            .revaluation_adjustment ||
+          '0',
+        ),
+      );
+    const grossAsset =
+      cost +
+      revaluation;
+    const carrying =
+      assetCarryingValueCents({
+        acquisitionCost:
+          String(
+            asset
+              .acquisition_cost ||
+            '0',
+          ),
+        accumulatedDepreciation:
+          String(
+            asset
+              .accumulated_depreciation ||
+            '0',
+          ),
+        accumulatedImpairment:
+          String(
+            asset
+              .accumulated_impairment ||
+            '0',
+          ),
+        revaluationAdjustment:
+          String(
+            asset
+              .revaluation_adjustment ||
+            '0',
+          ),
+      });
+    const gainLoss =
+      proceeds -
+      carrying;
+
+    if (
+      grossAsset <=
+      BigInt(
+        0,
+      )
+    ) {
+      throw new FixedAssetInputError(
+        'The asset gross carrying amount is not valid for disposal.',
+      );
+    }
+
+    const assetAccountId =
+      String(
+        asset
+          .asset_account_reference ||
+        settings
+          .default_asset_account_id ||
+        '',
+      );
+    const accumulatedDepreciationAccountId =
+      String(
+        asset
+          .depreciation_account_reference ||
+        settings
+          .default_accumulated_depreciation_account_id ||
+        '',
+      );
+    const accumulatedImpairmentAccountId =
+      String(
+        asset
+          .accumulated_impairment_account_id ||
+        settings
+          .default_accumulated_impairment_account_id ||
+        '',
+      );
+    const gainAccountId =
+      String(
+        asset
+          .disposal_gain_account_id ||
+        settings
+          .default_disposal_gain_account_id ||
+        '',
+      );
+    const lossAccountId =
+      String(
+        asset
+          .disposal_loss_account_id ||
+        settings
+          .default_disposal_loss_account_id ||
+        '',
+      );
+
+    if (
+      !assetAccountId
+    ) {
+      throw new FixedAssetInputError(
+        'Map the Asset account before disposal.',
+      );
+    }
+
+    await activeAccount(
+      client,
+      context.companyId,
+      assetAccountId,
+      'Asset account',
+      assetAccount,
+    );
+
+    const lines:
+      Array<{
+        accountId:
+          string;
+        description:
+          string;
+        debit:
+          string;
+        credit:
+          string;
+      }> = [];
+
+    if (
+      depreciation >
+      BigInt(
+        0,
+      )
+    ) {
+      if (
+        !accumulatedDepreciationAccountId
+      ) {
+        throw new FixedAssetInputError(
+          'Map the Accumulated Depreciation account before disposal.',
+        );
+      }
+
+      await activeAccount(
+        client,
+        context.companyId,
+        accumulatedDepreciationAccountId,
+        'Accumulated Depreciation account',
+        assetAccount,
+      );
+
+      lines.push({
+        accountId:
+          accumulatedDepreciationAccountId,
+        description:
+          'Clear accumulated depreciation',
+        debit:
+          assetMoneyDecimal(
+            depreciation,
+          ),
+        credit:
+          '0.00',
+      });
+    }
+
+    if (
+      impairment >
+      BigInt(
+        0,
+      )
+    ) {
+      if (
+        !accumulatedImpairmentAccountId
+      ) {
+        throw new FixedAssetInputError(
+          'Map the Accumulated Impairment account before disposal.',
+        );
+      }
+
+      await activeAccount(
+        client,
+        context.companyId,
+        accumulatedImpairmentAccountId,
+        'Accumulated Impairment account',
+        assetAccount,
+      );
+
+      lines.push({
+        accountId:
+          accumulatedImpairmentAccountId,
+        description:
+          'Clear accumulated impairment',
+        debit:
+          assetMoneyDecimal(
+            impairment,
+          ),
+        credit:
+          '0.00',
+      });
+    }
+
+    if (
+      proceeds >
+      BigInt(
+        0,
+      ) &&
+      proceedsAccountId
+    ) {
+      await activeAccount(
+        client,
+        context.companyId,
+        proceedsAccountId,
+        'Disposal Proceeds account',
+      );
+
+      lines.push({
+        accountId:
+          proceedsAccountId,
+        description:
+          'Fixed Asset disposal proceeds',
+        debit:
+          assetMoneyDecimal(
+            proceeds,
+          ),
+        credit:
+          '0.00',
+      });
+    }
+
+    if (
+      gainLoss >
+      BigInt(
+        0,
+      )
+    ) {
+      if (
+        !gainAccountId
+      ) {
+        throw new FixedAssetInputError(
+          'Map the Disposal Gain account before posting a gain.',
+        );
+      }
+
+      await activeAccount(
+        client,
+        context.companyId,
+        gainAccountId,
+        'Disposal Gain account',
+        incomeAccount,
+      );
+
+      lines.push({
+        accountId:
+          gainAccountId,
+        description:
+          'Gain on Fixed Asset disposal',
+        debit:
+          '0.00',
+        credit:
+          assetMoneyDecimal(
+            gainLoss,
+          ),
+      });
+    } else if (
+      gainLoss <
+      BigInt(
+        0,
+      )
+    ) {
+      if (
+        !lossAccountId
+      ) {
+        throw new FixedAssetInputError(
+          'Map the Disposal Loss account before posting a loss.',
+        );
+      }
+
+      await activeAccount(
+        client,
+        context.companyId,
+        lossAccountId,
+        'Disposal Loss account',
+        expenseAccount,
+      );
+
+      lines.push({
+        accountId:
+          lossAccountId,
+        description:
+          'Loss on Fixed Asset disposal',
+        debit:
+          assetMoneyDecimal(
+            -gainLoss,
+          ),
+        credit:
+          '0.00',
+      });
+    }
+
+    lines.push({
+      accountId:
+        assetAccountId,
+      description:
+        'Derecognize Fixed Asset',
+      debit:
+        '0.00',
+      credit:
+        assetMoneyDecimal(
+          grossAsset,
+        ),
+    });
+
+    const journal =
+      await postBalancedLedgerJournal(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          journalDate:
+            disposalDate,
+          description:
+            'Dispose fixed asset · ' +
+            String(
+              asset.asset_code,
+            ),
+          reference:
+            String(
+              asset.asset_code,
+            ),
+          sourceModule:
+            'fixed_assets',
+          sourceType:
+            'disposal',
+          sourceId:
+            assetId,
+          sourceEventKey:
+            'fixed_assets:disposal:' +
+            requestKey,
+          postingKind:
+            'system',
+          lines,
+        },
+      );
+
+    const created =
+      await client.query(
+        `
+          INSERT INTO asset_disposals (
+            company_id,
+            asset_id,
+            request_key,
+            disposal_date,
+            disposal_method,
+            proceeds,
+            notes,
+            carrying_value,
+            accumulated_depreciation,
+            accumulated_impairment,
+            revaluation_adjustment,
+            gain_loss,
+            proceeds_account_id,
+            journal_id,
+            status,
+            posted_at,
+            created_by,
+            updated_by
+          )
+          VALUES (
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
+            'posted',NOW(),$15,$15
+          )
+          RETURNING id::text
+        `,
+        [
+          context.companyId,
+          assetId,
+          requestKey,
+          disposalDate,
+          disposalMethod,
+          assetMoneyDecimal(
+            proceeds,
+          ),
+          notes ||
+          null,
+          assetMoneyDecimal(
+            carrying,
+          ),
+          assetMoneyDecimal(
+            depreciation,
+          ),
+          assetMoneyDecimal(
+            impairment,
+          ),
+          assetMoneyDecimal(
+            revaluation,
+          ),
+          assetMoneyDecimal(
+            gainLoss,
+          ),
+          proceedsAccountId,
+          journal.journalId,
+          context.userId,
+        ],
+      );
+
+    await client.query(
+      `
+        UPDATE fixed_assets
+        SET
+          status = 'disposed',
+          disposal_date = $3,
+          disposal_journal_id = $4,
+          disposal_reversal_journal_id = NULL,
+          updated_by = $5,
+          updated_at = NOW()
+        WHERE company_id = $1
+          AND id = $2
+      `,
+      [
+        context.companyId,
+        assetId,
+        disposalDate,
+        journal.journalId,
+        context.userId,
+      ],
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    const id =
+      String(
+        created.rows[0].id,
+      );
+
+    await audit(
+      context,
+      'disposal.posted',
+      'asset_disposals',
+      id,
+      'Fixed Asset disposal posted',
+      {
+        assetId,
+        proceeds:
+          assetMoneyDecimal(
+            proceeds,
+          ),
+        gainLoss:
+          assetMoneyDecimal(
+            gainLoss,
+          ),
+        journalId:
+          journal.journalId,
+      },
+    );
+
+    return {
+      id,
+      journalId:
+        journal.journalId,
+      gainLoss:
+        assetMoneyDecimal(
+          gainLoss,
+        ),
+      reused:
+        false,
+    };
+  } catch (
+    error
+  ) {
+    await client.query(
+      'ROLLBACK',
+    ).catch(
+      () =>
+        undefined,
+    );
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function reverseFixedAssetDisposal(
+  input:
+    unknown,
+) {
+  const context =
+    await requireEnterpriseModuleTableContext(
+      'fixed_assets',
+      'asset_disposals',
+      'edit',
+    );
+  const body =
+    bodyOf(
+      input,
+    );
+  const disposalId =
+    accountingId(
+      body.disposalId,
+    );
+  const reversalDate =
+    date(
+      body.reversalDate,
+      'Disposal reversal date',
+    );
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const result =
+      await client.query(
+        `
+          SELECT
+            disposal.id::text,
+            disposal.asset_id::text,
+            disposal.journal_id::text,
+            disposal.reversal_journal_id::text,
+            disposal.status,
+            asset.asset_code
+          FROM asset_disposals disposal
+          INNER JOIN fixed_assets asset
+            ON asset.id = disposal.asset_id
+           AND asset.company_id = disposal.company_id
+           AND asset.deleted_at IS NULL
+          WHERE disposal.company_id = $1
+            AND disposal.id = $2
+            AND disposal.deleted_at IS NULL
+          LIMIT 1
+          FOR UPDATE OF disposal, asset
+        `,
+        [
+          context.companyId,
+          disposalId,
+        ],
+      );
+    const disposal =
+      result.rows[0];
+
+    if (
+      !disposal ||
+      String(
+        disposal.status,
+      ) !==
+        'posted' ||
+      !disposal
+        .journal_id
+    ) {
+      throw new FixedAssetInputError(
+        'Only a posted disposal can be reversed.',
+      );
+    }
+
+    if (
+      disposal
+        .reversal_journal_id
+    ) {
+      await client.query(
+        'COMMIT',
+      );
+
+      return {
+        id:
+          disposalId,
+        journalId:
+          String(
+            disposal
+              .reversal_journal_id,
+          ),
+        reused:
+          true,
+      };
+    }
+
+    const reversal =
+      await reversePostedLedgerJournal(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          originalJournalId:
+            String(
+              disposal.journal_id,
+            ),
+          journalDate:
+            reversalDate,
+          description:
+            'Reverse asset disposal · ' +
+            String(
+              disposal.asset_code,
+            ),
+          sourceModule:
+            'fixed_assets',
+          sourceType:
+            'disposal_reversal',
+          sourceId:
+            disposalId,
+          sourceEventKey:
+            'fixed_assets:disposal-reversal:' +
+            disposalId,
+        },
+      );
+
+    await client.query(
+      `
+        UPDATE asset_disposals
+        SET
+          status = 'reversed',
+          reversal_journal_id = $3,
+          reversed_at = NOW(),
+          updated_by = $4,
+          updated_at = NOW()
+        WHERE company_id = $1
+          AND id = $2
+      `,
+      [
+        context.companyId,
+        disposalId,
+        reversal.journalId,
+        context.userId,
+      ],
+    );
+
+    await client.query(
+      `
+        UPDATE fixed_assets
+        SET
+          status = 'in_service',
+          disposal_reversal_journal_id = $3,
+          updated_by = $4,
+          updated_at = NOW()
+        WHERE company_id = $1
+          AND id = $2
+      `,
+      [
+        context.companyId,
+        disposal.asset_id,
+        reversal.journalId,
+        context.userId,
+      ],
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    await audit(
+      context,
+      'disposal.reversed',
+      'asset_disposals',
+      disposalId,
+      'Fixed Asset disposal reversed',
+      {
+        journalId:
+          reversal.journalId,
+      },
+    );
+
+    return {
+      id:
+        disposalId,
+      journalId:
+        reversal.journalId,
+      reused:
+        reversal.reused,
+    };
+  } catch (
+    error
+  ) {
+    await client.query(
+      'ROLLBACK',
+    ).catch(
+      () =>
+        undefined,
+    );
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function linkFixedAssetSource(
+  input:
+    unknown,
+) {
+  const context =
+    await requireEnterpriseModuleTableContext(
+      'fixed_assets',
+      'asset_source_links',
+      'edit',
+    );
+  const body =
+    bodyOf(
+      input,
+    );
+  const assetId =
+    accountingId(
+      body.assetId,
+    );
+  const sourceModule =
+    text(
+      body.sourceModule,
+      80,
+      'Source module',
+      true,
+    );
+  const sourceType =
+    text(
+      body.sourceType,
+      120,
+      'Source type',
+      true,
+    );
+  const sourceId =
+    text(
+      body.sourceId,
+      160,
+      'Source ID',
+      true,
+    );
+  const sourceReference =
+    text(
+      body.sourceReference,
+      255,
+      'Source reference',
+    );
+  const sourceAmount =
+    body.sourceAmount ===
+        undefined ||
+      body.sourceAmount ===
+        null ||
+      body.sourceAmount ===
+        ''
+      ? null
+      : assetMoneyDecimal(
+          assetMoneyCents(
+            String(
+              body.sourceAmount,
+            ),
+            'Source amount',
+          ),
+        );
+
+  const asset =
+    await context.pool.query(
+      `
+        SELECT id::text
+        FROM fixed_assets
+        WHERE company_id = $1
+          AND id = $2
+          AND deleted_at IS NULL
+        LIMIT 1
+      `,
+      [
+        context.companyId,
+        assetId,
+      ],
+    );
+
+  if (
+    !asset.rows[0]
+  ) {
+    throw new FixedAssetInputError(
+      'Fixed Asset not found.',
+    );
+  }
+
+  const result =
+    await context.pool.query(
+      `
+        INSERT INTO asset_source_links (
+          company_id,
+          asset_id,
+          source_module,
+          source_type,
+          source_id,
+          source_reference,
+          source_amount,
+          created_by,
+          updated_by
+        )
+        VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,$8
+        )
+        ON CONFLICT (
+          company_id,
+          source_module,
+          source_type,
+          source_id
+        )
+        WHERE deleted_at IS NULL
+        DO UPDATE
+        SET
+          asset_id =
+            EXCLUDED.asset_id,
+          source_reference =
+            EXCLUDED.source_reference,
+          source_amount =
+            EXCLUDED.source_amount,
+          updated_by =
+            EXCLUDED.updated_by,
+          updated_at =
+            NOW()
+        RETURNING id::text
+      `,
+      [
+        context.companyId,
+        assetId,
+        sourceModule,
+        sourceType,
+        sourceId,
+        sourceReference ||
+        null,
+        sourceAmount,
+        context.userId,
+      ],
+    );
+
+  const id =
+    String(
+      result.rows[0].id,
+    );
+
+  await audit(
+    context,
+    'source.linked',
+    'asset_source_links',
+    id,
+    'Fixed Asset source document linked',
+    {
+      assetId,
+      sourceModule,
+      sourceType,
+      sourceId,
+    },
+  );
+
+  return {
+    id,
+    assetId,
+  };
 }
