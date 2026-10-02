@@ -1236,7 +1236,7 @@ test(
 
     assert.match(
       workspace,
-      /Inventory Valuation[\s\S]*\/inventory-valuation/,
+      /Inventory valuation[\s\S]*\/inventory-valuation/,
       'Accounting sidebar must expose the dedicated Inventory Valuation workspace.',
     );
 
