@@ -169,6 +169,13 @@ export function assertEnterpriseDomainMutationAllowed(
       table === 'accounting_financing_interest_accruals' ||
       table === 'accounting_financing_reclassifications' ||
       table === 'accounting_financing_runs' ||
+      table === 'accounting_budget_settings' ||
+      table === 'accounting_budget_plans' ||
+      table === 'accounting_budget_versions' ||
+      table === 'accounting_budget_assumptions' ||
+      table === 'accounting_budget_lines' ||
+      table === 'accounting_budget_runs' ||
+      table === 'accounting_budget_variance_snapshots' ||
       table ===
         'accounting_reconciliation_suggestions'
     )
@@ -275,6 +282,21 @@ export function assertEnterpriseDomainMutationAllowed(
             table ===
               'accounting_financing_runs'
             ? 'Loans and financing must be changed through the validated Accounting financing services.'
+          : table ===
+              'accounting_budget_settings' ||
+            table ===
+              'accounting_budget_plans' ||
+            table ===
+              'accounting_budget_versions' ||
+            table ===
+              'accounting_budget_assumptions' ||
+            table ===
+              'accounting_budget_lines' ||
+            table ===
+              'accounting_budget_runs' ||
+            table ===
+              'accounting_budget_variance_snapshots'
+            ? 'Budgets and forecasts must be changed through the validated Accounting planning services.'
           : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
   }
