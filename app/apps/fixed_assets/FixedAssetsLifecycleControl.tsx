@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  FileLink2,
+  Link2,
   RefreshCcw,
   Scale,
   ShieldAlert,
@@ -1264,7 +1264,7 @@ export default function FixedAssetsLifecycleControl({
                 'vendor-bill'
             }
           >
-            <FileLink2
+            <Link2
               size={15}
             />
             Link posted bill
@@ -1408,7 +1408,7 @@ export default function FixedAssetsLifecycleControl({
                 'source'
             }
           >
-            <FileLink2
+            <Link2
               size={15}
             />
             Link evidence
@@ -1851,9 +1851,7 @@ export default function FixedAssetsLifecycleControl({
       ) : null}
 
       <SaMiOverlay
-        overlay={
-          overlay
-        }
+        {...overlay}
         onClose={
           closeOverlay
         }
