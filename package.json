@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "node --max-old-space-size=6144 ./node_modules/eslint/bin/eslint.js",
+    "lint": "node scripts/run-eslint-batches.mjs",
     "test": "npm run test:foundation",
     "test:foundation": "node --test tests/category-1-6-foundation.test.mjs tests/category-7-9-access-boundaries.test.mjs",
     "test:authorization": "tsx --test tests/category-8-authorization-security.test.ts",
