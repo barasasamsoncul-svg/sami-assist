@@ -27,8 +27,7 @@ import {
 } from '@/lib/dashboard/composer';
 
 import {
-  getWorkspaceActivitySummary,
-  listWorkspaceActivity,
+  getWorkspaceActivityDashboardSnapshot,
 } from '@/lib/services/workspace-activity';
 
 import {
@@ -170,7 +169,7 @@ export default async function DashboardPage() {
   let recentActivity:
     Awaited<
       ReturnType<
-        typeof listWorkspaceActivity
+        typeof getWorkspaceActivityDashboardSnapshot
       >
     >['items'] =
     [];
@@ -178,9 +177,10 @@ export default async function DashboardPage() {
   let activitySummary:
     Awaited<
       ReturnType<
-        typeof getWorkspaceActivitySummary
+        typeof getWorkspaceActivityDashboardSnapshot
       >
-    > | null =
+    >['summary'] |
+    null =
     null;
 
   let unreadNotifications =
@@ -189,13 +189,9 @@ export default async function DashboardPage() {
   const secondaryPromise =
     currentCompanyId
       ? Promise.allSettled([
-          listWorkspaceActivity({
-            view:
-              'activity',
-            limit:
-              6,
-          }),
-          getWorkspaceActivitySummary(),
+          getWorkspaceActivityDashboardSnapshot(
+            6,
+          ),
           getWorkspaceNotificationSummary(),
         ])
       : Promise.resolve(
@@ -213,11 +209,10 @@ export default async function DashboardPage() {
 
   if (
     secondaryResults.length ===
-    3
+    2
   ) {
     const [
       activityResult,
-      summaryResult,
       notificationResult,
     ] =
       secondaryResults;
@@ -230,14 +225,10 @@ export default async function DashboardPage() {
         activityResult
           .value
           .items;
-    }
-
-    if (
-      summaryResult.status ===
-      'fulfilled'
-    ) {
       activitySummary =
-        summaryResult.value;
+        activityResult
+          .value
+          .summary;
     }
 
     if (
