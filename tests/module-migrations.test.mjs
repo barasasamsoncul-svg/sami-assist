@@ -2056,3 +2056,24 @@ test('Accounting 2.22 Loans and Financing are migration-backed and ledger contro
     assert.match(route,new RegExp(action));
   }
 });
+
+
+test('Accounting 2.22 release migration expands tenant schemas before promotion without advancing control versions', async () => {
+  const [script,pkg] = await Promise.all([
+    source('scripts/migrate-accounting-2-22-before-release.ts'),
+    source('package.json'),
+  ]);
+
+  assert.match(script,/runSamiModuleMigrations/);
+  assert.match(script,/moduleKey:\s*'accounting'/);
+  assert.match(script,/targetVersion:\s*manifest\.version/);
+  assert.match(script,/expand-before-promote/);
+  assert.match(script,/controlVersionUpdated:[\s\S]*false/);
+  assert.doesNotMatch(
+    script,
+    /UPDATE\s+tenant_modules/i,
+    'Accounting 2.22 pre-release expansion must not advertise the version before production code is live.',
+  );
+  assert.match(pkg,/migrate:accounting:2\.22:release/);
+  assert.match(pkg,/test:accounting:2\.22:release/);
+});
