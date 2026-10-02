@@ -1323,6 +1323,7 @@ test(
       'save-category',
       'capitalize',
       'run-depreciation',
+      'reverse-depreciation',
       'reverse-capitalization',
       'post-impairment',
       'reverse-impairment',
