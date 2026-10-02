@@ -1409,3 +1409,85 @@ test(
     );
   },
 );
+
+
+test(
+  'Accounting Accruals and Deferrals exposes controlled recognition schedules',
+  async () => {
+    const [
+      workspace,
+      surface,
+      route,
+      rules,
+    ] = await Promise.all([
+      readFile(
+        'app/apps/accounting/AccountingWorkspace.tsx',
+        'utf8',
+      ),
+      readFile(
+        'app/apps/accounting/AccountingAccruals.tsx',
+        'utf8',
+      ),
+      readFile(
+        'app/api/apps/accounting/accruals/route.ts',
+        'utf8',
+      ),
+      readFile(
+        'lib/apps/accounting/accruals-rules.ts',
+        'utf8',
+      ),
+    ]);
+
+    assert.match(
+      workspace,
+      /Accruals & Deferrals[\s\S]*\/accruals-deferrals/,
+    );
+    assert.match(
+      workspace,
+      /dedicatedSection === 'accruals-deferrals'[\s\S]*AccountingAccruals/,
+    );
+
+    for (const marker of [
+      'Recognition schedules',
+      'Run due recognition',
+      'Posted source journal ID',
+      'Company policy',
+      'Reverse',
+      'Prepaid expense',
+      'Deferred revenue',
+      'Accrued expense',
+      'Accrued revenue',
+      'SaMiOverlay',
+    ]) {
+      assert.match(
+        surface,
+        new RegExp(marker),
+        'Accruals UI must expose ' + marker + '.',
+      );
+    }
+
+    for (const action of [
+      'save-settings',
+      'create-schedule',
+      'activate-schedule',
+      'run-due',
+      'reverse-recognition',
+      'cancel-schedule',
+    ]) {
+      assert.match(
+        route,
+        new RegExp(action),
+      );
+    }
+
+    assert.match(
+      rules,
+      /equal_periods[\s\S]*actual_days/,
+    );
+    assert.match(
+      rules,
+      /remainder[\s\S]*BigInt/,
+      'Allocation must preserve exact ledger cents.',
+    );
+  },
+);
