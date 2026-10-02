@@ -325,14 +325,29 @@ export function financingRateDecimal(
   scaled:
     bigint,
 ) {
+  const negative =
+    scaled <
+    BigInt(
+      0,
+    );
+  const value =
+    negative
+      ? -scaled
+      : scaled;
+
   return (
+    (
+      negative
+        ? '-'
+        : ''
+    ) +
     String(
-      scaled /
+      value /
       RATE_SCALE,
     ) +
     '.' +
     String(
-      scaled %
+      value %
       RATE_SCALE,
     ).padStart(
       8,
