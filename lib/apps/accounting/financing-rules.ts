@@ -244,6 +244,83 @@ export function financingRateScaled(
   return scaled;
 }
 
+export function financingSignedRateScaled(
+  value:
+    unknown,
+  label =
+    'Rate margin',
+) {
+  const text =
+    String(
+      value ?? '',
+    ).trim();
+
+  if (
+    !/^-?\d{1,3}(?:\.\d{1,8})?$/.test(
+      text,
+    )
+  ) {
+    throw new Error(
+      label +
+      ' must be a percentage with at most eight decimal places.',
+    );
+  }
+
+  const negative =
+    text.startsWith(
+      '-',
+    );
+  const unsigned =
+    negative
+      ? text.slice(
+          1,
+        )
+      : text;
+  const [
+    whole,
+    fraction =
+      '',
+  ] =
+    unsigned.split(
+      '.',
+    );
+  const scaled =
+    BigInt(
+      whole,
+    ) *
+      RATE_SCALE +
+    BigInt(
+      fraction.padEnd(
+        8,
+        '0',
+      ),
+    );
+  const signed =
+    negative
+      ? -scaled
+      : scaled;
+
+  if (
+    signed <
+      -BigInt(
+        100,
+      ) *
+        RATE_SCALE ||
+    signed >
+      BigInt(
+        100,
+      ) *
+        RATE_SCALE
+  ) {
+    throw new Error(
+      label +
+      ' must be between -100% and 100%.',
+    );
+  }
+
+  return signed;
+}
+
 export function financingRateDecimal(
   scaled:
     bigint,
@@ -627,6 +704,167 @@ export function financingCentsDecimal(
   );
 }
 
+function simulateAnnuityClosing(
+  principal:
+    bigint,
+  payment:
+    bigint,
+  windows:
+    Array<{
+      start:
+        string;
+      end:
+        string;
+    }>,
+  annualRate:
+    string,
+  dayCount:
+    FinancingDayCount,
+) {
+  let opening =
+    principal;
+
+  for (
+    let index =
+      0;
+    index <
+      windows.length;
+    index +=
+      1
+  ) {
+    const window =
+      windows[
+        index
+      ];
+    const interest =
+      financingInterestUnits({
+        principalUnits:
+          opening,
+        annualRate,
+        startDate:
+          window.start,
+        endDate:
+          window.end,
+        dayCount,
+      });
+    const principalDue =
+      payment >
+        interest
+        ? payment -
+          interest
+        : BigInt(
+            0,
+          );
+
+    if (
+      principalDue >=
+      opening
+    ) {
+      return BigInt(
+        0,
+      );
+    }
+
+    opening -=
+      principalDue;
+  }
+
+  return opening;
+}
+
+function exactAnnuityPayment(
+  principal:
+    bigint,
+  windows:
+    Array<{
+      start:
+        string;
+      end:
+        string;
+    }>,
+  annualRate:
+    string,
+  dayCount:
+    FinancingDayCount,
+) {
+  let low =
+    BigInt(
+      0,
+    );
+  let high =
+    principal;
+
+  while (
+    simulateAnnuityClosing(
+      principal,
+      high,
+      windows,
+      annualRate,
+      dayCount,
+    ) >
+    BigInt(
+      0,
+    )
+  ) {
+    high *=
+      BigInt(
+        2,
+      );
+
+    if (
+      high >
+      principal *
+        BigInt(
+          1000,
+        )
+    ) {
+      throw new Error(
+        'Unable to solve the annuity payment for this financing schedule.',
+      );
+    }
+  }
+
+  while (
+    low +
+      BigInt(
+        1,
+      ) <
+    high
+  ) {
+    const middle =
+      (
+        low +
+        high
+      ) /
+      BigInt(
+        2,
+      );
+    const closing =
+      simulateAnnuityClosing(
+        principal,
+        middle,
+        windows,
+        annualRate,
+        dayCount,
+      );
+
+    if (
+      closing >
+      BigInt(
+        0,
+      )
+    ) {
+      low =
+        middle;
+    } else {
+      high =
+        middle;
+    }
+  }
+
+  return high;
+}
+
 function frequencyMonths(
   frequency:
     FinancingFrequency,
@@ -840,63 +1078,15 @@ export function buildFinancingSchedule(
     input.structure ===
       'annuity'
   ) {
-    const annualPercent =
-      Number(
+    annuityPayment =
+      exactAnnuityPayment(
+        principal,
+        windows,
         financingRateDecimal(
           rate,
         ),
+        input.dayCount,
       );
-    const months =
-      frequencyMonths(
-        input.frequency,
-      );
-    const periodsPerYear =
-      months >
-        0
-        ? 12 /
-          months
-        : 1;
-    const periodicRate =
-      annualPercent /
-      100 /
-      periodsPerYear;
-
-    if (
-      periodicRate ===
-        0
-    ) {
-      annuityPayment =
-        roundDivide(
-          principal,
-          BigInt(
-            windows.length,
-          ),
-        );
-    } else {
-      const payment =
-        Number(
-          principal,
-        ) *
-        periodicRate /
-        (
-          1 -
-          Math.pow(
-            1 +
-              periodicRate,
-            -windows.length,
-          )
-        );
-
-      annuityPayment =
-        BigInt(
-          Math.max(
-            0,
-            Math.round(
-              payment,
-            ),
-          ),
-        );
-    }
   }
 
   const result:
