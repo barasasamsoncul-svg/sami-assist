@@ -284,12 +284,10 @@ export async function replaceFinancingCustomSchedule(
 
     if (
       facility.status !==
-        'draft' &&
-      facility.status !==
         'active'
     ) {
       throw new AccountingInputError(
-        'Custom schedules can only be replaced on draft or active financing facilities.',
+        'Activate the custom financing facility and post its drawdown before entering the lender repayment schedule.',
       );
     }
 
@@ -403,17 +401,11 @@ export async function replaceFinancingCustomSchedule(
     }
 
     const targetPrincipal =
-      facility.status ===
-        'active'
-        ? await financingOutstandingPrincipalUnits(
-            client,
-            context.companyId,
-            facilityId,
-          )
-        : financingPositiveUnits(
-            facility.principal_limit,
-            'Principal limit',
-          );
+      await financingOutstandingPrincipalUnits(
+        client,
+        context.companyId,
+        facilityId,
+      );
 
     if (
       targetPrincipal <=
