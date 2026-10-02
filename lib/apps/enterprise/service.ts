@@ -1836,43 +1836,6 @@ async function readTable(
       table,
     );
 
-  const countResult =
-    await pool.query(
-      'SELECT COUNT(*)::int AS count FROM ' +
-      quotedTable +
-      where,
-      params,
-    );
-
-  const dataResult =
-    await pool.query(
-      'SELECT * FROM ' +
-      quotedTable +
-      where +
-      (
-        orderColumn
-          ? (
-              ' ORDER BY ' +
-              quoteIdentifier(
-                orderColumn,
-              ) +
-              ' DESC NULLS LAST'
-            )
-          : ''
-      ) +
-      ' LIMIT 50',
-      params,
-    );
-
-  const workflows =
-    await workflowFieldsForTable(
-      pool,
-      table,
-      fields,
-      where,
-      params,
-    );
-
   const numericFields =
     fields
       .filter(
@@ -1899,71 +1862,120 @@ async function readTable(
         5,
       );
 
+  const aggregates =
+    numericFields
+      .flatMap(
+        (
+          field,
+          index,
+        ) => {
+          const identifier =
+            quoteIdentifier(
+              field.key,
+            );
+
+          return [
+            'COALESCE(SUM(' +
+            identifier +
+            '), 0)::float8 AS ' +
+            quoteIdentifier(
+              'sum_' +
+              index,
+            ),
+            'COALESCE(AVG(' +
+            identifier +
+            '), 0)::float8 AS ' +
+            quoteIdentifier(
+              'avg_' +
+              index,
+            ),
+            'COALESCE(MIN(' +
+            identifier +
+            '), 0)::float8 AS ' +
+            quoteIdentifier(
+              'min_' +
+              index,
+            ),
+            'COALESCE(MAX(' +
+            identifier +
+            '), 0)::float8 AS ' +
+            quoteIdentifier(
+              'max_' +
+              index,
+            ),
+          ];
+        },
+      );
+
+  /*
+   * All four reads are independent once metadata is known. Keep them in one
+   * round-trip stage instead of serially waiting for count -> rows -> workflow
+   * -> aggregates for every table in the module.
+   */
+  const [
+    countResult,
+    dataResult,
+    workflows,
+    aggregateResult,
+  ] =
+    await Promise.all([
+      pool.query(
+        'SELECT COUNT(*)::int AS count FROM ' +
+        quotedTable +
+        where,
+        params,
+      ),
+      pool.query(
+        'SELECT * FROM ' +
+        quotedTable +
+        where +
+        (
+          orderColumn
+            ? (
+                ' ORDER BY ' +
+                quoteIdentifier(
+                  orderColumn,
+                ) +
+                ' DESC NULLS LAST'
+              )
+            : ''
+        ) +
+        ' LIMIT 50',
+        params,
+      ),
+      workflowFieldsForTable(
+        pool,
+        table,
+        fields,
+        where,
+        params,
+      ),
+      aggregates.length >
+        0
+        ? pool.query(
+            'SELECT ' +
+            aggregates.join(
+              ', ',
+            ) +
+            ' FROM ' +
+            quotedTable +
+            where,
+            params,
+          )
+        : Promise.resolve(
+            null,
+          ),
+    ]);
+
   const numericMetrics:
     EnterpriseNumericMetric[] =
       [];
 
   if (
     numericFields.length >
-      0
+      0 &&
+    aggregateResult
   ) {
-    const aggregates =
-      numericFields
-        .flatMap(
-          (
-            field,
-            index,
-          ) => {
-            const identifier =
-              quoteIdentifier(
-                field.key,
-              );
-
-            return [
-              'COALESCE(SUM(' +
-              identifier +
-              '), 0)::float8 AS ' +
-              quoteIdentifier(
-                'sum_' +
-                index,
-              ),
-              'COALESCE(AVG(' +
-              identifier +
-              '), 0)::float8 AS ' +
-              quoteIdentifier(
-                'avg_' +
-                index,
-              ),
-              'COALESCE(MIN(' +
-              identifier +
-              '), 0)::float8 AS ' +
-              quoteIdentifier(
-                'min_' +
-                index,
-              ),
-              'COALESCE(MAX(' +
-              identifier +
-              '), 0)::float8 AS ' +
-              quoteIdentifier(
-                'max_' +
-                index,
-              ),
-            ];
-          },
-        );
-
-    const aggregateResult =
-      await pool.query(
-        'SELECT ' +
-        aggregates.join(
-          ', ',
-        ) +
-        ' FROM ' +
-        quotedTable +
-        where,
-        params,
-      );
-
     const row =
       aggregateResult.rows[0] ||
       {};
@@ -2065,7 +2077,6 @@ async function readTable(
       ),
   };
 }
-
 
 export async function getEnterpriseModuleShellWorkspace(
   moduleKey:
