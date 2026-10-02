@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 
 import {
   usePathname,
@@ -20,11 +21,45 @@ import {
 } from 'react';
 
 import WorkspaceSidebar from '@/app/components/workspace/WorkspaceSidebar';
-import WorkspaceNotificationCenter from '@/app/components/workspace/WorkspaceNotificationCenter';
 import WorkspaceCompanyIdentity from '@/app/components/workspace/WorkspaceCompanyIdentity';
 import WorkspaceTenantSwitcher from '@/app/components/workspace/WorkspaceTenantSwitcher';
-import WorkspaceSearchLauncher from '@/app/components/workspace/WorkspaceSearch';
 import WorkspaceAppSwitcher from '@/app/components/workspace/WorkspaceAppSwitcher';
+
+const WorkspaceSearchLauncher =
+  dynamic(
+    () =>
+      import(
+        '@/app/components/workspace/WorkspaceSearch'
+      ),
+    {
+      ssr:
+        false,
+      loading: () => (
+        <div
+          aria-hidden="true"
+          className="hidden h-10 min-w-[190px] rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] md:block"
+        />
+      ),
+    },
+  );
+
+const WorkspaceNotificationCenter =
+  dynamic(
+    () =>
+      import(
+        '@/app/components/workspace/WorkspaceNotificationCenter'
+      ),
+    {
+      ssr:
+        false,
+      loading: () => (
+        <div
+          aria-hidden="true"
+          className="h-10 w-10 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)]"
+        />
+      ),
+    },
+  );
 
 type UserData = {
   id: string;
