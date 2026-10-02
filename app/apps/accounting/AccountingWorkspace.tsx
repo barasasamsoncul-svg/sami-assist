@@ -283,6 +283,7 @@ export default async function AccountingWorkspace({
     dedicatedSection !== 'international' &&
     dedicatedSection !== 'fx' &&
     dedicatedSection !== 'inventory-valuation' &&
+    dedicatedSection !== 'accruals-deferrals' &&
     dedicatedSection !==
       'reconciliation'
   ) {
