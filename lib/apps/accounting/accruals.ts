@@ -24,6 +24,9 @@ import {
   accountingId,
 } from '@/lib/apps/accounting/validation';
 import {
+  getAccountingAccrualReporting,
+} from './accruals-reporting';
+import {
   accrualAutoReversalDate,
   accrualMoneyCents,
   accrualMoneyDecimal,
@@ -3269,6 +3272,9 @@ export async function getAccountingAccruals() {
       ),
     ]);
 
+  const reporting =
+    await getAccountingAccrualReporting();
+
   const defaultSettings = {
     company_id:
       context.companyId,
@@ -3320,6 +3326,7 @@ export async function getAccountingAccruals() {
         due_count:
           0,
       },
+    reporting,
   };
 }
 
