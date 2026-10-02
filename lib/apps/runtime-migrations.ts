@@ -1,4 +1,5 @@
 import { ACCOUNTING_2_19_0_TO_2_20_0 } from '@/lib/apps/accounting/migrations/2.19.0-to-2.20.0';
+import { FIXED_ASSETS_2_3_0_TO_2_4_0 } from '@/lib/apps/fixed_assets/migrations/2.3.0-to-2.4.0';
 import { ACCOUNTING_2_18_0_TO_2_19_0 } from '@/lib/apps/accounting/migrations/2.18.0-to-2.19.0';
 import { ACCOUNTING_2_17_0_TO_2_18_0 } from '@/lib/apps/accounting/migrations/2.17.0-to-2.18.0';
 import { ACCOUNTING_2_16_0_TO_2_17_0 } from '@/lib/apps/accounting/migrations/2.16.0-to-2.17.0';
@@ -195,6 +196,7 @@ export const ENTERPRISE_RUNTIME_MIGRATIONS:
     ACCOUNTING_2_17_0_TO_2_18_0,
     ACCOUNTING_2_18_0_TO_2_19_0,
     ACCOUNTING_2_19_0_TO_2_20_0,
+    FIXED_ASSETS_2_3_0_TO_2_4_0,
   ];
 
 export const SALES_RUNTIME_MIGRATIONS:
