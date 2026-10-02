@@ -3213,8 +3213,15 @@ export async function postFinancingRepayment(
           exchange_rate,
           principal_foreign,
           principal_base,
+          principal_carrying_base,
+          current_principal_foreign,
+          current_principal_base,
+          noncurrent_principal_foreign,
+          noncurrent_principal_base,
           interest_foreign,
           interest_base,
+          interest_carrying_base,
+          realized_fx_base,
           fee_foreign,
           fee_base,
           financial_account_id,
@@ -3231,8 +3238,9 @@ export async function postFinancingRepayment(
         )
         VALUES (
           $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-          $11,$12,$13,$14,$15,$16,$17,$18,$19,'posted',
-          $20,$21,$22::jsonb,NOW(),$23,$23
+          $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
+          $21,$22,$23,$24,$25,$26,'posted',$27,$28,$29::jsonb,
+          NOW(),$30,$30
         )
       `,
       [
@@ -3260,6 +3268,31 @@ export async function postFinancingRepayment(
         decimalAmount(
           principalBase,
         ),
+        decimalAmount(
+          principalCarryingBase,
+        ),
+        currentPrincipalForeign >
+          BigInt(
+            0,
+          )
+          ? financingForeignDecimal(
+              currentPrincipalForeign,
+            )
+          : '0.0000',
+        decimalAmount(
+          currentPrincipalCarryingBase,
+        ),
+        noncurrentPrincipalForeign >
+          BigInt(
+            0,
+          )
+          ? financingForeignDecimal(
+              noncurrentPrincipalForeign,
+            )
+          : '0.0000',
+        decimalAmount(
+          noncurrentPrincipalCarryingBase,
+        ),
         interest ===
           BigInt(
             0,
@@ -3270,6 +3303,12 @@ export async function postFinancingRepayment(
             ),
         decimalAmount(
           interestBase,
+        ),
+        decimalAmount(
+          interestCarryingBase,
+        ),
+        decimalAmount(
+          realizedFx,
         ),
         fee ===
           BigInt(
@@ -3297,6 +3336,26 @@ export async function postFinancingRepayment(
             fx.sourceName,
           fxRateDate:
             fx.effectiveDate,
+          principalSettlementBase:
+            decimalAmount(
+              principalBase,
+            ),
+          principalCarryingBase:
+            decimalAmount(
+              principalCarryingBase,
+            ),
+          interestSettlementBase:
+            decimalAmount(
+              interestBase,
+            ),
+          interestCarryingBase:
+            decimalAmount(
+              interestCarryingBase,
+            ),
+          realizedFxBase:
+            decimalAmount(
+              realizedFx,
+            ),
         }),
         context.userId,
       ],
