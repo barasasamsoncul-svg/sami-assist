@@ -52,6 +52,7 @@ export default async function DashboardPage() {
   const [
     accountContext,
     permissionContext,
+    companyContext,
   ] =
     await Promise.all([
       getAccountContextForUser(
@@ -59,6 +60,11 @@ export default async function DashboardPage() {
         session.currentTenantId,
       ),
       getPermissionContext(),
+      requireCompanyContext()
+        .catch(
+          () =>
+            null,
+        ),
     ]);
 
   const shell =
@@ -98,10 +104,9 @@ export default async function DashboardPage() {
     | null =
     null;
 
-  try {
-    const companyContext =
-      await requireCompanyContext();
-
+  if (
+    companyContext
+  ) {
     currentCompanyId =
       companyContext
         .currentCompany.id;
@@ -145,12 +150,10 @@ export default async function DashboardPage() {
           .allowedCompanyIds
           .length,
     };
-  } catch {
-    // The shell still renders while company context is recovering.
   }
 
-  const dashboard =
-    await composeDashboard({
+  const dashboardPromise =
+    composeDashboard({
       userId:
         session.user.id,
       permissions:
@@ -181,26 +184,41 @@ export default async function DashboardPage() {
   let unreadNotifications =
     0;
 
-  if (
+  const secondaryPromise =
     currentCompanyId
+      ? Promise.allSettled([
+          listWorkspaceActivity({
+            view:
+              'activity',
+            limit:
+              6,
+          }),
+          getWorkspaceActivitySummary(),
+          getWorkspaceNotificationSummary(),
+        ])
+      : Promise.resolve(
+          [],
+        );
+
+  const [
+    dashboard,
+    secondaryResults,
+  ] =
+    await Promise.all([
+      dashboardPromise,
+      secondaryPromise,
+    ]);
+
+  if (
+    secondaryResults.length ===
+    3
   ) {
     const [
       activityResult,
       summaryResult,
       notificationResult,
     ] =
-      await Promise.allSettled([
-        listWorkspaceActivity({
-          view:
-            'activity',
-          limit:
-            6,
-        }),
-
-        getWorkspaceActivitySummary(),
-
-        getWorkspaceNotificationSummary(),
-      ]);
+      secondaryResults;
 
     if (
       activityResult.status ===
