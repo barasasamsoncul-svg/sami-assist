@@ -11,12 +11,12 @@ import {
 } from '../lib/apps/accounting/inventory-valuation-rules';
 
 test('inventory valuation decimal helpers preserve accounting precision', () => {
-  assert.equal(inventoryQuantityUnits('12.3456'), 123456n);
-  assert.equal(inventoryQuantityUnits('-0.0001'), -1n);
-  assert.equal(inventoryMoneyCents('19.99'), 1999n);
-  assert.equal(inventoryMoneyCents('-0.01'), -1n);
-  assert.equal(quantityDecimal(-12345n), '-1.2345');
-  assert.equal(moneyDecimal(-12345n), '-123.45');
+  assert.equal(inventoryQuantityUnits('12.3456'), BigInt(123456));
+  assert.equal(inventoryQuantityUnits('-0.0001'), BigInt(-1));
+  assert.equal(inventoryMoneyCents('19.99'), BigInt(1999));
+  assert.equal(inventoryMoneyCents('-0.01'), BigInt(-1));
+  assert.equal(quantityDecimal(BigInt(-12345)), '-1.2345');
+  assert.equal(moneyDecimal(BigInt(-12345)), '-123.45');
 
   assert.throws(
     () => inventoryQuantityUnits('1.23456'),
