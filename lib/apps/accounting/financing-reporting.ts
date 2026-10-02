@@ -289,15 +289,27 @@ export async function getAccountingFinancingReporting(
                      'asset_%'
                 THEN COALESCE(
                   SUM(
-                    line.debit -
-                    line.credit
+                    CASE
+                      WHEN journal.id
+                           IS NOT NULL
+                      THEN
+                        line.debit -
+                        line.credit
+                      ELSE 0
+                    END
                   ),
                   0
                 )
                 ELSE COALESCE(
                   SUM(
-                    line.credit -
-                    line.debit
+                    CASE
+                      WHEN journal.id
+                           IS NOT NULL
+                      THEN
+                        line.credit -
+                        line.debit
+                      ELSE 0
+                    END
                   ),
                   0
                 )
