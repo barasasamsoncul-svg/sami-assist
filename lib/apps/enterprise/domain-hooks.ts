@@ -161,6 +161,13 @@ export function assertEnterpriseDomainMutationAllowed(
       table === 'accounting_accrual_schedules' ||
       table === 'accounting_accrual_schedule_lines' ||
       table === 'accounting_accrual_runs' ||
+      table === 'accounting_financing_settings' ||
+      table === 'accounting_financing_facilities' ||
+      table === 'accounting_financing_rate_periods' ||
+      table === 'accounting_financing_schedule_lines' ||
+      table === 'accounting_financing_transactions' ||
+      table === 'accounting_financing_interest_accruals' ||
+      table === 'accounting_financing_runs' ||
       table ===
         'accounting_reconciliation_suggestions'
     )
@@ -250,6 +257,21 @@ export function assertEnterpriseDomainMutationAllowed(
             table ===
               'accounting_accrual_runs'
             ? 'Accruals and deferrals must be changed through the validated Accounting recognition services.'
+          : table ===
+              'accounting_financing_settings' ||
+            table ===
+              'accounting_financing_facilities' ||
+            table ===
+              'accounting_financing_rate_periods' ||
+            table ===
+              'accounting_financing_schedule_lines' ||
+            table ===
+              'accounting_financing_transactions' ||
+            table ===
+              'accounting_financing_interest_accruals' ||
+            table ===
+              'accounting_financing_runs'
+            ? 'Loans and financing must be changed through the validated Accounting financing services.'
           : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
   }
