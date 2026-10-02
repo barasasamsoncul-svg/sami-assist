@@ -19,6 +19,9 @@ import {
   reversePostedLedgerJournal,
 } from './ledger-engine';
 import {
+  buildFinancingRepaymentJournalLines,
+} from './financing-journal-lines';
+import {
   AccountingInputError,
   accountingDate,
   accountingId,
