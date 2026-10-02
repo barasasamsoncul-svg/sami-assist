@@ -795,7 +795,7 @@ async function readNavigationPermissionResponse(
 
 
 const SIDEBAR_CACHE_TTL_MS =
-  30_000;
+  120_000;
 
 let workspaceCache:
   {
@@ -1002,7 +1002,7 @@ export default function WorkspaceSidebar({
     setNavigationLoading,
   ] =
     useState(
-      true,
+      false,
     );
 
 
@@ -1888,8 +1888,13 @@ export default function WorkspaceSidebar({
         }
 
 
+        /*
+         * The server-rendered module list is already authorized and
+         * immediately usable. Revalidate permissions in the background
+         * without replacing fast navigation with a loading state.
+         */
         setNavigationLoading(
-          true,
+          false,
         );
 
 
