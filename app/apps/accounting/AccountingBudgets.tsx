@@ -748,7 +748,7 @@ export default function AccountingBudgets({
         </section>
       ) : null}
 
-      <SaMiOverlay overlay={overlay} onClose={closeOverlay}/>
+      <SaMiOverlay {...overlay} onClose={closeOverlay}/>
     </div>
   );
 }
