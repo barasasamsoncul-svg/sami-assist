@@ -7,9 +7,13 @@ import {
   FileClock,
   Play,
   RefreshCcw,
+  Link2,
   RotateCcw,
   Save,
+  Scale,
   ShieldCheck,
+  TrendingUp,
+  TriangleAlert,
   XCircle,
 } from 'lucide-react';
 import {
@@ -118,6 +122,15 @@ export default function AccountingAccruals({
   ] =
     useState(
       '',
+    );
+
+  const [
+    runAsOf,
+    setRunAsOf,
+  ] =
+    useState(
+      data.today ||
+      today(),
     );
 
   const settingsRow =
@@ -729,7 +742,7 @@ export default function AccountingAccruals({
         action:
           'run-due',
         asOf:
-          data.today,
+          runAsOf,
       },
       'Recognition run completed',
       result =>
@@ -778,13 +791,44 @@ export default function AccountingAccruals({
           </p>
         </div>
 
-        <div
+      </div>
+
+      <section
+        className={
+          styles.panel
+        }
+      >
+        <form
           className={
-            styles.actions
+            styles.inlineForm
+          }
+          onSubmit={
+            event => {
+              event.preventDefault();
+              void runDue();
+            }
           }
         >
+          <label>
+            Recognition through
+            <input
+              type="date"
+              value={
+                runAsOf
+              }
+              onChange={
+                event =>
+                  setRunAsOf(
+                    event.target
+                      .value,
+                  )
+              }
+              required
+            />
+          </label>
+
           <button
-            type="button"
+            type="submit"
             className={
               styles.primary
             }
@@ -792,10 +836,6 @@ export default function AccountingAccruals({
               busy ===
                 'run-due' ||
               !canEdit
-            }
-            onClick={
-              () =>
-                void runDue()
             }
           >
             <Play
@@ -806,8 +846,8 @@ export default function AccountingAccruals({
               ? 'Running…'
               : 'Run due recognition'}
           </button>
-        </div>
-      </div>
+        </form>
+      </section>
 
       <section
         className={
