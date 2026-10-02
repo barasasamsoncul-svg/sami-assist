@@ -1549,6 +1549,9 @@ test(
       'Variable rate',
       'Custom lender schedule',
       'Save custom revision',
+      'Financing subledger reconciliation',
+      'Debt service forecast',
+      'Maturity profile',
       'SaMiOverlay',
     ]) {
       assert.match(
