@@ -530,6 +530,13 @@ export type FixedAssetsAccountingWorkspace = {
         unknown
       >
     >;
+  depreciationEntries:
+    Array<
+      Record<
+        string,
+        unknown
+      >
+    >;
   impairments:
     Array<
       Record<
@@ -593,6 +600,7 @@ export async function getFixedAssetsAccountingControl():
     categories,
     assets,
     runs,
+    depreciationEntries,
     impairments,
     revaluations,
     disposals,
@@ -734,6 +742,34 @@ export async function getFixedAssetsAccountingControl():
           ORDER BY
             created_at DESC
           LIMIT 30
+        `,
+        [
+          context.companyId,
+        ],
+      ),
+      context.pool.query(
+        `
+          SELECT
+            id::text,
+            asset_id::text,
+            period_date::text,
+            period_start::text,
+            period_end::text,
+            depreciation_amount::text,
+            accumulated_depreciation::text,
+            book_value::text,
+            method,
+            journal_id::text,
+            reversal_journal_id::text,
+            run_id::text,
+            status,
+            posted_at::text,
+            reversed_at::text
+          FROM asset_depreciation_entries
+          WHERE company_id = $1
+            AND deleted_at IS NULL
+          ORDER BY period_date DESC, created_at DESC
+          LIMIT 80
         `,
         [
           context.companyId,
@@ -908,6 +944,8 @@ export async function getFixedAssetsAccountingControl():
       assets.rows,
     runs:
       runs.rows,
+    depreciationEntries:
+      depreciationEntries.rows,
     impairments:
       impairments.rows,
     revaluations:
@@ -2740,6 +2778,298 @@ export async function runFixedAssetDepreciation(
       posted,
       skipped,
       failed,
+    };
+  } catch (
+    error
+  ) {
+    await client.query(
+      'ROLLBACK',
+    ).catch(
+      () =>
+        undefined,
+    );
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
+export async function reverseFixedAssetDepreciation(
+  input:
+    unknown,
+) {
+  const context =
+    await requireEnterpriseModuleTableContext(
+      'fixed_assets',
+      'asset_depreciation_entries',
+      'edit',
+    );
+  const body =
+    bodyOf(
+      input,
+    );
+  const entryId =
+    accountingId(
+      body.entryId,
+    );
+  const reversalDate =
+    date(
+      body.reversalDate,
+      'Depreciation reversal date',
+    );
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const result =
+      await client.query(
+        `
+          SELECT
+            entry.id::text,
+            entry.asset_id::text,
+            entry.period_date::text,
+            entry.depreciation_amount::text,
+            entry.journal_id::text,
+            entry.reversal_journal_id::text,
+            entry.status,
+            asset.asset_code
+          FROM asset_depreciation_entries entry
+          INNER JOIN fixed_assets asset
+            ON asset.id = entry.asset_id
+           AND asset.company_id = entry.company_id
+           AND asset.deleted_at IS NULL
+          WHERE entry.company_id = $1
+            AND entry.id = $2
+            AND entry.deleted_at IS NULL
+          LIMIT 1
+          FOR UPDATE OF entry, asset
+        `,
+        [
+          context.companyId,
+          entryId,
+        ],
+      );
+    const entry =
+      result.rows[0];
+
+    if (
+      !entry ||
+      ![
+        'active',
+        'posted',
+      ].includes(
+        String(
+          entry.status,
+        ),
+      ) ||
+      !entry
+        .journal_id
+    ) {
+      throw new FixedAssetInputError(
+        'Only a posted depreciation entry can be reversed.',
+      );
+    }
+
+    if (
+      entry
+        .reversal_journal_id
+    ) {
+      await client.query(
+        'COMMIT',
+      );
+
+      return {
+        id:
+          entryId,
+        journalId:
+          String(
+            entry
+              .reversal_journal_id,
+          ),
+        reused:
+          true,
+      };
+    }
+
+    const later =
+      await client.query(
+        `
+          SELECT (
+            EXISTS (
+              SELECT 1
+              FROM asset_depreciation_entries
+              WHERE company_id = $1
+                AND asset_id = $2
+                AND deleted_at IS NULL
+                AND status IN ('active','posted')
+                AND period_date > $3::date
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM asset_impairments
+              WHERE company_id = $1
+                AND asset_id = $2
+                AND deleted_at IS NULL
+                AND status = 'posted'
+                AND impairment_date > $3::date
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM asset_revaluations
+              WHERE company_id = $1
+                AND asset_id = $2
+                AND deleted_at IS NULL
+                AND status = 'posted'
+                AND revaluation_date > $3::date
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM asset_disposals
+              WHERE company_id = $1
+                AND asset_id = $2
+                AND deleted_at IS NULL
+                AND status = 'posted'
+                AND disposal_date >= $3::date
+            )
+          ) AS later_event
+        `,
+        [
+          context.companyId,
+          entry.asset_id,
+          entry.period_date,
+        ],
+      );
+
+    if (
+      later.rows[0]
+        ?.later_event
+    ) {
+      throw new FixedAssetInputError(
+        'Reverse later depreciation, impairment, revaluation or disposal events before reversing this depreciation.',
+      );
+    }
+
+    const reversal =
+      await reversePostedLedgerJournal(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          originalJournalId:
+            String(
+              entry.journal_id,
+            ),
+          journalDate:
+            reversalDate,
+          description:
+            'Reverse depreciation · ' +
+            String(
+              entry.asset_code,
+            ) +
+            ' · ' +
+            String(
+              entry.period_date,
+            ),
+          sourceModule:
+            'fixed_assets',
+          sourceType:
+            'depreciation_reversal',
+          sourceId:
+            entryId,
+          sourceEventKey:
+            'fixed_assets:depreciation-reversal:' +
+            entryId,
+        },
+      );
+
+    await client.query(
+      `
+        UPDATE asset_depreciation_entries
+        SET
+          status = 'reversed',
+          reversal_journal_id = $3,
+          reversed_at = NOW(),
+          updated_by = $4,
+          updated_at = NOW()
+        WHERE company_id = $1
+          AND id = $2
+      `,
+      [
+        context.companyId,
+        entryId,
+        reversal.journalId,
+        context.userId,
+      ],
+    );
+
+    await client.query(
+      `
+        UPDATE fixed_assets
+        SET
+          accumulated_depreciation =
+            GREATEST(
+              accumulated_depreciation -
+              $3::numeric,
+              0
+            ),
+          last_depreciation_date = (
+            SELECT MAX(period_date)
+            FROM asset_depreciation_entries
+            WHERE company_id = $1
+              AND asset_id = $2
+              AND deleted_at IS NULL
+              AND status IN ('active','posted')
+          ),
+          status =
+            CASE
+              WHEN status = 'fully_depreciated'
+              THEN 'in_service'
+              ELSE status
+            END,
+          updated_by = $4,
+          updated_at = NOW()
+        WHERE company_id = $1
+          AND id = $2
+      `,
+      [
+        context.companyId,
+        entry.asset_id,
+        entry.depreciation_amount,
+        context.userId,
+      ],
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    await audit(
+      context,
+      'depreciation.reversed',
+      'asset_depreciation_entries',
+      entryId,
+      'Fixed Asset depreciation reversed',
+      {
+        journalId:
+          reversal.journalId,
+      },
+    );
+
+    return {
+      id:
+        entryId,
+      journalId:
+        reversal.journalId,
+      reused:
+        reversal.reused,
     };
   } catch (
     error
