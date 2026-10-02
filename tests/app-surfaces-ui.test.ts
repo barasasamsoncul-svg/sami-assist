@@ -1278,3 +1278,46 @@ test(
     }
   },
 );
+
+
+test(
+  'Fixed Assets overview uses the dedicated accounting control and protected API',
+  async () => {
+    const [workspace, control, route] = await Promise.all([
+      readFile('app/apps/fixed_assets/FixedAssetsWorkspace.tsx','utf8'),
+      readFile('app/apps/fixed_assets/FixedAssetsAccountingControl.tsx','utf8'),
+      readFile('app/api/apps/fixed_assets/accounting-control/route.ts','utf8'),
+    ]);
+
+    assert.match(
+      workspace,
+      /resolved\.view ===[\s\S]*'overview'[\s\S]*getFixedAssetsAccountingControl/,
+    );
+    assert.match(workspace,/FixedAssetsAccountingControl/);
+
+    for (const marker of [
+      'run-depreciation',
+      'save-settings',
+      'save-category',
+      'capitalize',
+      'Capitalization readiness',
+      'Run depreciation',
+    ]) {
+      assert.match(control,new RegExp(marker));
+    }
+
+    assert.match(
+      control,
+      /\/api\/apps\/fixed_assets\/accounting-control/,
+    );
+
+    for (const marker of [
+      'save-settings',
+      'save-category',
+      'capitalize',
+      'run-depreciation',
+    ]) {
+      assert.match(route,new RegExp(marker));
+    }
+  },
+);
