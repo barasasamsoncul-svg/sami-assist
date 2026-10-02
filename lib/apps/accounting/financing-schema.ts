@@ -278,6 +278,41 @@ CREATE INDEX IF NOT EXISTS idx_accounting_financing_accrual_period
   ON public.accounting_financing_interest_accruals(company_id,facility_id,period_end)
   WHERE deleted_at IS NULL;
 
+CREATE TABLE IF NOT EXISTS public.accounting_financing_reclassifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  facility_id UUID NOT NULL REFERENCES public.accounting_financing_facilities(id) ON DELETE CASCADE,
+  as_of_date DATE NOT NULL,
+  classification_days INTEGER NOT NULL,
+  target_current_principal NUMERIC(19,2) NOT NULL,
+  prior_current_principal NUMERIC(19,2) NOT NULL,
+  adjustment_amount NUMERIC(19,2) NOT NULL,
+  journal_id UUID REFERENCES public.journals(id) ON DELETE RESTRICT,
+  reversal_journal_id UUID REFERENCES public.journals(id) ON DELETE RESTRICT,
+  request_key UUID NOT NULL,
+  request_hash VARCHAR(64) NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'posted',
+  posted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  reversed_at TIMESTAMPTZ,
+  created_by UUID,
+  updated_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
+  CHECK (classification_days BETWEEN 1 AND 730),
+  CHECK (target_current_principal >= 0),
+  CHECK (prior_current_principal >= 0),
+  CHECK (status IN ('posted','reversed'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_financing_reclassification_request
+  ON public.accounting_financing_reclassifications(company_id,facility_id,request_key)
+  WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_accounting_financing_reclassification_as_of
+  ON public.accounting_financing_reclassifications(company_id,facility_id,as_of_date DESC,created_at DESC)
+  WHERE deleted_at IS NULL;
+
 CREATE TABLE IF NOT EXISTS public.accounting_financing_runs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
