@@ -655,6 +655,31 @@ test('Sales v2 is registered into manifests, migrations, Search and SaMi AI', as
     /stock_movements/,
   );
 
+
+  assert.match(
+    inventoryBridge,
+    /accounting_inventory_settings/,
+    'Sales must detect the optional Accounting Inventory Valuation contract without requiring Accounting to be installed.',
+  );
+
+  assert.match(
+    inventoryBridge,
+    /accounting_inventory_source_events/,
+    'Fulfillment must persist a valuation source event when Inventory Valuation is enabled.',
+  );
+
+  assert.match(
+    inventoryBridge,
+    /movement_snapshot/,
+    'Sales fulfillment must snapshot product standard cost in the same transaction as the stock movement.',
+  );
+
+  assert.match(
+    inventoryBridge,
+    /ON CONFLICT[\s\S]*DO NOTHING/,
+    'Valuation source-event capture must remain idempotent across fulfillment retries.',
+  );
+
   assert.match(
     inventoryBridge,
     /Insufficient available stock/,
