@@ -1248,7 +1248,7 @@ async function tableMetadata(
             ...relations.values(),
           ].find(
             relation =>
-              relation.targetCompanyScoped !==
+              relation.companyScoped !==
               true,
           );
 
