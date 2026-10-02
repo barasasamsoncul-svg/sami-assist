@@ -59,7 +59,18 @@ type StartCallDetail = {
   conversationId?: string | null;
 };
 
-type Json = Record<string, any>;
+type Json = {
+  success?: boolean;
+  error?: string;
+  iceServers?: unknown;
+  signals?: unknown;
+  calls?: unknown;
+  call?: unknown;
+  preferences?: {
+    soundEnabled?: boolean;
+    callRingtone?: SamiSoundKey;
+  };
+};
 
 async function readJson(
   response: Response,
