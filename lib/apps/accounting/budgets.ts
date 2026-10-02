@@ -145,12 +145,6 @@ async function assertPlanningAccount(
   return row;
 }
 
-function monthEnd(value: string) {
-  const date = new Date(value + 'T00:00:00.000Z');
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0))
-    .toISOString().slice(0, 10);
-}
-
 export async function saveBudgetSettings(input: unknown) {
   const context = await requireEnterpriseModuleTableContext(
     'accounting',
@@ -276,6 +270,7 @@ export async function saveBudgetLines(input: unknown) {
       amount: string;
       notes: string | null;
     }> = [];
+    const uniqueLines = new Set<string>();
 
     for (const raw of body.lines) {
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -286,6 +281,13 @@ export async function saveBudgetLines(input: unknown) {
       const periodStart = accountingDate(line.periodStart);
       const periodEnd = allowedPeriods.get(periodStart);
       if (!periodEnd) throw new AccountingInputError('A budget line period is outside the plan horizon.');
+      const uniqueKey = accountId + '|' + periodStart;
+      if (uniqueLines.has(uniqueKey)) {
+        throw new AccountingInputError(
+          'Each account can appear only once in a budget month.',
+        );
+      }
+      uniqueLines.add(uniqueKey);
       await assertPlanningAccount(client, context.companyId, accountId);
       let cents: bigint;
       try {
@@ -397,6 +399,11 @@ export async function createBudgetRevision(input: unknown) {
     );
     const source = sourceResult.rows[0];
     if (!source) throw new AccountingInputError('Source budget version could not be found.');
+    if (String(source.version_type) !== 'budget') {
+      throw new AccountingInputError(
+        'Create a new rolling forecast from the published budget instead of revising a forecast in place.',
+      );
+    }
     if (String(source.plan_status) !== 'open') throw new AccountingInputError('This budget plan is closed.');
     const requestHash = hashPayload({ sourceVersionId, notes });
     const replay = await client.query(
@@ -504,7 +511,7 @@ export const approveBudgetVersion = (input: unknown) => transitionBudgetVersion(
 export const publishBudgetVersion = (input: unknown) => transitionBudgetVersion(input, 'published');
 
 async function actualByMonth(
-  client: PoolClient,
+  client: Pick<PoolClient,'query'>,
   companyId: string,
   startDate: string,
   endDate: string,
@@ -801,7 +808,7 @@ export async function getAccountingBudgets() {
     const endDate = String(currentPlan.fiscal_year_end).slice(0,10);
     const through = today < endDate ? today : endDate;
     const actuals = await actualByMonth(
-      { query: context.pool.query.bind(context.pool) } as PoolClient,
+      context.pool,
       companyId,
       startDate,
       through,
