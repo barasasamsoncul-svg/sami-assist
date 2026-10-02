@@ -1311,11 +1311,26 @@ test(
       /\/api\/apps\/fixed_assets\/accounting-control/,
     );
 
+
+    assert.match(
+      control,
+      /FixedAssetsLifecycleControl/,
+      'The Fixed Assets overview must expose the controlled lifecycle surface without reverting to generic CRUD.',
+    );
+
     for (const marker of [
       'save-settings',
       'save-category',
       'capitalize',
       'run-depreciation',
+      'reverse-capitalization',
+      'post-impairment',
+      'reverse-impairment',
+      'post-revaluation',
+      'reverse-revaluation',
+      'dispose',
+      'reverse-disposal',
+      'link-source',
     ]) {
       assert.match(route,new RegExp(marker));
     }
