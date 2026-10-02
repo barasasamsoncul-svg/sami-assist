@@ -1493,6 +1493,22 @@ export async function activateAccrualSchedule(
       'BEGIN',
     );
 
+    const settings =
+      await settingsForUpdate(
+        client,
+        context.companyId,
+      );
+
+    if (
+      settings &&
+      settings.enabled ===
+        false
+    ) {
+      throw new AccountingInputError(
+        'Enable Accruals and Deferrals before activating a schedule.',
+      );
+    }
+
     const result =
       await client.query(
         `
@@ -3233,8 +3249,10 @@ export async function getAccountingAccruals() {
                     $1
                 AND line.deleted_at
                     IS NULL
-                AND line.status =
-                    'pending'
+                AND line.status IN (
+                  'pending',
+                  'failed'
+                )
                 AND line.posting_date <=
                     $2::date
             ) AS due_count
