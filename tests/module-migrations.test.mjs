@@ -1916,3 +1916,24 @@ test('Accounting 2.21 Accruals and Deferrals are migration-backed and ledger con
     assert.match(route,new RegExp(action));
   }
 });
+
+
+test('Accounting 2.21 release migration expands tenant schemas before promotion without advancing control versions', async () => {
+  const [script,pkg] = await Promise.all([
+    source('scripts/migrate-accounting-2-21-before-release.ts'),
+    source('package.json'),
+  ]);
+
+  assert.match(script,/runSamiModuleMigrations/);
+  assert.match(script,/moduleKey:\s*'accounting'/);
+  assert.match(script,/targetVersion:\s*manifest\.version/);
+  assert.match(script,/expand-before-promote/);
+  assert.match(script,/controlVersionUpdated:[\s\S]*false/);
+  assert.doesNotMatch(
+    script,
+    /UPDATE\s+tenant_modules/i,
+    'Accounting pre-release expansion must not advertise 2.21 before production code is live.',
+  );
+  assert.match(pkg,/migrate:accounting:2\.21:release/);
+  assert.match(pkg,/test:accounting:2\.21:release/);
+});
