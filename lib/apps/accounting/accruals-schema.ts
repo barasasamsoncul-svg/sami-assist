@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS public.accounting_accrual_schedules (
   initial_journal_id UUID REFERENCES public.journals(id) ON DELETE RESTRICT,
   initial_reversal_journal_id UUID REFERENCES public.journals(id) ON DELETE RESTRICT,
   request_key UUID NOT NULL,
+  request_hash VARCHAR(64) NOT NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'draft',
   activated_at TIMESTAMPTZ,
   completed_at TIMESTAMPTZ,
