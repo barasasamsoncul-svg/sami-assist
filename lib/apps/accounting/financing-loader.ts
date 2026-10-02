@@ -3,6 +3,9 @@ import 'server-only';
 import {
   requireEnterpriseModuleTableContext,
 } from '@/lib/apps/enterprise/service';
+import {
+  getAccountingFinancingReporting,
+} from './financing-reporting';
 
 export async function getAccountingFinancing() {
   const context =
@@ -848,6 +851,11 @@ export async function getAccountingFinancing() {
       ),
     ]);
 
+  const reporting =
+    await getAccountingFinancingReporting(
+      today,
+    );
+
   return {
     companyId,
     currency,
@@ -920,6 +928,7 @@ export async function getAccountingFinancing() {
         payments_next_30_days:
           0,
       },
+    reporting,
   };
 }
 
