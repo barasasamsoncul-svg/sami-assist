@@ -233,7 +233,7 @@ export async function getAccountingFinancing() {
               AS next_principal,
             next_due.scheduled_interest::text
               AS next_interest,
-            latest_classification.target_current_principal::text
+            latest_classification.current_principal_base::text
               AS current_principal_base,
             latest_classification.as_of_date::text
               AS classification_as_of,
@@ -284,7 +284,7 @@ export async function getAccountingFinancing() {
                     THEN principal_base
                     WHEN transaction_type =
                          'principal_repayment'
-                    THEN -principal_base
+                    THEN -principal_carrying_base
                     ELSE 0
                   END
                 ),
@@ -362,7 +362,7 @@ export async function getAccountingFinancing() {
                 COALESCE(
                   (
                     SELECT SUM(
-                      interest_base
+                      interest_carrying_base
                     )
                     FROM accounting_financing_transactions
                     WHERE company_id =
@@ -429,23 +429,58 @@ export async function getAccountingFinancing() {
             ON TRUE
           LEFT JOIN LATERAL (
             SELECT
-              target_current_principal,
-              as_of_date
-            FROM accounting_financing_reclassifications
-            WHERE company_id =
+              GREATEST(
+                reclass.target_current_principal -
+                COALESCE(
+                  (
+                    SELECT SUM(
+                      transaction.current_principal_base
+                    )
+                    FROM accounting_financing_transactions transaction
+                    WHERE transaction.company_id =
+                          reclass.company_id
+                      AND transaction.facility_id =
+                          reclass.facility_id
+                      AND transaction.deleted_at
+                          IS NULL
+                      AND transaction.status =
+                          'posted'
+                      AND transaction.transaction_type =
+                          'principal_repayment'
+                      AND (
+                        transaction.transaction_date >
+                          reclass.as_of_date
+                        OR (
+                          transaction.transaction_date =
+                            reclass.as_of_date
+                          AND transaction.created_at >
+                            reclass.created_at
+                        )
+                      )
+                      AND transaction.transaction_date <=
+                          $2::date
+                  ),
+                  0
+                ),
+                0
+              )::numeric(19,2)
+                AS current_principal_base,
+              reclass.as_of_date
+            FROM accounting_financing_reclassifications reclass
+            WHERE reclass.company_id =
                   facility.company_id
-              AND facility_id =
+              AND reclass.facility_id =
                   facility.id
-              AND deleted_at
+              AND reclass.deleted_at
                   IS NULL
-              AND status =
+              AND reclass.status =
                   'posted'
-              AND as_of_date <=
+              AND reclass.as_of_date <=
                   $2::date
             ORDER BY
-              as_of_date DESC,
-              created_at DESC,
-              id DESC
+              reclass.as_of_date DESC,
+              reclass.created_at DESC,
+              reclass.id DESC
             LIMIT 1
           ) latest_classification
             ON TRUE
@@ -587,8 +622,15 @@ export async function getAccountingFinancing() {
             transaction.exchange_rate::text,
             transaction.principal_foreign::text,
             transaction.principal_base::text,
+            transaction.principal_carrying_base::text,
+            transaction.current_principal_foreign::text,
+            transaction.current_principal_base::text,
+            transaction.noncurrent_principal_foreign::text,
+            transaction.noncurrent_principal_base::text,
             transaction.interest_foreign::text,
             transaction.interest_base::text,
+            transaction.interest_carrying_base::text,
+            transaction.realized_fx_base::text,
             transaction.fee_foreign::text,
             transaction.fee_base::text,
             transaction.financial_account_id::text,
@@ -753,7 +795,7 @@ export async function getAccountingFinancing() {
                     THEN transaction.principal_base
                     WHEN transaction.transaction_type =
                          'principal_repayment'
-                    THEN -transaction.principal_base
+                    THEN -transaction.principal_carrying_base
                     ELSE 0
                   END
                 ),
