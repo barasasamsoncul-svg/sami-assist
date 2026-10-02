@@ -570,6 +570,24 @@ export default async function AccountingWorkspace({
 
   if (
     dedicatedSection ===
+      'loans-financing'
+  ) {
+    try {
+      financingWorkspace =
+        await getAccountingFinancing();
+    } catch (
+      error
+    ) {
+      foundationError =
+        error instanceof
+          AccountingInputError
+          ? error.message
+          : 'Loans and financing could not be loaded. Retry this page.';
+    }
+  }
+
+  if (
+    dedicatedSection ===
       'reconciliation'
   ) {
     try {
