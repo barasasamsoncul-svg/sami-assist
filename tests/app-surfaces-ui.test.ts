@@ -1224,3 +1224,57 @@ test(
     );
   },
 );
+
+
+test(
+  'Accounting Inventory Valuation exposes standard-cost sync mappings and reconciliation controls',
+  async () => {
+    const [workspace, valuation] = await Promise.all([
+      readFile('app/apps/accounting/AccountingWorkspace.tsx','utf8'),
+      readFile('app/apps/accounting/AccountingInventoryValuation.tsx','utf8'),
+    ]);
+
+    assert.match(
+      workspace,
+      /Inventory valuation[\s\S]*\/inventory-valuation/,
+      'Accounting sidebar must expose the dedicated Inventory Valuation workspace.',
+    );
+
+    assert.match(
+      valuation,
+      /\/api\/apps\/accounting\/inventory-valuation/,
+      'Inventory Valuation UI must use its dedicated Accounting API.',
+    );
+
+    for (const action of [
+      'save-settings',
+      'sync',
+      'create-reconciliation',
+      'save-movement-rule',
+      'save-product-mapping',
+      'post-reconciliation',
+      'reverse-reconciliation',
+    ]) {
+      assert.match(
+        valuation,
+        new RegExp(action),
+        'Inventory Valuation UI must expose ' + action + '.',
+      );
+    }
+
+    for (const marker of [
+      'Inventory valuation settings saved',
+      'Inventory valuation synchronized',
+      'Inventory reconciliation snapshot created',
+      'Product accounting mapping saved',
+      'Inventory reconciliation adjustment posted',
+      'Inventory reconciliation reversed',
+    ]) {
+      assert.match(
+        valuation,
+        new RegExp(marker),
+        'Inventory Valuation UI must surface ' + marker + '.',
+      );
+    }
+  },
+);

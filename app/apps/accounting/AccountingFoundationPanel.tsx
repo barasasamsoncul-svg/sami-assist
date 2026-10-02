@@ -36,6 +36,7 @@ export const ACCOUNTING_SECTIONS = [
   "kenya",
   "international",
   "fx",
+  "inventory-valuation",
   "setup",
 ] as const;
 export type AccountingSection = (typeof ACCOUNTING_SECTIONS)[number];
@@ -116,6 +117,7 @@ export default function AccountingFoundationPanel({
     kenya: "Kenya accounting & eTIMS",
     international: "International localization",
     fx: "Foreign currency",
+    "inventory-valuation": "Inventory valuation",
     setup: "Accounting setup",
   };
   const descriptions = {
@@ -152,6 +154,7 @@ export default function AccountingFoundationPanel({
     kenya: "Control Kenya VAT reporting and synchronize successful KRA eTIMS fiscal evidence without duplicating the Invoicing connector.",
     international: "Configure country localization, report boxes, filing metadata and shared UBL/Peppol evidence.",
     fx: "Manage exchange rates, foreign monetary positions, realized FX, revaluation and cross-currency settlement.",
+    "inventory-valuation": "Reconcile Inventory standard-cost value to the ledger and post COGS, returns and approved stock adjustments.",
     reconciliation:
       "Match statement lines to posted bank-ledger movement, split allocations, apply controlled adjustment rules and preserve immutable reconciliation history.",
     setup:

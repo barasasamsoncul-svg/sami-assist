@@ -584,40 +584,212 @@ export async function postSalesFulfillmentToInventory(
     );
   }
 
-  await client.query(
-    `
-      INSERT INTO stock_movements (
-        company_id,
-        product_id,
-        warehouse_id,
-        movement_type,
-        quantity,
-        reference,
-        created_by,
-        updated_by
-      )
-      VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$7
-      )
-    `,
-    [
-      input.companyId,
-      productId,
-      warehouseId,
-      delta >
-        0
-        ? 'sales_delivery'
-        : 'sales_return',
-      Math.abs(
-        delta,
-      ),
-      'sales-order:' +
-      input.orderId +
-      ':line:' +
-      input.lineId,
-      input.userId,
-    ],
-  );
+  const movement =
+    await client.query(
+      `
+        INSERT INTO stock_movements (
+          company_id,
+          product_id,
+          warehouse_id,
+          movement_type,
+          quantity,
+          reference,
+          created_by,
+          updated_by
+        )
+        VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$7
+        )
+        RETURNING
+          id::text,
+          created_at::date::text AS movement_date,
+          movement_type,
+          quantity::text,
+          reference
+      `,
+      [
+        input.companyId,
+        productId,
+        warehouseId,
+        delta >
+          0
+          ? 'sales_delivery'
+          : 'sales_return',
+        Math.abs(
+          delta,
+        ),
+        'sales-order:' +
+        input.orderId +
+        ':line:' +
+        input.lineId,
+        input.userId,
+      ],
+    );
+
+  /*
+   * Accounting Inventory Valuation is an optional consumer of authoritative
+   * Inventory movements. Sales must never require Accounting to be installed,
+   * but when the valuation contract exists and is enabled we snapshot the
+   * product standard cost in the same transaction as the stock movement.
+   */
+  const valuationReady =
+    await client.query(
+      `
+        SELECT
+          to_regclass(
+            'public.accounting_inventory_settings'
+          ) IS NOT NULL
+            AS settings_ready,
+          to_regclass(
+            'public.accounting_inventory_source_events'
+          ) IS NOT NULL
+            AS events_ready,
+          EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema =
+                  'public'
+              AND table_name =
+                  'products'
+              AND column_name =
+                  'cost_price'
+          ) AS cost_price_ready
+      `,
+    );
+
+  if (
+    valuationReady.rows[0]
+      ?.settings_ready === true &&
+    valuationReady.rows[0]
+      ?.events_ready === true &&
+    valuationReady.rows[0]
+      ?.cost_price_ready === true &&
+    movement.rows[0]
+  ) {
+    const movementRow =
+      movement.rows[0];
+
+    await client.query(
+      `
+        INSERT INTO accounting_inventory_source_events (
+          company_id,
+          source_type,
+          source_id,
+          source_event_key,
+          event_date,
+          movement_type,
+          product_id,
+          warehouse_id,
+          source_quantity,
+          quantity_effect,
+          unit_cost,
+          value_amount,
+          cost_source,
+          cost_estimated,
+          status,
+          metadata,
+          created_by,
+          updated_by
+        )
+        SELECT
+          $1,
+          'stock_movement',
+          $2::uuid,
+          'inventory:stock-movement:' ||
+            $2,
+          $3::date,
+          $4,
+          $5::uuid,
+          $6::uuid,
+          $7::numeric,
+          CASE
+            WHEN $4 =
+                 'sales_delivery'
+              THEN -$7::numeric
+            ELSE $7::numeric
+          END,
+          COALESCE(
+            product.cost_price,
+            0
+          ),
+          ROUND(
+            ABS(
+              $7::numeric
+            ) *
+            COALESCE(
+              product.cost_price,
+              0
+            ),
+            2
+          ),
+          'movement_snapshot',
+          FALSE,
+          'pending',
+          jsonb_build_object(
+            'reference',
+            $8,
+            'salesOrderId',
+            $9,
+            'salesOrderLineId',
+            $10
+          ),
+          $11,
+          $11
+        FROM products product
+        INNER JOIN accounting_inventory_settings cfg
+          ON cfg.company_id =
+             $1
+         AND cfg.enabled =
+             TRUE
+         AND cfg.status =
+             'active'
+         AND cfg.deleted_at
+             IS NULL
+         AND cfg.sync_sales_movements =
+             TRUE
+         AND cfg.valuation_start_date <=
+             $3::date
+        WHERE product.id =
+              $5::uuid
+          AND product.company_id =
+              $1
+          AND product.deleted_at
+              IS NULL
+        ON CONFLICT (
+          company_id,
+          source_event_key
+        )
+        WHERE deleted_at
+              IS NULL
+        DO NOTHING
+      `,
+      [
+        input.companyId,
+        String(
+          movementRow.id,
+        ),
+        String(
+          movementRow.movement_date,
+        ),
+        String(
+          movementRow.movement_type,
+        ),
+        productId,
+        warehouseId,
+        String(
+          movementRow.quantity,
+        ),
+        movementRow.reference
+          ? String(
+              movementRow.reference,
+            )
+          : null,
+        input.orderId,
+        input.lineId,
+        input.userId,
+      ],
+    );
+  }
 
   await client.query(
     `

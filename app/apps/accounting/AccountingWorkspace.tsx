@@ -1,3 +1,5 @@
+import AccountingInventoryValuation from './AccountingInventoryValuation';
+import { getAccountingInventoryValuation } from '@/lib/apps/accounting/inventory-valuation';
 import AccountingFx from './AccountingFx';
 import { getAccountingFx } from '@/lib/apps/accounting/fx';
 import AccountingInternational from './AccountingInternational';
@@ -239,6 +241,7 @@ export default async function AccountingWorkspace({
   let kenyaWorkspace: Awaited<ReturnType<typeof getAccountingKenya>> | null = null;
   let internationalWorkspace: Awaited<ReturnType<typeof getAccountingInternational>> | null = null;
   let fxWorkspace: Awaited<ReturnType<typeof getAccountingFx>> | null = null;
+  let inventoryValuationWorkspace: Awaited<ReturnType<typeof getAccountingInventoryValuation>> | null = null;
 
   let reconciliationWorkspace:
     Awaited<
@@ -276,6 +279,7 @@ export default async function AccountingWorkspace({
     dedicatedSection !== 'kenya' &&
     dedicatedSection !== 'international' &&
     dedicatedSection !== 'fx' &&
+    dedicatedSection !== 'inventory-valuation' &&
     dedicatedSection !==
       'reconciliation'
   ) {
@@ -531,6 +535,11 @@ export default async function AccountingWorkspace({
   if (dedicatedSection === 'fx') {
     try { fxWorkspace = await getAccountingFx({asOf:filters.to || filters.from}); }
     catch (error) { foundationError = error instanceof AccountingInputError ? error.message : 'Foreign currency could not be loaded. Retry this page.'; }
+  }
+
+  if (dedicatedSection === 'inventory-valuation') {
+    try { inventoryValuationWorkspace = await getAccountingInventoryValuation(); }
+    catch (error) { foundationError = error instanceof AccountingInputError ? error.message : 'Inventory valuation could not be loaded. Retry this page.'; }
   }
 
   if (
@@ -880,6 +889,8 @@ export default async function AccountingWorkspace({
 
     {key:'fx',label:'Foreign currency',href:appBaseHref+'/fx',description:'Exchange rates, foreign positions, FX settlements and revaluation.',sectionLabel:'Banking'},
 
+    {key:'inventory-valuation',label:'Inventory valuation',href:appBaseHref+'/inventory-valuation',description:'Standard-cost COGS, inventory journals and stock-to-GL reconciliation.',sectionLabel:'Operations'},
+
     {
       key:
         'reconciliation',
@@ -1088,6 +1099,8 @@ export default async function AccountingWorkspace({
                   ? (internationalWorkspace ? <AccountingInternational data={internationalWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'International localization could not be loaded.'}</div>)
                 : dedicatedSection === 'fx'
                   ? (fxWorkspace ? <AccountingFx data={fxWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Foreign currency could not be loaded.'}</div>)
+                : dedicatedSection === 'inventory-valuation'
+                  ? (inventoryValuationWorkspace ? <AccountingInventoryValuation data={inventoryValuationWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Inventory valuation could not be loaded.'}</div>)
                 : dedicatedSection ===
                     'reconciliation'
                   ? (
