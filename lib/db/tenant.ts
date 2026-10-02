@@ -49,6 +49,8 @@ interface TenantDatabaseRecord {
 
 interface TenantPoolEntry {
   databaseName: string;
+  databaseHost: string;
+  databasePort: number;
   pool: Pool;
 }
 
@@ -108,14 +110,34 @@ function shouldUseTenantSsl(
   return process.env.NODE_ENV === 'production';
 }
 
+function getTenantPoolKey(
+  databaseHost: string,
+  databasePort: number,
+  databaseName: string,
+): string {
+  return [
+    databaseHost
+      .trim()
+      .toLowerCase(),
+    String(
+      databasePort,
+    ),
+    databaseName
+      .trim(),
+  ].join(
+    ':',
+  );
+}
+
 /**
  * Tenant pool cache.
  *
  * Key:
- *   physical database name
+ *   host + port + physical database name
  *
- * Value:
- *   PostgreSQL connection pool
+ * database_name is not globally unique across PostgreSQL hosts, so
+ * using only the database name can cross-wire two tenants when SaMi
+ * distributes tenant databases across multiple hosts/providers.
  */
 const tenantPools: Map<string, TenantPoolEntry> = new Map();
 
@@ -236,6 +258,13 @@ function createTenantPool(
     );
   }
 
+  const poolKey =
+    getTenantPoolKey(
+      database.databaseHost,
+      database.databasePort,
+      database.databaseName,
+    );
+
   const pool = new Pool({
     /**
      * Use the database host recorded for THIS tenant.
@@ -307,14 +336,14 @@ function createTenantPool(
        */
       const entry =
         tenantPools.get(
-          database.databaseName,
+          poolKey,
         );
 
       if (
         entry?.pool === pool
       ) {
         tenantPools.delete(
-          database.databaseName,
+          poolKey,
         );
       }
     },
@@ -338,19 +367,19 @@ async function evictOldestTenantPool(): Promise<void> {
   }
 
   const [
-    databaseName,
+    poolKey,
     entry,
   ] = oldestEntry.value;
 
   tenantPools.delete(
-    databaseName,
+    poolKey,
   );
 
   try {
     await entry.pool.end();
   } catch (error) {
     console.error(
-      `[SaMi] Failed to close tenant pool ${databaseName}:`,
+      `[SaMi] Failed to close tenant pool ${entry.databaseName}:`,
       error,
     );
   }
@@ -377,12 +406,19 @@ export async function getTenantPoolByTenantId(
       tenantId,
     );
 
+  const poolKey =
+    getTenantPoolKey(
+      database.databaseHost,
+      database.databasePort,
+      database.databaseName,
+    );
+
   /**
-   * Reuse existing pool.
+   * Reuse only the pool for this exact physical database endpoint.
    */
   const existing =
     tenantPools.get(
-      database.databaseName,
+      poolKey,
     );
 
   if (existing) {
@@ -405,10 +441,14 @@ export async function getTenantPoolByTenantId(
     );
 
   tenantPools.set(
-    database.databaseName,
+    poolKey,
     {
       databaseName:
         database.databaseName,
+      databaseHost:
+        database.databaseHost,
+      databasePort:
+        database.databasePort,
       pool,
     },
   );
@@ -445,9 +485,43 @@ export function getTenantPool(
   const normalizedName =
     databaseName.trim();
 
+  const host =
+    process.env.POSTGRES_HOST;
+
+  const port = Number.parseInt(
+    process.env.POSTGRES_PORT ||
+      String(5432),
+    10,
+  );
+
+  if (!host) {
+    throw new Error(
+      'POSTGRES_HOST is not configured.',
+    );
+  }
+
+  if (
+    !Number.isInteger(
+      port,
+    ) ||
+    port <= 0 ||
+    port > 65535
+  ) {
+    throw new Error(
+      'POSTGRES_PORT is invalid.',
+    );
+  }
+
+  const poolKey =
+    getTenantPoolKey(
+      host,
+      port,
+      normalizedName,
+    );
+
   const existing =
     tenantPools.get(
-      normalizedName,
+      poolKey,
     );
 
   if (existing) {
@@ -489,26 +563,11 @@ export function getTenantPool(
     }
   }
 
-  const host =
-    process.env.POSTGRES_HOST;
-
-  const port = Number.parseInt(
-    process.env.POSTGRES_PORT ||
-      String(5432),
-    10,
-  );
-
   const user =
     process.env.POSTGRES_ADMIN_USER;
 
   const password =
     process.env.POSTGRES_ADMIN_PASSWORD;
-
-  if (!host) {
-    throw new Error(
-      'POSTGRES_HOST is not configured.',
-    );
-  }
 
   if (!user) {
     throw new Error(
@@ -566,24 +625,28 @@ export function getTenantPool(
 
       const entry =
         tenantPools.get(
-          normalizedName,
+          poolKey,
         );
 
       if (
         entry?.pool === pool
       ) {
         tenantPools.delete(
-          normalizedName,
+          poolKey,
         );
       }
     },
   );
 
   tenantPools.set(
-    normalizedName,
+    poolKey,
     {
       databaseName:
         normalizedName,
+      databaseHost:
+        host,
+      databasePort:
+        port,
       pool,
     },
   );
@@ -788,23 +851,60 @@ export async function closeTenantPool(
   const normalizedName =
     databaseName.trim();
 
-  const entry =
-    tenantPools.get(
-      normalizedName,
-    );
-
-  if (!entry) {
+  if (
+    !normalizedName
+  ) {
     return;
   }
 
-  tenantPools.delete(
-    normalizedName,
+  const matches =
+    Array.from(
+      tenantPools.entries(),
+    )
+      .filter(
+        (
+          [
+            ,
+            entry,
+          ],
+        ) =>
+          entry.databaseName ===
+          normalizedName,
+      );
+
+  if (
+    matches.length ===
+    0
+  ) {
+    return;
+  }
+
+  for (
+    const [
+      poolKey,
+    ]
+    of matches
+  ) {
+    tenantPools.delete(
+      poolKey,
+    );
+  }
+
+  await Promise.all(
+    matches.map(
+      async (
+        [
+          ,
+          entry,
+        ],
+      ) => {
+        await entry.pool.end();
+      },
+    ),
   );
 
-  await entry.pool.end();
-
   console.log(
-    `[SaMi] Tenant database pool closed: ${normalizedName}`,
+    `[SaMi] Tenant database pool closed: ${normalizedName} (${matches.length} endpoint(s))`,
   );
 }
 

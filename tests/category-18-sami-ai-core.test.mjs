@@ -284,6 +284,43 @@ test('Category 18: business writes require explicit confirmation and access is r
   );
 });
 
+test('Category 18: confirmed AI write actions are claimed atomically before tool execution', async () => {
+  const service =
+    await source(
+      'lib/services/workspace-ai.ts',
+    );
+
+  assert.match(
+    service,
+    /UPDATE ai_actions[\s\S]*status = 'running'[\s\S]*AND user_id = \$2[\s\S]*AND company_id = \$3[\s\S]*AND status =[\s\S]*'pending_confirmation'[\s\S]*AND expires_at > NOW\(\)[\s\S]*RETURNING id/s,
+    'Confirmation must atomically claim exactly one pending, unexpired action in the current user/company boundary.',
+  );
+
+  assert.match(
+    service,
+    /claim\.rows\.length !==[\s\S]*1[\s\S]*ACTION_NOT_AVAILABLE/s,
+    'A concurrent or expired confirmation must stop before executing the business write.',
+  );
+
+  const claimIndex =
+    service.indexOf(
+      'const claim =',
+    );
+
+  const executeIndex =
+    service.indexOf(
+      'await tool.execute(',
+      claimIndex,
+    );
+
+  assert.ok(
+    claimIndex >= 0 &&
+      executeIndex >
+        claimIndex,
+    'The action must be claimed before tool.execute can run.',
+  );
+});
+
 test('Category 18: conversations, actions, runs and memory are scoped to the authenticated user and current company', async () => {
   const [service, memory] = await Promise.all([
     source('lib/services/workspace-ai.ts'),

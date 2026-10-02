@@ -1503,6 +1503,10 @@ export async function resolveWorkspaceAutomationApproval(
     string[] =
     [];
 
+  let approvedRuntime:
+    SamiAutomationRuntimeContext | null =
+    null;
+
   try {
     await client.query(
       'BEGIN',
@@ -1713,6 +1717,39 @@ export async function resolveWorkspaceAutomationApproval(
 
     if (
       decision ===
+        'approve'
+    ) {
+      if (
+        !runAsUserId
+      ) {
+        throw new WorkspaceAutomationError(
+          'AUTOMATION_RUN_FAILED',
+          'The approved automation run no longer has a valid run-as user.',
+        );
+      }
+
+      try {
+        approvedRuntime =
+          await resolveAutomationWorkerRuntime({
+            tenantId:
+              context.runtime
+                .tenantId,
+            userId:
+              runAsUserId,
+            companyId:
+              context.runtime
+                .companyId,
+          });
+      } catch {
+        throw new WorkspaceAutomationError(
+          'AUTOMATION_RUN_FAILED',
+          'The automation run-as authority is no longer active or permitted.',
+        );
+      }
+    }
+
+    if (
+      decision ===
         'reject'
     ) {
       await client.query(
@@ -1869,29 +1906,18 @@ export async function resolveWorkspaceAutomationApproval(
   }
 
   if (
-    !runAsUserId
+    !approvedRuntime
   ) {
     throw new WorkspaceAutomationError(
       'AUTOMATION_RUN_FAILED',
-      'The approved automation run no longer has a valid run-as user.',
+      'The approved automation run could not establish a valid run-as authority.',
     );
   }
 
-  const runtime =
-    await resolveAutomationWorkerRuntime({
-      tenantId:
-        context.runtime
-          .tenantId,
-      userId:
-        runAsUserId,
-      companyId:
-        context.runtime
-          .companyId,
-    });
-
   const resumed =
     await resumeAutomationRun({
-      runtime,
+      runtime:
+        approvedRuntime,
       runId,
     });
 

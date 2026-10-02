@@ -251,6 +251,75 @@ function parseReference(reference: string): { bucket: string; key: string } {
   };
 }
 
+function isObjectNotFoundError(
+  error: unknown,
+): boolean {
+  if (
+    !error ||
+    typeof error !==
+      'object'
+  ) {
+    return false;
+  }
+
+  const candidate =
+    error as {
+      name?: unknown;
+      Code?: unknown;
+      code?: unknown;
+      $metadata?: {
+        httpStatusCode?: unknown;
+      };
+    };
+
+  const status =
+    Number(
+      candidate.$metadata
+        ?.httpStatusCode,
+    );
+
+  const code =
+    String(
+      candidate.name ||
+      candidate.Code ||
+      candidate.code ||
+      '',
+    )
+      .trim()
+      .toLowerCase();
+
+  return (
+    status === 404 ||
+    code === 'notfound' ||
+    code === 'nosuchkey' ||
+    code === 'nosuchobject'
+  );
+}
+
+
+function assertConfiguredBackupReference(
+  config: BackupConfig,
+  reference:
+    string,
+) {
+  const parsed =
+    parseReference(
+      reference,
+    );
+
+  if (
+    parsed.bucket !==
+      config.bucket
+  ) {
+    throw new TenantBackupProviderError(
+      'RECOVERY_POINT_NOT_FOUND',
+      'Logical backup reference is outside the configured SaMi backup bucket.',
+    );
+  }
+
+  return parsed;
+}
+
 async function runCommand(
   command: string,
   args: string[],
@@ -437,7 +506,11 @@ class PostgresLogicalBackupProvider implements TenantBackupProvider {
     providerReference: string,
   ): Promise<{ available: boolean; expiresAt: Date | null }> {
     const config = getBackupConfig();
-    const parsed = parseReference(providerReference);
+    const parsed =
+      assertConfiguredBackupReference(
+        config,
+        providerReference,
+      );
 
     try {
       const s3 = createS3Client(config);
@@ -449,8 +522,22 @@ class PostgresLogicalBackupProvider implements TenantBackupProvider {
       );
 
       return { available: true, expiresAt: null };
-    } catch {
-      return { available: false, expiresAt: null };
+    } catch (error) {
+      if (
+        isObjectNotFoundError(
+          error,
+        )
+      ) {
+        return {
+          available: false,
+          expiresAt: null,
+        };
+      }
+
+      throw new TenantBackupProviderError(
+        'BACKUP_PROVIDER_FAILED',
+        'Tenant backup availability could not be verified because the backup provider is unavailable.',
+      );
     }
   }
 
@@ -458,7 +545,11 @@ class PostgresLogicalBackupProvider implements TenantBackupProvider {
     input: RestoreRecoveryPointInput,
   ): Promise<ProviderRestoreResult> {
     const config = getBackupConfig();
-    const parsed = parseReference(input.providerReference);
+    const parsed =
+      assertConfiguredBackupReference(
+        config,
+        input.providerReference,
+      );
     const s3 = createS3Client(config);
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'sami-restore-'));
     const dumpPath = path.join(tempDir, 'tenant.dump');
@@ -543,7 +634,11 @@ class PostgresLogicalBackupProvider implements TenantBackupProvider {
 
   async deleteRecoveryPoint(providerReference: string): Promise<void> {
     const config = getBackupConfig();
-    const parsed = parseReference(providerReference);
+    const parsed =
+      assertConfiguredBackupReference(
+        config,
+        providerReference,
+      );
     const s3 = createS3Client(config);
 
     await s3.send(

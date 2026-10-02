@@ -1527,6 +1527,9 @@ export async function createWorkspaceNotification(
             FROM notifications
             WHERE user_id = $1
               AND dedupe_key = $2
+              AND company_id
+                  IS NOT DISTINCT FROM
+                  $3::uuid
               AND archived_at IS NULL
             ORDER BY
               created_at DESC
@@ -1535,6 +1538,7 @@ export async function createWorkspaceNotification(
           [
             recipientUserId,
             dedupeKey,
+            companyId,
           ],
         );
 

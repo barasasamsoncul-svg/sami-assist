@@ -552,6 +552,45 @@ test('Category 24 tenant backup and recovery operations are guarded audited and 
 });
 
 
+test('Category 24 backup verification distinguishes a missing object from a provider outage and restore enforces expiry', async () => {
+  const [
+    provider,
+    recovery,
+  ] =
+    await Promise.all([
+      source(
+        'lib/services/postgres-logical-backup-provider.ts',
+      ),
+      source(
+        'lib/services/tenant-recovery.ts',
+      ),
+    ]);
+
+  assert.match(
+    provider,
+    /isObjectNotFoundError/,
+    'Only a definite object-not-found response may mark a logical backup unavailable.',
+  );
+
+  assert.match(
+    provider,
+    /BACKUP_PROVIDER_FAILED[\s\S]*backup provider is unavailable/s,
+    'Provider outages and credential failures must surface as verification failures instead of expiring valid backups.',
+  );
+
+  assert.match(
+    provider,
+    /assertConfiguredBackupReference/,
+    'Restore, verification and deletion must reject backup references outside the configured SaMi backup bucket.',
+  );
+
+  assert.match(
+    recovery,
+    /recoveryPoint\.expiresAt[\s\S]*Date\.now\(\)[\s\S]*status = 'expired'[\s\S]*cannot be restored/s,
+    'Restore must enforce recovery-point expiry directly instead of depending on a periodic expiry sweep.',
+  );
+});
+
 test('Category 24 live provider checks include private object storage used by backups', async () => {
   const provider = await source('lib/admin/provider-health.ts');
   const env = await source('docs/platform-env.example');
@@ -653,6 +692,39 @@ test('Category 24 supports future custom SaMi dependencies without weakening cor
   assert.match(manager, /Archive/);
 });
 
+
+test('Category 24 platform alert ledger uses explicit PostgreSQL parameter types', async () => {
+  const alerts =
+    await source(
+      'lib/admin/platform-alerts.ts',
+    );
+
+  assert.match(
+    alerts,
+    /status =\s*\$2::varchar/,
+  );
+
+  assert.match(
+    alerts,
+    /provider =\s*\$3::varchar/,
+  );
+
+  assert.match(
+    alerts,
+    /provider_message_id =\s*\$4::varchar/,
+  );
+
+  assert.match(
+    alerts,
+    /error_code =\s*\$5::varchar/,
+  );
+
+  assert.match(
+    alerts,
+    /WHEN \$2::varchar =\s*'sent'::varchar/,
+    'Reusing the delivery-status parameter inside CASE must preserve an explicit type so PostgreSQL cannot infer incompatible parameter types.',
+  );
+});
 
 test('Category 24 new error and infrastructure alerts are deduplicated before operator delivery', async () => {
   const incidents = await source('lib/observability/platform-incidents.ts');

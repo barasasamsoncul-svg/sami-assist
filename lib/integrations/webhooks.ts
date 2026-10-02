@@ -578,47 +578,96 @@ export async function receiveIntegrationWebhook(
       'BEGIN',
     );
 
-    await client.query(
-      `
-        INSERT INTO integration_webhook_deliveries (
-          id,
-          endpoint_id,
-          company_id,
-          direction,
-          external_event_id,
-          payload_digest,
-          payload_bytes,
-          signature_valid,
-          status,
-          correlation_id,
-          received_at,
-          created_at
-        )
-        VALUES (
-          $1,
-          $2,
-          $3,
-          'inbound',
-          $4,
-          $5,
-          $6,
-          TRUE,
-          'received',
-          $7,
-          NOW(),
-          NOW()
-        )
-      `,
-      [
-        deliveryId,
-        endpoint.id,
-        companyId,
-        externalEventId,
-        payloadDigest,
-        payloadBytes,
-        correlationId,
-      ],
-    );
+    const deliveryInsert =
+      await client.query(
+        `
+          INSERT INTO integration_webhook_deliveries (
+            id,
+            endpoint_id,
+            company_id,
+            direction,
+            external_event_id,
+            payload_digest,
+            payload_bytes,
+            signature_valid,
+            status,
+            correlation_id,
+            received_at,
+            created_at
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            'inbound',
+            $4,
+            $5,
+            $6,
+            TRUE,
+            'received',
+            $7,
+            NOW(),
+            NOW()
+          )
+          ON CONFLICT (
+            endpoint_id,
+            external_event_id
+          )
+          WHERE external_event_id IS NOT NULL
+          DO NOTHING
+          RETURNING id
+        `,
+        [
+          deliveryId,
+          endpoint.id,
+          companyId,
+          externalEventId,
+          payloadDigest,
+          payloadBytes,
+          correlationId,
+        ],
+      );
+
+    if (
+      externalEventId &&
+      deliveryInsert.rows.length ===
+        0
+    ) {
+      const existing =
+        await client.query(
+          `
+            SELECT
+              id
+            FROM integration_webhook_deliveries
+            WHERE endpoint_id = $1
+              AND external_event_id = $2
+            LIMIT 1
+          `,
+          [
+            endpoint.id,
+            externalEventId,
+          ],
+        );
+
+      await client.query(
+        'COMMIT',
+      );
+
+      return {
+        accepted:
+          true,
+        duplicate:
+          true,
+        deliveryId:
+          String(
+            existing.rows[0]
+              ?.id ||
+            '',
+          ),
+        dispatched:
+          0,
+      };
+    }
 
     await client.query(
       `

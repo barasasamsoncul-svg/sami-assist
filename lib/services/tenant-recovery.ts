@@ -1249,6 +1249,33 @@ export async function restoreTenantRecoveryPoint(
     );
   }
 
+  if (
+    recoveryPoint.expiresAt &&
+    new Date(
+      recoveryPoint.expiresAt,
+    ).getTime() <=
+      Date.now()
+  ) {
+    await queryControl(
+      `
+        UPDATE tenant_database_recovery_points
+        SET
+          status = 'expired',
+          updated_at = NOW()
+        WHERE id = $1
+          AND status = 'available'
+      `,
+      [
+        recoveryPointId,
+      ],
+    );
+
+    throw new TenantRecoveryError(
+      'RECOVERY_POINT_NOT_AVAILABLE',
+      'The requested recovery point has expired and cannot be restored.',
+    );
+  }
+
   const provider = getTenantBackupProvider(recoveryPoint.provider);
 
   return provider.restoreRecoveryPoint({

@@ -171,19 +171,10 @@ export function getSamiBillingPriceSource(
   }
 
   if (
-    plan ===
-      'standard' &&
-    process.env
-      .SAMI_BILLING_STANDARD_PRICE_PER_USER_MONTHLY
-  ) {
-    return 'env';
-  }
-
-  if (
-    plan ===
-      'custom' &&
-    process.env
-      .SAMI_BILLING_CUSTOM_PRICE_PER_USER_MONTHLY
+    envPrice(
+      plan,
+    ) !==
+      null
   ) {
     return 'env';
   }

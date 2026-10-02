@@ -61,6 +61,66 @@ test('Category 15: tenant core advances additively from 1.2.0 to 1.3.0', async (
   );
 });
 
+test('Category 15 hardening: notification dedupe is isolated per company with a forward tenant-core migration', async () => {
+  const [
+    manifest,
+    migration,
+    core,
+    service,
+  ] = await Promise.all([
+    source(
+      'lib/schema/tenant-migrations/manifest.ts',
+    ),
+    source(
+      'lib/schema/tenant-migrations/migrations/009-core-1.8.0-to-1.9.0.sql',
+    ),
+    source(
+      'lib/schema/tenant-core.sql',
+    ),
+    source(
+      'lib/services/workspace-notifications.ts',
+    ),
+  ]);
+
+  assert.match(
+    manifest,
+    /CURRENT_TENANT_CORE_VERSION =\s*['"]1\.9\.0['"]/,
+  );
+
+  assert.match(
+    manifest,
+    /core-1\.8\.0-to-1\.9\.0/,
+  );
+
+  assert.match(
+    migration,
+    /DROP INDEX IF EXISTS idx_notifications_user_dedupe_active/,
+  );
+
+  assert.match(
+    migration,
+    /ON notifications\([\s\S]*user_id,[\s\S]*COALESCE\([\s\S]*company_id,[\s\S]*00000000-0000-0000-0000-000000000000[\s\S]*dedupe_key[\s\S]*\)/s,
+    'Existing tenants must dedupe identical notification keys independently inside each company.',
+  );
+
+  assert.match(
+    core,
+    /idx_notifications_user_dedupe_active[\s\S]*COALESCE\([\s\S]*company_id,[\s\S]*00000000-0000-0000-0000-000000000000[\s\S]*dedupe_key/s,
+    'New tenants must receive the same company-scoped dedupe boundary.',
+  );
+
+  assert.match(
+    service,
+    /company_id[\s\S]*IS NOT DISTINCT FROM[\s\S]*\$3::uuid/s,
+    'Dedupe fallback lookup must resolve the notification from the same company or the same tenant-wide NULL company domain.',
+  );
+
+  assert.doesNotMatch(
+    migration,
+    /DROP TABLE|DROP DATABASE|TRUNCATE/i,
+  );
+});
+
 test('Category 15: notification delivery model separates alerts, preferences and channel delivery state', async () => {
   const core = await source(
     'lib/schema/tenant-core.sql',

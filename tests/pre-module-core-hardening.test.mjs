@@ -658,3 +658,61 @@ test('pre-module hardening: every module extension flag is enforced by a real ru
     /dataErasure/,
   );
 });
+
+
+test('pre-module hardening: tenant database pools are isolated by host port and database name', async () => {
+  const tenantDb =
+    await source(
+      'lib/db/tenant.ts',
+    );
+
+  assert.match(
+    tenantDb,
+    /function getTenantPoolKey\([\s\S]*databaseHost[\s\S]*databasePort[\s\S]*databaseName/s,
+    'Pool identity must include the physical database endpoint, not only database_name.',
+  );
+
+  assert.match(
+    tenantDb,
+    /getTenantPoolKey\([\s\S]*database\.databaseHost[\s\S]*database\.databasePort[\s\S]*database\.databaseName/s,
+    'Tenant-id resolution must cache by the exact registered host, port and database.',
+  );
+
+  assert.doesNotMatch(
+    tenantDb,
+    /tenantPools\.get\(\s*database\.databaseName\s*\)/,
+    'A same-named database on another host must never reuse the wrong tenant pool.',
+  );
+
+  assert.match(
+    tenantDb,
+    /entry\.databaseName ===\s*normalizedName/,
+    'Lifecycle pool closure must close every cached endpoint matching the physical database name.',
+  );
+});
+
+
+test('pre-module hardening: replacing active sessions is atomic', async () => {
+  const session =
+    await source(
+      'lib/auth/session.ts',
+    );
+
+  assert.match(
+    session,
+    /withControlTransaction/,
+    'Session replacement must use the control-database transaction helper.',
+  );
+
+  assert.match(
+    session,
+    /withControlTransaction\([\s\S]*UPDATE sessions[\s\S]*INSERT INTO sessions/s,
+    'Revoking existing sessions and inserting the replacement session must commit or rollback together.',
+  );
+
+  assert.doesNotMatch(
+    session,
+    /if \(\s*revokeExistingSessions\s*\) \{\s*await queryControl\([\s\S]*?UPDATE sessions/s,
+    'Single-session mode must not revoke valid sessions before the replacement insert is guaranteed.',
+  );
+});

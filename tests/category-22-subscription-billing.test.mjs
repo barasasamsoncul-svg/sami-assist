@@ -126,6 +126,25 @@ test('Category 22: subscription prices are server-authoritative and environment 
   );
 });
 
+test('Category 22: billing price diagnostics only report validated environment overrides', async () => {
+  const pricing =
+    await source(
+      'lib/billing/pricing.ts',
+    );
+
+  assert.match(
+    pricing,
+    /getSamiBillingPriceSource[\s\S]*envPrice\([\s\S]*plan[\s\S]*\) !==[\s\S]*null/s,
+    'Price-source diagnostics must agree with the validated price actually used for billing.',
+  );
+
+  assert.doesNotMatch(
+    pricing,
+    /getSamiBillingPriceSource[\s\S]*process\.env[\s\S]*return 'env'/s,
+    'A malformed but non-empty price env value must not be reported as the active price source.',
+  );
+});
+
 test('Category 22: billing provider is selected by environment behind one provider registry', async () => {
   const [
     contract,
