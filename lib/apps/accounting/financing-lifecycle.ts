@@ -196,6 +196,21 @@ export async function reverseFinancingTransaction(
     }
 
     if (
+      reversalDate <
+      String(
+        transaction
+          .transaction_date,
+      ).slice(
+        0,
+        10,
+      )
+    ) {
+      throw new AccountingInputError(
+        'Transaction reversal date cannot be before the original financing transaction date.',
+      );
+    }
+
+    if (
       transaction
         .facility_status ===
         'closed'
