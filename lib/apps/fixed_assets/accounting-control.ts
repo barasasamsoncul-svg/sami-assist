@@ -3505,6 +3505,70 @@ export async function reverseFixedAssetImpairment(
       };
     }
 
+    const laterValueEvent =
+      await client.query(
+        `
+          SELECT (
+            EXISTS (
+              SELECT 1
+              FROM asset_depreciation_entries
+              WHERE company_id = $1
+                AND asset_id = $2
+                AND deleted_at IS NULL
+                AND status IN ('active','posted')
+                AND period_date > (
+                  SELECT impairment_date
+                  FROM asset_impairments
+                  WHERE company_id = $1
+                    AND id = $3
+                )
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM asset_revaluations
+              WHERE company_id = $1
+                AND asset_id = $2
+                AND deleted_at IS NULL
+                AND status = 'posted'
+                AND revaluation_date > (
+                  SELECT impairment_date
+                  FROM asset_impairments
+                  WHERE company_id = $1
+                    AND id = $3
+                )
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM asset_disposals
+              WHERE company_id = $1
+                AND asset_id = $2
+                AND deleted_at IS NULL
+                AND status = 'posted'
+                AND disposal_date >= (
+                  SELECT impairment_date
+                  FROM asset_impairments
+                  WHERE company_id = $1
+                    AND id = $3
+                )
+            )
+          ) AS later_value_event
+        `,
+        [
+          context.companyId,
+          impairment.asset_id,
+          impairmentId,
+        ],
+      );
+
+    if (
+      laterValueEvent.rows[0]
+        ?.later_value_event
+    ) {
+      throw new FixedAssetInputError(
+        'Reverse later depreciation, revaluation or disposal events before reversing this impairment.',
+      );
+    }
+
     const reversal =
       await reversePostedLedgerJournal(
         client,
@@ -4386,6 +4450,55 @@ export async function reverseFixedAssetRevaluation(
     ) {
       throw new FixedAssetInputError(
         'Reverse later revaluations before reversing this one.',
+      );
+    }
+
+    const laterLifecycle =
+      await client.query(
+        `
+          SELECT (
+            EXISTS (
+              SELECT 1
+              FROM asset_depreciation_entries
+              WHERE company_id = $1
+                AND asset_id = $2
+                AND deleted_at IS NULL
+                AND status IN ('active','posted')
+                AND period_date > $3::date
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM asset_impairments
+              WHERE company_id = $1
+                AND asset_id = $2
+                AND deleted_at IS NULL
+                AND status = 'posted'
+                AND impairment_date > $3::date
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM asset_disposals
+              WHERE company_id = $1
+                AND asset_id = $2
+                AND deleted_at IS NULL
+                AND status = 'posted'
+                AND disposal_date >= $3::date
+            )
+          ) AS later_lifecycle
+        `,
+        [
+          context.companyId,
+          row.asset_id,
+          row.revaluation_date,
+        ],
+      );
+
+    if (
+      laterLifecycle.rows[0]
+        ?.later_lifecycle
+    ) {
+      throw new FixedAssetInputError(
+        'Reverse later depreciation, impairment or disposal events before reversing this revaluation.',
       );
     }
 
