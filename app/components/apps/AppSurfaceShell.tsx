@@ -127,6 +127,18 @@ const WorkspaceNotificationCenter =
     },
   );
 
+const WorkspaceCallOverlay =
+  dynamic(
+    () =>
+      import(
+        '@/app/components/workspace/WorkspaceCallOverlay'
+      ),
+    {
+      ssr:
+        false,
+    },
+  );
+
 type UserData = {
   id: string;
   email: string;
@@ -1003,6 +1015,14 @@ export default function AppSurfaceShell({
           )
         }
       </div>
+
+      {!appLocked ? (
+        <WorkspaceCallOverlay
+          userId={
+            user.id
+          }
+        />
+      ) : null}
     </main>
   );
 }
