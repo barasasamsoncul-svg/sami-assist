@@ -1221,78 +1221,79 @@ async function tableMetadata(
     );
   }
 
-  for (
-    const table
-    of allowedTables
-  ) {
-    const fields =
-      byTable.get(
-        table,
-      );
+  await Promise.all(
+    allowedTables.map(
+      async table => {
+        const fields =
+          byTable.get(
+            table,
+          );
 
-    if (
-      !fields ||
-      fields.length ===
-        0
-    ) {
-      continue;
-    }
+        if (
+          !fields ||
+          fields.length ===
+            0
+        ) {
+          return;
+        }
 
-    const relations =
-      await getEnterpriseRelationDefinitions(
-        pool,
-        table,
-      );
+        const relations =
+          await getEnterpriseRelationDefinitions(
+            pool,
+            table,
+          );
 
-    const unsafeRelation =
-      [
-        ...relations.values(),
-      ].find(
-        relation =>
-          !relation.companyScoped ||
-          !relation.softDelete,
-      );
+        const unsafeRelation =
+          [
+            ...relations.values(),
+          ].find(
+            relation =>
+              relation.targetCompanyScoped !==
+              true,
+          );
 
-    if (
-      unsafeRelation
-    ) {
-      throw new EnterpriseModuleError(
-        'TABLE_NOT_READY',
-        'A related business table has not completed SaMi enterprise boundary hardening.',
-        {
+        if (
+          unsafeRelation
+        ) {
+          throw new EnterpriseModuleError(
+            'TABLE_NOT_READY',
+            'A related business table has not completed SaMi enterprise boundary hardening.',
+            {
+              table,
+              relationField:
+                unsafeRelation.field,
+              relationTable:
+                unsafeRelation.targetTable,
+            },
+          );
+        }
+
+        byTable.set(
           table,
-          relationField:
-            unsafeRelation.field,
-          relationTable:
-            unsafeRelation.targetTable,
-        },
-      );
-    }
+          fields.map(
+            field => {
+              const relation =
+                relations.get(
+                  field.key,
+                );
 
-    byTable.set(
-      table,
-      fields.map(
-        field => {
-          const relation =
-            relations.get(
-              field.key,
-            );
-
-          return relation
-            ? {
-                ...field,
-                label:
-                  relation.label,
-                relation: {
-                  label:
-                    relation.label,
-                },
-              }
-            : field;
-        },
-      ),
-    );
-  }
+              return relation
+                ? {
+                    ...field,
+                    label:
+                      relation.label,
+                    relation: {
+                      label:
+                        relation.label,
+                    },
+                  }
+                : field;
+            },
+          ),
+        );
+      },
+    ),
+  );
 
   return byTable;
 }
