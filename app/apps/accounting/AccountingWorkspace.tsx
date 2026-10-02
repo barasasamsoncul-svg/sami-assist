@@ -247,6 +247,7 @@ export default async function AccountingWorkspace({
   let fxWorkspace: Awaited<ReturnType<typeof getAccountingFx>> | null = null;
   let inventoryValuationWorkspace: Awaited<ReturnType<typeof getAccountingInventoryValuation>> | null = null;
   let accrualsWorkspace: Awaited<ReturnType<typeof getAccountingAccruals>> | null = null;
+  let financingWorkspace: Awaited<ReturnType<typeof getAccountingFinancing>> | null = null;
 
   let reconciliationWorkspace:
     Awaited<
@@ -286,6 +287,7 @@ export default async function AccountingWorkspace({
     dedicatedSection !== 'fx' &&
     dedicatedSection !== 'inventory-valuation' &&
     dedicatedSection !== 'accruals-deferrals' &&
+    dedicatedSection !== 'loans-financing' &&
     dedicatedSection !==
       'reconciliation'
   ) {
