@@ -1252,3 +1252,58 @@ export function buildFinancingSchedule(
 
   return result;
 }
+
+
+export function financingProportionalCents(
+  totalBaseCents:
+    bigint,
+  allocatedForeignUnits:
+    bigint,
+  totalForeignUnits:
+    bigint,
+) {
+  if (
+    totalBaseCents <
+      BigInt(
+        0,
+      ) ||
+    allocatedForeignUnits <
+      BigInt(
+        0,
+      ) ||
+    totalForeignUnits <=
+      BigInt(
+        0,
+      ) ||
+    allocatedForeignUnits >
+      totalForeignUnits
+  ) {
+    throw new Error(
+      'Financing proportional allocation requires non-negative amounts within the outstanding balance.',
+    );
+  }
+
+  if (
+    allocatedForeignUnits ===
+      BigInt(
+        0,
+      )
+  ) {
+    return BigInt(
+      0,
+    );
+  }
+
+  if (
+    allocatedForeignUnits ===
+      totalForeignUnits
+  ) {
+    return totalBaseCents;
+  }
+
+  return roundDivide(
+    totalBaseCents *
+      allocatedForeignUnits,
+    totalForeignUnits,
+  );
+}
