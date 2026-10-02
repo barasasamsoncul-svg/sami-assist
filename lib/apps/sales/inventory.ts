@@ -643,7 +643,17 @@ export async function postSalesFulfillmentToInventory(
           to_regclass(
             'public.accounting_inventory_source_events'
           ) IS NOT NULL
-            AS events_ready
+            AS events_ready,
+          EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema =
+                  'public'
+              AND table_name =
+                  'products'
+              AND column_name =
+                  'cost_price'
+          ) AS cost_price_ready
       `,
     );
 
@@ -652,6 +662,8 @@ export async function postSalesFulfillmentToInventory(
       ?.settings_ready === true &&
     valuationReady.rows[0]
       ?.events_ready === true &&
+    valuationReady.rows[0]
+      ?.cost_price_ready === true &&
     movement.rows[0]
   ) {
     const movementRow =
