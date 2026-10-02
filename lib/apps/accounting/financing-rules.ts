@@ -55,7 +55,8 @@ function roundDivide(
     bigint,
   denominator:
     bigint,
-) {
+):
+  bigint {
   if (
     denominator <=
     BigInt(
