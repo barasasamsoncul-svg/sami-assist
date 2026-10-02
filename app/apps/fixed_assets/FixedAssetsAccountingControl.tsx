@@ -1906,9 +1906,7 @@ export default function FixedAssetsAccountingControl({
       />
 
       <SaMiOverlay
-        overlay={
-          overlay
-        }
+        {...overlay}
         onClose={
           closeOverlay
         }
