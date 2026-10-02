@@ -224,6 +224,167 @@ const eslintBin =
     'eslint.js',
   );
 
+function emit(
+  value,
+  stream,
+) {
+  if (
+    value
+  ) {
+    stream.write(
+      value,
+    );
+  }
+}
+
+function executeBatch(
+  batch,
+  heapMb,
+) {
+  return spawnSync(
+    process.execPath,
+    [
+      '--max-old-space-size=' +
+        heapMb,
+      eslintBin,
+      ...batch,
+    ],
+    {
+      cwd:
+        ROOT,
+      env:
+        process.env,
+      encoding:
+        'utf8',
+      maxBuffer:
+        32 *
+        1024 *
+        1024,
+    },
+  );
+}
+
+function isMemoryFailure(
+  result,
+) {
+  const output =
+    String(
+      result.stdout ||
+      '',
+    ) +
+    '\n' +
+    String(
+      result.stderr ||
+      '',
+    );
+
+  return (
+    /heap out of memory/i.test(
+      output,
+    ) ||
+    /Ineffective mark-compacts/i.test(
+      output,
+    )
+  );
+}
+
+function lintBatch(
+  batch,
+  label,
+) {
+  console.log(
+    '\nESLint ' +
+    label +
+    ' (' +
+    batch.length +
+    ' files)',
+  );
+
+  let result =
+    executeBatch(
+      batch,
+      4096,
+    );
+
+  if (
+    isMemoryFailure(
+      result,
+    )
+  ) {
+    if (
+      batch.length >
+      1
+    ) {
+      console.log(
+        'ESLint memory limit reached for ' +
+        label +
+        '; splitting this batch.',
+      );
+
+      const midpoint =
+        Math.ceil(
+          batch.length /
+          2,
+        );
+
+      lintBatch(
+        batch.slice(
+          0,
+          midpoint,
+        ),
+        label +
+        'a',
+      );
+
+      lintBatch(
+        batch.slice(
+          midpoint,
+        ),
+        label +
+        'b',
+      );
+
+      return;
+    }
+
+    console.log(
+      'Retrying single heavy file with a 6144 MB heap: ' +
+      batch[0],
+    );
+
+    result =
+      executeBatch(
+        batch,
+        6144,
+      );
+  }
+
+  emit(
+    result.stdout,
+    process.stdout,
+  );
+  emit(
+    result.stderr,
+    process.stderr,
+  );
+
+  if (
+    result.error
+  ) {
+    throw result.error;
+  }
+
+  if (
+    result.status !==
+    0
+  ) {
+    process.exit(
+      result.status ||
+      1,
+    );
+  }
+}
+
 const batches = [];
 
 for (
@@ -245,9 +406,9 @@ console.log(
   ordered.length +
   ' source files in ' +
   batches.length +
-  ' batch(es) of up to ' +
+  ' initial batch(es) of up to ' +
   batchSize +
-  '.',
+  '. Memory-heavy batches are split automatically.',
 );
 
 for (
@@ -255,49 +416,11 @@ for (
   index < batches.length;
   index += 1
 ) {
-  const batch =
-    batches[index];
-
-  console.log(
-    '\nESLint batch ' +
+  lintBatch(
+    batches[index],
+    'batch ' +
     (index + 1) +
     '/' +
-    batches.length +
-    ' (' +
-    batch.length +
-    ' files)',
+    batches.length,
   );
-
-  const result =
-    spawnSync(
-      process.execPath,
-      [
-        '--max-old-space-size=4096',
-        eslintBin,
-        ...batch,
-      ],
-      {
-        cwd:
-          ROOT,
-        env:
-          process.env,
-        stdio:
-          'inherit',
-      },
-    );
-
-  if (
-    result.error
-  ) {
-    throw result.error;
-  }
-
-  if (
-    result.status !== 0
-  ) {
-    process.exit(
-      result.status ||
-      1,
-    );
-  }
 }
