@@ -1747,8 +1747,13 @@ test('Fixed Assets 2.4 accounting control is migration-backed and protected', as
   }
 
   assert.match(service,/postBalancedLedgerJournal/);
+  assert.match(service,/reversePostedLedgerJournal/);
   assert.match(service,/fixed_assets:capitalization:/);
   assert.match(service,/fixed_assets:depreciation:/);
+  assert.match(service,/fixed_assets:impairment:/);
+  assert.match(service,/fixed_assets:revaluation:/);
+  assert.match(service,/fixed_assets:disposal:/);
+  assert.match(service,/Reverse later depreciation, revaluation or disposal events/);
   assert.match(service,/SAVEPOINT fixed_asset_depreciation/);
   assert.match(service,/ROLLBACK TO SAVEPOINT fixed_asset_depreciation/);
   assert.match(service,/capitalization_threshold/);
