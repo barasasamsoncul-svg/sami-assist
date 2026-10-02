@@ -21,6 +21,11 @@ import {
 } from '@/app/apps/_shared/loadStandaloneEnterpriseApp';
 
 import FixedAssetsWorkspaceClient from '@/app/apps/fixed_assets/FixedAssetsWorkspaceClient';
+import FixedAssetsAccountingControl from '@/app/apps/fixed_assets/FixedAssetsAccountingControl';
+
+import {
+  getFixedAssetsAccountingControl,
+} from '@/lib/apps/fixed_assets/accounting-control';
 
 const MODULE_KEY = 'fixed_assets';
 
@@ -52,9 +57,9 @@ export default async function FixedAssetsWorkspace({
   const appSidebarItems = [
     {
       key: 'overview',
-      label: 'Overview',
+      label: 'Asset Accounting',
       href: appBaseHref,
-      description: 'KPIs, priorities and current operating state.',
+      description: 'Capitalization, depreciation, carrying value and lifecycle controls.',
     },
     ...data.tables
       .filter(
@@ -120,6 +125,12 @@ export default async function FixedAssetsWorkspace({
     resolved.view === 'records'
       ? resolved.tableKey
       : resolved.view;
+
+  const accountingControl =
+    resolved.view ===
+      'overview'
+      ? await getFixedAssetsAccountingControl()
+      : null;
 
   return (
     <AppSurfaceShell
@@ -192,18 +203,32 @@ export default async function FixedAssetsWorkspace({
             uiProfile.secondary,
         } as CSSProperties}
       >
-        <FixedAssetsWorkspaceClient
-          initialData={data}
-          userId={session.user.id}
-          initialView={resolved.view}
-          initialTableKey={resolved.tableKey}
-          accessibleModuleKeys={
-            shell.accessibleModules.map(
-              module =>
-                module.registryKey,
-            )
-          }
-        />
+        {accountingControl ? (
+          <FixedAssetsAccountingControl
+            data={accountingControl}
+            canEdit={
+              data.capabilities
+                .canEdit
+            }
+            canExecute={
+              data.capabilities
+                .canExecute
+            }
+          />
+        ) : (
+          <FixedAssetsWorkspaceClient
+            initialData={data}
+            userId={session.user.id}
+            initialView={resolved.view}
+            initialTableKey={resolved.tableKey}
+            accessibleModuleKeys={
+              shell.accessibleModules.map(
+                module =>
+                  module.registryKey,
+              )
+            }
+          />
+        )}
       </div>
     </AppSurfaceShell>
   );
