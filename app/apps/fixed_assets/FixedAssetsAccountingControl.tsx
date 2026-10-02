@@ -23,6 +23,7 @@ import {
 import type {
   FixedAssetsAccountingWorkspace,
 } from '@/lib/apps/fixed_assets/accounting-control';
+import FixedAssetsLifecycleControl from './FixedAssetsLifecycleControl';
 
 import styles from './FixedAssetsControl.module.css';
 
@@ -1898,6 +1899,11 @@ export default function FixedAssetsAccountingControl({
           </form>
         </details>
       </section>
+
+      <FixedAssetsLifecycleControl
+        data={data}
+        canExecute={canExecute}
+      />
 
       <SaMiOverlay
         overlay={
