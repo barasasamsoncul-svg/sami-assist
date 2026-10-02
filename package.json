@@ -51,7 +51,9 @@
     "test:fixed-assets": "node --import tsx --test tests/fixed-assets-accounting.test.ts",
     "migrate:fixed-assets:release": "node --conditions=react-server --import tsx scripts/migrate-fixed-assets-before-release.ts",
     "test:fixed-assets:release": "npm run test:fixed-assets && npm run test:module-migrations && npm run test:app-ui && npx tsc --noEmit && npm run build",
-    "test:accounting:accruals": "node --import tsx --test tests/accounting-accruals.test.ts"
+    "test:accounting:accruals": "node --import tsx --test tests/accounting-accruals.test.ts",
+    "migrate:accounting:2.21:release": "node --conditions=react-server --import tsx scripts/migrate-accounting-2-21-before-release.ts",
+    "test:accounting:2.21:release": "npm run test:accounting:accruals && npm run test:module-migrations && npm run test:app-ui && npx tsc --noEmit && npm run build"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1133.0",
