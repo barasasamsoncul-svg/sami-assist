@@ -641,8 +641,10 @@ export async function getFixedAssetsReports(
             amount::text,
             journal_id
           FROM lifecycle
-          WHERE event_date <=
-                $3::date
+          WHERE event_date
+                BETWEEN
+                  $2::date
+                  AND $3::date
           ORDER BY
             event_date DESC,
             asset_code,
