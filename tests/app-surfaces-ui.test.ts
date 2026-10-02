@@ -1364,6 +1364,11 @@ test(
       workspace,
       /FixedAssetsReports/,
     );
+    assert.match(
+      workspace,
+      /CONTROLLED_FIXED_ASSET_TABLES/,
+      'Accounting-controlled lifecycle tables must stay out of the generic Fixed Assets sidebar.',
+    );
 
     for (const marker of [
       'Asset roll-forward',
