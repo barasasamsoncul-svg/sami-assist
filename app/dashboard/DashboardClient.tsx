@@ -671,6 +671,58 @@ export default function DashboardClient({
           0) && (
           <section className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(300px,0.75fr)]">
             <div className="space-y-4">
+              {activitySummary ? (
+                <Section
+                  title="Operational pulse"
+                  description="Live signals from your activity in the current company."
+                >
+                  <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    <div className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
+                      <Activity className="h-4 w-4 text-blue-600 dark:text-blue-300" />
+                      <p className="mt-3 text-xl font-black">
+                        {activitySummary.todayCount}
+                      </p>
+                      <p className="mt-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                        Your actions today
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
+                      <TriangleAlert className="h-4 w-4 text-amber-600 dark:text-amber-300" />
+                      <p className="mt-3 text-xl font-black">
+                        {activitySummary.failed7d}
+                      </p>
+                      <p className="mt-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                        Failed or denied · 7d
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
+                      <Boxes className="h-4 w-4 text-indigo-600 dark:text-indigo-300" />
+                      <p className="mt-3 text-xl font-black">
+                        {activitySummary.modules7d}
+                      </p>
+                      <p className="mt-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                        Modules touched · 7d
+                      </p>
+                    </div>
+
+                    <Link
+                      href="/notifications"
+                      className="rounded-2xl border border-slate-200 p-4 transition hover:bg-slate-50 dark:border-white/10 dark:hover:bg-white/[0.04]"
+                    >
+                      <Bell className="h-4 w-4 text-rose-600 dark:text-rose-300" />
+                      <p className="mt-3 text-xl font-black">
+                        {unreadNotifications}
+                      </p>
+                      <p className="mt-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                        Unread alerts
+                      </p>
+                    </Link>
+                  </div>
+                </Section>
+              ) : null}
+
               {(attention.length >
                 0 ||
                 work.length >
