@@ -141,6 +141,14 @@ export default function FixedAssetsLifecycleControl({
     });
 
   const [
+    vendorBillId,
+    setVendorBillId,
+  ] =
+    useState(
+      '',
+    );
+
+  const [
     source,
     setSource,
   ] =
@@ -518,6 +526,53 @@ export default function FixedAssetsLifecycleControl({
               '.',
           ),
     });
+  }
+
+  async function linkVendorBill(
+    event:
+      FormEvent,
+  ) {
+    event.preventDefault();
+
+    if (
+      !canExecute ||
+      !assetId ||
+      !vendorBillId
+    ) {
+      return;
+    }
+
+    const result =
+      await run(
+        'vendor-bill',
+        {
+          action:
+            'link-vendor-bill',
+          assetId,
+          documentId:
+            vendorBillId,
+        },
+        'Vendor bill linked',
+        value =>
+          'Linked ' +
+          String(
+            value.documentNumber ||
+            'vendor bill',
+          ) +
+          ' for ' +
+          amount(
+            value.amount,
+          ) +
+          '.',
+      );
+
+    if (
+      result
+    ) {
+      setVendorBillId(
+        '',
+      );
+    }
   }
 
   async function linkSource(
@@ -1141,6 +1196,88 @@ export default function FixedAssetsLifecycleControl({
         <summary>
           Source document provenance
         </summary>
+
+        <form
+          className={
+            styles.inlineForm
+          }
+          onSubmit={
+            linkVendorBill
+          }
+        >
+          <label>
+            Available posted vendor bill
+            <select
+              value={
+                vendorBillId
+              }
+              onChange={
+                event =>
+                  setVendorBillId(
+                    event.target
+                      .value,
+                  )
+              }
+            >
+              <option value="">
+                Choose posted bill
+              </option>
+              {data.sourceCandidates.map(
+                row => (
+                  <option
+                    key={
+                      String(
+                        row.id,
+                      )
+                    }
+                    value={
+                      String(
+                        row.id,
+                      )
+                    }
+                  >
+                    {String(
+                      row.document_number ||
+                      '',
+                    )} · {String(
+                      row.vendor_name ||
+                      '',
+                    )} · {amount(
+                      row.base_total_amount,
+                    )}
+                  </option>
+                ),
+              )}
+            </select>
+          </label>
+
+          <button
+            type="submit"
+            className={
+              styles.primary
+            }
+            disabled={
+              !canExecute ||
+              !assetId ||
+              !vendorBillId ||
+              busy ===
+                'vendor-bill'
+            }
+          >
+            <FileLink2
+              size={15}
+            />
+            Link posted bill
+          </button>
+        </form>
+
+        <div
+          className={
+            styles.notice
+          }
+        >
+          Use the posted-bill selector when the acquisition exists in Accounting. Manual evidence below is reserved for external or legacy sources.
+        </div>
 
         <form
           className={
