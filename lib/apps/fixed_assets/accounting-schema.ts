@@ -141,6 +141,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_asset_depreciation_period
     AND status <> 'reversed';
 
 ALTER TABLE public.asset_impairments
+  DROP CONSTRAINT IF EXISTS asset_impairments_status_check,
+  DROP CONSTRAINT IF EXISTS asset_impairments_status_accounting_check;
+
+ALTER TABLE public.asset_impairments
+  ADD CONSTRAINT asset_impairments_status_accounting_check
+    CHECK (status IN ('draft','approved','posted','reversed','cancelled')) NOT VALID;
+
+ALTER TABLE public.asset_impairments
   ADD COLUMN IF NOT EXISTS request_key UUID,
   ADD COLUMN IF NOT EXISTS loss_account_id UUID
     REFERENCES public.accounts(id) ON DELETE RESTRICT,
