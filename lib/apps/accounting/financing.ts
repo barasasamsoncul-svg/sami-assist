@@ -25,6 +25,7 @@ import {
   decimalAmount,
 } from './validation';
 import {
+  financingDayCountDays,
   financingForeignDecimal,
   financingRateScaled,
   financingSignedRateScaled,
@@ -3749,21 +3750,13 @@ export async function runFinancingInterestAccrual(
               .endRate,
             facility
               .day_count,
-            Math.max(
-              1,
-              Math.round(
-                (
-                  new Date(
-                    asOf +
-                    'T00:00:00.000Z',
-                  ).getTime() -
-                  new Date(
-                    startDate +
-                    'T00:00:00.000Z',
-                  ).getTime()
-                ) /
-                  86_400_000,
-              ),
+            financingDayCountDays(
+              startDate,
+              asOf,
+              String(
+                facility.day_count,
+              ) as
+                FinancingDayCount,
             ),
             financingForeignDecimal(
               calculation
