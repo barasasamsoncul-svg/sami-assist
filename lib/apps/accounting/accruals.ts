@@ -942,32 +942,18 @@ export async function createAccrualSchedule(
         await client.query(
           `
             SELECT
-              journal.id::text,
-              journal.journal_number,
-              journal.status,
-              COALESCE(
-                SUM(line.debit),
-                0
-              )::numeric(19,2)::text
-                AS total_debit
-            FROM journals journal
-            LEFT JOIN journal_lines line
-              ON line.company_id =
-                 journal.company_id
-             AND line.journal_id =
-                 journal.id
-             AND line.deleted_at
-                 IS NULL
-            WHERE journal.company_id =
+              id::text,
+              journal_number,
+              status
+            FROM journals
+            WHERE company_id =
                   $1
-              AND journal.id =
+              AND id =
                   $2
-              AND journal.deleted_at
+              AND deleted_at
                   IS NULL
-            GROUP BY
-              journal.id
             LIMIT 1
-            FOR SHARE OF journal
+            FOR SHARE
           `,
           [
             context.companyId,
@@ -986,19 +972,77 @@ export async function createAccrualSchedule(
         );
       }
 
+      const sourceAmounts =
+        await client.query(
+          `
+            SELECT
+              COALESCE(
+                SUM(debit),
+                0
+              )::numeric(19,2)::text
+                AS total_debit,
+              COALESCE(
+                SUM(credit),
+                0
+              )::numeric(19,2)::text
+                AS total_credit,
+              COALESCE(
+                SUM(debit) FILTER (
+                  WHERE account_id =
+                        $3
+                ),
+                0
+              )::numeric(19,2)::text
+                AS recognition_debit,
+              COALESCE(
+                SUM(credit) FILTER (
+                  WHERE account_id =
+                        $3
+                ),
+                0
+              )::numeric(19,2)::text
+                AS recognition_credit
+            FROM journal_lines
+            WHERE company_id =
+                  $1
+              AND journal_id =
+                  $2
+              AND deleted_at
+                  IS NULL
+          `,
+          [
+            context.companyId,
+            sourceJournalId,
+            recognitionAccountId,
+          ],
+        );
+
+      const sourceAmount =
+        type ===
+          'deferred_revenue'
+          ? sourceAmounts.rows[0]
+              ?.recognition_credit
+          : type ===
+              'prepaid_expense'
+            ? sourceAmounts.rows[0]
+                ?.recognition_debit
+            : sourceAmounts.rows[0]
+                ?.total_debit;
+
       if (
         accrualMoneyCents(
           String(
-            source.rows[0]
-              .total_debit ||
+            sourceAmount ||
             '0',
           ),
-          'Source journal total',
+          'Source journal amount',
         ) <
         amount
       ) {
         throw new AccountingInputError(
-          'Schedule total cannot exceed the source journal total.',
+          initialReclassification
+            ? 'The source journal must contain enough value in the selected recognition account for this reclassification.'
+            : 'Schedule total cannot exceed the source journal total.',
         );
       }
     }
@@ -1645,8 +1689,10 @@ export async function runAccrualRecognition(
                 $1
             AND line.deleted_at
                 IS NULL
-            AND line.status =
-                'pending'
+            AND line.status IN (
+              'pending',
+              'failed'
+            )
             AND line.posting_date <=
                 $2::date
           ORDER BY
