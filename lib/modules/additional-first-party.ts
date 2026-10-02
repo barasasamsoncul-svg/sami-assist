@@ -37,6 +37,7 @@ function additionalModule({
   icon,
   depends,
   optionalDepends,
+  version = '1.0.0',
 }: {
   key: string;
   name: string;
@@ -45,11 +46,12 @@ function additionalModule({
   icon: string;
   depends: string[];
   optionalDepends: string[];
+  version?: string;
 }): SamiModuleManifest {
   return defineSamiModule({
     key,
     name,
-    version: '1.0.0',
+    version,
     description,
     category,
     icon,
@@ -148,6 +150,7 @@ export const ADDITIONAL_FIRST_PARTY_SAMI_MODULES:
   additionalModule({
     key: "fixed_assets",
     name: "Fixed Assets",
+    version: '2.4.0',
     description: "Track capitalization, depreciation, transfers and disposal of fixed assets.",
     category: "finance",
     icon: "calculator",
