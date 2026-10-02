@@ -157,6 +157,10 @@ export function assertEnterpriseDomainMutationAllowed(
       table === 'accounting_inventory_sync_runs' ||
       table === 'accounting_inventory_reconciliation_runs' ||
       table === 'accounting_inventory_reconciliation_lines' ||
+      table === 'accounting_accrual_settings' ||
+      table === 'accounting_accrual_schedules' ||
+      table === 'accounting_accrual_schedule_lines' ||
+      table === 'accounting_accrual_runs' ||
       table ===
         'accounting_reconciliation_suggestions'
     )
