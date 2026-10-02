@@ -1020,6 +1020,8 @@ export async function financingOutstandingInterestUnits(
     string,
   facilityId:
     string,
+  asOf?:
+    string,
 ) {
   const result =
     await client.query(
@@ -1040,6 +1042,11 @@ export async function financingOutstandingInterestUnits(
                       IS NULL
                   AND status =
                       'posted'
+                  AND (
+                    $3::date IS NULL
+                    OR period_end <=
+                       $3::date
+                  )
               ),
               0
             )
@@ -1058,6 +1065,11 @@ export async function financingOutstandingInterestUnits(
                       IS NULL
                   AND status =
                       'posted'
+                  AND (
+                    $3::date IS NULL
+                    OR transaction_date <=
+                       $3::date
+                  )
               ),
               0
             )
@@ -1067,6 +1079,8 @@ export async function financingOutstandingInterestUnits(
       [
         companyId,
         facilityId,
+        asOf ||
+          null,
       ],
     );
 
