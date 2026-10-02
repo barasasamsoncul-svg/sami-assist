@@ -1681,3 +1681,70 @@ test('Accounting 2.20 Inventory Valuation is migration-backed and ledger control
   );
   assert.match(foundation,/"inventory-valuation"/);
 });
+
+
+test('Fixed Assets 2.4 accounting control is migration-backed and protected', async () => {
+  const [
+    manifests,
+    runtime,
+    migration,
+    schema,
+    depth,
+    catalog,
+    specialist,
+    hooks,
+    service,
+  ] = await Promise.all([
+    source('lib/modules/additional-first-party.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/apps/fixed_assets/migrations/2.3.0-to-2.4.0.ts'),
+    source('lib/apps/fixed_assets/accounting-schema.ts'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+    source('lib/apps/enterprise/catalog.ts'),
+    source('lib/apps/enterprise/specialist-catalog.ts'),
+    source('lib/apps/enterprise/domain-hooks.ts'),
+    source('lib/apps/fixed_assets/accounting-control.ts'),
+  ]);
+
+  assert.match(
+    manifests,
+    /key:\s*"fixed_assets"[\s\S]*version:\s*'2\.4\.0'/,
+    'Fixed Assets must advance beyond the shared specialist 2.3 baseline.',
+  );
+
+  assert.match(runtime,/FIXED_ASSETS_2_3_0_TO_2_4_0/);
+  assert.match(
+    migration,
+    /fromVersion:\s*'2\.3\.0'[\s\S]*toVersion:\s*'2\.4\.0'/,
+  );
+  assert.match(migration,/FIXED_ASSETS_ACCOUNTING_SQL/);
+  assert.match(depth,/FIXED_ASSETS_ACCOUNTING_SQL/);
+
+  for (const marker of [
+    'asset_depreciation_runs',
+    'asset_revaluations',
+    'asset_source_links',
+    'capitalization_journal_id',
+    'default_accumulated_depreciation_account_id',
+    'reversal_journal_id',
+  ]) {
+    assert.match(schema,new RegExp(marker));
+    assert.match(catalog,new RegExp(marker));
+  }
+
+  for (const marker of [
+    'asset_depreciation_runs',
+    'asset_revaluations',
+    'asset_source_links',
+  ]) {
+    assert.match(specialist,new RegExp(marker));
+    assert.match(hooks,new RegExp(marker));
+  }
+
+  assert.match(service,/postBalancedLedgerJournal/);
+  assert.match(service,/fixed_assets:capitalization:/);
+  assert.match(service,/fixed_assets:depreciation:/);
+  assert.match(service,/SAVEPOINT fixed_asset_depreciation/);
+  assert.match(service,/ROLLBACK TO SAVEPOINT fixed_asset_depreciation/);
+  assert.match(service,/capitalization_threshold/);
+});
