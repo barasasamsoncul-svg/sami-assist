@@ -1629,7 +1629,7 @@ test('Accounting 2.20 Inventory Valuation is migration-backed and ledger control
 
   assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.21\.0'/);
   assert.match(runtime,/ACCOUNTING_2_19_0_TO_2_20_0/);
-  assert.match(migration,/fromVersion:\s*'2\.19\.0'[\s\S]*toVersion:\s*'2\.21\.0'/);
+  assert.match(migration,/fromVersion:\s*'2\.19\.0'[\s\S]*toVersion:\s*'2\.20\.0'/);
   assert.match(depth,/ACCOUNTING_INVENTORY_VALUATION_SQL/);
 
   for (const marker of [
@@ -1853,7 +1853,7 @@ test('Accounting 2.21 Accruals and Deferrals are migration-backed and ledger con
   assert.match(runtime,/ACCOUNTING_2_20_0_TO_2_21_0/);
   assert.match(
     migration,
-    /fromVersion:\s*'2\.21\.0'[\s\S]*toVersion:\s*'2\.21\.0'/,
+    /fromVersion:\s*'2\.20\.0'[\s\S]*toVersion:\s*'2\.21\.0'/,
   );
   assert.match(migration,/ACCOUNTING_ACCRUALS_SQL/);
   assert.match(depth,/ACCOUNTING_ACCRUALS_SQL/);
