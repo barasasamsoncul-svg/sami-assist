@@ -1271,7 +1271,10 @@ export async function activateFinancingFacility(
 
     if (
       facility.status ===
-        'active'
+        'active' &&
+      facility
+        .repayment_structure !==
+        'custom'
     ) {
       await client.query(
         'COMMIT',
@@ -1305,32 +1308,102 @@ export async function activateFinancingFacility(
       ),
     );
 
-    const principal =
-      financingPositiveUnits(
-        facility.principal_limit,
-        'Principal limit',
-      );
+    let schedule = {
+      revision:
+        Number(
+          facility
+            .schedule_revision ||
+          1,
+        ),
+      periods:
+        0,
+    };
 
-    const schedule =
-      await rebuildFinancingSchedule(
-        client,
-        {
-          companyId:
+    if (
+      facility
+        .repayment_structure ===
+        'custom'
+    ) {
+      const custom =
+        await client.query(
+          `
+            SELECT COUNT(*)::int
+              AS count
+            FROM accounting_financing_schedule_lines
+            WHERE company_id =
+                  $1
+              AND facility_id =
+                  $2
+              AND revision =
+                  $3
+              AND deleted_at
+                  IS NULL
+              AND schedule_source =
+                  'custom'
+              AND status =
+                  'projected'
+          `,
+          [
             context.companyId,
-          userId:
-            context.userId,
-          facility,
-          principalUnits:
-            principal,
-          startDate:
-            String(
-              facility.start_date,
-            ).slice(
-              0,
-              10,
-            ),
-        },
-      );
+            facilityId,
+            facility
+              .schedule_revision,
+          ],
+        );
+
+      if (
+        Number(
+          custom.rows[0]
+            ?.count ||
+          0,
+        ) <=
+        0
+      ) {
+        throw new AccountingInputError(
+          'Add a custom financing schedule before activating this facility.',
+        );
+      }
+
+      schedule = {
+        revision:
+          Number(
+            facility
+              .schedule_revision,
+          ),
+        periods:
+          Number(
+            custom.rows[0]
+              .count,
+          ),
+      };
+    } else {
+      const principal =
+        financingPositiveUnits(
+          facility.principal_limit,
+          'Principal limit',
+        );
+
+      schedule =
+        await rebuildFinancingSchedule(
+          client,
+          {
+            companyId:
+              context.companyId,
+            userId:
+              context.userId,
+            facility,
+            principalUnits:
+              principal,
+            startDate:
+              String(
+                facility.start_date,
+              ).slice(
+                0,
+                10,
+              ),
+          },
+        );
+    }
 
     await client.query(
       `
@@ -2420,20 +2493,32 @@ export async function postFinancingDrawdown(
       outstanding +
       amount;
 
-    await rebuildFinancingSchedule(
-      client,
-      {
-        companyId:
-          context.companyId,
-        userId:
-          context.userId,
-        facility,
-        principalUnits:
-          newOutstanding,
-        startDate:
-          transactionDate,
-      },
-    );
+    if (
+      facility
+        .repayment_structure !==
+        'custom'
+    ) {
+      if (
+        facility
+          .repayment_structure !==
+          'custom'
+      ) {
+        await rebuildFinancingSchedule(
+          client,
+          {
+            companyId:
+              context.companyId,
+            userId:
+              context.userId,
+            facility,
+            principalUnits:
+              newOutstanding,
+            startDate:
+              transactionDate,
+          },
+        );
+      }
+    }
 
     await client.query(
       'COMMIT',
