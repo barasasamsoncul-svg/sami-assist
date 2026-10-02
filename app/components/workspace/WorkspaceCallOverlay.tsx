@@ -918,6 +918,11 @@ export default function WorkspaceCallOverlay({
                 null,
               );
 
+              let startedCall:
+                WorkspaceCall |
+                null =
+                null;
+
               try {
                 await unlockSamiAudio();
 
@@ -962,6 +967,9 @@ export default function WorkspaceCallOverlay({
                   data.call as
                     WorkspaceCall;
 
+                startedCall =
+                  started;
+
                 setCall(
                   started,
                 );
@@ -973,6 +981,35 @@ export default function WorkspaceCallOverlay({
               } catch (
                 candidate
               ) {
+                if (
+                  startedCall
+                ) {
+                  void fetch(
+                    '/api/workspace/calls/' +
+                    encodeURIComponent(
+                      startedCall.id,
+                    ),
+                    {
+                      method:
+                        'PATCH',
+                      credentials:
+                        'same-origin',
+                      headers: {
+                        'Content-Type':
+                          'application/json',
+                      },
+                      body:
+                        JSON.stringify({
+                          action:
+                            'cancel',
+                        }),
+                    },
+                  ).catch(
+                    () =>
+                      undefined,
+                  );
+                }
+
                 clearMedia();
                 setCall(
                   null,
@@ -1117,6 +1154,13 @@ export default function WorkspaceCallOverlay({
     } catch (
       candidate
     ) {
+      if (
+        action ===
+          'accept'
+      ) {
+        clearMedia();
+      }
+
       setError(
         candidate instanceof
           Error
