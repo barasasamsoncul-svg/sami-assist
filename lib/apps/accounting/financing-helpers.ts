@@ -1781,3 +1781,557 @@ export function financingBaseAmount(
     );
   }
 }
+
+
+export function financingProportionalCents(
+  totalCents:
+    bigint,
+  partUnits:
+    bigint,
+  totalUnits:
+    bigint,
+) {
+  if (
+    totalCents <=
+      BigInt(
+        0,
+      ) ||
+    partUnits <=
+      BigInt(
+        0,
+      ) ||
+    totalUnits <=
+      BigInt(
+        0,
+      )
+  ) {
+    return BigInt(
+      0,
+    );
+  }
+
+  if (
+    partUnits >=
+    totalUnits
+  ) {
+    return totalCents;
+  }
+
+  return (
+    totalCents *
+      partUnits +
+    totalUnits /
+      BigInt(
+        2,
+      )
+  ) /
+    totalUnits;
+}
+
+export async function financingPrincipalCarryingCents(
+  client:
+    Pick<
+      PoolClient,
+      'query'
+    >,
+  companyId:
+    string,
+  facilityId:
+    string,
+  asOf?:
+    string,
+) {
+  const result =
+    await client.query(
+      `
+        SELECT
+          (
+            COALESCE(
+              SUM(
+                CASE
+                  WHEN transaction_type =
+                       'drawdown'
+                  THEN principal_base
+                  WHEN transaction_type =
+                       'principal_repayment'
+                  THEN -principal_carrying_base
+                  ELSE 0
+                END
+              ),
+              0
+            )
+          )::numeric(19,2)::text
+            AS carrying_base
+        FROM accounting_financing_transactions
+        WHERE company_id =
+              $1
+          AND facility_id =
+              $2
+          AND deleted_at
+              IS NULL
+          AND status =
+              'posted'
+          AND (
+            $3::date IS NULL
+            OR transaction_date <=
+               $3::date
+          )
+      `,
+      [
+        companyId,
+        facilityId,
+        asOf ||
+          null,
+      ],
+    );
+
+  const cents =
+    signedLedgerCents(
+      result.rows[0]
+        ?.carrying_base ||
+      '0',
+    );
+
+  return cents >
+      BigInt(
+        0,
+      )
+    ? cents
+    : BigInt(
+        0,
+      );
+}
+
+export async function financingInterestCarryingCents(
+  client:
+    Pick<
+      PoolClient,
+      'query'
+    >,
+  companyId:
+    string,
+  facilityId:
+    string,
+  asOf?:
+    string,
+) {
+  const result =
+    await client.query(
+      `
+        SELECT
+          (
+            COALESCE(
+              (
+                SELECT SUM(
+                  base_interest_amount
+                )
+                FROM accounting_financing_interest_accruals
+                WHERE company_id =
+                      $1
+                  AND facility_id =
+                      $2
+                  AND deleted_at
+                      IS NULL
+                  AND status =
+                      'posted'
+                  AND (
+                    $3::date IS NULL
+                    OR period_end <=
+                       $3::date
+                  )
+              ),
+              0
+            )
+            -
+            COALESCE(
+              (
+                SELECT SUM(
+                  interest_carrying_base
+                )
+                FROM accounting_financing_transactions
+                WHERE company_id =
+                      $1
+                  AND facility_id =
+                      $2
+                  AND deleted_at
+                      IS NULL
+                  AND status =
+                      'posted'
+                  AND (
+                    $3::date IS NULL
+                    OR transaction_date <=
+                       $3::date
+                  )
+              ),
+              0
+            )
+          )::numeric(19,2)::text
+            AS carrying_base
+      `,
+      [
+        companyId,
+        facilityId,
+        asOf ||
+          null,
+      ],
+    );
+
+  const cents =
+    signedLedgerCents(
+      result.rows[0]
+        ?.carrying_base ||
+      '0',
+    );
+
+  return cents >
+      BigInt(
+        0,
+      )
+    ? cents
+    : BigInt(
+        0,
+      );
+}
+
+export async function financingPrincipalBuckets(
+  client:
+    Pick<
+      PoolClient,
+      'query'
+    >,
+  input: {
+    companyId:
+      string;
+    facilityId:
+      string;
+    asOf:
+      string;
+  },
+) {
+  const totalForeign =
+    await financingOutstandingPrincipalUnits(
+      client,
+      input.companyId,
+      input.facilityId,
+      input.asOf,
+    );
+  const totalBase =
+    await financingPrincipalCarryingCents(
+      client,
+      input.companyId,
+      input.facilityId,
+      input.asOf,
+    );
+
+  const classification =
+    await client.query(
+      `
+        SELECT
+          target_current_principal::text,
+          target_current_principal_foreign::text,
+          as_of_date::text,
+          created_at
+        FROM accounting_financing_reclassifications
+        WHERE company_id =
+              $1
+          AND facility_id =
+              $2
+          AND deleted_at
+              IS NULL
+          AND status =
+              'posted'
+          AND as_of_date <=
+              $3::date
+        ORDER BY
+          as_of_date DESC,
+          created_at DESC,
+          id DESC
+        LIMIT 1
+      `,
+      [
+        input.companyId,
+        input.facilityId,
+        input.asOf,
+      ],
+    );
+
+  if (
+    !classification.rows[0]
+  ) {
+    return {
+      totalForeign,
+      totalBase,
+      currentForeign:
+        BigInt(
+          0,
+        ),
+      currentBase:
+        BigInt(
+          0,
+        ),
+      noncurrentForeign:
+        totalForeign,
+      noncurrentBase:
+        totalBase,
+      classificationDate:
+        null as
+          string |
+          null,
+    };
+  }
+
+  const row =
+    classification.rows[0];
+  const classificationDate =
+    String(
+      row.as_of_date,
+    ).slice(
+      0,
+      10,
+    );
+  const paid =
+    await client.query(
+      `
+        SELECT
+          COALESCE(
+            SUM(
+              current_principal_foreign
+            ),
+            0
+          )::numeric(19,4)::text
+            AS foreign_paid,
+          COALESCE(
+            SUM(
+              current_principal_base
+            ),
+            0
+          )::numeric(19,2)::text
+            AS base_paid
+        FROM accounting_financing_transactions
+        WHERE company_id =
+              $1
+          AND facility_id =
+              $2
+          AND deleted_at
+              IS NULL
+          AND status =
+              'posted'
+          AND transaction_type =
+              'principal_repayment'
+          AND (
+            transaction_date >
+              $3::date
+            OR (
+              transaction_date =
+                $3::date
+              AND created_at >
+                $4
+            )
+          )
+          AND transaction_date <=
+              $5::date
+      `,
+      [
+        input.companyId,
+        input.facilityId,
+        classificationDate,
+        row.created_at,
+        input.asOf,
+      ],
+    );
+
+  const classifiedForeign =
+    signedForeignUnits(
+      row.target_current_principal_foreign ||
+      '0',
+    );
+  const classifiedBase =
+    signedLedgerCents(
+      row.target_current_principal ||
+      '0',
+    );
+  const paidForeign =
+    signedForeignUnits(
+      paid.rows[0]
+        ?.foreign_paid ||
+      '0',
+    );
+  const paidBase =
+    signedLedgerCents(
+      paid.rows[0]
+        ?.base_paid ||
+      '0',
+    );
+  const currentForeign =
+    classifiedForeign >
+      paidForeign
+      ? classifiedForeign -
+        paidForeign
+      : BigInt(
+          0,
+        );
+  const currentBase =
+    classifiedBase >
+      paidBase
+      ? classifiedBase -
+        paidBase
+      : BigInt(
+          0,
+        );
+
+  return {
+    totalForeign,
+    totalBase,
+    currentForeign:
+      currentForeign >
+      totalForeign
+        ? totalForeign
+        : currentForeign,
+    currentBase:
+      currentBase >
+      totalBase
+        ? totalBase
+        : currentBase,
+    noncurrentForeign:
+      totalForeign >
+      currentForeign
+        ? totalForeign -
+          currentForeign
+        : BigInt(
+            0,
+          ),
+    noncurrentBase:
+      totalBase >
+      currentBase
+        ? totalBase -
+          currentBase
+        : BigInt(
+            0,
+          ),
+    classificationDate,
+  };
+}
+
+export async function financingFxAccounts(
+  client:
+    PoolClient,
+  companyId:
+    string,
+) {
+  const result =
+    await client.query(
+      `
+        SELECT
+          fx_gain_account_id::text
+            AS gain_id,
+          fx_loss_account_id::text
+            AS loss_id
+        FROM accounting_settings
+        WHERE company_id =
+              $1
+          AND deleted_at
+              IS NULL
+        LIMIT 1
+        FOR SHARE
+      `,
+      [
+        companyId,
+      ],
+    );
+  const gainId =
+    result.rows[0]
+      ?.gain_id
+      ? String(
+          result.rows[0]
+            .gain_id,
+        )
+      : null;
+  const lossId =
+    result.rows[0]
+      ?.loss_id
+      ? String(
+          result.rows[0]
+            .loss_id,
+        )
+      : null;
+
+  if (
+    !gainId ||
+    !lossId
+  ) {
+    throw new AccountingInputError(
+      'Map FX Gain and FX Loss accounts in Accounting Setup before settling foreign-currency financing.',
+    );
+  }
+
+  await financingAccount(
+    client,
+    companyId,
+    gainId,
+    'FX gain account',
+    'income',
+  );
+  await financingAccount(
+    client,
+    companyId,
+    lossId,
+    'FX loss account',
+    'expense',
+  );
+
+  return {
+    gainId,
+    lossId,
+  };
+}
+
+export async function assertFinancingFxRevaluationCleared(
+  client:
+    Pick<
+      PoolClient,
+      'query'
+    >,
+  companyId:
+    string,
+) {
+  const result =
+    await client.query(
+      `
+        SELECT
+          id::text,
+          as_of_date::text
+        FROM accounting_fx_revaluation_runs
+        WHERE company_id =
+              $1
+          AND deleted_at
+              IS NULL
+          AND status =
+              'posted'
+          AND reversal_journal_id
+              IS NULL
+        ORDER BY
+          as_of_date DESC,
+          posted_at DESC
+        LIMIT 1
+      `,
+      [
+        companyId,
+      ],
+    );
+
+  if (
+    result.rows[0]
+  ) {
+    throw new AccountingInputError(
+      'Reverse the posted FX revaluation dated ' +
+      String(
+        result.rows[0]
+          .as_of_date,
+      ).slice(
+        0,
+        10,
+      ) +
+      ' before settling foreign-currency financing.',
+    );
+  }
+}
