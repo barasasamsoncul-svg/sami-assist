@@ -36,6 +36,7 @@ import {
 } from './financing-rules';
 import {
   assertFinancingFunds,
+  assertFinancingFxRevaluationCleared,
   assertFinancingSettlementCurrency,
   calculateFinancingInterest,
   financingAccount,
@@ -48,9 +49,13 @@ import {
   financingEffectiveRate,
   financingFacilityForUpdate,
   financingFinancialAccountForUpdate,
+  financingFxAccounts,
+  financingInterestCarryingCents,
   financingOptionalId,
   financingOutstandingInterestUnits,
   financingOutstandingPrincipalUnits,
+  financingPrincipalBuckets,
+  financingProportionalCents,
   financingPositiveUnits,
   financingRate,
   financingRateToBase,
