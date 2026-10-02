@@ -1759,3 +1759,23 @@ test('Fixed Assets 2.4 accounting control is migration-backed and protected', as
   assert.match(service,/ROLLBACK TO SAVEPOINT fixed_asset_depreciation/);
   assert.match(service,/capitalization_threshold/);
 });
+
+
+test('Fixed Assets release migration expands tenant schemas before promotion without advancing control versions', async () => {
+  const [script,pkg] = await Promise.all([
+    source('scripts/migrate-fixed-assets-before-release.ts'),
+    source('package.json'),
+  ]);
+
+  assert.match(script,/runSamiModuleMigrations/);
+  assert.match(script,/fixed_assets/);
+  assert.match(script,/expand-before-promote/);
+  assert.match(script,/controlVersionUpdated:[\s\S]*false/);
+  assert.doesNotMatch(
+    script,
+    /UPDATE\s+tenant_modules/i,
+    'The pre-release expansion must not make the control plane advertise 2.4 before production code is live.',
+  );
+  assert.match(pkg,/migrate:fixed-assets:release/);
+  assert.match(pkg,/test:fixed-assets:release/);
+});
