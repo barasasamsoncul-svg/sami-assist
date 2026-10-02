@@ -1517,6 +1517,18 @@ export default function WorkspaceNotificationCenter({
       ],
     );
 
+  const callTarget =
+    selected?.type ===
+      'direct'
+      ? selected.participants
+          .find(
+            participant =>
+              participant.id !==
+              userId,
+          ) ||
+        null
+      : null;
+
   const content = (
     <div
       className={
@@ -2194,7 +2206,7 @@ export default function WorkspaceNotificationCenter({
                       </button>
                     )}
 
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="truncate text-xs font-bold">
                         {selected?.subject ||
                           selected?.participants
@@ -2217,6 +2229,36 @@ export default function WorkspaceNotificationCenter({
                           : 'Internal workspace message'}
                       </p>
                     </div>
+
+                    {callTarget &&
+                    selectedConversation ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void unlockSamiAudio();
+
+                          window.dispatchEvent(
+                            new CustomEvent(
+                              'sami:start-call',
+                              {
+                                detail: {
+                                  recipientUserId:
+                                    callTarget.id,
+                                  recipientName:
+                                    callTarget.name,
+                                  conversationId:
+                                    selectedConversation,
+                                },
+                              },
+                            ),
+                          );
+                        }}
+                        className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-xl bg-emerald-600 px-3 text-[10px] font-black text-white transition hover:bg-emerald-700"
+                      >
+                        <Phone className="h-3.5 w-3.5" />
+                        Call
+                      </button>
+                    ) : null}
                   </div>
 
                   <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
