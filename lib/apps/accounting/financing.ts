@@ -3123,14 +3123,12 @@ export async function postFinancingRepayment(
           postingKind:
             'system',
           lines:
-            transactionJournalLines({
+            buildFinancingRepaymentJournalLines({
               direction:
                 String(
                   facility.direction,
                 ) as
                   FinancingDirection,
-              kind:
-                'repayment',
               financialLedgerAccountId:
                 String(
                   financial
@@ -3141,6 +3139,14 @@ export async function postFinancingRepayment(
                   facility
                     .principal_account_id,
                 ),
+              currentPrincipalAccountId:
+                facility
+                  .current_principal_account_id
+                  ? String(
+                      facility
+                        .current_principal_account_id,
+                    )
+                  : null,
               accruedInterestAccountId:
                 String(
                   facility
@@ -3154,22 +3160,26 @@ export async function postFinancingRepayment(
                         .fee_account_id,
                     )
                   : null,
-              principalBase:
-                decimalAmount(
-                  principalBase,
-                ),
-              interestBase:
-                decimalAmount(
-                  interestBase,
-                ),
-              feeBase:
-                decimalAmount(
-                  feeBase,
-                ),
-              totalBase:
-                decimalAmount(
-                  totalBase,
-                ),
+              fxGainAccountId:
+                fxAccounts
+                  ?.gainId ||
+                null,
+              fxLossAccountId:
+                fxAccounts
+                  ?.lossId ||
+                null,
+              currentPrincipalCarryingCents:
+                currentPrincipalCarryingBase,
+              noncurrentPrincipalCarryingCents:
+                noncurrentPrincipalCarryingBase,
+              interestCarryingCents:
+                interestCarryingBase,
+              feeSettlementCents:
+                feeBase,
+              totalSettlementCents:
+                totalBase,
+              realizedFxCents:
+                realizedFx,
             }),
         },
       );
