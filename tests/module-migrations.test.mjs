@@ -1781,7 +1781,7 @@ test('Fixed Assets release migration expands tenant schemas before promotion wit
 });
 
 
-test('Accounting roadmap closes Fixed Assets before Accruals', async () => {
+test('Accounting roadmap closes Fixed Assets and Accruals before Loans and Financing', async () => {
   const roadmap = await source('docs/accounting/ROADMAP.md');
 
   assert.match(
@@ -1790,11 +1790,15 @@ test('Accounting roadmap closes Fixed Assets before Accruals', async () => {
   );
   assert.match(
     roadmap,
-    /## Remaining depth, in the agreed order[\s\S]*20\. Accruals and deferrals\./,
+    /20\. Accruals and deferrals: Accounting 2\.21/,
+  );
+  assert.match(
+    roadmap,
+    /## Remaining depth, in the agreed order[\s\S]*21\. Loans and financing\./,
   );
   assert.doesNotMatch(
     roadmap,
-    /## Remaining depth, in the agreed order[\s\S]*19\. Fixed assets\./,
+    /## Remaining depth, in the agreed order[\s\S]*(?:19\. Fixed assets|20\. Accruals and deferrals)\./,
   );
 });
 
