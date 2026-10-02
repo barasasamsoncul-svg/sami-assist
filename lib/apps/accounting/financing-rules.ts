@@ -453,7 +453,7 @@ export function financingDayCountDays(
   }
 
   return Math.max(
-    1,
+    0,
     Math.round(
       (
         endDate.getTime() -
