@@ -149,6 +149,9 @@ CREATE TABLE IF NOT EXISTS public.accounting_financing_schedule_lines (
   closing_principal NUMERIC(19,4) NOT NULL,
   annual_rate NUMERIC(12,8) NOT NULL,
   day_count_days INTEGER NOT NULL,
+  schedule_source VARCHAR(20) NOT NULL DEFAULT 'generated',
+  request_key UUID,
+  request_hash VARCHAR(64),
   status VARCHAR(20) NOT NULL DEFAULT 'projected',
   created_by UUID,
   updated_by UUID,
@@ -166,6 +169,12 @@ CREATE TABLE IF NOT EXISTS public.accounting_financing_schedule_lines (
   CHECK (closing_principal >= 0),
   CHECK (annual_rate >= 0),
   CHECK (day_count_days > 0),
+  CHECK (schedule_source IN ('generated','custom')),
+  CHECK (
+    (request_key IS NULL AND request_hash IS NULL)
+    OR
+    (request_key IS NOT NULL AND request_hash IS NOT NULL)
+  ),
   CHECK (status IN ('projected','due','settled','superseded'))
 );
 
@@ -176,6 +185,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_financing_schedule_line
 CREATE INDEX IF NOT EXISTS idx_accounting_financing_schedule_due
   ON public.accounting_financing_schedule_lines(company_id,facility_id,revision,due_date)
   WHERE deleted_at IS NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_financing_custom_schedule_request
+  ON public.accounting_financing_schedule_lines(company_id,facility_id,request_key,sequence)
+  WHERE deleted_at IS NULL
+    AND request_key IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS public.accounting_financing_transactions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
