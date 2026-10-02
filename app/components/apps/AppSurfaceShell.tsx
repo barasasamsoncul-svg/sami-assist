@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 
 import {
   ArrowLeft,
@@ -26,19 +27,117 @@ import {
 } from 'react';
 
 import SamiAppIconTile from '@/app/components/apps/SamiAppIconTile';
-import WorkspaceAppSwitcher from '@/app/components/workspace/WorkspaceAppSwitcher';
 import WorkspaceCompanyIdentity from '@/app/components/workspace/WorkspaceCompanyIdentity';
-import WorkspaceNotificationCenter from '@/app/components/workspace/WorkspaceNotificationCenter';
-import WorkspaceSearchLauncher from '@/app/components/workspace/WorkspaceSearch';
-import WorkspaceTenantSwitcher from '@/app/components/workspace/WorkspaceTenantSwitcher';
-import {
-  WorkspaceTutorialToggle,
-} from '@/app/components/workspace/WorkspaceTutorial';
 
 import type {
   SamiAppUiProfile,
 } from '@/lib/apps/ui-profiles';
 
+
+const WorkspaceAppSwitcher =
+  dynamic(
+    () =>
+      import(
+        '@/app/components/workspace/WorkspaceAppSwitcher'
+      ),
+    {
+      ssr:
+        false,
+      loading: () => (
+        <div
+          aria-hidden="true"
+          className="h-10 w-10 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)]"
+        />
+      ),
+    },
+  );
+
+const WorkspaceTutorialToggle =
+  dynamic(
+    () =>
+      import(
+        '@/app/components/workspace/WorkspaceTutorial'
+      ).then(
+        module =>
+          module.WorkspaceTutorialToggle,
+      ),
+    {
+      ssr:
+        false,
+      loading: () => (
+        <div
+          aria-hidden="true"
+          className="h-10 w-10 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)]"
+        />
+      ),
+    },
+  );
+
+const WorkspaceSearchLauncher =
+  dynamic(
+    () =>
+      import(
+        '@/app/components/workspace/WorkspaceSearch'
+      ),
+    {
+      ssr:
+        false,
+      loading: () => (
+        <div
+          aria-hidden="true"
+          className="hidden h-10 min-w-[190px] rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] md:block"
+        />
+      ),
+    },
+  );
+
+const WorkspaceTenantSwitcher =
+  dynamic(
+    () =>
+      import(
+        '@/app/components/workspace/WorkspaceTenantSwitcher'
+      ),
+    {
+      ssr:
+        false,
+      loading: () => (
+        <div
+          aria-hidden="true"
+          className="h-10 w-10 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)]"
+        />
+      ),
+    },
+  );
+
+const WorkspaceNotificationCenter =
+  dynamic(
+    () =>
+      import(
+        '@/app/components/workspace/WorkspaceNotificationCenter'
+      ),
+    {
+      ssr:
+        false,
+      loading: () => (
+        <div
+          aria-hidden="true"
+          className="h-10 w-10 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)]"
+        />
+      ),
+    },
+  );
+
+const WorkspaceCallOverlay =
+  dynamic(
+    () =>
+      import(
+        '@/app/components/workspace/WorkspaceCallOverlay'
+      ),
+    {
+      ssr:
+        false,
+    },
+  );
 
 type UserData = {
   id: string;
@@ -916,6 +1015,14 @@ export default function AppSurfaceShell({
           )
         }
       </div>
+
+      {!appLocked ? (
+        <WorkspaceCallOverlay
+          userId={
+            user.id
+          }
+        />
+      ) : null}
     </main>
   );
 }

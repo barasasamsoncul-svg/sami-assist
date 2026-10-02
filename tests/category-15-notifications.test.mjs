@@ -709,6 +709,200 @@ test('Category 15: transactional security email and SMS fire only for real accou
 });
 
 
+test('Core 1.9: notification sounds and in-app calling are additive tenant capabilities', async () => {
+  const [
+    manifest,
+    migration,
+    core,
+  ] = await Promise.all([
+    source('lib/schema/tenant-migrations/manifest.ts'),
+    source('lib/schema/tenant-migrations/migrations/009-core-1.8.0-to-1.9.0.sql'),
+    source('lib/schema/tenant-core.sql'),
+  ]);
+
+  assert.match(
+    manifest,
+    /CURRENT_TENANT_CORE_VERSION[\s\S]*1\.9\.0/,
+  );
+  assert.match(
+    manifest,
+    /core-1\.8\.0-to-1\.9\.0/,
+  );
+  assert.match(
+    migration,
+    /ADD COLUMN IF NOT EXISTS sound_enabled/,
+  );
+  assert.match(
+    migration,
+    /alert_sound/,
+  );
+  assert.match(
+    migration,
+    /message_sound/,
+  );
+  assert.match(
+    migration,
+    /call_ringtone/,
+  );
+  assert.match(
+    migration,
+    /CREATE TABLE IF NOT EXISTS workspace_calls/,
+  );
+  assert.match(
+    migration,
+    /CREATE TABLE IF NOT EXISTS workspace_call_signals/,
+  );
+  assert.doesNotMatch(
+    migration,
+    /DROP TABLE|DROP DATABASE|TRUNCATE|DROP CONSTRAINT|DROP TRIGGER/i,
+    'Core 1.9 production upgrade must remain additive.',
+  );
+  assert.match(
+    core,
+    /CREATE TABLE IF NOT EXISTS \{schema\}\.workspace_calls/,
+  );
+  assert.match(
+    core,
+    /CREATE TABLE IF NOT EXISTS \{schema\}\.workspace_call_signals/,
+  );
+  assert.match(
+    core,
+    /VALUES \('1\.9\.0'\)/,
+  );
+});
+
+test('Category 15: notification center opens alert details before linked records and owns sound preferences', async () => {
+  const [
+    center,
+    service,
+    sounds,
+  ] = await Promise.all([
+    source('app/components/workspace/WorkspaceNotificationCenter.tsx'),
+    source('lib/services/workspace-notifications.ts'),
+    source('lib/ui/notification-sounds.ts'),
+  ]);
+
+  for (const marker of [
+    'Alert details',
+    'Open linked record',
+    'Alert & call sounds',
+    'Alert tone',
+    'Message tone',
+    'Call ringtone',
+    'View alert',
+  ]) {
+    assert.match(
+      center,
+      new RegExp(marker),
+      'Notification center must expose ' + marker + '.',
+    );
+  }
+
+  assert.match(
+    center,
+    /setSelectedAlert/,
+  );
+  assert.match(
+    center,
+    /sami:start-call/,
+  );
+  assert.match(
+    service,
+    /soundEnabled/,
+  );
+  assert.match(
+    service,
+    /alertSound/,
+  );
+  assert.match(
+    service,
+    /messageSound/,
+  );
+  assert.match(
+    service,
+    /callRingtone/,
+  );
+  assert.match(
+    sounds,
+    /playSamiSound/,
+  );
+  assert.match(
+    sounds,
+    /startSamiRingtone/,
+  );
+});
+
+test('Category 15: in-app calls use participant-scoped WebRTC signaling and shared overlays', async () => {
+  const [
+    service,
+    callsRoute,
+    signalRoute,
+    overlay,
+    workspaceShell,
+    appShell,
+  ] = await Promise.all([
+    source('lib/services/workspace-calls.ts'),
+    source('app/api/workspace/calls/route.ts'),
+    source('app/api/workspace/calls/[callId]/signals/route.ts'),
+    source('app/components/workspace/WorkspaceCallOverlay.tsx'),
+    source('app/components/workspace/WorkspaceShell.tsx'),
+    source('app/components/apps/AppSurfaceShell.tsx'),
+  ]);
+
+  assert.match(
+    service,
+    /requireCallableUser/,
+  );
+  assert.match(
+    service,
+    /pg_advisory_xact_lock/,
+  );
+  assert.match(
+    service,
+    /caller_user_id[\s\S]*callee_user_id/,
+  );
+  assert.match(
+    service,
+    /SAMI_WEBRTC_ICE_SERVERS_JSON/,
+  );
+  assert.match(
+    callsRoute,
+    /startWorkspaceCall/,
+  );
+  assert.match(
+    signalRoute,
+    /addWorkspaceCallSignal/,
+  );
+  assert.match(
+    overlay,
+    /RTCPeerConnection/,
+  );
+  assert.match(
+    overlay,
+    /getUserMedia/,
+  );
+  assert.match(
+    overlay,
+    /Incoming SaMi call/,
+  );
+  assert.match(
+    overlay,
+    /Answer/,
+  );
+  assert.match(
+    overlay,
+    /Decline/,
+  );
+  assert.match(
+    workspaceShell,
+    /WorkspaceCallOverlay/,
+  );
+  assert.match(
+    appShell,
+    /WorkspaceCallOverlay/,
+  );
+});
+
 test('Category 15: full-suite gate includes notification regression coverage', async () => {
   const pkg =
     JSON.parse(

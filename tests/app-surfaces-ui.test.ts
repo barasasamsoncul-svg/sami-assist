@@ -1495,3 +1495,112 @@ test(
     );
   },
 );
+
+
+test(
+  'Accounting Loans and Financing exposes controlled facility lifecycle',
+  async () => {
+    const [
+      workspace,
+      surface,
+      route,
+      rules,
+      loader,
+    ] = await Promise.all([
+      readFile(
+        'app/apps/accounting/AccountingWorkspace.tsx',
+        'utf8',
+      ),
+      readFile(
+        'app/apps/accounting/AccountingFinancing.tsx',
+        'utf8',
+      ),
+      readFile(
+        'app/api/apps/accounting/financing/route.ts',
+        'utf8',
+      ),
+      readFile(
+        'lib/apps/accounting/financing-rules.ts',
+        'utf8',
+      ),
+      readFile(
+        'lib/apps/accounting/financing-loader.ts',
+        'utf8',
+      ),
+    ]);
+
+    assert.match(
+      workspace,
+      /Loans & Financing[\s\S]*\/loans-financing/,
+    );
+    assert.match(
+      workspace,
+      /dedicatedSection === 'loans-financing'[\s\S]*AccountingFinancing/,
+    );
+
+    for (const marker of [
+      'Borrowings, loans receivable and financing control',
+      'Create borrowing or loan receivable',
+      'Post drawdown',
+      'Post payment',
+      'Accrue interest',
+      'Classify current portion',
+      'Current / non-current history',
+      'Variable rate',
+      'Custom lender schedule',
+      'Save custom revision',
+      'Financing subledger reconciliation',
+      'Debt service forecast',
+      'Maturity profile',
+      'SaMiOverlay',
+    ]) {
+      assert.match(
+        surface,
+        new RegExp(marker),
+        'Financing UI must expose ' + marker + '.',
+      );
+    }
+
+    for (const action of [
+      'save-settings',
+      'create-facility',
+      'activate-facility',
+      'add-rate',
+      'post-drawdown',
+      'post-repayment',
+      'run-interest-accrual',
+      'reverse-interest-accrual',
+      'reverse-transaction',
+      'classify-current',
+      'replace-custom-schedule',
+      'close-facility',
+      'cancel-facility',
+    ]) {
+      assert.match(
+        route,
+        new RegExp(action),
+      );
+    }
+
+    for (const marker of [
+      'actual_365',
+      'actual_360',
+      'thirty_360',
+      'annuity',
+      'equal_principal',
+      'interest_only',
+      'bullet',
+      'exactAnnuityPayment',
+      'financingSignedRateScaled',
+    ]) {
+      assert.match(
+        rules,
+        new RegExp(marker),
+      );
+    }
+
+    assert.match(loader,/outstanding_principal_foreign/);
+    assert.match(loader,/current_principal_base/);
+    assert.match(loader,/payments_next_30_days/);
+  },
+);

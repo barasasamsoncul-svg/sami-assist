@@ -708,6 +708,14 @@ CREATE TABLE IF NOT EXISTS {schema}.notification_preferences (
     push_enabled BOOLEAN NOT NULL DEFAULT FALSE,
     sms_enabled BOOLEAN NOT NULL DEFAULT FALSE,
 
+    sound_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    alert_sound VARCHAR(40) NOT NULL DEFAULT 'chime'
+        CHECK (alert_sound IN ('chime','soft','pulse','classic','silent')),
+    message_sound VARCHAR(40) NOT NULL DEFAULT 'soft'
+        CHECK (message_sound IN ('chime','soft','pulse','classic','silent')),
+    call_ringtone VARCHAR(40) NOT NULL DEFAULT 'classic'
+        CHECK (call_ringtone IN ('classic','chime','pulse','soft','silent')),
+
     mute_until TIMESTAMPTZ,
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -846,6 +854,81 @@ CREATE INDEX IF NOT EXISTS idx_workspace_messages_conversation
 CREATE INDEX IF NOT EXISTS idx_workspace_messages_sender
     ON {schema}.workspace_messages(sender_user_id, created_at DESC)
     WHERE deleted_at IS NULL;
+
+
+CREATE TABLE IF NOT EXISTS {schema}.workspace_calls (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    company_id UUID NOT NULL
+        REFERENCES {schema}.companies(id)
+        ON DELETE CASCADE,
+
+    conversation_id UUID
+        REFERENCES {schema}.workspace_conversations(id)
+        ON DELETE SET NULL,
+
+    caller_user_id UUID NOT NULL,
+    callee_user_id UUID NOT NULL,
+
+    status VARCHAR(30) NOT NULL DEFAULT 'ringing'
+        CHECK (
+            status IN (
+                'ringing',
+                'accepted',
+                'declined',
+                'ended',
+                'cancelled',
+                'missed'
+            )
+        ),
+
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    answered_at TIMESTAMPTZ,
+    ended_at TIMESTAMPTZ,
+
+    metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CHECK (caller_user_id <> callee_user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_calls_callee_status
+    ON {schema}.workspace_calls(callee_user_id, status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_calls_caller_status
+    ON {schema}.workspace_calls(caller_user_id, status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_calls_company_created
+    ON {schema}.workspace_calls(company_id, created_at DESC);
+
+
+CREATE TABLE IF NOT EXISTS {schema}.workspace_call_signals (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    call_id UUID NOT NULL
+        REFERENCES {schema}.workspace_calls(id)
+        ON DELETE CASCADE,
+
+    sender_user_id UUID NOT NULL,
+
+    signal_type VARCHAR(20) NOT NULL
+        CHECK (
+            signal_type IN (
+                'offer',
+                'answer',
+                'ice'
+            )
+        ),
+
+    payload JSONB NOT NULL,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_call_signals_call_created
+    ON {schema}.workspace_call_signals(call_id, created_at ASC, id ASC);
 
 
 -- 7. WORKFLOW ENGINE
@@ -2726,6 +2809,15 @@ FOR EACH ROW
 EXECUTE FUNCTION {schema}.set_updated_at();
 
 
+DROP TRIGGER IF EXISTS trg_workspace_calls_updated_at
+    ON {schema}.workspace_calls;
+
+CREATE TRIGGER trg_workspace_calls_updated_at
+BEFORE UPDATE ON {schema}.workspace_calls
+FOR EACH ROW
+EXECUTE FUNCTION {schema}.set_updated_at();
+
+
 DROP TRIGGER IF EXISTS trg_ai_conversations_updated_at
     ON {schema}.ai_conversations;
 
@@ -2930,7 +3022,7 @@ CREATE TABLE IF NOT EXISTS {schema}.core_schema_version (
 );
 
 INSERT INTO {schema}.core_schema_version (version)
-VALUES ('1.8.0')
+VALUES ('1.9.0')
 ON CONFLICT (version) DO NOTHING;
 
 

@@ -98,11 +98,22 @@ export type WorkspaceNotification = {
   updatedAt: string;
 };
 
+export type WorkspaceNotificationSound =
+  | 'chime'
+  | 'soft'
+  | 'pulse'
+  | 'classic'
+  | 'silent';
+
 export type WorkspaceNotificationPreferences = {
   inAppEnabled: boolean;
   emailEnabled: boolean;
   pushEnabled: boolean;
   smsEnabled: boolean;
+  soundEnabled: boolean;
+  alertSound: WorkspaceNotificationSound;
+  messageSound: WorkspaceNotificationSound;
+  callRingtone: WorkspaceNotificationSound;
   muteUntil: string | null;
 };
 
@@ -189,6 +200,21 @@ function normalizeText(
         .slice(0, maxLength)
     : '';
 }
+
+function normalizeSound(
+  value: unknown,
+  fallback:
+    WorkspaceNotificationSound,
+): WorkspaceNotificationSound {
+  return value === 'chime' ||
+    value === 'soft' ||
+    value === 'pulse' ||
+    value === 'classic' ||
+    value === 'silent'
+    ? value
+    : fallback;
+}
+
 
 function normalizePriority(
   value: unknown,
@@ -481,6 +507,10 @@ async function loadPreferences(
           email_enabled,
           push_enabled,
           sms_enabled,
+          sound_enabled,
+          alert_sound,
+          message_sound,
+          call_ringtone,
           mute_until
         FROM notification_preferences
         WHERE company_id = $1
@@ -513,6 +543,23 @@ async function loadPreferences(
       row?.push_enabled === true,
     smsEnabled:
       row?.sms_enabled === true,
+    soundEnabled:
+      row?.sound_enabled !== false,
+    alertSound:
+      normalizeSound(
+        row?.alert_sound,
+        'chime',
+      ),
+    messageSound:
+      normalizeSound(
+        row?.message_sound,
+        'soft',
+      ),
+    callRingtone:
+      normalizeSound(
+        row?.call_ringtone,
+        'classic',
+      ),
     muteUntil:
       toIso(
         row?.mute_until || null,
@@ -842,6 +889,10 @@ export async function updateWorkspaceNotificationPreferences(
     inAppEnabled?: unknown;
     emailEnabled?: unknown;
     smsEnabled?: unknown;
+    soundEnabled?: unknown;
+    alertSound?: unknown;
+    messageSound?: unknown;
+    callRingtone?: unknown;
     muteUntil?: unknown;
   },
 ): Promise<WorkspaceNotificationPreferences> {
@@ -875,6 +926,35 @@ export async function updateWorkspaceNotificationPreferences(
     typeof patch.smsEnabled === 'boolean'
       ? patch.smsEnabled
       : current.smsEnabled;
+
+  const soundEnabled =
+    typeof patch.soundEnabled === 'boolean'
+      ? patch.soundEnabled
+      : current.soundEnabled;
+
+  const alertSound =
+    patch.alertSound === undefined
+      ? current.alertSound
+      : normalizeSound(
+          patch.alertSound,
+          current.alertSound,
+        );
+
+  const messageSound =
+    patch.messageSound === undefined
+      ? current.messageSound
+      : normalizeSound(
+          patch.messageSound,
+          current.messageSound,
+        );
+
+  const callRingtone =
+    patch.callRingtone === undefined
+      ? current.callRingtone
+      : normalizeSound(
+          patch.callRingtone,
+          current.callRingtone,
+        );
 
   let muteUntil =
     current.muteUntil;
@@ -918,6 +998,10 @@ export async function updateWorkspaceNotificationPreferences(
           email_enabled,
           push_enabled,
           sms_enabled,
+          sound_enabled,
+          alert_sound,
+          message_sound,
+          call_ringtone,
           mute_until,
           created_at,
           updated_at
@@ -931,6 +1015,10 @@ export async function updateWorkspaceNotificationPreferences(
           FALSE,
           $5,
           $6,
+          $7,
+          $8,
+          $9,
+          $10,
           NOW(),
           NOW()
         )
@@ -946,6 +1034,14 @@ export async function updateWorkspaceNotificationPreferences(
             EXCLUDED.email_enabled,
           sms_enabled =
             EXCLUDED.sms_enabled,
+          sound_enabled =
+            EXCLUDED.sound_enabled,
+          alert_sound =
+            EXCLUDED.alert_sound,
+          message_sound =
+            EXCLUDED.message_sound,
+          call_ringtone =
+            EXCLUDED.call_ringtone,
           mute_until =
             EXCLUDED.mute_until,
           updated_at =
@@ -955,6 +1051,10 @@ export async function updateWorkspaceNotificationPreferences(
           email_enabled,
           push_enabled,
           sms_enabled,
+          sound_enabled,
+          alert_sound,
+          message_sound,
+          call_ringtone,
           mute_until
       `,
       [
@@ -963,6 +1063,10 @@ export async function updateWorkspaceNotificationPreferences(
         inAppEnabled,
         emailEnabled,
         smsEnabled,
+        soundEnabled,
+        alertSound,
+        messageSound,
+        callRingtone,
         muteUntil,
       ],
     );
@@ -979,6 +1083,23 @@ export async function updateWorkspaceNotificationPreferences(
       row.push_enabled === true,
     smsEnabled:
       row.sms_enabled === true,
+    soundEnabled:
+      row.sound_enabled !== false,
+    alertSound:
+      normalizeSound(
+        row.alert_sound,
+        'chime',
+      ),
+    messageSound:
+      normalizeSound(
+        row.message_sound,
+        'soft',
+      ),
+    callRingtone:
+      normalizeSound(
+        row.call_ringtone,
+        'classic',
+      ),
     muteUntil:
       toIso(
         row.mute_until || null,
@@ -1029,6 +1150,30 @@ export async function updateWorkspaceNotificationPreferences(
             current.smsEnabled,
           to:
             updatedPreferences.smsEnabled,
+        },
+        soundEnabled: {
+          from:
+            current.soundEnabled,
+          to:
+            updatedPreferences.soundEnabled,
+        },
+        alertSound: {
+          from:
+            current.alertSound,
+          to:
+            updatedPreferences.alertSound,
+        },
+        messageSound: {
+          from:
+            current.messageSound,
+          to:
+            updatedPreferences.messageSound,
+        },
+        callRingtone: {
+          from:
+            current.callRingtone,
+          to:
+            updatedPreferences.callRingtone,
         },
         muteUntil: {
           from:

@@ -794,6 +794,46 @@ async function readNavigationPermissionResponse(
 }
 
 
+const SIDEBAR_CACHE_TTL_MS =
+  120_000;
+
+let workspaceCache:
+  {
+    tenantId:
+      string;
+    expiresAt:
+      number;
+    data:
+      CurrentAccountResponse;
+  } |
+  null =
+    null;
+
+let companyContextCache:
+  {
+    tenantId:
+      string;
+    expiresAt:
+      number;
+    data:
+      CompanyContextResponse;
+  } |
+  null =
+    null;
+
+let navigationCache:
+  {
+    tenantId:
+      string;
+    expiresAt:
+      number;
+    data:
+      NavigationPermissionResponse;
+  } |
+  null =
+    null;
+
+
 /* ================================================================
    SIDEBAR
    ================================================================ */
@@ -861,7 +901,7 @@ export default function WorkspaceSidebar({
     setWorkspacesLoading,
   ] =
     useState(
-      true,
+      false,
     );
 
 
@@ -962,7 +1002,7 @@ export default function WorkspaceSidebar({
     setNavigationLoading,
   ] =
     useState(
-      true,
+      false,
     );
 
 
@@ -1533,6 +1573,38 @@ export default function WorkspaceSidebar({
   const loadWorkspaces =
     useCallback(
       async () => {
+        const tenantId =
+          tenant?.id ||
+          '';
+
+        if (
+          tenantId &&
+          workspaceCache &&
+          workspaceCache.tenantId ===
+            tenantId &&
+          workspaceCache.expiresAt >
+            Date.now()
+        ) {
+          const data =
+            workspaceCache.data;
+
+          setWorkspaces(
+            Array.isArray(
+              data.workspaces,
+            )
+              ? data.workspaces
+              : [],
+          );
+          setCurrentWorkspaceId(
+            data.currentWorkspaceId ||
+            tenantId,
+          );
+          setWorkspacesLoading(
+            false,
+          );
+          return;
+        }
+
         setWorkspacesLoading(
           true,
         );
@@ -1588,6 +1660,19 @@ export default function WorkspaceSidebar({
             tenant?.id ||
             null,
           );
+
+          if (
+            tenant?.id
+          ) {
+            workspaceCache = {
+              tenantId:
+                tenant.id,
+              expiresAt:
+                Date.now() +
+                SIDEBAR_CACHE_TTL_MS,
+              data,
+            };
+          }
         } catch {
           /*
            * The currently rendered workspace remains usable.
@@ -1624,6 +1709,34 @@ export default function WorkspaceSidebar({
             null,
           );
 
+          return;
+        }
+
+        if (
+          companyContextCache &&
+          companyContextCache.tenantId ===
+            tenant.id &&
+          companyContextCache.expiresAt >
+            Date.now()
+        ) {
+          const data =
+            companyContextCache.data;
+
+          if (
+            data.success &&
+            data.selector
+          ) {
+            setCompanySelector(
+              data.selector,
+            );
+            setCompanyError(
+              null,
+            );
+          }
+
+          setCompanyLoading(
+            false,
+          );
           return;
         }
 
@@ -1681,6 +1794,15 @@ export default function WorkspaceSidebar({
           setCompanySelector(
             data.selector,
           );
+
+          companyContextCache = {
+            tenantId:
+              tenant.id,
+            expiresAt:
+              Date.now() +
+              SIDEBAR_CACHE_TTL_MS,
+            data,
+          };
         } catch (
           error
         ) {
@@ -1733,9 +1855,46 @@ export default function WorkspaceSidebar({
           return;
         }
 
+        if (
+          navigationCache &&
+          navigationCache.tenantId ===
+            tenant.id &&
+          navigationCache.expiresAt >
+            Date.now()
+        ) {
+          const data =
+            navigationCache.data;
 
+          if (
+            data.success &&
+            data.navigation
+          ) {
+            setNavigationPermissions(
+              data.navigation,
+            );
+            setNavigationApps(
+              Array.isArray(
+                data.navigation.apps,
+              )
+                ? data.navigation.apps
+                : [],
+            );
+          }
+
+          setNavigationLoading(
+            false,
+          );
+          return;
+        }
+
+
+        /*
+         * The server-rendered module list is already authorized and
+         * immediately usable. Revalidate permissions in the background
+         * without replacing fast navigation with a loading state.
+         */
         setNavigationLoading(
-          true,
+          false,
         );
 
 
@@ -1798,6 +1957,15 @@ export default function WorkspaceSidebar({
                   .apps
               : [],
           );
+
+          navigationCache = {
+            tenantId:
+              tenant.id,
+            expiresAt:
+              Date.now() +
+              SIDEBAR_CACHE_TTL_MS,
+            data,
+          };
         } catch {
           setNavigationPermissions(
             null,
@@ -1822,21 +1990,63 @@ export default function WorkspaceSidebar({
 
   useEffect(
     () => {
-      void loadWorkspaces();
+      let cancelled =
+        false;
+
+      const loadSecondaryContext =
+        () => {
+          if (
+            cancelled
+          ) {
+            return;
+          }
+
+          void Promise.all([
+            loadWorkspaces(),
+            loadCompanyContext(),
+          ]);
+        };
+
+      if (
+        typeof window
+          .requestIdleCallback ===
+        'function'
+      ) {
+        const handle =
+          window.requestIdleCallback(
+            loadSecondaryContext,
+            {
+              timeout:
+                750,
+            },
+          );
+
+        return () => {
+          cancelled =
+            true;
+          window.cancelIdleCallback(
+            handle,
+          );
+        };
+      }
+
+      const handle =
+        window.setTimeout(
+          loadSecondaryContext,
+          120,
+        );
+
+      return () => {
+        cancelled =
+          true;
+        window.clearTimeout(
+          handle,
+        );
+      };
     },
 
     [
       loadWorkspaces,
-    ],
-  );
-
-
-  useEffect(
-    () => {
-      void loadCompanyContext();
-    },
-
-    [
       loadCompanyContext,
     ],
   );

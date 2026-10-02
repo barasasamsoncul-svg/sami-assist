@@ -1,3 +1,4 @@
+import { ACCOUNTING_FINANCING_SQL } from '@/lib/apps/accounting/financing-schema';
 import { ACCOUNTING_ACCRUALS_SQL } from '@/lib/apps/accounting/accruals-schema';
 import { ACCOUNTING_INVENTORY_VALUATION_SQL } from '@/lib/apps/accounting/inventory-valuation-schema';
 import { FIXED_ASSETS_ACCOUNTING_SQL } from '@/lib/apps/fixed_assets/accounting-schema';
@@ -1762,6 +1763,7 @@ ${ACCOUNTING_INTERNATIONAL_LOCALIZATION_SQL}
 ${ACCOUNTING_FX_SQL}
 ${ACCOUNTING_INVENTORY_VALUATION_SQL}
 ${ACCOUNTING_ACCRUALS_SQL}
+${ACCOUNTING_FINANCING_SQL}
 `;
 }
 

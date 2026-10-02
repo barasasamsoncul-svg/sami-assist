@@ -214,8 +214,7 @@ test('Dashboard refresh: workspace home uses shared shell, real company identity
     source('app/dashboard/DashboardClient.tsx'),
   ]);
 
-  assert.match(page, /listWorkspaceActivity/);
-  assert.match(page, /getWorkspaceActivitySummary/);
+  assert.match(page, /getWorkspaceActivityDashboardSnapshot/);
   assert.match(page, /getWorkspaceNotificationSummary/);
   assert.match(page, /currentCompany\.logoUrl/);
 

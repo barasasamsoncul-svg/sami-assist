@@ -27,8 +27,7 @@ import {
 } from '@/lib/dashboard/composer';
 
 import {
-  getWorkspaceActivitySummary,
-  listWorkspaceActivity,
+  getWorkspaceActivityDashboardSnapshot,
 } from '@/lib/services/workspace-activity';
 
 import {
@@ -52,6 +51,7 @@ export default async function DashboardPage() {
   const [
     accountContext,
     permissionContext,
+    companyContext,
   ] =
     await Promise.all([
       getAccountContextForUser(
@@ -59,6 +59,11 @@ export default async function DashboardPage() {
         session.currentTenantId,
       ),
       getPermissionContext(),
+      requireCompanyContext()
+        .catch(
+          () =>
+            null,
+        ),
     ]);
 
   const shell =
@@ -98,10 +103,9 @@ export default async function DashboardPage() {
     | null =
     null;
 
-  try {
-    const companyContext =
-      await requireCompanyContext();
-
+  if (
+    companyContext
+  ) {
     currentCompanyId =
       companyContext
         .currentCompany.id;
@@ -145,12 +149,10 @@ export default async function DashboardPage() {
           .allowedCompanyIds
           .length,
     };
-  } catch {
-    // The shell still renders while company context is recovering.
   }
 
-  const dashboard =
-    await composeDashboard({
+  const dashboardPromise =
+    composeDashboard({
       userId:
         session.user.id,
       permissions:
@@ -160,12 +162,14 @@ export default async function DashboardPage() {
       currentCompanyId,
       selectedCompanyIds,
       allowedCompanyIds,
+      aiEnabled:
+        shell.aiAvailable,
     });
 
   let recentActivity:
     Awaited<
       ReturnType<
-        typeof listWorkspaceActivity
+        typeof getWorkspaceActivityDashboardSnapshot
       >
     >['items'] =
     [];
@@ -173,34 +177,45 @@ export default async function DashboardPage() {
   let activitySummary:
     Awaited<
       ReturnType<
-        typeof getWorkspaceActivitySummary
+        typeof getWorkspaceActivityDashboardSnapshot
       >
-    > | null =
+    >['summary'] |
+    null =
     null;
 
   let unreadNotifications =
     0;
 
-  if (
+  const secondaryPromise =
     currentCompanyId
+      ? Promise.allSettled([
+          getWorkspaceActivityDashboardSnapshot(
+            6,
+          ),
+          getWorkspaceNotificationSummary(),
+        ])
+      : Promise.resolve(
+          [],
+        );
+
+  const [
+    dashboard,
+    secondaryResults,
+  ] =
+    await Promise.all([
+      dashboardPromise,
+      secondaryPromise,
+    ]);
+
+  if (
+    secondaryResults.length ===
+    2
   ) {
     const [
       activityResult,
-      summaryResult,
       notificationResult,
     ] =
-      await Promise.allSettled([
-        listWorkspaceActivity({
-          view:
-            'activity',
-          limit:
-            6,
-        }),
-
-        getWorkspaceActivitySummary(),
-
-        getWorkspaceNotificationSummary(),
-      ]);
+      secondaryResults;
 
     if (
       activityResult.status ===
@@ -210,14 +225,10 @@ export default async function DashboardPage() {
         activityResult
           .value
           .items;
-    }
-
-    if (
-      summaryResult.status ===
-      'fulfilled'
-    ) {
       activitySummary =
-        summaryResult.value;
+        activityResult
+          .value
+          .summary;
     }
 
     if (

@@ -21,6 +21,7 @@ on:
       - 'tests/accounting-fx.test.mjs'
       - 'tests/accounting-inventory-valuation.test.ts'
       - 'tests/accounting-accruals.test.ts'
+      - 'tests/accounting-financing.test.ts'
       - 'tests/fixed-assets-accounting.test.ts'
       - 'lib/apps/fixed_assets/**'
       - 'app/apps/fixed_assets/**'
@@ -81,6 +82,7 @@ jobs:
       - run: node --conditions=react-server --import tsx --test tests/accounting-foundation.test.mjs tests/accounting-statements.test.mjs tests/accounting-payments.test.mjs tests/accounting-tax.test.mjs tests/accounting-kenya.test.mjs tests/accounting-international.test.mjs tests/accounting-fx.test.mjs
       - run: npm run test:accounting:inventory
       - run: npm run test:accounting:accruals
+      - run: npm run test:accounting:financing
       - run: npm run test:fixed-assets
       - run: npm run lint -- app/apps/accounting app/api/apps/accounting lib/apps/accounting
       - run: npm run test:module-migrations && npm run test:app-ui && npm run test:invoicing

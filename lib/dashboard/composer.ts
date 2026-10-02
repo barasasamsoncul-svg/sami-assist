@@ -9,10 +9,6 @@ import type {
 } from '@/lib/auth/permission-context';
 
 import {
-  SAMI_PERMISSIONS,
-} from '@/lib/auth/permission-catalog';
-
-import {
   getDashboardProviders,
   type DashboardProviderContext,
 } from '@/lib/dashboard/providers';
@@ -561,8 +557,8 @@ function buildBrief(
       message:
         input.moduleCount ===
         1
-          ? 'Your permitted application is ready. SaMi will surface relevant work here as its dashboard provider becomes active.'
-          : `Your ${input.moduleCount} permitted applications are ready. SaMi will combine relevant work here as their dashboard providers become active.`,
+          ? 'Your business app is ready. Recent work and activity will appear here as you use SaMi.'
+          : `Your ${input.moduleCount} business apps are ready. Recent work and activity will appear here as you use SaMi.`,
 
       actions:
         briefActions.slice(
@@ -687,6 +683,9 @@ export async function composeDashboard(
 
     requestedScope?:
       DashboardScope;
+
+    aiEnabled?:
+      boolean;
   },
 ): Promise<DashboardViewModel> {
   /*
@@ -1087,12 +1086,8 @@ export async function composeDashboard(
 
 
   const aiEnabled =
-    input.permissions
-      .permissionSet
-      .has(
-        SAMI_PERMISSIONS
-          .AI_USE,
-      );
+    input.aiEnabled ===
+    true;
 
 
   /* ==============================================================

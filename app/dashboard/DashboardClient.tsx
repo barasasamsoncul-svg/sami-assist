@@ -16,7 +16,9 @@ import {
 } from 'lucide-react';
 
 import {
+  useEffect,
   useMemo,
+  useState,
   type ReactNode,
 } from 'react';
 
@@ -229,6 +231,75 @@ function relativeTime(
     );
 }
 
+function activityBrief(
+  recentActivity:
+    ActivityItem[],
+  activitySummary:
+    ActivitySummary,
+  fallback:
+    string,
+) {
+  if (
+    recentActivity.length >
+      0
+  ) {
+    const latest =
+      recentActivity
+        .slice(
+          0,
+          3,
+        )
+        .map(
+          item =>
+            item.label,
+        )
+        .join(
+          ' · ',
+        );
+
+    if (
+      activitySummary
+        ?.todayCount
+    ) {
+      return (
+        'You recorded ' +
+        activitySummary.todayCount +
+        (
+          activitySummary.todayCount ===
+            1
+            ? ' workspace activity today. '
+            : ' workspace activities today. '
+        ) +
+        'Latest: ' +
+        latest +
+        '.'
+      );
+    }
+
+    return (
+      'Your latest workspace activity: ' +
+      latest +
+      '.'
+    );
+  }
+
+  if (
+    activitySummary
+      ?.todayCount
+  ) {
+    return (
+      'You recorded ' +
+      activitySummary.todayCount +
+      ' workspace activities today across ' +
+      activitySummary.modules7d +
+      ' active module(s) this week.'
+    );
+  }
+
+  return fallback;
+}
+
+
 export default function DashboardClient({
   user,
   tenant,
@@ -298,6 +369,193 @@ export default function DashboardClient({
       )[0] ||
     'there';
 
+  const [
+    aiBrief,
+    setAiBrief,
+  ] =
+    useState(
+      activityBrief(
+        recentActivity,
+        activitySummary,
+        dashboard.brief
+          .message,
+      ),
+    );
+
+  const [
+    aiBriefGenerated,
+    setAiBriefGenerated,
+  ] =
+    useState(
+      false,
+    );
+
+  useEffect(
+    () => {
+      if (
+        !capabilities.ai
+      ) {
+        return;
+      }
+
+      const latestActivityId =
+        recentActivity[0]
+          ?.id ||
+        'none';
+      const cacheKey =
+        'sami:dashboard-ai-brief:' +
+        (
+          tenant?.id ||
+          'workspace'
+        ) +
+        ':' +
+        (
+          company
+            ?.currentCompany
+            .id ||
+          'company'
+        ) +
+        ':' +
+        latestActivityId;
+
+      try {
+        const cached =
+          window.sessionStorage
+            .getItem(
+              cacheKey,
+            );
+
+        if (
+          cached
+        ) {
+          const parsed =
+            JSON.parse(
+              cached,
+            ) as {
+              message?:
+                string;
+              generatedByAi?:
+                boolean;
+              savedAt?:
+                number;
+            };
+
+          if (
+            typeof parsed.message ===
+              'string' &&
+            parsed.message
+              .trim() &&
+            Number(
+              parsed.savedAt ||
+              0,
+            ) >
+              Date.now() -
+              60_000
+          ) {
+            setAiBrief(
+              parsed.message
+                .trim(),
+            );
+            setAiBriefGenerated(
+              parsed.generatedByAi ===
+              true,
+            );
+            return;
+          }
+        }
+      } catch {
+        // Session cache is only an optimization.
+      }
+
+      const controller =
+        new AbortController();
+
+      const timer =
+        window.setTimeout(
+          () => {
+            void fetch(
+              '/api/workspace/dashboard/ai-summary',
+              {
+                credentials:
+                  'same-origin',
+                cache:
+                  'no-store',
+                signal:
+                  controller.signal,
+              },
+            )
+              .then(
+                response =>
+                  response.json(),
+              )
+              .then(
+                data => {
+                  if (
+                    data.success &&
+                    typeof data.summary
+                      ?.message ===
+                      'string' &&
+                    data.summary.message
+                      .trim()
+                  ) {
+                    const message =
+                      data.summary
+                        .message
+                        .trim();
+                    const generatedByAi =
+                      data.summary
+                        .generatedByAi ===
+                        true;
+
+                    setAiBrief(
+                      message,
+                    );
+                    setAiBriefGenerated(
+                      generatedByAi,
+                    );
+
+                    try {
+                      window.sessionStorage
+                        .setItem(
+                          cacheKey,
+                          JSON.stringify({
+                            message,
+                            generatedByAi,
+                            savedAt:
+                              Date.now(),
+                          }),
+                        );
+                    } catch {
+                      // Session cache is only an optimization.
+                    }
+                  }
+                },
+              )
+              .catch(
+                () =>
+                  undefined,
+              );
+          },
+          250,
+        );
+
+      return () => {
+        window.clearTimeout(
+          timer,
+        );
+        controller.abort();
+      };
+    },
+    [
+      capabilities.ai,
+      company
+        ?.currentCompany
+        .id,
+      recentActivity,
+      tenant?.id,
+    ],
+  );
+
   return (
     <WorkspaceShell
       user={
@@ -346,6 +604,11 @@ export default function DashboardClient({
               <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-indigo-600 dark:text-indigo-300">
                 <Sparkles className="h-3.5 w-3.5" />
                 SaMi AI
+                <span className="rounded-full border border-indigo-200/80 bg-white/70 px-2 py-0.5 text-[8px] tracking-normal text-indigo-600 dark:border-indigo-500/20 dark:bg-white/[0.04] dark:text-indigo-300">
+                  {aiBriefGenerated
+                    ? 'Live activity summary'
+                    : 'Activity briefing'}
+                </span>
               </div>
 
               <h1 className="mt-2 text-xl font-black tracking-[-0.03em] text-slate-950 sm:text-2xl dark:text-white">
@@ -353,7 +616,7 @@ export default function DashboardClient({
               </h1>
 
               <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500 sm:text-sm dark:text-slate-400">
-                {dashboard.brief.message}
+                {aiBrief}
               </p>
             </div>
 
@@ -502,6 +765,58 @@ export default function DashboardClient({
           0) && (
           <section className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(300px,0.75fr)]">
             <div className="space-y-4">
+              {activitySummary ? (
+                <Section
+                  title="Operational pulse"
+                  description="Live signals from your activity in the current company."
+                >
+                  <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    <div className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
+                      <Activity className="h-4 w-4 text-blue-600 dark:text-blue-300" />
+                      <p className="mt-3 text-xl font-black">
+                        {activitySummary.todayCount}
+                      </p>
+                      <p className="mt-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                        Your actions today
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
+                      <TriangleAlert className="h-4 w-4 text-amber-600 dark:text-amber-300" />
+                      <p className="mt-3 text-xl font-black">
+                        {activitySummary.failed7d}
+                      </p>
+                      <p className="mt-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                        Failed or denied · 7d
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
+                      <Boxes className="h-4 w-4 text-indigo-600 dark:text-indigo-300" />
+                      <p className="mt-3 text-xl font-black">
+                        {activitySummary.modules7d}
+                      </p>
+                      <p className="mt-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                        Modules touched · 7d
+                      </p>
+                    </div>
+
+                    <Link
+                      href="/notifications"
+                      className="rounded-2xl border border-slate-200 p-4 transition hover:bg-slate-50 dark:border-white/10 dark:hover:bg-white/[0.04]"
+                    >
+                      <Bell className="h-4 w-4 text-rose-600 dark:text-rose-300" />
+                      <p className="mt-3 text-xl font-black">
+                        {unreadNotifications}
+                      </p>
+                      <p className="mt-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                        Unread alerts
+                      </p>
+                    </Link>
+                  </div>
+                </Section>
+              ) : null}
+
               {(attention.length >
                 0 ||
                 work.length >

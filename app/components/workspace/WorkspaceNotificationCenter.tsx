@@ -6,16 +6,26 @@ import {
   Bell,
   CheckCheck,
   Inbox,
+  ExternalLink,
   Loader2,
   Mail,
   Megaphone,
   Smartphone,
   MessageSquare,
+  Phone,
+  Play,
   Plus,
   Send,
   Settings2,
+  Volume2,
   X,
 } from 'lucide-react';
+
+import {
+  playSamiSound,
+  unlockSamiAudio,
+  type SamiSoundKey,
+} from '@/lib/ui/notification-sounds';
 
 import {
   useCallback,
@@ -79,6 +89,10 @@ type Preferences = {
   emailEnabled: boolean;
   pushEnabled: boolean;
   smsEnabled: boolean;
+  soundEnabled: boolean;
+  alertSound: SamiSoundKey;
+  messageSound: SamiSoundKey;
+  callRingtone: SamiSoundKey;
   muteUntil: string | null;
 };
 
@@ -263,6 +277,16 @@ export default function WorkspaceNotificationCenter({
       null,
     );
 
+  const [
+    selectedAlert,
+    setSelectedAlert,
+  ] =
+    useState<
+      NotificationItem | null
+    >(
+      null,
+    );
+
   const alertUnreadRef =
     useRef(
       Math.max(
@@ -301,6 +325,11 @@ export default function WorkspaceNotificationCenter({
       0,
     );
 
+  const messageUnreadRef =
+    useRef(
+      0,
+    );
+
   const [
     recipients,
     setRecipients,
@@ -328,6 +357,10 @@ export default function WorkspaceNotificationCenter({
       emailEnabled: false,
       pushEnabled: false,
       smsEnabled: false,
+      soundEnabled: true,
+      alertSound: 'chime',
+      messageSound: 'soft',
+      callRingtone: 'classic',
       muteUntil: null,
     });
 
@@ -490,6 +523,17 @@ export default function WorkspaceNotificationCenter({
                 setLiveAlert(
                   latestUnread,
                 );
+
+                if (
+                  preferences.soundEnabled
+                ) {
+                  void playSamiSound(
+                    latestUnread.type ===
+                      'communication.message'
+                      ? preferences.messageSound
+                      : preferences.alertSound,
+                  );
+                }
               }
 
               latestAlertIdRef
@@ -524,19 +568,33 @@ export default function WorkspaceNotificationCenter({
               [],
             );
 
-            setMessageUnread(
-              Number(
-                conversationData
-                  .unreadCount ||
+            const nextMessageUnread =
+              Math.max(
                 0,
-              ),
+                Number(
+                  conversationData
+                    .unreadCount ||
+                  0,
+                ),
+              );
+
+            messageUnreadRef
+              .current =
+              nextMessageUnread;
+
+            setMessageUnread(
+              nextMessageUnread,
             );
           }
         } catch {
           // Shell badge failure must never block the workspace.
         }
       },
-      [],
+      [
+        preferences.alertSound,
+        preferences.messageSound,
+        preferences.soundEnabled,
+      ],
     );
 
   const loadPanel =
@@ -707,6 +765,61 @@ export default function WorkspaceNotificationCenter({
       },
       [],
     );
+
+  useEffect(
+    () => {
+      const controller =
+        new AbortController();
+
+      const timer =
+        window.setTimeout(
+          () => {
+            void fetch(
+              '/api/workspace/notifications/preferences',
+              {
+                credentials:
+                  'same-origin',
+                cache:
+                  'no-store',
+                signal:
+                  controller.signal,
+              },
+            )
+              .then(
+                response =>
+                  readJson(
+                    response,
+                  ),
+              )
+              .then(
+                data => {
+                  if (
+                    data.success &&
+                    data.preferences
+                  ) {
+                    setPreferences(
+                      data.preferences,
+                    );
+                  }
+                },
+              )
+              .catch(
+                () =>
+                  undefined,
+              );
+          },
+          300,
+        );
+
+      return () => {
+        window.clearTimeout(
+          timer,
+        );
+        controller.abort();
+      };
+    },
+    [],
+  );
 
   useEffect(
     () => {
@@ -954,6 +1067,14 @@ export default function WorkspaceNotificationCenter({
           ),
       );
 
+      setSelectedAlert(
+        current =>
+          current?.id ===
+            item.id
+            ? data.notification
+            : current,
+      );
+
       await loadSummary();
     } catch (
       candidate
@@ -1014,6 +1135,14 @@ export default function WorkspaceNotificationCenter({
               candidate.id !==
               item.id,
           ),
+      );
+
+      setSelectedAlert(
+        current =>
+          current?.id ===
+            item.id
+            ? null
+            : current,
       );
 
       await loadSummary();
@@ -1077,6 +1206,21 @@ export default function WorkspaceNotificationCenter({
                   .toISOString(),
             }),
           ),
+      );
+
+      setSelectedAlert(
+        current =>
+          current
+            ? {
+                ...current,
+                isRead:
+                  true,
+                readAt:
+                  current.readAt ||
+                  new Date()
+                    .toISOString(),
+              }
+            : null,
       );
 
       await loadSummary();
@@ -1446,6 +1590,18 @@ export default function WorkspaceNotificationCenter({
       ],
     );
 
+  const callTarget =
+    selected?.type ===
+      'direct'
+      ? selected.participants
+          .find(
+            participant =>
+              participant.id !==
+              userId,
+          ) ||
+        null
+      : null;
+
   const content = (
     <div
       className={
@@ -1575,6 +1731,103 @@ export default function WorkspaceNotificationCenter({
             )}
           </div>
 
+          {selectedAlert ? (
+            <div className="mx-4 mb-3 rounded-2xl border border-blue-200 bg-blue-50/60 p-4 dark:border-blue-500/20 dark:bg-blue-500/[0.06]">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white">
+                  <Bell className="h-4 w-4" />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-[0.14em] text-blue-600 dark:text-blue-300">
+                        Alert details
+                      </p>
+                      <p className="mt-1 text-sm font-black leading-5">
+                        {selectedAlert.title}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      aria-label="Close alert details"
+                      onClick={() =>
+                        setSelectedAlert(
+                          null,
+                        )
+                      }
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-white/70 dark:text-slate-300 dark:hover:bg-white/10"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+
+                  {selectedAlert.message ? (
+                    <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-slate-600 dark:text-slate-300">
+                      {selectedAlert.message}
+                    </p>
+                  ) : null}
+
+                  <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-500 dark:text-slate-400">
+                    <span>
+                      {when(
+                        selectedAlert.createdAt,
+                      )}
+                    </span>
+                    {selectedAlert.sourceModule ? (
+                      <span>
+                        {selectedAlert.sourceModule}
+                      </span>
+                    ) : null}
+                    <span>
+                      {selectedAlert.priority} priority
+                    </span>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {selectedAlert.href ? (
+                      <Link
+                        href={
+                          selectedAlert.href
+                        }
+                        onClick={() => {
+                          if (
+                            mode ===
+                            'drawer'
+                          ) {
+                            setOpen(
+                              false,
+                            );
+                          }
+                        }}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-[10px] font-black text-white transition hover:bg-blue-700"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        Open linked record
+                      </Link>
+                    ) : null}
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void markAlert(
+                          selectedAlert,
+                          !selectedAlert.isRead,
+                        )
+                      }
+                      className="inline-flex h-8 items-center rounded-lg border border-slate-200 px-3 text-[10px] font-bold dark:border-white/10"
+                    >
+                      {selectedAlert.isRead
+                        ? 'Mark unread'
+                        : 'Mark read'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           <div className="min-h-0 flex-1 overflow-y-auto">
             {notifications.length ===
             0 ? (
@@ -1634,35 +1887,26 @@ export default function WorkspaceNotificationCenter({
                         )}
 
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                          {item.href && (
-                            <Link
-                              href={
-                                item.href
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (
+                                !item.isRead
+                              ) {
+                                void markAlert(
+                                  item,
+                                  true,
+                                );
                               }
-                              onClick={() => {
-                                if (
-                                  !item.isRead
-                                ) {
-                                  void markAlert(
-                                    item,
-                                    true,
-                                  );
-                                }
 
-                                if (
-                                  mode ===
-                                  'drawer'
-                                ) {
-                                  setOpen(
-                                    false,
-                                  );
-                                }
-                              }}
-                              className="inline-flex h-7 items-center rounded-lg sami-contrast-invert px-2.5 text-[10px] font-bold   "
-                            >
-                              Open
-                            </Link>
-                          )}
+                              setSelectedAlert(
+                                item,
+                              );
+                            }}
+                            className="inline-flex h-7 items-center rounded-lg sami-contrast-invert px-2.5 text-[10px] font-bold"
+                          >
+                            Details
+                          </button>
 
                           <button
                             type="button"
@@ -2035,7 +2279,7 @@ export default function WorkspaceNotificationCenter({
                       </button>
                     )}
 
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="truncate text-xs font-bold">
                         {selected?.subject ||
                           selected?.participants
@@ -2058,6 +2302,36 @@ export default function WorkspaceNotificationCenter({
                           : 'Internal workspace message'}
                       </p>
                     </div>
+
+                    {callTarget &&
+                    selectedConversation ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void unlockSamiAudio();
+
+                          window.dispatchEvent(
+                            new CustomEvent(
+                              'sami:start-call',
+                              {
+                                detail: {
+                                  recipientUserId:
+                                    callTarget.id,
+                                  recipientName:
+                                    callTarget.name,
+                                  conversationId:
+                                    selectedConversation,
+                                },
+                              },
+                            ),
+                          );
+                        }}
+                        className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-xl bg-emerald-600 px-3 text-[10px] font-black text-white transition hover:bg-emerald-700"
+                      >
+                        <Phone className="h-3.5 w-3.5" />
+                        Call
+                      </button>
+                    ) : null}
                   </div>
 
                   <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
@@ -2275,6 +2549,152 @@ export default function WorkspaceNotificationCenter({
             </div>
           </div>
 
+          <div className="mt-3 rounded-2xl border border-slate-200 p-4 dark:border-white/10">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300">
+                <Volume2 className="h-4 w-4" />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold">
+                  Alert & call sounds
+                </p>
+                <p className="mt-1 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+                  Choose separate tones for workspace alerts, messages and incoming in-app calls.
+                </p>
+              </div>
+
+              <Toggle
+                checked={
+                  preferences.soundEnabled
+                }
+                disabled={
+                  busy ===
+                  'preferences'
+                }
+                onChange={
+                  checked =>
+                    void updatePreferences({
+                      soundEnabled:
+                        checked,
+                    })
+                }
+              />
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              {([
+                {
+                  key:
+                    'alertSound',
+                  label:
+                    'Alert tone',
+                  icon:
+                    Bell,
+                },
+                {
+                  key:
+                    'messageSound',
+                  label:
+                    'Message tone',
+                  icon:
+                    MessageSquare,
+                },
+                {
+                  key:
+                    'callRingtone',
+                  label:
+                    'Call ringtone',
+                  icon:
+                    Phone,
+                },
+              ] as const).map(
+                item => {
+                  const Icon =
+                    item.icon;
+                  const value =
+                    preferences[
+                      item.key
+                    ];
+
+                  return (
+                    <label
+                      key={
+                        item.key
+                      }
+                      className="rounded-xl border border-slate-200 p-3 dark:border-white/10"
+                    >
+                      <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
+                        <Icon className="h-3.5 w-3.5" />
+                        {item.label}
+                      </span>
+
+                      <div className="mt-2 flex gap-2">
+                        <select
+                          value={
+                            value
+                          }
+                          disabled={
+                            !preferences.soundEnabled ||
+                            busy ===
+                              'preferences'
+                          }
+                          onChange={
+                            event =>
+                              void updatePreferences({
+                                [item.key]:
+                                  event.target
+                                    .value,
+                              })
+                          }
+                          className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 text-[11px] outline-none dark:border-white/10 dark:bg-[#0B0E14]"
+                        >
+                          <option value="chime">
+                            Chime
+                          </option>
+                          <option value="soft">
+                            Soft
+                          </option>
+                          <option value="pulse">
+                            Pulse
+                          </option>
+                          <option value="classic">
+                            Classic
+                          </option>
+                          <option value="silent">
+                            Silent
+                          </option>
+                        </select>
+
+                        <button
+                          type="button"
+                          aria-label={
+                            'Preview ' +
+                            item.label
+                          }
+                          disabled={
+                            !preferences.soundEnabled ||
+                            value ===
+                              'silent'
+                          }
+                          onClick={() => {
+                            void unlockSamiAudio();
+                            void playSamiSound(
+                              value,
+                            );
+                          }}
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 disabled:opacity-40 dark:border-white/10 dark:text-slate-300"
+                        >
+                          <Play className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </label>
+                  );
+                },
+              )}
+            </div>
+          </div>
+
           {mode ===
             'drawer' && (
             <Link
@@ -2329,26 +2749,37 @@ export default function WorkspaceNotificationCenter({
               )}
 
               <div className="mt-3 flex items-center gap-2">
-                {liveAlert.href && (
-                  <Link
-                    href={
-                      liveAlert.href
-                    }
-                    onClick={() => {
+                <button
+                  type="button"
+                  onClick={() => {
+                    void unlockSamiAudio();
+
+                    if (
+                      !liveAlert.isRead
+                    ) {
                       void markAlert(
                         liveAlert,
                         true,
                       );
+                    }
 
-                      setLiveAlert(
-                        null,
-                      );
-                    }}
-                    className="inline-flex h-8 items-center rounded-lg bg-blue-600 px-3 text-[10px] font-black text-white transition hover:bg-blue-700"
-                  >
-                    Open
-                  </Link>
-                )}
+                    setSelectedAlert(
+                      liveAlert,
+                    );
+                    setTab(
+                      'alerts',
+                    );
+                    setLiveAlert(
+                      null,
+                    );
+                    setOpen(
+                      true,
+                    );
+                  }}
+                  className="inline-flex h-8 items-center rounded-lg bg-blue-600 px-3 text-[10px] font-black text-white transition hover:bg-blue-700"
+                >
+                  View alert
+                </button>
 
                 <button
                   type="button"
@@ -2393,6 +2824,8 @@ export default function WorkspaceNotificationCenter({
             : 'Open notifications'
         }
         onClick={() => {
+          void unlockSamiAudio();
+
           setLiveAlert(
             null,
           );

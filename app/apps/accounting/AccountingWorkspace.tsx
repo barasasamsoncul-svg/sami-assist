@@ -2,6 +2,8 @@ import AccountingInventoryValuation from './AccountingInventoryValuation';
 import { getAccountingInventoryValuation } from '@/lib/apps/accounting/inventory-valuation';
 import AccountingAccruals from './AccountingAccruals';
 import { getAccountingAccruals } from '@/lib/apps/accounting/accruals';
+import AccountingFinancing from './AccountingFinancing';
+import { getAccountingFinancing } from '@/lib/apps/accounting/financing-loader';
 import AccountingFx from './AccountingFx';
 import { getAccountingFx } from '@/lib/apps/accounting/fx';
 import AccountingInternational from './AccountingInternational';
@@ -245,6 +247,7 @@ export default async function AccountingWorkspace({
   let fxWorkspace: Awaited<ReturnType<typeof getAccountingFx>> | null = null;
   let inventoryValuationWorkspace: Awaited<ReturnType<typeof getAccountingInventoryValuation>> | null = null;
   let accrualsWorkspace: Awaited<ReturnType<typeof getAccountingAccruals>> | null = null;
+  let financingWorkspace: Awaited<ReturnType<typeof getAccountingFinancing>> | null = null;
 
   let reconciliationWorkspace:
     Awaited<
@@ -284,6 +287,7 @@ export default async function AccountingWorkspace({
     dedicatedSection !== 'fx' &&
     dedicatedSection !== 'inventory-valuation' &&
     dedicatedSection !== 'accruals-deferrals' &&
+    dedicatedSection !== 'loans-financing' &&
     dedicatedSection !==
       'reconciliation'
   ) {
@@ -561,6 +565,24 @@ export default async function AccountingWorkspace({
           AccountingInputError
           ? error.message
           : 'Accruals and deferrals could not be loaded. Retry this page.';
+    }
+  }
+
+  if (
+    dedicatedSection ===
+      'loans-financing'
+  ) {
+    try {
+      financingWorkspace =
+        await getAccountingFinancing();
+    } catch (
+      error
+    ) {
+      foundationError =
+        error instanceof
+          AccountingInputError
+          ? error.message
+          : 'Loans and financing could not be loaded. Retry this page.';
     }
   }
 
@@ -933,6 +955,24 @@ export default async function AccountingWorkspace({
 
     {
       key:
+        'loans-financing',
+      label:
+        'Loans & Financing',
+      href:
+        appBaseHref +
+        '/loans-financing',
+      description:
+        'Borrowings, loan receivables, interest, repayments and balance-sheet classification.',
+      sectionLabel:
+        'Operations',
+      badge:
+        financingWorkspace
+          ?.metrics
+          .active_facilities,
+    },
+
+    {
+      key:
         'reconciliation',
       label:
         'Reconciliation',
@@ -1143,6 +1183,8 @@ export default async function AccountingWorkspace({
                   ? (inventoryValuationWorkspace ? <AccountingInventoryValuation data={inventoryValuationWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Inventory valuation could not be loaded.'}</div>)
                 : dedicatedSection === 'accruals-deferrals'
                   ? (accrualsWorkspace ? <AccountingAccruals data={accrualsWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Accruals and deferrals could not be loaded.'}</div>)
+                : dedicatedSection === 'loans-financing'
+                  ? (financingWorkspace ? <AccountingFinancing data={financingWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Loans and financing could not be loaded.'}</div>)
                 : dedicatedSection ===
                     'reconciliation'
                   ? (
