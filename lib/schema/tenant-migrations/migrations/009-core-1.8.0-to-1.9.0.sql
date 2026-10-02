@@ -123,13 +123,22 @@ CREATE INDEX IF NOT EXISTS idx_workspace_call_signals_call_created
     ON workspace_call_signals(call_id, created_at ASC, id ASC);
 
 
-DROP TRIGGER IF EXISTS trg_workspace_calls_updated_at
-    ON workspace_calls;
-
-CREATE TRIGGER trg_workspace_calls_updated_at
-BEFORE UPDATE ON workspace_calls
-FOR EACH ROW
-EXECUTE FUNCTION set_updated_at();
+DO $
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_trigger
+    WHERE tgname = 'trg_workspace_calls_updated_at'
+      AND tgrelid = 'workspace_calls'::regclass
+      AND NOT tgisinternal
+  ) THEN
+    CREATE TRIGGER trg_workspace_calls_updated_at
+    BEFORE UPDATE ON workspace_calls
+    FOR EACH ROW
+    EXECUTE FUNCTION set_updated_at();
+  END IF;
+END
+$;
 
 
 INSERT INTO core_schema_version (version, installed_at)
