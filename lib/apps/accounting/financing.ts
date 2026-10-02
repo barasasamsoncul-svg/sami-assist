@@ -2023,28 +2023,6 @@ export async function postFinancingDrawdown(
       );
     }
 
-    const outstanding =
-      await financingOutstandingPrincipalUnits(
-        client,
-        context.companyId,
-        facilityId,
-      );
-    const limit =
-      financingPositiveUnits(
-        facility.principal_limit,
-        'Principal limit',
-      );
-
-    if (
-      outstanding +
-        amount >
-      limit
-    ) {
-      throw new AccountingInputError(
-        'This drawdown would exceed the facility principal limit.',
-      );
-    }
-
     const baseCurrency =
       String(
         context.company
@@ -2177,6 +2155,28 @@ export async function postFinancingDrawdown(
         replayed:
           true,
       };
+    }
+
+    const outstanding =
+      await financingOutstandingPrincipalUnits(
+        client,
+        context.companyId,
+        facilityId,
+      );
+    const limit =
+      financingPositiveUnits(
+        facility.principal_limit,
+        'Principal limit',
+      );
+
+    if (
+      outstanding +
+        amount >
+      limit
+    ) {
+      throw new AccountingInputError(
+        'This drawdown would exceed the facility principal limit.',
+      );
     }
 
     const amountBase =
