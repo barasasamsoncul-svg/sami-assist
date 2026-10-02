@@ -54,7 +54,9 @@
     "test:accounting:accruals": "node --import tsx --test tests/accounting-accruals.test.ts",
     "migrate:accounting:2.21:release": "node --conditions=react-server --import tsx scripts/migrate-accounting-2-21-before-release.ts",
     "test:accounting:2.21:release": "npm run test:accounting:accruals && npm run test:module-migrations && npm run test:app-ui && npx tsc --noEmit && npm run build",
-    "test:accounting:financing": "node --import tsx --test tests/accounting-financing.test.ts"
+    "test:accounting:financing": "node --import tsx --test tests/accounting-financing.test.ts",
+    "migrate:accounting:2.22:release": "node --conditions=react-server --import tsx scripts/migrate-accounting-2-22-before-release.ts",
+    "test:accounting:2.22:release": "npm run test:accounting:financing && npm run test:module-migrations && npm run test:app-ui && npx tsc --noEmit && npm run build"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1133.0",
