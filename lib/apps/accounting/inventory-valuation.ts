@@ -166,6 +166,43 @@ async function tableReady(
   );
 }
 
+async function columnReady(
+  client:
+    Pick<
+      PoolClient,
+      'query'
+    >,
+  table:
+    string,
+  column:
+    string,
+) {
+  const result =
+    await client.query(
+      `
+        SELECT EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema =
+                'public'
+            AND table_name =
+                $1
+            AND column_name =
+                $2
+        ) AS present
+      `,
+      [
+        table,
+        column,
+      ],
+    );
+
+  return Boolean(
+    result.rows[0]
+      ?.present,
+  );
+}
+
 async function inventoryRuntime(
   client:
     Pick<
@@ -179,6 +216,7 @@ async function inventoryRuntime(
     levels,
     movements,
     adjustments,
+    costPrice,
   ] =
     await Promise.all([
       tableReady(
@@ -201,6 +239,11 @@ async function inventoryRuntime(
         client,
         'inventory_adjustments',
       ),
+      columnReady(
+        client,
+        'products',
+        'cost_price',
+      ),
     ]);
 
   return {
@@ -209,9 +252,11 @@ async function inventoryRuntime(
     levels,
     movements,
     adjustments,
+    costPrice,
     available:
       products &&
-      levels,
+      levels &&
+      costPrice,
   };
 }
 
@@ -908,7 +953,10 @@ function treatmentEffect(
 
 async function currentReconciliation(
   client:
-    PoolClient,
+    Pick<
+      PoolClient,
+      'query'
+    >,
   input: {
     companyId:
       string;
@@ -1416,8 +1464,7 @@ export async function getAccountingInventoryValuation() {
 
   const preview =
     await currentReconciliation(
-      context.pool as
-        PoolClient,
+      context.pool,
       {
         companyId:
           context.companyId,
@@ -1437,7 +1484,8 @@ export async function getAccountingInventoryValuation() {
     > = [];
 
   if (
-    runtime.products
+    runtime.products &&
+    runtime.costPrice
   ) {
     products =
       (
@@ -1518,7 +1566,7 @@ export async function getAccountingInventoryValuation() {
       code:
         'INVENTORY_APP_UNAVAILABLE',
       message:
-        'Inventory quantity tables are not installed for this workspace. Accounting remains available and valuation will activate when Inventory is installed.',
+        'Inventory quantity tables or the product standard-cost field are not available in this workspace. Accounting remains available and valuation will activate when Inventory exposes the complete valuation contract.',
     });
   }
 
