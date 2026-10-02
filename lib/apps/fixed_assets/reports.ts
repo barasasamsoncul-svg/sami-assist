@@ -3,6 +3,10 @@ import 'server-only';
 import {
   requireEnterpriseModuleTableContext,
 } from '@/lib/apps/enterprise/service';
+import {
+  getFixedAssetsReporting,
+  type FixedAssetsReporting,
+} from './reporting';
 
 export type FixedAssetsReportData = {
   period: {
@@ -67,6 +71,14 @@ export type FixedAssetsReportData = {
         unknown
       >
     >;
+  reconciliation:
+    FixedAssetsReporting[
+      'reconciliation'
+    ];
+  forecast:
+    FixedAssetsReporting[
+      'forecast'
+    ];
 };
 
 function isoDate(
@@ -1260,6 +1272,12 @@ export async function getFixedAssetsReports(
       'COMMIT',
     );
 
+    const analysis =
+      await getFixedAssetsReporting({
+        asOf:
+          to,
+      });
+
     const row =
       rollforward.rows[0] ||
       {};
@@ -1331,6 +1349,10 @@ export async function getFixedAssetsReports(
         register.rows,
       schedule:
         schedule.rows,
+      reconciliation:
+        analysis.reconciliation,
+      forecast:
+        analysis.forecast,
     };
   } catch (
     error
