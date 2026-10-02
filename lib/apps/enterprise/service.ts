@@ -2294,40 +2294,53 @@ export async function getEnterpriseModuleWorkspace(
       allowedTables,
     );
 
-  const tableResults =
-    await Promise.all(
-      allowedTables.map(
-        async table => {
-          const rawFields =
-            metadata.get(
+  const [
+    tableResults,
+    activityResult,
+  ] =
+    await Promise.all([
+      Promise.all(
+        allowedTables.map(
+          async table => {
+            const rawFields =
+              metadata.get(
+                table,
+              );
+
+            if (
+              !rawFields ||
+              rawFields.length ===
+                0
+            ) {
+              return null;
+            }
+
+            const fields =
+              filterEnterpriseFieldsForAccess(
+                context.moduleKey,
+                table,
+                rawFields,
+                context.permissions,
+              );
+
+            return readTable(
+              context.pool,
               table,
+              fields,
+              context.companyId,
             );
-
-          if (
-            !rawFields ||
-            rawFields.length ===
-              0
-          ) {
-            return null;
-          }
-
-          const fields =
-            filterEnterpriseFieldsForAccess(
-              context.moduleKey,
-              table,
-              rawFields,
-              context.permissions,
-            );
-
-          return readTable(
-            context.pool,
-            table,
-            fields,
-            context.companyId,
-          );
-        },
+          },
+        ),
       ),
-    );
+      listWorkspaceActivity({
+        view:
+          'activity',
+        module:
+          context.moduleKey,
+        limit:
+          24,
+      }),
+    ]);
 
   const tables =
     tableResults.filter(
@@ -2518,16 +2531,6 @@ export async function getEnterpriseModuleWorkspace(
         'settings',
       ),
   };
-
-  const activityResult =
-    await listWorkspaceActivity({
-      view:
-        'activity',
-      module:
-        context.moduleKey,
-      limit:
-        24,
-    });
 
   return {
     module: {
