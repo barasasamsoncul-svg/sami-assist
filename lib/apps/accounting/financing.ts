@@ -2848,6 +2848,26 @@ export async function postFinancingRepayment(
             'spot',
         },
       );
+    if (
+      facilityCurrency !==
+        baseCurrency &&
+      (
+        principal >
+          BigInt(
+            0,
+          ) ||
+        interest >
+          BigInt(
+            0,
+          )
+      )
+    ) {
+      await assertFinancingFxRevaluationCleared(
+        client,
+        context.companyId,
+      );
+    }
+
     const principalBase =
       principal ===
         BigInt(
@@ -2883,6 +2903,151 @@ export async function postFinancingRepayment(
         : financingBaseAmount(
             fee,
             fx.rate,
+          );
+
+    let currentPrincipalForeign =
+      BigInt(
+        0,
+      );
+    let currentPrincipalCarryingBase =
+      BigInt(
+        0,
+      );
+    let noncurrentPrincipalForeign =
+      BigInt(
+        0,
+      );
+    let noncurrentPrincipalCarryingBase =
+      BigInt(
+        0,
+      );
+    let principalCarryingBase =
+      BigInt(
+        0,
+      );
+
+    if (
+      principal >
+      BigInt(
+        0,
+      )
+    ) {
+      const buckets =
+        await financingPrincipalBuckets(
+          client,
+          {
+            companyId:
+              context.companyId,
+            facilityId,
+            asOf:
+              transactionDate,
+          },
+        );
+      const expectedCarrying =
+        financingProportionalCents(
+          buckets.totalBase,
+          principal,
+          buckets.totalForeign,
+        );
+      const hasSeparateCurrent =
+        Boolean(
+          facility
+            .current_principal_account_id,
+        ) &&
+        String(
+          facility
+            .current_principal_account_id,
+        ) !==
+        String(
+          facility
+            .principal_account_id,
+        );
+
+      if (
+        hasSeparateCurrent &&
+        buckets.currentForeign >
+          BigInt(
+            0,
+          )
+      ) {
+        currentPrincipalForeign =
+          principal <
+          buckets.currentForeign
+            ? principal
+            : buckets.currentForeign;
+        currentPrincipalCarryingBase =
+          financingProportionalCents(
+            buckets.currentBase,
+            currentPrincipalForeign,
+            buckets.currentForeign,
+          );
+
+        if (
+          currentPrincipalCarryingBase >
+          expectedCarrying
+        ) {
+          currentPrincipalCarryingBase =
+            expectedCarrying;
+        }
+      }
+
+      noncurrentPrincipalForeign =
+        principal -
+        currentPrincipalForeign;
+      noncurrentPrincipalCarryingBase =
+        expectedCarrying -
+        currentPrincipalCarryingBase;
+      principalCarryingBase =
+        expectedCarrying;
+    }
+
+    const interestCarryingTotal =
+      interest >
+        BigInt(
+          0,
+        )
+        ? await financingInterestCarryingCents(
+            client,
+            context.companyId,
+            facilityId,
+            transactionDate,
+          )
+        : BigInt(
+            0,
+          );
+    const interestCarryingBase =
+      financingProportionalCents(
+        interestCarryingTotal,
+        interest,
+        outstandingInterest,
+      );
+    const settlementMonetaryBase =
+      principalBase +
+      interestBase;
+    const carryingMonetaryBase =
+      principalCarryingBase +
+      interestCarryingBase;
+    const realizedFx =
+      facilityCurrency ===
+        baseCurrency
+        ? BigInt(
+            0,
+          )
+        : facility.direction ===
+            'borrowing'
+          ? settlementMonetaryBase -
+            carryingMonetaryBase
+          : carryingMonetaryBase -
+            settlementMonetaryBase;
+    const fxAccounts =
+      realizedFx ===
+        BigInt(
+          0,
+        )
+        ? null
+        : await financingFxAccounts(
+            client,
+            context.companyId,
           );
     const total =
       principal +
