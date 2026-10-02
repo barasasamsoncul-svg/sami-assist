@@ -329,6 +329,25 @@ export default function AccountingBudgets({
     );
   }
 
+  function closePlan(planRow: Record<string, unknown>) {
+    confirmAction({
+      title: 'Close this planning year?',
+      message: 'Closing prevents new revisions. SaMi will allow it only when no draft or approved planning versions remain unresolved.',
+      confirmLabel: 'Close plan',
+      onConfirm: () => {
+        void run(
+          'close-' + String(planRow.id),
+          {
+            action: 'close-plan',
+            planId: planRow.id,
+          },
+          'Budget plan closed',
+          () => 'The planning year is closed and its published/superseded history remains available for reporting.',
+        );
+      },
+    });
+  }
+
   const currentPlan = data.currentPlan as Record<string, unknown> | null;
   const alertThreshold = Number(settingsRow.variance_alert_percent || 10);
 
@@ -623,7 +642,7 @@ export default function AccountingBudgets({
                       {String(version.status) === 'approved' ? (
                         <button className={styles.primary} onClick={() => publish(version)} disabled={!canEdit}>Publish</button>
                       ) : null}
-                      {['approved','published','superseded'].includes(String(version.status)) ? (
+                      {String(version.version_type) === 'budget' && ['approved','published','superseded'].includes(String(version.status)) ? (
                         <button className={styles.button} onClick={() => void revise(version)} disabled={!canCreate}>Revise</button>
                       ) : null}
                       {['approved','published','superseded'].includes(String(version.status)) ? (
@@ -717,6 +736,15 @@ export default function AccountingBudgets({
       {currentPlan && String(currentPlan.status) === 'open' ? (
         <section className={styles.notice}>
           <strong>Plan close control.</strong> Closing prevents new revisions. SaMi requires every draft or approved version to be resolved first so planning history is not stranded.
+          <div className={styles.actions}>
+            <button
+              className={styles.button}
+              onClick={() => closePlan(currentPlan)}
+              disabled={!canEdit || busy === 'close-' + String(currentPlan.id)}
+            >
+              {busy === 'close-' + String(currentPlan.id) ? 'Closing…' : 'Close planning year'}
+            </button>
+          </div>
         </section>
       ) : null}
 
