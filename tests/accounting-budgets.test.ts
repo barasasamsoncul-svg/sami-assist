@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { Pool } from 'pg';
 
 import {
   applyBudgetGrowth,
@@ -96,3 +97,78 @@ test('budgets schema is company scoped versioned and non-destructive', () => {
     /\b(?:DROP|TRUNCATE|DELETE\s+FROM)\b/i,
   );
 });
+
+
+test(
+  'Accounting 2.23 budgets schema executes twice on PostgreSQL',
+  {
+    skip: !process.env.TEST_DATABASE_URL,
+  },
+  async () => {
+    const pool = new Pool({
+      connectionString: process.env.TEST_DATABASE_URL,
+    });
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      await client.query(`
+        CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+        CREATE TABLE IF NOT EXISTS public.companies (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+        );
+
+        CREATE TABLE IF NOT EXISTS public.accounts (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+        );
+      `);
+
+      await client.query(ACCOUNTING_BUDGETS_SQL);
+      await client.query(ACCOUNTING_BUDGETS_SQL);
+
+      const tables = await client.query(`
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema='public'
+          AND table_name IN (
+            'accounting_budget_settings',
+            'accounting_budget_plans',
+            'accounting_budget_versions',
+            'accounting_budget_assumptions',
+            'accounting_budget_lines',
+            'accounting_budget_runs',
+            'accounting_budget_variance_snapshots'
+          )
+        ORDER BY table_name
+      `);
+
+      assert.deepEqual(
+        tables.rows.map(row => row.table_name),
+        [
+          'accounting_budget_assumptions',
+          'accounting_budget_lines',
+          'accounting_budget_plans',
+          'accounting_budget_runs',
+          'accounting_budget_settings',
+          'accounting_budget_variance_snapshots',
+          'accounting_budget_versions',
+        ],
+      );
+
+      const publishedGuard = await client.query(`
+        SELECT indexname
+        FROM pg_indexes
+        WHERE schemaname='public'
+          AND indexname='uq_accounting_budget_published'
+      `);
+
+      assert.equal(publishedGuard.rows.length,1);
+    } finally {
+      await client.query('ROLLBACK').catch(() => undefined);
+      client.release();
+      await pool.end();
+    }
+  },
+);
