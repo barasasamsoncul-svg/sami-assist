@@ -27,7 +27,7 @@ export const ENTERPRISE_MODULE_TABLES = {
   expenses: ['expense_categories','expenses','expense_policies','expense_reports','expense_report_lines','expense_mileage_rates'],
   facilities: ['facilities_settings','facilities','facility_spaces','facility_requests'],
   field_services: ['service_orders','service_visits','service_materials','service_checklists'],
-  fixed_assets: ['fixed_assets_settings','fixed_assets','asset_depreciation_entries','asset_transfers','asset_disposals','asset_categories','asset_impairments','asset_insurance_policies'],
+  fixed_assets: ['fixed_assets_settings','fixed_assets','asset_depreciation_entries','asset_transfers','asset_disposals','asset_categories','asset_impairments','asset_insurance_policies','asset_depreciation_runs','asset_revaluations','asset_source_links'],
   fleet: ['vehicles','vehicle_assignments','fleet_services','vehicle_fuel_logs'],
   gift_cards: ['gift_cards_settings','gift_card_programs','gift_cards','gift_card_transactions'],
   helpdesk: ['support_tickets','ticket_messages','ticket_tags','helpdesk_sla_policies','ticket_sla_tracking','knowledge_articles','ticket_escalations'],
