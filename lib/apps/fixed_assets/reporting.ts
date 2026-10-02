@@ -379,7 +379,11 @@ async function journalTotal(
   );
 }
 
-export async function getFixedAssetsReporting():
+export async function getFixedAssetsReporting(
+  input: {
+    asOf?: string;
+  } = {},
+):
   Promise<
     FixedAssetsReporting
   > {
@@ -390,7 +394,12 @@ export async function getFixedAssetsReporting():
       'view',
     );
   const asOf =
+    input.asOf ||
     today();
+
+  dateParts(
+    asOf,
+  );
 
   const accountingSettings =
     await context.pool.query(
