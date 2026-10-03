@@ -11,7 +11,7 @@ SaMi AI is a first-party SaMi Technologies assistant product. It is not ChatGPT,
 
 ## User experience
 
-The SaMi AI workspace is one coherent product surface with persistent conversations, rename/pin/search/archive/export/edit/regenerate/feedback/stop controls, Markdown responses, private file attachments, workspace-aware tools, explicit confirmation for protected writes, personal memory, account context, response-style controls, visible usage limits, capability visibility, and data controls.
+The SaMi AI workspace is a general-purpose conversational assistant with persistent conversations, rename/pin/search/archive/export/edit/regenerate/feedback/stop controls, Markdown responses, private file attachments, optional permission-aware business tools, explicit confirmation for protected writes, personal memory, account context, response-style controls, visible usage limits, capability visibility, and data controls.
 
 ## Usage authority
 
@@ -35,4 +35,4 @@ Provider credentials, endpoints, model IDs, routing, and secret configuration re
 - Clearing chat history expires pending AI actions before deleting the user's conversations/messages.
 - Confirmed business action audit records may remain for operational accountability.
 - Memory is separate from chat history and can be cleared independently.
-- SaMi AI cannot use raw SQL or bypass app, record, tenant, company, or permission boundaries.
+- SaMi AI cannot use raw SQL or bypass app, record, tenant, company, or permission boundaries.\n- SaMi AI does not inspect or summarize coworker/activity feeds as ambient chat context. Business tools are invoked only when the user's request needs permitted business data or an action.

@@ -147,24 +147,24 @@ test('Category 11: mobile workspace pages use progressive disclosure instead of 
 
   assert.match(
     dashboard,
-    /flex w-full flex-col gap-2 sm:flex-row/,
-    'Dashboard command controls must stack on narrow screens instead of disappearing or overflowing.',
+    /flex flex-wrap items-center gap-2/,
+    'Dashboard command controls must wrap safely on narrow screens instead of disappearing or overflowing.',
   );
 
   assert.match(
     dashboard,
-    /Only apps available to your role and current workspace are shown/,
+    /Only apps available to your role are shown/,
   );
 
   assert.match(
     dashboard,
-    /Work & attention/,
+    /Needs attention/,
   );
 
-  assert.match(
+  assert.doesNotMatch(
     dashboard,
-    /My activity/,
-    'The compact dashboard activity surface must remain personal rather than becoming workspace-wide.',
+    /My activity|Operational pulse|Your actions today/,
+    'Home must not surface personal or workspace activity telemetry.',
   );
 
   assert.match(organization, /mobileSection/);
@@ -187,42 +187,37 @@ test('Category 11: mobile workspace pages use progressive disclosure instead of 
   assert.match(workspace, /['"]lifecycle['"]/);
 });
 
-test('Category 11: dashboard turns recorded activity into operational intelligence', async () => {
+test('Category 11: dashboard turns permitted business data into operational analysis', async () => {
   const [
     dashboard,
     page,
     composer,
     aiSummary,
+    runtimeDashboard,
   ] = await Promise.all([
     source('app/dashboard/DashboardClient.tsx'),
     source('app/dashboard/page.tsx'),
     source('lib/dashboard/composer.ts'),
     source('app/api/workspace/dashboard/ai-summary/route.ts'),
+    source('lib/apps/runtime-dashboard.ts'),
   ]);
 
   assert.match(
     dashboard,
-    /Operational pulse/,
+    /SaMi analysis/,
   );
   assert.match(
     dashboard,
-    /Your actions today/,
+    /Business snapshot/,
   );
   assert.match(
     dashboard,
-    /Failed or denied · 7d/,
+    /Needs attention/,
   );
-  assert.match(
+  assert.doesNotMatch(
     dashboard,
-    /Modules touched · 7d/,
-  );
-  assert.match(
-    dashboard,
-    /activityBrief/,
-  );
-  assert.match(
-    dashboard,
-    /Live activity summary/,
+    /Operational pulse|Your actions today|Failed or denied · 7d|Modules touched · 7d|activityBrief|Live activity summary/,
+    'Home must present business analysis rather than personal activity telemetry.',
   );
   assert.match(
     dashboard,
@@ -231,6 +226,11 @@ test('Category 11: dashboard turns recorded activity into operational intelligen
   assert.match(
     page,
     /aiEnabled:[\s\S]*shell\.aiAvailable/,
+  );
+  assert.doesNotMatch(
+    page,
+    /getWorkspaceActivityDashboardSnapshot/,
+    'Home must not load the Activity timeline as dashboard intelligence.',
   );
   assert.match(
     composer,
@@ -242,12 +242,32 @@ test('Category 11: dashboard turns recorded activity into operational intelligen
     'User-facing dashboard copy must never expose provider implementation state.',
   );
   assert.match(
+    runtimeDashboard,
+    /accountingDashboardAnalysisProvider/,
+  );
+  assert.match(
+    runtimeDashboard,
+    /invoicingDashboardAnalysisProvider/,
+  );
+  assert.match(
+    runtimeDashboard,
+    /salesDashboardAnalysisProvider/,
+  );
+  assert.match(
     aiSummary,
     /completeSamiAiChat/,
   );
   assert.match(
     aiSummary,
+    /composeDashboard/,
+  );
+  assert.doesNotMatch(
+    aiSummary,
     /getWorkspaceActivityDashboardSnapshot/,
+  );
+  assert.match(
+    aiSummary,
+    /Do not summarize audit events, user actions, AI-generated responses, tool calls, logins, or routine system telemetry/,
   );
   assert.match(
     aiSummary,

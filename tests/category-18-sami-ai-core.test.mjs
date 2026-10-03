@@ -58,7 +58,7 @@ test('Category 18: SaMi AI owns the product identity while inference providers r
 
   assert.match(
     service,
-    /You are SaMi AI, the AI assistant product built by SaMi Technologies/,
+    /You are SaMi AI, a general-purpose conversational AI product built by SaMi Technologies/,
   );
   assert.match(
     service,
@@ -120,7 +120,7 @@ test('Category 18: SaMi AI owns the product identity while inference providers r
 
   assert.match(
     usagePanel,
-    /business tools and current workspace scope/,
+    /general AI capabilities and permission-controlled business access/,
   );
 });
 
@@ -214,7 +214,11 @@ test('Category 18: core AI tools reuse trusted workspace services and safe file/
 
   assert.match(tools, /searchWorkspace/);
   assert.match(tools, /getCompanySelectorState/);
-  assert.match(tools, /listWorkspaceActivity/);
+  assert.doesNotMatch(
+    tools,
+    /listWorkspaceActivity|getWorkspaceActivitySummary/,
+    'Normal SaMi AI must not receive ambient workspace-activity tools.',
+  );
   assert.match(tools, /getWorkspaceNotificationSummary/);
   assert.match(tools, /getOrganizationState/);
   assert.match(tools, /searchWorkspaceFiles/);
@@ -224,6 +228,72 @@ test('Category 18: core AI tools reuse trusted workspace services and safe file/
     /storage_key|storageKey|secret_access|database_url|password_hash/i,
   );
 });
+
+test('Category 18: SaMi AI is general-purpose and does not use coworker activity as ambient chat context', async () => {
+  const [
+    service,
+    client,
+    tools,
+  ] = await Promise.all([
+    source('lib/services/workspace-ai.ts'),
+    source('app/components/workspace/WorkspaceAiClient.tsx'),
+    source('lib/ai/core-tools.ts'),
+  ]);
+
+  assert.match(
+    service,
+    /Behave like a capable general assistant/,
+  );
+  assert.match(
+    service,
+    /Business-data access is an optional capability, not the default subject of the conversation/,
+  );
+  assert.match(
+    service,
+    /Do not proactively inspect, summarize or infer coworker activity, employee behavior, audit trails or broad workspace activity/,
+  );
+  assert.match(
+    client,
+    /Use SaMi AI like a normal general assistant/,
+  );
+  assert.match(
+    client,
+    /Analyze my business data when I ask for it/,
+  );
+  assert.doesNotMatch(
+    client,
+    /Summarize my workspace activity|What changed recently\?/,
+  );
+  assert.doesNotMatch(
+    tools,
+    /activity_summary|recent_activity|listWorkspaceActivity|getWorkspaceActivitySummary/,
+  );
+});
+
+
+test('Category 18: shared business-app database reads enforce module record-view permission', async () => {
+  const tools = await source(
+    'lib/apps/enterprise/ai-tools.ts',
+  );
+
+  assert.match(
+    tools,
+    /requireModulePermission/,
+  );
+  assert.match(
+    tools,
+    /moduleKey \+\s*'\.record\.' \+\s*action/s,
+  );
+  assert.match(
+    tools,
+    /requireModulePermission\(\s*context,\s*moduleKey,\s*'view'/s,
+  );
+  assert.match(
+    tools,
+    /permissionSet\s*\.has\(permission\)/s,
+  );
+});
+
 
 test('Category 18: future app AI tools are code-owned and filtered by installed accessible modules', async () => {
   const registry = await source(
@@ -584,7 +654,7 @@ test('Category 18: SaMi AI surfaces enforced usage, capabilities and user data c
   assert.match(usageSummary, /Rolling 24 hours/);
   assert.match(usageSummary, /Per minute/);
   assert.match(usageSummary, /How limits work/);
-  assert.match(usageSummary, /What your SaMi AI can use/);
+  assert.match(usageSummary, /Capabilities & private business access/);
   assert.match(usageSummary, /provider token counts are operational telemetry/);
 });
 
@@ -673,6 +743,62 @@ test('Category 18: the real SaMi AI workspace is wired into shell, search, dashb
     'Unfinished Files UI must remain hidden.',
   );
 });
+
+test('Category 18: Home dashboard analysis excludes activity telemetry and uses business signals', async () => {
+  const [
+    page,
+    client,
+    route,
+    runtime,
+  ] = await Promise.all([
+    source('app/dashboard/page.tsx'),
+    source('app/dashboard/DashboardClient.tsx'),
+    source('app/api/workspace/dashboard/ai-summary/route.ts'),
+    source('lib/apps/runtime-dashboard.ts'),
+  ]);
+
+  assert.doesNotMatch(
+    page,
+    /getWorkspaceActivityDashboardSnapshot/,
+  );
+  assert.doesNotMatch(
+    client,
+    /recentActivity|activitySummary|Operational pulse|My activity/,
+  );
+  assert.match(
+    client,
+    /SaMi analysis/,
+  );
+  assert.match(
+    client,
+    /Business snapshot/,
+  );
+  assert.match(
+    route,
+    /composeDashboard/,
+  );
+  assert.match(
+    route,
+    /Do not summarize audit events, user actions, AI-generated responses, tool calls, logins, or routine system telemetry/,
+  );
+  assert.doesNotMatch(
+    route,
+    /getWorkspaceActivityDashboardSnapshot/,
+  );
+  assert.match(
+    runtime,
+    /accountingDashboardAnalysisProvider/,
+  );
+  assert.match(
+    runtime,
+    /invoicingDashboardAnalysisProvider/,
+  );
+  assert.match(
+    runtime,
+    /salesDashboardAnalysisProvider/,
+  );
+});
+
 
 test('Category 18: conversation and feedback actions stay user-scoped and same-origin protected', async () => {
   const [

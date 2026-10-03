@@ -17,11 +17,6 @@ import {
 } from '@/lib/services/organization-profile';
 
 import {
-  getWorkspaceActivitySummary,
-  listWorkspaceActivity,
-} from '@/lib/services/workspace-activity';
-
-import {
   searchWorkspaceFiles,
 } from '@/lib/services/workspace-files';
 
@@ -237,85 +232,6 @@ export const CORE_SAMI_AI_TOOLS:
                   company.isDefault,
                 isSelected:
                   company.isSelected,
-              }),
-            ),
-        };
-      },
-    },
-
-    {
-      key: 'activity_summary',
-      name: 'Activity summary',
-      description:
-        'Read a safe summary of recent activity for the current company.',
-      moduleKey: null,
-      operation: 'read',
-      riskLevel: 'low',
-      confirmationRequired: false,
-      inputSchema: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {},
-      },
-      execute: async () => {
-        return getWorkspaceActivitySummary();
-      },
-    },
-
-    {
-      key: 'recent_activity',
-      name: 'Recent activity',
-      description:
-        'Read recent business-readable activity for the current company. This does not expose raw audit internals.',
-      moduleKey: null,
-      operation: 'read',
-      riskLevel: 'low',
-      confirmationRequired: false,
-      inputSchema: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          limit: {
-            type: 'integer',
-            minimum: 1,
-            maximum: 15,
-          },
-        },
-      },
-      execute: async (
-        _context,
-        input,
-      ) => {
-        const result =
-          await listWorkspaceActivity({
-            view: 'activity',
-            limit:
-              integerInput(
-                input,
-                'limit',
-                8,
-                15,
-              ),
-          });
-
-        return {
-          items:
-            result.items.map(
-              item => ({
-                id: item.id,
-                label: item.label,
-                summary:
-                  item.summary,
-                module:
-                  item.module,
-                result:
-                  item.result,
-                actor:
-                  item.actor.name,
-                entity:
-                  item.entity,
-                createdAt:
-                  item.createdAt,
               }),
             ),
         };

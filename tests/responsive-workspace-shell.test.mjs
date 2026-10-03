@@ -246,13 +246,13 @@ test('responsive dashboard: Odoo-style app home stays mobile-first while AI rema
 
   assert.match(
     dashboard,
-    /Ask SaMi anything about your business/,
+    />\s*Ask SaMi\s*</,
   );
 
   assert.match(
     dashboard,
-    /flex w-full flex-col gap-2 sm:flex-row/,
-    'AI/search command controls must stack safely on narrow screens.',
+    /flex flex-wrap items-center gap-2/,
+    'AI, search and notification controls must wrap safely on narrow screens.',
   );
 
   assert.match(

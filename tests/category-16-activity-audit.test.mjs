@@ -166,25 +166,48 @@ test('Category 16: UI follows a business timeline model with separate Activity a
   assert.match(client, /Sensitive metadata is redacted/);
 });
 
-test('Category 16: activity appears in Workspace Tools and audit detail remains permission-gated', async () => {
-  const [sidebar, navigation, page] = await Promise.all([
+test('Category 16: Activity and Audit live under Security settings instead of primary workspace navigation', async () => {
+  const [
+    sidebar,
+    navigation,
+    page,
+    security,
+  ] = await Promise.all([
     source('app/components/workspace/WorkspaceSidebar.tsx'),
     source('app/api/workspace/navigation/route.ts'),
     source('app/activity/page.tsx'),
+    source('app/settings/components/SecuritySettings.tsx'),
   ]);
 
-  assert.match(sidebar, /href="\/activity"/);
-  assert.match(sidebar, /label="Activity"/);
+  assert.doesNotMatch(
+    sidebar,
+    /href="\/activity"/,
+    'Activity must not clutter the primary Workspace Tools navigation.',
+  );
+
   assert.match(sidebar, /activityView/);
   assert.match(sidebar, /auditView/);
 
   assert.match(
     navigation,
     /activityView:\s*true/s,
-    'Activity must be available to every trusted active internal member.',
+    'Activity remains available to every trusted active internal member.',
   );
   assert.match(navigation, /auditView:/);
   assert.match(navigation, /AUDIT_VIEW/);
+
+  assert.match(
+    security,
+    /Workspace activity & audit/,
+  );
+  assert.match(
+    security,
+    /window\.location\.href\s*=\s*['"]\/activity['"]/s,
+  );
+  assert.match(
+    security,
+    /Sign-in & security activity/,
+  );
 
   assert.match(page, /WorkspaceActivityClient/);
   assert.match(page, /title="My Activity & Audit"/);

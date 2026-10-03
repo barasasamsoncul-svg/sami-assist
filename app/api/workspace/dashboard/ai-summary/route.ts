@@ -5,87 +5,163 @@ import {
 import {
   getAccountContextForUser,
 } from '@/lib/auth/account-context';
+
+import {
+  requireCompanyContext,
+} from '@/lib/auth/company-context';
+
 import {
   getPermissionContext,
 } from '@/lib/auth/permission-context';
+
 import {
   getSession,
 } from '@/lib/auth/session';
+
 import {
   resolveWorkspaceShellAccess,
 } from '@/lib/auth/workspace-shell';
+
 import {
   getSamiAiProviderStatus,
 } from '@/lib/ai/config';
+
 import {
   completeSamiAiChat,
 } from '@/lib/ai/provider';
+
 import {
-  getWorkspaceActivityDashboardSnapshot,
-} from '@/lib/services/workspace-activity';
+  composeDashboard,
+} from '@/lib/dashboard/composer';
+
+import type {
+  DashboardViewModel,
+} from '@/lib/dashboard/types';
+
 
 export const runtime =
   'nodejs';
+
 export const dynamic =
   'force-dynamic';
 
+
 function fallbackSummary(
-  activity:
-    Awaited<
-      ReturnType<
-        typeof getWorkspaceActivityDashboardSnapshot
-      >
-    >['items'],
-  summary:
-    Awaited<
-      ReturnType<
-        typeof getWorkspaceActivityDashboardSnapshot
-      >
-    >['summary'],
+  dashboard:
+    DashboardViewModel,
 ) {
   if (
-    activity.length >
-      0
+    dashboard.attention
+      .length >
+    0
   ) {
-    const latest =
-      activity
+    const top =
+      dashboard.attention
         .slice(
           0,
           3,
         )
         .map(
           item =>
-            item.label,
+            item.title,
         )
         .join(
           ' · ',
         );
 
-    return summary.todayCount >
-      0
-      ? `You recorded ${summary.todayCount} workspace activit${summary.todayCount === 1 ? 'y' : 'ies'} today. Latest: ${latest}.`
-      : `Your latest workspace activity: ${latest}.`;
+    return (
+      dashboard.attention
+        .length ===
+      1
+        ? '1 business issue needs attention: ' +
+          top +
+          '.'
+        : dashboard.attention
+            .length +
+          ' business issues need attention: ' +
+          top +
+          '.'
+    );
   }
 
   if (
-    summary.todayCount >
-      0
+    dashboard.aiContext
+      .length >
+    0
   ) {
-    return `You recorded ${summary.todayCount} workspace activit${summary.todayCount === 1 ? 'y' : 'ies'} today across ${summary.modules7d} module${summary.modules7d === 1 ? '' : 's'} this week.`;
+    return dashboard.aiContext
+      .slice(
+        0,
+        3,
+      )
+      .map(
+        item =>
+          item.title +
+          ': ' +
+          item.detail,
+      )
+      .join(
+        ' ',
+      );
   }
 
-  return 'No recent workspace activity has been recorded yet. As you work in SaMi, this briefing will summarize what changed and what may need attention.';
+  if (
+    dashboard.metrics
+      .length >
+    0
+  ) {
+    return dashboard.metrics
+      .slice(
+        0,
+        3,
+      )
+      .map(
+        metric =>
+          metric.label +
+          ' ' +
+          metric.value +
+          (
+            metric.description
+              ? ' (' +
+                metric.description +
+                ')'
+              : ''
+          ),
+      )
+      .join(
+        ' · ',
+      ) +
+      '.';
+  }
+
+  if (
+    dashboard.work
+      .length >
+    0
+  ) {
+    return dashboard.brief
+      .message;
+  }
+
+  return 'Business analysis will appear here as your permitted apps produce financial, sales and operational signals.';
 }
+
 
 export async function GET() {
   try {
     const [
       session,
       permissions,
+      company,
     ] =
       await Promise.all([
         getSession(),
         getPermissionContext(),
+        requireCompanyContext()
+          .catch(
+            () =>
+              null,
+          ),
       ]);
 
     if (
@@ -114,26 +190,11 @@ export async function GET() {
       );
     }
 
-    const [
-      account,
-      activitySnapshot,
-    ] =
-      await Promise.all([
-        getAccountContextForUser(
-          session.user.id,
-          session.currentTenantId,
-        ),
-        getWorkspaceActivityDashboardSnapshot(
-          12,
-        ),
-      ]);
-
-    const activityResult = {
-      items:
-        activitySnapshot.items,
-    };
-    const activitySummary =
-      activitySnapshot.summary;
+    const account =
+      await getAccountContextForUser(
+        session.user.id,
+        session.currentTenantId,
+      );
 
     const shell =
       resolveWorkspaceShellAccess({
@@ -144,16 +205,48 @@ export async function GET() {
         permissions,
       });
 
+    const dashboard =
+      await composeDashboard({
+        userId:
+          session.user.id,
+        permissions,
+        modules:
+          shell.accessibleModules,
+        currentCompanyId:
+          company
+            ?.currentCompany
+            .id ||
+          null,
+        selectedCompanyIds:
+          company
+            ?.selectedCompanyIds ||
+          [],
+        allowedCompanyIds:
+          company
+            ?.allowedCompanyIds ||
+          [],
+        aiEnabled:
+          shell.aiAvailable,
+      });
+
     const fallback =
       fallbackSummary(
-        activityResult.items,
-        activitySummary,
+        dashboard,
       );
+
+    const signalCount =
+      dashboard.attention
+        .length +
+      dashboard.work
+        .length +
+      dashboard.metrics
+        .length +
+      dashboard.aiContext
+        .length;
 
     if (
       !shell.aiAvailable ||
-      activityResult.items
-        .length ===
+      signalCount ===
         0 ||
       !getSamiAiProviderStatus()
         .configured
@@ -167,8 +260,7 @@ export async function GET() {
               fallback,
             generatedByAi:
               false,
-            activityCount:
-              activitySummary.todayCount,
+            signalCount,
           },
         },
         {
@@ -182,6 +274,7 @@ export async function GET() {
 
     const controller =
       new AbortController();
+
     const timeout =
       setTimeout(
         () =>
@@ -201,34 +294,79 @@ export async function GET() {
               role:
                 'system',
               content:
-                'You are SaMi AI. Write a concise operational dashboard briefing from the supplied trusted workspace activity. Use only supplied facts. Maximum 3 short sentences. Mention concrete recent work and failures/attention when present. Do not mention AI providers, permissions, or implementation details. Do not use markdown.',
+                'You are SaMi AI. Write a concise business-analysis briefing from the supplied trusted, permission-filtered dashboard signals. Do not summarize audit events, user actions, AI-generated responses, tool calls, logins, or routine system telemetry. Focus on financial position, sales performance, receivables, exceptions, risks, deadlines, queues and supported opportunities. Use only supplied facts. Maximum 3 short sentences. Do not mention AI providers, permissions or implementation details. Do not use markdown.',
             },
             {
               role:
                 'user',
               content:
                 JSON.stringify({
-                  todayActivityCount:
-                    activitySummary.todayCount,
-                  failuresLast7Days:
-                    activitySummary.failed7d,
-                  activeModulesLast7Days:
-                    activitySummary.modules7d,
-                  recentActivity:
-                    activityResult.items.map(
-                      item => ({
-                        label:
-                          item.label,
-                        summary:
-                          item.summary,
-                        module:
-                          item.module,
-                        result:
-                          item.result,
-                        createdAt:
-                          item.createdAt,
-                      }),
-                    ),
+                  scope:
+                    dashboard.scope,
+                  attention:
+                    dashboard.attention
+                      .map(
+                        item => ({
+                          title:
+                            item.title,
+                          description:
+                            item.description,
+                          priority:
+                            item.priority,
+                          module:
+                            item.moduleKey,
+                          dueAt:
+                            item.dueAt,
+                        }),
+                      ),
+                  work:
+                    dashboard.work
+                      .map(
+                        item => ({
+                          title:
+                            item.title,
+                          description:
+                            item.description,
+                          status:
+                            item.status,
+                          priority:
+                            item.priority,
+                          module:
+                            item.moduleKey,
+                          dueAt:
+                            item.dueAt,
+                        }),
+                      ),
+                  metrics:
+                    dashboard.metrics
+                      .map(
+                        metric => ({
+                          label:
+                            metric.label,
+                          value:
+                            metric.value,
+                          description:
+                            metric.description,
+                          tone:
+                            metric.tone,
+                          module:
+                            metric.moduleKey,
+                        }),
+                      ),
+                  analysis:
+                    dashboard.aiContext
+                      .map(
+                        item => ({
+                          title:
+                            item.title,
+                          detail:
+                            item.detail,
+                          priority:
+                            item.priority,
+                          module:
+                            item.moduleKey,
+                        }),
+                      ),
                 }),
             },
           ],
@@ -258,8 +396,7 @@ export async function GET() {
               Boolean(
                 message,
               ),
-            activityCount:
-              activitySummary.todayCount,
+            signalCount,
           },
         },
         {
@@ -279,8 +416,7 @@ export async function GET() {
               fallback,
             generatedByAi:
               false,
-            activityCount:
-              activitySummary.todayCount,
+            signalCount,
           },
         },
         {
@@ -299,7 +435,7 @@ export async function GET() {
     error
   ) {
     console.error(
-      '[SaMi Dashboard] AI summary failed:',
+      '[SaMi Dashboard] Business analysis failed:',
       error,
     );
 
@@ -308,7 +444,7 @@ export async function GET() {
         success:
           false,
         error:
-          'Dashboard summary could not be refreshed.',
+          'Dashboard analysis could not be refreshed.',
       },
       {
         status:

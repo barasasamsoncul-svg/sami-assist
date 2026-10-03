@@ -317,7 +317,7 @@ export default function SamiAiUsageSummary({
 
       <section>
         <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-          What your SaMi AI can use
+          Capabilities & private business access
         </p>
 
         <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -408,7 +408,7 @@ export default function SamiAiUsageSummary({
                 .company
                 .name
             }
-            description="Business tools and data stay scoped to this company and your access."
+            description="Business data is used only when you ask for it and stays scoped to this company and your permissions."
           />
         </div>
       </section>

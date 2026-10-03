@@ -9,7 +9,6 @@ import {
 } from 'next/navigation';
 
 import {
-  Activity,
   AppWindow,
   Bell,
   Bot,
@@ -1184,11 +1183,6 @@ export default function WorkspaceSidebar({
       ?.notificationsView ===
       true;
 
-  const canUseActivity =
-    navigationPermissions
-      ?.activityView ===
-      true;
-
   const canUseSearch =
     navigationPermissions
       ?.searchView ===
@@ -1439,11 +1433,6 @@ export default function WorkspaceSidebar({
 
 
   const coreRouteActive =
-    pathname ===
-      '/activity' ||
-    pathname.startsWith(
-      '/activity/',
-    ) ||
     pathname ===
       '/search' ||
     pathname.startsWith(
@@ -3491,7 +3480,6 @@ export default function WorkspaceSidebar({
               ==================================================== */}
 
           {(canUseNotifications ||
-            canUseActivity ||
             canUseSearch ||
             canUseAutomation ||
             canUseIntegrations ||
@@ -3525,27 +3513,6 @@ export default function WorkspaceSidebar({
 
               {coreExpanded && (
                 <div className="ml-[19px] mt-1 space-y-1 border-l border-slate-200 pl-3 dark:border-slate-800">
-
-                  {canUseActivity && (
-                    <ChildNavLink
-                      href="/activity"
-                      icon={
-                        Activity
-                      }
-                      label="Activity"
-                      active={
-                        pathname ===
-                          '/activity' ||
-                        pathname.startsWith(
-                          '/activity/',
-                        )
-                      }
-                      onNavigate={
-                        onClose
-                      }
-                    />
-                  )}
-
 
                   {canUseSearch && (
                     <ChildNavLink

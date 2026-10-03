@@ -566,6 +566,7 @@ async function listTenantRows(
     actorUserId: string | null;
     from: string | null;
     to: string | null;
+    hideRoutineTelemetry: boolean;
   },
 ) {
   const pool = await getTenantPoolByTenantId(context.tenantId);
@@ -598,8 +599,12 @@ async function listTenantRows(
           $8::timestamptz IS NULL
           OR (created_at, id) < ($8::timestamptz, $9::uuid)
         )
+        AND (
+          $10::boolean = FALSE
+          OR action <> 'ai.response.generated'
+        )
       ORDER BY created_at DESC, id DESC
-      LIMIT $10
+      LIMIT $11
     `,
     [
       context.companyId,
@@ -611,6 +616,7 @@ async function listTenantRows(
       input.search,
       input.cursor?.createdAt || null,
       input.cursor?.id || null,
+      input.hideRoutineTelemetry,
       input.limit + 1,
     ],
   );
@@ -760,6 +766,9 @@ export async function listWorkspaceActivity(
     actorUserId,
     from,
     to,
+    hideRoutineTelemetry:
+      view ===
+        'activity',
   };
 
   const [tenantRows, adminRows] = await Promise.all([
@@ -850,10 +859,16 @@ export async function getWorkspaceActivitySummary(
       FROM audit_logs
       WHERE company_id = $1
         AND ($2::uuid IS NULL OR user_id = $2)
+        AND (
+          $3::boolean = FALSE
+          OR action <> 'ai.response.generated'
+        )
     `,
     [
       context.companyId,
       actorUserId,
+      view ===
+        'activity',
     ],
   );
 
@@ -922,6 +937,8 @@ export async function getWorkspaceActivityDashboardSnapshot(
             null,
           to:
             null,
+          hideRoutineTelemetry:
+            true,
         },
       ),
       pool.query(
@@ -969,6 +986,8 @@ export async function getWorkspaceActivityDashboardSnapshot(
                 $1
             AND user_id =
                 $2
+            AND action <>
+                'ai.response.generated'
         `,
         [
           context.companyId,
