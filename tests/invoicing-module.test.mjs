@@ -2688,6 +2688,7 @@ test('Invoicing v2.6 separates cash receipts from allocation and reconciliation'
     schema,
     migration,
     commands,
+    paymentCore,
     accounting,
     queries,
     types,
@@ -2698,6 +2699,7 @@ test('Invoicing v2.6 separates cash receipts from allocation and reconciliation'
     source('lib/apps/invoicing/schema.sql'),
     source('lib/apps/invoicing/migrations/2.5.0-to-2.6.0.ts'),
     source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/invoicing/payment-core.ts'),
     source('lib/apps/invoicing/accounting.ts'),
     source('lib/apps/invoicing/queries.ts'),
     source('lib/apps/invoicing/types.ts'),
@@ -2792,27 +2794,33 @@ test('Invoicing v2.6 separates cash receipts from allocation and reconciliation'
   }
 
   assert.match(
-    commands,
+    paymentCore,
     /Math\.min\([\s\S]*paymentAmount[\s\S]*balance/s,
-    'Invoice-level receipt entry must allocate only the invoice balance and preserve any overpayment.',
+    'The shared invoice-payment core must allocate only the invoice balance and preserve any overpayment.',
   );
 
   assert.match(
-    commands,
+    paymentCore,
     /unappliedAmount[\s\S]*paymentAmount[\s\S]*allocationAmount/s,
-    'Overpayment must remain visible as unapplied customer credit.',
+    'Overpayment must remain visible as unapplied customer credit in the shared payment core.',
   );
 
   assert.match(
-    commands,
-    /recordInvoicePayment[\s\S]*idempotencyKey[\s\S]*invoicing-payment-idempotency/s,
-    'Invoice-specific payment posting must support idempotent API retries.',
+    paymentCore,
+    /idempotencyKey[\s\S]*invoicing-payment-idempotency/s,
+    'The shared invoice-payment core must support idempotent API and provider retries.',
   );
 
   assert.match(
-    commands,
+    paymentCore,
     /idempotency_key[\s\S]*'customer_credit'[\s\S]*'posted'/s,
     'New invoice-level receipts must persist the idempotency key with the customer-credit accounting model.',
+  );
+
+  assert.match(
+    commands,
+    /recordInvoicePaymentCore/,
+    'The interactive Record Payment command must reuse the shared payment core rather than duplicate settlement logic.',
   );
 
   assert.match(
@@ -7131,9 +7139,14 @@ test('Invoicing Part 27 closes standalone routes and the production release vali
     'npm run test:invoicing && npm run test:locks && npm run test:module-migrations && npm run test:responsive && npm run test:app-ui && npm run test:erp-integration && npx tsc --noEmit && npm run build',
   );
 
+  assert.equal(
+    parsedPackage.scripts['test:invoicing:2.22:release'],
+    'npm run test:accounting:parity-hardening && npm run test:invoicing && npm run test:locks && npm run test:module-migrations && npm run test:responsive && npm run test:app-ui && npm run test:erp-integration && npx tsc --noEmit && npm run build',
+  );
+
   assert.match(
     workflow,
-    /Final Invoicing release gate[\s\S]*npm run test:invoicing:release/s,
+    /Final Invoicing release gate[\s\S]*npm run test:invoicing:2\.22:release/s,
   );
 
   assert.match(
