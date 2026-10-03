@@ -1251,3 +1251,32 @@ test('Category 13: tenant provisioning keeps manifest schema tracing inside the 
     'A dynamic repository-root manifest path causes Turbopack to trace the whole project.',
   );
 });
+
+
+test('Tenant provisioning keeps app schema tracing inside registered module directories', async () => {
+  const provisioning =
+    await source(
+      'lib/services/tenant-provisioning.ts',
+    );
+
+  assert.match(
+    provisioning,
+    /const normalizedManifestPath =/,
+  );
+
+  assert.match(
+    provisioning,
+    /const expectedPrefix =/,
+  );
+
+  assert.match(
+    provisioning,
+    /path\.join\(\s*process\.cwd\(\),\s*'lib',\s*'apps',\s*manifest\.key,\s*schemaFileName/s,
+  );
+
+  assert.doesNotMatch(
+    provisioning,
+    /path\.resolve\(\s*process\.cwd\(\),\s*manifest\.schemaPath/s,
+    'Dynamic manifest resolution from repository root makes Turbopack trace the whole project.',
+  );
+});
