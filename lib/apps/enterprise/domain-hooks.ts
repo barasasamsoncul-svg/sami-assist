@@ -194,6 +194,9 @@ export function assertEnterpriseDomainMutationAllowed(
       table === 'accounting_consolidation_eliminations' ||
       table === 'accounting_consolidation_runs' ||
       table === 'accounting_consolidation_run_lines' ||
+      table === 'accounting_financial_report_settings' ||
+      table === 'accounting_financial_statement_snapshots' ||
+      table === 'accounting_financial_statement_snapshot_lines' ||
       table ===
         'accounting_reconciliation_suggestions'
     )
@@ -354,6 +357,13 @@ export function assertEnterpriseDomainMutationAllowed(
             table ===
               'accounting_consolidation_run_lines'
             ? 'Multi-company consolidation must be changed through the validated Accounting consolidation services.'
+          : table ===
+              'accounting_financial_report_settings' ||
+            table ===
+              'accounting_financial_statement_snapshots' ||
+            table ===
+              'accounting_financial_statement_snapshot_lines'
+            ? 'Financial statements must be changed through the validated Accounting reporting services.'
           : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
   }
