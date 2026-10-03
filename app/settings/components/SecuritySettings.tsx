@@ -528,6 +528,10 @@ export default function SecuritySettings({
                 'activity'
               )
             }
+            onWorkspaceActivity={() => {
+              window.location.href =
+                '/activity';
+            }}
           />
         )}
 
@@ -700,6 +704,7 @@ function SecurityOverview({
   onTwoFactor,
   onSessions,
   onActivity,
+  onWorkspaceActivity,
 }: {
   onPassword:
     () => void;
@@ -711,6 +716,9 @@ function SecurityOverview({
     () => void;
 
   onActivity:
+    () => void;
+
+  onWorkspaceActivity:
     () => void;
 }) {
   return (
@@ -749,13 +757,24 @@ function SecurityOverview({
       />
 
       <SecurityRow
-        title="Security activity"
-        description="Review sign-ins and important security changes"
+        title="Sign-in & security activity"
+        description="Review sign-ins and important account-security changes"
         icon={
           History
         }
         onClick={
           onActivity
+        }
+      />
+
+      <SecurityRow
+        title="Workspace activity & audit"
+        description="Review what happened in the business workspace. Audit details remain permission-gated."
+        icon={
+          History
+        }
+        onClick={
+          onWorkspaceActivity
         }
         last
       />
