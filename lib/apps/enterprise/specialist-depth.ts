@@ -1,3 +1,4 @@
+import { ACCOUNTING_PAYROLL_SQL } from '@/lib/apps/accounting/payroll-schema';
 import { ACCOUNTING_DIMENSIONS_SQL } from '@/lib/apps/accounting/dimensions-schema';
 import { ACCOUNTING_BUDGETS_SQL } from '@/lib/apps/accounting/budgets-schema';
 import { ACCOUNTING_FINANCING_SQL } from '@/lib/apps/accounting/financing-schema';
@@ -1768,6 +1769,7 @@ ${ACCOUNTING_ACCRUALS_SQL}
 ${ACCOUNTING_FINANCING_SQL}
 ${ACCOUNTING_BUDGETS_SQL}
 ${ACCOUNTING_DIMENSIONS_SQL}
+${ACCOUNTING_PAYROLL_SQL}
 `;
 }
 
