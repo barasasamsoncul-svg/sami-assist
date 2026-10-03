@@ -16,6 +16,10 @@ import {
   INVOICING_AI_TOOLS,
 } from '@/lib/apps/invoicing/ai-tools';
 
+import {
+  ACCOUNTING_AI_TOOLS,
+} from '@/lib/apps/accounting/ai-tools';
+
 /*
  * App-owned SaMi AI contributions.
  * AI core imports this boundary, never named business apps.
@@ -25,4 +29,5 @@ export const APP_RUNTIME_AI_TOOLS:
     ...ENTERPRISE_SUITE_AI_TOOLS,
     ...SALES_AI_TOOLS,
     ...INVOICING_AI_TOOLS,
+    ...ACCOUNTING_AI_TOOLS,
   ];

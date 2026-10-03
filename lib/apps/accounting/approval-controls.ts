@@ -5,6 +5,7 @@ import type { PoolClient } from 'pg';
 import { requireEnterpriseModuleTableContext } from '@/lib/apps/enterprise/service';
 import { queryControl } from '@/lib/db/control';
 import { recordWorkspaceAuditEvent } from '@/lib/services/workspace-activity';
+import { dispatchAccountingAutomationEventSafely } from '@/lib/apps/accounting/automation';
 import {
   AccountingInputError,
   accountingId,
@@ -311,6 +312,7 @@ export async function approveAccountingJournalWithControls(
     [context.companyId,journalId],
   );
   let requestId=pending.rows[0]?.id?String(pending.rows[0].id):'';
+  let requestCreated=false;
 
   if (!requestId) {
     const settings=await currentSettings(client,context.companyId);
@@ -340,9 +342,11 @@ export async function approveAccountingJournalWithControls(
       ],
     );
     requestId=String(created.rows[0].id);
+    requestCreated=true;
   }
 
-  return decideRequest(context,client,requestId,'approved',note);
+  const result=await decideRequest(context,client,requestId,'approved',note);
+  return {...result,requestCreated};
 }
 
 export async function assertAccountingPostingControl(
@@ -601,5 +605,33 @@ export async function decideAccountingApprovalRequest(input:unknown) {
     summary:'Accounting approval request '+decision,result:'success',
     metadata:{journalId:result.journalId,status:result.status},
   }).catch(()=>undefined);
+
+  if (result.status==='approved' || result.status==='rejected') {
+    await dispatchAccountingAutomationEventSafely({
+      tenantId:context.tenantId,
+      userId:context.userId,
+      companyId:context.companyId,
+      triggerKey:result.status==='approved'
+        ? 'accounting.approval.approved'
+        : 'accounting.approval.rejected',
+      recordType:'approval_request',
+      recordId:requestId,
+      payload:{journalId:result.journalId,status:result.status},
+      idempotencySeed:result.status+':'+requestId,
+    });
+    if (result.status==='approved') {
+      await dispatchAccountingAutomationEventSafely({
+        tenantId:context.tenantId,
+        userId:context.userId,
+        companyId:context.companyId,
+        triggerKey:'accounting.journal.approved',
+        recordType:'journal',
+        recordId:result.journalId,
+        payload:{approvalRequestId:requestId,journalId:result.journalId,status:result.status},
+        idempotencySeed:'approved:'+String(result.journalId)+':'+requestId,
+      });
+    }
+  }
+
   return result;
 }

@@ -5,6 +5,7 @@ import type { PoolClient } from "pg";
 
 import { requireEnterpriseModuleTableContext } from "@/lib/apps/enterprise/service";
 import { recordWorkspaceAuditEvent } from "@/lib/services/workspace-activity";
+import { dispatchAccountingAutomationEventSafely } from "./automation";
 
 import {
   postApprovedManualLedgerJournal,
@@ -420,6 +421,7 @@ export async function approveAccountingJournal(
         replayed: boolean;
         approvals?: number;
         required?: number;
+        requestCreated?: boolean;
       }
     | null = null;
 
@@ -468,6 +470,54 @@ export async function approveAccountingJournal(
       error,
     }),
   );
+
+  if (result?.requestId && result.requestCreated) {
+    await dispatchAccountingAutomationEventSafely({
+      tenantId: context.tenantId,
+      userId: context.userId,
+      companyId: context.companyId,
+      triggerKey: "accounting.approval.requested",
+      recordType: "approval_request",
+      recordId: result.requestId,
+      payload: {
+        journalId,
+        approvals: result.approvals || 0,
+        required: result.required || 1,
+        status: result.status,
+      },
+      idempotencySeed: "requested:" + result.requestId,
+    });
+  }
+
+  if (result?.status === "approved") {
+    await dispatchAccountingAutomationEventSafely({
+      tenantId: context.tenantId,
+      userId: context.userId,
+      companyId: context.companyId,
+      triggerKey: "accounting.journal.approved",
+      recordType: "journal",
+      recordId: journalId,
+      payload: {
+        journalId,
+        approvalRequestId: result.requestId || null,
+        approvals: result.approvals || 0,
+        required: result.required || 1,
+      },
+      idempotencySeed: "approved:" + journalId + ":" + String(result.requestId || "direct"),
+    });
+    if (result.requestId) {
+      await dispatchAccountingAutomationEventSafely({
+        tenantId: context.tenantId,
+        userId: context.userId,
+        companyId: context.companyId,
+        triggerKey: "accounting.approval.approved",
+        recordType: "approval_request",
+        recordId: result.requestId,
+        payload: { journalId, status: result.status },
+        idempotencySeed: "approved:" + result.requestId,
+      });
+    }
+  }
 
   return result || {
     journalId,
@@ -532,6 +582,21 @@ export async function postAccountingJournal(
         error,
       }),
     );
+
+    await dispatchAccountingAutomationEventSafely({
+      tenantId: context.tenantId,
+      userId: context.userId,
+      companyId: context.companyId,
+      triggerKey: "accounting.journal.posted",
+      recordType: "journal",
+      recordId: journalId,
+      payload: {
+        journalId,
+        total: result.total,
+        replayed: result.reused,
+      },
+      idempotencySeed: "posted:" + journalId,
+    });
 
     return result;
   } catch (error) {
@@ -641,6 +706,22 @@ export async function reverseAccountingJournal(
         error,
       }),
     );
+
+    await dispatchAccountingAutomationEventSafely({
+      tenantId: context.tenantId,
+      userId: context.userId,
+      companyId: context.companyId,
+      triggerKey: "accounting.journal.reversed",
+      recordType: "journal",
+      recordId: journalId,
+      payload: {
+        journalId,
+        reversalJournalId: result.journalId,
+        reversalDate,
+        reason: reversalReason,
+      },
+      idempotencySeed: "reversed:" + journalId + ":" + String(result.journalId),
+    });
 
     return result;
   } catch (error) {

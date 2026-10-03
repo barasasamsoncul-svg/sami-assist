@@ -31,6 +31,7 @@ on:
       - 'tests/accounting-period-closing.test.ts'
       - 'tests/accounting-approval-controls.test.ts'
       - 'tests/accounting-collaboration.test.ts'
+      - 'tests/accounting-automation-ai.test.ts'
       - 'tests/fixed-assets-accounting.test.ts'
       - 'lib/apps/fixed_assets/**'
       - 'app/apps/fixed_assets/**'
@@ -65,6 +66,7 @@ on:
       - 'tests/accounting-period-closing.test.ts'
       - 'tests/accounting-approval-controls.test.ts'
       - 'tests/accounting-collaboration.test.ts'
+      - 'tests/accounting-automation-ai.test.ts'
       - 'tests/fixed-assets-accounting.test.ts'
       - 'lib/apps/fixed_assets/**'
       - 'app/apps/fixed_assets/**'
@@ -112,6 +114,7 @@ jobs:
       - run: npm run test:accounting:period-closing
       - run: npm run test:accounting:approval-controls
       - run: npm run test:accounting:collaboration
+      - run: npm run test:accounting:automation-ai
       - run: npm run test:fixed-assets
       - run: npm run lint -- app/apps/accounting app/api/apps/accounting lib/apps/accounting
       - run: npm run test:module-migrations && npm run test:app-ui && npm run test:invoicing

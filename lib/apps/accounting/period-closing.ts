@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 
 import { requireEnterpriseModuleTableContext } from '@/lib/apps/enterprise/service';
 import { recordWorkspaceAuditEvent } from '@/lib/services/workspace-activity';
+import { dispatchAccountingAutomationEventSafely } from '@/lib/apps/accounting/automation';
 import {
   postBalancedLedgerJournal,
   reversePostedLedgerJournal,
@@ -386,6 +387,22 @@ export async function closeAccountingPeriod(input:unknown) {
 
     await client.query('COMMIT');
     await audit(context,'completed',runId,(closeType==='year_end'?'Year-end':'Month-end')+' period close completed.',{periodId,closingJournalId});
+    await dispatchAccountingAutomationEventSafely({
+      tenantId:context.tenantId,
+      userId:context.userId,
+      companyId:context.companyId,
+      triggerKey:'accounting.period.closed',
+      recordType:'fiscal_period',
+      recordId:periodId,
+      payload:{
+        periodId,
+        closeRunId:runId,
+        closeType,
+        closingJournalId,
+        endsOn:String(period.ends_on).slice(0,10),
+      },
+      idempotencySeed:'closed:'+runId,
+    });
     return {id:runId,status:'completed',closingJournalId,replayed:false};
   } catch (error) {
     await client.query('ROLLBACK').catch(()=>undefined);
@@ -472,6 +489,22 @@ export async function reopenAccountingPeriod(input:unknown) {
 
     await client.query('COMMIT');
     await audit(context,'reopened',runId,'Accounting period reopened.',{reason,reversalJournalId});
+    await dispatchAccountingAutomationEventSafely({
+      tenantId:context.tenantId,
+      userId:context.userId,
+      companyId:context.companyId,
+      triggerKey:'accounting.period.reopened',
+      recordType:'fiscal_period',
+      recordId:String(run.fiscal_period_id),
+      payload:{
+        periodId:String(run.fiscal_period_id),
+        closeRunId:runId,
+        closeType:String(run.close_type),
+        reversalJournalId,
+        reason,
+      },
+      idempotencySeed:'reopened:'+runId,
+    });
     return {id:runId,status:'reopened',reversalJournalId};
   } catch (error) {
     await client.query('ROLLBACK').catch(()=>undefined);

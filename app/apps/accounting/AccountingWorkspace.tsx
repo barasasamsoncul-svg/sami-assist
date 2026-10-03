@@ -22,6 +22,8 @@ import AccountingApprovalControls from './AccountingApprovalControls';
 import { getAccountingApprovalControls } from '@/lib/apps/accounting/approval-controls';
 import AccountingCollaboration from './AccountingCollaboration';
 import { getAccountingCollaboration } from '@/lib/apps/accounting/collaboration';
+import AccountingAutomationAi from './AccountingAutomationAi';
+import { getAccountingAutomationAi } from '@/lib/apps/accounting/automation-ai';
 import AccountingFx from './AccountingFx';
 import { getAccountingFx } from '@/lib/apps/accounting/fx';
 import AccountingInternational from './AccountingInternational';
@@ -280,6 +282,7 @@ export default async function AccountingWorkspace({
   let periodClosingWorkspace: Awaited<ReturnType<typeof getAccountingPeriodClosing>> | null = null;
   let approvalControlsWorkspace: Awaited<ReturnType<typeof getAccountingApprovalControls>> | null = null;
   let collaborationWorkspace: Awaited<ReturnType<typeof getAccountingCollaboration>> | null = null;
+  let automationAiWorkspace: Awaited<ReturnType<typeof getAccountingAutomationAi>> | null = null;
 
   let reconciliationWorkspace:
     Awaited<
@@ -329,6 +332,7 @@ export default async function AccountingWorkspace({
     dedicatedSection !== 'period-closing' &&
     dedicatedSection !== 'approval-controls' &&
     dedicatedSection !== 'documents-collaboration' &&
+    dedicatedSection !== 'automation-ai' &&
     dedicatedSection !==
       'reconciliation'
   ) {
@@ -804,6 +808,24 @@ export default async function AccountingWorkspace({
           Error
           ? error.message
           : 'Accounting documents and collaboration could not be loaded.';
+    }
+  }
+
+  if (
+    dedicatedSection ===
+      'automation-ai'
+  ) {
+    try {
+      automationAiWorkspace =
+        await getAccountingAutomationAi();
+    } catch (
+      error
+    ) {
+      foundationError =
+        error instanceof
+          Error
+          ? error.message
+          : 'Accounting Automation and SaMi AI could not be loaded.';
     }
   }
 
@@ -1358,6 +1380,25 @@ export default async function AccountingWorkspace({
 
     {
       key:
+        'automation-ai',
+      label:
+        'Automation & SaMi AI',
+      href:
+        appBaseHref +
+        '/automation-ai',
+      description:
+        'Accounting AI tools, event workflows, approval-gated actions and execution status.',
+      sectionLabel:
+        'Control',
+      badge:
+        automationAiWorkspace
+          ?.automation
+          .pendingApprovals
+          .length,
+    },
+
+    {
+      key:
         'reconciliation',
       label:
         'Reconciliation',
@@ -1588,6 +1629,8 @@ export default async function AccountingWorkspace({
                   ? (approvalControlsWorkspace ? <AccountingApprovalControls data={approvalControlsWorkspace} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Accounting approval controls could not be loaded.'}</div>)
                 : dedicatedSection === 'documents-collaboration'
                   ? (collaborationWorkspace ? <AccountingCollaboration data={collaborationWorkspace} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Accounting documents and collaboration could not be loaded.'}</div>)
+                : dedicatedSection === 'automation-ai'
+                  ? (automationAiWorkspace ? <AccountingAutomationAi data={automationAiWorkspace}/> : <div role="alert">{foundationError || 'Accounting Automation and SaMi AI could not be loaded.'}</div>)
                 : dedicatedSection ===
                     'reconciliation'
                   ? (

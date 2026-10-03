@@ -48,6 +48,7 @@ export const ACCOUNTING_SECTIONS = [
   "period-closing",
   "approval-controls",
   "documents-collaboration",
+  "automation-ai",
   "setup",
 ] as const;
 export type AccountingSection = (typeof ACCOUNTING_SECTIONS)[number];
@@ -153,6 +154,7 @@ export default function AccountingFoundationPanel({
     "period-closing": "Month-end & year-end closing",
     "approval-controls": "Approvals & audit controls",
     "documents-collaboration": "Documents & collaboration",
+    "automation-ai": "Automation & SaMi AI",
     setup: "Accounting setup",
   };
   const descriptions = {
@@ -201,6 +203,7 @@ export default function AccountingFoundationPanel({
     "period-closing": "Close fiscal periods, lock historical posting dates, and transfer year-end profit or loss to retained earnings.",
     "approval-controls": "Configure maker-checker, amount bands, approval routing, posting separation and immutable decision evidence.",
     "documents-collaboration": "Link secure workspace files to Accounting records, collaborate with comments and mentions, and preserve edit history.",
+    "automation-ai": "Use permission-aware SaMi AI tools and approval-gated Automation workflows over authoritative Accounting data.",
     reconciliation:
       "Match statement lines to posted bank-ledger movement, split allocations, apply controlled adjustment rules and preserve immutable reconciliation history.",
     setup:
