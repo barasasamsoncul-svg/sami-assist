@@ -49,6 +49,8 @@ export const ACCOUNTING_SECTIONS = [
   "approval-controls",
   "documents-collaboration",
   "automation-ai",
+  "document-capture",
+  "custom-reports",
   "settings-recovery",
   "setup",
 ] as const;
@@ -156,6 +158,8 @@ export default function AccountingFoundationPanel({
     "approval-controls": "Approvals & audit controls",
     "documents-collaboration": "Documents & collaboration",
     "automation-ai": "Automation & SaMi AI",
+    "document-capture": "Document Capture",
+    "custom-reports": "Custom Reports",
     "settings-recovery": "Settings & Recovery",
     setup: "Core Accounting setup",
   };
@@ -206,6 +210,8 @@ export default function AccountingFoundationPanel({
     "approval-controls": "Configure maker-checker, amount bands, approval routing, posting separation and immutable decision evidence.",
     "documents-collaboration": "Link secure workspace files to Accounting records, collaborate with comments and mentions, and preserve edit history.",
     "automation-ai": "Use permission-aware SaMi AI tools and approval-gated Automation workflows over authoritative Accounting data.",
+    "document-capture": "Extract reviewable bill, receipt and invoice fields from private files while keeping posting and account selection under human control.",
+    "custom-reports": "Build governed saved reports over whitelisted Accounting datasets without exposing arbitrary SQL.",
     "settings-recovery": "Review Accounting readiness, specialist settings, diagnostics and non-destructive recovery evidence from one control center.",
     reconciliation:
       "Match statement lines to posted bank-ledger movement, split allocations, apply controlled adjustment rules and preserve immutable reconciliation history.",

@@ -30,6 +30,7 @@ export default function AccountingInternational({
   const router=useRouter();
   const {overlay,showSuccess,showError,closeOverlay}=useSaMiOverlay();
   const [busy,setBusy]=useState('');
+  const [packManifest,setPackManifest]=useState('');
   const [settings,setSettings]=useState({
     enabled:Boolean(data.settings.enabled),
     countryCode:String(data.settings.country_code||data.company.country_code||''),
@@ -99,6 +100,33 @@ export default function AccountingInternational({
       router.refresh();
     }catch(error){showError('Reporting box could not be created',error instanceof Error?error.message:'Retry this box.');}
     finally{setBusy('');}
+  }
+
+  async function importPack(){
+    if(!canEdit||busy==='pack-import')return;
+    let parsed:unknown;
+    try{
+      parsed=JSON.parse(packManifest);
+    }catch{
+      showError('Pack JSON is invalid','Paste a valid localization-pack JSON manifest.');
+      return;
+    }
+    setBusy('pack-import');
+    try{
+      const result=await request({action:'import-pack',manifest:parsed});
+      showSuccess(
+        'Localization pack imported',
+        String(result.packKey||'Pack')+' '+String(result.packVersion||'')+
+        ' mapped '+String(result.boxCount||0)+' reporting boxes and '+
+        String(result.ruleCount||0)+' existing company tax-code rules. No tax rates were created.',
+      );
+      setPackManifest('');
+      router.refresh();
+    }catch(error){
+      showError('Localization pack could not be imported',error instanceof Error?error.message:'Retry this import.');
+    }finally{
+      setBusy('');
+    }
   }
 
   async function saveRule(event:FormEvent){
@@ -229,6 +257,25 @@ export default function AccountingInternational({
     </section>
 
     <section className={styles.panel}>
+      <section className={styles.panel}>
+        <div className={styles.panelHeading}>
+          <div>
+            <span className={styles.eyebrow}>Versioned localization packs</span>
+            <h3>Import a country reporting manifest</h3>
+            <p>Import boxes and mappings to tax codes that already exist in this company. SaMi never imports tax rates from a pack.</p>
+          </div>
+        </div>
+        <textarea
+          rows={12}
+          value={packManifest}
+          onChange={event=>setPackManifest(event.target.value)}
+          placeholder={'{"packKey":"country.vat.reporting","packVersion":"1.0.0","countryCode":"XX","boxes":[],"rules":[]}'}
+          className="w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-3 font-mono text-xs outline-none"
+        />
+        <p className={styles.meta}>Rules reference existing Accounting tax-code <strong>codes</strong>. Import is versioned and preserved in pack history; it does not certify a statutory return.</p>
+        {canEdit?<button type="button" className={styles.primary} disabled={!packManifest.trim()||busy==='pack-import'} onClick={importPack}>{busy==='pack-import'?'Importing…':'Import versioned pack'}</button>:null}
+      </section>
+
       <div className={styles.panelHeading}><div><span className={styles.eyebrow}>Country-pack builder</span><h3>Custom report box & tax mappings</h3></div></div>
       {canCreate?<form onSubmit={createBox}>
         <div className={styles.setupGrid}>

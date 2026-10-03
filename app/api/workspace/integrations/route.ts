@@ -77,6 +77,8 @@ export async function POST(
         await createWorkspaceWebhookEndpoint({
           name:
             body.name,
+          providerKey:
+            body.providerKey,
           eventKeys:
             body.eventKeys,
         });

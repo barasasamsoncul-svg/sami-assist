@@ -209,6 +209,9 @@ export function assertEnterpriseDomainMutationAllowed(
       table === 'accounting_collaboration_comment_revisions' ||
       table === 'accounting_record_followers' ||
       table === 'accounting_recovery_runs' ||
+      table === 'accounting_document_extractions' ||
+      table === 'accounting_custom_reports' ||
+      table === 'accounting_custom_report_runs' ||
       table ===
         'accounting_reconciliation_suggestions'
     )
@@ -404,6 +407,14 @@ export function assertEnterpriseDomainMutationAllowed(
           : table ===
               'accounting_recovery_runs'
             ? 'Accounting recovery evidence must be changed through the validated Accounting operational-recovery service.'
+          : table ===
+              'accounting_document_extractions'
+            ? 'Accounting document extraction evidence must be changed through the validated Accounting document-capture service.'
+          : table ===
+              'accounting_custom_reports' ||
+            table ===
+              'accounting_custom_report_runs'
+            ? 'Accounting custom reports and run evidence must be changed through the validated Accounting custom-report service.'
           : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
   }

@@ -172,6 +172,24 @@ export default function AccountingReconciliation({
     }
   }
 
+  async function autoReconcileStrict() {
+    if (!canEdit || busy) return;
+    setBusy("auto-reconcile");
+    try {
+      const result = await postAction(
+        {
+          action:"auto-reconcile-strict",
+          limit:100,
+        },
+        "Strict auto-reconciliation completed",
+        "SaMi reconciled only unique exact-amount posted-ledger matches at 95%+ confidence. Ambiguous items stayed open for review.",
+      );
+      if (result) router.refresh();
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function generateSuggestions() {
     if (!selected || !canEdit) return;
 
@@ -404,6 +422,19 @@ export default function AccountingReconciliation({
         </div>
 
         <div className={styles.actions}>
+          {canEdit ? (
+            <button
+              type="button"
+              className={styles.primary}
+              disabled={Boolean(busy)}
+              onClick={autoReconcileStrict}
+              title="Only unique exact-amount 95%+ confidence matches are reconciled automatically."
+            >
+              <Sparkles size={15}/>
+              Strict auto-reconcile
+            </button>
+          ) : null}
+
           <Link href="/apps/accounting/statements" className={styles.button}>
             Statements & Feeds
           </Link>

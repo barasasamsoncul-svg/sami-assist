@@ -69,6 +69,10 @@ import {
 } from '@/lib/apps/invoicing/tax-engine';
 
 import {
+  recordInvoicePaymentCore,
+} from '@/lib/apps/invoicing/payment-core';
+
+import {
   completeInvoicingMutation,
   hashInvoicingMutationRequest,
   normalizeInvoicingIdempotencyKey,
@@ -5368,635 +5372,36 @@ export async function recordInvoicePayment(
       },
     );
 
-  const client =
-    await context.pool.connect();
-
-  try {
-    await client.query(
-      'BEGIN',
-    );
-
-    const locked =
-      await client.query(
-        `
-          SELECT
-            id,
-            invoice_number,
-            customer_id,
-            currency,
-            exchange_rate,
-            total_amount,
-            status
-          FROM invoicing_invoices
-          WHERE id =
-                $1
-            AND company_id =
-                $2
-            AND deleted_at
-                IS NULL
-          FOR UPDATE
-        `,
-        [
-          invoiceId,
-          context.companyId,
-        ],
-      );
-
-    if (
-      locked.rows.length !==
-        1
-    ) {
-      throw new InvoicingError(
-        'INVOICE_NOT_FOUND',
-        'Invoice was not found.',
-      );
-    }
-
-    const aging =
-      await client.query(
-        `
-          SELECT
-            balance_due,
-            effective_status
-          FROM invoicing_aging
-          WHERE invoice_id =
-                $1
-            AND company_id =
-                $2
-          LIMIT 1
-        `,
-        [
-          invoiceId,
-          context.companyId,
-        ],
-      );
-
-    const invoice = {
-      ...locked.rows[0],
-      ...(
-        aging.rows[0] ||
-        {}
-      ),
-    };
-
-    const effectiveStatus =
-      String(
-        invoice.effective_status ||
-        invoice.status,
-      );
-
-    if (
-      [
-        'draft',
-        'pending_approval',
-        'rejected',
-        'cancelled',
-        'void',
-        'written_off',
-        'paid',
-      ].includes(
-        effectiveStatus,
-      )
-    ) {
-      throw new InvoicingError(
-        'INVOICE_STATE_INVALID',
-        'Payments can only be recorded against an open confirmed or sent invoice.',
-      );
-    }
-
-    const balance =
-      money(
-        invoice.balance_due,
-      );
-
-    const allocationAmount =
-      money(
-        Math.min(
-          paymentAmount,
-          balance,
-        ),
-      );
-
-    const unappliedAmount =
-      money(
-        Math.max(
-          paymentAmount -
-          allocationAmount,
-          0,
-        ),
-      );
-
-    const paymentSettings =
-      await client.query(
-        `
-          SELECT
-            allow_partial_payments
-          FROM invoicing_settings
-          WHERE company_id = $1
-          LIMIT 1
-        `,
-        [
-          context.companyId,
-        ],
-      );
-
-    const allowPartialPayments =
-      paymentSettings.rows[0]
-        ?.allow_partial_payments !==
-      false;
-
-    if (
-      !allowPartialPayments &&
-      allocationAmount <
-        balance -
-          0.0001
-    ) {
-      throw new InvoicingError(
-        'INVALID_INPUT',
-        'Partial payments are disabled for this company. Record the full outstanding balance.',
-        {
-          balance,
-        },
-      );
-    }
-
-    const paymentMethod =
-      cleanText(
+  const result =
+    await recordInvoicePaymentCore({
+      tenantId:
+        context.tenantId,
+      companyId:
+        context.companyId,
+      userId:
+        context.userId,
+      pool:
+        context.pool,
+      invoiceId,
+      amount:
+        paymentAmount,
+      paymentDate:
+        input.paymentDate,
+      method:
         input.method,
-        50,
-      ) ||
-      'other';
-
-    const paymentReference =
-      cleanText(
+      reference:
         input.reference,
-        255,
-      );
-
-    const idempotencyKey =
-      cleanText(
+      notes:
+        input.notes,
+      idempotencyKey:
         input.idempotencyKey,
-        160,
-      ) ||
-      null;
+      source:
+        'manual',
+    });
 
-    if (
-      idempotencyKey
-    ) {
-      await lockMasterIdentity(
-        client,
-        [
-          'invoicing-payment-idempotency',
-          context.companyId,
-          idempotencyKey,
-        ].join(
-          ':',
-        ),
-      );
-
-      const previous =
-        await client.query(
-          `
-            SELECT
-              p.id,
-              p.payment_number,
-              p.status,
-              b.allocated_amount,
-              b.refunded_amount,
-              b.unapplied_amount
-            FROM invoicing_payments p
-            INNER JOIN invoicing_payment_balances b
-              ON b.payment_id = p.id
-             AND b.company_id = p.company_id
-            WHERE p.company_id = $1
-              AND p.idempotency_key = $2
-              AND p.deleted_at IS NULL
-            LIMIT 1
-          `,
-          [
-            context.companyId,
-            idempotencyKey,
-          ],
-        );
-
-      if (
-        previous.rows.length >
-          0
-      ) {
-        await client.query(
-          'COMMIT',
-        );
-
-        return {
-          paymentId:
-            String(
-              previous.rows[0].id,
-            ),
-          paymentNumber:
-            String(
-              previous.rows[0]
-                .payment_number,
-            ),
-          invoiceId,
-          status:
-            String(
-              previous.rows[0].status,
-            ),
-          allocatedAmount:
-            money(
-              previous.rows[0]
-                .allocated_amount,
-            ),
-          refundedAmount:
-            money(
-              previous.rows[0]
-                .refunded_amount,
-            ),
-          unappliedAmount:
-            money(
-              previous.rows[0]
-                .unapplied_amount,
-            ),
-          reused:
-            true,
-        };
-      }
-    }
-
-    if (
-      paymentReference
-    ) {
-      await lockMasterIdentity(
-        client,
-        [
-          'invoicing-payment-reference',
-          context.companyId,
-          paymentMethod
-            .toLowerCase(),
-          paymentReference
-            .toLowerCase(),
-        ].join(
-          ':',
-        ),
-      );
-
-      const duplicatePayment =
-        await client.query(
-          `
-            SELECT
-              p.id,
-              p.payment_number
-            FROM invoicing_payments p
-            WHERE p.company_id = $1
-              AND p.deleted_at IS NULL
-              AND LOWER(
-                BTRIM(
-                  COALESCE(
-                    p.method,
-                    ''
-                  )
-                )
-              ) = $2
-              AND LOWER(
-                BTRIM(
-                  COALESCE(
-                    p.reference,
-                    ''
-                  )
-                )
-              ) = $3
-            LIMIT 1
-          `,
-          [
-            context.companyId,
-            paymentMethod
-              .toLowerCase(),
-            paymentReference
-              .toLowerCase(),
-          ],
-        );
-
-      if (
-        duplicatePayment.rows.length >
-          0
-      ) {
-        throw new InvoicingError(
-          'INVALID_INPUT',
-          'This payment reference has already been posted as ' +
-          String(
-            duplicatePayment
-              .rows[0]
-              .payment_number,
-          ) +
-          '.',
-          {
-            existingPaymentId:
-              String(
-                duplicatePayment
-                  .rows[0]
-                  .id,
-              ),
-          },
-        );
-      }
-    }
-
-    const paymentNumber =
-      await nextDocumentNumber(
-        client,
-        context.companyId,
-        context.userId,
-        'payment',
-      );
-
-    const payment =
-      await client.query(
-        `
-          INSERT INTO invoicing_payments (
-            company_id,
-            payment_number,
-            customer_id,
-            payment_date,
-            amount,
-            currency,
-            exchange_rate,
-            method,
-            reference,
-            idempotency_key,
-            accounting_model,
-            status,
-            notes,
-            created_by,
-            updated_by
-          )
-          VALUES (
-            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-            'customer_credit',
-            'posted',
-            $11,$12,$12
-          )
-          RETURNING
-            id
-        `,
-        [
-          context.companyId,
-          paymentNumber,
-          invoice.customer_id,
-          isoDate(
-            input.paymentDate,
-            new Date(),
-          ),
-          paymentAmount,
-          String(
-            invoice.currency,
-          ),
-          Number(
-            invoice.exchange_rate ||
-            1,
-          ),
-          paymentMethod,
-          paymentReference ||
-            null,
-          idempotencyKey,
-          nullableText(
-            input.notes,
-            3000,
-          ),
-          context.userId,
-        ],
-      );
-
-    const paymentId =
-      String(
-        payment.rows[0].id,
-      );
-
-    const allocation =
-      await client.query(
-      `
-        INSERT INTO invoicing_payment_allocations (
-          company_id,
-          payment_id,
-          invoice_id,
-          amount,
-          payment_amount,
-          invoice_amount,
-          payment_exchange_rate,
-          invoice_exchange_rate,
-          base_payment_amount,
-          base_invoice_amount,
-          realized_fx_amount,
-          status,
-          operation_key,
-          created_by
-        )
-        VALUES (
-          $1,$2,$3,$4,$4,$4,$5,$5,
-          ROUND(($4 * $5)::numeric,4),
-          ROUND(($4 * $5)::numeric,4),
-          0,
-          'posted',
-          'initial:' ||
-          gen_random_uuid()::text,
-          $6
-        )
-        RETURNING
-          id,
-          operation_key
-      `,
-      [
-        context.companyId,
-        paymentId,
-        invoiceId,
-        allocationAmount,
-        Number(
-          invoice.exchange_rate ||
-          1,
-        ),
-        context.userId,
-      ],
-    );
-
-    const allocationId =
-      String(
-        allocation.rows[0].id,
-      );
-
-    const operationKey =
-      String(
-        allocation.rows[0]
-          .operation_key,
-      );
-
-    const remaining =
-      money(
-        balance -
-        allocationAmount,
-      );
-
-    const nextStatus =
-      remaining <=
-        0.0001
-        ? 'paid'
-        : 'partially_paid';
-
-    await client.query(
-      `
-        UPDATE invoicing_invoices
-        SET
-          status =
-            $3::varchar(30),
-          paid_at =
-            CASE
-              WHEN $3::varchar(30) =
-                   'paid'
-              THEN NOW()
-              ELSE NULL
-            END,
-          updated_by =
-            $4,
-          updated_at =
-            NOW()
-        WHERE id =
-              $1
-          AND company_id =
-              $2
-      `,
-      [
-        invoiceId,
-        context.companyId,
-        nextStatus,
-        context.userId,
-      ],
-    );
-
-    await client.query(
-      `
-        INSERT INTO invoicing_status_history (
-          invoice_id,
-          company_id,
-          from_status,
-          to_status,
-          reason,
-          changed_by
-        )
-        VALUES (
-          $1,$2,$3,$4,$5,$6
-        )
-      `,
-      [
-        invoiceId,
-        context.companyId,
-        String(
-          invoice.status,
-        ),
-        nextStatus,
-        'Payment ' +
-        paymentNumber +
-        ' recorded',
-        context.userId,
-      ],
-    );
-
-    await postInvoicePaymentToAccounting(
-      client,
-      {
-        companyId:
-          context.companyId,
-        userId:
-          context.userId,
-        invoiceId,
-        paymentId,
-        paymentNumber,
-        paymentDate:
-          isoDate(
-            input.paymentDate,
-            new Date(),
-          ),
-        amount:
-          paymentAmount,
-        exchangeRate:
-          Number(
-            invoice.exchange_rate ||
-            1,
-          ),
-      },
-    );
-
-    await postInvoicePaymentAllocationToAccounting(
-      client,
-      {
-        companyId:
-          context.companyId,
-        userId:
-          context.userId,
-        allocationId,
-        operationKey,
-        paymentId,
-        paymentNumber,
-        invoiceId,
-        invoiceNumber:
-          String(
-            invoice.invoice_number,
-          ),
-        allocationDate:
-          isoDate(
-            input.paymentDate,
-            new Date(),
-          ),
-        paymentAmount:
-          allocationAmount,
-        invoiceAmount:
-          allocationAmount,
-        paymentExchangeRate:
-          Number(
-            invoice.exchange_rate ||
-            1,
-          ),
-        invoiceExchangeRate:
-          Number(
-            invoice.exchange_rate ||
-            1,
-          ),
-      },
-    );
-
-    await recordInvoicingActivity(
-      client,
-      {
-        companyId:
-          context.companyId,
-        userId:
-          context.userId,
-        invoiceId,
-        type:
-          'invoice.payment_recorded',
-        content:
-          'Payment ' +
-          paymentNumber +
-          ' recorded against invoice ' +
-          String(
-            invoice.invoice_number,
-          ) +
-          '.',
-        metadata: {
-          paymentId,
-          paymentNumber,
-          amount:
-            paymentAmount,
-          allocatedAmount:
-            allocationAmount,
-          unappliedAmount,
-          remainingBalance:
-            remaining,
-        },
-      },
-    );
-
-    await client.query(
-      'COMMIT',
-    );
-
+  if (
+    !result.reused
+  ) {
     await emitInvoicingAutomationEvent(
       context,
       {
@@ -6005,51 +5410,28 @@ export async function recordInvoicePayment(
         recordType:
           'payment',
         recordId:
-          paymentId,
+          result.paymentId,
         idempotencySeed:
           'posted:' +
-          paymentId,
+          result.paymentId,
         payload: {
           invoiceId,
-          paymentNumber,
+          paymentNumber:
+            result.paymentNumber,
           amount:
             paymentAmount,
           allocatedAmount:
-            allocationAmount,
-          unappliedAmount,
+            result.allocatedAmount,
+          unappliedAmount:
+            result.unappliedAmount,
           invoiceStatus:
-            nextStatus,
+            result.status,
         },
       },
     );
-
-    return {
-      paymentId,
-      paymentNumber,
-      invoiceId,
-      status:
-        nextStatus,
-      remainingBalance:
-        remaining,
-      allocatedAmount:
-        allocationAmount,
-      unappliedAmount,
-      reused:
-        false,
-    };
-  } catch (
-    error
-  ) {
-    try {
-      await client.query(
-        'ROLLBACK',
-      );
-    } catch {}
-
-    throw error;
-  } finally {
-    client.release();
   }
+
+  return result;
 }
 
 

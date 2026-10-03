@@ -13,6 +13,9 @@ import {
   saveLocalizationReportRule,
   setLocalizationBoxStatus,
 } from '@/lib/apps/accounting/international';
+import {
+  importAccountingLocalizationPack,
+} from '@/lib/apps/accounting/localization-packs';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -39,6 +42,7 @@ export async function POST(request:NextRequest){
     const body=JSON.parse(raw) as Record<string,unknown>;
     const result=body.action==='save-settings'?await saveAccountingInternationalSettings(body)
       :body.action==='install-generic-vat-pack'?await installGenericVatLocalizationPack(body)
+      :body.action==='import-pack'?await importAccountingLocalizationPack(body)
       :body.action==='create-box'?await createLocalizationReportBox(body)
       :body.action==='box-status'?await setLocalizationBoxStatus(body)
       :body.action==='save-rule'?await saveLocalizationReportRule(body)

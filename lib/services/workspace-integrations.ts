@@ -1017,6 +1017,8 @@ export async function createWorkspaceWebhookEndpoint(
       unknown;
     eventKeys?:
       unknown;
+    providerKey?:
+      unknown;
   },
 ) {
   const context =
@@ -1024,10 +1026,82 @@ export async function createWorkspaceWebhookEndpoint(
       'manage',
     );
 
-  await requireCustomIntegrationEntitlement(
-    context.runtime
-      .tenantId,
-  );
+  const requestedProviderKey =
+    cleanText(
+      input.providerKey,
+      100,
+    )
+      .toLowerCase() ||
+    'custom_webhook';
+
+  const provider =
+    getAccessibleIntegrationProviders(
+      context.runtime,
+    ).find(
+      item =>
+        item.key ===
+        requestedProviderKey,
+    );
+
+  if (
+    !provider ||
+    provider.connectionType !==
+      'webhook' ||
+    !provider.capabilities
+      .includes(
+        'inbound_webhook',
+      )
+  ) {
+    throw new WorkspaceIntegrationError(
+      'INTEGRATION_PROVIDER_UNAVAILABLE',
+      'This inbound webhook provider is not available in the current workspace.',
+    );
+  }
+
+  if (
+    requestedProviderKey ===
+      'custom_webhook'
+  ) {
+    await requireCustomIntegrationEntitlement(
+      context.runtime
+        .tenantId,
+    );
+  }
+
+  if (
+    (
+      requestedProviderKey ===
+        'accounting_bank_feed' ||
+      requestedProviderKey ===
+        'accounting_document_extractor'
+    ) &&
+    !context.runtime.isOwner &&
+    !context.runtime.permissionSet.has(
+      'accounting.record.create',
+    ) &&
+    !context.runtime.permissionSet.has(
+      'accounting.record.edit',
+    )
+  ) {
+    throw new WorkspaceIntegrationError(
+      'INTEGRATIONS_MANAGE_REQUIRED',
+      'Accounting write permission is required to create this Accounting connector.',
+    );
+  }
+
+  if (
+    requestedProviderKey ===
+      'invoicing_payment_gateway' &&
+    !context.runtime.isOwner &&
+    !context.runtime.permissionSet.has(
+      'invoicing.payment.record',
+    )
+  ) {
+    throw new WorkspaceIntegrationError(
+      'INTEGRATIONS_MANAGE_REQUIRED',
+      'Invoicing payment permission is required to create a payment-gateway connector.',
+    );
+  }
 
   const name =
     cleanText(
@@ -1145,31 +1219,36 @@ export async function createWorkspaceWebhookEndpoint(
           )
           VALUES (
             $1,
-            'custom_webhook',
-            'webhook',
             $2,
-            'connected',
+            'webhook',
             $3,
+            'connected',
+            $4,
             '[]'::jsonb,
-            $4::jsonb,
-            '{}'::jsonb,
+            $5::jsonb,
+            $6::jsonb,
             'healthy',
             NOW(),
-            $3,
-            $3
+            $4,
+            $4
           )
           RETURNING id
         `,
         [
           context.runtime
             .companyId,
+          requestedProviderKey,
           name,
           context.runtime
             .userId,
-          JSON.stringify([
-            'inbound_webhook',
-            'automation_triggers',
-          ]),
+          JSON.stringify(
+            provider.capabilities,
+          ),
+          JSON.stringify({
+            providerBound:
+              requestedProviderKey !==
+              'custom_webhook',
+          }),
         ],
       );
 
@@ -1196,13 +1275,13 @@ export async function createWorkspaceWebhookEndpoint(
           VALUES (
             $1,
             $2,
-            'custom_webhook',
             $3,
             $4,
-            'active',
             $5,
-            $6::jsonb,
-            $7
+            'active',
+            $6,
+            $7::jsonb,
+            $8
           )
           RETURNING id
         `,
@@ -1210,6 +1289,7 @@ export async function createWorkspaceWebhookEndpoint(
           context.runtime
             .companyId,
           connectionId,
+          requestedProviderKey,
           endpointKey,
           name,
           secretHash,
@@ -1250,10 +1330,10 @@ export async function createWorkspaceWebhookEndpoint(
       resourceId:
         endpointId,
       summary:
-        `Created webhook integration "${name}".`,
+        `Created ${provider.name} webhook "${name}".`,
       metadata: {
         providerKey:
-          'custom_webhook',
+          requestedProviderKey,
         connectionId,
       },
     },
@@ -1262,6 +1342,8 @@ export async function createWorkspaceWebhookEndpoint(
   return {
     endpointId,
     connectionId,
+    providerKey:
+      requestedProviderKey,
     endpointKey,
     endpointPath:
       '/api/integrations/webhooks/inbound/' +

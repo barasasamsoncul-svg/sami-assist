@@ -1185,18 +1185,23 @@ export async function changeFeedConnectionStatus(input: unknown) {
 }
 
 
-export async function ingestNormalizedFeed(input: unknown) {
-  const context = await requireEnterpriseModuleTableContext(
-    "accounting",
-    "accounting_statement_import_batches",
-    "create",
-  );
+export type TrustedAccountingFeedRuntime = {
+  tenantId: string;
+  companyId: string;
+  userId: string;
+  pool: import('pg').Pool;
+};
+
+async function ingestNormalizedFeedForRuntime(
+  runtime: TrustedAccountingFeedRuntime,
+  input: unknown,
+) {
   const body = bodyOf(input);
   const connectionId = accountingId(body.connectionId);
   const key = requestKey(body.requestKey);
   const transactions = normalizedFeedTransactions(body.transactions);
   const cursor = optionalText(body.cursor,4000,"Feed cursor");
-  const client = await context.pool.connect();
+  const client = await runtime.pool.connect();
 
   try {
     await client.query("BEGIN");
@@ -1207,7 +1212,7 @@ export async function ingestNormalizedFeed(input: unknown) {
        WHERE company_id=$1 AND id=$2 AND deleted_at IS NULL
        LIMIT 1
        FOR UPDATE`,
-      [context.companyId,connectionId],
+      [runtime.companyId,connectionId],
     );
     const connection = connectionResult.rows[0];
 
@@ -1216,7 +1221,7 @@ export async function ingestNormalizedFeed(input: unknown) {
     }
 
     const account = await financialAccount(
-      client,context.companyId,String(connection.bank_account_id),
+      client,runtime.companyId,String(connection.bank_account_id),
     );
     await client.query(
       "SELECT pg_advisory_xact_lock(hashtext($1))",
@@ -1228,7 +1233,7 @@ export async function ingestNormalizedFeed(input: unknown) {
     });
 
     const batch = await createImportBatch(client,{
-      companyId:context.companyId,userId:context.userId,
+      companyId:runtime.companyId,userId:runtime.userId,
       bankAccountId:String(connection.bank_account_id),
       feedConnectionId:connectionId,key,hash,sourceType:"feed",
       statementFrom:transactions.map(t=>t.transactionDate).sort()[0] || null,
@@ -1242,7 +1247,7 @@ export async function ingestNormalizedFeed(input: unknown) {
     }
 
     const result = await importNormalizedTransactions(client,{
-      companyId:context.companyId,userId:context.userId,
+      companyId:runtime.companyId,userId:runtime.userId,
       bankAccountId:String(connection.bank_account_id),
       batchId:batch.id,sourceType:"feed",
       accountCurrency:String(account.currency).toUpperCase(),
@@ -1254,15 +1259,15 @@ export async function ingestNormalizedFeed(input: unknown) {
       `UPDATE accounting_bank_feed_connections
        SET sync_cursor=$3,last_synced_at=NOW(),last_error=NULL,updated_by=$4,updated_at=NOW()
        WHERE company_id=$1 AND id=$2`,
-      [context.companyId,connectionId,cursor,context.userId],
+      [runtime.companyId,connectionId,cursor,runtime.userId],
     );
 
     await client.query("COMMIT");
 
     await recordWorkspaceAuditEvent({
-      tenantId:context.tenantId,
-      companyId:context.companyId,
-      userId:context.userId,
+      tenantId:runtime.tenantId,
+      companyId:runtime.companyId,
+      userId:runtime.userId,
       action:"accounting.statement.feed_synced",
       module:"accounting",
       resourceType:"accounting_bank_feed_connections",
@@ -1278,15 +1283,15 @@ export async function ingestNormalizedFeed(input: unknown) {
   } catch (error) {
     try {
       await client.query("ROLLBACK");
-      await context.pool.query(
+      await runtime.pool.query(
         `UPDATE accounting_bank_feed_connections
          SET status='error',last_error=$3,updated_by=$4,updated_at=NOW()
          WHERE company_id=$1 AND id=$2 AND deleted_at IS NULL`,
         [
-          context.companyId,
+          runtime.companyId,
           connectionId,
           error instanceof Error ? error.message.slice(0,2000) : "Feed sync failed",
-          context.userId,
+          runtime.userId,
         ],
       ).catch(()=>{});
     } catch {}
@@ -1294,6 +1299,38 @@ export async function ingestNormalizedFeed(input: unknown) {
   } finally {
     client.release();
   }
+}
+
+
+
+}
+
+export async function ingestNormalizedFeed(input: unknown) {
+  const context = await requireEnterpriseModuleTableContext(
+    "accounting",
+    "accounting_statement_import_batches",
+    "create",
+  );
+
+  return ingestNormalizedFeedForRuntime(
+    {
+      tenantId:context.tenantId,
+      companyId:context.companyId,
+      userId:context.userId,
+      pool:context.pool,
+    },
+    input,
+  );
+}
+
+export async function ingestNormalizedFeedTrusted(
+  runtime: TrustedAccountingFeedRuntime,
+  input: unknown,
+) {
+  return ingestNormalizedFeedForRuntime(
+    runtime,
+    input,
+  );
 }
 
 

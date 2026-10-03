@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   createHash,
+  randomUUID,
 } from "node:crypto";
 
 import type { PoolClient } from "pg";
@@ -1307,6 +1308,209 @@ export async function reconcileStatementLine(input: unknown) {
   } finally {
     client.release();
   }
+}
+
+
+
+function normalizedMatchText(value:unknown) {
+  return String(value||"")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g," ");
+}
+
+function isStrictAutoCandidate(
+  statement:Record<string,unknown>,
+  candidate:AccountingReconciliationCandidate,
+) {
+  const statementAmount=statementLedgerAmount(statement);
+  const remaining=signedCents(candidate.remaining_amount);
+
+  if(absolute(statementAmount)!==absolute(remaining))return false;
+
+  const confidence=candidateConfidence(statement,candidate);
+  if(confidence<95)return false;
+
+  const statementReference=normalizedMatchText(statement.external_reference);
+  const journalReference=normalizedMatchText(candidate.reference);
+  const referenceExact=Boolean(
+    statementReference&&
+    journalReference&&
+    statementReference===journalReference
+  );
+
+  const statementDescription=normalizedMatchText(statement.description);
+  const journalDescription=normalizedMatchText([
+    candidate.journal_description,
+    candidate.line_description,
+  ].filter(Boolean).join(" "));
+  const descriptionExact=Boolean(
+    statementDescription&&
+    journalDescription&&
+    (
+      statementDescription===journalDescription||
+      journalDescription.includes(statementDescription)||
+      statementDescription.includes(journalDescription)
+    )
+  );
+
+  const statementDate=new Date(String(statement.transaction_date)+"T00:00:00Z");
+  const journalDate=new Date(String(candidate.journal_date)+"T00:00:00Z");
+  const dayDelta=Math.abs(
+    Math.round((statementDate.getTime()-journalDate.getTime())/86400000),
+  );
+
+  return referenceExact||(descriptionExact&&dayDelta<=1);
+}
+
+export async function autoReconcileStrictMatches(input:unknown={}) {
+  const context=await requireEnterpriseModuleTableContext(
+    "accounting",
+    "accounting_reconciliations",
+    "edit",
+  );
+  const body=bodyOf(input);
+  const requested=Number(body.limit||50);
+  const limit=Number.isInteger(requested)
+    ? Math.max(1,Math.min(requested,100))
+    : 50;
+
+  const statements=await context.pool.query(
+    `SELECT s.id::text
+     FROM accounting_bank_statement_lines s
+     JOIN accounting_bank_accounts b
+       ON b.company_id=s.company_id
+      AND b.id=s.bank_account_id
+      AND b.deleted_at IS NULL
+      AND b.ledger_account_id IS NOT NULL
+     WHERE s.company_id=$1
+       AND s.deleted_at IS NULL
+       AND s.reconciliation_status IN ('unmatched','suggested')
+     ORDER BY s.transaction_date,s.created_at,s.id
+     LIMIT $2`,
+    [context.companyId,limit],
+  );
+
+  let matched=0;
+  let ambiguous=0;
+  let noStrongMatch=0;
+  const matchedIds:string[]=[];
+
+  for(const row of statements.rows){
+    const statementLineId=String(row.id);
+    const client=await context.pool.connect();
+
+    try{
+      await client.query("BEGIN");
+      await client.query(
+        "SELECT pg_advisory_xact_lock(hashtext($1))",
+        ["accounting:statement-reconciliation:"+statementLineId],
+      );
+
+      const statement=await statementForUpdate(
+        client,
+        context.companyId,
+        statementLineId,
+      );
+
+      if(!["unmatched","suggested"].includes(String(statement.reconciliation_status))){
+        await client.query("ROLLBACK");
+        continue;
+      }
+
+      const available=await candidatesForStatement(
+        client,
+        context.companyId,
+        statement,
+      );
+
+      const scored=available
+        .map(candidate=>({
+          candidate,
+          confidence:candidateConfidence(statement,candidate),
+          exactAmount:
+            absolute(statementLedgerAmount(statement))===
+            absolute(signedCents(candidate.remaining_amount)),
+          strict:isStrictAutoCandidate(statement,candidate),
+        }))
+        .sort((a,b)=>b.confidence-a.confidence);
+
+      const strict=scored.filter(item=>item.strict);
+      const competing=scored.filter(item=>item.exactAmount&&item.confidence>=90);
+
+      if(strict.length!==1||competing.length>1){
+        if(strict.length>0||competing.length>1)ambiguous+=1;
+        else noStrongMatch+=1;
+        await client.query("ROLLBACK");
+        continue;
+      }
+
+      const selected=strict[0];
+      const amount=statementLedgerAmount(statement);
+      const reconciliation=await insertReconciliation(client,{
+        companyId:context.companyId,
+        userId:context.userId,
+        statement,
+        method:"suggestion",
+        matchedAmount:amount,
+        notes:
+          "SaMi strict auto-reconciliation: unique high-confidence exact posted-ledger match ("+
+          selected.confidence+
+          "%).",
+        allocations:[{
+          journalLineId:String(selected.candidate.journal_line_id),
+          amount,
+        }],
+        requestKey:randomUUID(),
+        requestHash:requestHash({
+          mode:"strict_auto",
+          statementLineId,
+          journalLineId:selected.candidate.journal_line_id,
+          amount:decimalAmount(amount),
+        }),
+      });
+
+      await client.query("COMMIT");
+      matched+=1;
+      matchedIds.push(reconciliation.id);
+    }catch(error){
+      try{await client.query("ROLLBACK");}catch{}
+      throw error;
+    }finally{
+      client.release();
+    }
+  }
+
+  await recordWorkspaceAuditEvent({
+    tenantId:context.tenantId,
+    companyId:context.companyId,
+    userId:context.userId,
+    action:"accounting.reconciliation.strict_auto_run",
+    module:"accounting",
+    resourceType:"accounting_reconciliations",
+    resourceId:matchedIds[0]||null,
+    summary:"Strict automatic bank reconciliation run completed",
+    result:"success",
+    metadata:{
+      inspected:statements.rows.length,
+      matched,
+      ambiguous,
+      noStrongMatch,
+      threshold:95,
+      exactAmountRequired:true,
+      uniqueMatchRequired:true,
+    },
+  }).catch(error=>
+    console.error("[Accounting] Strict auto-reconciliation audit delivery failed",error),
+  );
+
+  return {
+    inspected:statements.rows.length,
+    matched,
+    ambiguous,
+    noStrongMatch,
+    threshold:95,
+  };
 }
 
 

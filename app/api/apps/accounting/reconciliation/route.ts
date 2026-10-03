@@ -5,6 +5,7 @@ import {
 
 import {
   applyReconciliationRule,
+  autoReconcileStrictMatches,
   changeReconciliationRuleStatus,
   createReconciliationRule,
   dismissReconciliationSuggestion,
@@ -84,6 +85,8 @@ export async function POST(request: NextRequest) {
     const result =
       action === "generate-suggestions"
         ? await generateReconciliationSuggestions(body)
+        : action === "auto-reconcile-strict"
+          ? await autoReconcileStrictMatches(body)
         : action === "reconcile"
           ? await reconcileStatementLine(body)
           : action === "create-rule"

@@ -23,6 +23,10 @@ import {
   resolveAutomationWorkerRuntime,
 } from '@/lib/automation/worker-context';
 
+import {
+  APP_RUNTIME_INTEGRATION_WEBHOOK_HANDLERS,
+} from '@/lib/apps/runtime-integrations';
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -356,7 +360,8 @@ export async function receiveIntegrationWebhook(
           e.secret_hash,
           e.event_keys,
           c.status
-            AS connection_status
+            AS connection_status,
+          c.owner_user_id
         FROM integration_webhook_endpoints e
         LEFT JOIN integration_connections c
           ON c.id =
@@ -516,6 +521,18 @@ export async function receiveIntegrationWebhook(
     );
   }
 
+  let deliveryId =
+    crypto.randomUUID();
+
+  let integrationEventId =
+    crypto.randomUUID();
+
+  let retryingFailedDelivery =
+    false;
+
+  let existingIntegrationEvent =
+    false;
+
   if (
     externalEventId
   ) {
@@ -524,7 +541,8 @@ export async function receiveIntegrationWebhook(
         `
           SELECT
             id,
-            status
+            status,
+            payload_digest
           FROM integration_webhook_deliveries
           WHERE endpoint_id = $1
             AND external_event_id = $2
@@ -540,27 +558,81 @@ export async function receiveIntegrationWebhook(
       existing.rows.length >
         0
     ) {
-      return {
-        accepted:
-          true,
-        duplicate:
-          true,
-        deliveryId:
+      const row =
+        existing.rows[0];
+
+      if (
+        String(
+          row.payload_digest ||
+          '',
+        ) !==
+        payloadDigest
+      ) {
+        throw new IntegrationWebhookError(
+          409,
+          'WEBHOOK_EVENT_CONFLICT',
+          'The external event ID was already used with a different payload.',
+        );
+      }
+
+      if (
+        String(
+          row.status ||
+          '',
+        ) !==
+        'failed'
+      ) {
+        return {
+          accepted:
+            true,
+          duplicate:
+            true,
+          deliveryId:
+            String(
+              row.id,
+            ),
+          dispatched:
+            0,
+        };
+      }
+
+      retryingFailedDelivery =
+        true;
+
+      deliveryId =
+        String(
+          row.id,
+        );
+
+      const existingEvent =
+        await pool.query(
+          `
+            SELECT id
+            FROM integration_events
+            WHERE delivery_id = $1
+            ORDER BY created_at DESC,id DESC
+            LIMIT 1
+          `,
+          [
+            deliveryId,
+          ],
+        );
+
+      if (
+        existingEvent.rows[0]
+      ) {
+        integrationEventId =
           String(
-            existing.rows[0]
+            existingEvent
+              .rows[0]
               .id,
-          ),
-        dispatched:
-          0,
-      };
+          );
+
+        existingIntegrationEvent =
+          true;
+      }
     }
   }
-
-  const deliveryId =
-    crypto.randomUUID();
-
-  const integrationEventId =
-    crypto.randomUUID();
 
   const correlationId =
     crypto.randomUUID();
@@ -578,91 +650,178 @@ export async function receiveIntegrationWebhook(
       'BEGIN',
     );
 
-    await client.query(
-      `
-        INSERT INTO integration_webhook_deliveries (
-          id,
-          endpoint_id,
-          company_id,
-          direction,
-          external_event_id,
-          payload_digest,
-          payload_bytes,
-          signature_valid,
-          status,
-          correlation_id,
-          received_at,
-          created_at
-        )
-        VALUES (
-          $1,
-          $2,
-          $3,
-          'inbound',
-          $4,
-          $5,
-          $6,
-          TRUE,
-          'received',
-          $7,
-          NOW(),
-          NOW()
-        )
-      `,
-      [
-        deliveryId,
-        endpoint.id,
-        companyId,
-        externalEventId,
-        payloadDigest,
-        payloadBytes,
-        correlationId,
-      ],
-    );
+    if (
+      retryingFailedDelivery
+    ) {
+      await client.query(
+        `
+          UPDATE integration_webhook_deliveries
+          SET
+            payload_digest = $2,
+            payload_bytes = $3,
+            signature_valid = TRUE,
+            status = 'received',
+            correlation_id = $4,
+            received_at = NOW(),
+            processed_at = NULL
+          WHERE id = $1
+        `,
+        [
+          deliveryId,
+          payloadDigest,
+          payloadBytes,
+          correlationId,
+        ],
+      );
 
-    await client.query(
-      `
-        INSERT INTO integration_events (
-          id,
-          company_id,
-          connection_id,
-          delivery_id,
-          provider_key,
-          event_key,
-          external_event_id,
-          payload,
-          status,
-          occurred_at,
-          created_at
-        )
-        VALUES (
-          $1,
-          $2,
-          $3,
-          $4,
-          $5,
-          $6,
-          $7,
-          $8::jsonb,
-          'pending',
-          NOW(),
-          NOW()
-        )
-      `,
-      [
-        integrationEventId,
-        companyId,
-        endpoint.connection_id ||
-          null,
-        deliveryId,
-        endpoint.provider_key,
-        eventKey,
-        externalEventId,
-        JSON.stringify(
-          payload,
-        ),
-      ],
-    );
+      if (
+        existingIntegrationEvent
+      ) {
+        await client.query(
+          `
+            UPDATE integration_events
+            SET
+              provider_key = $2,
+              event_key = $3,
+              external_event_id = $4,
+              payload = $5::jsonb,
+              status = 'pending',
+              occurred_at = NOW(),
+              processed_at = NULL
+            WHERE id = $1
+          `,
+          [
+            integrationEventId,
+            endpoint.provider_key,
+            eventKey,
+            externalEventId,
+            JSON.stringify(
+              payload,
+            ),
+          ],
+        );
+      } else {
+        await client.query(
+          `
+            INSERT INTO integration_events (
+              id,
+              company_id,
+              connection_id,
+              delivery_id,
+              provider_key,
+              event_key,
+              external_event_id,
+              payload,
+              status,
+              occurred_at,
+              created_at
+            )
+            VALUES (
+              $1,$2,$3,$4,$5,$6,$7,$8::jsonb,'pending',NOW(),NOW()
+            )
+          `,
+          [
+            integrationEventId,
+            companyId,
+            endpoint.connection_id ||
+              null,
+            deliveryId,
+            endpoint.provider_key,
+            eventKey,
+            externalEventId,
+            JSON.stringify(
+              payload,
+            ),
+          ],
+        );
+      }
+    } else {
+      await client.query(
+        `
+          INSERT INTO integration_webhook_deliveries (
+            id,
+            endpoint_id,
+            company_id,
+            direction,
+            external_event_id,
+            payload_digest,
+            payload_bytes,
+            signature_valid,
+            status,
+            correlation_id,
+            received_at,
+            created_at
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            'inbound',
+            $4,
+            $5,
+            $6,
+            TRUE,
+            'received',
+            $7,
+            NOW(),
+            NOW()
+          )
+        `,
+        [
+          deliveryId,
+          endpoint.id,
+          companyId,
+          externalEventId,
+          payloadDigest,
+          payloadBytes,
+          correlationId,
+        ],
+      );
+
+      await client.query(
+        `
+          INSERT INTO integration_events (
+            id,
+            company_id,
+            connection_id,
+            delivery_id,
+            provider_key,
+            event_key,
+            external_event_id,
+            payload,
+            status,
+            occurred_at,
+            created_at
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7,
+            $8::jsonb,
+            'pending',
+            NOW(),
+            NOW()
+          )
+        `,
+        [
+          integrationEventId,
+          companyId,
+          endpoint.connection_id ||
+            null,
+          deliveryId,
+          endpoint.provider_key,
+          eventKey,
+          externalEventId,
+          JSON.stringify(
+            payload,
+          ),
+        ],
+      );
+    }
 
     await client.query(
       `
@@ -713,6 +872,176 @@ export async function receiveIntegrationWebhook(
     throw error;
   } finally {
     client.release();
+  }
+
+  const providerKey =
+    String(
+      endpoint.provider_key ||
+      '',
+    )
+      .trim()
+      .toLowerCase();
+
+  const appHandler =
+    APP_RUNTIME_INTEGRATION_WEBHOOK_HANDLERS.get(
+      providerKey,
+    );
+
+  let providerResult:
+    Record<string, unknown> =
+    {};
+
+  if (
+    appHandler
+  ) {
+    const ownerUserId =
+      endpoint.owner_user_id
+        ? String(
+            endpoint.owner_user_id,
+          )
+        : '';
+
+    if (
+      !ownerUserId
+    ) {
+      await Promise.all([
+        pool.query(
+          `UPDATE integration_events SET status='failed',processed_at=NOW() WHERE id=$1`,
+          [integrationEventId],
+        ),
+        pool.query(
+          `UPDATE integration_webhook_deliveries SET status='failed',processed_at=NOW() WHERE id=$1`,
+          [deliveryId],
+        ),
+      ]);
+
+      throw new IntegrationWebhookError(
+        409,
+        'WEBHOOK_OWNER_UNAVAILABLE',
+        'This provider connection no longer has a run-as owner.',
+      );
+    }
+
+    try {
+      const providerRuntime =
+        await resolveAutomationWorkerRuntime({
+          tenantId:
+            input.tenantId,
+          userId:
+            ownerUserId,
+          companyId,
+        });
+
+      providerResult =
+        await appHandler({
+          tenantId:
+            input.tenantId,
+          companyId,
+          connectionId:
+            endpoint.connection_id
+              ? String(
+                  endpoint.connection_id,
+                )
+              : null,
+          endpointId:
+            String(
+              endpoint.id,
+            ),
+          ownerUserId,
+          providerKey,
+          eventKey,
+          externalEventId,
+          integrationEventId,
+          deliveryId,
+          payload:
+            payload &&
+            typeof payload ===
+              'object' &&
+            !Array.isArray(
+              payload,
+            )
+              ? payload as
+                  Record<string, unknown>
+              : {},
+          accessibleModuleKeys:
+            providerRuntime
+              .accessibleModuleKeys,
+          permissionSet:
+            providerRuntime
+              .permissionSet,
+          isOwner:
+            providerRuntime
+              .isOwner,
+        });
+    } catch (
+      error
+    ) {
+      const message =
+        error instanceof Error
+          ? error.message
+              .replace(
+                /[\u0000-\u001f\u007f]/g,
+                ' ',
+              )
+              .replace(
+                /\s+/g,
+                ' ',
+              )
+              .trim()
+              .slice(
+                0,
+                800,
+              )
+          : 'Provider webhook processing failed.';
+
+      await Promise.all([
+        pool.query(
+          `UPDATE integration_events SET status='failed',processed_at=NOW() WHERE id=$1`,
+          [integrationEventId],
+        ),
+        pool.query(
+          `UPDATE integration_webhook_deliveries SET status='failed',processed_at=NOW() WHERE id=$1`,
+          [deliveryId],
+        ),
+        endpoint.connection_id
+          ? pool.query(
+              `
+                UPDATE integration_connections
+                SET
+                  health_status='degraded',
+                  settings=COALESCE(settings,'{}'::jsonb) ||
+                    jsonb_build_object(
+                      'lastWebhookError',$2::text,
+                      'lastWebhookErrorAt',NOW()
+                    ),
+                  updated_at=NOW()
+                WHERE id=$1
+              `,
+              [
+                endpoint.connection_id,
+                message,
+              ],
+            )
+          : Promise.resolve(),
+      ]);
+
+      console.error(
+        '[SaMi Integrations] Provider webhook processing failed:',
+        {
+          providerKey,
+          eventKey,
+          deliveryId,
+          error,
+        },
+      );
+
+      throw new IntegrationWebhookError(
+        500,
+        'WEBHOOK_PROVIDER_PROCESSING_FAILED',
+        message ||
+        'Provider webhook processing failed.',
+      );
+    }
   }
 
   const workflows =
@@ -870,6 +1199,7 @@ export async function receiveIntegrationWebhook(
           externalEventId,
           data:
             payload,
+          providerResult,
         },
         idempotencyKey:
           `integration:${integrationEventId}:${String(
@@ -941,5 +1271,8 @@ export async function receiveIntegrationWebhook(
     eventKey,
     dispatched,
     failed,
+    providerResult,
+    retried:
+      retryingFailedDelivery,
   };
 }

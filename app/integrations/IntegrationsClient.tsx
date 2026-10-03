@@ -385,6 +385,14 @@ export default function IntegrationsClient({
     );
 
   const [
+    webhookProviderKey,
+    setWebhookProviderKey,
+  ] =
+    useState(
+      'custom_webhook',
+    );
+
+  const [
     webhookName,
     setWebhookName,
   ] =
@@ -947,6 +955,8 @@ export default function IntegrationsClient({
                 operation:
                   'create_webhook',
                 name,
+                providerKey:
+                  webhookProviderKey,
                 eventKeys:
                   webhookEvents
                     .split(
@@ -1006,6 +1016,9 @@ export default function IntegrationsClient({
       );
       setWebhookEvents(
         '',
+      );
+      setWebhookProviderKey(
+        'custom_webhook',
       );
 
       await refresh();
@@ -1894,10 +1907,28 @@ export default function IntegrationsClient({
                       ) : provider.connectionType === 'webhook' ? (
                         <button
                           type="button"
-                          onClick={() =>
+                          onClick={() => {
+                            setWebhookProviderKey(
+                              provider.key,
+                            );
+                            setWebhookName(
+                              provider.name,
+                            );
+                            setWebhookEvents(
+                              provider.key === 'accounting_bank_feed'
+                                ? 'accounting.bank_feed.transactions'
+                                : provider.key === 'accounting_document_extractor'
+                                  ? 'accounting.document.extracted'
+                                  : provider.key === 'invoicing_payment_gateway'
+                                    ? 'invoicing.payment.succeeded'
+                                    : '',
+                            );
+                            setWebhookSecret(
+                              null,
+                            );
                             setWebhookOpen(
                               true,
-                            )
+                            );
                           }
                           className="inline-flex h-9 items-center gap-2 rounded-xl bg-slate-950 px-3 text-[11px] font-bold text-white dark:bg-white dark:text-slate-950"
                         >
@@ -2096,10 +2127,22 @@ export default function IntegrationsClient({
             {state.canManage && (
               <button
                 type="button"
-                onClick={() =>
+                onClick={() => {
+                  setWebhookProviderKey(
+                    'custom_webhook',
+                  );
+                  setWebhookName(
+                    '',
+                  );
+                  setWebhookEvents(
+                    '',
+                  );
+                  setWebhookSecret(
+                    null,
+                  );
                   setWebhookOpen(
                     true,
-                  )
+                  );
                 }
                 className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--sami-border)] px-2.5 text-[10px] font-bold"
               >
@@ -2483,7 +2526,13 @@ export default function IntegrationsClient({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-base font-black">
-                  New inbound webhook
+                  {webhookProviderKey === 'accounting_bank_feed'
+                    ? 'Accounting Bank Feed'
+                    : webhookProviderKey === 'accounting_document_extractor'
+                      ? 'Accounting Document Extractor'
+                      : webhookProviderKey === 'invoicing_payment_gateway'
+                        ? 'Invoice Payment Gateway'
+                        : 'New inbound webhook'}
                 </h3>
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   The secret is shown once. SaMi stores only its hash.

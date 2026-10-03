@@ -10,9 +10,17 @@ on:
       - 'app/api/internal/invoicing/**'
       - 'app/api/public/invoicing/**'
       - 'lib/apps/invoicing/**'
+      - 'lib/apps/accounting/**'
+      - 'lib/apps/runtime-integrations.ts'
+      - 'lib/apps/runtime-integrations-types.ts'
+      - 'lib/integrations/**'
+      - 'lib/services/workspace-integrations.ts'
+      - 'app/integrations/**'
+      - 'app/api/workspace/integrations/**'
       - 'lib/modules/first-party.ts'
       - 'module-quality-locks.json'
       - 'tests/invoicing-module.test.mjs'
+      - 'tests/accounting-parity-hardening.test.mjs'
       - 'tests/module-quality-locks.test.mjs'
       - '.github/workflows/invoicing-module.yml'
       - 'package.json'
@@ -25,9 +33,17 @@ on:
       - 'app/api/internal/invoicing/**'
       - 'app/api/public/invoicing/**'
       - 'lib/apps/invoicing/**'
+      - 'lib/apps/accounting/**'
+      - 'lib/apps/runtime-integrations.ts'
+      - 'lib/apps/runtime-integrations-types.ts'
+      - 'lib/integrations/**'
+      - 'lib/services/workspace-integrations.ts'
+      - 'app/integrations/**'
+      - 'app/api/workspace/integrations/**'
       - 'lib/modules/first-party.ts'
       - 'module-quality-locks.json'
       - 'tests/invoicing-module.test.mjs'
+      - 'tests/accounting-parity-hardening.test.mjs'
       - 'tests/module-quality-locks.test.mjs'
       - '.github/workflows/invoicing-module.yml'
       - 'package.json'
@@ -54,4 +70,4 @@ jobs:
         run: npm ci
 
       - name: Final Invoicing release gate
-        run: npm run test:invoicing:release
+        run: npm run test:invoicing:2.22:release

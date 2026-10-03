@@ -26,6 +26,10 @@ import AccountingAutomationAi from './AccountingAutomationAi';
 import { getAccountingAutomationAi } from '@/lib/apps/accounting/automation-ai';
 import AccountingOperationalRecovery from './AccountingOperationalRecovery';
 import { getAccountingOperationalRecovery } from '@/lib/apps/accounting/operational-recovery';
+import AccountingDocumentCapture from './AccountingDocumentCapture';
+import { getAccountingDocumentCapture } from '@/lib/apps/accounting/document-extraction';
+import AccountingCustomReports from './AccountingCustomReports';
+import { getAccountingCustomReports } from '@/lib/apps/accounting/custom-reports';
 import AccountingFx from './AccountingFx';
 import { getAccountingFx } from '@/lib/apps/accounting/fx';
 import AccountingInternational from './AccountingInternational';
@@ -286,6 +290,8 @@ export default async function AccountingWorkspace({
   let collaborationWorkspace: Awaited<ReturnType<typeof getAccountingCollaboration>> | null = null;
   let automationAiWorkspace: Awaited<ReturnType<typeof getAccountingAutomationAi>> | null = null;
   let operationalRecoveryWorkspace: Awaited<ReturnType<typeof getAccountingOperationalRecovery>> | null = null;
+  let documentCaptureWorkspace: Awaited<ReturnType<typeof getAccountingDocumentCapture>> | null = null;
+  let customReportsWorkspace: Awaited<ReturnType<typeof getAccountingCustomReports>> | null = null;
 
   let reconciliationWorkspace:
     Awaited<
@@ -337,6 +343,8 @@ export default async function AccountingWorkspace({
     dedicatedSection !== 'documents-collaboration' &&
     dedicatedSection !== 'automation-ai' &&
     dedicatedSection !== 'settings-recovery' &&
+    dedicatedSection !== 'document-capture' &&
+    dedicatedSection !== 'custom-reports' &&
     dedicatedSection !==
       'reconciliation'
   ) {
@@ -848,6 +856,36 @@ export default async function AccountingWorkspace({
           Error
           ? error.message
           : 'Accounting Settings & Recovery could not be loaded.';
+    }
+  }
+
+  if (
+    dedicatedSection ===
+      'document-capture'
+  ) {
+    try {
+      documentCaptureWorkspace =
+        await getAccountingDocumentCapture();
+    } catch (error) {
+      foundationError =
+        error instanceof Error
+          ? error.message
+          : 'Accounting Document Capture could not be loaded.';
+    }
+  }
+
+  if (
+    dedicatedSection ===
+      'custom-reports'
+  ) {
+    try {
+      customReportsWorkspace =
+        await getAccountingCustomReports();
+    } catch (error) {
+      foundationError =
+        error instanceof Error
+          ? error.message
+          : 'Accounting Custom Reports could not be loaded.';
     }
   }
 
@@ -1423,6 +1461,50 @@ export default async function AccountingWorkspace({
       .canReport
       ? {
           key:
+            'custom-reports',
+          label:
+            'Custom Reports',
+          href:
+            appBaseHref +
+            '/custom-reports',
+          description:
+            'Build saved governed reports across ledger, AR, AP, bank reconciliation and budgets.',
+          sectionLabel:
+            'Reports',
+          badge:
+            customReportsWorkspace
+              ?.reports
+              .filter(row => row.status === 'active')
+              .length,
+        }
+      : null,
+
+    data.capabilities
+      .canReport
+      ? {
+          key:
+            'document-capture',
+          label:
+            'Document Capture',
+          href:
+            appBaseHref +
+            '/document-capture',
+          description:
+            'Extract reviewable bill, receipt and invoice fields from private documents without auto-posting.',
+          sectionLabel:
+            'Control',
+          badge:
+            documentCaptureWorkspace
+              ?.extractions
+              .filter(row => row.status === 'extracted')
+              .length,
+        }
+      : null,
+
+    data.capabilities
+      .canReport
+      ? {
+          key:
             'settings-recovery',
           label:
             'Settings & Recovery',
@@ -1675,6 +1757,10 @@ export default async function AccountingWorkspace({
                   ? (automationAiWorkspace ? <AccountingAutomationAi data={automationAiWorkspace}/> : <div role="alert">{foundationError || 'Accounting Automation and SaMi AI could not be loaded.'}</div>)
                 : dedicatedSection === 'settings-recovery'
                   ? (operationalRecoveryWorkspace ? <AccountingOperationalRecovery initialData={operationalRecoveryWorkspace} canManage={data.capabilities.canManageSettings}/> : <div role="alert">{foundationError || 'Accounting Settings & Recovery could not be loaded.'}</div>)
+                : dedicatedSection === 'document-capture'
+                  ? (documentCaptureWorkspace ? <AccountingDocumentCapture data={documentCaptureWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Accounting Document Capture could not be loaded.'}</div>)
+                : dedicatedSection === 'custom-reports'
+                  ? (customReportsWorkspace ? <AccountingCustomReports data={customReportsWorkspace} canManage={data.capabilities.canManageSettings}/> : <div role="alert">{foundationError || 'Accounting Custom Reports could not be loaded.'}</div>)
                 : dedicatedSection ===
                     'reconciliation'
                   ? (
