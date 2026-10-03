@@ -21,6 +21,35 @@ import type {
 } from '@/lib/ai/types';
 
 
+
+
+function requireModulePermission(
+  context: Parameters<SamiAiToolDefinition['execute']>[0],
+  moduleKey: string,
+  action: 'view' | 'create' | 'edit' | 'transition',
+) {
+  if (context.isOwner) {
+    return;
+  }
+
+  const permission =
+    moduleKey +
+    '.record.' +
+    action;
+
+  if (
+    !context.permissionContext
+      .permissionSet
+      .has(permission)
+  ) {
+    throw new Error(
+      action === 'view'
+        ? 'You do not have permission to view records in this app.'
+        : 'You do not have permission to perform this action in this app.',
+    );
+  }
+}
+
 export const ENTERPRISE_SUITE_AI_TOOLS:
   SamiAiToolDefinition[] = [
     {
@@ -82,6 +111,12 @@ export const ENTERPRISE_SUITE_AI_TOOLS:
               'That SaMi app is not available in the current workspace.',
             );
           }
+
+          requireModulePermission(
+            context,
+            moduleKey,
+            'view',
+          );
 
           const data =
             await getEnterpriseModuleWorkspace(
@@ -234,6 +269,12 @@ export const ENTERPRISE_SUITE_AI_TOOLS:
             );
           }
 
+          requireModulePermission(
+            context,
+            moduleKey,
+            'view',
+          );
+
           return {
             moduleKey,
             query,
@@ -317,19 +358,11 @@ export const ENTERPRISE_SUITE_AI_TOOLS:
             );
           }
 
-          if (
-            !context.isOwner &&
-            !context.permissionContext
-              .permissionSet
-              .has(
-                moduleKey +
-                '.record.create',
-              )
-          ) {
-            throw new Error(
-              'You do not have permission to create records in this app.',
-            );
-          }
+          requireModulePermission(
+            context,
+            moduleKey,
+            'create',
+          );
 
           return createEnterpriseModuleRecord(
             moduleKey,
@@ -419,19 +452,11 @@ export const ENTERPRISE_SUITE_AI_TOOLS:
             );
           }
 
-          if (
-            !context.isOwner &&
-            !context.permissionContext
-              .permissionSet
-              .has(
-                moduleKey +
-                '.record.edit',
-              )
-          ) {
-            throw new Error(
-              'You do not have permission to update records in this app.',
-            );
-          }
+          requireModulePermission(
+            context,
+            moduleKey,
+            'edit',
+          );
 
           return updateEnterpriseModuleRecord(
             moduleKey,
@@ -525,22 +550,11 @@ export const ENTERPRISE_SUITE_AI_TOOLS:
             );
           }
 
-          const transitionPermission =
-            moduleKey +
-            '.record.transition';
-
-          if (
-            !context.isOwner &&
-            !context.permissionContext
-              .permissionSet
-              .has(
-                transitionPermission,
-              )
-          ) {
-            throw new Error(
-              'You do not have permission to run this app workflow.',
-            );
-          }
+          requireModulePermission(
+            context,
+            moduleKey,
+            'transition',
+          );
 
           return transitionEnterpriseModuleRecord(
             moduleKey,
