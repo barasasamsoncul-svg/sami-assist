@@ -343,12 +343,12 @@ export default function WorkspaceAiClient({
               title:
                 'How can I help?',
               description:
-                'Ask about the current company, your apps, files, activity, notifications or business data available to your account. SaMi cannot bypass your permissions.',
+                'Use SaMi AI like a normal general assistant for questions, writing, reasoning, planning and coding. When you ask about your business, SaMi can securely use only the company data and actions your permissions allow.',
               suggestions: [
-                'What changed recently?',
-                'What needs my attention?',
-                'What apps can I access?',
-                'Summarize my workspace activity.',
+                'Help me think through a business decision.',
+                'Draft a professional customer message.',
+                'Explain something I am trying to understand.',
+                'Analyze my business data when I ask for it.',
               ],
             },
       [
