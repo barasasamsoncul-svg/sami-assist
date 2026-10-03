@@ -64,3 +64,15 @@ SAMI_AI_BASE_URL=<openai-compatible-base-url>
 
 Changing provider/model configuration never changes SaMi's tool,
 permission, tenant, company, memory, confirmation, or audit boundaries.
+
+
+## Runtime protection limits
+
+SAMI_AI_REQUESTS_PER_MINUTE=20
+SAMI_AI_REQUESTS_PER_DAY=500
+SAMI_AI_MAX_TOOL_ROUNDS=6
+SAMI_AI_CONTEXT_MESSAGES=24
+
+These are operational safeguards, not the monthly commercial plan allowance. Free and Standard monthly query allowances are defined in lib/billing/plan-policy.ts; Custom is metered without a customer-facing monthly cap.
+
+See docs/sami-ai-operations.md for the full upgrade procedure.
