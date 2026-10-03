@@ -208,6 +208,7 @@ export function assertEnterpriseDomainMutationAllowed(
       table === 'accounting_collaboration_comments' ||
       table === 'accounting_collaboration_comment_revisions' ||
       table === 'accounting_record_followers' ||
+      table === 'accounting_recovery_runs' ||
       table ===
         'accounting_reconciliation_suggestions'
     )
@@ -400,6 +401,9 @@ export function assertEnterpriseDomainMutationAllowed(
             table ===
               'accounting_record_followers'
             ? 'Accounting comments, revisions and followers must be changed through the validated Accounting collaboration services.'
+          : table ===
+              'accounting_recovery_runs'
+            ? 'Accounting recovery evidence must be changed through the validated Accounting operational-recovery service.'
           : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
   }

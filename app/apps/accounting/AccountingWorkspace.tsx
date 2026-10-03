@@ -24,6 +24,8 @@ import AccountingCollaboration from './AccountingCollaboration';
 import { getAccountingCollaboration } from '@/lib/apps/accounting/collaboration';
 import AccountingAutomationAi from './AccountingAutomationAi';
 import { getAccountingAutomationAi } from '@/lib/apps/accounting/automation-ai';
+import AccountingOperationalRecovery from './AccountingOperationalRecovery';
+import { getAccountingOperationalRecovery } from '@/lib/apps/accounting/operational-recovery';
 import AccountingFx from './AccountingFx';
 import { getAccountingFx } from '@/lib/apps/accounting/fx';
 import AccountingInternational from './AccountingInternational';
@@ -283,6 +285,7 @@ export default async function AccountingWorkspace({
   let approvalControlsWorkspace: Awaited<ReturnType<typeof getAccountingApprovalControls>> | null = null;
   let collaborationWorkspace: Awaited<ReturnType<typeof getAccountingCollaboration>> | null = null;
   let automationAiWorkspace: Awaited<ReturnType<typeof getAccountingAutomationAi>> | null = null;
+  let operationalRecoveryWorkspace: Awaited<ReturnType<typeof getAccountingOperationalRecovery>> | null = null;
 
   let reconciliationWorkspace:
     Awaited<
@@ -333,6 +336,7 @@ export default async function AccountingWorkspace({
     dedicatedSection !== 'approval-controls' &&
     dedicatedSection !== 'documents-collaboration' &&
     dedicatedSection !== 'automation-ai' &&
+    dedicatedSection !== 'settings-recovery' &&
     dedicatedSection !==
       'reconciliation'
   ) {
@@ -826,6 +830,24 @@ export default async function AccountingWorkspace({
           Error
           ? error.message
           : 'Accounting Automation and SaMi AI could not be loaded.';
+    }
+  }
+
+  if (
+    dedicatedSection ===
+      'settings-recovery'
+  ) {
+    try {
+      operationalRecoveryWorkspace =
+        await getAccountingOperationalRecovery();
+    } catch (
+      error
+    ) {
+      foundationError =
+        error instanceof
+          Error
+          ? error.message
+          : 'Accounting Settings & Recovery could not be loaded.';
     }
   }
 
@@ -1399,6 +1421,26 @@ export default async function AccountingWorkspace({
 
     {
       key:
+        'settings-recovery',
+      label:
+        'Settings & Recovery',
+      href:
+        appBaseHref +
+        '/settings-recovery',
+      description:
+        'Configuration map, book-health checks, diagnostics and non-destructive recovery.',
+      sectionLabel:
+        'Configuration',
+      badge:
+        operationalRecoveryWorkspace
+          ?.health
+          .checks
+          .filter(check => check.status !== 'pass')
+          .length,
+    },
+
+    {
+      key:
         'reconciliation',
       label:
         'Reconciliation',
@@ -1446,22 +1488,19 @@ export default async function AccountingWorkspace({
         'Insights',
     },
 
-    data.capabilities
-      .canManageSettings
-      ? {
-          key:
-            'setup',
-          label:
-            'Accounting Setup',
-          href:
-            appBaseHref +
-            '/setup',
-          description:
-            'Prepare the books and required accounting controls.',
-          sectionLabel:
-            'Configuration',
-        }
-      : null,
+    {
+      key:
+        'setup',
+      label:
+        'Core Accounting Setup',
+      href:
+        appBaseHref +
+        '/setup',
+      description:
+        'Fiscal calendar, control-account mappings and posting-lock policy.',
+      sectionLabel:
+        'Configuration',
+    },
 
     tableItem(
       'accounting_fiscal_periods',
@@ -1631,6 +1670,8 @@ export default async function AccountingWorkspace({
                   ? (collaborationWorkspace ? <AccountingCollaboration data={collaborationWorkspace} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Accounting documents and collaboration could not be loaded.'}</div>)
                 : dedicatedSection === 'automation-ai'
                   ? (automationAiWorkspace ? <AccountingAutomationAi data={automationAiWorkspace}/> : <div role="alert">{foundationError || 'Accounting Automation and SaMi AI could not be loaded.'}</div>)
+                : dedicatedSection === 'settings-recovery'
+                  ? (operationalRecoveryWorkspace ? <AccountingOperationalRecovery initialData={operationalRecoveryWorkspace} canManage={data.capabilities.canManageSettings}/> : <div role="alert">{foundationError || 'Accounting Settings & Recovery could not be loaded.'}</div>)
                 : dedicatedSection ===
                     'reconciliation'
                   ? (

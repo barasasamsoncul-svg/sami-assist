@@ -1,3 +1,4 @@
+import { ACCOUNTING_OPERATIONAL_RECOVERY_SQL } from '@/lib/apps/accounting/operational-recovery-schema';
 import { ACCOUNTING_COLLABORATION_SQL } from '@/lib/apps/accounting/collaboration-schema';
 import { ACCOUNTING_APPROVAL_CONTROLS_SQL } from '@/lib/apps/accounting/approval-controls-schema';
 import { ACCOUNTING_PERIOD_CLOSING_SQL } from '@/lib/apps/accounting/period-closing-schema';
@@ -1782,6 +1783,7 @@ ${ACCOUNTING_MANAGEMENT_REPORTING_SQL}
 ${ACCOUNTING_PERIOD_CLOSING_SQL}
 ${ACCOUNTING_APPROVAL_CONTROLS_SQL}
 ${ACCOUNTING_COLLABORATION_SQL}
+${ACCOUNTING_OPERATIONAL_RECOVERY_SQL}
 `;
 }
 

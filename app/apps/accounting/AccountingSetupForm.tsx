@@ -8,6 +8,7 @@ import {
 import {
   CheckCircle2,
   LockKeyhole,
+  RotateCcw,
   Save,
   ShieldCheck,
   TriangleAlert,
@@ -342,6 +343,14 @@ export default function AccountingSetupForm({
     );
 
   const [
+    savedSetup,
+    setSavedSetup,
+  ] =
+    useState<Setup>(
+      initialSetup,
+    );
+
+  const [
     saving,
     setSaving,
   ] =
@@ -364,6 +373,21 @@ export default function AccountingSetupForm({
       | null
     >(
       null,
+    );
+
+  const dirty =
+    useMemo(
+      () =>
+        JSON.stringify(
+          setup,
+        ) !==
+        JSON.stringify(
+          savedSetup,
+        ),
+      [
+        setup,
+        savedSetup,
+      ],
     );
 
   const configured =
@@ -456,6 +480,13 @@ export default function AccountingSetupForm({
       ) {
         setSetup(
           body.setup,
+        );
+        setSavedSetup(
+          body.setup,
+        );
+      } else {
+        setSavedSetup(
+          setup,
         );
       }
 
@@ -599,10 +630,12 @@ export default function AccountingSetupForm({
             }
           />
           {
-            configured ===
-              ACCOUNT_FIELDS.length
-              ? 'Core mappings complete'
-              : 'Configuration in progress'
+            dirty
+              ? 'Unsaved changes'
+              : configured ===
+                  ACCOUNT_FIELDS.length
+                ? 'Core mappings complete'
+                : 'Configuration in progress'
           }
         </div>
       </div>
@@ -1004,29 +1037,61 @@ export default function AccountingSetupForm({
                     Changes affect this company only and are recorded in the workspace audit trail.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className={
-                    styles.primary
-                  }
-                  onClick={
-                    save
-                  }
-                  disabled={
-                    saving
-                  }
-                >
-                  <Save
-                    size={
-                      16
+                <div className={styles.actions}>
+                  <button
+                    type="button"
+                    className={
+                      styles.button
                     }
-                  />
-                  {
-                    saving
-                      ? 'Saving…'
-                      : 'Save setup'
-                  }
-                </button>
+                    onClick={
+                      () => {
+                        setSetup(
+                          savedSetup,
+                        );
+                        setFeedback(
+                          null,
+                        );
+                      }
+                    }
+                    disabled={
+                      saving ||
+                      !dirty
+                    }
+                  >
+                    <RotateCcw
+                      size={
+                        16
+                      }
+                    />
+                    Reset changes
+                  </button>
+                  <button
+                    type="button"
+                    className={
+                      styles.primary
+                    }
+                    onClick={
+                      save
+                    }
+                    disabled={
+                      saving ||
+                      !dirty
+                    }
+                  >
+                    <Save
+                      size={
+                        16
+                      }
+                    />
+                    {
+                      saving
+                        ? 'Saving…'
+                        : dirty
+                          ? 'Save setup'
+                          : 'Saved'
+                    }
+                  </button>
+                </div>
               </div>
             )
           : null

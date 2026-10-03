@@ -49,6 +49,7 @@ export const ACCOUNTING_SECTIONS = [
   "approval-controls",
   "documents-collaboration",
   "automation-ai",
+  "settings-recovery",
   "setup",
 ] as const;
 export type AccountingSection = (typeof ACCOUNTING_SECTIONS)[number];
@@ -155,7 +156,8 @@ export default function AccountingFoundationPanel({
     "approval-controls": "Approvals & audit controls",
     "documents-collaboration": "Documents & collaboration",
     "automation-ai": "Automation & SaMi AI",
-    setup: "Accounting setup",
+    "settings-recovery": "Settings & Recovery",
+    setup: "Core Accounting setup",
   };
   const descriptions = {
     overview:
