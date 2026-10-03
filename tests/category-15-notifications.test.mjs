@@ -753,13 +753,13 @@ test('Core 1.9: notification sounds and in-app calling are additive tenant capab
     /CREATE TABLE IF NOT EXISTS workspace_call_signals/,
   );
   assert.equal(
-    (migration.match(/DO \\$\\$/g) || []).length,
+    (migration.match(/DO \$\$/g) || []).length,
     2,
     'Core 1.9 conditional migration blocks must use valid PostgreSQL dollar quoting.',
   );
   assert.doesNotMatch(
     migration,
-    /DO \\$\n|\n\\$;/,
+    /DO \$\n|\n\$;/,
     'Core 1.9 must never ship malformed single-dollar DO blocks.',
   );
   assert.doesNotMatch(
