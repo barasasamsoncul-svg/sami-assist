@@ -540,7 +540,7 @@ export default function PaymentIntegrationsWorkspace() {
             </div>
 
             <p className="mt-3 text-[10px] leading-5 text-slate-400">
-              This page exposes SaMi's current provider-neutral gateway bridge. Native provider-specific connectors can plug into the same settlement core without changing invoice accounting.
+              This page exposes SaMi’s current provider-neutral gateway bridge. Native provider-specific connectors can plug into the same settlement core without changing invoice accounting.
             </p>
           </div>
         </div>
