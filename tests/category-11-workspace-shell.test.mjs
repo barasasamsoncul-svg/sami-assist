@@ -147,24 +147,24 @@ test('Category 11: mobile workspace pages use progressive disclosure instead of 
 
   assert.match(
     dashboard,
-    /flex w-full flex-col gap-2 sm:flex-row/,
-    'Dashboard command controls must stack on narrow screens instead of disappearing or overflowing.',
+    /flex flex-wrap items-center gap-2/,
+    'Dashboard command controls must wrap safely on narrow screens instead of disappearing or overflowing.',
   );
 
   assert.match(
     dashboard,
-    /Only apps available to your role and current workspace are shown/,
+    /Only apps available to your role are shown/,
   );
 
   assert.match(
     dashboard,
-    /Work & attention/,
+    /Needs attention/,
   );
 
-  assert.match(
+  assert.doesNotMatch(
     dashboard,
-    /My activity/,
-    'The compact dashboard activity surface must remain personal rather than becoming workspace-wide.',
+    /My activity|Operational pulse|Your actions today/,
+    'Home must not surface personal or workspace activity telemetry.',
   );
 
   assert.match(organization, /mobileSection/);
