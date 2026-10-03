@@ -1929,7 +1929,7 @@ export default function IntegrationsClient({
                             setWebhookOpen(
                               true,
                             );
-                          }
+                          }}
                           className="inline-flex h-9 items-center gap-2 rounded-xl bg-slate-950 px-3 text-[11px] font-bold text-white dark:bg-white dark:text-slate-950"
                         >
                           <Plus className="h-3.5 w-3.5" />
@@ -2143,7 +2143,7 @@ export default function IntegrationsClient({
                   setWebhookOpen(
                     true,
                   );
-                }
+                }}
                 className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--sami-border)] px-2.5 text-[10px] font-bold"
               >
                 <Plus className="h-3 w-3" />
