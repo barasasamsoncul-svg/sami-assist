@@ -41,6 +41,7 @@ export const ACCOUNTING_SECTIONS = [
   "loans-financing",
   "budgets-forecasts",
   "project-departmental",
+  "payroll-integration",
   "setup",
 ] as const;
 export type AccountingSection = (typeof ACCOUNTING_SECTIONS)[number];
@@ -126,6 +127,7 @@ export default function AccountingFoundationPanel({
     "loans-financing": "Loans & financing",
     "budgets-forecasts": "Budgets & forecasts",
     "project-departmental": "Project & departmental accounting",
+    "payroll-integration": "Payroll accounting integration",
     setup: "Accounting setup",
   };
   const descriptions = {
@@ -167,6 +169,7 @@ export default function AccountingFoundationPanel({
     "loans-financing": "Manage borrowings and loan receivables, drawdowns, interest, repayments, rate resets and current/non-current classification.",
     "budgets-forecasts": "Build versioned monthly budgets, rolling forecasts, planning assumptions and actual-versus-plan variance controls.",
     "project-departmental": "Allocate ledger activity across departments and projects, automate analytic classification, and compare dimensional budgets with actual performance.",
+    "payroll-integration": "Post approved payroll runs to the authoritative ledger, reconcile payroll liabilities and attribute salary costs to departments and projects.",
     reconciliation:
       "Match statement lines to posted bank-ledger movement, split allocations, apply controlled adjustment rules and preserve immutable reconciliation history.",
     setup:

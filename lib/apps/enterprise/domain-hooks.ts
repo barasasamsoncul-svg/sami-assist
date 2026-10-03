@@ -181,6 +181,11 @@ export function assertEnterpriseDomainMutationAllowed(
       table === 'accounting_dimension_rules' ||
       table === 'accounting_journal_line_dimensions' ||
       table === 'accounting_dimension_budget_lines' ||
+      table === 'accounting_payroll_settings' ||
+      table === 'accounting_payroll_component_mappings' ||
+      table === 'accounting_payroll_employee_dimensions' ||
+      table === 'accounting_payroll_run_postings' ||
+      table === 'accounting_payroll_run_posting_allocations' ||
       table ===
         'accounting_reconciliation_suggestions'
     )
@@ -313,6 +318,17 @@ export function assertEnterpriseDomainMutationAllowed(
             table ===
               'accounting_dimension_budget_lines'
             ? 'Project and departmental accounting must be changed through the validated Accounting analytic-dimension services.'
+          : table ===
+              'accounting_payroll_settings' ||
+            table ===
+              'accounting_payroll_component_mappings' ||
+            table ===
+              'accounting_payroll_employee_dimensions' ||
+            table ===
+              'accounting_payroll_run_postings' ||
+            table ===
+              'accounting_payroll_run_posting_allocations'
+            ? 'Payroll Accounting must be changed through the validated Accounting payroll integration services.'
           : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
   }

@@ -28,7 +28,7 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
   defineSamiModule({
     key: "accounting",
     name: "Accounting",
-    version: '2.24.0',
+    version: '2.25.0',
     description: "Manage accounts, journals, balances and financial reporting.",
     category: "finance",
     icon: "calculator",
@@ -38,7 +38,7 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
     autoInstall: false,
     recommended: true,
     depends: [],
-    optionalDepends: ['expenses','projects'],
+    optionalDepends: ['expenses','projects','payroll'],
     schemaPath: "lib/apps/accounting/schema.sql",
     migrationNamespace: "accounting",
     navigation: [
