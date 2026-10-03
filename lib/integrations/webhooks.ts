@@ -25,7 +25,7 @@ import {
 
 import {
   APP_RUNTIME_INTEGRATION_WEBHOOK_HANDLERS,
-} from '@/lib/apps/runtime-integrations';
+} from '@/lib/apps/runtime-integration-handlers';
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
