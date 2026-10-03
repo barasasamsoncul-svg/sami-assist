@@ -40,6 +40,7 @@ export const ACCOUNTING_SECTIONS = [
   "accruals-deferrals",
   "loans-financing",
   "budgets-forecasts",
+  "project-departmental",
   "setup",
 ] as const;
 export type AccountingSection = (typeof ACCOUNTING_SECTIONS)[number];
@@ -124,6 +125,7 @@ export default function AccountingFoundationPanel({
     "accruals-deferrals": "Accruals & deferrals",
     "loans-financing": "Loans & financing",
     "budgets-forecasts": "Budgets & forecasts",
+    "project-departmental": "Project & departmental accounting",
     setup: "Accounting setup",
   };
   const descriptions = {
@@ -164,6 +166,7 @@ export default function AccountingFoundationPanel({
     "accruals-deferrals": "Schedule prepaid expenses, deferred revenue, accrued expenses and accrued revenue with controlled recognition and reversal journals.",
     "loans-financing": "Manage borrowings and loan receivables, drawdowns, interest, repayments, rate resets and current/non-current classification.",
     "budgets-forecasts": "Build versioned monthly budgets, rolling forecasts, planning assumptions and actual-versus-plan variance controls.",
+    "project-departmental": "Allocate ledger activity across departments and projects, automate analytic classification, and compare dimensional budgets with actual performance.",
     reconciliation:
       "Match statement lines to posted bank-ledger movement, split allocations, apply controlled adjustment rules and preserve immutable reconciliation history.",
     setup:
