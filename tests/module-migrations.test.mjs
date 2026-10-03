@@ -2304,3 +2304,38 @@ test('Accounting 2.24 release migration expands tenant schemas before promotion 
   assert.match(pkg,/migrate:accounting:2\.24:release/);
   assert.match(pkg,/test:accounting:2\.24:release/);
 });
+
+
+test('Accounting 2.25 integrates approved Payroll runs without duplicating payroll calculations', async () => {
+  const manifest = await source('lib/modules/first-party.ts');
+  const migrations = await source('lib/apps/runtime-migrations.ts');
+  const migration = await source('lib/apps/accounting/migrations/2.24.0-to-2.25.0.ts');
+  const schema = await source('lib/apps/accounting/payroll-schema.ts');
+  const service = await source('lib/apps/accounting/payroll.ts');
+  const workspace = await source('app/apps/accounting/AccountingWorkspace.tsx');
+  const specialistCatalog = await source('lib/apps/enterprise/specialist-catalog.ts');
+  const specialistDepth = await source('lib/apps/enterprise/specialist-depth.ts');
+  const domainHooks = await source('lib/apps/enterprise/domain-hooks.ts');
+
+  assert.match(manifest,/key:\\s*"accounting"[\\s\\S]*version:\\s*'2\\.25\\.0'[\\s\\S]*optionalDepends:\\s*\\['expenses','projects','payroll'\\]/);
+  assert.match(migrations,/ACCOUNTING_2_24_0_TO_2_25_0/);
+  assert.match(migration,/accounting-2\.24\.0-to-2\.25\.0-payroll-accounting/);
+  for (const marker of [
+    'accounting_payroll_settings',
+    'accounting_payroll_component_mappings',
+    'accounting_payroll_employee_dimensions',
+    'accounting_payroll_run_postings',
+    'accounting_payroll_run_posting_allocations',
+  ]) {
+    assert.match(schema,new RegExp(marker));
+    assert.match(specialistCatalog,new RegExp(marker));
+    assert.match(specialistDepth,new RegExp(marker));
+    assert.match(domainHooks,new RegExp(marker));
+  }
+  assert.match(service,/Only an approved payroll run can be posted to Accounting/);
+  assert.match(service,/gross must equal net pay plus deductions/);
+  assert.match(service,/postBalancedLedgerJournal/);
+  assert.match(service,/reversePostedLedgerJournal/);
+  assert.match(service,/accounting_journal_line_dimensions/);
+  assert.match(workspace,/payroll-integration[\\s\\S]*AccountingPayroll/);
+});
