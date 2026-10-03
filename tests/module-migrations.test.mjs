@@ -2257,8 +2257,11 @@ test('Accounting 2.24 Project and Departmental Accounting is migration-backed an
   assert.match(service,/projectsIntegration/);
   assert.match(service,/unassigned_amount/);
   assert.match(service,/saveDimensionBudgetLine/);
+  assert.match(service,/setAnalyticProjectStatus/);
+  assert.match(service,/setDimensionRuleEnabled/);
   assert.match(posting,/applyAccountingDimensionRules/);
   assert.match(posting,/copyAccountingDimensionsForReversal/);
+  assert.match(posting,/totalBasisPoints[\s\S]*=== 10000/);
   assert.match(ledger,/applyAccountingDimensionRules/);
   assert.match(ledger,/copyAccountingDimensionsForReversal/);
   assert.match(journalCommand,/applyAccountingDimensionRules/);
@@ -2274,6 +2277,8 @@ test('Accounting 2.24 Project and Departmental Accounting is migration-backed an
     'import-project',
     'save-allocation',
     'save-rule',
+    'set-project-status',
+    'set-rule-enabled',
     'save-budget-line',
   ]) {
     assert.match(route,new RegExp(action));
