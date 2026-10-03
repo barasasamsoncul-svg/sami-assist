@@ -489,6 +489,23 @@ export async function markVerifiedCheckoutFailed(
       'BEGIN',
     );
 
+    /*
+     * Serialize success/failure processing for the same provider
+     * reference. A late failure webhook must never be able to
+     * overwrite a payment that has already been completed.
+     */
+    await client.query(
+      `
+        SELECT
+          pg_advisory_xact_lock(
+            hashtext($1)::bigint
+          )
+      `,
+      [
+        `sami:billing:${input.provider}:${input.providerReference}`,
+      ],
+    );
+
     const result =
       await client.query(
         `
@@ -506,6 +523,12 @@ export async function markVerifiedCheckoutFailed(
               NOW()
           WHERE provider = $1
             AND provider_transaction_id = $2
+            AND LOWER(
+                  COALESCE(
+                    status,
+                    ''
+                  )
+                ) <> 'completed'
           RETURNING
             tenant_id,
             subscription_id

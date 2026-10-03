@@ -53,6 +53,10 @@ import {
   resetRateLimit,
 } from '@/lib/auth/rate-limit';
 
+import {
+  getControlPool,
+} from '@/lib/db/control';
+
 export const runtime =
   'nodejs';
 
@@ -766,7 +770,7 @@ export async function GET(
     } =
       context.value;
 
-    const methods =
+    let methods =
       await getMethods(
         admin.id
       );
@@ -1342,6 +1346,82 @@ export async function POST(
       );
     }
 
+    /*
+     * Serialize verification of this exact login challenge before
+     * touching any one-time recovery/email credential. Without this
+     * lock, concurrent requests could both verify a factor and one
+     * request could burn a one-time credential only to lose the later
+     * challenge-consumption race.
+     */
+    const controlClient =
+      await getControlPool()
+        .connect();
+
+    const challengeLockKey =
+      `sami:admin-login-2fa:${challenge.id}`;
+
+    let challengeLockAcquired =
+      false;
+
+    try {
+      await controlClient.query(
+        `
+          SELECT pg_advisory_lock(
+            hashtext($1)::bigint
+          )
+        `,
+        [
+          challengeLockKey,
+        ]
+      );
+
+      challengeLockAcquired =
+        true;
+
+      /*
+       * Revalidate after waiting for the lock. Another request may
+       * have consumed or invalidated this challenge while we waited.
+       */
+      const lockedContext =
+        await loadContext(
+          request
+        );
+
+      if (!lockedContext.ok) {
+        return lockedContext.response;
+      }
+
+      if (
+        lockedContext.value
+          .challenge.id !==
+          challenge.id ||
+        lockedContext.value
+          .admin.id !==
+          admin.id
+      ) {
+        const response =
+          errorResponse(
+            401,
+            'LOGIN_CHALLENGE_INVALID',
+            'Your administrator sign-in challenge is no longer valid.'
+          );
+
+        clearAdminLoginChallengeCookie(
+          response
+        );
+
+        return response;
+      }
+
+      /*
+       * Factor availability may also have changed while this request
+       * waited. Do not rely on the pre-lock snapshot.
+       */
+      methods =
+        await getMethods(
+          admin.id
+        );
+
     let valid =
       false;
 
@@ -1684,6 +1764,31 @@ export async function POST(
     );
 
     return response;
+    } finally {
+      if (
+        challengeLockAcquired
+      ) {
+        try {
+          await controlClient.query(
+            `
+              SELECT pg_advisory_unlock(
+                hashtext($1)::bigint
+              )
+            `,
+            [
+              challengeLockKey,
+            ]
+          );
+        } catch (unlockError) {
+          console.error(
+            '[Admin 2FA] Failed to release challenge lock:',
+            unlockError
+          );
+        }
+      }
+
+      controlClient.release();
+    }
   } catch (error) {
     console.error(
       '[Admin Auth] Two-factor verification error:',

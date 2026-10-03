@@ -2,6 +2,7 @@ import crypto from 'crypto';
 
 import {
   queryControl,
+  withControlTransaction,
 } from '@/lib/db/control';
 
 import {
@@ -1210,9 +1211,7 @@ export async function countUnusedAdminRecoveryCodes(
   );
 }
 
-export async function regenerateAdminRecoveryCodes(
-  adminId: string
-): Promise<string[]> {
+function createAdminRecoveryCodeBatch() {
   const recoveryCodes =
     Array.from(
       {
@@ -1223,19 +1222,56 @@ export async function regenerateAdminRecoveryCodes(
         createRecoveryCode()
     );
 
-  await queryControl(
+  return {
+    recoveryCodes,
+    codeHashes:
+      recoveryCodes.map(
+        hashRecoveryCode
+      ),
+  };
+}
+
+async function replaceAdminRecoveryCodesInTransaction(
+  client:
+    import('pg')
+      .PoolClient,
+
+  adminId:
+    string,
+
+  recoveryCodes:
+    string[],
+
+  codeHashes:
+    string[]
+) {
+  await client.query(
+    `
+      SELECT
+        pg_advisory_xact_lock(
+          hashtext($1)::bigint
+        )
+    `,
+    [
+      `sami:admin-recovery-codes:${adminId}`,
+    ]
+  );
+
+  await client.query(
     `
       DELETE FROM platform_admin_recovery_codes
       WHERE admin_id = $1
     `,
-    [adminId]
+    [
+      adminId,
+    ]
   );
 
-  for (
-    const code of
-    recoveryCodes
+  if (
+    recoveryCodes.length >
+      0
   ) {
-    await queryControl(
+    await client.query(
       `
         INSERT INTO platform_admin_recovery_codes (
           admin_id,
@@ -1243,21 +1279,42 @@ export async function regenerateAdminRecoveryCodes(
           used_at,
           created_at
         )
-        VALUES (
+        SELECT
           $1,
-          $2,
+          code_hash,
           NULL,
           NOW()
-        )
+        FROM unnest(
+          $2::text[]
+        ) AS code_hash
       `,
       [
         adminId,
-        hashRecoveryCode(
-          code
-        ),
+        codeHashes,
       ]
     );
   }
+}
+
+export async function regenerateAdminRecoveryCodes(
+  adminId: string
+): Promise<string[]> {
+  const {
+    recoveryCodes,
+    codeHashes,
+  } =
+    createAdminRecoveryCodeBatch();
+
+  await withControlTransaction(
+    async client => {
+      await replaceAdminRecoveryCodesInTransaction(
+        client,
+        adminId,
+        recoveryCodes,
+        codeHashes
+      );
+    }
+  );
 
   return recoveryCodes;
 }
@@ -1265,17 +1322,86 @@ export async function regenerateAdminRecoveryCodes(
 export async function ensureAdminRecoveryCodes(
   adminId: string
 ): Promise<string[]> {
-  const count =
-    await countUnusedAdminRecoveryCodes(
-      adminId
-    );
+  return withControlTransaction(
+    async client => {
+      await client.query(
+        `
+          SELECT
+            pg_advisory_xact_lock(
+              hashtext($1)::bigint
+            )
+        `,
+        [
+          `sami:admin-recovery-codes:${adminId}`,
+        ]
+      );
 
-  if (count > 0) {
-    return [];
-  }
+      const countResult =
+        await client.query(
+          `
+            SELECT
+              COUNT(*)::int AS count
+            FROM platform_admin_recovery_codes
+            WHERE admin_id = $1
+              AND used_at IS NULL
+          `,
+          [
+            adminId,
+          ]
+        );
 
-  return regenerateAdminRecoveryCodes(
-    adminId
+      if (
+        Number(
+          countResult.rows[0]
+            ?.count ||
+          0
+        ) >
+        0
+      ) {
+        return [];
+      }
+
+      const {
+        recoveryCodes,
+        codeHashes,
+      } =
+        createAdminRecoveryCodeBatch();
+
+      await client.query(
+        `
+          DELETE FROM platform_admin_recovery_codes
+          WHERE admin_id = $1
+        `,
+        [
+          adminId,
+        ]
+      );
+
+      await client.query(
+        `
+          INSERT INTO platform_admin_recovery_codes (
+            admin_id,
+            code_hash,
+            used_at,
+            created_at
+          )
+          SELECT
+            $1,
+            code_hash,
+            NULL,
+            NOW()
+          FROM unnest(
+            $2::text[]
+          ) AS code_hash
+        `,
+        [
+          adminId,
+          codeHashes,
+        ]
+      );
+
+      return recoveryCodes;
+    }
   );
 }
 

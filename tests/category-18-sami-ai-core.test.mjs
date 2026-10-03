@@ -16,6 +16,61 @@ function compact(value) {
   return value.replace(/\s+/g, ' ');
 }
 
+test(
+  'SaMi AI write confirmation is claimed atomically before tool execution',
+  async () => {
+    const raw =
+      await source(
+        'lib/services/workspace-ai.ts',
+      );
+
+    const start =
+      raw.indexOf(
+        'export async function confirmWorkspaceAiAction',
+      );
+
+    const block =
+      raw.slice(
+        start,
+      );
+
+    assert.match(
+      block,
+      /UPDATE ai_actions[\s\S]*status = 'running'[\s\S]*status =[\s\S]*'pending_confirmation'[\s\S]*RETURNING id/s,
+      'A write confirmation must atomically transition from pending to running.',
+    );
+
+    assert.match(
+      block,
+      /claimed\.rows\.length[\s\S]*!==[\s\S]*1/s,
+      'Only the request that claims the action may continue.',
+    );
+
+    assert.ok(
+      block.indexOf(
+        'claimed.rows.length',
+      ) <
+      block.indexOf(
+        'await tool.execute',
+      ),
+      'The claim result must be checked before executing the write tool.',
+    );
+
+    assert.match(
+      block,
+      /AND user_id = \$2[\s\S]*AND company_id = \$3/s,
+      'The action claim must remain bound to the current user and company.',
+    );
+
+    assert.match(
+      block,
+      /expires_at[\s\S]*IS NOT NULL[\s\S]*expires_at >[\s\S]*NOW\(\)/s,
+      'The database claim itself must reject an action that expired between the initial read and execution.',
+    );
+  },
+);
+
+
 test('Category 18: AI provider and model selection are environment-driven', async () => {
   const [config, provider] = await Promise.all([
     source('lib/ai/config.ts'),
