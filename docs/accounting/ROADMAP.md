@@ -41,8 +41,9 @@ This is the first usable slice, not completion of the full Accounting module. Ne
 
 24. Payroll accounting integration: Accounting 2.25 optional-Payroll-safe bridge over approved pay runs; company control-account settings for salary expense, employee net-pay payable, deductions/statutory payable and employer-cost controls; employee department/project mapping without rewriting Payroll; approved-run-only posting; gross/net/deductions reconciliation; retry-safe source-event posting through the authoritative ledger; department/project attribution on salary expense; immutable run-posting evidence; linked compensating reversals; protected workflow tables; dedicated responsive Accounting UI/API; migration-backed fresh-install parity and expand-before-promote release tooling. Payroll remains the calculation authority and Accounting never recalculates payslips or mutates payroll run totals.
 
+25. Multiple companies and consolidation: Accounting 2.26 reuses SaMi Core's trusted allowed, selected and current company context; current-company-owned consolidation groups over authorized member companies; full and proportional ownership; effective-dated membership; local-to-group account mapping with optional strict completeness; presentation currency; closing, average and historical translation rates; immutable completed/finalized snapshots over posted ledgers; draft/finalized elimination entries; automatic cumulative translation adjustment balancing; consolidated trial balance; protected workflow tables; dedicated responsive UI/API; migration-backed fresh-install parity and expand-before-promote release tooling. Consolidation never mutates source-company ledgers.
+
 ## Remaining depth, in the agreed order
-25. Multiple companies and consolidation.
 26. Financial statements beyond the first trial balance and ledger.
 27. Management and exception reporting.
 28. Month-end and year-end closing.
@@ -57,7 +58,7 @@ Keep changes scoped to Accounting. Reuse the existing authoritative ledger and t
 
 ## Validation
 
-`node --conditions=react-server --import tsx --test tests/accounting-foundation.test.mjs tests/accounting-statements.test.mjs tests/accounting-payments.test.mjs tests/accounting-tax.test.mjs tests/accounting-kenya.test.mjs tests/accounting-international.test.mjs tests/accounting-fx.test.mjs && npm run test:accounting:inventory && npm run test:accounting:accruals && npm run test:accounting:financing && npm run test:accounting:budgets && npm run test:accounting:dimensions && npm run test:fixed-assets`
+`node --conditions=react-server --import tsx --test tests/accounting-foundation.test.mjs tests/accounting-statements.test.mjs tests/accounting-payments.test.mjs tests/accounting-tax.test.mjs tests/accounting-kenya.test.mjs tests/accounting-international.test.mjs tests/accounting-fx.test.mjs && npm run test:accounting:inventory && npm run test:accounting:accruals && npm run test:accounting:financing && npm run test:accounting:budgets && npm run test:accounting:dimensions && npm run test:accounting:payroll && npm run test:accounting:consolidation && npm run test:fixed-assets`
 
 Set `TEST_DATABASE_URL` to a disposable PostgreSQL database to run transaction and reporting tests (including simultaneous duplicate requests). Tests create and remove an isolated random schema. For local embedded PostgreSQL testing, `PGLITE_TEST_MODULE` can point to an installed PGlite module; the simultaneous-connection test requires real PostgreSQL. The Accounting GitHub Actions workflow supplies PostgreSQL automatically.
 
