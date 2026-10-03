@@ -13,6 +13,7 @@ export const INVOICING_ROUTE_VIEWS = [
   'items',
   'receivePayment',
   'payments',
+  'paymentIntegrations',
   'currencies',
   'taxEngine',
   'etims',
@@ -219,6 +220,23 @@ export const INVOICING_NAVIGATION:
         'Payments',
       description:
         'Review posted and reversed payments and their invoice allocations without changing invoice totals.',
+      group:
+        'Money',
+      capability:
+        'canViewPayments',
+      sidebar:
+        true,
+    },
+
+    paymentIntegrations: {
+      href:
+        '/apps/invoicing/payment-integrations',
+      title:
+        'Payment integrations',
+      label:
+        'Payment Integrations',
+      description:
+        'Connect verified payment-provider events so successful customer payments can settle matching invoices automatically.',
       group:
         'Money',
       capability:
