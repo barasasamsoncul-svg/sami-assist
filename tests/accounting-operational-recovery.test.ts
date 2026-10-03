@@ -34,7 +34,9 @@ test('Accounting enterprise catalog covers every dedicated Accounting service ta
     }
   }
 
-  const allowed = new Set(ENTERPRISE_MODULE_TABLES.accounting);
+  const allowed = new Set<string>([
+    ...ENTERPRISE_MODULE_TABLES.accounting,
+  ]);
   const missing = [...required].filter(table => !allowed.has(table));
 
   assert.deepEqual(
