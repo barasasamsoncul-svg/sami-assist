@@ -381,7 +381,8 @@ export async function saveConsolidationMapping(input: unknown) {
   const client=await context.pool.connect();
   try {
     await client.query('BEGIN');
-    await groupForAccess(client,context.companyId,groupId,true);
+    const group=await groupForAccess(client,context.companyId,groupId,true);
+    if (group.status==='closed') throw new AccountingInputError('Closed consolidation groups cannot be changed.');
     await assertMember(client,context.companyId,groupId,memberCompanyId);
     const account=await client.query(
       "SELECT id::text FROM accounts WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL AND is_active=TRUE LIMIT 1",
@@ -416,6 +417,7 @@ export async function saveConsolidationRate(input: unknown) {
   try {
     await client.query('BEGIN');
     const group=await groupForAccess(client,context.companyId,groupId,true);
+    if (group.status==='closed') throw new AccountingInputError('Closed consolidation groups cannot be changed.');
     await assertMember(client,context.companyId,groupId,memberCompanyId);
     const member=await client.query("SELECT currency FROM companies WHERE id=$1 LIMIT 1",[memberCompanyId]);
     const source=currency(member.rows[0]?.currency,'Member currency');
@@ -557,6 +559,7 @@ export async function runAccountingConsolidation(input: unknown) {
 
   try {
     await client.query('BEGIN');
+    await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
     const replay=await client.query(
       "SELECT id::text,request_hash,status FROM accounting_consolidation_runs WHERE company_id=$1 AND request_key=$2 AND deleted_at IS NULL LIMIT 1 FOR UPDATE",
       [context.companyId,requestKey],
