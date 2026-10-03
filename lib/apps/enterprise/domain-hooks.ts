@@ -176,6 +176,11 @@ export function assertEnterpriseDomainMutationAllowed(
       table === 'accounting_budget_lines' ||
       table === 'accounting_budget_runs' ||
       table === 'accounting_budget_variance_snapshots' ||
+      table === 'accounting_dimension_settings' ||
+      table === 'accounting_analytic_projects' ||
+      table === 'accounting_dimension_rules' ||
+      table === 'accounting_journal_line_dimensions' ||
+      table === 'accounting_dimension_budget_lines' ||
       table ===
         'accounting_reconciliation_suggestions'
     )
@@ -297,6 +302,17 @@ export function assertEnterpriseDomainMutationAllowed(
             table ===
               'accounting_budget_variance_snapshots'
             ? 'Budgets and forecasts must be changed through the validated Accounting planning services.'
+          : table ===
+              'accounting_dimension_settings' ||
+            table ===
+              'accounting_analytic_projects' ||
+            table ===
+              'accounting_dimension_rules' ||
+            table ===
+              'accounting_journal_line_dimensions' ||
+            table ===
+              'accounting_dimension_budget_lines'
+            ? 'Project and departmental accounting must be changed through the validated Accounting analytic-dimension services.'
           : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
   }
