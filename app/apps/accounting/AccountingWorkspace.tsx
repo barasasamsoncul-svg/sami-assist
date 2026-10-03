@@ -12,6 +12,8 @@ import AccountingPayroll from './AccountingPayroll';
 import { getAccountingPayroll } from '@/lib/apps/accounting/payroll';
 import AccountingConsolidation from './AccountingConsolidation';
 import { getAccountingConsolidation } from '@/lib/apps/accounting/consolidation';
+import AccountingFinancialStatements from './AccountingFinancialStatements';
+import { getAccountingFinancialStatements } from '@/lib/apps/accounting/financial-statements';
 import AccountingFx from './AccountingFx';
 import { getAccountingFx } from '@/lib/apps/accounting/fx';
 import AccountingInternational from './AccountingInternational';
@@ -101,6 +103,8 @@ export default async function AccountingWorkspace({
   filters?: {
     from?: string;
     to?: string;
+    compareFrom?: string;
+    compareTo?: string;
     accountId?: string;
     page?: string;
     journalId?: string;
@@ -260,6 +264,7 @@ export default async function AccountingWorkspace({
   let dimensionsWorkspace: Awaited<ReturnType<typeof getAccountingDimensions>> | null = null;
   let payrollWorkspace: Awaited<ReturnType<typeof getAccountingPayroll>> | null = null;
   let consolidationWorkspace: Awaited<ReturnType<typeof getAccountingConsolidation>> | null = null;
+  let financialStatementsWorkspace: Awaited<ReturnType<typeof getAccountingFinancialStatements>> | null = null;
 
   let reconciliationWorkspace:
     Awaited<
@@ -304,6 +309,7 @@ export default async function AccountingWorkspace({
     dedicatedSection !== 'project-departmental' &&
     dedicatedSection !== 'payroll-integration' &&
     dedicatedSection !== 'multi-company-consolidation' &&
+    dedicatedSection !== 'financial-statements' &&
     dedicatedSection !==
       'reconciliation'
   ) {
@@ -674,6 +680,29 @@ export default async function AccountingWorkspace({
           AccountingInputError
           ? error.message
           : 'Multi-company consolidation could not be loaded. Retry this page.';
+    }
+  }
+
+  if (
+    dedicatedSection ===
+      'financial-statements'
+  ) {
+    try {
+      financialStatementsWorkspace =
+        await getAccountingFinancialStatements({
+          from: filters.from,
+          to: filters.to,
+          compareFrom: filters.compareFrom,
+          compareTo: filters.compareTo,
+        });
+    } catch (
+      error
+    ) {
+      foundationError =
+        error instanceof
+          AccountingInputError
+          ? error.message
+          : 'Financial statements could not be loaded. Retry this page.';
     }
   }
 
@@ -1136,6 +1165,25 @@ export default async function AccountingWorkspace({
 
     {
       key:
+        'financial-statements',
+      label:
+        'Financial Statements',
+      href:
+        appBaseHref +
+        '/financial-statements',
+      description:
+        'Profit & Loss, Balance Sheet, Cash Flow, Changes in Equity and comparative snapshots.',
+      sectionLabel:
+        'Insights',
+      badge:
+        financialStatementsWorkspace
+          ?.snapshots
+          .filter(row => row.status === 'generated')
+          .length,
+    },
+
+    {
+      key:
         'reconciliation',
       label:
         'Reconciliation',
@@ -1356,6 +1404,8 @@ export default async function AccountingWorkspace({
                   ? (payrollWorkspace ? <AccountingPayroll data={payrollWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Payroll accounting integration could not be loaded.'}</div>)
                 : dedicatedSection === 'multi-company-consolidation'
                   ? (consolidationWorkspace ? <AccountingConsolidation data={consolidationWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Multi-company consolidation could not be loaded.'}</div>)
+                : dedicatedSection === 'financial-statements'
+                  ? (financialStatementsWorkspace ? <AccountingFinancialStatements data={financialStatementsWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Financial statements could not be loaded.'}</div>)
                 : dedicatedSection ===
                     'reconciliation'
                   ? (
