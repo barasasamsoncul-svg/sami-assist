@@ -193,6 +193,7 @@ export default function AccountingPayroll({
             <tbody>
               {data.payrollRuns.map(row=>{
                 const posted=Boolean(row.posting_id);
+                const approved=Boolean(row.approved_at);
                 const reversed=row.accounting_status === 'reversed';
                 return (
                   <tr key={String(row.id)} className="border-t border-[var(--sami-border)]">
@@ -201,9 +202,9 @@ export default function AccountingPayroll({
                     <td className="py-3 pr-4">{money(row.total_gross)}</td>
                     <td className="py-3 pr-4">{money(row.total_deductions)}</td>
                     <td className="py-3 pr-4">{money(row.total_net)}</td>
-                    <td className="py-3 pr-4">{reversed?'Reversed':posted?'Posted':row.approved_at?'Approved':'Not approved'}</td>
+                    <td className="py-3 pr-4">{reversed?'Reversed':posted?'Posted':approved?'Approved':'Not approved'}</td>
                     <td className="py-3">
-                      {!posted && row.approved_at && (
+                      {!posted && approved && (
                         <button
                           type="button"
                           className={primary}
@@ -250,7 +251,7 @@ export default function AccountingPayroll({
         </div>
       </section>
 
-      <SaMiOverlay state={overlay} onClose={closeOverlay}/>
+      <SaMiOverlay {...overlay} onClose={closeOverlay}/>
     </div>
   );
 }
