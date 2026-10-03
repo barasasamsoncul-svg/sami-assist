@@ -455,6 +455,7 @@ test('Invoicing workspace exposes operational Odoo/Zoho-class surfaces as standa
       '/apps/invoicing/items',
       '/apps/invoicing/payments/new',
       '/apps/invoicing/payments',
+      '/apps/invoicing/payment-integrations',
       '/apps/invoicing/currencies',
       '/apps/invoicing/tax-engine',
       '/apps/invoicing/retainers',
@@ -509,6 +510,7 @@ test('Invoicing workspace exposes operational Odoo/Zoho-class surfaces as standa
       'Customers',
       'Items',
       'Payments',
+      'Payment Integrations',
       'Currency Center',
       'Tax engine',
       'Retainers',
@@ -7112,6 +7114,7 @@ test('Invoicing Part 27 closes standalone routes and the production release vali
     'app/apps/invoicing/items/new/page.tsx',
     'app/apps/invoicing/payments/page.tsx',
     'app/apps/invoicing/payments/new/page.tsx',
+    'app/apps/invoicing/payment-integrations/page.tsx',
     'app/apps/invoicing/recurring/page.tsx',
     'app/apps/invoicing/reminders/page.tsx',
     'app/apps/invoicing/portal/page.tsx',
@@ -7159,5 +7162,62 @@ test('Invoicing Part 27 closes standalone routes and the production release vali
     client,
     /overflow-x-auto/,
     'Focused Invoicing navigation/settings must remain horizontally usable on narrow screens.',
+  );
+});
+
+
+test('Invoicing exposes the automatic payment gateway as a visible module surface', async () => {
+  const [
+    navigation,
+    client,
+    workspace,
+    integrations,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/navigation.ts'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('app/apps/invoicing/PaymentIntegrationsWorkspace.tsx'),
+    source('app/integrations/IntegrationsClient.tsx'),
+  ]);
+
+  assert.match(
+    navigation,
+    /paymentIntegrations:[\s\S]*\/apps\/invoicing\/payment-integrations[\s\S]*Payment Integrations/s,
+  );
+
+  assert.match(
+    client,
+    /view ===[\s\S]*'paymentIntegrations'[\s\S]*<PaymentIntegrationsWorkspace/s,
+  );
+
+  assert.match(
+    workspace,
+    /invoicing_payment_gateway/,
+  );
+
+  assert.match(
+    workspace,
+    /invoicing\.payment\.succeeded/,
+  );
+
+  assert.match(
+    workspace,
+    /invoiceId or invoiceNumber/,
+  );
+
+  assert.match(
+    workspace,
+    /Configure gateway/,
+  );
+
+  assert.match(
+    integrations,
+    /searchParams\.get\([\s\S]*'provider'/s,
+    'The global Integrations control center must focus the provider requested from Invoicing.',
+  );
+
+  assert.match(
+    integrations,
+    /provider\.key/,
+    'Provider-key search must make deep links stable even if the display name changes.',
   );
 });
