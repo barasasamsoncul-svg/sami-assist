@@ -1,3 +1,4 @@
+import { ACCOUNTING_2_23_0_TO_2_24_0 } from '@/lib/apps/accounting/migrations/2.23.0-to-2.24.0';
 import { ACCOUNTING_2_22_0_TO_2_23_0 } from '@/lib/apps/accounting/migrations/2.22.0-to-2.23.0';
 import { ACCOUNTING_2_21_0_TO_2_22_0 } from '@/lib/apps/accounting/migrations/2.21.0-to-2.22.0';
 import { ACCOUNTING_2_20_0_TO_2_21_0 } from '@/lib/apps/accounting/migrations/2.20.0-to-2.21.0';
@@ -202,6 +203,7 @@ export const ENTERPRISE_RUNTIME_MIGRATIONS:
     ACCOUNTING_2_20_0_TO_2_21_0,
     ACCOUNTING_2_21_0_TO_2_22_0,
     ACCOUNTING_2_22_0_TO_2_23_0,
+    ACCOUNTING_2_23_0_TO_2_24_0,
     FIXED_ASSETS_2_3_0_TO_2_4_0,
   ];
 
