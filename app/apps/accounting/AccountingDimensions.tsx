@@ -282,6 +282,50 @@ export default function AccountingDimensions({
       </section>
 
       <section className={card}>
+        <div className="flex items-center gap-2"><FolderKanban size={18}/><h3 className="font-black">Analytic project register</h3></div>
+        <p className="mt-1 text-sm text-[var(--sami-muted)]">
+          Closing or archiving a project stops it from new allocations without deleting its historical ledger attribution.
+        </p>
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full text-left text-sm">
+            <thead className="text-xs text-[var(--sami-muted)]">
+              <tr><th className="pb-2 pr-4">Project</th><th className="pb-2 pr-4">Period</th><th className="pb-2 pr-4">Source</th><th className="pb-2 pr-4">Status</th><th className="pb-2">Control</th></tr>
+            </thead>
+            <tbody>
+              {data.projects.map(row=>(
+                <tr key={String(row.id)} className="border-t border-[var(--sami-border)]">
+                  <td className="py-3 pr-4 font-bold">{row.code ? String(row.code)+' · ' : ''}{String(row.name)}</td>
+                  <td className="py-3 pr-4">{row.starts_on ? String(row.starts_on).slice(0,10) : '—'} → {row.ends_on ? String(row.ends_on).slice(0,10) : 'Open-ended'}</td>
+                  <td className="py-3 pr-4">{row.source_project_id ? 'Projects app' : 'Accounting'}</td>
+                  <td className="py-3 pr-4 font-semibold">{String(row.status)}</td>
+                  <td className="py-3">
+                    <div className="flex flex-wrap gap-2">
+                      {row.status !== 'open' && (
+                        <button type="button" className={button} disabled={!canEdit || busy==='set-project-status'} onClick={()=>post('set-project-status',{projectId:row.id,status:'open'},'Project reopened')}>
+                          Reopen
+                        </button>
+                      )}
+                      {row.status === 'open' && (
+                        <button type="button" className={button} disabled={!canEdit || busy==='set-project-status'} onClick={()=>post('set-project-status',{projectId:row.id,status:'closed'},'Project closed')}>
+                          Close
+                        </button>
+                      )}
+                      {row.status !== 'archived' && (
+                        <button type="button" className={button} disabled={!canEdit || busy==='set-project-status'} onClick={()=>post('set-project-status',{projectId:row.id,status:'archived'},'Project archived')}>
+                          Archive
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {!data.projects.length && <tr><td colSpan={5} className="py-5 text-[var(--sami-muted)]">No Accounting projects have been created or linked yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className={card}>
         <div className="flex items-center gap-2"><GitBranch size={18}/><h3 className="font-black">Journal-line allocation</h3></div>
         <p className="mt-1 text-sm text-[var(--sami-muted)]">
           Split one journal line across up to 20 department/project combinations. The percentages must total exactly 100%.
@@ -463,14 +507,25 @@ export default function AccountingDimensions({
         <h3 className="font-black">Allocation rules</h3>
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-full text-left text-sm">
-            <thead className="text-xs text-[var(--sami-muted)]"><tr><th className="pb-2 pr-4">Rule</th><th className="pb-2 pr-4">Account/source</th><th className="pb-2 pr-4">Target</th><th className="pb-2">Share</th></tr></thead>
+            <thead className="text-xs text-[var(--sami-muted)]"><tr><th className="pb-2 pr-4">Rule</th><th className="pb-2 pr-4">Account/source</th><th className="pb-2 pr-4">Target</th><th className="pb-2 pr-4">Share</th><th className="pb-2 pr-4">Status</th><th className="pb-2">Control</th></tr></thead>
             <tbody>
               {data.rules.map(row=>(
                 <tr key={String(row.id)} className="border-t border-[var(--sami-border)]">
                   <td className="py-3 pr-4 font-bold">{row.name}</td>
                   <td className="py-3 pr-4">{row.account_code ? row.account_code+' · '+row.account_name : 'Any account'}{row.source_module ? ' · '+row.source_module : ''}</td>
                   <td className="py-3 pr-4">{row.department_name || '—'}{row.project_name ? ' · '+row.project_name : ''}</td>
-                  <td className="py-3">{Number(row.basis_points)/100}%</td>
+                  <td className="py-3 pr-4">{Number(row.basis_points)/100}%</td>
+                  <td className="py-3 pr-4 font-semibold">{row.enabled ? 'Enabled' : 'Disabled'}</td>
+                  <td className="py-3">
+                    <button
+                      type="button"
+                      className={button}
+                      disabled={!canEdit || busy==='set-rule-enabled'}
+                      onClick={()=>post('set-rule-enabled',{ruleId:row.id,enabled:!row.enabled},row.enabled?'Rule disabled':'Rule enabled')}
+                    >
+                      {row.enabled ? 'Disable' : 'Enable'}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
