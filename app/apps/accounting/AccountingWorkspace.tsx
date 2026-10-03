@@ -10,6 +10,8 @@ import AccountingDimensions from './AccountingDimensions';
 import { getAccountingDimensions } from '@/lib/apps/accounting/dimensions';
 import AccountingPayroll from './AccountingPayroll';
 import { getAccountingPayroll } from '@/lib/apps/accounting/payroll';
+import AccountingConsolidation from './AccountingConsolidation';
+import { getAccountingConsolidation } from '@/lib/apps/accounting/consolidation';
 import AccountingFx from './AccountingFx';
 import { getAccountingFx } from '@/lib/apps/accounting/fx';
 import AccountingInternational from './AccountingInternational';
@@ -257,6 +259,7 @@ export default async function AccountingWorkspace({
   let budgetsWorkspace: Awaited<ReturnType<typeof getAccountingBudgets>> | null = null;
   let dimensionsWorkspace: Awaited<ReturnType<typeof getAccountingDimensions>> | null = null;
   let payrollWorkspace: Awaited<ReturnType<typeof getAccountingPayroll>> | null = null;
+  let consolidationWorkspace: Awaited<ReturnType<typeof getAccountingConsolidation>> | null = null;
 
   let reconciliationWorkspace:
     Awaited<
@@ -300,6 +303,7 @@ export default async function AccountingWorkspace({
     dedicatedSection !== 'budgets-forecasts' &&
     dedicatedSection !== 'project-departmental' &&
     dedicatedSection !== 'payroll-integration' &&
+    dedicatedSection !== 'multi-company-consolidation' &&
     dedicatedSection !==
       'reconciliation'
   ) {
@@ -652,6 +656,24 @@ export default async function AccountingWorkspace({
           AccountingInputError
           ? error.message
           : 'Payroll accounting integration could not be loaded. Retry this page.';
+    }
+  }
+
+  if (
+    dedicatedSection ===
+      'multi-company-consolidation'
+  ) {
+    try {
+      consolidationWorkspace =
+        await getAccountingConsolidation();
+    } catch (
+      error
+    ) {
+      foundationError =
+        error instanceof
+          AccountingInputError
+          ? error.message
+          : 'Multi-company consolidation could not be loaded. Retry this page.';
     }
   }
 
@@ -1096,6 +1118,24 @@ export default async function AccountingWorkspace({
 
     {
       key:
+        'multi-company-consolidation',
+      label:
+        'Multi-company & Consolidation',
+      href:
+        appBaseHref +
+        '/multi-company-consolidation',
+      description:
+        'Authorized multi-company ledgers, ownership, FX translation, eliminations and consolidated snapshots.',
+      sectionLabel:
+        'Insights',
+      badge:
+        consolidationWorkspace
+          ?.metrics
+          .activeGroups,
+    },
+
+    {
+      key:
         'reconciliation',
       label:
         'Reconciliation',
@@ -1314,6 +1354,8 @@ export default async function AccountingWorkspace({
                   ? (dimensionsWorkspace ? <AccountingDimensions data={dimensionsWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Project and departmental accounting could not be loaded.'}</div>)
                 : dedicatedSection === 'payroll-integration'
                   ? (payrollWorkspace ? <AccountingPayroll data={payrollWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Payroll accounting integration could not be loaded.'}</div>)
+                : dedicatedSection === 'multi-company-consolidation'
+                  ? (consolidationWorkspace ? <AccountingConsolidation data={consolidationWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Multi-company consolidation could not be loaded.'}</div>)
                 : dedicatedSection ===
                     'reconciliation'
                   ? (
