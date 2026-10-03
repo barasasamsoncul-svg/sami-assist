@@ -130,6 +130,11 @@ export const accountingDashboardAnalysisProvider:
   moduleKey:
     'accounting',
 
+  requiredAnyPermissions: [
+    'accounting.record.view',
+    'accounting.record.report',
+  ],
+
   supportedScopes: [
     'my',
     'business',
@@ -467,6 +472,10 @@ export const invoicingDashboardAnalysisProvider:
   moduleKey:
     'invoicing',
 
+  requiredAnyPermissions: [
+    'invoicing.invoice.view',
+  ],
+
   supportedScopes: [
     'my',
     'business',
@@ -673,6 +682,10 @@ export const salesDashboardAnalysisProvider:
   DashboardProvider = {
   moduleKey:
     'sales',
+
+  requiredAnyPermissions: [
+    'sales.quote.view',
+  ],
 
   supportedScopes: [
     'my',

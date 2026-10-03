@@ -771,7 +771,7 @@ test('Category 18: Home dashboard analysis excludes activity telemetry and uses 
   );
   assert.match(
     client,
-    /Business snapshot/,
+    /Workspace snapshot/,
   );
   assert.match(
     route,

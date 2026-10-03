@@ -67,6 +67,19 @@ export interface DashboardProvider {
   supportedScopes?:
     DashboardScope[];
 
+  /**
+   * Explicit read authority required before this provider may load.
+   *
+   * The workspace shell already limits providers to installed apps that the
+   * user can access. This second boundary prevents a user with only a narrow
+   * module permission from receiving broader dashboard KPIs.
+   *
+   * Non-owner providers must declare at least one permission key. Owners keep
+   * their structural access to installed modules.
+   */
+  requiredAnyPermissions?:
+    string[];
+
   load:
     (
       context:
@@ -118,17 +131,64 @@ function normalizeKey(
 export function getDashboardProviders(
   modules:
     ModuleContext[],
+  permissions:
+    PermissionContext,
 ): DashboardProvider[] {
-  return filterAccessibleModuleExtensions(
-    DASHBOARD_PROVIDERS,
-    modules.map(
-      module =>
-        normalizeKey(
-          module.key,
-        ),
-    ),
-    provider =>
-      provider.moduleKey,
-    'dashboard',
-  );
+  const accessibleProviders =
+    filterAccessibleModuleExtensions(
+      DASHBOARD_PROVIDERS,
+      modules.map(
+        module =>
+          normalizeKey(
+            module.key,
+          ),
+      ),
+      provider =>
+        provider.moduleKey,
+      'dashboard',
+    );
+
+  if (
+    permissions.isOwner
+  ) {
+    return accessibleProviders;
+  }
+
+  return accessibleProviders
+    .filter(
+      provider => {
+        const required =
+          (
+            provider
+              .requiredAnyPermissions ||
+            []
+          )
+            .map(
+              normalizeKey,
+            )
+            .filter(
+              Boolean,
+            );
+
+        /*
+         * Fail closed for non-owners. A new Home provider without an
+         * explicit read contract must never expose module data by accident.
+         */
+        if (
+          required.length ===
+          0
+        ) {
+          return false;
+        }
+
+        return required.some(
+          permission =>
+            permissions
+              .permissionSet
+              .has(
+                permission,
+              ),
+        );
+      },
+    );
 }

@@ -509,7 +509,7 @@ export default function DashboardClient({
         unreadNotifications
       }
       title="Home"
-      description="A focused operating view of the business information available to you."
+      description="A focused operating view built from the apps and records available to you."
       contextLabel={
         company
           ?.currentCompany
@@ -678,8 +678,8 @@ export default function DashboardClient({
             {metrics.length >
               0 && (
               <Section
-                title="Business snapshot"
-                description="Current business metrics from the apps and records you are allowed to view."
+                title="Workspace snapshot"
+                description="Current metrics contributed only by apps and records you are allowed to view."
               >
                 <div className="grid gap-x-5 gap-y-5 sm:grid-cols-2 xl:grid-cols-4">
                   {metrics.map(

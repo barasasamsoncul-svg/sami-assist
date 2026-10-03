@@ -557,8 +557,8 @@ function buildBrief(
       message:
         input.moduleCount ===
         1
-          ? 'Your business app is ready. Recent work and activity will appear here as you use SaMi.'
-          : `Your ${input.moduleCount} business apps are ready. Recent work and activity will appear here as you use SaMi.`,
+          ? 'Your business app is ready. Relevant insights and work will appear here as you use it.'
+          : `Your ${input.moduleCount} business apps are ready. Relevant insights and work will appear here as you use them.`,
 
       actions:
         briefActions.slice(
@@ -695,6 +695,7 @@ export async function composeDashboard(
   const providers =
     getDashboardProviders(
       input.modules,
+      input.permissions,
     );
 
 

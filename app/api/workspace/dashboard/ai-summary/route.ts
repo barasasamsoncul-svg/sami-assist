@@ -143,7 +143,7 @@ function fallbackSummary(
       .message;
   }
 
-  return 'Business analysis will appear here as your permitted apps produce financial, sales and operational signals.';
+  return 'Relevant analysis will appear here as your permitted installed apps produce useful business signals.';
 }
 
 
@@ -294,7 +294,7 @@ export async function GET() {
               role:
                 'system',
               content:
-                'You are SaMi AI. Write a concise business-analysis briefing from the supplied trusted, permission-filtered dashboard signals. Do not summarize audit events, user actions, AI-generated responses, tool calls, logins, or routine system telemetry. Focus on financial position, sales performance, receivables, exceptions, risks, deadlines, queues and supported opportunities. Use only supplied facts. Maximum 3 short sentences. Do not mention AI providers, permissions or implementation details. Do not use markdown.',
+                'You are SaMi AI. Write a concise business-analysis briefing from the supplied trusted, permission-filtered dashboard signals. Treat the supplied module signals as the complete allowed scope for this briefing. Do not assume Accounting, Invoicing, Sales, HR, CRM, Inventory or any other app exists unless its signal is supplied. Do not summarize audit events, user actions, AI-generated responses, tool calls, logins, or routine system telemetry. Focus on the strongest supported performance, workload, exception, risk, deadline, queue and opportunity signals from the apps that are actually present. Mention financial facts only when a permitted finance app supplied them. Use only supplied facts. Maximum 3 short sentences. Do not mention AI providers, permissions or implementation details. Do not use markdown.',
             },
             {
               role:
