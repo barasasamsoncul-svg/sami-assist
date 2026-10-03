@@ -206,41 +206,44 @@ export async function getAccountingConsolidation() {
     'view',
   );
   const allowedIds=context.company.allowedCompanyIds;
-  const [settings,groups,members,mappings,rates,eliminations,runs,accounts]=await Promise.all([
+  const [settings,groups,accounts]=await Promise.all([
     context.pool.query(
       "SELECT enabled,require_complete_mapping,default_presentation_currency FROM accounting_consolidation_settings WHERE company_id=$1 AND deleted_at IS NULL LIMIT 1",
       [context.companyId],
     ),
     context.pool.query(
-      "SELECT id::text,name,code,presentation_currency,translation_adjustment_code,translation_adjustment_name,status,notes,created_at,closed_at FROM accounting_consolidation_groups WHERE company_id=$1 AND deleted_at IS NULL ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'draft' THEN 1 ELSE 2 END,LOWER(name)",
-      [context.companyId],
+      "SELECT g.id::text,g.name,g.code,g.presentation_currency,g.translation_adjustment_code,g.translation_adjustment_name,g.status,g.notes,g.created_at,g.closed_at FROM accounting_consolidation_groups g WHERE g.company_id=$1 AND g.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM accounting_consolidation_members hidden WHERE hidden.company_id=g.company_id AND hidden.group_id=g.id AND hidden.deleted_at IS NULL AND NOT (hidden.member_company_id=ANY($2::uuid[]))) ORDER BY CASE g.status WHEN 'active' THEN 0 WHEN 'draft' THEN 1 ELSE 2 END,LOWER(g.name)",
+      [context.companyId,allowedIds],
     ),
     context.pool.query(
-      "SELECT m.id::text,m.group_id::text,m.member_company_id::text,c.name AS member_company_name,c.currency,m.consolidation_method,m.ownership_percent::text,m.effective_from::text,m.effective_to::text,m.enabled FROM accounting_consolidation_members m INNER JOIN companies c ON c.id=m.member_company_id WHERE m.company_id=$1 AND m.deleted_at IS NULL ORDER BY c.name",
-      [context.companyId],
+      "SELECT id::text,company_id::text,code,name,account_type,is_active FROM accounts WHERE company_id=ANY($1::uuid[]) AND deleted_at IS NULL AND is_active=TRUE ORDER BY company_id,code LIMIT 5000",
+      [allowedIds],
+    ),
+  ]);
+
+  const visibleGroupIds=groups.rows.map(row=>String(row.id));
+
+  const [members,mappings,rates,eliminations,runs]=await Promise.all([
+    context.pool.query(
+      "SELECT m.id::text,m.group_id::text,m.member_company_id::text,c.name AS member_company_name,c.currency,m.consolidation_method,m.ownership_percent::text,m.effective_from::text,m.effective_to::text,m.enabled FROM accounting_consolidation_members m INNER JOIN companies c ON c.id=m.member_company_id WHERE m.company_id=$1 AND m.group_id=ANY($2::uuid[]) AND m.member_company_id=ANY($3::uuid[]) AND m.deleted_at IS NULL ORDER BY c.name",
+      [context.companyId,visibleGroupIds,allowedIds],
     ),
     context.pool.query(
-      "SELECT m.id::text,m.group_id::text,m.member_company_id::text,m.source_account_id::text,a.code AS source_code,a.name AS source_name,a.account_type AS source_type,m.consolidated_code,m.consolidated_name,m.consolidated_type,m.sign_multiplier FROM accounting_consolidation_account_mappings m INNER JOIN accounts a ON a.id=m.source_account_id AND a.company_id=m.member_company_id WHERE m.company_id=$1 AND m.deleted_at IS NULL ORDER BY m.consolidated_code,a.code",
-      [context.companyId],
+      "SELECT m.id::text,m.group_id::text,m.member_company_id::text,m.source_account_id::text,a.code AS source_code,a.name AS source_name,a.account_type AS source_type,m.consolidated_code,m.consolidated_name,m.consolidated_type,m.sign_multiplier FROM accounting_consolidation_account_mappings m INNER JOIN accounts a ON a.id=m.source_account_id AND a.company_id=m.member_company_id WHERE m.company_id=$1 AND m.group_id=ANY($2::uuid[]) AND m.member_company_id=ANY($3::uuid[]) AND m.deleted_at IS NULL ORDER BY m.consolidated_code,a.code",
+      [context.companyId,visibleGroupIds,allowedIds],
     ),
     context.pool.query(
-      "SELECT id::text,group_id::text,member_company_id::text,rate_date::text,rate_type,source_currency,presentation_currency,rate::text FROM accounting_consolidation_rates WHERE company_id=$1 AND deleted_at IS NULL ORDER BY rate_date DESC,rate_type",
-      [context.companyId],
+      "SELECT id::text,group_id::text,member_company_id::text,rate_date::text,rate_type,source_currency,presentation_currency,rate::text FROM accounting_consolidation_rates WHERE company_id=$1 AND group_id=ANY($2::uuid[]) AND member_company_id=ANY($3::uuid[]) AND deleted_at IS NULL ORDER BY rate_date DESC,rate_type",
+      [context.companyId,visibleGroupIds,allowedIds],
     ),
     context.pool.query(
-      "SELECT id::text,group_id::text,elimination_date::text,reference,name,debit_code,debit_name,debit_type,credit_code,credit_name,credit_type,amount::text,currency,status,finalized_at FROM accounting_consolidation_eliminations WHERE company_id=$1 AND deleted_at IS NULL ORDER BY elimination_date DESC,created_at DESC LIMIT 300",
-      [context.companyId],
+      "SELECT id::text,group_id::text,elimination_date::text,reference,name,debit_code,debit_name,debit_type,credit_code,credit_name,credit_type,amount::text,currency,status,finalized_at FROM accounting_consolidation_eliminations WHERE company_id=$1 AND group_id=ANY($2::uuid[]) AND deleted_at IS NULL ORDER BY elimination_date DESC,created_at DESC LIMIT 300",
+      [context.companyId,visibleGroupIds],
     ),
     context.pool.query(
-      "SELECT r.id::text,r.group_id::text,g.name AS group_name,r.period_start::text,r.period_end::text,r.presentation_currency,r.status,r.source_companies,r.source_accounts,r.missing_mappings,r.missing_rates,r.total_debit::text,r.total_credit::text,r.translation_adjustment::text,r.completed_at,r.finalized_at FROM accounting_consolidation_runs r INNER JOIN accounting_consolidation_groups g ON g.id=r.group_id AND g.company_id=r.company_id WHERE r.company_id=$1 AND r.deleted_at IS NULL ORDER BY r.started_at DESC LIMIT 100",
-      [context.companyId],
+      "SELECT r.id::text,r.group_id::text,g.name AS group_name,r.period_start::text,r.period_end::text,r.presentation_currency,r.status,r.source_companies,r.source_accounts,r.missing_mappings,r.missing_rates,r.total_debit::text,r.total_credit::text,r.translation_adjustment::text,r.completed_at,r.finalized_at FROM accounting_consolidation_runs r INNER JOIN accounting_consolidation_groups g ON g.id=r.group_id AND g.company_id=r.company_id WHERE r.company_id=$1 AND r.group_id=ANY($2::uuid[]) AND r.deleted_at IS NULL ORDER BY r.started_at DESC LIMIT 100",
+      [context.companyId,visibleGroupIds],
     ),
-    allowedIds.length
-      ? context.pool.query(
-          "SELECT id::text,company_id::text,code,name,account_type,is_active FROM accounts WHERE company_id=ANY($1::uuid[]) AND deleted_at IS NULL AND is_active=TRUE ORDER BY company_id,code LIMIT 5000",
-          [allowedIds],
-        )
-      : Promise.resolve({rows:[]} as {rows:Record<string,unknown>[]}),
   ]);
 
   const latestRun=runs.rows[0] || null;
