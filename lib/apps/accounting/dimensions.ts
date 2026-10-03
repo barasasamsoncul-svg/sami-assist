@@ -679,3 +679,63 @@ export async function saveDimensionBudgetLine(input: unknown) {
     client.release();
   }
 }
+
+
+export async function setAnalyticProjectStatus(input: unknown) {
+  const context = await requireEnterpriseModuleTableContext('accounting','accounting_analytic_projects','edit');
+  const body = bodyOf(input);
+  const projectId = accountingId(body.projectId);
+  const status = textValue(body.status,20,'Project status',true).toLowerCase();
+  if (!['open','closed','archived'].includes(status)) {
+    throw new AccountingInputError('Choose open, closed, or archived for the project status.');
+  }
+
+  const result = await context.pool.query(
+    `UPDATE accounting_analytic_projects
+     SET status=$3,
+         closed_at=CASE WHEN $3='closed' THEN COALESCE(closed_at,NOW()) ELSE NULL END,
+         updated_by=$4,
+         updated_at=NOW()
+     WHERE company_id=$1 AND id=$2 AND deleted_at IS NULL
+     RETURNING id::text,name,status`,
+    [context.companyId,projectId,status,context.userId],
+  );
+  if (!result.rows[0]) {
+    throw new AccountingInputError('This Accounting project could not be found in the active company.');
+  }
+  await audit(
+    context,
+    'project.status_changed',
+    'accounting_analytic_projects',
+    projectId,
+    'Accounting analytic project status changed',
+    { status },
+  );
+  return result.rows[0];
+}
+
+export async function setDimensionRuleEnabled(input: unknown) {
+  const context = await requireEnterpriseModuleTableContext('accounting','accounting_dimension_rules','edit');
+  const body = bodyOf(input);
+  const ruleId = accountingId(body.ruleId);
+  const enabled = bool(body.enabled,true);
+  const result = await context.pool.query(
+    `UPDATE accounting_dimension_rules
+     SET enabled=$3,updated_by=$4,updated_at=NOW()
+     WHERE company_id=$1 AND id=$2 AND deleted_at IS NULL
+     RETURNING id::text,name,enabled`,
+    [context.companyId,ruleId,enabled,context.userId],
+  );
+  if (!result.rows[0]) {
+    throw new AccountingInputError('This allocation rule could not be found in the active company.');
+  }
+  await audit(
+    context,
+    'rule.enabled_changed',
+    'accounting_dimension_rules',
+    ruleId,
+    enabled ? 'Analytic allocation rule enabled' : 'Analytic allocation rule disabled',
+    { enabled },
+  );
+  return result.rows[0];
+}
