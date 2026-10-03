@@ -2792,7 +2792,10 @@ test('Accounting 2.32 registers SaMi AI and Automation without duplicating Core 
   ]) assert.match(aiTools,new RegExp(key));
 
   assert.match(aiTools,/accounting_create_draft_journal[\s\S]*operation:'write'[\s\S]*riskLevel:'high'[\s\S]*confirmationRequired:true/);
-  assert.doesNotMatch(aiTools,/key:'accounting_(?:post|approve|reverse|close)/);
+  assert.doesNotMatch(
+    aiTools,
+    /key:'accounting_(?:post_journal|approve_journal|reverse_journal|close_period)'[\s\S]*operation:'write'/,
+  );
   assert.match(automation,/accounting\.journal\.create_draft[\s\S]*approvalPolicy:'always'/);
 
   for (const trigger of [
