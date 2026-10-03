@@ -513,11 +513,24 @@ export async function setConsolidationGroupStatus(input: unknown) {
     const group=await groupForAccess(client,context.companyId,groupId,true);
     if (group.status==='closed' && status!=='closed') throw new AccountingInputError('Closed consolidation groups cannot be reopened.');
     if (status==='active') {
-      const memberCount=await client.query(
-        "SELECT COUNT(*)::int AS count FROM accounting_consolidation_members WHERE company_id=$1 AND group_id=$2 AND deleted_at IS NULL AND enabled=TRUE",
+      const activeMembers=await client.query(
+        "SELECT member_company_id::text FROM accounting_consolidation_members WHERE company_id=$1 AND group_id=$2 AND deleted_at IS NULL AND enabled=TRUE ORDER BY member_company_id",
         [context.companyId,groupId],
       );
-      if (Number(memberCount.rows[0]?.count||0)<2) throw new AccountingInputError('Add at least two active companies before activating a consolidation group.');
+      if (activeMembers.rows.length<2) throw new AccountingInputError('Add at least two active companies before activating a consolidation group.');
+      for (const member of activeMembers.rows) assertAllowedCompany(context,String(member.member_company_id));
+    }
+    if (status==='closed') {
+      const unresolved=await client.query(
+        "SELECT (SELECT COUNT(*)::int FROM accounting_consolidation_eliminations WHERE company_id=$1 AND group_id=$2 AND deleted_at IS NULL AND status='draft') AS draft_eliminations,(SELECT COUNT(*)::int FROM accounting_consolidation_runs WHERE company_id=$1 AND group_id=$2 AND deleted_at IS NULL AND status='completed') AS unfinalized_runs",
+        [context.companyId,groupId],
+      );
+      if (Number(unresolved.rows[0]?.draft_eliminations||0)>0) {
+        throw new AccountingInputError('Finalize or remove draft eliminations before closing this consolidation group.');
+      }
+      if (Number(unresolved.rows[0]?.unfinalized_runs||0)>0) {
+        throw new AccountingInputError('Finalize completed consolidation snapshots before closing this group.');
+      }
     }
     const updated=await client.query(
       "UPDATE accounting_consolidation_groups SET status=$3,closed_at=CASE WHEN $3='closed' THEN NOW() ELSE closed_at END,updated_by=$4,updated_at=NOW() WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL RETURNING id::text,status",
