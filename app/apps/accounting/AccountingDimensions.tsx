@@ -400,7 +400,13 @@ export default function AccountingDimensions({
               </select>
             </label>
             <label className="text-xs font-bold">Month
-              <input className={input} type="date" required value={budget.periodStart} onChange={e=>setBudget({...budget,periodStart:e.target.value})}/>
+              <input
+                className={input}
+                type="month"
+                required
+                value={budget.periodStart ? budget.periodStart.slice(0,7) : ''}
+                onChange={e=>setBudget({...budget,periodStart:e.target.value ? e.target.value + '-01' : ''})}
+              />
             </label>
             <label className="text-xs font-bold">Amount
               <input className={input} inputMode="decimal" required value={budget.amount} onChange={e=>setBudget({...budget,amount:e.target.value})}/>
