@@ -43,6 +43,7 @@ export const ACCOUNTING_SECTIONS = [
   "project-departmental",
   "payroll-integration",
   "multi-company-consolidation",
+  "financial-statements",
   "setup",
 ] as const;
 export type AccountingSection = (typeof ACCOUNTING_SECTIONS)[number];
@@ -133,6 +134,7 @@ export default function AccountingFoundationPanel({
     "project-departmental": "Project & departmental accounting",
     "payroll-integration": "Payroll accounting integration",
     "multi-company-consolidation": "Multi-company & consolidation",
+    "financial-statements": "Financial statements",
     setup: "Accounting setup",
   };
   const descriptions = {
@@ -176,6 +178,7 @@ export default function AccountingFoundationPanel({
     "project-departmental": "Allocate ledger activity across departments and projects, automate analytic classification, and compare dimensional budgets with actual performance.",
     "payroll-integration": "Post approved payroll runs to the authoritative ledger, reconcile payroll liabilities and attribute salary costs to departments and projects.",
     "multi-company-consolidation": "Consolidate authorized company ledgers with ownership, account mapping, FX translation, eliminations and translation-adjustment control.",
+    "financial-statements": "Review comparative Profit & Loss, Balance Sheet, Cash Flow and Changes in Equity from posted ledger activity.",
     reconciliation:
       "Match statement lines to posted bank-ledger movement, split allocations, apply controlled adjustment rules and preserve immutable reconciliation history.",
     setup:
