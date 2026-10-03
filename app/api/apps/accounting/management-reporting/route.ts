@@ -2,6 +2,7 @@ import { NextRequest,NextResponse } from 'next/server';
 
 import { EnterpriseModuleError } from '@/lib/apps/enterprise/service';
 import { TenantContextError } from '@/lib/auth/tenant-context';
+import { CompanyContextError } from '@/lib/auth/company-context';
 import { AccountingInputError } from '@/lib/apps/accounting/validation';
 import {
   finalizeManagementReportSnapshot,
@@ -19,6 +20,7 @@ function failure(error:unknown) {
   if (error instanceof SyntaxError) return respond({error:'Enter valid management report data.'},400);
   if (error instanceof AccountingInputError) return respond({error:error.message},400);
   if (error instanceof TenantContextError) return respond({error:error.message},error.code==='UNAUTHENTICATED'?401:403);
+  if (error instanceof CompanyContextError) return respond({error:error.message},error.code==='UNAUTHENTICATED'?401:403);
   if (error instanceof EnterpriseModuleError) return respond({error:error.message},error.code==='MODULE_PERMISSION_REQUIRED'?403:409);
   console.error('[Accounting] Management reporting action failed',error);
   return respond({error:'The management reporting action could not be completed. Retry or contact your administrator.'},500);

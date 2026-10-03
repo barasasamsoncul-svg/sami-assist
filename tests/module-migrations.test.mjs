@@ -2556,3 +2556,18 @@ test('Accounting 2.28 release expansion defers control-plane promotion', async (
   assert.match(pkg,/test:accounting:2\.28:release/);
 });
 
+test('Accounting reporting APIs map trusted company-context authentication failures to HTTP auth statuses', async () => {
+  const [financialRoute,managementRoute] = await Promise.all([
+    source('app/api/apps/accounting/financial-statements/route.ts'),
+    source('app/api/apps/accounting/management-reporting/route.ts'),
+  ]);
+
+  for (const route of [financialRoute,managementRoute]) {
+    assert.match(route,/CompanyContextError/);
+    assert.match(
+      route,
+      /error instanceof CompanyContextError[\s\S]*UNAUTHENTICATED'[\s\S]*401:403/,
+    );
+  }
+});
+
