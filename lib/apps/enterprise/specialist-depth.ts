@@ -1,3 +1,4 @@
+import { ACCOUNTING_COLLABORATION_SQL } from '@/lib/apps/accounting/collaboration-schema';
 import { ACCOUNTING_APPROVAL_CONTROLS_SQL } from '@/lib/apps/accounting/approval-controls-schema';
 import { ACCOUNTING_PERIOD_CLOSING_SQL } from '@/lib/apps/accounting/period-closing-schema';
 import { ACCOUNTING_MANAGEMENT_REPORTING_SQL } from '@/lib/apps/accounting/management-reporting-schema';
@@ -1780,6 +1781,7 @@ ${ACCOUNTING_FINANCIAL_STATEMENTS_SQL}
 ${ACCOUNTING_MANAGEMENT_REPORTING_SQL}
 ${ACCOUNTING_PERIOD_CLOSING_SQL}
 ${ACCOUNTING_APPROVAL_CONTROLS_SQL}
+${ACCOUNTING_COLLABORATION_SQL}
 `;
 }
 

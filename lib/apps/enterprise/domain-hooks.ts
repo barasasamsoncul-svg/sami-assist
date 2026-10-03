@@ -205,6 +205,9 @@ export function assertEnterpriseDomainMutationAllowed(
       table === 'accounting_approval_policies' ||
       table === 'accounting_approval_requests' ||
       table === 'accounting_approval_decisions' ||
+      table === 'accounting_collaboration_comments' ||
+      table === 'accounting_collaboration_comment_revisions' ||
+      table === 'accounting_record_followers' ||
       table ===
         'accounting_reconciliation_suggestions'
     )
@@ -390,6 +393,13 @@ export function assertEnterpriseDomainMutationAllowed(
             table ===
               'accounting_approval_decisions'
             ? 'Accounting approval policies and decision evidence must be changed through the validated Accounting approval-control services.'
+          : table ===
+              'accounting_collaboration_comments' ||
+            table ===
+              'accounting_collaboration_comment_revisions' ||
+            table ===
+              'accounting_record_followers'
+            ? 'Accounting comments, revisions and followers must be changed through the validated Accounting collaboration services.'
           : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
   }

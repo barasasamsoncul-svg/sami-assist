@@ -20,6 +20,8 @@ import AccountingPeriodClosing from './AccountingPeriodClosing';
 import { getAccountingPeriodClosing } from '@/lib/apps/accounting/period-closing';
 import AccountingApprovalControls from './AccountingApprovalControls';
 import { getAccountingApprovalControls } from '@/lib/apps/accounting/approval-controls';
+import AccountingCollaboration from './AccountingCollaboration';
+import { getAccountingCollaboration } from '@/lib/apps/accounting/collaboration';
 import AccountingFx from './AccountingFx';
 import { getAccountingFx } from '@/lib/apps/accounting/fx';
 import AccountingInternational from './AccountingInternational';
@@ -122,6 +124,8 @@ export default async function AccountingWorkspace({
     search?: string;
     statementLineId?: string;
     periodId?: string;
+    model?: string;
+    recordId?: string;
   };
 }) {
   const requestedSection =
@@ -275,6 +279,7 @@ export default async function AccountingWorkspace({
   let managementReportsWorkspace: Awaited<ReturnType<typeof getAccountingManagementReports>> | null = null;
   let periodClosingWorkspace: Awaited<ReturnType<typeof getAccountingPeriodClosing>> | null = null;
   let approvalControlsWorkspace: Awaited<ReturnType<typeof getAccountingApprovalControls>> | null = null;
+  let collaborationWorkspace: Awaited<ReturnType<typeof getAccountingCollaboration>> | null = null;
 
   let reconciliationWorkspace:
     Awaited<
@@ -323,6 +328,7 @@ export default async function AccountingWorkspace({
     dedicatedSection !== 'management-reporting' &&
     dedicatedSection !== 'period-closing' &&
     dedicatedSection !== 'approval-controls' &&
+    dedicatedSection !== 'documents-collaboration' &&
     dedicatedSection !==
       'reconciliation'
   ) {
@@ -777,6 +783,27 @@ export default async function AccountingWorkspace({
           Error
           ? error.message
           : 'Accounting approval controls could not be loaded.';
+    }
+  }
+
+  if (
+    dedicatedSection ===
+      'documents-collaboration'
+  ) {
+    try {
+      collaborationWorkspace =
+        await getAccountingCollaboration({
+          model: filters.model,
+          recordId: filters.recordId,
+        });
+    } catch (
+      error
+    ) {
+      foundationError =
+        error instanceof
+          Error
+          ? error.message
+          : 'Accounting documents and collaboration could not be loaded.';
     }
   }
 
@@ -1313,6 +1340,24 @@ export default async function AccountingWorkspace({
 
     {
       key:
+        'documents-collaboration',
+      label:
+        'Documents & Collaboration',
+      href:
+        appBaseHref +
+        '/documents-collaboration',
+      description:
+        'Secure Accounting attachments, comments, mentions, followers and revision evidence.',
+      sectionLabel:
+        'Control',
+      badge:
+        collaborationWorkspace
+          ?.recentFiles
+          .length,
+    },
+
+    {
+      key:
         'reconciliation',
       label:
         'Reconciliation',
@@ -1541,6 +1586,8 @@ export default async function AccountingWorkspace({
                   ? (periodClosingWorkspace ? <AccountingPeriodClosing data={periodClosingWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Period closing could not be loaded.'}</div>)
                 : dedicatedSection === 'approval-controls'
                   ? (approvalControlsWorkspace ? <AccountingApprovalControls data={approvalControlsWorkspace} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Accounting approval controls could not be loaded.'}</div>)
+                : dedicatedSection === 'documents-collaboration'
+                  ? (collaborationWorkspace ? <AccountingCollaboration data={collaborationWorkspace} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Accounting documents and collaboration could not be loaded.'}</div>)
                 : dedicatedSection ===
                     'reconciliation'
                   ? (
