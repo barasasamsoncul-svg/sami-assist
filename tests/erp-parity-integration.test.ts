@@ -157,6 +157,18 @@ integration(
             stock_reservation_id UUID
           );
 
+          CREATE TABLE departments (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            company_id UUID NOT NULL,
+            parent_id UUID,
+            name VARCHAR(200) NOT NULL,
+            code VARCHAR(50),
+            description TEXT,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+
           CREATE TABLE accounts (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             company_id UUID NOT NULL,
