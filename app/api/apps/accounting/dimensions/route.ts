@@ -11,6 +11,8 @@ import {
   saveDimensionRule,
   saveDimensionSettings,
   saveJournalLineDimensions,
+  setAnalyticProjectStatus,
+  setDimensionRuleEnabled,
 } from '@/lib/apps/accounting/dimensions';
 
 export const runtime = 'nodejs';
@@ -90,8 +92,12 @@ export async function POST(request: NextRequest) {
               ? await saveJournalLineDimensions(body)
               : body.action === 'save-rule'
                 ? await saveDimensionRule(body)
-                : body.action === 'save-budget-line'
-                  ? await saveDimensionBudgetLine(body)
+                : body.action === 'set-project-status'
+                  ? await setAnalyticProjectStatus(body)
+                  : body.action === 'set-rule-enabled'
+                    ? await setDimensionRuleEnabled(body)
+                    : body.action === 'save-budget-line'
+                      ? await saveDimensionBudgetLine(body)
                   : (() => {
                       throw new AccountingInputError(
                         'Choose a supported project and departmental accounting action.',
