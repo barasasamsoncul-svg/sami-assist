@@ -208,22 +208,31 @@ test('Category 17: completed core routes are discoverable while unfinished Files
   assert.match(composer, /href:\s*['"]\/ai['"]/);
 });
 
-test('Dashboard refresh: workspace home uses shared shell, real company identity and real platform signals', async () => {
+test('Dashboard refresh: workspace home uses shared shell, real company identity and real business analysis', async () => {
   const [page, client] = await Promise.all([
     source('app/dashboard/page.tsx'),
     source('app/dashboard/DashboardClient.tsx'),
   ]);
 
-  assert.match(page, /getWorkspaceActivityDashboardSnapshot/);
+  assert.doesNotMatch(
+    page,
+    /getWorkspaceActivityDashboardSnapshot/,
+    'Home must not load personal Activity as business intelligence.',
+  );
   assert.match(page, /getWorkspaceNotificationSummary/);
   assert.match(page, /currentCompany\.logoUrl/);
 
   assert.match(client, /WorkspaceShell/);
-  assert.match(client, /CompanyAvatar/);
-  assert.match(client, /Ask SaMi anything about your business/);
-  assert.match(client, /Only apps available to your role and current workspace are shown/);
-  assert.match(client, /My activity/);
-  assert.match(client, /Work & attention/);
+  assert.match(client, /contextLabel=/);
+  assert.match(client, />\s*Ask SaMi\s*</);
+  assert.match(client, /Only apps available to your role are shown/);
+  assert.match(client, /SaMi analysis/);
+  assert.match(client, /Business snapshot/);
+  assert.match(client, /Needs attention/);
+  assert.doesNotMatch(
+    client,
+    /My activity|Operational pulse|Your actions today/,
+  );
   assert.match(
     client,
     /grid grid-cols-3.*xl:grid-cols-8.*2xl:grid-cols-9/s,
