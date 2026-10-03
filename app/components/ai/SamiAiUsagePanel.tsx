@@ -45,7 +45,7 @@ export default function SamiAiUsagePanel({
               SaMi AI usage & capabilities
             </p>
             <p className="mt-0.5 truncate text-[10px] text-slate-400">
-              Your enforced allowance, business tools and current workspace scope
+              Your allowance, general AI capabilities and permission-controlled business access
             </p>
           </div>
 
