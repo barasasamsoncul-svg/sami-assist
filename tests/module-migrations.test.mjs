@@ -2477,3 +2477,17 @@ test('Accounting 2.27 release expansion defers control-plane promotion', async (
   assert.match(pkg,/migrate:accounting:2\.27:release/);
   assert.match(pkg,/test:accounting:2\.27:release/);
 });
+
+
+test('Accounting dashboard uses selected-period movements for profit KPIs and closing balances for position KPIs', async () => {
+  const panel = await source('app/apps/accounting/AccountingFoundationPanel.tsx');
+
+  assert.match(panel,/const periodMovementByType/);
+  assert.match(panel,/total \+ cents\(row\.debit\) - cents\(row\.credit\)/);
+  assert.match(panel,/const cashBalance = balanceByType/);
+  assert.match(panel,/const receivableBalance = balanceByType/);
+  assert.match(panel,/const payableBalance = -balanceByType/);
+  assert.match(panel,/const incomeBalance = -periodMovementByType/);
+  assert.match(panel,/const expenseBalance = periodMovementByType/);
+  assert.match(panel,/Profit this period/);
+});
