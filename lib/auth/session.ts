@@ -1,5 +1,6 @@
 import {
   queryControl,
+  withControlTransaction,
 } from '@/lib/db/control';
 
 import {
@@ -942,92 +943,95 @@ export async function createSession(
     );
 
 
-  if (
-    revokeExistingSessions
-  ) {
-    await queryControl(
-      `
-        UPDATE sessions
-
-        SET
-          is_current =
-            FALSE,
-
-          revoked_at =
-            NOW(),
-
-          updated_at =
-            NOW()
-
-        WHERE user_id = $1
-          AND revoked_at IS NULL
-      `,
-      [
-        userId,
-      ],
-    );
-  }
-
-
   const result =
-    await queryControl(
-      `
-        INSERT INTO sessions (
-          user_id,
-          session_token_hash,
+    await withControlTransaction(
+      async client => {
+        if (
+          revokeExistingSessions
+        ) {
+          await client.query(
+            `
+              UPDATE sessions
 
-          current_tenant_id,
-          current_company_id,
-          selected_company_ids,
+              SET
+                is_current =
+                  FALSE,
 
-          ip_address,
-          user_agent,
-          device_type,
-          browser,
-          operating_system,
+                revoked_at =
+                  NOW(),
 
-          is_current,
-          last_active_at,
-          expires_at
-        )
+                updated_at =
+                  NOW()
 
-        VALUES (
-          $1,
-          $2,
+              WHERE user_id = $1
+                AND revoked_at IS NULL
+            `,
+            [
+              userId,
+            ],
+          );
+        }
 
-          $3,
-          NULL,
-          '{}'::UUID[],
+        return client.query(
+          `
+            INSERT INTO sessions (
+              user_id,
+              session_token_hash,
 
-          $4,
-          $5,
-          $6,
-          $7,
-          $8,
+              current_tenant_id,
+              current_company_id,
+              selected_company_ids,
 
-          TRUE,
-          NOW(),
-          $9
-        )
+              ip_address,
+              user_agent,
+              device_type,
+              browser,
+              operating_system,
 
-        RETURNING
-          id,
-          current_tenant_id,
-          expires_at
-      `,
-      [
-        userId,
-        tokenHash,
-        currentTenantId,
+              is_current,
+              last_active_at,
+              expires_at
+            )
 
-        metadata.ipAddress,
-        metadata.userAgent,
-        metadata.deviceType,
-        metadata.browser,
-        metadata.operatingSystem,
+            VALUES (
+              $1,
+              $2,
 
-        expiresAt,
-      ],
+              $3,
+              NULL,
+              '{}'::UUID[],
+
+              $4,
+              $5,
+              $6,
+              $7,
+              $8,
+
+              TRUE,
+              NOW(),
+              $9
+            )
+
+            RETURNING
+              id,
+              current_tenant_id,
+              expires_at
+          `,
+          [
+            userId,
+            tokenHash,
+            currentTenantId,
+
+            metadata.ipAddress,
+            metadata.userAgent,
+            metadata.deviceType,
+            metadata.browser,
+            metadata.operatingSystem,
+
+            expiresAt,
+          ],
+        );
+      },
     );
 
 

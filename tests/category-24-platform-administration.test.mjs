@@ -20,6 +20,110 @@ async function source(file) {
   );
 }
 
+test(
+  'administrator recovery-code replacement is atomic and serialized',
+  async () => {
+    const raw =
+      await source(
+        'lib/auth/admin-two-factor.ts',
+      );
+
+    const start =
+      raw.indexOf(
+        'export async function regenerateAdminRecoveryCodes',
+      );
+
+    const end =
+      raw.indexOf(
+        'export async function useAdminRecoveryCode',
+        start,
+      );
+
+    const block =
+      raw.slice(
+        start,
+        end,
+      );
+
+    assert.match(
+      raw,
+      /withControlTransaction/,
+      'Admin recovery-code replacement must use the control transaction boundary.',
+    );
+
+    assert.match(
+      raw,
+      /sami:admin-recovery-codes:/,
+      'Admin recovery-code replacement must serialize per administrator.',
+    );
+
+    assert.match(
+      block,
+      /unnest\([\s\S]*\$2::text\[\]/s,
+      'Replacement codes must be inserted as one database operation rather than partial row-by-row writes.',
+    );
+
+    assert.doesNotMatch(
+      block,
+      /for\s*\([\s\S]*INSERT INTO platform_admin_recovery_codes/s,
+      'Recovery-code replacement must not perform non-atomic row-by-row inserts.',
+    );
+  },
+);
+
+
+test(
+  'administrator 2FA serializes exact login-challenge verification before consuming factors',
+  async () => {
+    const raw =
+      await source(
+        'app/api/admin/auth/two-factor/verify/route.ts',
+      );
+
+    const implementation =
+      compact(
+        stripComments(
+          raw,
+        ),
+      );
+
+    assert.match(
+      implementation,
+      /pg_advisory_lock/,
+      'Administrator 2FA must serialize concurrent verification of one challenge.',
+    );
+
+    assert.match(
+      implementation,
+      /sami:admin-login-2fa:/,
+      'Administrator challenge locks must be scoped to the exact challenge.',
+    );
+
+    assert.ok(
+      implementation.indexOf(
+        'pg_advisory_lock',
+      ) <
+      implementation.indexOf(
+        'useAdminRecoveryCode',
+      ),
+      'The challenge lock must be acquired before a one-time recovery code can be consumed.',
+    );
+
+    assert.match(
+      implementation,
+      /loadContext\( request \)/,
+      'Administrator challenge state must be revalidated after acquiring the lock.',
+    );
+
+    assert.match(
+      implementation,
+      /pg_advisory_unlock/,
+      'Administrator challenge locks must always be released.',
+    );
+  },
+);
+
+
 test('Category 24 capability authority is centralized', async () => {
   const capabilities = await source('lib/admin/capabilities.ts');
   const guard = await source('lib/admin/require-capability.ts');

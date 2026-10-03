@@ -102,6 +102,49 @@ test('pre-module hardening: platform edge applies browser security policy and re
   );
 });
 
+test('pre-module hardening: session replacement is atomic when multiple active sessions are disabled', async () => {
+  const session =
+    await source(
+      'lib/auth/session.ts',
+    );
+
+  const createStart =
+    session.indexOf(
+      'export async function createSession',
+    );
+
+  const createEnd =
+    session.indexOf(
+      '/* ============================================================\n   REPAIR CURRENT INTERNAL WORKSPACE',
+      createStart,
+    );
+
+  const block =
+    session.slice(
+      createStart,
+      createEnd,
+    );
+
+  assert.match(
+    block,
+    /withControlTransaction/,
+    'Session replacement must revoke old sessions and insert the replacement in one transaction.',
+  );
+
+  assert.match(
+    block,
+    /client\.query\([\s\S]*UPDATE sessions[\s\S]*client\.query\([\s\S]*INSERT INTO sessions/s,
+    'The revoke and replacement INSERT must use the same transaction client.',
+  );
+
+  assert.doesNotMatch(
+    block,
+    /await queryControl\([\s\S]*UPDATE sessions[\s\S]*revoked_at/s,
+    'createSession must not revoke existing sessions outside the replacement transaction.',
+  );
+});
+
+
 test('pre-module hardening: tenant core SQL uses valid PostgreSQL dollar quoting', async () => {
   const schema =
     await source(

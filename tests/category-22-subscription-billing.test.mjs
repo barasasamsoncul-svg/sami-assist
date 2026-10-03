@@ -29,6 +29,52 @@ function compact(
   );
 }
 
+test(
+  'verified checkout failure cannot overwrite a completed payment',
+  async () => {
+    const raw =
+      await source(
+        'lib/billing/payment-application.ts',
+      );
+
+    const start =
+      raw.indexOf(
+        'export async function markVerifiedCheckoutFailed',
+      );
+
+    const end =
+      raw.indexOf(
+        'export async function applyVerifiedRecurringInvoice',
+        start,
+      );
+
+    const block =
+      raw.slice(
+        start,
+        end,
+      );
+
+    assert.match(
+      block,
+      /pg_advisory_xact_lock/,
+      'Success and failure events for one provider reference must serialize through the same billing lock.',
+    );
+
+    assert.match(
+      block,
+      /sami:billing:\$\{input\.provider\}:\$\{input\.providerReference\}/,
+      'Failure handling must lock the exact same provider payment reference as success handling.',
+    );
+
+    assert.match(
+      block,
+      /status[\s\S]*<> 'completed'/,
+      'A completed billing transaction must be terminal against a later failure event.',
+    );
+  },
+);
+
+
 test('Category 22: plan policy centralizes commercial entitlements and Custom-only capabilities', async () => {
   const policy =
     await source(
