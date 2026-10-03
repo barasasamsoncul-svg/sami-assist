@@ -1081,7 +1081,7 @@ test('Accounting 2.11 controls approved expenses and employee reimbursements wit
 
   assert.match(
     manifest,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.24\.0'[\s\S]*optionalDepends:\s*\['expenses','projects'\]/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.25\.0'[\s\S]*optionalDepends:\s*\['expenses','projects','payroll'\]/,
   );
   assert.match(migrations,/ACCOUNTING_2_10_0_TO_2_11_0/);
   assert.match(
