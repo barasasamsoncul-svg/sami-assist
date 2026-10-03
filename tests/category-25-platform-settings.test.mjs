@@ -653,6 +653,42 @@ test('Category 25 migration manifest includes the final platform category', asyn
 });
 
 
+test('Control migration manifest synchronizes released Finance module versions safely', async () => {
+  const [
+    manifest,
+    migration,
+  ] =
+    await Promise.all([
+      source(
+        'lib/schema/control-migrations/manifest.ts',
+      ),
+      source(
+        'lib/schema/control-migrations/010-finance-module-version-sync.sql',
+      ),
+    ]);
+
+  assert.match(
+    manifest,
+    /010-finance-module-version-sync\.sql/,
+  );
+
+  assert.match(
+    migration,
+    /LOWER\(key\) = 'accounting'[\s\S]*2\.34\.0/,
+  );
+
+  assert.match(
+    migration,
+    /LOWER\(key\) = 'invoicing'[\s\S]*2\.22\.0/,
+  );
+
+  assert.doesNotMatch(
+    migration,
+    /DROP\s+TABLE|DROP\s+DATABASE|TRUNCATE\s+TABLE|DELETE\s+FROM/i,
+  );
+});
+
+
 test('Category 25 release gate includes all previous categories and production validation', async () => {
   const pkg =
     JSON.parse(
