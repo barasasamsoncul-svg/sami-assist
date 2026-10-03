@@ -2320,6 +2320,7 @@ test('Accounting 2.25 integrates approved Payroll runs without duplicating payro
   assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.25\.0'[\s\S]*optionalDepends:\s*\['expenses','projects','payroll'\]/);
   assert.match(migrations,/ACCOUNTING_2_24_0_TO_2_25_0/);
   assert.match(migration,/accounting-2\.24\.0-to-2\.25\.0-payroll-accounting/);
+  assert.match(specialistDepth,/ACCOUNTING_PAYROLL_SQL/);
   for (const marker of [
     'accounting_payroll_settings',
     'accounting_payroll_component_mappings',
@@ -2329,7 +2330,6 @@ test('Accounting 2.25 integrates approved Payroll runs without duplicating payro
   ]) {
     assert.match(schema,new RegExp(marker));
     assert.match(specialistCatalog,new RegExp(marker));
-    assert.match(specialistDepth,new RegExp(marker));
     assert.match(domainHooks,new RegExp(marker));
   }
   assert.match(service,/Only an approved payroll run can be posted to Accounting/);
