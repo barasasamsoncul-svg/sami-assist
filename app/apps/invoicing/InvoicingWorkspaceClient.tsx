@@ -18,6 +18,7 @@ import {
 import InvoiceComposer from '@/app/apps/invoicing/InvoiceComposer';
 import InvoiceAppearanceSettings from '@/app/apps/invoicing/InvoiceAppearanceSettings';
 import PaymentPlansWorkspace from '@/app/apps/invoicing/PaymentPlansWorkspace';
+import PaymentIntegrationsWorkspace from '@/app/apps/invoicing/PaymentIntegrationsWorkspace';
 import CurrencyCenterWorkspace from '@/app/apps/invoicing/CurrencyCenterWorkspace';
 import TaxEngineWorkspace from '@/app/apps/invoicing/TaxEngineWorkspace';
 import EtimsWorkspace from '@/app/apps/invoicing/EtimsWorkspace';
@@ -1536,6 +1537,17 @@ export default function InvoicingWorkspaceClient({
             }
           
             mode="register"/>
+        )
+      }
+
+      {
+        view ===
+          'paymentIntegrations' &&
+        initialData
+          .capabilities
+          .canViewPayments &&
+        (
+          <PaymentIntegrationsWorkspace />
         )
       }
 
