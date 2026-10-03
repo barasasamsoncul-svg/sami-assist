@@ -737,22 +737,26 @@ async function installAppSchema(
     }
 
 
-    const appSchemaPath =
-      path.resolve(
-        process.cwd(),
-        manifest.schemaPath,
-      );
+    const normalizedManifestPath =
+      manifest.schemaPath
+        .replace(
+          /\\/g,
+          '/',
+        )
+        .replace(
+          /^\.\//,
+          '',
+        );
 
-    const repositoryRoot =
-      path.resolve(
-        process.cwd(),
-      ) +
-      path.sep;
-
+    const expectedPrefix =
+      `lib/apps/${manifest.key}/`;
 
     if (
-      !appSchemaPath.startsWith(
-        repositoryRoot,
+      !normalizedManifestPath.startsWith(
+        expectedPrefix,
+      ) ||
+      normalizedManifestPath.includes(
+        '..',
       )
     ) {
       return {
@@ -766,6 +770,42 @@ async function installAppSchema(
           `SaMi module "${normalizedAppKey}" declares an unsafe schema path.`,
       };
     }
+
+    const schemaFileName =
+      path.posix.basename(
+        normalizedManifestPath,
+      );
+
+    if (
+      !schemaFileName ||
+      !schemaFileName.endsWith(
+        '.sql',
+      )
+    ) {
+      return {
+        appKey:
+          normalizedAppKey,
+
+        success:
+          false,
+
+        error:
+          `SaMi module "${normalizedAppKey}" does not declare a valid SQL install schema.`,
+      };
+    }
+
+    /*
+     * Keep Turbopack/NFT tracing scoped to lib/apps/<module> instead of
+     * resolving an arbitrary manifest path from the repository root.
+     */
+    const appSchemaPath =
+      path.join(
+        process.cwd(),
+        'lib',
+        'apps',
+        manifest.key,
+        schemaFileName,
+      );
 
 
     if (

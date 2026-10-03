@@ -10,7 +10,7 @@ ALTER TABLE notification_preferences
   ADD COLUMN IF NOT EXISTS message_sound VARCHAR(40) NOT NULL DEFAULT 'soft',
   ADD COLUMN IF NOT EXISTS call_ringtone VARCHAR(40) NOT NULL DEFAULT 'classic';
 
-DO $
+DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1
@@ -45,7 +45,7 @@ BEGIN
       CHECK (call_ringtone IN ('classic','chime','pulse','soft','silent'));
   END IF;
 END
-$;
+$$;
 
 
 CREATE TABLE IF NOT EXISTS workspace_calls (
@@ -123,7 +123,7 @@ CREATE INDEX IF NOT EXISTS idx_workspace_call_signals_call_created
     ON workspace_call_signals(call_id, created_at ASC, id ASC);
 
 
-DO $
+DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1
@@ -138,7 +138,7 @@ BEGIN
     EXECUTE FUNCTION set_updated_at();
   END IF;
 END
-$;
+$$;
 
 
 INSERT INTO core_schema_version (version, installed_at)
