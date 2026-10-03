@@ -143,6 +143,7 @@ export async function getAccountingDimensions(input: {
 
   const [
     settings,
+    accounts,
     departments,
     projects,
     rules,
@@ -156,6 +157,10 @@ export async function getAccountingDimensions(input: {
   ] = await Promise.all([
     context.pool.query(
       "SELECT enabled,require_department_on_expense,require_project_on_income,auto_apply_rules FROM accounting_dimension_settings WHERE company_id=$1 AND deleted_at IS NULL LIMIT 1",
+      [context.companyId],
+    ),
+    context.pool.query(
+      "SELECT id::text,code,name,account_type FROM accounts WHERE company_id=$1 AND deleted_at IS NULL AND is_active=TRUE AND (account_type='income' OR account_type LIKE 'income_%' OR account_type='expense' OR account_type LIKE 'expense_%') ORDER BY code,name LIMIT 1000",
       [context.companyId],
     ),
     context.pool.query(
@@ -324,6 +329,7 @@ export async function getAccountingDimensions(input: {
       require_project_on_income: false,
       auto_apply_rules: true,
     },
+    accounts: accounts.rows,
     departments: departments.rows,
     projects: projects.rows,
     rules: rules.rows,
