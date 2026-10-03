@@ -45,8 +45,9 @@ This is the first usable slice, not completion of the full Accounting module. Ne
 
 26. Financial statements beyond the first trial balance and ledger: Accounting 2.27 comparative Profit & Loss, Balance Sheet, indirect Cash Flow and Changes in Equity generated from posted company ledgers; account-level drill-down; prior-period comparison; balance-sheet equation checks; cash-flow reconciliation with visible classification adjustment rather than hidden balancing; generated/finalized immutable statement snapshots with line-level audit evidence; dedicated responsive tabbed UI/API; migration-backed fresh-install parity and expand-before-promote release tooling. Source journals remain authoritative and snapshots never rewrite ledger balances.
 
+27. Management and exception reporting: Accounting 2.28 company-scoped executive KPI reporting over posted ledger activity and authoritative receivables, payables, bank reconciliation and planning controls; comparative revenue, gross-profit, net-profit and cash KPIs; 12-month revenue, expense and profit trend; actionable exception queue for ledger imbalance, subledger-control differences, stale draft journals, unreconciled bank lines, overdue receivables/payables, budget variance alerts, Cash Flow classification gaps and unfinalized reporting evidence; generated/finalized immutable management-report snapshots with captured exception evidence; dedicated responsive UI/API; migration-backed fresh-install parity and expand-before-promote rollout. Management reporting remains read-only over source business records and never rewrites operational transactions.
+
 ## Remaining depth, in the agreed order
-27. Management and exception reporting.
 28. Month-end and year-end closing.
 29. Granular accounting approvals and audit controls.
 30. Documents and collaboration.
@@ -59,7 +60,7 @@ Keep changes scoped to Accounting. Reuse the existing authoritative ledger and t
 
 ## Validation
 
-`node --conditions=react-server --import tsx --test tests/accounting-foundation.test.mjs tests/accounting-statements.test.mjs tests/accounting-payments.test.mjs tests/accounting-tax.test.mjs tests/accounting-kenya.test.mjs tests/accounting-international.test.mjs tests/accounting-fx.test.mjs && npm run test:accounting:inventory && npm run test:accounting:accruals && npm run test:accounting:financing && npm run test:accounting:budgets && npm run test:accounting:dimensions && npm run test:accounting:payroll && npm run test:accounting:consolidation && npm run test:accounting:financial-statements && npm run test:fixed-assets`
+`node --conditions=react-server --import tsx --test tests/accounting-foundation.test.mjs tests/accounting-statements.test.mjs tests/accounting-payments.test.mjs tests/accounting-tax.test.mjs tests/accounting-kenya.test.mjs tests/accounting-international.test.mjs tests/accounting-fx.test.mjs && npm run test:accounting:inventory && npm run test:accounting:accruals && npm run test:accounting:financing && npm run test:accounting:budgets && npm run test:accounting:dimensions && npm run test:accounting:payroll && npm run test:accounting:consolidation && npm run test:accounting:financial-statements && npm run test:accounting:management-reporting && npm run test:fixed-assets`
 
 Set `TEST_DATABASE_URL` to a disposable PostgreSQL database to run transaction and reporting tests (including simultaneous duplicate requests). Tests create and remove an isolated random schema. For local embedded PostgreSQL testing, `PGLITE_TEST_MODULE` can point to an installed PGlite module; the simultaneous-connection test requires real PostgreSQL. The Accounting GitHub Actions workflow supplies PostgreSQL automatically.
 

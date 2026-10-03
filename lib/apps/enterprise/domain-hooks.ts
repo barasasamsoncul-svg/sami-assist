@@ -197,6 +197,9 @@ export function assertEnterpriseDomainMutationAllowed(
       table === 'accounting_financial_report_settings' ||
       table === 'accounting_financial_statement_snapshots' ||
       table === 'accounting_financial_statement_snapshot_lines' ||
+      table === 'accounting_management_report_settings' ||
+      table === 'accounting_management_report_snapshots' ||
+      table === 'accounting_management_report_snapshot_exceptions' ||
       table ===
         'accounting_reconciliation_suggestions'
     )
@@ -362,8 +365,14 @@ export function assertEnterpriseDomainMutationAllowed(
             table ===
               'accounting_financial_statement_snapshots' ||
             table ===
-              'accounting_financial_statement_snapshot_lines'
-            ? 'Financial statements must be changed through the validated Accounting reporting services.'
+              'accounting_financial_statement_snapshot_lines' ||
+            table ===
+              'accounting_management_report_settings' ||
+            table ===
+              'accounting_management_report_snapshots' ||
+            table ===
+              'accounting_management_report_snapshot_exceptions'
+            ? 'Financial statements and management reports must be changed through the validated Accounting reporting services.'
           : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
   }
