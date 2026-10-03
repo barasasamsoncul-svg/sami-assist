@@ -44,6 +44,7 @@ export const ACCOUNTING_SECTIONS = [
   "payroll-integration",
   "multi-company-consolidation",
   "financial-statements",
+  "management-reporting",
   "setup",
 ] as const;
 export type AccountingSection = (typeof ACCOUNTING_SECTIONS)[number];
@@ -145,6 +146,7 @@ export default function AccountingFoundationPanel({
     "payroll-integration": "Payroll accounting integration",
     "multi-company-consolidation": "Multi-company & consolidation",
     "financial-statements": "Financial statements",
+    "management-reporting": "Management & exception reporting",
     setup: "Accounting setup",
   };
   const descriptions = {
@@ -189,6 +191,7 @@ export default function AccountingFoundationPanel({
     "payroll-integration": "Post approved payroll runs to the authoritative ledger, reconcile payroll liabilities and attribute salary costs to departments and projects.",
     "multi-company-consolidation": "Consolidate authorized company ledgers with ownership, account mapping, FX translation, eliminations and translation-adjustment control.",
     "financial-statements": "Review comparative Profit & Loss, Balance Sheet, Cash Flow and Changes in Equity from posted ledger activity.",
+    "management-reporting": "Track profitability, liquidity, working capital and accounting exceptions with drill-down to the source workflow.",
     reconciliation:
       "Match statement lines to posted bank-ledger movement, split allocations, apply controlled adjustment rules and preserve immutable reconciliation history.",
     setup:

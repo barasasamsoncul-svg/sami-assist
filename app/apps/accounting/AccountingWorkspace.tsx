@@ -14,6 +14,8 @@ import AccountingConsolidation from './AccountingConsolidation';
 import { getAccountingConsolidation } from '@/lib/apps/accounting/consolidation';
 import AccountingFinancialStatements from './AccountingFinancialStatements';
 import { getAccountingFinancialStatements } from '@/lib/apps/accounting/financial-statements';
+import AccountingManagementReporting from './AccountingManagementReporting';
+import { getAccountingManagementReporting } from '@/lib/apps/accounting/management-reporting';
 import AccountingFx from './AccountingFx';
 import { getAccountingFx } from '@/lib/apps/accounting/fx';
 import AccountingInternational from './AccountingInternational';
@@ -265,6 +267,7 @@ export default async function AccountingWorkspace({
   let payrollWorkspace: Awaited<ReturnType<typeof getAccountingPayroll>> | null = null;
   let consolidationWorkspace: Awaited<ReturnType<typeof getAccountingConsolidation>> | null = null;
   let financialStatementsWorkspace: Awaited<ReturnType<typeof getAccountingFinancialStatements>> | null = null;
+  let managementReportingWorkspace: Awaited<ReturnType<typeof getAccountingManagementReporting>> | null = null;
 
   let reconciliationWorkspace:
     Awaited<
@@ -310,6 +313,7 @@ export default async function AccountingWorkspace({
     dedicatedSection !== 'payroll-integration' &&
     dedicatedSection !== 'multi-company-consolidation' &&
     dedicatedSection !== 'financial-statements' &&
+    dedicatedSection !== 'management-reporting' &&
     dedicatedSection !==
       'reconciliation'
   ) {
@@ -703,6 +707,29 @@ export default async function AccountingWorkspace({
           AccountingInputError
           ? error.message
           : 'Financial statements could not be loaded. Retry this page.';
+    }
+  }
+
+  if (
+    dedicatedSection ===
+      'management-reporting'
+  ) {
+    try {
+      managementReportingWorkspace =
+        await getAccountingManagementReporting({
+          from: filters.from,
+          to: filters.to,
+          compareFrom: filters.compareFrom,
+          compareTo: filters.compareTo,
+        });
+    } catch (
+      error
+    ) {
+      foundationError =
+        error instanceof
+          AccountingInputError
+          ? error.message
+          : 'Management and exception reporting could not be loaded. Retry this page.';
     }
   }
 
@@ -1184,6 +1211,25 @@ export default async function AccountingWorkspace({
 
     {
       key:
+        'management-reporting',
+      label:
+        'Management & Exceptions',
+      href:
+        appBaseHref +
+        '/management-reporting',
+      description:
+        'Profitability, liquidity, working capital, ratios and accounting exceptions with source drill-down.',
+      sectionLabel:
+        'Insights',
+      badge:
+        managementReportingWorkspace
+          ?.exceptions
+          .filter(row => row.severity !== 'info')
+          .length,
+    },
+
+    {
+      key:
         'reconciliation',
       label:
         'Reconciliation',
@@ -1406,6 +1452,8 @@ export default async function AccountingWorkspace({
                   ? (consolidationWorkspace ? <AccountingConsolidation data={consolidationWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Multi-company consolidation could not be loaded.'}</div>)
                 : dedicatedSection === 'financial-statements'
                   ? (financialStatementsWorkspace ? <AccountingFinancialStatements data={financialStatementsWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Financial statements could not be loaded.'}</div>)
+                : dedicatedSection === 'management-reporting'
+                  ? (managementReportingWorkspace ? <AccountingManagementReporting data={managementReportingWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Management and exception reporting could not be loaded.'}</div>)
                 : dedicatedSection ===
                     'reconciliation'
                   ? (
