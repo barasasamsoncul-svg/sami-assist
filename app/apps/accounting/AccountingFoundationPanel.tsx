@@ -206,6 +206,7 @@ export default function AccountingFoundationPanel({
     "approval-controls": "Configure maker-checker, amount bands, approval routing, posting separation and immutable decision evidence.",
     "documents-collaboration": "Link secure workspace files to Accounting records, collaborate with comments and mentions, and preserve edit history.",
     "automation-ai": "Use permission-aware SaMi AI tools and approval-gated Automation workflows over authoritative Accounting data.",
+    "settings-recovery": "Review Accounting readiness, specialist settings, diagnostics and non-destructive recovery evidence from one control center.",
     reconciliation:
       "Match statement lines to posted bank-ledger movement, split allocations, apply controlled adjustment rules and preserve immutable reconciliation history.",
     setup:
