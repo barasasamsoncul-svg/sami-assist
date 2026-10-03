@@ -46,6 +46,7 @@ export const ACCOUNTING_SECTIONS = [
   "financial-statements",
   "management-reporting",
   "period-closing",
+  "approval-controls",
   "setup",
 ] as const;
 export type AccountingSection = (typeof ACCOUNTING_SECTIONS)[number];
@@ -149,6 +150,7 @@ export default function AccountingFoundationPanel({
     "financial-statements": "Financial statements",
     "management-reporting": "Management & exception reporting",
     "period-closing": "Month-end & year-end closing",
+    "approval-controls": "Approvals & audit controls",
     setup: "Accounting setup",
   };
   const descriptions = {
@@ -195,6 +197,7 @@ export default function AccountingFoundationPanel({
     "financial-statements": "Review comparative Profit & Loss, Balance Sheet, Cash Flow and Changes in Equity from posted ledger activity.",
     "management-reporting": "Review executive KPIs, 12-month trends and actionable accounting exceptions across the ledger and subledgers.",
     "period-closing": "Close fiscal periods, lock historical posting dates, and transfer year-end profit or loss to retained earnings.",
+    "approval-controls": "Configure maker-checker, amount bands, approval routing, posting separation and immutable decision evidence.",
     reconciliation:
       "Match statement lines to posted bank-ledger movement, split allocations, apply controlled adjustment rules and preserve immutable reconciliation history.",
     setup:

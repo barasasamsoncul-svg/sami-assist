@@ -49,8 +49,9 @@ This is the first usable slice, not completion of the full Accounting module. Ne
 
 28. Month-end and year-end closing: Accounting 2.29 operational fiscal-period control over the existing ledger posting guard; overlapping-period prevention; close readiness checks for draft journals, unreconciled bank lines and ledger balance; month-end lock with company global lock-date advancement; fiscal-year-end validation against configured year start; controlled year-end closing journal that zeroes income and expense accounts into retained earnings; authorized reopen with automatic reversal of the year-end close journal and recalculation of the global lock date; immutable close-run evidence and workspace audit trail; dedicated responsive UI/API; migration-backed fresh-install parity and expand-before-promote rollout.
 
+29. Granular accounting approvals and audit controls: Accounting 2.30 policy-driven journal governance over the existing authoritative draft/approval/posting lifecycle; configurable maker-checker separation, approver/poster separation and mandatory reversal reasons; exact amount-band policies by journal type with 1-3 approval decisions, workspace-owner or specific-user routing and approval-note requirements; immutable approval-request and decision evidence; pending approval queue and historical decision register; segregation-of-duties findings over creator/approver/poster overlap; protected workflow tables, workspace audit events, dedicated responsive UI/API, migration-backed fresh-install parity and expand-before-promote rollout. Existing subsystem-posted journals remain governed by their source modules and are not routed through manual approval.
+
 ## Remaining depth, in the agreed order
-29. Granular accounting approvals and audit controls.
 30. Documents and collaboration.
 31. Automation and SaMi AI.
 32. Complete accounting settings, usability and operational recovery.
@@ -61,7 +62,7 @@ Keep changes scoped to Accounting. Reuse the existing authoritative ledger and t
 
 ## Validation
 
-`node --conditions=react-server --import tsx --test tests/accounting-foundation.test.mjs tests/accounting-statements.test.mjs tests/accounting-payments.test.mjs tests/accounting-tax.test.mjs tests/accounting-kenya.test.mjs tests/accounting-international.test.mjs tests/accounting-fx.test.mjs && npm run test:accounting:inventory && npm run test:accounting:accruals && npm run test:accounting:financing && npm run test:accounting:budgets && npm run test:accounting:dimensions && npm run test:accounting:payroll && npm run test:accounting:consolidation && npm run test:accounting:financial-statements && npm run test:accounting:management-reporting && npm run test:accounting:period-closing && npm run test:fixed-assets`
+`node --conditions=react-server --import tsx --test tests/accounting-foundation.test.mjs tests/accounting-statements.test.mjs tests/accounting-payments.test.mjs tests/accounting-tax.test.mjs tests/accounting-kenya.test.mjs tests/accounting-international.test.mjs tests/accounting-fx.test.mjs && npm run test:accounting:inventory && npm run test:accounting:accruals && npm run test:accounting:financing && npm run test:accounting:budgets && npm run test:accounting:dimensions && npm run test:accounting:payroll && npm run test:accounting:consolidation && npm run test:accounting:financial-statements && npm run test:accounting:management-reporting && npm run test:accounting:period-closing && npm run test:accounting:approval-controls && npm run test:fixed-assets`
 
 Set `TEST_DATABASE_URL` to a disposable PostgreSQL database to run transaction and reporting tests (including simultaneous duplicate requests). Tests create and remove an isolated random schema. For local embedded PostgreSQL testing, `PGLITE_TEST_MODULE` can point to an installed PGlite module; the simultaneous-connection test requires real PostgreSQL. The Accounting GitHub Actions workflow supplies PostgreSQL automatically.
 

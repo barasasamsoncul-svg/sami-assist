@@ -18,6 +18,8 @@ import AccountingManagementReports from './AccountingManagementReports';
 import { getAccountingManagementReports } from '@/lib/apps/accounting/management-reporting';
 import AccountingPeriodClosing from './AccountingPeriodClosing';
 import { getAccountingPeriodClosing } from '@/lib/apps/accounting/period-closing';
+import AccountingApprovalControls from './AccountingApprovalControls';
+import { getAccountingApprovalControls } from '@/lib/apps/accounting/approval-controls';
 import AccountingFx from './AccountingFx';
 import { getAccountingFx } from '@/lib/apps/accounting/fx';
 import AccountingInternational from './AccountingInternational';
@@ -272,6 +274,7 @@ export default async function AccountingWorkspace({
   let financialStatementsWorkspace: Awaited<ReturnType<typeof getAccountingFinancialStatements>> | null = null;
   let managementReportsWorkspace: Awaited<ReturnType<typeof getAccountingManagementReports>> | null = null;
   let periodClosingWorkspace: Awaited<ReturnType<typeof getAccountingPeriodClosing>> | null = null;
+  let approvalControlsWorkspace: Awaited<ReturnType<typeof getAccountingApprovalControls>> | null = null;
 
   let reconciliationWorkspace:
     Awaited<
@@ -319,6 +322,7 @@ export default async function AccountingWorkspace({
     dedicatedSection !== 'financial-statements' &&
     dedicatedSection !== 'management-reporting' &&
     dedicatedSection !== 'period-closing' &&
+    dedicatedSection !== 'approval-controls' &&
     dedicatedSection !==
       'reconciliation'
   ) {
@@ -755,6 +759,24 @@ export default async function AccountingWorkspace({
           Error
           ? error.message
           : 'Period closing could not be loaded.';
+    }
+  }
+
+  if (
+    dedicatedSection ===
+      'approval-controls'
+  ) {
+    try {
+      approvalControlsWorkspace =
+        await getAccountingApprovalControls();
+    } catch (
+      error
+    ) {
+      foundationError =
+        error instanceof
+          Error
+          ? error.message
+          : 'Accounting approval controls could not be loaded.';
     }
   }
 
@@ -1273,6 +1295,24 @@ export default async function AccountingWorkspace({
 
     {
       key:
+        'approval-controls',
+      label:
+        'Approvals & Audit',
+      href:
+        appBaseHref +
+        '/approval-controls',
+      description:
+        'Maker-checker, amount bands, approval routing, posting separation and audit exceptions.',
+      sectionLabel:
+        'Control',
+      badge:
+        approvalControlsWorkspace
+          ?.pending
+          .length,
+    },
+
+    {
+      key:
         'reconciliation',
       label:
         'Reconciliation',
@@ -1499,6 +1539,8 @@ export default async function AccountingWorkspace({
                   ? (managementReportsWorkspace ? <AccountingManagementReports data={managementReportsWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Management and exception reporting could not be loaded.'}</div>)
                 : dedicatedSection === 'period-closing'
                   ? (periodClosingWorkspace ? <AccountingPeriodClosing data={periodClosingWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Period closing could not be loaded.'}</div>)
+                : dedicatedSection === 'approval-controls'
+                  ? (approvalControlsWorkspace ? <AccountingApprovalControls data={approvalControlsWorkspace} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Accounting approval controls could not be loaded.'}</div>)
                 : dedicatedSection ===
                     'reconciliation'
                   ? (

@@ -19,6 +19,11 @@ import {
   accountingId,
   validateJournal,
 } from "./validation";
+import {
+  approveAccountingJournalWithControls,
+  assertAccountingPostingControl,
+  assertAccountingReversalControl,
+} from "./approval-controls";
 
 
 function requiredText(
@@ -405,82 +410,27 @@ export async function approveAccountingJournal(
 
   const journalId = accountingId(body.journalId);
   const note = optionalText(body.note, 1000, "Approval note");
-
   const client = await context.pool.connect();
+
+  let result:
+    | {
+        requestId?: string;
+        journalId: string;
+        status: string;
+        replayed: boolean;
+        approvals?: number;
+        required?: number;
+      }
+    | null = null;
 
   try {
     await client.query("BEGIN");
-
-    const journal = await client.query(
-      `SELECT id::text,status,posting_kind
-       FROM journals
-       WHERE company_id=$1
-         AND id=$2
-         AND deleted_at IS NULL
-       LIMIT 1
-       FOR UPDATE`,
-      [context.companyId, journalId],
+    result = await approveAccountingJournalWithControls(
+      context,
+      client,
+      journalId,
+      note,
     );
-
-    const row = journal.rows[0];
-
-    if (!row) {
-      throw new AccountingInputError("This journal could not be found.");
-    }
-
-    if (row.status === "approved") {
-      await client.query("COMMIT");
-      return { journalId, status: "approved", replayed: true };
-    }
-
-    if (row.status !== "draft") {
-      throw new AccountingInputError(
-        "Only a draft journal can be approved.",
-      );
-    }
-
-    if (!["manual", "opening"].includes(String(row.posting_kind))) {
-      throw new AccountingInputError(
-        "Automatic subsystem journals do not use manual approval.",
-      );
-    }
-
-    const proof = await client.query(
-      `SELECT
-         COUNT(*)::int AS line_count,
-         COALESCE(SUM(debit),0)::text AS debit_total,
-         COALESCE(SUM(credit),0)::text AS credit_total,
-         COALESCE(SUM(debit),0) = COALESCE(SUM(credit),0)
-           AND COALESCE(SUM(debit),0) > 0
-           AND COUNT(*) >= 2 AS balanced
-       FROM journal_lines
-       WHERE company_id=$1
-         AND journal_id=$2
-         AND deleted_at IS NULL`,
-      [context.companyId, journalId],
-    );
-
-    if (proof.rows[0]?.balanced !== true) {
-      throw new AccountingInputError(
-        "SaMi refused approval because the journal is not a valid balanced entry.",
-      );
-    }
-
-    await client.query(
-      `UPDATE journals
-       SET
-         status='approved',
-         approved_by=$3,
-         approved_at=NOW(),
-         approval_note=$4,
-         updated_by=$3,
-         updated_at=NOW()
-       WHERE company_id=$1
-         AND id=$2
-         AND deleted_at IS NULL`,
-      [context.companyId, journalId, context.userId, note || null],
-    );
-
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -493,13 +443,25 @@ export async function approveAccountingJournal(
     tenantId: context.tenantId,
     companyId: context.companyId,
     userId: context.userId,
-    action: "accounting.journal.approved",
+    action:
+      result?.status === "approved"
+        ? "accounting.journal.approved"
+        : "accounting.journal.approval_recorded",
     module: "accounting",
     resourceType: "journals",
     resourceId: journalId,
-    summary: "Accounting journal approved for posting",
+    summary:
+      result?.status === "approved"
+        ? "Accounting journal approval requirements completed"
+        : "Accounting journal approval decision recorded",
     result: "success",
-    metadata: { note: note || null },
+    metadata: {
+      note: note || null,
+      approvalRequestId: result?.requestId || null,
+      approvals: result?.approvals || 0,
+      required: result?.required || 1,
+      status: result?.status || "pending_approval",
+    },
   }).catch((error) =>
     console.error("[Accounting] Approval audit delivery failed", {
       journalId,
@@ -507,7 +469,11 @@ export async function approveAccountingJournal(
     }),
   );
 
-  return { journalId, status: "approved", replayed: false };
+  return result || {
+    journalId,
+    status: "pending_approval",
+    replayed: false,
+  };
 }
 
 
@@ -528,6 +494,12 @@ export async function postAccountingJournal(
 
   try {
     await client.query("BEGIN");
+
+    await assertAccountingPostingControl(
+      context,
+      client,
+      journalId,
+    );
 
     const result = await postApprovedManualLedgerJournal(
       client,
@@ -585,8 +557,10 @@ export async function reverseAccountingJournal(
 
   const journalId = accountingId(body.journalId);
   const reversalDate = accountingDate(body.reversalDate);
+  const reversalReason =
+    optionalText(body.description, 1000, "Reversal description");
   const description =
-    optionalText(body.description, 1000, "Reversal description") ||
+    reversalReason ||
     "Reversal of Accounting journal";
 
   const client = await context.pool.connect();
@@ -610,6 +584,12 @@ export async function reverseAccountingJournal(
     if (!journal) {
       throw new AccountingInputError("This journal could not be found.");
     }
+
+    await assertAccountingReversalControl(
+      context,
+      client,
+      reversalReason,
+    );
 
     if (
       String(journal.source_module || "") !== "accounting" ||

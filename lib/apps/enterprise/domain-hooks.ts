@@ -201,6 +201,10 @@ export function assertEnterpriseDomainMutationAllowed(
       table === 'accounting_management_report_snapshots' ||
       table === 'accounting_management_report_snapshot_exceptions' ||
       table === 'accounting_close_runs' ||
+      table === 'accounting_approval_settings' ||
+      table === 'accounting_approval_policies' ||
+      table === 'accounting_approval_requests' ||
+      table === 'accounting_approval_decisions' ||
       table ===
         'accounting_reconciliation_suggestions'
     )
@@ -377,6 +381,15 @@ export function assertEnterpriseDomainMutationAllowed(
           : table ===
               'accounting_close_runs'
             ? 'Accounting period close evidence must be changed through the validated Accounting period-closing services.'
+          : table ===
+              'accounting_approval_settings' ||
+            table ===
+              'accounting_approval_policies' ||
+            table ===
+              'accounting_approval_requests' ||
+            table ===
+              'accounting_approval_decisions'
+            ? 'Accounting approval policies and decision evidence must be changed through the validated Accounting approval-control services.'
           : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
   }

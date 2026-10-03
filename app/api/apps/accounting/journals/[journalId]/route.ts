@@ -20,6 +20,9 @@ import {
 import {
   TenantContextError,
 } from "@/lib/auth/tenant-context";
+import {
+  CompanyContextError,
+} from "@/lib/auth/company-context";
 
 
 export const runtime = "nodejs";
@@ -183,6 +186,22 @@ export async function POST(
     if (
       error instanceof
         TenantContextError
+    ) {
+      return respond(
+        {
+          error:
+            error.message,
+        },
+        error.code ===
+          "UNAUTHENTICATED"
+          ? 401
+          : 403,
+      );
+    }
+
+    if (
+      error instanceof
+        CompanyContextError
     ) {
       return respond(
         {

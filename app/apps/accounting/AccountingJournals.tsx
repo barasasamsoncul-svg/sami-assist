@@ -109,6 +109,14 @@ export default function AccountingJournals({
     );
 
   const [
+    reversalReason,
+    setReversalReason,
+  ] =
+    useState(
+      "",
+    );
+
+  const [
     recurringName,
     setRecurringName,
   ] =
@@ -237,6 +245,8 @@ export default function AccountingJournals({
                 note:
                   approvalNote,
                 reversalDate,
+                description:
+                  reversalReason,
               }),
           },
         );
@@ -251,22 +261,50 @@ export default function AccountingJournals({
         );
       }
 
+      const result =
+        body.result || {};
+
       showSuccess(
         action ===
           "approve"
-          ? "Journal approved"
+          ? result.status ===
+              "approved"
+            ? "Journal approved"
+            : "Approval recorded"
           : action ===
               "post"
             ? "Journal posted"
             : "Reversal created",
         action ===
           "approve"
-          ? "The balanced draft is approved and ready for posting."
+          ? result.status ===
+              "approved"
+            ? "All required approval decisions are complete and the journal is ready for posting."
+            : "Your approval was recorded. This journal still needs " +
+              Math.max(
+                0,
+                Number(
+                  result.required || 1,
+                ) -
+                  Number(
+                    result.approvals || 0,
+                  ),
+              ) +
+              " more approval decision(s)."
           : action ===
               "post"
             ? "The journal is now part of the posted ledger."
             : "SaMi created a linked compensating journal instead of changing the posted entry.",
       );
+
+      if (
+        action ===
+        "reverse"
+      ) {
+        setReversalReason(
+          "",
+        );
+      }
 
       router.refresh();
     } catch (
@@ -1059,6 +1097,25 @@ export default function AccountingJournals({
                                           .value,
                                       )
                                   }
+                                />
+                              </label>
+                              <label>
+                                Business reason
+                                <textarea
+                                  value={
+                                    reversalReason
+                                  }
+                                  onChange={
+                                    event =>
+                                      setReversalReason(
+                                        event.target
+                                          .value,
+                                      )
+                                  }
+                                  maxLength={
+                                    1000
+                                  }
+                                  placeholder="Why is this posted journal being reversed?"
                                 />
                               </label>
                             </div>
