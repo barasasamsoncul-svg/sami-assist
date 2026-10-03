@@ -417,6 +417,17 @@ export async function reopenAccountingPeriod(input:unknown) {
       throw new AccountingInputError('Only a completed period close can be reopened.');
     }
 
+    const laterClosed=await client.query(
+      `SELECT id::text FROM accounting_fiscal_periods
+       WHERE company_id=$1 AND deleted_at IS NULL AND status='closed'
+         AND ends_on>$2::date AND id<>$3
+       ORDER BY ends_on DESC LIMIT 1 FOR SHARE`,
+      [context.companyId,String(run.ends_on).slice(0,10),String(run.fiscal_period_id)],
+    );
+    if (laterClosed.rows[0]) {
+      throw new AccountingInputError('Reopen later closed periods first so the company lock date remains sequential.');
+    }
+
     await client.query(
       `UPDATE accounting_fiscal_periods
        SET status='open',lock_date=NULL,updated_by=$3,updated_at=NOW()

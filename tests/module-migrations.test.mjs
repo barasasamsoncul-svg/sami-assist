@@ -2603,6 +2603,7 @@ test('Accounting 2.29 closes and reopens fiscal periods through ledger-enforced 
   assert.match(service,/status='draft'/);
   assert.match(service,/accounting:year-end-close:/);
   assert.match(service,/accounting:period-reopen:/);
+  assert.match(service,/Reopen later closed periods first/);
   assert.match(workspace,/period-closing[\s\S]*AccountingPeriodClosing/);
   assert.match(panel,/"period-closing"/);
   assert.match(ui,/Month-end & year-end closing/);
