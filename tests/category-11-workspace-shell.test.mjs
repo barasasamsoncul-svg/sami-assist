@@ -194,12 +194,16 @@ test('Category 11: dashboard turns permitted business data into operational anal
     composer,
     aiSummary,
     runtimeDashboard,
+    providerRegistry,
+    businessProviders,
   ] = await Promise.all([
     source('app/dashboard/DashboardClient.tsx'),
     source('app/dashboard/page.tsx'),
     source('lib/dashboard/composer.ts'),
     source('app/api/workspace/dashboard/ai-summary/route.ts'),
     source('lib/apps/runtime-dashboard.ts'),
+    source('lib/dashboard/providers/index.ts'),
+    source('lib/dashboard/providers/business-analysis.ts'),
   ]);
 
   assert.match(
@@ -208,7 +212,7 @@ test('Category 11: dashboard turns permitted business data into operational anal
   );
   assert.match(
     dashboard,
-    /Business snapshot/,
+    /Workspace snapshot/,
   );
   assert.match(
     dashboard,
@@ -235,6 +239,33 @@ test('Category 11: dashboard turns permitted business data into operational anal
   assert.match(
     composer,
     /input\.aiEnabled ===[\s\S]*true/,
+  );
+  assert.match(
+    composer,
+    /getDashboardProviders\([\s\S]*input\.modules,[\s\S]*input\.permissions/s,
+    'Dashboard providers must resolve against both accessible modules and the current permission context.',
+  );
+  assert.match(
+    providerRegistry,
+    /requiredAnyPermissions/,
+    'Dashboard providers must declare their read authority explicitly.',
+  );
+  assert.match(
+    providerRegistry,
+    /required\.length ===[\s\S]*0[\s\S]*return false/s,
+    'Non-owner dashboard providers must fail closed when no read permission contract is declared.',
+  );
+  assert.match(
+    businessProviders,
+    /accounting\.record\.view[\s\S]*accounting\.record\.report/s,
+  );
+  assert.match(
+    businessProviders,
+    /invoicing\.invoice\.view/,
+  );
+  assert.match(
+    businessProviders,
+    /sales\.quote\.view/,
   );
   assert.doesNotMatch(
     composer,
@@ -272,6 +303,19 @@ test('Category 11: dashboard turns permitted business data into operational anal
   assert.match(
     aiSummary,
     /Use only supplied facts/,
+  );
+  assert.match(
+    aiSummary,
+    /Do not assume Accounting, Invoicing, Sales, HR, CRM, Inventory or any other app exists unless its signal is supplied/,
+  );
+  assert.match(
+    aiSummary,
+    /Mention financial facts only when a permitted finance app supplied them/,
+  );
+  assert.doesNotMatch(
+    aiSummary,
+    /permitted apps produce financial, sales and operational signals/,
+    'Home fallback copy must not imply that every workspace is finance-led.',
   );
 });
 
