@@ -6,6 +6,7 @@ import {
   reserveEnterpriseCreateRequest,
 } from "@/lib/apps/enterprise/idempotency";
 import { AccountingInputError, type JournalInput } from "./validation";
+import { applyAccountingDimensionRules } from "./dimensions-posting";
 
 /** The caller must resolve trusted company and create permissions before entering this transaction. */
 export async function saveBalancedJournalDraft(
@@ -139,9 +140,10 @@ export async function saveBalancedJournalDraft(
     );
     const row = journal.rows[0];
     for (const line of input.lines) {
-      await client.query(
+      const insertedLine = await client.query(
         `INSERT INTO journal_lines (company_id,journal_id,account_id,description,debit,credit,created_by,updated_by)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$7)`,
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$7)
+        RETURNING id::text`,
         [
           scope.companyId,
           row.id,
@@ -152,6 +154,15 @@ export async function saveBalancedJournalDraft(
           scope.userId,
         ],
       );
+      await applyAccountingDimensionRules(client,{
+        companyId: scope.companyId,
+        journalLineId: String(insertedLine.rows[0].id),
+        accountId: line.accountId,
+        sourceModule: 'accounting',
+        debit: line.debit,
+        credit: line.credit,
+        userId: scope.userId,
+      });
     }
     await completeEnterpriseCreateRequest(client, {
       companyId: scope.companyId,
