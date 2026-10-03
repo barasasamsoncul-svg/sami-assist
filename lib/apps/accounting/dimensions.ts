@@ -142,6 +142,7 @@ export async function getAccountingDimensions(input: {
   if (from > to) throw new AccountingInputError('The start date must not be after the end date.');
 
   const [
+    company,
     settings,
     accounts,
     departments,
@@ -155,6 +156,10 @@ export async function getAccountingDimensions(input: {
     dimensionBudgets,
     integration,
   ] = await Promise.all([
+    context.pool.query(
+      "SELECT currency FROM companies WHERE id=$1 LIMIT 1",
+      [context.companyId],
+    ),
     context.pool.query(
       "SELECT enabled,require_department_on_expense,require_project_on_income,auto_apply_rules FROM accounting_dimension_settings WHERE company_id=$1 AND deleted_at IS NULL LIMIT 1",
       [context.companyId],
@@ -322,6 +327,7 @@ export async function getAccountingDimensions(input: {
 
   return {
     companyId: context.companyId,
+    currency: String(company.rows[0]?.currency || 'KES').toUpperCase(),
     filters: { from, to },
     settings: settings.rows[0] || {
       enabled: true,
