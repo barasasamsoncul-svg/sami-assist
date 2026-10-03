@@ -8,6 +8,8 @@ import AccountingBudgets from './AccountingBudgets';
 import { getAccountingBudgets } from '@/lib/apps/accounting/budgets';
 import AccountingDimensions from './AccountingDimensions';
 import { getAccountingDimensions } from '@/lib/apps/accounting/dimensions';
+import AccountingPayroll from './AccountingPayroll';
+import { getAccountingPayroll } from '@/lib/apps/accounting/payroll';
 import AccountingFx from './AccountingFx';
 import { getAccountingFx } from '@/lib/apps/accounting/fx';
 import AccountingInternational from './AccountingInternational';
@@ -254,6 +256,7 @@ export default async function AccountingWorkspace({
   let financingWorkspace: Awaited<ReturnType<typeof getAccountingFinancing>> | null = null;
   let budgetsWorkspace: Awaited<ReturnType<typeof getAccountingBudgets>> | null = null;
   let dimensionsWorkspace: Awaited<ReturnType<typeof getAccountingDimensions>> | null = null;
+  let payrollWorkspace: Awaited<ReturnType<typeof getAccountingPayroll>> | null = null;
 
   let reconciliationWorkspace:
     Awaited<
@@ -296,6 +299,7 @@ export default async function AccountingWorkspace({
     dedicatedSection !== 'loans-financing' &&
     dedicatedSection !== 'budgets-forecasts' &&
     dedicatedSection !== 'project-departmental' &&
+    dedicatedSection !== 'payroll-integration' &&
     dedicatedSection !==
       'reconciliation'
   ) {
@@ -630,6 +634,24 @@ export default async function AccountingWorkspace({
           AccountingInputError
           ? error.message
           : 'Project and departmental accounting could not be loaded. Retry this page.';
+    }
+  }
+
+  if (
+    dedicatedSection ===
+      'payroll-integration'
+  ) {
+    try {
+      payrollWorkspace =
+        await getAccountingPayroll();
+    } catch (
+      error
+    ) {
+      foundationError =
+        error instanceof
+          AccountingInputError
+          ? error.message
+          : 'Payroll accounting integration could not be loaded. Retry this page.';
     }
   }
 
@@ -1056,6 +1078,24 @@ export default async function AccountingWorkspace({
 
     {
       key:
+        'payroll-integration',
+      label:
+        'Payroll Integration',
+      href:
+        appBaseHref +
+        '/payroll-integration',
+      description:
+        'Approved payroll posting, liability controls and employee department/project attribution.',
+      sectionLabel:
+        'Operations',
+      badge:
+        payrollWorkspace
+          ?.metrics
+          .unpostedApproved,
+    },
+
+    {
+      key:
         'reconciliation',
       label:
         'Reconciliation',
@@ -1272,6 +1312,8 @@ export default async function AccountingWorkspace({
                   ? (budgetsWorkspace ? <AccountingBudgets data={budgetsWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Budgets and forecasts could not be loaded.'}</div>)
                 : dedicatedSection === 'project-departmental'
                   ? (dimensionsWorkspace ? <AccountingDimensions data={dimensionsWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Project and departmental accounting could not be loaded.'}</div>)
+                : dedicatedSection === 'payroll-integration'
+                  ? (payrollWorkspace ? <AccountingPayroll data={payrollWorkspace} canCreate={data.capabilities.canCreate} canEdit={data.capabilities.canEdit}/> : <div role="alert">{foundationError || 'Payroll accounting integration could not be loaded.'}</div>)
                 : dedicatedSection ===
                     'reconciliation'
                   ? (
