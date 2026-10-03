@@ -695,6 +695,7 @@ export async function composeDashboard(
   const providers =
     getDashboardProviders(
       input.modules,
+      input.permissions,
     );
 
 
