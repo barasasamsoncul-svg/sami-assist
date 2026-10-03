@@ -80,6 +80,16 @@ export default function AccountingFoundationPanel({
           : total,
       BigInt(0),
     );
+  const periodMovementByType = (
+    predicate: (type: string) => boolean,
+  ) =>
+    data.accounts.reduce(
+      (total, row) =>
+        predicate(row.account_type)
+          ? total + cents(row.debit) - cents(row.credit)
+          : total,
+      BigInt(0),
+    );
   const cashBalance = balanceByType(
     (type) => type === "asset_cash" || type.startsWith("asset_bank"),
   );
@@ -89,10 +99,10 @@ export default function AccountingFoundationPanel({
   const payableBalance = -balanceByType(
     (type) => type === "liability_payable",
   );
-  const incomeBalance = -balanceByType(
+  const incomeBalance = -periodMovementByType(
     (type) => type === "income" || type.startsWith("income_"),
   );
-  const expenseBalance = balanceByType(
+  const expenseBalance = periodMovementByType(
     (type) => type === "expense" || type.startsWith("expense_"),
   );
   const netProfit = incomeBalance - expenseBalance;
