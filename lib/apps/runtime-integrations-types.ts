@@ -13,7 +13,7 @@ export type SamiAppIntegrationWebhookContext={
   deliveryId:string;
   payload:Record<string,unknown>;
   accessibleModuleKeys:string[];
-  permissionSet:Set<string>;
+  permissionSet:ReadonlySet<string>;
   isOwner:boolean;
 };
 
