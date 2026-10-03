@@ -27,10 +27,6 @@ import {
 } from '@/lib/dashboard/composer';
 
 import {
-  getWorkspaceActivityDashboardSnapshot,
-} from '@/lib/services/workspace-activity';
-
-import {
   getWorkspaceNotificationSummary,
 } from '@/lib/services/workspace-notifications';
 
@@ -151,96 +147,39 @@ export default async function DashboardPage() {
     };
   }
 
-  const dashboardPromise =
-    composeDashboard({
-      userId:
-        session.user.id,
-      permissions:
-        permissionContext,
-      modules:
-        shell.accessibleModules,
-      currentCompanyId,
-      selectedCompanyIds,
-      allowedCompanyIds,
-      aiEnabled:
-        shell.aiAvailable,
-    });
-
-  let recentActivity:
-    Awaited<
-      ReturnType<
-        typeof getWorkspaceActivityDashboardSnapshot
-      >
-    >['items'] =
-    [];
-
-  let activitySummary:
-    Awaited<
-      ReturnType<
-        typeof getWorkspaceActivityDashboardSnapshot
-      >
-    >['summary'] |
-    null =
-    null;
-
-  let unreadNotifications =
-    0;
-
-  const secondaryPromise =
-    currentCompanyId
-      ? Promise.allSettled([
-          getWorkspaceActivityDashboardSnapshot(
-            6,
-          ),
-          getWorkspaceNotificationSummary(),
-        ])
-      : Promise.resolve(
-          [],
-        );
-
   const [
     dashboard,
-    secondaryResults,
+    notificationResult,
   ] =
     await Promise.all([
-      dashboardPromise,
-      secondaryPromise,
+      composeDashboard({
+        userId:
+          session.user.id,
+        permissions:
+          permissionContext,
+        modules:
+          shell.accessibleModules,
+        currentCompanyId,
+        selectedCompanyIds,
+        allowedCompanyIds,
+        aiEnabled:
+          shell.aiAvailable,
+      }),
+      currentCompanyId
+        ? getWorkspaceNotificationSummary()
+            .catch(
+              () =>
+                null,
+            )
+        : Promise.resolve(
+            null,
+          ),
     ]);
 
-  if (
-    secondaryResults.length ===
-    2
-  ) {
-    const [
-      activityResult,
-      notificationResult,
-    ] =
-      secondaryResults;
-
-    if (
-      activityResult.status ===
-      'fulfilled'
-    ) {
-      recentActivity =
-        activityResult
-          .value
-          .items;
-      activitySummary =
-        activityResult
-          .value
-          .summary;
-    }
-
-    if (
-      notificationResult.status ===
-      'fulfilled'
-    ) {
-      unreadNotifications =
-        notificationResult
-          .value
-          .unreadCount;
-    }
-  }
+  const unreadNotifications =
+    notificationResult
+      ?.unreadCount ||
+    0;
 
   return (
     <DashboardClient
@@ -264,12 +203,6 @@ export default async function DashboardPage() {
       }
       dashboard={
         dashboard
-      }
-      recentActivity={
-        recentActivity
-      }
-      activitySummary={
-        activitySummary
       }
       unreadNotifications={
         unreadNotifications
