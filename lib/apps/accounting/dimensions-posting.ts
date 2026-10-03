@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 
 function cents(value: string | number) {
@@ -71,7 +72,7 @@ export async function applyAccountingDimensionRules(
 
   if (!rules.rows.length) return { applied: 0 };
 
-  const allocationSetId = crypto.randomUUID();
+  const allocationSetId = randomUUID();
   const lineNet = cents(input.debit) - cents(input.credit);
   let remaining = 10000;
   let remainingAmount = lineNet;
@@ -147,7 +148,7 @@ export async function copyAccountingDimensionsForReversal(
 
     const lineNet = cents(target.debit) - cents(target.credit);
     let remainingAmount = lineNet;
-    const allocationSetId = crypto.randomUUID();
+    const allocationSetId = randomUUID();
 
     for (let position=0; position<allocations.rows.length; position += 1) {
       const row = allocations.rows[position];
