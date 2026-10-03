@@ -8,6 +8,7 @@ export const CONTROL_MIGRATION_KEYS = [
   '007-category-25-platform-settings.sql',
   '008-user-tutorial-preferences.sql',
   '009-workspace-tutorial-opt-in.sql',
+  '010-finance-module-version-sync.sql',
 ] as const;
 
 
