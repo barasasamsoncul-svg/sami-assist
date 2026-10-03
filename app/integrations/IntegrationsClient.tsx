@@ -551,6 +551,32 @@ export default function IntegrationsClient({
           window.location.href,
         );
 
+      const requestedProvider =
+        url.searchParams.get(
+          'provider',
+        )
+          ?.trim()
+          .toLowerCase() ||
+        '';
+
+      if (
+        requestedProvider
+      ) {
+        const provider =
+          state.providers
+            .find(
+              item =>
+                item.key ===
+                requestedProvider,
+            );
+
+        setSearch(
+          provider
+            ?.name ||
+          requestedProvider,
+        );
+      }
+
       const connected =
         url.searchParams.get(
           'connected',
@@ -1643,6 +1669,7 @@ export default function IntegrationsClient({
         return state.providers.filter(
           provider =>
             [
+              provider.key,
               provider.name,
               provider.description,
               provider.category,
