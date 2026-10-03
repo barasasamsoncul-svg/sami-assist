@@ -1301,10 +1301,6 @@ async function ingestNormalizedFeedForRuntime(
   }
 }
 
-
-
-}
-
 export async function ingestNormalizedFeed(input: unknown) {
   const context = await requireEnterpriseModuleTableContext(
     "accounting",
