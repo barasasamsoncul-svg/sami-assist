@@ -1,3 +1,4 @@
+import { ACCOUNTING_PERIOD_CLOSING_SQL } from '@/lib/apps/accounting/period-closing-schema';
 import { ACCOUNTING_MANAGEMENT_REPORTING_SQL } from '@/lib/apps/accounting/management-reporting-schema';
 import { ACCOUNTING_FINANCIAL_STATEMENTS_SQL } from '@/lib/apps/accounting/financial-statements-schema';
 import { ACCOUNTING_CONSOLIDATION_SQL } from '@/lib/apps/accounting/consolidation-schema';
@@ -1776,6 +1777,7 @@ ${ACCOUNTING_PAYROLL_SQL}
 ${ACCOUNTING_CONSOLIDATION_SQL}
 ${ACCOUNTING_FINANCIAL_STATEMENTS_SQL}
 ${ACCOUNTING_MANAGEMENT_REPORTING_SQL}
+${ACCOUNTING_PERIOD_CLOSING_SQL}
 `;
 }
 

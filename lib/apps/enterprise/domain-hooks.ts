@@ -200,6 +200,7 @@ export function assertEnterpriseDomainMutationAllowed(
       table === 'accounting_management_report_settings' ||
       table === 'accounting_management_report_snapshots' ||
       table === 'accounting_management_report_snapshot_exceptions' ||
+      table === 'accounting_close_runs' ||
       table ===
         'accounting_reconciliation_suggestions'
     )
@@ -373,6 +374,9 @@ export function assertEnterpriseDomainMutationAllowed(
             table ===
               'accounting_management_report_snapshot_exceptions'
             ? 'Financial statements and management reports must be changed through the validated Accounting reporting services.'
+          : table ===
+              'accounting_close_runs'
+            ? 'Accounting period close evidence must be changed through the validated Accounting period-closing services.'
           : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
   }

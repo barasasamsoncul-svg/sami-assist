@@ -21,6 +21,7 @@ export default async function AccountingSectionPage({
     documentId?: string;
     search?: string;
     statementLineId?: string;
+    periodId?: string;
   }>;
 }) {
   const { section } = await params;

@@ -45,6 +45,7 @@ export const ACCOUNTING_SECTIONS = [
   "multi-company-consolidation",
   "financial-statements",
   "management-reporting",
+  "period-closing",
   "setup",
 ] as const;
 export type AccountingSection = (typeof ACCOUNTING_SECTIONS)[number];
@@ -147,6 +148,7 @@ export default function AccountingFoundationPanel({
     "multi-company-consolidation": "Multi-company & consolidation",
     "financial-statements": "Financial statements",
     "management-reporting": "Management & exception reporting",
+    "period-closing": "Month-end & year-end closing",
     setup: "Accounting setup",
   };
   const descriptions = {
@@ -192,6 +194,7 @@ export default function AccountingFoundationPanel({
     "multi-company-consolidation": "Consolidate authorized company ledgers with ownership, account mapping, FX translation, eliminations and translation-adjustment control.",
     "financial-statements": "Review comparative Profit & Loss, Balance Sheet, Cash Flow and Changes in Equity from posted ledger activity.",
     "management-reporting": "Review executive KPIs, 12-month trends and actionable accounting exceptions across the ledger and subledgers.",
+    "period-closing": "Close fiscal periods, lock historical posting dates, and transfer year-end profit or loss to retained earnings.",
     reconciliation:
       "Match statement lines to posted bank-ledger movement, split allocations, apply controlled adjustment rules and preserve immutable reconciliation history.",
     setup:
