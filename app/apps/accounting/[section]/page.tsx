@@ -11,6 +11,8 @@ export default async function AccountingSectionPage({
   searchParams: Promise<{
     from?: string;
     to?: string;
+    compareFrom?: string;
+    compareTo?: string;
     accountId?: string;
     page?: string;
     bucket?: string;
