@@ -141,7 +141,7 @@ export default function AccountingDocumentCapture({
 
   return (
     <div className={styles.workspace}>
-      <SaMiOverlay overlay={overlay} onClose={closeOverlay}/>
+      <SaMiOverlay {...overlay} onClose={closeOverlay}/>
 
       <div className={styles.heading}>
         <div>
