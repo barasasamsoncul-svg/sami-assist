@@ -1619,6 +1619,8 @@ test(
 
     assert.match(workspace,/Budgets & Forecasts[\s\S]*\/budgets-forecasts/);
     assert.match(workspace,/dedicatedSection === 'budgets-forecasts'[\s\S]*AccountingBudgets/);
+    assert.match(workspace,/Projects & Departments[\s\S]*\/project-departmental/);
+    assert.match(workspace,/dedicatedSection === 'project-departmental'[\s\S]*AccountingDimensions/);
 
     for (const marker of [
       'Planning, rolling forecasts and variance control',
