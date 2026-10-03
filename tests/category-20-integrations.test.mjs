@@ -225,8 +225,29 @@ test('Category 20: provider registry is code-owned, env-configured and module-ru
       ) ||
       []
     ).length,
-    36,
-    'Every existing first-party module must fail closed until it deliberately contributes an integration provider.',
+    34,
+    'Modules without a deliberate integration provider must continue to fail closed.',
+  );
+
+  assert.equal(
+    (
+      manifests.match(
+        /integrationProviders:\s*true/g,
+      ) ||
+      []
+    ).length,
+    2,
+    'Only Accounting and Invoicing deliberately contribute first-party integration providers in this release.',
+  );
+
+  assert.match(
+    manifests,
+    /key:\s*["']accounting["'][\s\S]*?integrationProviders:\s*true/,
+  );
+
+  assert.match(
+    manifests,
+    /key:\s*["']invoicing["'][\s\S]*?integrationProviders:\s*true/,
   );
 
   assert.doesNotMatch(

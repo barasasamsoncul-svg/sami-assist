@@ -68,8 +68,31 @@ test('shared enterprise modules expose only backed cross-cutting capabilities', 
 
   assert.match(
     appIntegrations,
-    /APP_RUNTIME_INTEGRATION_PROVIDERS:\s*[\s\S]*=\s*\[\]/s,
-    'App-specific integration providers must remain explicit rather than being fabricated by the shared contract.',
+    /key:'accounting_bank_feed'[\s\S]*moduleKey:'accounting'/s,
+    'Accounting bank-feed integration must remain an explicit Accounting-owned provider.',
+  );
+
+  assert.match(
+    appIntegrations,
+    /key:'accounting_document_extractor'[\s\S]*moduleKey:'accounting'/s,
+    'Accounting document extraction must remain an explicit Accounting-owned provider.',
+  );
+
+  assert.match(
+    appIntegrations,
+    /key:'invoicing_payment_gateway'[\s\S]*moduleKey:'invoicing'/s,
+    'Invoice payment settlement must remain an explicit Invoicing-owned provider.',
+  );
+
+  assert.equal(
+    (
+      appIntegrations.match(
+        /moduleKey:/g,
+      ) ||
+      []
+    ).length,
+    3,
+    'The shared runtime must not fabricate providers beyond the three deliberately registered finance connectors.',
   );
 
   assert.doesNotMatch(

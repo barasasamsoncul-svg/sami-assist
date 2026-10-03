@@ -154,7 +154,7 @@ export default function AccountingCustomReports({
 
   return (
     <div className={styles.workspace}>
-      <SaMiOverlay overlay={overlay} onClose={closeOverlay}/>
+      <SaMiOverlay {...overlay} onClose={closeOverlay}/>
 
       <div className={styles.heading}>
         <div>

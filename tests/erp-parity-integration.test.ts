@@ -90,6 +90,14 @@ integration(
             deleted_at TIMESTAMPTZ
           );
 
+          -- Accounting 2.34 document extraction references the Core Files contract.
+          -- This focused ERP fixture does not install the full tenant core, so keep
+          -- the dependency explicit with the minimum FK target required here.
+          CREATE TABLE files (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            company_id UUID REFERENCES companies(id) ON DELETE CASCADE
+          );
+
           CREATE TABLE products (
             id UUID PRIMARY KEY,
             company_id UUID NOT NULL,

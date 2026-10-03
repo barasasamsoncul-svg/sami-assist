@@ -521,10 +521,10 @@ export async function receiveIntegrationWebhook(
     );
   }
 
-  let deliveryId =
+  let deliveryId: string =
     crypto.randomUUID();
 
-  let integrationEventId =
+  let integrationEventId: string =
     crypto.randomUUID();
 
   let retryingFailedDelivery =
