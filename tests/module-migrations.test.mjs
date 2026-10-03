@@ -900,7 +900,7 @@ test('Accounting 2.9 Payables is migration-backed and ledger controlled', async 
     source('lib/apps/enterprise/specialist-depth.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.24\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.25\.0'/);
   assert.match(migrations,/ACCOUNTING_2_8_0_TO_2_9_0/);
 
   for (const marker of [
@@ -957,7 +957,7 @@ test('Accounting 2.10 Purchasing controls are migration-backed and gate PO bills
     source('lib/apps/enterprise/specialist-depth.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.24\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.25\.0'/);
   assert.match(migrations,/ACCOUNTING_2_9_0_TO_2_10_0/);
   assert.match(
     migration,
@@ -1171,7 +1171,7 @@ test('Accounting 2.12 controls bank cash mobile money and internal transfers', a
     source('lib/apps/enterprise/specialist-catalog.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.24\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.25\.0'/);
   assert.match(migrations,/ACCOUNTING_2_11_0_TO_2_12_0/);
   assert.match(
     migration,
@@ -1262,7 +1262,7 @@ test('Accounting 2.13 imports statements and protects normalized feed intake', a
     source('lib/apps/enterprise/specialist-catalog.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.24\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.25\.0'/);
   assert.match(migrations,/ACCOUNTING_2_12_0_TO_2_13_0/);
   assert.match(
     migration,
@@ -1355,7 +1355,7 @@ test('Accounting 2.14 provides immutable bank reconciliation with split matches 
     source('lib/apps/enterprise/specialist-catalog.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.24\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.25\.0'/);
   assert.match(migrations,/ACCOUNTING_2_13_0_TO_2_14_0/);
   assert.match(
     migration,
@@ -1454,7 +1454,7 @@ test('Accounting 2.16 Tax Engine is migration-backed and fresh-install complete'
     source('lib/apps/accounting/taxes.ts'),source('app/apps/accounting/AccountingWorkspace.tsx'),
     source('app/apps/accounting/AccountingFoundationPanel.tsx'),
   ]);
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.24\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.25\.0'/);
   assert.match(runtime,/ACCOUNTING_2_15_0_TO_2_16_0/);
   assert.match(migration,/fromVersion:\s*'2\.15\.0'[\s\S]*toVersion:\s*'2\.16\.0'/);
   assert.match(depth,/ACCOUNTING_TAX_SQL/);
@@ -1484,7 +1484,7 @@ test('Accounting 2.17 Kenya localization reuses shared eTIMS and is migration-ba
     source('app/apps/accounting/AccountingFoundationPanel.tsx'),
     source('lib/apps/accounting/payables.ts'),
   ]);
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.24\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.25\.0'/);
   assert.match(runtime,/ACCOUNTING_2_16_0_TO_2_17_0/);
   assert.match(migration,/fromVersion:\s*'2\.16\.0'[\s\S]*toVersion:\s*'2\.17\.0'/);
   assert.match(depth,/ACCOUNTING_KENYA_SQL/);
@@ -1520,7 +1520,7 @@ test('Accounting 2.18 International Localization is migration-backed and shares 
     source('app/apps/accounting/AccountingWorkspace.tsx'),
     source('app/apps/accounting/AccountingFoundationPanel.tsx'),
   ]);
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.24\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.25\.0'/);
   assert.match(runtime,/ACCOUNTING_2_17_0_TO_2_18_0/);
   assert.match(migration,/fromVersion:\s*'2\.17\.0'[\s\S]*toVersion:\s*'2\.18\.0'/);
   assert.match(depth,/ACCOUNTING_INTERNATIONAL_LOCALIZATION_SQL/);
@@ -1567,7 +1567,7 @@ test('Accounting 2.19 Foreign Currency is migration-backed and subledger control
     source('lib/apps/accounting/reconciliation.ts'),
     source('lib/apps/accounting/ledger-engine.ts'),
   ]);
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.24\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.25\.0'/);
   assert.match(runtime,/ACCOUNTING_2_18_0_TO_2_19_0/);
   assert.match(migration,/fromVersion:\s*'2\.18\.0'[\s\S]*toVersion:\s*'2\.19\.0'/);
   assert.match(migration,/ACCOUNTING_KENYA_SQL[\s\S]*ACCOUNTING_INTERNATIONAL_LOCALIZATION_SQL[\s\S]*ACCOUNTING_FX_SQL/);
@@ -1627,7 +1627,7 @@ test('Accounting 2.20 Inventory Valuation is migration-backed and ledger control
     source('lib/apps/sales/inventory.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.24\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.25\.0'/);
   assert.match(runtime,/ACCOUNTING_2_19_0_TO_2_20_0/);
   assert.match(migration,/fromVersion:\s*'2\.19\.0'[\s\S]*toVersion:\s*'2\.20\.0'/);
   assert.match(depth,/ACCOUNTING_INVENTORY_VALUATION_SQL/);
@@ -2111,7 +2111,7 @@ test('Accounting 2.23 Budgets and Forecasts are migration-backed and planning co
     source('app/api/apps/accounting/budgets/route.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.24\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.25\.0'/);
   assert.match(runtime,/ACCOUNTING_2_22_0_TO_2_23_0/);
   assert.match(migration,/fromVersion:\s*'2\.22\.0'[\s\S]*toVersion:\s*'2\.23\.0'/);
   assert.match(migration,/ACCOUNTING_BUDGETS_SQL/);
@@ -2232,8 +2232,8 @@ test('Accounting 2.24 Project and Departmental Accounting is migration-backed an
     source('app/apps/accounting/AccountingDimensions.tsx'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.24\.0'/);
-  assert.match(manifest,/optionalDepends:\s*\['expenses','projects'\]/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.25\.0'/);
+  assert.match(manifest,/optionalDepends:\s*\['expenses','projects','payroll'\]/);
   assert.match(runtime,/ACCOUNTING_2_23_0_TO_2_24_0/);
   assert.match(migration,/fromVersion:\s*'2\.23\.0'[\s\S]*toVersion:\s*'2\.24\.0'/);
   assert.match(migration,/ACCOUNTING_DIMENSIONS_SQL/);
