@@ -37,8 +37,16 @@ function StatementRows({
               <span>{line.label}</span>
             )}
           </td>
-          <td className={styles.number}><strong={line.emphasis==='total'}>{formatAccountingAmount(line.current,currency)}</strong></td>
-          <td className={styles.number}><strong={line.emphasis==='total'}>{formatAccountingAmount(line.comparative,currency)}</strong></td>
+          <td className={styles.number}>
+            {line.emphasis==='total'
+              ? <strong>{formatAccountingAmount(line.current,currency)}</strong>
+              : formatAccountingAmount(line.current,currency)}
+          </td>
+          <td className={styles.number}>
+            {line.emphasis==='total'
+              ? <strong>{formatAccountingAmount(line.comparative,currency)}</strong>
+              : formatAccountingAmount(line.comparative,currency)}
+          </td>
         </tr>
       ))}
     </tbody>
