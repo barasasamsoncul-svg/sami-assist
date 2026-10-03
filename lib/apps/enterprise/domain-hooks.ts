@@ -186,6 +186,14 @@ export function assertEnterpriseDomainMutationAllowed(
       table === 'accounting_payroll_employee_dimensions' ||
       table === 'accounting_payroll_run_postings' ||
       table === 'accounting_payroll_run_posting_allocations' ||
+      table === 'accounting_consolidation_settings' ||
+      table === 'accounting_consolidation_groups' ||
+      table === 'accounting_consolidation_members' ||
+      table === 'accounting_consolidation_account_mappings' ||
+      table === 'accounting_consolidation_rates' ||
+      table === 'accounting_consolidation_eliminations' ||
+      table === 'accounting_consolidation_runs' ||
+      table === 'accounting_consolidation_run_lines' ||
       table ===
         'accounting_reconciliation_suggestions'
     )
@@ -329,6 +337,23 @@ export function assertEnterpriseDomainMutationAllowed(
             table ===
               'accounting_payroll_run_posting_allocations'
             ? 'Payroll Accounting must be changed through the validated Accounting payroll integration services.'
+          : table ===
+              'accounting_consolidation_settings' ||
+            table ===
+              'accounting_consolidation_groups' ||
+            table ===
+              'accounting_consolidation_members' ||
+            table ===
+              'accounting_consolidation_account_mappings' ||
+            table ===
+              'accounting_consolidation_rates' ||
+            table ===
+              'accounting_consolidation_eliminations' ||
+            table ===
+              'accounting_consolidation_runs' ||
+            table ===
+              'accounting_consolidation_run_lines'
+            ? 'Multi-company consolidation must be changed through the validated Accounting consolidation services.'
           : 'Accounting policy must be changed through the validated Accounting Setup workspace.',
     );
   }
