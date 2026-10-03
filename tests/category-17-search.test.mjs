@@ -227,7 +227,7 @@ test('Dashboard refresh: workspace home uses shared shell, real company identity
   assert.match(client, />\s*Ask SaMi\s*</);
   assert.match(client, /Only apps available to your role are shown/);
   assert.match(client, /SaMi analysis/);
-  assert.match(client, /Business snapshot/);
+  assert.match(client, /Workspace snapshot/);
   assert.match(client, /Needs attention/);
   assert.doesNotMatch(
     client,
