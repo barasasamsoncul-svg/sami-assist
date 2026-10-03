@@ -2385,6 +2385,8 @@ test('Accounting 2.26 consolidates only trusted multi-company ledgers with contr
   assert.match(service,/closing[\s\S]*average[\s\S]*historical/);
   assert.match(service,/translation_adjustment/);
   assert.match(service,/accounting_consolidation_eliminations/);
+  assert.match(service,/SET TRANSACTION ISOLATION LEVEL REPEATABLE READ/);
+  assert.match(service,/Closed consolidation groups cannot be changed/);
   assert.match(service,/The consolidation snapshot is not balanced after translation adjustment/);
   assert.match(workspace,/multi-company-consolidation[\s\S]*AccountingConsolidation/);
   assert.match(foundation,/"multi-company-consolidation"/);
