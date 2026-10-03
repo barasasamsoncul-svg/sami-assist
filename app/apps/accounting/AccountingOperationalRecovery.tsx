@@ -30,6 +30,13 @@ function actionLabel(value:string) {
   return value.replaceAll('_',' ').replace(/\b\w/g,letter=>letter.toUpperCase());
 }
 
+function formatTimestamp(value:string) {
+  const date=new Date(value);
+  return Number.isFinite(date.getTime())
+    ? date.toISOString().replace('T',' ').slice(0,16)+' UTC'
+    : '—';
+}
+
 export default function AccountingOperationalRecovery({
   initialData,
   canManage,
@@ -230,7 +237,7 @@ export default function AccountingOperationalRecovery({
             <div>
               <span className={styles.eyebrow}>Live integrity checks</span>
               <h3>Accounting health</h3>
-              <p>Generated {new Date(initialData.generatedAt).toLocaleString('en-KE')} from current company data.</p>
+              <p>Generated {formatTimestamp(initialData.generatedAt)} from current company data.</p>
             </div>
             {initialData.health.overall==='healthy'
               ? <CheckCircle2 size={22}/>
@@ -370,7 +377,7 @@ export default function AccountingOperationalRecovery({
                 <tbody>
                   {initialData.recoveryHistory.map(row=>(
                     <tr key={row.id}>
-                      <td>{new Date(row.createdAt).toLocaleString('en-KE')}</td>
+                      <td>{formatTimestamp(row.createdAt)}</td>
                       <td>{actionLabel(row.actionKey)}</td>
                       <td>{row.status}</td>
                       <td>{row.failureMessage||row.summary||'—'}</td>

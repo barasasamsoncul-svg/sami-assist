@@ -32,7 +32,7 @@ function failure(error:unknown) {
   }
   console.error('[Accounting] Operational recovery action failed',error);
   return respond(
-    {error:'Accounting operational recovery could not be completed. Financial data was not changed by SaMi after the failure.'},
+    {error:'Accounting operational recovery did not complete cleanly. Refresh Settings & Recovery and review the recovery history before retrying.'},
     500,
   );
 }

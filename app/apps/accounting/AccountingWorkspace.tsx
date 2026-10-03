@@ -1419,25 +1419,28 @@ export default async function AccountingWorkspace({
           .length,
     },
 
-    {
-      key:
-        'settings-recovery',
-      label:
-        'Settings & Recovery',
-      href:
-        appBaseHref +
-        '/settings-recovery',
-      description:
-        'Configuration map, book-health checks, diagnostics and non-destructive recovery.',
-      sectionLabel:
-        'Configuration',
-      badge:
-        operationalRecoveryWorkspace
-          ?.health
-          .checks
-          .filter(check => check.status !== 'pass')
-          .length,
-    },
+    data.capabilities
+      .canReport
+      ? {
+          key:
+            'settings-recovery',
+          label:
+            'Settings & Recovery',
+          href:
+            appBaseHref +
+            '/settings-recovery',
+          description:
+            'Configuration map, book-health checks, diagnostics and non-destructive recovery.',
+          sectionLabel:
+            'Configuration',
+          badge:
+            operationalRecoveryWorkspace
+              ?.health
+              .checks
+              .filter(check => check.status !== 'pass')
+              .length,
+        }
+      : null,
 
     {
       key:
