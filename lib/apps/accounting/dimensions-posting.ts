@@ -147,17 +147,24 @@ export async function copyAccountingDimensionsForReversal(
     if (!allocations.rows.length) continue;
 
     const lineNet = cents(target.debit) - cents(target.credit);
-    let remainingAmount = lineNet;
+    const totalBasisPoints = allocations.rows.reduce(
+      (sum,row) => sum + Number(row.basis_points || 0),
+      0,
+    );
+    let allocatedSoFar = BigInt(0);
     const allocationSetId = randomUUID();
 
     for (let position=0; position<allocations.rows.length; position += 1) {
       const row = allocations.rows[position];
       const bps = Number(row.basis_points);
+      const isFullyAllocatedLastRow =
+        totalBasisPoints === 10000 &&
+        position === allocations.rows.length - 1;
       const allocationAmount =
-        position === allocations.rows.length - 1
-          ? remainingAmount
+        isFullyAllocatedLastRow
+          ? lineNet - allocatedSoFar
           : (lineNet * BigInt(bps)) / BigInt(10000);
-      remainingAmount -= allocationAmount;
+      allocatedSoFar += allocationAmount;
 
       await client.query(
         `INSERT INTO accounting_journal_line_dimensions(
