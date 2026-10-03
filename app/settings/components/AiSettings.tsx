@@ -695,7 +695,7 @@ export default function AiSettings() {
             </h2>
 
             <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-600 dark:text-slate-300">
-              SaMi remembers your conversations, current account preferences and—when memory is enabled—useful personal context across future chats in this company. AI access still follows your normal workspace permissions.
+              SaMi AI is a general assistant. When you explicitly ask about business data, it can use only the current company records and actions your permissions allow. It does not use coworker activity as ambient chat context.
             </p>
           </div>
         </div>
