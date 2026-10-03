@@ -7221,3 +7221,88 @@ test('Invoicing exposes the automatic payment gateway as a visible module surfac
     'Provider-key search must make deep links stable even if the display name changes.',
   );
 });
+
+
+test('Invoicing exposes automatic payment settlement as a first-class module surface', async () => {
+  const [
+    navigation,
+    workspace,
+    route,
+    integrationUi,
+    integrationCenter,
+    provider,
+    settlement,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/navigation.ts'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('app/apps/invoicing/payment-integrations/page.tsx'),
+    source('app/apps/invoicing/PaymentIntegrationsWorkspace.tsx'),
+    source('app/integrations/IntegrationsClient.tsx'),
+    source('lib/apps/invoicing/integration-provider.ts'),
+    source('lib/apps/invoicing/external-settlement.ts'),
+  ]);
+
+  assert.match(
+    navigation,
+    /paymentIntegrations:[\s\S]*\/apps\/invoicing\/payment-integrations[\s\S]*Payment Integrations/s,
+  );
+
+  assert.match(
+    workspace,
+    /view ===\s*'paymentIntegrations'[\s\S]*<PaymentIntegrationsWorkspace/s,
+  );
+
+  assert.match(
+    route,
+    /view="paymentIntegrations"/,
+  );
+
+  assert.match(
+    integrationUi,
+    /invoicing_payment_gateway/,
+  );
+
+  assert.match(
+    integrationUi,
+    /\/integrations\?provider=invoicing_payment_gateway/,
+  );
+
+  assert.match(
+    integrationUi,
+    /invoicing\.payment\.succeeded/,
+  );
+
+  assert.match(
+    integrationCenter,
+    /url\.searchParams\.get\(\s*'provider'/s,
+    'The global Integrations center must accept a provider focus from an app-owned integration surface.',
+  );
+
+  assert.match(
+    integrationCenter,
+    /provider\.key/,
+    'Provider search must include provider keys so app deep-links can focus the exact connector.',
+  );
+
+  assert.match(
+    provider,
+    /key:'invoicing_payment_gateway'/,
+  );
+
+  assert.match(
+    provider,
+    /invoicing\.payment\.succeeded/,
+  );
+
+  assert.match(
+    settlement,
+    /recordInvoicePaymentCore/,
+    'Verified external settlements must continue through the authoritative payment core.',
+  );
+
+  assert.match(
+    settlement,
+    /gateway:'\+input\.providerKey\+':'\+input\.externalEventId/,
+    'Gateway events must remain idempotent by provider and external event ID.',
+  );
+});
