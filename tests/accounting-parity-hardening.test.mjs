@@ -69,6 +69,9 @@ test('financial provider connectors reuse authoritative services and current per
   assert.match(statements,/\["active","error"\]/);
   assert.match(statements,/SET status='active',sync_cursor/);
   assert.match(service,/requestedProviderKey/);
+  assert.match(service,/accounting\.bank_feed\.transactions/);
+  assert.match(service,/accounting\.document\.extracted/);
+  assert.match(service,/invoicing\.payment\.succeeded/);
 
   assert.match(webhooks,/WEBHOOK_EVENT_CONFLICT/);
   assert.match(webhooks,/retryingFailedDelivery/);

@@ -1125,7 +1125,7 @@ export async function createWorkspaceWebhookEndpoint(
       ? input.eventKeys
       : [];
 
-  const eventKeys =
+  const requestedEventKeys =
     Array.from(
       new Set(
         rawEventKeys
@@ -1162,6 +1162,25 @@ export async function createWorkspaceWebhookEndpoint(
         0,
         50,
       );
+
+  const providerEventKey =
+    requestedProviderKey ===
+      'accounting_bank_feed'
+      ? 'accounting.bank_feed.transactions'
+      : requestedProviderKey ===
+          'accounting_document_extractor'
+        ? 'accounting.document.extracted'
+        : requestedProviderKey ===
+            'invoicing_payment_gateway'
+          ? 'invoicing.payment.succeeded'
+          : null;
+
+  const eventKeys =
+    providerEventKey
+      ? [
+          providerEventKey,
+        ]
+      : requestedEventKeys;
 
   const endpointKey =
     'wh_' +
