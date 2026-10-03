@@ -3,15 +3,12 @@
 import Link from 'next/link';
 
 import {
-  Activity,
   ArrowRight,
   Bell,
   Boxes,
-  CheckCircle2,
   Clock3,
   Search,
   Sparkles,
-  TriangleAlert,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -22,7 +19,6 @@ import {
   type ReactNode,
 } from 'react';
 
-import CompanyAvatar from '@/app/components/workspace/CompanyAvatar';
 import WorkspaceShell from '@/app/components/workspace/WorkspaceShell';
 import SamiAppIconTile from '@/app/components/apps/SamiAppIconTile';
 
@@ -37,6 +33,7 @@ import type {
   DashboardViewModel,
   DashboardWorkItem,
 } from '@/lib/dashboard/types';
+
 
 type UserData = {
   id: string;
@@ -102,27 +99,6 @@ type CompanyData =
     }
   | null;
 
-type ActivityItem = {
-  id: string;
-  label: string;
-  summary: string | null;
-  module: string | null;
-  result: string | null;
-  createdAt: string;
-  actor: {
-    name: string;
-  };
-};
-
-type ActivitySummary =
-  | {
-      todayCount: number;
-      failed7d: number;
-      actors7d: number;
-      modules7d: number;
-    }
-  | null;
-
 type Props = {
   user: UserData;
   tenant: TenantData;
@@ -131,14 +107,13 @@ type Props = {
   modules: ModuleData[];
   company: CompanyData;
   dashboard: DashboardViewModel;
-  recentActivity: ActivityItem[];
-  activitySummary: ActivitySummary;
   unreadNotifications: number;
   capabilities: {
     ai: boolean;
     files: boolean;
   };
 };
+
 
 function greeting() {
   const hour =
@@ -161,6 +136,7 @@ function greeting() {
 
   return 'Good evening';
 }
+
 
 function relativeTime(
   value:
@@ -231,74 +207,6 @@ function relativeTime(
     );
 }
 
-function activityBrief(
-  recentActivity:
-    ActivityItem[],
-  activitySummary:
-    ActivitySummary,
-  fallback:
-    string,
-) {
-  if (
-    recentActivity.length >
-      0
-  ) {
-    const latest =
-      recentActivity
-        .slice(
-          0,
-          3,
-        )
-        .map(
-          item =>
-            item.label,
-        )
-        .join(
-          ' · ',
-        );
-
-    if (
-      activitySummary
-        ?.todayCount
-    ) {
-      return (
-        'You recorded ' +
-        activitySummary.todayCount +
-        (
-          activitySummary.todayCount ===
-            1
-            ? ' workspace activity today. '
-            : ' workspace activities today. '
-        ) +
-        'Latest: ' +
-        latest +
-        '.'
-      );
-    }
-
-    return (
-      'Your latest workspace activity: ' +
-      latest +
-      '.'
-    );
-  }
-
-  if (
-    activitySummary
-      ?.todayCount
-  ) {
-    return (
-      'You recorded ' +
-      activitySummary.todayCount +
-      ' workspace activities today across ' +
-      activitySummary.modules7d +
-      ' active module(s) this week.'
-    );
-  }
-
-  return fallback;
-}
-
 
 export default function DashboardClient({
   user,
@@ -308,8 +216,6 @@ export default function DashboardClient({
   modules,
   company,
   dashboard,
-  recentActivity,
-  activitySummary,
   unreadNotifications,
   capabilities,
 }: Props) {
@@ -335,14 +241,14 @@ export default function DashboardClient({
     dashboard.attention
       .slice(
         0,
-        4,
+        6,
       );
 
   const work =
     dashboard.work
       .slice(
         0,
-        4,
+        6,
       );
 
   const metrics =
@@ -356,7 +262,7 @@ export default function DashboardClient({
     dashboard.recent
       .slice(
         0,
-        5,
+        6,
       );
 
   const firstName =
@@ -374,12 +280,8 @@ export default function DashboardClient({
     setAiBrief,
   ] =
     useState(
-      activityBrief(
-        recentActivity,
-        activitySummary,
-        dashboard.brief
-          .message,
-      ),
+      dashboard.brief
+        .message,
     );
 
   const [
@@ -398,12 +300,26 @@ export default function DashboardClient({
         return;
       }
 
-      const latestActivityId =
-        recentActivity[0]
-          ?.id ||
+      const signalKey = [
+        dashboard.attention[0]
+          ?.id,
+        dashboard.work[0]
+          ?.id,
+        dashboard.metrics[0]
+          ?.id,
+        dashboard.aiContext[0]
+          ?.id,
+      ]
+        .filter(
+          Boolean,
+        )
+        .join(
+          ':',
+        ) ||
         'none';
+
       const cacheKey =
-        'sami:dashboard-ai-brief:' +
+        'sami:dashboard-analysis:' +
         (
           tenant?.id ||
           'workspace'
@@ -416,7 +332,7 @@ export default function DashboardClient({
           'company'
         ) +
         ':' +
-        latestActivityId;
+        signalKey;
 
       try {
         const cached =
@@ -432,12 +348,9 @@ export default function DashboardClient({
             JSON.parse(
               cached,
             ) as {
-              message?:
-                string;
-              generatedByAi?:
-                boolean;
-              savedAt?:
-                number;
+              message?: string;
+              generatedByAi?: boolean;
+              savedAt?: number;
             };
 
           if (
@@ -502,6 +415,7 @@ export default function DashboardClient({
                       data.summary
                         .message
                         .trim();
+
                     const generatedByAi =
                       data.summary
                         .generatedByAi ===
@@ -551,10 +465,20 @@ export default function DashboardClient({
       company
         ?.currentCompany
         .id,
-      recentActivity,
+      dashboard,
       tenant?.id,
     ],
   );
+
+  const hasBusinessSignals =
+    attention.length >
+      0 ||
+    work.length >
+      0 ||
+    metrics.length >
+      0 ||
+    recent.length >
+      0;
 
   return (
     <WorkspaceShell
@@ -585,7 +509,7 @@ export default function DashboardClient({
         unreadNotifications
       }
       title="Home"
-      description="Open an app or ask SaMi to work across the business capabilities available to you."
+      description="A focused operating view of the business information available to you."
       contextLabel={
         company
           ?.currentCompany
@@ -595,60 +519,58 @@ export default function DashboardClient({
       }
       contentClassName="max-w-[1540px]"
     >
-      <div className="space-y-6 sm:space-y-7">
-        <section className="sami-ai-sheen relative overflow-hidden rounded-[28px] border border-[var(--sami-border)] p-4 shadow-[var(--sami-shadow-sm)] sm:p-5">
-          <div className="pointer-events-none absolute -right-20 -top-24 h-56 w-56 rounded-full bg-indigo-500/10 blur-3xl" />
-
-          <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="space-y-7 sm:space-y-8">
+        <section className="border-b border-[var(--sami-border)] pb-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0">
               <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-indigo-600 dark:text-indigo-300">
                 <Sparkles className="h-3.5 w-3.5" />
-                SaMi AI
-                <span className="rounded-full border border-indigo-200/80 bg-white/70 px-2 py-0.5 text-[8px] tracking-normal text-indigo-600 dark:border-indigo-500/20 dark:bg-white/[0.04] dark:text-indigo-300">
+                SaMi analysis
+                <span className="text-[9px] font-semibold normal-case tracking-normal text-slate-500 dark:text-slate-400">
                   {aiBriefGenerated
-                    ? 'Live activity summary'
-                    : 'Activity briefing'}
+                    ? 'live business analysis'
+                    : 'business briefing'}
                 </span>
               </div>
 
-              <h1 className="mt-2 text-xl font-black tracking-[-0.03em] text-slate-950 sm:text-2xl dark:text-white">
+              <h1 className="mt-2 text-2xl font-black tracking-[-0.035em] text-slate-950 sm:text-3xl dark:text-white">
                 {greeting()}, {firstName}
               </h1>
 
-              <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500 sm:text-sm dark:text-slate-400">
+              <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-600 dark:text-slate-300">
                 {aiBrief}
               </p>
             </div>
 
-            <div className="flex w-full flex-col gap-2 sm:flex-row lg:max-w-[620px]">
+            <div className="flex flex-wrap items-center gap-2">
               {capabilities.ai && (
                 <Link
                   href="/ai"
-                  className="group flex min-h-12 min-w-0 flex-1 items-center gap-3 rounded-2xl border border-indigo-200/80 bg-white/85 px-4 text-left shadow-sm transition hover:-translate-y-px hover:border-indigo-300 hover:shadow-md dark:border-indigo-500/20 dark:bg-white/[0.055] dark:hover:border-indigo-400/30"
+                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-bold text-white transition hover:opacity-90 dark:bg-white dark:text-slate-950"
                 >
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 text-white shadow-sm">
-                    <Sparkles className="h-4 w-4" />
-                  </span>
-
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-xs font-black text-slate-800 dark:text-slate-100">
-                      Ask SaMi anything about your business
-                    </span>
-                    <span className="mt-0.5 block truncate text-[10px] text-slate-600 dark:text-slate-300">
-                      Works across the apps and records your permissions allow
-                    </span>
-                  </span>
-
-                  <ArrowRight className="h-4 w-4 shrink-0 text-indigo-500 transition group-hover:translate-x-0.5" />
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Ask SaMi
                 </Link>
               )}
 
               <Link
                 href="/search"
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-4 text-xs font-bold text-slate-600 shadow-sm transition hover:bg-[var(--sami-surface-soft)] dark:text-slate-300"
+                className="inline-flex h-10 items-center gap-2 rounded-xl px-3 text-xs font-bold text-slate-600 transition hover:bg-[var(--sami-surface-soft)] dark:text-slate-300"
               >
-                <Search className="h-4 w-4" />
+                <Search className="h-3.5 w-3.5" />
                 Search
+              </Link>
+
+              <Link
+                href="/notifications"
+                aria-label="Notifications"
+                className="relative inline-flex h-10 w-10 items-center justify-center rounded-xl text-slate-600 transition hover:bg-[var(--sami-surface-soft)] dark:text-slate-300"
+              >
+                <Bell className="h-4 w-4" />
+                {unreadNotifications >
+                  0 && (
+                  <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-rose-500" />
+                )}
               </Link>
             </div>
           </div>
@@ -657,7 +579,7 @@ export default function DashboardClient({
         <section>
           <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 dark:text-slate-300">
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
                 Workspace
               </p>
 
@@ -665,8 +587,8 @@ export default function DashboardClient({
                 Apps
               </h2>
 
-              <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-300">
-                Only apps available to your role and current workspace are shown.
+              <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                Only apps available to your role are shown.
               </p>
             </div>
 
@@ -703,7 +625,7 @@ export default function DashboardClient({
                       title={
                         module.name
                       }
-                      className="group flex min-w-0 flex-col items-center rounded-2xl px-1.5 py-2 text-center outline-none transition hover:bg-[var(--sami-surface-soft)] focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+                      className="group flex min-w-0 flex-col items-center px-1.5 py-2 text-center outline-none transition hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-indigo-500/40"
                     >
                       <SamiAppIconTile
                         appKey={
@@ -717,7 +639,7 @@ export default function DashboardClient({
                           module.iconKey
                         }
                         size="xl"
-                        className="transition duration-200 group-hover:-translate-y-0.5 group-hover:scale-[1.04]"
+                        className="transition duration-200 group-hover:scale-[1.04]"
                       />
 
                       <span className="mt-2.5 w-full truncate text-[11px] font-bold text-slate-700 sm:text-xs dark:text-slate-200">
@@ -741,312 +663,108 @@ export default function DashboardClient({
               )}
             </div>
           ) : (
-            <div className="sami-surface rounded-[24px] p-5">
-              <EmptyState
-                icon={
-                  Boxes
-                }
-                title="No business apps available"
-                description="Apps will appear here when they are installed and granted to your account."
-              />
-            </div>
+            <EmptyState
+              icon={
+                Boxes
+              }
+              title="No business apps available"
+              description="Apps appear here when they are installed and granted to your account."
+            />
           )}
         </section>
 
-        {(attention.length >
-          0 ||
-          work.length >
-          0 ||
-          metrics.length >
-          0 ||
-          recent.length >
-          0 ||
-          recentActivity.length >
-          0) && (
-          <section className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(300px,0.75fr)]">
-            <div className="space-y-4">
-              {activitySummary ? (
-                <Section
-                  title="Operational pulse"
-                  description="Live signals from your activity in the current company."
-                >
-                  <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                    <div className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
-                      <Activity className="h-4 w-4 text-blue-600 dark:text-blue-300" />
-                      <p className="mt-3 text-xl font-black">
-                        {activitySummary.todayCount}
-                      </p>
-                      <p className="mt-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-                        Your actions today
-                      </p>
-                    </div>
-
-                    <div className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
-                      <TriangleAlert className="h-4 w-4 text-amber-600 dark:text-amber-300" />
-                      <p className="mt-3 text-xl font-black">
-                        {activitySummary.failed7d}
-                      </p>
-                      <p className="mt-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-                        Failed or denied · 7d
-                      </p>
-                    </div>
-
-                    <div className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
-                      <Boxes className="h-4 w-4 text-indigo-600 dark:text-indigo-300" />
-                      <p className="mt-3 text-xl font-black">
-                        {activitySummary.modules7d}
-                      </p>
-                      <p className="mt-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-                        Modules touched · 7d
-                      </p>
-                    </div>
-
-                    <Link
-                      href="/notifications"
-                      className="rounded-2xl border border-slate-200 p-4 transition hover:bg-slate-50 dark:border-white/10 dark:hover:bg-white/[0.04]"
-                    >
-                      <Bell className="h-4 w-4 text-rose-600 dark:text-rose-300" />
-                      <p className="mt-3 text-xl font-black">
-                        {unreadNotifications}
-                      </p>
-                      <p className="mt-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-                        Unread alerts
-                      </p>
-                    </Link>
-                  </div>
-                </Section>
-              ) : null}
-
-              {(attention.length >
-                0 ||
-                work.length >
-                0) && (
-                <Section
-                  title="Work & attention"
-                  description="Real work contributed by the installed apps you can access."
-                >
-                  <div className="grid gap-2 md:grid-cols-2">
-                    {attention.map(
-                      item => (
-                        <AttentionRow
-                          key={
-                            item.id
-                          }
-                          item={
-                            item
-                          }
-                        />
-                      ),
-                    )}
-
-                    {work.map(
-                      item => (
-                        <WorkRow
-                          key={
-                            item.id
-                          }
-                          item={
-                            item
-                          }
-                        />
-                      ),
-                    )}
-                  </div>
-                </Section>
-              )}
-
-              {metrics.length >
-                0 && (
-                <Section
-                  title="Business snapshot"
-                  description="Metrics supplied by modules available to your account."
-                >
-                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    {metrics.map(
-                      metric => (
-                        <MetricCard
-                          key={
-                            metric.id
-                          }
-                          metric={
-                            metric
-                          }
-                        />
-                      ),
-                    )}
-                  </div>
-                </Section>
-              )}
-
-              {recent.length >
-                0 && (
-                <Section
-                  title="Recent records"
-                  description="Records surfaced by the apps you can access."
-                >
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {recent.map(
-                      item => (
-                        <RecentRow
-                          key={
-                            item.id
-                          }
-                          item={
-                            item
-                          }
-                        />
-                      ),
-                    )}
-                  </div>
-                </Section>
-              )}
-            </div>
-
-            <div className="space-y-4">
+        {hasBusinessSignals && (
+          <div className="space-y-7">
+            {metrics.length >
+              0 && (
               <Section
-                title="My activity"
-                description="Only your recent activity in the current company."
-                action={
-                  <Link
-                    href="/activity"
-                    className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 dark:text-blue-300"
-                  >
-                    Open
-                    <ArrowRight className="h-3 w-3" />
-                  </Link>
-                }
+                title="Business snapshot"
+                description="Current business metrics from the apps and records you are allowed to view."
               >
-                {recentActivity.length >
-                  0 ? (
-                  <div className="divide-y divide-slate-100 dark:divide-white/5">
-                    {recentActivity
-                      .slice(
-                        0,
-                        5,
-                      )
-                      .map(
-                        item => (
-                          <div
-                            key={
-                              item.id
-                            }
-                            className="flex items-start gap-3 py-3 first:pt-0 last:pb-0"
-                          >
-                            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300">
-                              {item.result ===
-                                'failed' ||
-                              item.result ===
-                                'denied' ? (
-                                <TriangleAlert className="h-4 w-4" />
-                              ) : (
-                                <CheckCircle2 className="h-4 w-4" />
-                              )}
-                            </div>
-
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-xs font-bold">
-                                {item.label}
-                              </p>
-                              <p className="mt-1 truncate text-[10px] text-slate-600 dark:text-slate-300">
-                                {relativeTime(
-                                  item.createdAt,
-                                )}
-                                {item.module
-                                  ? ` · ${item.module}`
-                                  : ''}
-                              </p>
-                            </div>
-                          </div>
-                        ),
-                      )}
-                  </div>
-                ) : (
-                  <EmptyState
-                    icon={
-                      Activity
-                    }
-                    title="No recent activity"
-                    description="Your actions in this company will appear here."
-                  />
-                )}
-              </Section>
-
-              <div className="sami-surface rounded-[24px] p-4">
-                <div className="flex items-center gap-3">
-                  <CompanyAvatar
-                    name={
-                      company
-                        ?.currentCompany
-                        .name ||
-                      'Company'
-                    }
-                    logoUrl={
-                      company
-                        ?.currentCompany
-                        .logoUrl ||
-                      null
-                    }
-                    size="md"
-                  />
-
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-black text-slate-800 dark:text-slate-100">
-                      {company
-                        ?.currentCompany
-                        .name ||
-                      tenant?.name ||
-                      'Workspace'}
-                    </p>
-
-                    <p className="mt-0.5 truncate text-[10px] text-slate-600 dark:text-slate-300">
-                      Current company context
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-1">
-                    <Link
-                      href="/notifications"
-                      aria-label="Messages"
-                      className="relative flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition hover:bg-[var(--sami-surface-soft)] dark:text-slate-300"
-                    >
-                      <Bell className="h-4 w-4" />
-                      {unreadNotifications >
-                        0 && (
-                        <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-rose-500" />
-                      )}
-                    </Link>
-
-                    <Link
-                      href="/activity"
-                      aria-label="My activity"
-                      className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition hover:bg-[var(--sami-surface-soft)] dark:text-slate-300"
-                    >
-                      <Activity className="h-4 w-4" />
-                    </Link>
-                  </div>
+                <div className="grid gap-x-5 gap-y-5 sm:grid-cols-2 xl:grid-cols-4">
+                  {metrics.map(
+                    metric => (
+                      <MetricCard
+                        key={
+                          metric.id
+                        }
+                        metric={
+                          metric
+                        }
+                      />
+                    ),
+                  )}
                 </div>
+              </Section>
+            )}
 
-                {activitySummary && (
-                  <div className="mt-3 flex items-center gap-2 border-t border-[var(--sami-border)] pt-3 text-[9px] font-semibold text-slate-600 dark:text-slate-300">
-                    <span>
-                      {activitySummary.todayCount} of your actions today
-                    </span>
-                    <span aria-hidden="true">
-                      ·
-                    </span>
-                    <span>
-                      {company?.allowedCompanyCount || 0} companies available
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-          </section>
+            {(attention.length >
+              0 ||
+              work.length >
+              0) && (
+              <Section
+                title="Needs attention"
+                description="Exceptions and work items that may require action."
+              >
+                <div className="divide-y divide-[var(--sami-border)]">
+                  {attention.map(
+                    item => (
+                      <AttentionRow
+                        key={
+                          item.id
+                        }
+                        item={
+                          item
+                        }
+                      />
+                    ),
+                  )}
+
+                  {work.map(
+                    item => (
+                      <WorkRow
+                        key={
+                          item.id
+                        }
+                        item={
+                          item
+                        }
+                      />
+                    ),
+                  )}
+                </div>
+              </Section>
+            )}
+
+            {recent.length >
+              0 && (
+              <Section
+                title="Recent business records"
+                description="Recent records surfaced by the business apps you can access."
+              >
+                <div className="divide-y divide-[var(--sami-border)]">
+                  {recent.map(
+                    item => (
+                      <RecentRow
+                        key={
+                          item.id
+                        }
+                        item={
+                          item
+                        }
+                      />
+                    ),
+                  )}
+                </div>
+              </Section>
+            )}
+          </div>
         )}
       </div>
     </WorkspaceShell>
   );
 }
+
 
 function Section({
   title,
@@ -1060,7 +778,7 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <section className="sami-surface rounded-[24px] p-4 sm:p-5">
+    <section className="border-t border-[var(--sami-border)] pt-5">
       <div className="mb-4 flex items-start justify-between gap-4">
         <div>
           <h2 className="text-sm font-black tracking-tight">
@@ -1080,29 +798,35 @@ function Section({
   );
 }
 
+
 function EmptyState({
-  icon: Icon,
+  icon:
+    Icon,
   title,
   description,
 }: {
-  icon: LucideIcon;
-  title: string;
-  description: string;
+  icon:
+    LucideIcon;
+  title:
+    string;
+  description:
+    string;
 }) {
   return (
-    <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-7 text-center dark:border-white/10">
+    <div className="border-t border-dashed border-[var(--sami-border)] py-8 text-center">
       <Icon className="mx-auto h-5 w-5 text-slate-300 dark:text-slate-600" />
 
       <p className="mt-2 text-xs font-bold">
         {title}
       </p>
 
-      <p className="mx-auto mt-1 max-w-sm text-[10px] leading-5 text-slate-600 dark:text-slate-300">
+      <p className="mx-auto mt-1 max-w-sm text-[10px] leading-5 text-slate-500 dark:text-slate-400">
         {description}
       </p>
     </div>
   );
 }
+
 
 function MetricCard({
   metric,
@@ -1111,23 +835,24 @@ function MetricCard({
     DashboardMetric;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
-      <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-600 dark:text-slate-300">
+    <div className="border-l-2 border-slate-200 pl-4 dark:border-white/10">
+      <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
         {metric.label}
       </p>
 
-      <p className="mt-2 text-xl font-black">
+      <p className="mt-1.5 text-xl font-black tracking-tight">
         {metric.value}
       </p>
 
       {metric.description && (
-        <p className="mt-1 text-[10px] leading-5 text-slate-600 dark:text-slate-300">
+        <p className="mt-1 text-[10px] leading-5 text-slate-500 dark:text-slate-400">
           {metric.description}
         </p>
       )}
     </div>
   );
 }
+
 
 function AttentionRow({
   item,
@@ -1136,15 +861,26 @@ function AttentionRow({
     DashboardAttentionItem;
 }) {
   const content = (
-    <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 dark:border-amber-500/20 dark:bg-amber-500/[0.06]">
-      <p className="text-xs font-bold">
-        {item.title}
-      </p>
+    <div className="flex items-start gap-3 py-3.5">
+      <span
+        aria-hidden="true"
+        className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-500"
+      />
 
-      {item.description && (
-        <p className="mt-1 text-[10px] leading-5 text-slate-500 dark:text-slate-400">
-          {item.description}
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-bold">
+          {item.title}
         </p>
+
+        {item.description && (
+          <p className="mt-1 text-[10px] leading-5 text-slate-500 dark:text-slate-400">
+            {item.description}
+          </p>
+        )}
+      </div>
+
+      {item.href && (
+        <ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
       )}
     </div>
   );
@@ -1154,6 +890,7 @@ function AttentionRow({
       href={
         item.href
       }
+      className="block transition hover:bg-[var(--sami-surface-soft)]"
     >
       {content}
     </Link>
@@ -1161,6 +898,7 @@ function AttentionRow({
     content
   );
 }
+
 
 function WorkRow({
   item,
@@ -1169,27 +907,38 @@ function WorkRow({
     DashboardWorkItem;
 }) {
   const content = (
-    <div className="rounded-xl border border-slate-200 p-3 transition hover:bg-slate-50 dark:border-white/10 dark:hover:bg-white/[0.04]">
-      <p className="text-xs font-bold">
-        {item.title}
-      </p>
+    <div className="flex items-start gap-3 py-3.5">
+      <span
+        aria-hidden="true"
+        className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-500"
+      />
 
-      <div className="mt-1 flex flex-wrap items-center gap-2 text-[9px] text-slate-600 dark:text-slate-300">
-        {item.status && (
-          <span>
-            {item.status}
-          </span>
-        )}
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-bold">
+          {item.title}
+        </p>
 
-        {item.dueAt && (
-          <span className="inline-flex items-center gap-1">
-            <Clock3 className="h-3 w-3" />
-            {relativeTime(
-              item.dueAt,
-            )}
-          </span>
-        )}
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-[9px] text-slate-500 dark:text-slate-400">
+          {item.status && (
+            <span>
+              {item.status}
+            </span>
+          )}
+
+          {item.dueAt && (
+            <span className="inline-flex items-center gap-1">
+              <Clock3 className="h-3 w-3" />
+              {relativeTime(
+                item.dueAt,
+              )}
+            </span>
+          )}
+        </div>
       </div>
+
+      {item.href && (
+        <ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+      )}
     </div>
   );
 
@@ -1198,6 +947,7 @@ function WorkRow({
       href={
         item.href
       }
+      className="block transition hover:bg-[var(--sami-surface-soft)]"
     >
       {content}
     </Link>
@@ -1206,6 +956,7 @@ function WorkRow({
   );
 }
 
+
 function RecentRow({
   item,
 }: {
@@ -1213,16 +964,22 @@ function RecentRow({
     DashboardRecentItem;
 }) {
   const content = (
-    <div className="rounded-xl border border-slate-200 p-3 transition hover:bg-slate-50 dark:border-white/10 dark:hover:bg-white/[0.04]">
-      <p className="truncate text-xs font-bold">
-        {item.title}
-      </p>
+    <div className="flex items-center gap-3 py-3">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-xs font-bold">
+          {item.title}
+        </p>
 
-      <p className="mt-1 text-[9px] text-slate-600 dark:text-slate-300">
-        {relativeTime(
-          item.occurredAt,
-        )}
-      </p>
+        <p className="mt-1 text-[9px] text-slate-500 dark:text-slate-400">
+          {relativeTime(
+            item.occurredAt,
+          )}
+        </p>
+      </div>
+
+      {item.href && (
+        <ArrowRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+      )}
     </div>
   );
 
@@ -1231,6 +988,7 @@ function RecentRow({
       href={
         item.href
       }
+      className="block transition hover:bg-[var(--sami-surface-soft)]"
     >
       {content}
     </Link>
