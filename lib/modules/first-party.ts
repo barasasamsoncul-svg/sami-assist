@@ -79,7 +79,7 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
     },
     settings: [],
     extensions: {
-      dashboard: false,
+      dashboard: true,
       search: false,
       notifications: false,
       activity: false,
