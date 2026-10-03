@@ -1226,3 +1226,28 @@ test('Category 13: module registry validates dependency, action, view, resource 
     'Invalid first-party manifests must fail when the canonical registry loads.',
   );
 });
+
+
+test('Category 13: tenant provisioning keeps manifest schema tracing inside the registered app directory', async () => {
+  const provisioning =
+    await source(
+      'lib/services/tenant-provisioning.ts',
+    );
+
+  assert.match(
+    provisioning,
+    /expectedPrefix/,
+  );
+
+  assert.match(
+    provisioning,
+    /path\.join\(\s*process\.cwd\(\),\s*'lib',\s*'apps',\s*manifest\.key,\s*schemaFileName/s,
+    'Tenant provisioning must keep schema file tracing inside lib/apps/<module>.',
+  );
+
+  assert.doesNotMatch(
+    provisioning,
+    /path\.resolve\(\s*process\.cwd\(\),\s*manifest\.schemaPath/s,
+    'A dynamic repository-root manifest path causes Turbopack to trace the whole project.',
+  );
+});
