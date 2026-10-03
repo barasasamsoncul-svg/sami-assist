@@ -1,3 +1,4 @@
+import { ACCOUNTING_MANAGEMENT_REPORTING_SQL } from '@/lib/apps/accounting/management-reporting-schema';
 import { ACCOUNTING_FINANCIAL_STATEMENTS_SQL } from '@/lib/apps/accounting/financial-statements-schema';
 import { ACCOUNTING_CONSOLIDATION_SQL } from '@/lib/apps/accounting/consolidation-schema';
 import { ACCOUNTING_PAYROLL_SQL } from '@/lib/apps/accounting/payroll-schema';
@@ -1774,6 +1775,7 @@ ${ACCOUNTING_DIMENSIONS_SQL}
 ${ACCOUNTING_PAYROLL_SQL}
 ${ACCOUNTING_CONSOLIDATION_SQL}
 ${ACCOUNTING_FINANCIAL_STATEMENTS_SQL}
+${ACCOUNTING_MANAGEMENT_REPORTING_SQL}
 `;
 }
 
