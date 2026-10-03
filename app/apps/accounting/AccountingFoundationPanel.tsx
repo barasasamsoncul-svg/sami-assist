@@ -85,6 +85,9 @@ export default function AccountingFoundationPanel({
   const receivableBalance = balanceByType(
     (type) => type === "asset_receivable",
   );
+  const payableBalance = -balanceByType(
+    (type) => type === "liability_payable",
+  );
   const incomeBalance = -balanceByType(
     (type) => type === "income" || type.startsWith("income_"),
   );
@@ -103,7 +106,7 @@ export default function AccountingFoundationPanel({
       ...extra,
     }).toString();
   const names = {
-    overview: "Financial command center",
+    overview: "Accounting dashboard",
     accounts: "Chart of accounts",
     "trial-balance": "Trial balance",
     "general-ledger": "General ledger",
@@ -134,7 +137,7 @@ export default function AccountingFoundationPanel({
   };
   const descriptions = {
     overview:
-      "Monitor financial position, book health and the accounting work that needs attention.",
+      "See the money in the business, what customers owe, what you owe suppliers, and whether the selected period made a profit or loss.",
     accounts:
       "Manage the company ledger hierarchy, classification and posting controls.",
     "trial-balance":
@@ -326,69 +329,74 @@ export default function AccountingFoundationPanel({
             <>
               <section className={styles.dashboardHero}>
                 <div>
-                  <span className={styles.heroLabel}>Net result · selected period</span>
+                  <span className={styles.heroLabel}>
+                    {netProfit >= BigInt(0) ? "Profit" : "Loss"} · selected period
+                  </span>
                   <strong className={styles.heroValue}>
                     {amount(decimalAmount(netProfit))}
                   </strong>
                   <p>
-                    Posted ledger activity from {filters.from} to {filters.to}.
-                    Draft journals are excluded until they are posted.
+                    This is income minus expenses from posted entries between
+                    {" "}{filters.from} and {filters.to}. Draft journals are not included.
                   </p>
                 </div>
 
                 <div className={styles.heroHealth}>
-                  <span className={styles.heroLabel}>Book health</span>
-                  <strong>{booksBalanced ? "Balanced" : "Needs review"}</strong>
+                  <span className={styles.heroLabel}>Books check</span>
+                  <strong>{booksBalanced ? "Books are balanced" : "Needs review"}</strong>
                   <small>
-                    Trial balance difference:{" "}
-                    {amount(decimalAmount(trialDifference))}
+                    {booksBalanced
+                      ? "Total debits and credits agree."
+                      : "Debits and credits differ by " +
+                        amount(decimalAmount(trialDifference)) +
+                        "."}
                   </small>
                 </div>
               </section>
 
               <div className={styles.financeCards}>
                 <div className={styles.financeCard}>
-                  <span>Cash & bank</span>
+                  <span>Money available</span>
                   <strong>{amount(decimalAmount(cashBalance))}</strong>
-                  <small>Posted cash-type ledger balance</small>
+                  <small>Bank, cash and mobile-money ledger balances</small>
                 </div>
                 <div className={styles.financeCard}>
-                  <span>Receivables</span>
+                  <span>Customers owe you</span>
                   <strong>{amount(decimalAmount(receivableBalance))}</strong>
-                  <small>Customer receivable control accounts</small>
+                  <small>Unpaid customer amounts recorded in receivables</small>
                 </div>
                 <div className={styles.financeCard}>
-                  <span>Income</span>
-                  <strong>{amount(decimalAmount(incomeBalance))}</strong>
-                  <small>Net posted income, including contra income</small>
+                  <span>You owe suppliers</span>
+                  <strong>{amount(decimalAmount(payableBalance))}</strong>
+                  <small>Amounts recorded in Accounts Payable</small>
                 </div>
                 <div className={styles.financeCard}>
-                  <span>Expenses</span>
-                  <strong>{amount(decimalAmount(expenseBalance))}</strong>
-                  <small>Posted expense accounts</small>
+                  <span>{netProfit >= BigInt(0) ? "Profit this period" : "Loss this period"}</span>
+                  <strong>{amount(decimalAmount(netProfit))}</strong>
+                  <small>Income minus expenses for the selected dates</small>
                 </div>
               </div>
 
               <section className={styles.healthGrid}>
                 <div>
-                  <span>Posted journals</span>
-                  <strong>{data.postedCount}</strong>
-                  <small>Selected period</small>
+                  <span>Sales / income</span>
+                  <strong>{amount(decimalAmount(incomeBalance))}</strong>
+                  <small>Posted income for the selected period</small>
                 </div>
                 <div>
-                  <span>Drafts to review</span>
+                  <span>Business expenses</span>
+                  <strong>{amount(decimalAmount(expenseBalance))}</strong>
+                  <small>Posted expenses for the selected period</small>
+                </div>
+                <div>
+                  <span>Entries waiting for review</span>
                   <strong>{data.draftCount}</strong>
-                  <small>Across all dates</small>
+                  <small>Draft journals not yet posted</small>
                 </div>
                 <div>
-                  <span>Active bank accounts</span>
-                  <strong>{data.bankAccounts}</strong>
-                  <small>Bank, cash or mobile money</small>
-                </div>
-                <div>
-                  <span>Unreconciled bank lines</span>
+                  <span>Bank items not matched</span>
                   <strong>{data.unreconciledBankLines}</strong>
-                  <small>Unmatched or suggested</small>
+                  <small>Statement lines still needing reconciliation</small>
                 </div>
               </section>
 
