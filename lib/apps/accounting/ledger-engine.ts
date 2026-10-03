@@ -8,6 +8,11 @@ import type {
   PoolClient,
 } from 'pg';
 
+import {
+  applyAccountingDimensionRules,
+  copyAccountingDimensionsForReversal,
+} from '@/lib/apps/accounting/dimensions-posting';
+
 
 export type LedgerAmount =
   | number
@@ -914,32 +919,80 @@ export async function postBalancedLedgerJournal(
     const line
     of normalized.lines
   ) {
-    await client.query(
-      `
-        INSERT INTO journal_lines (
-          company_id,
-          journal_id,
-          account_id,
-          description,
-          debit,
-          credit,
-          created_by,
-          updated_by
-        )
-        VALUES (
-          $1,$2,$3,$4,$5,$6,$7,$7
-        )
-      `,
-      [
-        input.companyId,
-        journalId,
-        line.accountId,
-        line.description ||
-          description,
-        line.debit,
-        line.credit,
-        input.userId,
-      ],
+    const insertedLine =
+      await client.query(
+        `
+          INSERT INTO journal_lines (
+            company_id,
+            journal_id,
+            account_id,
+            description,
+            debit,
+            credit,
+            created_by,
+            updated_by
+          )
+          VALUES (
+            $1,$2,$3,$4,$5,$6,$7,$7
+          )
+          RETURNING id::text
+        `,
+        [
+          input.companyId,
+          journalId,
+          line.accountId,
+          line.description ||
+            description,
+          line.debit,
+          line.credit,
+          input.userId,
+        ],
+      );
+
+    if (
+      input.postingKind !==
+        'reversal'
+    ) {
+      await applyAccountingDimensionRules(
+        client,
+        {
+          companyId:
+            input.companyId,
+          journalLineId:
+            String(
+              insertedLine.rows[0].id,
+            ),
+          accountId:
+            line.accountId,
+          sourceModule,
+          debit:
+            line.debit,
+          credit:
+            line.credit,
+          userId:
+            input.userId,
+        },
+      );
+    }
+  }
+
+  if (
+    input.postingKind ===
+      'reversal' &&
+    input.reversalOfJournalId
+  ) {
+    await copyAccountingDimensionsForReversal(
+      client,
+      {
+        companyId:
+          input.companyId,
+        originalJournalId:
+          input.reversalOfJournalId,
+        reversalJournalId:
+          journalId,
+        userId:
+          input.userId,
+      },
     );
   }
 
