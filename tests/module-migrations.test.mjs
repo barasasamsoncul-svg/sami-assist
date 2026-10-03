@@ -2380,6 +2380,8 @@ test('Accounting 2.26 consolidates only trusted multi-company ledgers with contr
   assert.match(companyContext,/allowedCompanyIds/);
   assert.match(companyContext,/selectedCompanyIds/);
   assert.match(service,/context\.company\.allowedCompanyIds/);
+  assert.match(service,/NOT EXISTS \(SELECT 1 FROM accounting_consolidation_members hidden[\s\S]*member_company_id=ANY\(\$2::uuid\[\]\)/);
+  assert.match(service,/visibleGroupIds/);
   assert.match(service,/j\.status='posted'/);
   assert.match(service,/full[\s\S]*proportional/);
   assert.match(service,/closing[\s\S]*average[\s\S]*historical/);
