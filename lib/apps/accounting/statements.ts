@@ -1216,8 +1216,8 @@ async function ingestNormalizedFeedForRuntime(
     );
     const connection = connectionResult.rows[0];
 
-    if (!connection || connection.status !== "active") {
-      throw new AccountingInputError("Feed connection must be active before syncing.");
+    if (!connection || !["active","error"].includes(String(connection.status))) {
+      throw new AccountingInputError("Feed connection must be active or retryable before syncing.");
     }
 
     const account = await financialAccount(
@@ -1257,7 +1257,7 @@ async function ingestNormalizedFeedForRuntime(
 
     await client.query(
       `UPDATE accounting_bank_feed_connections
-       SET sync_cursor=$3,last_synced_at=NOW(),last_error=NULL,updated_by=$4,updated_at=NOW()
+       SET status='active',sync_cursor=$3,last_synced_at=NOW(),last_error=NULL,updated_by=$4,updated_at=NOW()
        WHERE company_id=$1 AND id=$2`,
       [runtime.companyId,connectionId,cursor,runtime.userId],
     );

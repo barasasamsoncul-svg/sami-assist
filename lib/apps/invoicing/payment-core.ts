@@ -89,32 +89,7 @@ export async function recordInvoicePaymentCore(input:{
 
     const invoice={...locked.rows[0],...(aging.rows[0]||{})};
     const effectiveStatus=String(invoice.effective_status||invoice.status);
-
-    if(['draft','pending_approval','rejected','cancelled','void','written_off','paid'].includes(effectiveStatus)){
-      throw new InvoicingError(
-        'INVOICE_STATE_INVALID',
-        'Payments can only be recorded against an open confirmed or sent invoice.',
-      );
-    }
-
     const balance=money(invoice.balance_due);
-    const allocationAmount=money(Math.min(paymentAmount,balance));
-    const unappliedAmount=money(Math.max(paymentAmount-allocationAmount,0));
-
-    const settings=await client.query(
-      `SELECT allow_partial_payments
-       FROM invoicing_settings
-       WHERE company_id=$1
-       LIMIT 1`,
-      [input.companyId],
-    );
-    if(settings.rows[0]?.allow_partial_payments===false&&allocationAmount<balance-0.0001){
-      throw new InvoicingError(
-        'INVALID_INPUT',
-        'Partial payments are disabled for this company. Record the full outstanding balance.',
-        {balance},
-      );
-    }
 
     if(idempotencyKey){
       await advisoryLock(
@@ -141,13 +116,38 @@ export async function recordInvoicePaymentCore(input:{
           paymentNumber:String(previous.rows[0].payment_number),
           invoiceId:input.invoiceId,
           status:String(previous.rows[0].status),
-          remainingBalance:money(Math.max(balance-money(previous.rows[0].allocated_amount),0)),
+          remainingBalance:balance,
           allocatedAmount:money(previous.rows[0].allocated_amount),
           refundedAmount:money(previous.rows[0].refunded_amount),
           unappliedAmount:money(previous.rows[0].unapplied_amount),
           reused:true,
         };
       }
+    }
+
+    if(['draft','pending_approval','rejected','cancelled','void','written_off','paid'].includes(effectiveStatus)){
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Payments can only be recorded against an open confirmed or sent invoice.',
+      );
+    }
+
+    const allocationAmount=money(Math.min(paymentAmount,balance));
+    const unappliedAmount=money(Math.max(paymentAmount-allocationAmount,0));
+
+    const settings=await client.query(
+      `SELECT allow_partial_payments
+       FROM invoicing_settings
+       WHERE company_id=$1
+       LIMIT 1`,
+      [input.companyId],
+    );
+    if(settings.rows[0]?.allow_partial_payments===false&&allocationAmount<balance-0.0001){
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'Partial payments are disabled for this company. Record the full outstanding balance.',
+        {balance},
+      );
     }
 
     if(paymentReference){

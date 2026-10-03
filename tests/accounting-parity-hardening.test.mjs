@@ -60,7 +60,14 @@ test('financial provider connectors reuse authoritative services and current per
   assert.match(paymentCore,/postInvoicePaymentToAccounting/);
   assert.match(paymentCore,/postInvoicePaymentAllocationToAccounting/);
   assert.match(paymentCore,/invoicing-payment-idempotency/);
+  assert.ok(
+    paymentCore.indexOf('if(idempotencyKey)') <
+      paymentCore.indexOf("'INVOICE_STATE_INVALID'"),
+    'Idempotency replay must be recognized before a paid invoice is rejected.',
+  );
   assert.match(statements,/ingestNormalizedFeedTrusted/);
+  assert.match(statements,/\["active","error"\]/);
+  assert.match(statements,/SET status='active',sync_cursor/);
   assert.match(service,/requestedProviderKey/);
 
   assert.match(webhooks,/WEBHOOK_EVENT_CONFLICT/);
