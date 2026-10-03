@@ -1781,7 +1781,7 @@ test('Fixed Assets release migration expands tenant schemas before promotion wit
 });
 
 
-test('Accounting roadmap closes planning and analytic accounting before payroll integration', async () => {
+test('Accounting roadmap closes planning, analytic accounting and payroll integration before consolidation', async () => {
   const roadmap = await source('docs/accounting/ROADMAP.md');
 
   for (const marker of [
@@ -1789,17 +1789,18 @@ test('Accounting roadmap closes planning and analytic accounting before payroll 
     /21\. Loans and financing: Accounting 2\.22/,
     /22\. Budgets and forecasts: Accounting 2\.23/,
     /23\. Project and departmental accounting: Accounting 2\.24/,
+    /24\. Payroll accounting integration: Accounting 2\.25/,
   ]) {
     assert.match(roadmap,marker);
   }
 
   assert.match(
     roadmap,
-    /## Remaining depth, in the agreed order[\s\S]*24\. Payroll accounting integration\./,
+    /## Remaining depth, in the agreed order[\s\S]*25\. Multiple companies and consolidation\./,
   );
   assert.doesNotMatch(
     roadmap,
-    /## Remaining depth, in the agreed order[\s\S]*(?:21\. Loans and financing|22\. Budgets and forecasts|23\. Project and departmental accounting)\./,
+    /## Remaining depth, in the agreed order[\s\S]*(?:21\. Loans and financing|22\. Budgets and forecasts|23\. Project and departmental accounting|24\. Payroll accounting integration)\./,
   );
 });
 
