@@ -25,7 +25,6 @@ type Pricelist = {
   validUntil: string | null;
   priority: number;
   isActive: boolean;
-  rules: unknown[];
 };
 
 export default function SalesPricelistsManager({
