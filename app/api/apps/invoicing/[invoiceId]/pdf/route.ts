@@ -20,6 +20,10 @@ import {
   ensurePrimaryInvoiceDocumentSnapshot,
 } from '@/lib/apps/invoicing/document-snapshots';
 
+import {
+  getPrivateObjectBytes,
+} from '@/lib/storage/object-storage';
+
 
 export const runtime =
   'nodejs';
@@ -178,7 +182,8 @@ export async function GET(
               phone,
               address,
               tax_id,
-              registration_number
+              registration_number,
+              logo_file_id
             FROM companies
             WHERE id = $1
             LIMIT 1
@@ -213,6 +218,8 @@ export async function GET(
               show_unit_price,
               show_line_tax,
               show_line_discount,
+              show_company_logo,
+              logo_url,
               show_company_address,
               show_company_contact,
               show_tax_id,
@@ -250,6 +257,128 @@ export async function GET(
     const template =
       templateResult.rows[0] ||
       {};
+
+    let logoImageBase64:
+      string |
+      null =
+        null;
+
+    let logoImageMimeType:
+      string |
+      null =
+        null;
+
+    if (
+      template.show_company_logo !==
+        false
+    ) {
+      let logoFileId =
+        '';
+
+      if (
+        typeof template.logo_url ===
+          'string' &&
+        template.logo_url
+          .startsWith(
+            'workspace-file:',
+          )
+      ) {
+        logoFileId =
+          template.logo_url
+            .slice(
+              'workspace-file:'
+                .length,
+            )
+            .trim();
+      } else if (
+        company.logo_file_id
+      ) {
+        logoFileId =
+          String(
+            company.logo_file_id,
+          );
+      }
+
+      if (
+        /^[0-9a-f-]{36}$/i.test(
+          logoFileId,
+        )
+      ) {
+        const logoFile =
+          await context.pool.query(
+            `
+              SELECT
+                storage_key,
+                mime_type
+              FROM files
+              WHERE id = $1::uuid
+                AND company_id = $2::uuid
+                AND status = 'active'
+                AND deleted_at IS NULL
+              LIMIT 1
+            `,
+            [
+              logoFileId,
+              context.companyId,
+            ],
+          );
+
+        const logoRow =
+          logoFile.rows[0];
+
+        const mimeType =
+          String(
+            logoRow
+              ?.mime_type ||
+            '',
+          )
+            .trim()
+            .toLowerCase();
+
+        if (
+          logoRow &&
+          [
+            'image/jpeg',
+            'image/png',
+          ].includes(
+            mimeType,
+          )
+        ) {
+          try {
+            const bytes =
+              await getPrivateObjectBytes(
+                String(
+                  logoRow.storage_key,
+                ),
+              );
+
+            if (
+              bytes.length >
+                0 &&
+              bytes.length <=
+                4 *
+                1024 *
+                1024
+            ) {
+              logoImageBase64 =
+                bytes.toString(
+                  'base64',
+                );
+
+              logoImageMimeType =
+                mimeType;
+            }
+          } catch (
+            error
+          ) {
+            console.error(
+              '[Invoicing PDF] Draft logo storage read failed:',
+              error,
+            );
+          }
+        }
+      }
+    }
 
     const pdf =
       renderInvoicePdf({
@@ -393,6 +522,11 @@ export async function GET(
           showLineDiscount:
             template.show_line_discount !==
             false,
+          showCompanyLogo:
+            template.show_company_logo !==
+            false,
+          logoImageBase64,
+          logoImageMimeType,
           showCompanyAddress:
             template.show_company_address !==
               false,
