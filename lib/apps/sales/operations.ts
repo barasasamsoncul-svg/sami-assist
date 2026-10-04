@@ -3570,9 +3570,14 @@ export async function issueSalesReturnCredit(
       creditNoteNumber:
         credit.creditNoteNumber,
       amount:
-        credit.amount,
+        money(
+          credit.amount,
+        ),
       availableCredit:
-        credit.availableCredit,
+        money(
+          credit.availableCredit ??
+          credit.amount,
+        ),
     });
   }
 
