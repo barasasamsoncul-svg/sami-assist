@@ -2904,3 +2904,40 @@ test('Accounting 2.33 release expansion defers control-plane promotion', async (
   assert.match(pkg,/test:accounting:2\.33:release/);
 });
 
+
+
+test('Invoicing 2.23 provider refunds are migration-backed and release-safe', async () => {
+  const [
+    manifest,
+    runtime,
+    migration,
+    script,
+    pkg,
+  ] = await Promise.all([
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/apps/invoicing/migrations/2.22.0-to-2.23.0.ts'),
+    source('scripts/migrate-invoicing-2-23-before-release.ts'),
+    source('package.json'),
+  ]);
+
+  assert.match(
+    manifest,
+    /key:\s*"invoicing"[\s\S]*version:\s*'2\.23\.0'/,
+  );
+  assert.match(runtime, /INVOICING_2_22_0_TO_2_23_0/);
+  assert.match(
+    migration,
+    /fromVersion:\s*'2\.22\.0'[\s\S]*toVersion:\s*'2\.23\.0'/,
+  );
+  assert.match(migration, /invoicing_payment_refunds_status_check/);
+  assert.match(migration, /invoicing_credit_note_refunds_status_check/);
+  assert.match(migration, /requires_action/);
+  assert.match(script, /moduleKey:\s*'invoicing'/);
+  assert.match(script, /targetVersion:\s*manifest\.version/);
+  assert.match(script, /expand-before-promote/);
+  assert.match(script, /controlVersionUpdated:[\s\S]*false/);
+  assert.doesNotMatch(script, /UPDATE\s+tenant_modules/i);
+  assert.match(pkg, /migrate:invoicing:2\.23:release/);
+  assert.match(pkg, /test:invoicing:2\.23:release/);
+});
