@@ -15,6 +15,7 @@ import {
   Download,
   FileText,
   LayoutDashboard,
+  PackageCheck,
   Plus,
   RefreshCw,
   Search,
@@ -43,6 +44,8 @@ import SalesPricingManager from '@/app/apps/sales/SalesPricingManager';
 
 import SalesOrganizationManager from '@/app/apps/sales/SalesOrganizationManager';
 
+import SalesOperationsManager from '@/app/apps/sales/SalesOperationsManager';
+
 import type {
   SalesWorkspaceData,
 } from '@/lib/apps/sales/types';
@@ -53,6 +56,7 @@ type View =
   | 'quotes'
   | 'orders'
   | 'organization'
+  | 'operations'
   | 'reports'
   | 'settings';
 
@@ -98,6 +102,16 @@ const TUTORIAL:
         'Manage the sales organization',
       description:
         'Build teams and territories, set quotas and manage commission plans against real sales-order performance.',
+    },
+    {
+      id:
+        'operations',
+      section:
+        'operations',
+      title:
+        'Run deposits, shipping and returns',
+      description:
+        'Track customer deposits, split shipments, carrier progress, returned stock, invoice credits, refunds and revenue outlook.',
     },
     {
       id:
@@ -681,6 +695,18 @@ export default function SalesWorkspaceClient({
       },
       {
         key:
+          'operations',
+        label:
+          'Operations',
+        icon:
+          PackageCheck,
+        visible:
+          initialData
+            .capabilities
+            .canViewOperations,
+      },
+      {
+        key:
           'reports',
         label:
           'Reports',
@@ -766,7 +792,7 @@ export default function SalesWorkspaceClient({
               </h1>
 
               <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">
-                Quotations, pricing, teams, targets, commissions, customer responses, orders, fulfillment and invoice handoff in one controlled flow.
+                Quotations, pricing, teams, deposits, shipping, returns, commissions, customer responses, forecasting, fulfillment and invoice handoff in one controlled flow.
               </p>
             </div>
 
@@ -1132,6 +1158,30 @@ export default function SalesWorkspaceClient({
             .canViewOrganization &&
           (
             <SalesOrganizationManager
+              busy={
+                busy
+              }
+              request={
+                request
+              }
+              showSuccess={
+                showSuccess
+              }
+              showError={
+                showError
+              }
+            />
+          )
+        }
+
+        {
+          view ===
+            'operations' &&
+          initialData
+            .capabilities
+            .canViewOperations &&
+          (
+            <SalesOperationsManager
               busy={
                 busy
               }
