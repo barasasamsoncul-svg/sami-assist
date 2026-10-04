@@ -122,3 +122,43 @@ test('manual webhook setup is not reported as verified until SaMi validates a re
     /This checks the merchant API connection; webhook verification is tracked separately/,
   );
 });
+
+
+test('verified gateway settlement casts numeric allocation arithmetic and does not degrade provider health on internal posting failures', async () => {
+  const [
+    paymentCore,
+    connections,
+    checkout,
+    catalog,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/payment-core.ts'),
+    source('lib/apps/invoicing/payment-provider-connections.ts'),
+    source('lib/apps/invoicing/payment-checkout.ts'),
+    source('lib/apps/invoicing/payment-provider-catalog.ts'),
+  ]);
+
+  assert.match(
+    paymentCore,
+    /ROUND\(\(\$4::numeric \* \$5::numeric\),4\)/,
+  );
+  assert.doesNotMatch(
+    connections,
+    /SET health_status='degraded',[\s\S]*lastSettlementError/,
+  );
+  assert.match(
+    connections,
+    /lastSettlementError/,
+  );
+  assert.match(
+    checkout,
+    /allowDegraded:[\s\S]*true/,
+  );
+  assert.match(
+    checkout,
+    /health_status='healthy'/,
+  );
+  assert.match(
+    catalog,
+    /registers the Pesapal IPN automatically/,
+  );
+});
