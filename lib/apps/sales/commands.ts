@@ -9,7 +9,28 @@ import type {
 import {
   createInvoice,
   createInvoicingCustomer,
+  updateInvoicingCustomer,
 } from '@/lib/apps/invoicing/commands';
+
+export async function createSalesCustomer(
+  input:
+    Record<string, unknown>,
+) {
+  return createInvoicingCustomer(
+    input,
+  );
+}
+
+
+export async function updateSalesCustomer(
+  input:
+    Record<string, unknown>,
+) {
+  return updateInvoicingCustomer(
+    input,
+  );
+}
+
 
 import {
   deliverSalesQuote,
