@@ -549,7 +549,8 @@ svg {
 :where(
   [data-sami-workspace-shell='true'],
   [data-sami-app],
-  [data-sami-admin-shell='true']
+  [data-sami-admin-shell='true'],
+  [data-sami-ai-chat='true']
 ) {
   background-color: var(--sami-canvas);
   color: var(--foreground);
@@ -558,7 +559,8 @@ svg {
 :where(
   [data-sami-workspace-shell='true'],
   [data-sami-app],
-  [data-sami-admin-shell='true']
+  [data-sami-admin-shell='true'],
+  [data-sami-ai-chat='true']
 ) :where(
   .text-slate-300,
   .text-slate-400,
@@ -577,7 +579,8 @@ svg {
 .dark :where(
   [data-sami-workspace-shell='true'],
   [data-sami-app],
-  [data-sami-admin-shell='true']
+  [data-sami-admin-shell='true'],
+  [data-sami-ai-chat='true']
 ) :where(
   .text-slate-900,
   .text-slate-950,
@@ -591,7 +594,8 @@ svg {
 .dark :where(
   [data-sami-workspace-shell='true'],
   [data-sami-app],
-  [data-sami-admin-shell='true']
+  [data-sami-admin-shell='true'],
+  [data-sami-ai-chat='true']
 ) :where(
   [class~='bg-white'],
   [class~='bg-slate-50'],
@@ -606,7 +610,8 @@ svg {
 :where(
   [data-sami-workspace-shell='true'],
   [data-sami-app],
-  [data-sami-admin-shell='true']
+  [data-sami-admin-shell='true'],
+  [data-sami-ai-chat='true']
 ) :where(
   input,
   textarea,
@@ -620,7 +625,8 @@ svg {
 :where(
   [data-sami-workspace-shell='true'],
   [data-sami-app],
-  [data-sami-admin-shell='true']
+  [data-sami-admin-shell='true'],
+  [data-sami-ai-chat='true']
 ) :where(
   input,
   textarea,
@@ -633,7 +639,8 @@ svg {
 :where(
   [data-sami-workspace-shell='true'],
   [data-sami-app],
-  [data-sami-admin-shell='true']
+  [data-sami-admin-shell='true'],
+  [data-sami-ai-chat='true']
 ) :where(
   input,
   textarea
@@ -645,7 +652,8 @@ svg {
 :where(
   [data-sami-workspace-shell='true'],
   [data-sami-app],
-  [data-sami-admin-shell='true']
+  [data-sami-admin-shell='true'],
+  [data-sami-ai-chat='true']
 ) :where(
   table,
   thead,
@@ -662,7 +670,8 @@ svg {
 :where(
   [data-sami-workspace-shell='true'],
   [data-sami-app],
-  [data-sami-admin-shell='true']
+  [data-sami-admin-shell='true'],
+  [data-sami-ai-chat='true']
 ) :where(
   button:disabled,
   input:disabled,
