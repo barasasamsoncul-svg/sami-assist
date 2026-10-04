@@ -3186,14 +3186,14 @@ export async function issueSalesReturnCredit(
            AND invoice.company_id =
                invoice_item.company_id
           WHERE invoice_item.company_id = $1
-            AND invoice_item.metadata ->
-                > 'sourceModule' =
+            AND invoice_item.metadata ->>
+                'sourceModule' =
                 'sales'
-            AND invoice_item.metadata ->
-                > 'salesOrderId' =
+            AND invoice_item.metadata ->>
+                'salesOrderId' =
                 $2
-            AND invoice_item.metadata ->
-                > 'salesOrderLineId' =
+            AND invoice_item.metadata ->>
+                'salesOrderLineId' =
                 $3
             AND invoice.deleted_at IS NULL
             AND invoice.status NOT IN (
