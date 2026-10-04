@@ -96,7 +96,9 @@
     "migrate:invoicing:2.22:release": "node --conditions=react-server --import tsx scripts/migrate-invoicing-2-22-before-release.ts",
     "test:invoicing:2.22:release": "npm run test:accounting:parity-hardening && npm run test:invoicing && npm run test:locks && npm run test:module-migrations && npm run test:responsive && npm run test:app-ui && npm run test:erp-integration && npx tsc --noEmit && npm run build",
     "migrate:invoicing:2.23:release": "node --conditions=react-server --import tsx scripts/migrate-invoicing-2-23-before-release.ts",
-    "test:invoicing:2.23:release": "npm run test:accounting:parity-hardening && npm run test:invoicing && npm run test:locks && npm run test:module-migrations && npm run test:responsive && npm run test:app-ui && npm run test:erp-integration && npx tsc --noEmit && npm run build"
+    "test:invoicing:2.23:release": "npm run test:accounting:parity-hardening && npm run test:invoicing && npm run test:locks && npm run test:module-migrations && npm run test:responsive && npm run test:app-ui && npm run test:erp-integration && npx tsc --noEmit && npm run build",
+    "migrate:modules:release": "node --conditions=react-server --import tsx scripts/migrate-installed-modules-before-release.ts",
+    "build:vercel": "node scripts/vercel-production-build.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1133.0",
