@@ -1483,29 +1483,40 @@ async function primarySnapshotNeedsLineRepair(
       InvoiceDocumentSnapshot;
   },
 ) {
-  if (
+  const snapshotLines =
     Array.isArray(
       input.snapshot.payload
         ?.lines,
-    ) &&
-    input.snapshot.payload
-      .lines.length >
-      0
-  ) {
-    return false;
-  }
+    )
+      ? input.snapshot.payload
+          .lines
+      : [];
 
   const result =
     await pool.query(
       `
         SELECT
           COUNT(*)::int
-            AS line_count
+            AS line_count,
+          (
+            SELECT description
+            FROM invoicing_invoice_items
+            WHERE invoice_id = $1
+              AND company_id = $2
+            ORDER BY sort_order ASC,id ASC
+            LIMIT 1
+          ) AS first_description,
+          (
+            SELECT line_total::text
+            FROM invoicing_invoice_items
+            WHERE invoice_id = $1
+              AND company_id = $2
+            ORDER BY sort_order ASC,id ASC
+            LIMIT 1
+          ) AS first_line_total
         FROM invoicing_invoice_items
-        WHERE invoice_id =
-              $1
-          AND company_id =
-              $2
+        WHERE invoice_id = $1
+          AND company_id = $2
       `,
       [
         input.invoiceId,
@@ -1513,12 +1524,73 @@ async function primarySnapshotNeedsLineRepair(
       ],
     );
 
-  return Number(
-    result.rows[0]
-      ?.line_count ||
-    0,
-  ) >
-    0;
+  const databaseCount =
+    Number(
+      result.rows[0]
+        ?.line_count ||
+      0,
+    );
+
+  if (
+    snapshotLines.length !==
+      databaseCount
+  ) {
+    return databaseCount >
+      0;
+  }
+
+  if (
+    databaseCount ===
+      0
+  ) {
+    return false;
+  }
+
+  const snapshotFirst =
+    snapshotLines[0] as {
+      description?: unknown;
+      lineTotal?: unknown;
+    };
+
+  const databaseDescription =
+    String(
+      result.rows[0]
+        ?.first_description ||
+      '',
+    )
+      .trim();
+
+  const snapshotDescription =
+    String(
+      snapshotFirst
+        ?.description ||
+      '',
+    )
+      .trim();
+
+  const databaseLineTotal =
+    Number(
+      result.rows[0]
+        ?.first_line_total ||
+      0,
+    );
+
+  const snapshotLineTotal =
+    Number(
+      snapshotFirst
+        ?.lineTotal ||
+      0,
+    );
+
+  return (
+    snapshotDescription !==
+      databaseDescription ||
+    Math.abs(
+      snapshotLineTotal -
+      databaseLineTotal,
+    ) >
+      0.0001
+  );
 }
 
 
