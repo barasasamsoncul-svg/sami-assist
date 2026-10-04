@@ -261,8 +261,6 @@ export async function getSalesOrganizationData() {
           .COMMISSION_VIEW,
         SALES_PERMISSIONS
           .COMMISSION_MANAGE,
-        SALES_PERMISSIONS
-          .REPORT_VIEW,
       ],
     )
   ) {
