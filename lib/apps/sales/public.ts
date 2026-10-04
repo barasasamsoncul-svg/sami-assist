@@ -11,6 +11,7 @@ import {
   nullableText,
   recordSalesActivity,
   SalesError,
+  UUID_RE,
 } from '@/lib/apps/sales/context';
 
 
@@ -377,6 +378,33 @@ export async function getPublicSalesQuote(
       ],
     );
 
+  const optionalItems =
+    await pool.query(
+      `
+        SELECT
+          id,
+          catalog_item_id,
+          description,
+          sku_snapshot,
+          unit,
+          quantity,
+          unit_price,
+          tax_name_snapshot,
+          tax_rate,
+          is_selected
+        FROM sales_quote_optional_items
+        WHERE quote_id = $1
+          AND company_id = $2
+        ORDER BY
+          sort_order,
+          id
+      `,
+      [
+        quote.id,
+        quote.company_id,
+      ],
+    );
+
   return {
     tenantId,
     token,
@@ -608,6 +636,58 @@ export async function getPublicSalesQuote(
             ),
         }),
       ),
+    optionalItems:
+      optionalItems.rows.map(
+        item => ({
+          id:
+            String(
+              item.id,
+            ),
+          catalogItemId:
+            item.catalog_item_id
+              ? String(
+                  item.catalog_item_id,
+                )
+              : null,
+          description:
+            String(
+              item.description,
+            ),
+          sku:
+            item.sku_snapshot
+              ? String(
+                  item.sku_snapshot,
+                )
+              : null,
+          unit:
+            String(
+              item.unit ||
+              'unit',
+            ),
+          quantity:
+            Number(
+              item.quantity,
+            ),
+          unitPrice:
+            money(
+              item.unit_price,
+            ),
+          taxName:
+            item.tax_name_snapshot
+              ? String(
+                  item.tax_name_snapshot,
+                )
+              : null,
+          taxRate:
+            Number(
+              item.tax_rate ||
+              0,
+            ),
+          isSelected:
+            item.is_selected ===
+              true,
+        }),
+      ),
   };
 }
 
@@ -628,6 +708,8 @@ export async function respondToPublicSalesQuote(
     signerEmail?:
       unknown;
     acceptanceNote?:
+      unknown;
+    selectedOptionalItemIds?:
       unknown;
   },
 ) {
@@ -833,6 +915,40 @@ export async function respondToPublicSalesQuote(
           )
         : null;
 
+    const selectedOptionalItemIds =
+      input.action ===
+        'accept' &&
+      Array.isArray(
+        input.selectedOptionalItemIds,
+      )
+        ? Array.from(
+            new Set(
+              input.selectedOptionalItemIds
+                .filter(
+                  value =>
+                    typeof value ===
+                      'string' &&
+                    UUID_RE.test(
+                      value,
+                    ),
+                ),
+            ),
+          )
+        : [];
+
+    if (
+      Array.isArray(
+        input.selectedOptionalItemIds,
+      ) &&
+      selectedOptionalItemIds.length !==
+        input.selectedOptionalItemIds.length
+    ) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'One or more optional product selections are invalid.',
+      );
+    }
+
     if (
       input.action ===
         'accept' &&
@@ -841,6 +957,326 @@ export async function respondToPublicSalesQuote(
       throw new SalesError(
         'INVALID_INPUT',
         'Enter the name of the person accepting this quotation.',
+      );
+    }
+
+    if (
+      input.action ===
+        'accept'
+    ) {
+      const optionalRows =
+        await client.query(
+          `
+            SELECT
+              id
+            FROM sales_quote_optional_items
+            WHERE quote_id = $1
+              AND company_id = $2
+              AND id = ANY(
+                $3::uuid[]
+              )
+            FOR UPDATE
+          `,
+          [
+            quote.id,
+            quote.company_id,
+            selectedOptionalItemIds,
+          ],
+        );
+
+      if (
+        optionalRows.rows.length !==
+          selectedOptionalItemIds.length
+      ) {
+        throw new SalesError(
+          'INVALID_INPUT',
+          'One or more selected optional products no longer belong to this quotation.',
+        );
+      }
+
+      await client.query(
+        `
+          UPDATE sales_quote_optional_items
+          SET
+            is_selected =
+              id = ANY(
+                $3::uuid[]
+              ),
+            selected_at =
+              CASE
+                WHEN id = ANY(
+                  $3::uuid[]
+                )
+                THEN NOW()
+                ELSE NULL
+              END,
+            updated_at =
+              NOW()
+          WHERE quote_id = $1
+            AND company_id = $2
+        `,
+        [
+          quote.id,
+          quote.company_id,
+          selectedOptionalItemIds,
+        ],
+      );
+
+      if (
+        selectedOptionalItemIds.length >
+          0
+      ) {
+        await client.query(
+          `
+            INSERT INTO sales_quote_items (
+              quote_id,
+              company_id,
+              catalog_item_id,
+              external_product_id,
+              sort_order,
+              description,
+              sku_snapshot,
+              unit,
+              quantity,
+              unit_price,
+              unit_cost,
+              cost_total,
+              margin_amount,
+              margin_percent,
+              discount_type,
+              discount_value,
+              discount_amount,
+              tax_name_snapshot,
+              tax_rate,
+              tax_amount,
+              subtotal,
+              line_total
+            )
+            SELECT
+              optional.quote_id,
+              optional.company_id,
+              optional.catalog_item_id,
+              catalog.external_product_id,
+              10000 +
+                optional.sort_order,
+              optional.description,
+              optional.sku_snapshot,
+              optional.unit,
+              optional.quantity,
+              optional.unit_price,
+              optional.unit_cost,
+              ROUND(
+                optional.quantity *
+                optional.unit_cost,
+                2
+              ),
+              ROUND(
+                (
+                  optional.quantity *
+                  optional.unit_price
+                ) -
+                (
+                  optional.quantity *
+                  optional.unit_cost
+                ),
+                2
+              ),
+              CASE
+                WHEN optional.quantity *
+                     optional.unit_price >
+                     0
+                THEN ROUND(
+                  (
+                    (
+                      optional.quantity *
+                      optional.unit_price
+                    ) -
+                    (
+                      optional.quantity *
+                      optional.unit_cost
+                    )
+                  ) /
+                  (
+                    optional.quantity *
+                    optional.unit_price
+                  ) *
+                  100,
+                  4
+                )
+                ELSE 0
+              END,
+              'percent',
+              0,
+              0,
+              optional.tax_name_snapshot,
+              optional.tax_rate,
+              ROUND(
+                (
+                  optional.quantity *
+                  optional.unit_price
+                ) *
+                optional.tax_rate /
+                100,
+                2
+              ),
+              ROUND(
+                optional.quantity *
+                optional.unit_price,
+                2
+              ),
+              ROUND(
+                (
+                  optional.quantity *
+                  optional.unit_price
+                ) *
+                (
+                  1 +
+                  optional.tax_rate /
+                  100
+                ),
+                2
+              )
+            FROM sales_quote_optional_items optional
+            LEFT JOIN invoicing_catalog_items catalog
+              ON catalog.id =
+                 optional.catalog_item_id
+             AND catalog.company_id =
+                 optional.company_id
+             AND catalog.deleted_at
+                 IS NULL
+            WHERE optional.quote_id = $1
+              AND optional.company_id = $2
+              AND optional.is_selected =
+                  TRUE
+          `,
+          [
+            quote.id,
+            quote.company_id,
+          ],
+        );
+      }
+
+      await client.query(
+        `
+          WITH totals AS (
+            SELECT
+              COALESCE(
+                SUM(subtotal),
+                0
+              ) AS subtotal,
+              COALESCE(
+                SUM(discount_amount),
+                0
+              ) AS discount_total,
+              COALESCE(
+                SUM(tax_amount),
+                0
+              ) AS tax_total,
+              COALESCE(
+                SUM(cost_total),
+                0
+              ) AS cost_total
+            FROM sales_quote_items
+            WHERE quote_id = $1
+              AND company_id = $2
+          )
+          UPDATE sales_quotes q
+          SET
+            subtotal =
+              ROUND(
+                totals.subtotal,
+                2
+              ),
+            discount_total =
+              ROUND(
+                totals.discount_total,
+                2
+              ),
+            tax_total =
+              ROUND(
+                totals.tax_total,
+                2
+              ),
+            total_amount =
+              ROUND(
+                totals.subtotal -
+                totals.discount_total +
+                totals.tax_total +
+                q.shipping_total,
+                2
+              ),
+            cost_total =
+              ROUND(
+                totals.cost_total,
+                2
+              ),
+            margin_amount =
+              ROUND(
+                (
+                  totals.subtotal -
+                  totals.discount_total
+                ) -
+                totals.cost_total,
+                2
+              ),
+            margin_percent =
+              CASE
+                WHEN totals.subtotal -
+                     totals.discount_total >
+                     0
+                THEN ROUND(
+                  (
+                    (
+                      totals.subtotal -
+                      totals.discount_total
+                    ) -
+                    totals.cost_total
+                  ) /
+                  (
+                    totals.subtotal -
+                    totals.discount_total
+                  ) *
+                  100,
+                  4
+                )
+                ELSE 0
+              END,
+            updated_at =
+              NOW()
+          FROM totals
+          WHERE q.id = $1
+            AND q.company_id = $2
+        `,
+        [
+          quote.id,
+          quote.company_id,
+        ],
+      );
+
+      await recordSalesActivity(
+        client,
+        {
+          companyId:
+            String(
+              quote.company_id,
+            ),
+          userId:
+            null,
+          quoteId:
+            String(
+              quote.id,
+            ),
+          type:
+            'sales.quote.optional_products_selected',
+          content:
+            selectedOptionalItemIds.length >
+              0
+              ? 'Customer selected optional products before accepting the quotation.'
+              : 'Customer accepted the quotation without optional products.',
+          metadata: {
+            selectedOptionalItemIds,
+          },
+        },
       );
     }
 
