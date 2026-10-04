@@ -1212,7 +1212,7 @@ async function finalizeAttempt(
     providerKey:
       attempt.providerKey,
     provider:
-      payload.provider ||
+      attempt.payload.provider ||
       null,
     providerTransactionId:
       payload.providerTransactionId ||
@@ -1457,7 +1457,7 @@ async function applyRemoteResult(
     status:
       remote.status,
     provider:
-      payload.provider ||
+      attempt.payload.provider ||
       null,
     providerMessage:
       remote.message,
