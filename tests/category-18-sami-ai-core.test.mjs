@@ -681,7 +681,7 @@ test('Category 18: the real SaMi AI workspace is wired into shell, search, dashb
   assert.match(page, /shell\.aiAvailable/);
 
   assert.match(client, /\/api\/workspace\/ai\/chat/);
-  assert.match(client, /ReactMarkdown/);
+  assert.match(client, /SamiAiMarkdown/);
   assert.match(client, /Confirmation required/);
   assert.match(client, /copiedMessageId/);
   assert.match(client, /'Copied'/);
@@ -713,6 +713,9 @@ test('Category 18: the real SaMi AI workspace is wired into shell, search, dashb
   assert.match(service, /mode ===\s*'regenerate'/);
   assert.match(service, /supersedeConversationFromMessage/);
   assert.match(service, /status =\s*'superseded'/);
+  assert.match(service, /Default to fast response behavior/);
+  assert.match(service, /shortest complete answer/);
+  assert.match(service, /deeper multi-step reasoning only when/);
 
   assert.match(sidebar, /href="\/ai"/);
 
