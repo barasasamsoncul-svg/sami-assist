@@ -348,6 +348,13 @@ export default function PaymentIntegrationsWorkspace() {
       const body = await response.json() as {
         success?: boolean;
         error?: string;
+        result?: {
+          recovery?: {
+            attempted?: number;
+            recovered?: number;
+            stillFailed?: number;
+          };
+        };
       };
 
       if (!response.ok || body.success !== true) {
@@ -422,7 +429,34 @@ export default function PaymentIntegrationsWorkspace() {
           ? 'Connection verified'
           : 'Provider disconnected',
         operation === 'test'
-          ? 'SaMi reached the provider successfully. This checks the merchant API connection; webhook verification is tracked separately after a signed provider event reaches SaMi.'
+          ? (
+              Number(
+                body.result
+                  ?.recovery
+                  ?.recovered ||
+                0,
+              ) > 0
+                ? (
+                    'SaMi reached the provider successfully and recovered ' +
+                    String(
+                      body.result
+                        ?.recovery
+                        ?.recovered,
+                    ) +
+                    ' previously verified payment' +
+                    (
+                      Number(
+                        body.result
+                          ?.recovery
+                          ?.recovered,
+                      ) === 1
+                        ? ''
+                        : 's'
+                    ) +
+                    ' that had failed during invoice posting.'
+                  )
+                : 'SaMi reached the provider successfully. This checks the merchant API connection; webhook verification is tracked separately after a signed provider event reaches SaMi.'
+            )
           : 'The provider credentials were removed from SaMi and automatic reconciliation was stopped.',
       );
     } catch (error) {
