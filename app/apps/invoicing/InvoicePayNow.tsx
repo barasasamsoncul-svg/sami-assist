@@ -438,7 +438,7 @@ export default function InvoicePayNow({
                       Pay securely online
                     </p>
                     <p className="mt-1 text-xs leading-5 text-blue-800">
-                      Choose a payment provider. SaMi uses the invoice balance and reference automatically and posts only provider-verified payments.
+                      Pay the outstanding invoice balance securely. SaMi uses this business's configured payment route automatically and posts only provider-verified payments.
                     </p>
 
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -457,9 +457,7 @@ export default function InvoicePayNow({
                                     <div className="flex items-center justify-between gap-3">
                                       <span className="flex items-center gap-2 text-xs font-black text-slate-900">
                                         <Smartphone className="h-4 w-4 text-emerald-700" />
-                                        Pay with {
-                                          provider.name
-                                        }
+                                        Pay now
                                       </span>
                                       {
                                         provider.environment ===
@@ -522,7 +520,7 @@ export default function InvoicePayNow({
                                                 <Smartphone className="h-4 w-4" />
                                               )
                                         }
-                                        Send M-PESA prompt
+                                        Pay now
                                       </button>
                                     </div>
 
@@ -567,9 +565,7 @@ export default function InvoicePayNow({
                                               <CreditCard className="h-4 w-4 text-blue-700" />
                                             )
                                       }
-                                      Pay with {
-                                        provider.name
-                                      }
+                                      Pay now
                                     </span>
                                     {
                                       provider.environment ===
