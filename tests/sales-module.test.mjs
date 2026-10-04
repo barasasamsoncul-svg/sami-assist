@@ -1139,6 +1139,16 @@ test('Sales 3.2 runs deposits, shipments, returns and forecasting through author
   assert.match(operations, /postSalesFulfillmentToInventory/);
   assert.match(operations, /issueInvoiceCreditNote/);
   assert.match(operations, /refundInvoiceCreditNote/);
+  assert.match(
+    operations,
+    /available\.toFixed\([\s\S]*amount\.toFixed\(/,
+    'Default Sales refund idempotency must change with the remaining credit state so a deliberate second partial refund is not collapsed into the first.',
+  );
+  assert.match(
+    operations,
+    /invoicing_credit_note_balances[\s\S]*invoicing_credit_note_refunds[\s\S]*refunded_amount = \$4/s,
+    'Sales refund bookkeeping must reconcile from Invoicing authoritative balances so retries cannot double-count refunded totals.',
+  );
   assert.match(operations, /RETURN_CREDIT_LINK_MISSING/);
   assert.match(operations, /weighted_pipeline/);
   assert.match(operations, /sales_forecast_snapshots/);
