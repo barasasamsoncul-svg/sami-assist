@@ -1698,6 +1698,7 @@ export async function createSalesShipment(
           `
             SELECT
               line.quantity,
+              line.delivered_quantity,
               COALESCE(
                 (
                   SELECT SUM(
@@ -1715,6 +1716,8 @@ export async function createSalesShipment(
                         line.company_id
                     AND shipment.status <>
                         'cancelled'
+                    AND shipment.inventory_posted_at
+                        IS NULL
                 ),
                 0
               ) AS planned_quantity
@@ -1745,6 +1748,11 @@ export async function createSalesShipment(
         Number(
           line.rows[0]
             .quantity,
+        ) -
+        Number(
+          line.rows[0]
+            .delivered_quantity ||
+          0,
         ) -
         Number(
           line.rows[0]
