@@ -7612,6 +7612,11 @@ function Retainers({
                                             requestKey(
                                               'payment-refund',
                                             ),
+                                          manualProviderRefundConfirmed:
+                                            form.get(
+                                              'manualProviderRefundConfirmed',
+                                            ) ===
+                                              'yes',
                                         },
                                         'Refund request submitted. Provider-backed refunds are posted after provider confirmation.',
                                       );
@@ -7660,6 +7665,17 @@ function Retainers({
                                   placeholder="Refund reference"
                                   className="mt-2 h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-2 text-xs"
                                 />
+                                <label className="mt-2 flex items-start gap-2 rounded-xl border border-[var(--sami-border)] bg-slate-500/[0.03] p-2 text-[10px] leading-4 text-slate-500">
+                                  <input
+                                    type="checkbox"
+                                    name="manualProviderRefundConfirmed"
+                                    value="yes"
+                                    className="mt-0.5"
+                                  />
+                                  <span>
+                                    If this payment provider cannot be reversed automatically, I have already completed the refund in the provider account and want SaMi to record the confirmed financial refund.
+                                  </span>
+                                </label>
                                 <div className="mt-2 flex gap-2">
                                   <input
                                     name="reason"
@@ -8828,6 +8844,11 @@ function Payments({
                                             requestKey(
                                               'payment-refund',
                                             ),
+                                          manualProviderRefundConfirmed:
+                                            form.get(
+                                              'manualProviderRefundConfirmed',
+                                            ) ===
+                                              'yes',
                                         },
                                         'Refund request submitted. Provider-backed refunds are posted after provider confirmation.',
                                       );
@@ -8886,6 +8907,17 @@ function Payments({
                                   placeholder="Refund reference"
                                   className="mt-2 h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-2 text-xs"
                                 />
+                                <label className="mt-2 flex items-start gap-2 rounded-xl border border-[var(--sami-border)] bg-slate-500/[0.03] p-2 text-[10px] leading-4 text-slate-500">
+                                  <input
+                                    type="checkbox"
+                                    name="manualProviderRefundConfirmed"
+                                    value="yes"
+                                    className="mt-0.5"
+                                  />
+                                  <span>
+                                    If this payment provider cannot be reversed automatically, I have already completed the refund in the provider account and want SaMi to record the confirmed financial refund.
+                                  </span>
+                                </label>
                                 <div className="mt-2 flex gap-2">
                                   <input
                                     name="reason"
