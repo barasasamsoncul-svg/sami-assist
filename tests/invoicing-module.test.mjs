@@ -7616,3 +7616,31 @@ test('Invoicing Accounting integration safely fills uncovered system-posting per
     'Automatic system posting must continue respecting Accounting lock dates.',
   );
 });
+
+
+test('Invoice PDF renderer exposes line details and repairs older PDF snapshots', async () => {
+  const [
+    pdf,
+    snapshots,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/pdf.ts'),
+    source('lib/apps/invoicing/document-snapshots.ts'),
+  ]);
+
+  assert.match(
+    pdf,
+    /INVOICE_PDF_RENDERER_VERSION\s*=\s*['"]invoice-pdf-v5['"]/,
+  );
+
+  assert.match(
+    pdf,
+    /wrap\(\s*line\.description,[\s\S]*\.slice\(\s*0,\s*2/s,
+    'Invoice item descriptions must render across visible detail lines instead of being reduced to a short one-line truncation.',
+  );
+
+  assert.match(
+    snapshots,
+    /rendererVersion\s*!==\s*INVOICE_PDF_RENDERER_VERSION/,
+    'Opening an issued invoice PDF must rebuild a snapshot made by an older renderer.',
+  );
+});
