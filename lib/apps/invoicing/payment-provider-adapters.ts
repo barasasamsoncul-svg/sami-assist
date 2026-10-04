@@ -16,6 +16,8 @@ export type InvoicePaymentProviderSecrets = {
   consumerKey?: string;
   consumerSecret?: string;
   shortCode?: string;
+  shortCodeType?: 'paybill' | 'till';
+  passkey?: string;
   secretKey?: string;
   webhookSecret?: string;
   clientId?: string;
@@ -288,12 +290,32 @@ export function sanitizeInvoicePaymentCredentials(
     if (!/^[0-9]{5,12}$/.test(shortCode)) {
       throw new Error('Enter a valid M-PESA Paybill or Till number.');
     }
+    const shortCodeType =
+      required(
+        input,
+        'shortCodeType',
+        'M-PESA account type',
+        20,
+      ).toLowerCase();
+    if (
+      shortCodeType !== 'paybill' &&
+      shortCodeType !== 'till'
+    ) {
+      throw new Error('Choose whether this M-PESA account is a Paybill or Till.');
+    }
     return {
       provider,
       environment,
       consumerKey: required(input, 'consumerKey', 'Consumer Key'),
       consumerSecret: required(input, 'consumerSecret', 'Consumer Secret'),
       shortCode,
+      shortCodeType,
+      passkey: required(
+        input,
+        'passkey',
+        'Lipa na M-PESA Online passkey',
+        2_000,
+      ),
     };
   }
   if (provider === 'stripe') {

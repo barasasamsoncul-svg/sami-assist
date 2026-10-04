@@ -5,18 +5,18 @@
       "status": "locked",
       "moduleVersion": "2.22.0",
       "referenceStandard": true,
-      "baselineCommit": "589d7e93c9e37bc1c09c39a18d9518373a1d1a91",
+      "baselineCommit": "5343f5fc3469eec405fee43ef183f5d10ae86d0f",
       "baselineBranch": "main",
       "lockedAt": "2026-10-04",
-      "policy": "Invoicing 2.22.0 preserves the completed billing product, business-owner payment provider connections, and customer-facing Pay Now for public and portal invoices. Hosted checkout is supported through connected Pesapal, Stripe, Paystack, Flutterwave and PayPal accounts while direct M-PESA remains verified C2B reconciliation. Customer checkout never accepts browser-supplied financial authority: invoice identity, balance and currency are derived server-side; merchant credentials remain encrypted; provider returns and signed webhooks converge on duplicate-safe settlement through the authoritative payment, allocation, invoice-status and Accounting-posting core. The release gate includes Invoicing regressions, customer checkout contracts, payment-provider connector contracts, parity-hardening, quality locks, module migrations, responsive/app UI, ERP integration, TypeScript and production build.",
+      "policy": "Invoicing 2.22.0 preserves the completed billing product, business-owner payment-provider connections, customer-facing hosted Pay Now, and Safaricom M-PESA Express STK Push. M-PESA retains C2B Paybill/Till reconciliation while connected businesses may additionally configure Paybill/Till type and an encrypted Lipa na M-PESA Online passkey. STK prompts accept only the payer phone from the browser: invoice identity, exact whole-KES balance, currency, shortcode and merchant credentials remain server-authoritative. STK callbacks use one-time hashed callback tokens and are re-verified through Daraja STK Query; callback and polling fallback converge on the same CheckoutRequestID idempotency identity and authoritative invoice/Accounting settlement core. The release gate includes Invoicing and STK regressions, provider connector contracts, quality locks, module migrations, responsive/app UI, ERP integration, TypeScript and production build.",
       "protectedTrees": {
-        "lib/apps/invoicing": "fb6df480c678915a1902daad4c99ca7b6828c3ec",
-        "app/apps/invoicing": "7e089e7b51c689f6f17a9f676ee5bcca3df779f2",
+        "lib/apps/invoicing": "41dd96c08dcbc1d81ea9e07dbe6afbde0c7717f2",
+        "app/apps/invoicing": "1abec109f0411ea95c68213a546f07947f2d07b3",
         "app/api/apps/invoicing": "ae88ec4e4109dc962fd2a7823caaf47ccf43ffd9",
         "app/api/internal/invoicing": "b2b22efc33d3b038495ccdd343845257789334a1",
-        "app/i/[tenantId]/[token]": "a93eac3e7bf1a4404d3a6cc24581291f127896bc",
-        "app/p/[tenantId]/[token]": "276e85436eef153f5911c37db52bf0800f89db48",
-        "app/api/public/invoicing": "26d63f6d39b91bdacbae96015183fad872b5baa8"
+        "app/i/[tenantId]/[token]": "f29ae9c4d6b72e5d5632e9fba2775955f0df3601",
+        "app/p/[tenantId]/[token]": "1e4a46ce6eff533d762e0d543679a197112bb92a",
+        "app/api/public/invoicing": "828439b8da91b4c586cade5dcb91e59154461abe"
       }
     }
   }

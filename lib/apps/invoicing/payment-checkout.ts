@@ -30,6 +30,11 @@ import {
   recordVerifiedExternalInvoiceSettlement,
 } from '@/lib/apps/invoicing/external-settlement';
 import {
+  checkMpesaStkStatus,
+  createMpesaStkPush,
+  mpesaStkCheckoutRequirement,
+} from '@/lib/apps/invoicing/mpesa-stk';
+import {
   getTenantPoolByTenantId,
 } from '@/lib/db/tenant';
 import {
@@ -40,15 +45,19 @@ export type InvoiceCheckoutAccess =
   | 'public'
   | 'portal';
 
+export type InvoiceCheckoutProviderKey =
+  HostedInvoicePaymentProviderKey |
+  'mpesa';
+
 export type InvoiceCheckoutOption = {
-  provider: HostedInvoicePaymentProviderKey;
+  provider: InvoiceCheckoutProviderKey;
   name: string;
   environment: 'sandbox' | 'live';
 };
 
 type LoadedConnection = {
   id: string;
-  provider: HostedInvoicePaymentProviderKey;
+  provider: InvoiceCheckoutProviderKey;
   providerKey: string;
   ownerUserId: string;
   environment: 'sandbox' | 'live';
@@ -136,6 +145,11 @@ function providerFromStorageKey(
   }
   const provider =
     value.slice(prefix.length);
+
+  if (provider === 'mpesa') {
+    return 'mpesa' as const;
+  }
+
   return canProviderCreateHostedCheckout(
     provider as InvoicePaymentProviderKey,
   )
@@ -144,7 +158,7 @@ function providerFromStorageKey(
 }
 
 function providerStorageKey(
-  provider: HostedInvoicePaymentProviderKey,
+  provider: InvoiceCheckoutProviderKey,
 ) {
   return 'invoicing_payment_' + provider;
 }
@@ -178,7 +192,7 @@ function checkoutReturnPath(input: {
   tenantId: string;
   token: string;
   invoiceId: string;
-  provider: HostedInvoicePaymentProviderKey;
+  provider: InvoiceCheckoutProviderKey;
 }) {
   return (
     '/api/public/invoicing/payment-return/' +
@@ -331,7 +345,10 @@ async function loadCheckoutConnections(input: {
       `,
       [
         input.companyId,
-        HOSTED_INVOICE_PAYMENT_PROVIDERS.map(
+        [
+          ...HOSTED_INVOICE_PAYMENT_PROVIDERS,
+          'mpesa' as const,
+        ].map(
           providerStorageKey,
         ),
       ],
@@ -339,7 +356,7 @@ async function loadCheckoutConnections(input: {
 
   const connections: LoadedConnection[] = [];
   const seen =
-    new Set<HostedInvoicePaymentProviderKey>();
+    new Set<InvoiceCheckoutProviderKey>();
 
   for (const row of result.rows) {
     const provider =
@@ -405,6 +422,7 @@ export async function getInvoiceCheckoutOptions(input: {
   invoiceId: string;
   customer: AccessibleInvoice['customer'];
   balanceDue: number;
+  currency: string;
   status: string;
 }) {
   const tenantId =
@@ -423,7 +441,7 @@ export async function getInvoiceCheckoutOptions(input: {
       id: invoiceId,
       invoiceNumber: '',
       status: input.status,
-      currency: '',
+      currency: input.currency,
       balanceDue: input.balanceDue,
       customer: input.customer,
       company: {
@@ -448,11 +466,26 @@ export async function getInvoiceCheckoutOptions(input: {
 
   return connections
     .filter(
-      connection =>
-        !checkoutCustomerRequirement(
+      connection => {
+        if (
+          connection.provider ===
+            'mpesa'
+        ) {
+          return !mpesaStkCheckoutRequirement({
+            secrets:
+              connection.secrets,
+            amount:
+              input.balanceDue,
+            currency:
+              input.currency,
+          });
+        }
+
+        return !checkoutCustomerRequirement(
           connection.provider,
           input.customer,
-        ),
+        );
+      },
     )
     .map(
       connection => ({
@@ -472,7 +505,7 @@ export async function getInvoiceCheckoutOptions(input: {
 async function requireCheckoutConnection(input: {
   tenantId: string;
   companyId: string;
-  provider: HostedInvoicePaymentProviderKey;
+  provider: InvoiceCheckoutProviderKey;
 }) {
   const connections =
     await loadCheckoutConnections({
@@ -508,7 +541,11 @@ async function enforceCheckoutRateLimit(input: {
         SELECT COUNT(*)::int AS count
         FROM integration_events
         WHERE connection_id=$1::uuid
-          AND event_key='invoicing.checkout.created'
+          AND event_key IN (
+            'invoicing.checkout.created',
+            'invoicing.mpesa_stk.intent',
+            'invoicing.mpesa_stk.created'
+          )
           AND payload->>'invoiceId'=$2
           AND created_at >= NOW() - INTERVAL '15 minutes'
       `,
@@ -601,6 +638,7 @@ export async function createInvoiceCheckout(input: {
   token: string;
   invoiceId: string;
   provider: unknown;
+  phoneNumber?: unknown;
   origin: string;
 }) {
   const invoice =
@@ -624,7 +662,12 @@ export async function createInvoiceCheckout(input: {
       80,
     ).toLowerCase();
 
+  const isMpesa =
+    providerText ===
+      'mpesa';
+
   if (
+    !isMpesa &&
     !canProviderCreateHostedCheckout(
       providerText as InvoicePaymentProviderKey,
     )
@@ -636,18 +679,23 @@ export async function createInvoiceCheckout(input: {
   }
 
   const provider =
-    providerText as HostedInvoicePaymentProviderKey;
+    providerText as InvoiceCheckoutProviderKey;
 
-  const requirement =
-    checkoutCustomerRequirement(
-      provider,
-      invoice.customer,
-    );
-  if (requirement) {
-    throw new InvoicingError(
-      'INVALID_INPUT',
-      requirement,
-    );
+  if (
+    provider !==
+      'mpesa'
+  ) {
+    const requirement =
+      checkoutCustomerRequirement(
+        provider,
+        invoice.customer,
+      );
+    if (requirement) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        requirement,
+      );
+    }
   }
 
   const tenantId =
@@ -679,6 +727,82 @@ export async function createInvoiceCheckout(input: {
     normalizeOrigin(
       input.origin,
     );
+  if (
+    provider ===
+      'mpesa'
+  ) {
+    const requirement =
+      mpesaStkCheckoutRequirement({
+        secrets:
+          connection.secrets,
+        amount:
+          invoice.balanceDue,
+        currency:
+          invoice.currency,
+      });
+
+    if (
+      requirement
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        requirement,
+      );
+    }
+
+    try {
+      const result =
+        await createMpesaStkPush({
+          tenantId,
+          companyId,
+          connection: {
+            id:
+              connection.id,
+            providerKey:
+              connection.providerKey,
+            ownerUserId:
+              connection.ownerUserId,
+            secrets:
+              connection.secrets,
+          },
+          invoiceId:
+            invoice.id,
+          invoiceNumber:
+            invoice.invoiceNumber,
+          amount:
+            invoice.balanceDue,
+          currency:
+            invoice.currency,
+          phoneNumber:
+            input.phoneNumber,
+          callbackOrigin:
+            origin,
+        });
+
+      return {
+        provider,
+        providerName:
+          getInvoicePaymentProviderDefinition(
+            provider,
+          )?.name ||
+          'M-PESA',
+        environment:
+          connection.environment,
+        ...result,
+      };
+    } catch (
+      error
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        error instanceof
+          Error
+          ? error.message
+          : 'M-PESA could not start the phone prompt.',
+      );
+    }
+  }
+
   const backPath =
     checkoutBackPath({
       access: input.access,
@@ -744,6 +868,8 @@ export async function createInvoiceCheckout(input: {
         provider,
       )?.name ||
       provider,
+    mode:
+      'redirect' as const,
     checkoutUrl:
       result.checkoutUrl,
     environment:
@@ -897,4 +1023,58 @@ export async function handleInvoiceCheckoutReturn(input: {
     status: 'paid' as const,
     settlement,
   };
+}
+
+
+export async function checkInvoiceMpesaStkPayment(input: {
+  access: InvoiceCheckoutAccess;
+  tenantId: string;
+  token: string;
+  invoiceId: string;
+  checkoutRequestId: unknown;
+}) {
+  const invoice =
+    await requireInvoiceAccess({
+      access:
+        input.access,
+      tenantId:
+        input.tenantId,
+      token:
+        input.token,
+      invoiceId:
+        input.invoiceId,
+    });
+
+  const tenantId =
+    requireUuid(
+      input.tenantId,
+      'Workspace',
+    );
+
+  const companyId =
+    await companyIdForInvoice(
+      tenantId,
+      invoice.id,
+    );
+
+  try {
+    return await checkMpesaStkStatus({
+      tenantId,
+      companyId,
+      invoiceId:
+        invoice.id,
+      checkoutRequestId:
+        input.checkoutRequestId,
+    });
+  } catch (
+    error
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      error instanceof
+        Error
+        ? error.message
+        : 'M-PESA payment status could not be checked.',
+    );
+  }
 }

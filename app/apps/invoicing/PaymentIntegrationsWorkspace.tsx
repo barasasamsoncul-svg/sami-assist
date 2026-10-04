@@ -24,10 +24,14 @@ import SaMiOverlay from '@/app/components/SaMiOverlay';
 type ProviderField = {
   key: string;
   label: string;
-  type: 'text' | 'password';
+  type: 'text' | 'password' | 'select';
   placeholder?: string;
   help: string;
   required: boolean;
+  options?: {
+    value: string;
+    label: string;
+  }[];
 };
 
 type Provider = {
@@ -209,7 +213,22 @@ export default function PaymentIntegrationsWorkspace() {
         ? 'sandbox'
         : 'live',
     );
-    setCredentials({});
+    setCredentials(
+      Object.fromEntries(
+        provider.fields
+          .filter(
+            field =>
+              field.type === 'select' &&
+              field.options?.[0],
+          )
+          .map(
+            field => [
+              field.key,
+              field.options?.[0]?.value || '',
+            ],
+          ),
+      ),
+    );
     setManualSetup(null);
     setManualConnectionId(null);
   }
@@ -720,19 +739,41 @@ export default function PaymentIntegrationsWorkspace() {
                       <span className="text-xs font-black">
                         {field.label}
                       </span>
-                      <input
-                        type={field.type}
-                        value={credentials[field.key] || ''}
-                        autoComplete="off"
-                        placeholder={field.placeholder}
-                        onChange={event =>
-                          setCredentials(currentValues => ({
-                            ...currentValues,
-                            [field.key]: event.target.value,
-                          }))
-                        }
-                        className="mt-2 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm outline-none transition focus:border-blue-500"
-                      />
+                      {field.type === 'select' ? (
+                        <select
+                          value={credentials[field.key] || ''}
+                          onChange={event =>
+                            setCredentials(currentValues => ({
+                              ...currentValues,
+                              [field.key]: event.target.value,
+                            }))
+                          }
+                          className="mt-2 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-sm outline-none transition focus:border-blue-500"
+                        >
+                          {(field.options || []).map(option => (
+                            <option
+                              key={option.value}
+                              value={option.value}
+                            >
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type={field.type}
+                          value={credentials[field.key] || ''}
+                          autoComplete="off"
+                          placeholder={field.placeholder}
+                          onChange={event =>
+                            setCredentials(currentValues => ({
+                              ...currentValues,
+                              [field.key]: event.target.value,
+                            }))
+                          }
+                          className="mt-2 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm outline-none transition focus:border-blue-500"
+                        />
+                      )}
                       <span className="mt-1 block text-[10px] leading-4 text-slate-400">
                         {field.help}
                       </span>

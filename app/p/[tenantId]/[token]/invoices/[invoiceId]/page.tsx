@@ -150,6 +150,8 @@ export default async function CustomerPortalInvoicePage({
         invoice.customer,
       balanceDue:
         invoice.balanceDue,
+      currency:
+        invoice.currency,
       status:
         invoice.status,
     });
@@ -701,6 +703,11 @@ export default async function CustomerPortalInvoicePage({
               }
               currency={
                 invoice.currency
+              }
+              defaultPhone={
+                invoice.customer
+                  .phone ||
+                ''
               }
               providers={
                 checkoutOptions

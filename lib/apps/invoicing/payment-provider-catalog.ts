@@ -13,10 +13,14 @@ export type InvoicePaymentEnvironment =
 export type InvoicePaymentProviderField = {
   key: string;
   label: string;
-  type: 'text' | 'password';
+  type: 'text' | 'password' | 'select';
   placeholder?: string;
   help: string;
   required: boolean;
+  options?: readonly {
+    value: string;
+    label: string;
+  }[];
 };
 
 export type InvoicePaymentProviderDefinition = {
@@ -59,11 +63,11 @@ export const INVOICE_PAYMENT_PROVIDERS: readonly InvoicePaymentProviderDefinitio
   {
     key: 'mpesa',
     name: 'M-PESA (Daraja)',
-    description: 'Receive Paybill or Till C2B payments and match the account/reference number to SaMi invoices.',
+    description: 'Receive Paybill or Till C2B payments and let customers pay invoices with an M-PESA phone prompt.',
     countries: ['Kenya'],
     environments: ['sandbox', 'live'],
     setupMode: 'automatic',
-    setupNote: 'SaMi verifies the Daraja app and registers the C2B confirmation and validation URLs.',
+    setupNote: 'SaMi verifies the Daraja app, registers C2B callbacks, and uses your Lipa na M-PESA Online passkey for secure invoice STK prompts.',
     fields: [
       {
         key: 'consumerKey',
@@ -83,7 +87,31 @@ export const INVOICE_PAYMENT_PROVIDERS: readonly InvoicePaymentProviderDefinitio
         key: 'shortCode',
         label: 'Paybill / Till number',
         type: 'text',
-        help: 'Enter the business short code that receives customer payments.',
+        help: 'Enter the M-PESA business short code that receives customer payments.',
+        required: true,
+      },
+      {
+        key: 'shortCodeType',
+        label: 'Account type',
+        type: 'select',
+        help: 'Choose Paybill for CustomerPayBillOnline or Till for CustomerBuyGoodsOnline.',
+        required: true,
+        options: [
+          {
+            value: 'paybill',
+            label: 'Paybill',
+          },
+          {
+            value: 'till',
+            label: 'Till / Buy Goods',
+          },
+        ],
+      },
+      {
+        key: 'passkey',
+        label: 'Lipa na M-PESA Online passkey',
+        type: 'password',
+        help: 'Copy the passkey for this shortcode from the Daraja M-PESA Express / Lipa na M-PESA Online setup.',
         required: true,
       },
     ],
