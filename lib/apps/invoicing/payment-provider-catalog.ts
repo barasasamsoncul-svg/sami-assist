@@ -42,7 +42,7 @@ export const INVOICE_PAYMENT_PROVIDERS: readonly InvoicePaymentProviderDefinitio
     countries: ['Kenya', 'Uganda', 'Tanzania', 'Rwanda', 'Zambia'],
     environments: ['sandbox', 'live'],
     setupMode: 'automatic',
-    setupNote: 'SaMi verifies your merchant credentials and registers the payment notification URL for you.',
+    setupNote: 'SaMi verifies your merchant credentials and registers the Pesapal IPN automatically. The business user only enters the Consumer Key and Consumer Secret; do not create or paste an IPN URL manually.',
     fields: [
       {
         key: 'consumerKey',
