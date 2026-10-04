@@ -1790,43 +1790,6 @@ export async function getSalesQuoteDetail(
       money(
         row.shipping_total,
       ),
-    depositType:
-      row.deposit_type ===
-        'percent'
-        ? 'percent'
-        : row.deposit_type ===
-            'fixed'
-          ? 'fixed'
-          : 'none',
-    depositValue:
-      money(
-        row.deposit_value,
-      ),
-    depositRequiredAmount:
-      money(
-        row.deposit_required_amount,
-      ),
-    depositReceivedAmount:
-      money(
-        row.deposit_received_amount,
-      ),
-    depositStatus:
-      String(
-        row.deposit_status ||
-        'none',
-      ),
-    depositRetainerId:
-      row.deposit_retainer_id
-        ? String(
-            row.deposit_retainer_id,
-          )
-        : null,
-    depositPaymentId:
-      row.deposit_payment_id
-        ? String(
-            row.deposit_payment_id,
-          )
-        : null,
     notes:
       row.notes
         ? String(
@@ -2634,6 +2597,43 @@ export async function getSalesOrderDetail(
       money(
         row.shipping_total,
       ),
+    depositType:
+      row.deposit_type ===
+        'percent'
+        ? 'percent'
+        : row.deposit_type ===
+            'fixed'
+          ? 'fixed'
+          : 'none',
+    depositValue:
+      money(
+        row.deposit_value,
+      ),
+    depositRequiredAmount:
+      money(
+        row.deposit_required_amount,
+      ),
+    depositReceivedAmount:
+      money(
+        row.deposit_received_amount,
+      ),
+    depositStatus:
+      String(
+        row.deposit_status ||
+        'none',
+      ),
+    depositRetainerId:
+      row.deposit_retainer_id
+        ? String(
+            row.deposit_retainer_id,
+          )
+        : null,
+    depositPaymentId:
+      row.deposit_payment_id
+        ? String(
+            row.deposit_payment_id,
+          )
+        : null,
     notes:
       row.notes
         ? String(
