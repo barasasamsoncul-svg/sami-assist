@@ -2000,8 +2000,6 @@ export async function checkMpesaStkStatus(
         intent.currency,
       providerReference:
         checkoutRequestId,
-      providerTransactionId:
-        checkoutRequestId,
       method:
         'M-PESA STK',
       notes:
