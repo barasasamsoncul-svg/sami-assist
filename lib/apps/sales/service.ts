@@ -31,3 +31,11 @@ export {
   getPublicSalesQuote,
   respondToPublicSalesQuote,
 } from '@/lib/apps/sales/public';
+
+
+export {
+  createSalesQuoteRevision,
+  getSalesCommercialData,
+  saveSalesPricelist,
+  saveSalesQuoteOptionalItems,
+} from '@/lib/apps/sales/commercial';

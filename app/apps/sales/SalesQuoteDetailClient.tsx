@@ -30,6 +30,8 @@ import {
 
 import SalesQuoteComposer from '@/app/apps/sales/SalesQuoteComposer';
 
+import SalesOptionalProductsEditor from '@/app/apps/sales/SalesOptionalProductsEditor';
+
 import type {
   SalesQuoteDetail,
   SalesWorkspaceData,
@@ -321,6 +323,11 @@ export default function SalesQuoteDetailClient({
                     quote.approvalStatus
                   }
                 />
+                <span className="inline-flex rounded-full bg-slate-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-slate-600 ring-1 ring-inset ring-slate-500/20 dark:text-slate-300">
+                  Revision {
+                    quote.currentRevision
+                  }
+                </span>
               </div>
 
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
@@ -424,7 +431,47 @@ export default function SalesQuoteDetailClient({
                   </button>
                 )
               }
-            </div>
+            
+
+              {
+                workspace
+                  .capabilities
+                  .canRevise &&
+                [
+                  'sent',
+                  'viewed',
+                  'rejected',
+                  'expired',
+                ].includes(
+                  quote.status,
+                ) &&
+                (
+                  <button
+                    type="button"
+                    disabled={
+                      isBusy
+                    }
+                    onClick={
+                      () =>
+                        void run(
+                          {
+                            action:
+                              'revise_quote',
+                            quoteId:
+                              quote.id,
+                            reason:
+                              'Commercial terms revised',
+                          },
+                          'A new editable quotation revision was opened while the previous revision was preserved.',
+                        )
+                    }
+                    className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black disabled:opacity-60"
+                  >
+                    <Pencil className="h-4 w-4" />
+                    Revise
+                  </button>
+                )
+              }</div>
           </div>
         </section>
 
@@ -503,6 +550,16 @@ export default function SalesQuoteDetailClient({
                       <th className="px-4 py-3 text-right">
                         Tax
                       </th>
+                      {
+                        workspace
+                          .capabilities
+                          .canViewMargin &&
+                        (
+                          <th className="px-4 py-3 text-right">
+                            Cost / margin
+                          </th>
+                        )
+                      }
                       <th className="px-4 py-3 text-right">
                         Total
                       </th>
@@ -569,6 +626,40 @@ export default function SalesQuoteDetailClient({
                                 )
                               }
                             </td>
+                            {
+                              workspace
+                                .capabilities
+                                .canViewMargin &&
+                              (
+                                <td className="px-4 py-3 text-right">
+                                  <p>
+                                    {
+                                      money(
+                                        line.costTotal ||
+                                        0,
+                                        quote.currency,
+                                      )
+                                    }
+                                  </p>
+                                  <p className="mt-1 text-[10px] font-black text-emerald-700 dark:text-emerald-300">
+                                    {
+                                      money(
+                                        line.marginAmount ||
+                                        0,
+                                        quote.currency,
+                                      )
+                                    } · {
+                                      (
+                                        line.marginPercent ||
+                                        0
+                                      ).toFixed(
+                                        1,
+                                      )
+                                    }%
+                                  </p>
+                                </td>
+                              )
+                            }
                             <td className="px-4 py-3 text-right font-black">
                               {
                                 money(
@@ -612,6 +703,156 @@ export default function SalesQuoteDetailClient({
                 }
               />
             </div>
+
+            {
+              quote.status ===
+                'draft' &&
+              workspace
+                .capabilities
+                .canManageOptionalProducts &&
+              (
+                <SalesOptionalProductsEditor
+                  quote={
+                    quote
+                  }
+                  workspace={
+                    workspace
+                  }
+                  busy={
+                    isBusy
+                  }
+                  onSave={
+                    async items => {
+                      const result =
+                        await run(
+                          {
+                            action:
+                              'save_optional_items',
+                            quoteId:
+                              quote.id,
+                            items,
+                          },
+                          'Optional products saved.',
+                        );
+
+                      return Boolean(
+                        result,
+                      );
+                    }
+                  }
+                />
+              )
+            }
+
+            {
+              quote.optionalItems
+                .length >
+                0 &&
+              (
+                <div className="sami-surface rounded-[24px] p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+                        Upsell
+                      </p>
+                      <h2 className="mt-1 text-sm font-black">
+                        Optional products
+                      </h2>
+                    </div>
+                    <span className="text-xs font-black text-slate-500">
+                      {
+                        quote.optionalItems.length
+                      }
+                    </span>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {
+                      quote.optionalItems.map(
+                        item => (
+                          <div
+                            key={
+                              item.id
+                            }
+                            className="flex flex-col gap-2 rounded-xl border border-[var(--sami-border)] p-3 sm:flex-row sm:items-center sm:justify-between"
+                          >
+                            <div>
+                              <p className="text-xs font-black">
+                                {
+                                  item.description
+                                }
+                              </p>
+                              <p className="mt-1 text-[10px] text-slate-500">
+                                {
+                                  item.quantity
+                                } {
+                                  item.unit
+                                } · {
+                                  money(
+                                    item.unitPrice,
+                                    quote.currency,
+                                  )
+                                }
+                              </p>
+                            </div>
+                            <Badge
+                              value={
+                                item.isSelected
+                                  ? 'selected'
+                                  : 'optional'
+                              }
+                            />
+                          </div>
+                        ),
+                      )
+                    }
+                  </div>
+                </div>
+              )
+            }
+
+            {
+              quote.revisions
+                .length >
+                0 &&
+              (
+                <div className="sami-surface rounded-[24px] p-4">
+                  <h2 className="text-sm font-black">
+                    Revision history
+                  </h2>
+                  <div className="mt-3 space-y-2">
+                    {
+                      quote.revisions.map(
+                        revision => (
+                          <div
+                            key={
+                              revision.id
+                            }
+                            className="rounded-xl border border-[var(--sami-border)] p-3"
+                          >
+                            <p className="text-xs font-black">
+                              Revision {
+                                revision.revisionNumber
+                              }
+                            </p>
+                            <p className="mt-1 text-[10px] text-slate-500">
+                              {
+                                revision.createdAt
+                              }
+                              {
+                                revision.reason
+                                  ? ' · ' +
+                                    revision.reason
+                                  : ''
+                              }
+                            </p>
+                          </div>
+                        ),
+                      )
+                    }
+                  </div>
+                </div>
+              )
+            }
 
             <div className="sami-surface rounded-[24px] p-4">
               <h2 className="text-sm font-black">
@@ -812,6 +1053,39 @@ export default function SalesQuoteDetailClient({
                     )
                   }
                 />
+                {
+                  workspace
+                    .capabilities
+                    .canViewMargin &&
+                  quote.marginAmount !==
+                    null &&
+                  (
+                    <>
+                      <Summary
+                        label="Margin"
+                        value={
+                          money(
+                            quote.marginAmount,
+                            quote.currency,
+                          )
+                        }
+                      />
+                      <Summary
+                        label="Margin %"
+                        value={
+                          (
+                            quote.marginPercent ||
+                            0
+                          ).toFixed(
+                            1,
+                          ) +
+                          '%'
+                        }
+                      />
+                    </>
+                  )
+                }
+
                 <div className="flex items-center justify-between border-t border-[var(--sami-border)] pt-3">
                   <span className="font-black">
                     Total

@@ -33,6 +33,10 @@ export type SalesQuoteLine = {
   unit: string;
   quantity: number;
   unitPrice: number;
+  unitCost: number | null;
+  costTotal: number | null;
+  marginAmount: number | null;
+  marginPercent: number | null;
   discountType: 'percent' | 'fixed';
   discountValue: number;
   discountAmount: number;
@@ -54,6 +58,10 @@ export type SalesQuoteSummary = {
   customerName: string;
   customerEmail: string | null;
   totalAmount: number;
+  currentRevision: number;
+  pricelistId: string | null;
+  marginAmount: number | null;
+  marginPercent: number | null;
   reference: string | null;
   approvalStatus: string;
   salesOrderId: string | null;
@@ -107,6 +115,25 @@ export type SalesQuoteDetail =
     rejectedAt: string | null;
     convertedAt: string | null;
     lines: SalesQuoteLine[];
+    optionalItems: Array<{
+      id: string;
+      catalogItemId: string | null;
+      description: string;
+      sku: string | null;
+      unit: string;
+      quantity: number;
+      unitPrice: number;
+      unitCost: number | null;
+      taxName: string | null;
+      taxRate: number;
+      isSelected: boolean;
+    }>;
+    revisions: Array<{
+      id: string;
+      revisionNumber: number;
+      reason: string | null;
+      createdAt: string;
+    }>;
     history: Array<{
       id: string;
       fromStatus: string | null;
@@ -196,6 +223,12 @@ export type SalesWorkspaceData = {
     canManageOrders: boolean;
     canViewReports: boolean;
     canManageSettings: boolean;
+    canRevise: boolean;
+    canManageOptionalProducts: boolean;
+    canViewPricing: boolean;
+    canManagePricing: boolean;
+    canViewMargin: boolean;
+    canManageMargin: boolean;
     canUseBillingCustomers: boolean;
     canUseCatalog: boolean;
   };
@@ -245,6 +278,18 @@ export type SalesWorkspaceData = {
     unitPrice: number;
     taxName: string | null;
     taxRate: number;
+    unitCost: number | null;
+  }>;
+  pricelists: Array<{
+    id: string;
+    name: string;
+    code: string | null;
+    currency: string;
+    billingCustomerId: string | null;
+    validFrom: string | null;
+    validUntil: string | null;
+    priority: number;
+    isActive: boolean;
   }>;
   templates: Array<{
     id: string;
@@ -280,6 +325,7 @@ export type SalesWorkspaceData = {
 export type CreateSalesQuoteInput = {
   billingCustomerId?: unknown;
   templateId?: unknown;
+  pricelistId?: unknown;
   quoteDate?: unknown;
   validUntil?: unknown;
   currency?: unknown;

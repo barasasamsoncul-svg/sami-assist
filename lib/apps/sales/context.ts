@@ -51,6 +51,18 @@ export const SALES_PERMISSIONS = {
     'sales.quote.convert',
   QUOTE_CANCEL:
     'sales.quote.cancel',
+  QUOTE_REVISE:
+    'sales.quote.revise',
+  QUOTE_OPTIONAL_MANAGE:
+    'sales.quote.optional.manage',
+  PRICING_VIEW:
+    'sales.pricing.view',
+  PRICING_MANAGE:
+    'sales.pricing.manage',
+  MARGIN_VIEW:
+    'sales.margin.view',
+  MARGIN_MANAGE:
+    'sales.margin.manage',
   ORDER_VIEW:
     'sales.order.view',
   ORDER_MANAGE:

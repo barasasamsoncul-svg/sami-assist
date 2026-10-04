@@ -15,6 +15,8 @@ export default function PublicSalesQuoteActions({
   token,
   allowAcceptance,
   allowRejection,
+  optionalItems,
+  currency,
 }: {
   tenantId:
     string;
@@ -24,6 +26,18 @@ export default function PublicSalesQuoteActions({
     boolean;
   allowRejection:
     boolean;
+  currency:
+    string;
+  optionalItems:
+    Array<{
+      id: string;
+      description: string;
+      unit: string;
+      quantity: number;
+      unitPrice: number;
+      taxRate: number;
+      isSelected: boolean;
+    }>;
 }) {
   const [
     busy,
@@ -42,6 +56,24 @@ export default function PublicSalesQuoteActions({
       null
     >(
       null,
+    );
+
+  const [
+    selectedOptionalItemIds,
+    setSelectedOptionalItemIds,
+  ] =
+    useState<
+      string[]
+    >(
+      optionalItems
+        .filter(
+          item =>
+            item.isSelected,
+        )
+        .map(
+          item =>
+            item.id,
+        ),
     );
 
   const [
@@ -215,6 +247,111 @@ export default function PublicSalesQuoteActions({
       <p className="mt-1 text-xs leading-5 text-slate-500">
         Your response is recorded securely against this quotation.
       </p>
+
+      {
+        allowAcceptance &&
+        optionalItems.length >
+          0 &&
+        (
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">
+              Optional products
+            </p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Select any extras you want included before accepting. Your accepted quotation total will be recalculated securely.
+            </p>
+
+            <div className="mt-3 space-y-2">
+              {
+                optionalItems.map(
+                  item => {
+                    const selected =
+                      selectedOptionalItemIds.includes(
+                        item.id,
+                      );
+
+                    const net =
+                      item.quantity *
+                      item.unitPrice;
+
+                    const total =
+                      net +
+                      net *
+                      item.taxRate /
+                      100;
+
+                    return (
+                      <label
+                        key={
+                          item.id
+                        }
+                        className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-white p-3"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={
+                            selected
+                          }
+                          onChange={
+                            event =>
+                              setSelectedOptionalItemIds(
+                                current =>
+                                  event.target
+                                    .checked
+                                    ? Array.from(
+                                        new Set([
+                                          ...current,
+                                          item.id,
+                                        ]),
+                                      )
+                                    : current.filter(
+                                        id =>
+                                          id !==
+                                            item.id,
+                                      ),
+                              )
+                          }
+                          className="mt-0.5 h-4 w-4"
+                        />
+
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-xs font-black text-slate-900">
+                            {
+                              item.description
+                            }
+                          </span>
+                          <span className="mt-1 block text-[10px] text-slate-500">
+                            {
+                              item.quantity
+                            } {
+                              item.unit
+                            } · {
+                              new Intl
+                                .NumberFormat(
+                                  'en-KE',
+                                  {
+                                    style:
+                                      'currency',
+                                    currency,
+                                    maximumFractionDigits:
+                                      2,
+                                  },
+                                )
+                                .format(
+                                  total,
+                                )
+                            }
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  },
+                )
+              }
+            </div>
+          </div>
+        )
+      }
 
       {
         allowAcceptance &&

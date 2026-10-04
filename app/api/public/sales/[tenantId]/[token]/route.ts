@@ -102,6 +102,8 @@ export async function POST(
               payload.signerEmail,
             acceptanceNote:
               payload.acceptanceNote,
+            selectedOptionalItemIds:
+              payload.selectedOptionalItemIds,
           },
         ),
     });
