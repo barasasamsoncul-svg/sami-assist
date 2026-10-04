@@ -10,7 +10,7 @@ async function source(file) {
     .replace(/\r\n/g, '\n');
 }
 
-test('customer Pay Now supports five hosted providers without exposing merchant secrets', async () => {
+test('customer Pay Now supports hosted providers plus verified M-PESA STK without exposing merchant secrets', async () => {
   const [
     providers,
     service,
@@ -42,8 +42,12 @@ test('customer Pay Now supports five hosted providers without exposing merchant 
   assert.doesNotMatch(
     providers,
     /HOSTED_INVOICE_PAYMENT_PROVIDERS[\s\S]{0,250}'mpesa'/,
-    'Direct M-PESA C2B remains automatic reconciliation, not a fake hosted checkout.',
+    'M-PESA STK is an asynchronous phone prompt, not a fake hosted redirect.',
   );
+  assert.match(service, /mpesaStkCheckoutRequirement/);
+  assert.match(service, /createMpesaStkPush/);
+  assert.match(client, /Send M-PESA prompt/);
+  assert.match(client, /phoneNumber/);
 
   assert.match(client, /Pay securely online/);
   assert.match(client, /Pay with/);
@@ -183,4 +187,71 @@ test('Flutterwave and PayPal returns are provider-verified before settlement', a
     /\/v2\/checkout\/orders\//,
     'PayPal webhooks must recover invoice metadata from the order when capture payloads omit it.',
   );
+});
+
+
+test('M-PESA STK uses encrypted merchant passkeys, one-time callbacks and server-side Daraja verification', async () => {
+  const [
+    catalog,
+    adapters,
+    stk,
+    checkout,
+    client,
+    route,
+    callbackRoute,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/payment-provider-catalog.ts'),
+    source('lib/apps/invoicing/payment-provider-adapters.ts'),
+    source('lib/apps/invoicing/mpesa-stk.ts'),
+    source('lib/apps/invoicing/payment-checkout.ts'),
+    source('app/apps/invoicing/InvoicePayNow.tsx'),
+    source('app/api/public/invoicing/payment-checkout/[access]/[tenantId]/[token]/[invoiceId]/route.ts'),
+    source('app/api/public/invoicing/mpesa-stk/[tenantId]/[callbackToken]/route.ts'),
+  ]);
+
+  assert.match(catalog, /Lipa na M-PESA Online passkey/);
+  assert.match(catalog, /shortCodeType/);
+  assert.match(catalog, /value: 'paybill'/);
+  assert.match(catalog, /value: 'till'/);
+
+  assert.match(adapters, /passkey\?: string/);
+  assert.match(adapters, /shortCodeType\?: 'paybill' \| 'till'/);
+  assert.match(adapters, /required\(\s*input,\s*'passkey'/s);
+
+  assert.match(stk, /\/mpesa\/stkpush\/v1\/processrequest/);
+  assert.match(stk, /\/mpesa\/stkpushquery\/v1\/query/);
+  assert.match(stk, /CustomerPayBillOnline/);
+  assert.match(stk, /CustomerBuyGoodsOnline/);
+  assert.match(stk, /callbackTokenHash/);
+  assert.match(stk, /crypto\.randomBytes\(\s*32/s);
+  assert.match(stk, /MpesaReceiptNumber/);
+  assert.match(stk, /recordVerifiedExternalInvoiceSettlement/);
+  assert.match(stk, /externalEventId:\s*checkoutRequestId/s);
+  assert.match(stk, /amount !==\s*intent\.amount/s);
+
+  assert.match(checkout, /providerText ===\s*'mpesa'/s);
+  assert.match(checkout, /checkMpesaStkStatus/);
+  assert.match(route, /operation ===\s*'status'/s);
+  assert.match(callbackRoute, /receiveMpesaStkCallback/);
+
+  assert.match(client, /type="tel"/);
+  assert.match(client, /operation:\s*'status'/s);
+  assert.match(client, /checkoutRequestId/);
+  assert.doesNotMatch(
+    client,
+    /passkey|consumerSecret|consumerKey/,
+    'Daraja merchant credentials must never reach the customer browser.',
+  );
+});
+
+test('M-PESA STK only offers exact whole-KES settlement and normalizes Kenyan phone numbers server-side', async () => {
+  const stk =
+    await source('lib/apps/invoicing/mpesa-stk.ts');
+
+  assert.match(stk, /currency[\s\S]*'KES'/s);
+  assert.match(stk, /Number\.isInteger/);
+  assert.match(stk, /normalizeKenyanMpesaPhone/);
+  assert.match(stk, /\^254\(\?:7\\d\{8\}\|1\\d\{8\}\)\$/);
+  assert.match(stk, /Amount:\s*input\.amount/s);
+  assert.match(stk, /invoiceId:\s*intent\.invoiceId/s);
 });
