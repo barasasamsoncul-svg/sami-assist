@@ -1813,6 +1813,8 @@ export async function receiveMpesaStkCallback(
         'KES',
       providerReference:
         receipt,
+      providerTransactionId:
+        receipt,
       method:
         'M-PESA STK',
       paymentDate:
@@ -1997,6 +1999,8 @@ export async function checkMpesaStkStatus(
       currency:
         intent.currency,
       providerReference:
+        checkoutRequestId,
+      providerTransactionId:
         checkoutRequestId,
       method:
         'M-PESA STK',
