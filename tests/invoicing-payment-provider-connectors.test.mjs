@@ -114,7 +114,7 @@ test('manual webhook setup is not reported as verified until SaMi validates a re
   );
 
   assert.match(ui, /Configured · awaiting event/);
-  assert.match(ui, />Verified</);
+  assert.match(ui, /\? 'Verified'/);
   assert.match(ui, /Last verified event/);
   assert.match(ui, /Verified webhooks/);
   assert.match(
