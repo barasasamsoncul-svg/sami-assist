@@ -478,6 +478,7 @@ test('Sales workspace includes professional operating surfaces, tutorials and ov
       'Overview',
       'Quotations',
       'Sales orders',
+      'Teams & performance',
       'Reports',
       'Settings',
     ]
@@ -557,6 +558,11 @@ test('Sales API exposes the complete quotation-to-cash action surface', async ()
       'revise_quote',
       'save_optional_items',
       'save_pricelist',
+      'save_sales_territory',
+      'save_sales_team',
+      'save_sales_target',
+      'save_commission_plan',
+      'mark_commission_paid',
       'send_quote',
       'change_quote_status',
       'request_quote_approval',
@@ -621,7 +627,7 @@ test('Sales v3 is registered into manifests, migrations, Search and SaMi AI', as
 
   assert.match(
     manifest,
-    /key: "sales",[\s\S]*version: '3\.0\.0'/s,
+    /key: "sales",[\s\S]*version: '3\.1\.0'/s,
   );
 
   assert.match(
@@ -652,6 +658,11 @@ test('Sales v3 is registered into manifests, migrations, Search and SaMi AI', as
   assert.match(
     runtimeMigrations,
     /SALES_2_2_0_TO_3_0_0/,
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /SALES_3_0_0_TO_3_1_0/,
   );
 
   const inventoryBridge =
@@ -875,4 +886,171 @@ test('Sales v3 customer portal materializes selected optional products before ac
   assert.match(publicActions, /selectedOptionalItemIds/);
   assert.match(publicActions, /accepted quotation total will be recalculated securely/);
   assert.match(publicRoute, /selectedOptionalItemIds/);
+});
+
+
+test('Sales 3.1 models canonical teams territories targets and commissions', async () => {
+  const [
+    schema,
+    migration,
+    context,
+    organization,
+    commands,
+    manifest,
+    api,
+    page,
+    workspace,
+    organizationUi,
+  ] = await Promise.all([
+    source('lib/apps/sales/schema.sql'),
+    source('lib/apps/sales/migrations/3.0.0-to-3.1.0.ts'),
+    source('lib/apps/sales/context.ts'),
+    source('lib/apps/sales/organization.ts'),
+    source('lib/apps/sales/commands.ts'),
+    source('lib/modules/first-party.ts'),
+    source('app/api/apps/sales/route.ts'),
+    source('app/apps/sales/page.tsx'),
+    source('app/apps/sales/SalesWorkspaceClient.tsx'),
+    source('app/apps/sales/SalesOrganizationManager.tsx'),
+  ]);
+
+  for (const table of [
+    'sales_territories',
+    'sales_teams',
+    'sales_team_members',
+    'sales_targets',
+    'sales_commission_plans',
+    'sales_commission_assignments',
+    'sales_commission_entries',
+  ]) {
+    assert.match(schema, new RegExp('public\\.' + table));
+    assert.match(migration, new RegExp('public\\.' + table));
+  }
+
+  for (const permission of [
+    'sales.team.view',
+    'sales.team.manage',
+    'sales.target.view',
+    'sales.target.manage',
+    'sales.commission.view',
+    'sales.commission.manage',
+  ]) {
+    assert.match(context, new RegExp(permission.replaceAll('.', '\\.')));
+    assert.match(manifest, new RegExp(permission.replaceAll('.', '\\.')));
+  }
+
+  assert.match(
+    organization,
+    /FROM tenant_users tu[\s\S]*INNER JOIN users u[\s\S]*member_type = 'internal'/,
+    'Sales organization must reuse the canonical workspace user directory.',
+  );
+
+  assert.doesNotMatch(
+    schema,
+    /CREATE TABLE IF NOT EXISTS public\.sales_users/,
+    'Sales must not create a second user directory.',
+  );
+
+  assert.match(organization, /resolveSalesAssignmentForUser/);
+  assert.match(organization, /sales_team_members/);
+  assert.match(organization, /sales_order\.sales_team_id/);
+  assert.match(organization, /sales_order\.salesperson_user_id/);
+  assert.match(organization, /actual_value/);
+  assert.match(organization, /attainmentPercent/);
+
+  assert.match(organization, /sourceEventKey/);
+  assert.match(organization, /ON CONFLICT[\s\S]*DO NOTHING/);
+  assert.match(organization, /status = 'reversed'/);
+  assert.match(organization, /status = 'paid'/);
+  assert.match(
+    organization,
+    /historical accruals[\s\S]*Create a new plan version/,
+    'Commission commercial terms must be immutable after accrual evidence exists.',
+  );
+
+  assert.match(commands, /recordSalesOrderCommissionEntries/);
+  assert.match(commands, /reverseSalesOrderCommissions/);
+  assert.match(commands, /salesperson_user_id/);
+  assert.match(commands, /sales_team_id/);
+  assert.match(commands, /territory_id/);
+
+  assert.match(
+    commands,
+    /INSERT INTO sales_quotes \([\s\S]*salesperson_user_id,[\s\S]*sales_team_id,[\s\S]*territory_id,[\s\S]*created_by,[\s\S]*updated_by[\s\S]*VALUES \([\s\S]*\$25,\$26,\$27,\$28,\$29,\$30,\$31,\$31/,
+    'Quotation SQL placeholders must stay aligned after commercial and organization snapshots are added.',
+  );
+
+  assert.match(manifest, /version: '3\.1\.0'/);
+  assert.match(manifest, /sales\.territory\.company/);
+  assert.match(manifest, /sales\.team\.company/);
+  assert.match(manifest, /sales\.target\.company/);
+  assert.match(manifest, /sales\.commission\.company/);
+
+  for (const action of [
+    'save_sales_territory',
+    'save_sales_team',
+    'save_sales_target',
+    'save_commission_plan',
+    'mark_commission_paid',
+  ]) {
+    assert.ok(api.includes(action), action);
+  }
+
+  assert.match(page, /view=organization/);
+  assert.match(page, /Teams & performance/);
+  assert.match(workspace, /SalesOrganizationManager/);
+  assert.match(workspace, /Teams & performance/);
+  assert.match(organizationUi, /Sales territories/);
+  assert.match(organizationUi, /Sales teams/);
+  assert.match(organizationUi, /New sales target/);
+  assert.match(organizationUi, /Commission plan/);
+  assert.match(organizationUi, /% achieved/);
+  assert.match(organizationUi, /Mark paid/);
+});
+
+
+test('Sales 3.1 commission accrual remains tied to immutable order snapshots', async () => {
+  const [
+    migration,
+    commands,
+    organization,
+  ] = await Promise.all([
+    source('lib/apps/sales/migrations/3.0.0-to-3.1.0.ts'),
+    source('lib/apps/sales/commands.ts'),
+    source('lib/apps/sales/organization.ts'),
+  ]);
+
+  for (const snapshot of [
+    'salesperson_user_id',
+    'sales_team_id',
+    'territory_id',
+  ]) {
+    assert.match(migration, new RegExp(snapshot));
+  }
+
+  assert.match(
+    commands,
+    /INSERT INTO sales_orders_v2[\s\S]*salesperson_user_id[\s\S]*sales_team_id[\s\S]*territory_id/,
+  );
+
+  assert.match(
+    commands,
+    /revenueAmount:[\s\S]*row\.subtotal[\s\S]*row\.discount_total/,
+  );
+
+  assert.match(
+    commands,
+    /marginAmount:[\s\S]*row\.margin_amount/,
+  );
+
+  assert.match(
+    organization,
+    /source_event_key VARCHAR\(255\) NOT NULL|source_event_key/,
+  );
+
+  assert.match(
+    organization,
+    /WHERE company_id = \$1[\s\S]*order_id = \$2[\s\S]*status = 'accrued'/,
+    'Order cancellation must reverse only unpaid accrued commissions.',
+  );
 });
