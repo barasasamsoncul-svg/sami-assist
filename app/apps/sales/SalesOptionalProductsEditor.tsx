@@ -22,6 +22,7 @@ type OptionalDraft = {
   unit: string;
   quantity: string;
   unitPrice: string;
+  unitCost: string;
   taxName: string;
   taxRate: string;
 };
@@ -50,6 +51,8 @@ function blank():
     quantity:
       '1',
     unitPrice:
+      '0',
+    unitCost:
       '0',
     taxName:
       '',
@@ -111,6 +114,11 @@ export default function SalesOptionalProductsEditor({
             unitPrice:
               String(
                 item.unitPrice,
+              ),
+            unitCost:
+              String(
+                item.unitCost ||
+                0,
               ),
             taxName:
               item.taxName ||
@@ -196,6 +204,11 @@ export default function SalesOptionalProductsEditor({
           String(
             product.unitPrice,
           ),
+        unitCost:
+          String(
+            product.unitCost ||
+            0,
+          ),
         taxName:
           product.taxName ||
           '',
@@ -236,6 +249,14 @@ export default function SalesOptionalProductsEditor({
             Number(
               item.unitPrice,
             ),
+          unitCost:
+            workspace
+              .capabilities
+              .canManageMargin
+              ? Number(
+                  item.unitCost,
+                )
+              : undefined,
           taxName:
             item.taxName ||
             undefined,
@@ -458,6 +479,31 @@ export default function SalesOptionalProductsEditor({
                             )
                         }
                       />
+
+                      {
+                        workspace
+                          .capabilities
+                          .canManageMargin &&
+                        (
+                          <Field
+                            label="Unit cost"
+                            type="number"
+                            value={
+                              item.unitCost
+                            }
+                            onChange={
+                              value =>
+                                patch(
+                                  index,
+                                  {
+                                    unitCost:
+                                      value,
+                                  },
+                                )
+                            }
+                          />
+                        )
+                      }
                       <Field
                         label="Tax %"
                         type="number"
