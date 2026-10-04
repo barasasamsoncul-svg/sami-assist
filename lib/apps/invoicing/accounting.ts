@@ -217,6 +217,327 @@ function money(
 }
 
 
+function isoDateParts(
+  value:
+    string,
+) {
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})$/
+      .exec(
+        value,
+      );
+
+  if (!match) {
+    throw new Error(
+      'SaMi could not resolve the fiscal period date.',
+    );
+  }
+
+  return {
+    year:
+      Number(
+        match[1],
+      ),
+    month:
+      Number(
+        match[2],
+      ),
+    day:
+      Number(
+        match[3],
+      ),
+  };
+}
+
+
+function safeUtcDate(
+  year:
+    number,
+  month:
+    number,
+  day:
+    number,
+) {
+  const maxDay =
+    new Date(
+      Date.UTC(
+        year,
+        month,
+        0,
+      ),
+    )
+      .getUTCDate();
+
+  return new Date(
+    Date.UTC(
+      year,
+      month -
+        1,
+      Math.min(
+        Math.max(
+          day,
+          1,
+        ),
+        maxDay,
+      ),
+    ),
+  );
+}
+
+
+function dateOnly(
+  value:
+    Date,
+) {
+  return value
+    .toISOString()
+    .slice(
+      0,
+      10,
+    );
+}
+
+
+async function ensureSystemPostingPeriod(
+  client:
+    PoolClient,
+  input: {
+    companyId:
+      string;
+    userId:
+      string;
+    journalDate:
+      string;
+  },
+) {
+  const settings =
+    await client.query(
+      `
+        SELECT
+          COALESCE(
+            require_open_period,
+            TRUE
+          ) AS require_open_period,
+          COALESCE(
+            fiscal_year_start_month,
+            1
+          )::int AS fiscal_year_start_month,
+          COALESCE(
+            fiscal_year_start_day,
+            1
+          )::int AS fiscal_year_start_day,
+          global_lock_date::text
+            AS global_lock_date
+        FROM accounting_settings
+        WHERE company_id = $1
+          AND deleted_at IS NULL
+        LIMIT 1
+      `,
+      [
+        input.companyId,
+      ],
+    );
+
+  const policy =
+    settings.rows[0];
+
+  if (
+    !policy ||
+    policy.require_open_period ===
+      false
+  ) {
+    return;
+  }
+
+  if (
+    policy.global_lock_date &&
+    input.journalDate <=
+      String(
+        policy.global_lock_date,
+      )
+  ) {
+    return;
+  }
+
+  const covering =
+    await client.query(
+      `
+        SELECT id
+        FROM accounting_fiscal_periods
+        WHERE company_id = $1
+          AND deleted_at IS NULL
+          AND $2::date
+              BETWEEN starts_on
+                  AND ends_on
+        LIMIT 1
+      `,
+      [
+        input.companyId,
+        input.journalDate,
+      ],
+    );
+
+  if (
+    covering.rows.length >
+      0
+  ) {
+    return;
+  }
+
+  await client.query(
+    'SELECT pg_advisory_xact_lock(hashtext($1))',
+    [
+      'accounting:auto-period:' +
+      input.companyId,
+    ],
+  );
+
+  const existingPeriods =
+    await client.query(
+      `
+        SELECT
+          COUNT(*)::int
+            AS count
+        FROM accounting_fiscal_periods
+        WHERE company_id = $1
+          AND deleted_at IS NULL
+      `,
+      [
+        input.companyId,
+      ],
+    );
+
+  if (
+    Number(
+      existingPeriods.rows[0]
+        ?.count ||
+      0,
+    ) >
+      0
+  ) {
+    return;
+  }
+
+  const date =
+    isoDateParts(
+      input.journalDate,
+    );
+
+  const startMonth =
+    Math.min(
+      12,
+      Math.max(
+        1,
+        Number(
+          policy
+            .fiscal_year_start_month ||
+          1,
+        ),
+      ),
+    );
+
+  const startDay =
+    Math.min(
+      31,
+      Math.max(
+        1,
+        Number(
+          policy
+            .fiscal_year_start_day ||
+          1,
+        ),
+      ),
+    );
+
+  let startYear =
+    date.year;
+
+  const thisYearStart =
+    safeUtcDate(
+      date.year,
+      startMonth,
+      startDay,
+    );
+
+  const journal =
+    safeUtcDate(
+      date.year,
+      date.month,
+      date.day,
+    );
+
+  if (
+    journal <
+    thisYearStart
+  ) {
+    startYear -=
+      1;
+  }
+
+  const startsOn =
+    safeUtcDate(
+      startYear,
+      startMonth,
+      startDay,
+    );
+
+  const nextStart =
+    safeUtcDate(
+      startYear +
+        1,
+      startMonth,
+      startDay,
+    );
+
+  const endsOn =
+    new Date(
+      nextStart
+        .getTime() -
+      86_400_000,
+    );
+
+  const name =
+    'FY ' +
+    dateOnly(
+      startsOn,
+    ) +
+    ' – ' +
+    dateOnly(
+      endsOn,
+    );
+
+  await client.query(
+    `
+      INSERT INTO accounting_fiscal_periods (
+        company_id,
+        name,
+        starts_on,
+        ends_on,
+        status,
+        created_by,
+        updated_by
+      )
+      VALUES (
+        $1,$2,$3::date,$4::date,
+        'open',
+        $5,$5
+      )
+    `,
+    [
+      input.companyId,
+      name,
+      dateOnly(
+        startsOn,
+      ),
+      dateOnly(
+        endsOn,
+      ),
+      input.userId,
+    ],
+  );
+}
+
+
 async function ensureAccount(
   client:
     PoolClient,
@@ -611,6 +932,22 @@ async function postJournalUnsafe(
     }
   }
 
+  const journalDate =
+    accountingDate(
+      input.journalDate,
+    );
+
+  await ensureSystemPostingPeriod(
+    client,
+    {
+      companyId:
+        input.companyId,
+      userId:
+        input.userId,
+      journalDate,
+    },
+  );
+
   const posting =
     await postBalancedLedgerJournal(
       client,
@@ -619,10 +956,7 @@ async function postJournalUnsafe(
           input.companyId,
         userId:
           input.userId,
-        journalDate:
-          accountingDate(
-            input.journalDate,
-          ),
+        journalDate,
         description:
           input.description,
         reference:
