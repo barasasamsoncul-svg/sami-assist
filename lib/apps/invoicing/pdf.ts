@@ -2,7 +2,7 @@ import 'server-only';
 
 
 export const INVOICE_PDF_RENDERER_VERSION =
-  'invoice-pdf-v2';
+  'invoice-pdf-v3';
 
 
 export type PdfInvoice = {
@@ -66,6 +66,8 @@ export type PdfInvoice = {
     showUnitPrice: boolean;
     showLineTax: boolean;
     showLineDiscount: boolean;
+    showCompanyLogo: boolean;
+    logoJpegBase64: string | null;
     showCompanyAddress: boolean;
     showCompanyContact: boolean;
     showTaxId: boolean;
@@ -517,6 +519,232 @@ function rectCommand(
 }
 
 
+function imageCommand(
+  x:
+    number,
+  y:
+    number,
+  width:
+    number,
+  height:
+    number,
+) {
+  return (
+    'q ' +
+    width +
+    ' 0 0 ' +
+    height +
+    ' ' +
+    x +
+    ' ' +
+    y +
+    ' cm /Logo Do Q\n'
+  );
+}
+
+
+function jpegDimensions(
+  bytes:
+    Buffer,
+) {
+  if (
+    bytes.length <
+      4 ||
+    bytes[0] !==
+      0xff ||
+    bytes[1] !==
+      0xd8
+  ) {
+    return null;
+  }
+
+  let offset =
+    2;
+
+  while (
+    offset +
+      9 <
+    bytes.length
+  ) {
+    if (
+      bytes[offset] !==
+      0xff
+    ) {
+      offset +=
+        1;
+      continue;
+    }
+
+    const marker =
+      bytes[
+        offset +
+        1
+      ];
+
+    offset +=
+      2;
+
+    if (
+      marker ===
+        0xd8 ||
+      marker ===
+        0xd9
+    ) {
+      continue;
+    }
+
+    if (
+      offset +
+        2 >
+      bytes.length
+    ) {
+      break;
+    }
+
+    const length =
+      bytes.readUInt16BE(
+        offset,
+      );
+
+    if (
+      length <
+        2 ||
+      offset +
+        length >
+      bytes.length
+    ) {
+      break;
+    }
+
+    const sof =
+      (
+        marker >=
+          0xc0 &&
+        marker <=
+          0xc3
+      ) ||
+      (
+        marker >=
+          0xc5 &&
+        marker <=
+          0xc7
+      ) ||
+      (
+        marker >=
+          0xc9 &&
+        marker <=
+          0xcb
+      ) ||
+      (
+        marker >=
+          0xcd &&
+        marker <=
+          0xcf
+      );
+
+    if (
+      sof &&
+      length >=
+        7
+    ) {
+      const height =
+        bytes.readUInt16BE(
+          offset +
+          3,
+        );
+
+      const width =
+        bytes.readUInt16BE(
+          offset +
+          5,
+        );
+
+      if (
+        width >
+          0 &&
+        height >
+          0
+      ) {
+        return {
+          width,
+          height,
+        };
+      }
+    }
+
+    offset +=
+      length;
+  }
+
+  return null;
+}
+
+
+function logoGeometry(
+  invoice:
+    PdfInvoice,
+) {
+  if (
+    !invoice.template
+      .showCompanyLogo ||
+    !invoice.template
+      .logoJpegBase64
+  ) {
+    return null;
+  }
+
+  try {
+    const bytes =
+      Buffer.from(
+        invoice.template
+          .logoJpegBase64,
+        'base64',
+      );
+
+    const dimensions =
+      jpegDimensions(
+        bytes,
+      );
+
+    if (
+      !dimensions
+    ) {
+      return null;
+    }
+
+    const maxWidth =
+      78;
+    const maxHeight =
+      42;
+    const scale =
+      Math.min(
+        maxWidth /
+          dimensions.width,
+        maxHeight /
+          dimensions.height,
+      );
+
+    return {
+      bytes,
+      width:
+        Math.max(
+          1,
+          dimensions.width *
+            scale,
+        ),
+      height:
+        Math.max(
+          1,
+          dimensions.height *
+            scale,
+        ),
+    };
+  } catch {
+    return null;
+  }
+}
+
+
 function drawWrapped(
   input: {
     x: number;
@@ -623,14 +851,37 @@ function documentHeader(
       );
   }
 
+  const logo =
+    logoGeometry(
+      invoice,
+    );
+
+  if (
+    logo
+  ) {
+    content +=
+      imageCommand(
+        36,
+        788 -
+          logo.height /
+          2,
+        logo.width,
+        logo.height,
+      );
+  }
+
   content +=
     textCommand(
-      36,
+      logo
+        ? 126
+        : 36,
       802,
       truncate(
         invoice.company
           .name,
-        46,
+        logo
+          ? 32
+          : 46,
       ),
       {
         size:
@@ -656,7 +907,9 @@ function documentHeader(
 
   content +=
     textCommand(
-      36,
+      logo
+        ? 126
+        : 36,
       777,
       truncate(
         invoice.template
@@ -2213,6 +2466,11 @@ export function renderInvoicePdf(
       string
     >();
 
+  const logo =
+    logoGeometry(
+      invoice,
+    );
+
   const pageIds =
     streams.map(
       (
@@ -2223,6 +2481,13 @@ export function renderInvoicePdf(
         index *
         2,
     );
+
+  const logoObjectId =
+    logo
+      ? 5 +
+        streams.length *
+        2
+      : null;
 
   objects.set(
     1,
@@ -2270,7 +2535,15 @@ export function renderInvoicePdf(
 
       objects.set(
         pageId,
-        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ' +
+        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >>' +
+        (
+          logoObjectId
+            ? ' /XObject << /Logo ' +
+              logoObjectId +
+              ' 0 R >>'
+            : ''
+        ) +
+        ' >> /Contents ' +
         contentId +
         ' 0 R >>',
       );
@@ -2288,6 +2561,36 @@ export function renderInvoicePdf(
       );
     },
   );
+
+  if (
+    logo &&
+    logoObjectId
+  ) {
+    objects.set(
+      logoObjectId,
+      '<< /Type /XObject /Subtype /Image /Width ' +
+      Math.round(
+        jpegDimensions(
+          logo.bytes,
+        )?.width ||
+        1,
+      ) +
+      ' /Height ' +
+      Math.round(
+        jpegDimensions(
+          logo.bytes,
+        )?.height ||
+        1,
+      ) +
+      ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' +
+      logo.bytes.length +
+      ' >>\nstream\n' +
+      logo.bytes.toString(
+        'binary',
+      ) +
+      '\nendstream',
+    );
+  }
 
   const maxId =
     Math.max(
