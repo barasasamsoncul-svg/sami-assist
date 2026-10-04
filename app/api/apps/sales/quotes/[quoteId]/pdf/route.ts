@@ -254,6 +254,31 @@ export async function GET(
                 line.lineTotal,
             }),
           ),
+        optionalItems:
+          quote.optionalItems.map(
+            item => ({
+              id:
+                item.id,
+              catalogItemId:
+                item.catalogItemId,
+              description:
+                item.description,
+              sku:
+                item.sku,
+              unit:
+                item.unit,
+              quantity:
+                item.quantity,
+              unitPrice:
+                item.unitPrice,
+              taxName:
+                item.taxName,
+              taxRate:
+                item.taxRate,
+              isSelected:
+                item.isSelected,
+            }),
+          ),
       });
 
     return new NextResponse(
