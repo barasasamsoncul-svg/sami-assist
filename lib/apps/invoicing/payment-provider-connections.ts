@@ -657,6 +657,156 @@ export async function confirmInvoicePaymentProviderSetup(
   };
 }
 
+
+async function retryFailedVerifiedPayments(input: {
+  tenantId: string;
+  companyId: string;
+  userId: string;
+  connectionId: string;
+  providerKey: string;
+  pool: Awaited<ReturnType<typeof getTenantPoolByTenantId>>;
+}) {
+  const failed = await input.pool.query(
+    `
+      SELECT DISTINCT ON (external_event_id)
+        id,
+        delivery_id,
+        external_event_id,
+        payload
+      FROM integration_events
+      WHERE company_id=$1
+        AND connection_id=$2
+        AND provider_key=$3
+        AND event_key='invoicing.payment.succeeded'
+        AND status='failed'
+        AND external_event_id IS NOT NULL
+      ORDER BY
+        external_event_id,
+        created_at DESC
+      LIMIT 25
+    `,
+    [
+      input.companyId,
+      input.connectionId,
+      input.providerKey,
+    ],
+  );
+
+  let recovered = 0;
+  let stillFailed = 0;
+
+  for (const row of failed.rows) {
+    try {
+      await recordVerifiedExternalInvoiceSettlement({
+        tenantId:
+          input.tenantId,
+        companyId:
+          input.companyId,
+        userId:
+          input.userId,
+        providerKey:
+          input.providerKey,
+        externalEventId:
+          String(
+            row.external_event_id,
+          ),
+        payload:
+          row.payload,
+      });
+
+      await Promise.all([
+        input.pool.query(
+          `
+            UPDATE integration_events
+            SET
+              status='processed',
+              processed_at=NOW()
+            WHERE company_id=$1
+              AND connection_id=$2
+              AND external_event_id=$3
+              AND event_key='invoicing.payment.succeeded'
+          `,
+          [
+            input.companyId,
+            input.connectionId,
+            row.external_event_id,
+          ],
+        ),
+        row.delivery_id
+          ? input.pool.query(
+              `
+                UPDATE integration_webhook_deliveries
+                SET
+                  status='processed',
+                  error_code=NULL,
+                  error_message=NULL,
+                  processed_at=NOW()
+                WHERE id=$1
+                  AND company_id=$2
+              `,
+              [
+                row.delivery_id,
+                input.companyId,
+              ],
+            )
+          : Promise.resolve(),
+      ]);
+
+      recovered += 1;
+    } catch (
+      error
+    ) {
+      stillFailed += 1;
+
+      const message =
+        error instanceof Error
+          ? error.message
+              .replace(/[\u0000-\u001f\u007f]/g, ' ')
+              .replace(/\s+/g, ' ')
+              .trim()
+              .slice(0, 700)
+          : 'Invoice settlement retry failed.';
+
+      await input.pool.query(
+        `
+          UPDATE integration_events
+          SET
+            status='failed',
+            processed_at=NOW(),
+            payload=
+              COALESCE(payload,'{}'::jsonb) ||
+              jsonb_build_object(
+                'lastRetryError',
+                $4::text,
+                'lastRetryErrorAt',
+                NOW()
+              )
+          WHERE company_id=$1
+            AND connection_id=$2
+            AND external_event_id=$3
+            AND event_key='invoicing.payment.succeeded'
+        `,
+        [
+          input.companyId,
+          input.connectionId,
+          row.external_event_id,
+          message,
+        ],
+      ).catch(
+        () => undefined,
+      );
+    }
+  }
+
+  return {
+    attempted:
+      failed.rows.length,
+    recovered,
+    stillFailed,
+  };
+}
+
+
 export async function testInvoicePaymentProviderConnection(
   connectionId: unknown,
 ) {
@@ -676,19 +826,68 @@ export async function testInvoicePaymentProviderConnection(
   });
   const pool = await getTenantPoolByTenantId(context.runtime.tenantId);
 
+  let recovery = {
+    attempted:
+      0,
+    recovered:
+      0,
+    stillFailed:
+      0,
+  };
+
   try {
     await testInvoicePaymentProviderRemote(connection.secrets);
+
+    recovery =
+      await retryFailedVerifiedPayments({
+        tenantId:
+          context.runtime.tenantId,
+        companyId:
+          context.runtime.companyId,
+        userId:
+          context.runtime.userId,
+        connectionId:
+          id,
+        providerKey:
+          providerStorageKey(
+            connection.provider,
+          ),
+        pool,
+      });
+
     await pool.query(
       `
         UPDATE integration_connections
         SET status='connected',
             health_status='healthy',
             last_health_check_at=NOW(),
+            settings=(
+              COALESCE(settings,'{}'::jsonb)
+              - 'lastSettlementError'
+              - 'lastSettlementErrorAt'
+            ) ||
+              jsonb_build_object(
+                'lastRecoveryAttemptAt',
+                NOW(),
+                'lastRecoveryAttempted',
+                $4::int,
+                'lastRecoveryRecovered',
+                $5::int,
+                'lastRecoveryFailed',
+                $6::int
+              ),
             updated_by=$3,
             updated_at=NOW()
         WHERE id=$1 AND company_id=$2
       `,
-      [id, context.runtime.companyId, context.runtime.userId],
+      [
+        id,
+        context.runtime.companyId,
+        context.runtime.userId,
+        recovery.attempted,
+        recovery.recovered,
+        recovery.stillFailed,
+      ],
     );
   } catch (error) {
     await pool.query(
@@ -714,13 +913,19 @@ export async function testInvoicePaymentProviderConnection(
     action: 'invoicing.payment_provider.health_checked',
     resourceId: id,
     summary: connection.name + ' passed its connection check.',
-    metadata: { provider: connection.provider },
+    metadata: {
+      provider:
+        connection.provider,
+      paymentRecovery:
+        recovery,
+    },
   });
 
   return {
     connectionId: id,
     status: 'connected',
     healthStatus: 'healthy',
+    recovery,
   };
 }
 
