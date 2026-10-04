@@ -8,7 +8,9 @@ import type {
 
 import {
   createInvoice,
+  createInvoicingCatalogItem,
   createInvoicingCustomer,
+  updateInvoicingCatalogItem,
   updateInvoicingCustomer,
 } from '@/lib/apps/invoicing/commands';
 
@@ -95,6 +97,95 @@ export async function updateSalesCustomer(
     error
   ) {
     return translateCustomerMasterError(
+      error,
+    );
+  }
+}
+
+
+function translateCatalogMasterError(
+  error:
+    unknown,
+): never {
+  const source =
+    error as {
+      code?: unknown;
+      message?: unknown;
+      details?: unknown;
+    };
+
+  const code =
+    typeof source?.code ===
+      'string'
+      ? source.code
+      : '';
+
+  if (
+    code ===
+      'INVOICING_PERMISSION_REQUIRED'
+  ) {
+    throw new SalesError(
+      'SALES_PERMISSION_REQUIRED',
+      'Product-catalogue management access is required for this Sales action.',
+    );
+  }
+
+  throw new SalesError(
+    'INVALID_INPUT',
+    typeof source?.message ===
+      'string'
+      ? source.message
+      : 'SaMi could not save this catalogue item.',
+    source?.details &&
+    typeof source.details ===
+      'object'
+      ? source.details as
+          Record<string, unknown>
+      : undefined,
+  );
+}
+
+
+export async function createSalesCatalogItem(
+  input:
+    Record<string, unknown>,
+) {
+  await requireSalesContext(
+    SALES_PERMISSIONS
+      .QUOTE_CREATE,
+  );
+
+  try {
+    return await createInvoicingCatalogItem(
+      input,
+    );
+  } catch (
+    error
+  ) {
+    return translateCatalogMasterError(
+      error,
+    );
+  }
+}
+
+
+export async function updateSalesCatalogItem(
+  input:
+    Record<string, unknown>,
+) {
+  await requireSalesContext(
+    SALES_PERMISSIONS
+      .QUOTE_EDIT,
+  );
+
+  try {
+    return await updateInvoicingCatalogItem(
+      input,
+    );
+  } catch (
+    error
+  ) {
+    return translateCatalogMasterError(
       error,
     );
   }
@@ -5277,6 +5368,128 @@ export async function updateSalesSettings(
   return {
     updated:
       true,
+  };
+}
+
+
+export async function applySalesQuoteTemplate(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireSalesContext(
+      SALES_PERMISSIONS
+        .QUOTE_EDIT,
+    );
+
+  const quoteId =
+    requireUuid(
+      input.quoteId,
+      'Quotation',
+    );
+
+  const templateId =
+    requireUuid(
+      input.templateId,
+      'Quotation template',
+    );
+
+  const result =
+    await context.pool.query(
+      `
+        UPDATE sales_quotes quote
+        SET
+          template_id =
+            template.id,
+          notes =
+            COALESCE(
+              template.notes,
+              quote.notes
+            ),
+          terms =
+            COALESCE(
+              template.terms,
+              quote.terms
+            ),
+          updated_by = $4,
+          updated_at = NOW()
+        FROM sales_quote_templates template
+        WHERE quote.id = $1
+          AND quote.company_id = $2
+          AND quote.deleted_at IS NULL
+          AND quote.status = 'draft'
+          AND template.id = $3
+          AND template.company_id = $2
+          AND template.deleted_at IS NULL
+        RETURNING
+          quote.id,
+          quote.quote_number,
+          template.id AS template_id,
+          template.name AS template_name
+      `,
+      [
+        quoteId,
+        context.companyId,
+        templateId,
+        context.userId,
+      ],
+    );
+
+  if (
+    result.rows.length !==
+      1
+  ) {
+    throw new SalesError(
+      'QUOTE_STATE_INVALID',
+      'Choose an existing draft quotation and quotation template.',
+    );
+  }
+
+  await recordSalesActivity(
+    context.pool,
+    {
+      companyId:
+        context.companyId,
+      userId:
+        context.userId,
+      model:
+        'sales.quote',
+      recordId:
+        quoteId,
+      type:
+        'quote.template_applied',
+      content:
+        'Quotation template ' +
+        String(
+          result.rows[0]
+            .template_name,
+        ) +
+        ' applied to ' +
+        String(
+          result.rows[0]
+            .quote_number,
+        ) +
+        '.',
+    },
+  );
+
+  return {
+    quoteId,
+    quoteNumber:
+      String(
+        result.rows[0]
+          .quote_number,
+      ),
+    templateId:
+      String(
+        result.rows[0]
+          .template_id,
+      ),
+    templateName:
+      String(
+        result.rows[0]
+          .template_name,
+      ),
   };
 }
 
