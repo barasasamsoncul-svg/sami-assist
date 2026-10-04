@@ -4,6 +4,14 @@ import {
 } from 'next/server';
 
 import {
+  TenantContextError,
+} from '@/lib/auth/tenant-context';
+
+import {
+  CompanyContextError,
+} from '@/lib/auth/company-context';
+
+import {
   InvoicingError,
   applyInvoiceCreditNote,
   allocateInvoicePayment,
@@ -145,6 +153,28 @@ function handleError(
   error:
     unknown,
 ) {
+  if (
+    error instanceof
+      TenantContextError ||
+    error instanceof
+      CompanyContextError
+  ) {
+    return respond(
+      {
+        success:
+          false,
+        code:
+          error.code,
+        error:
+          error.message,
+      },
+      error.code ===
+        'UNAUTHENTICATED'
+        ? 401
+        : 403,
+    );
+  }
+
   if (
     error instanceof
     InvoicingError

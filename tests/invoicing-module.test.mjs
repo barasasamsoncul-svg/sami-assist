@@ -7330,3 +7330,17 @@ test('Invoicing preserves the legacy normalized gateway seam while native provid
     'Gateway events must remain idempotent by provider and external event ID.',
   );
 });
+
+
+test('Invoicing API maps trusted auth boundary failures instead of returning generic 500', async () => {
+  const route =
+    await source('app/api/apps/invoicing/route.ts');
+
+  assert.match(route, /TenantContextError/);
+  assert.match(route, /CompanyContextError/);
+  assert.match(
+    route,
+    /error\.code ===[\s\S]*'UNAUTHENTICATED'[\s\S]*\? 401[\s\S]*: 403/s,
+  );
+  assert.match(route, /code:[\s\S]*error\.code/s);
+});
