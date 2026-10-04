@@ -3936,7 +3936,7 @@ test('Invoicing Part 9 freezes issued invoice PDFs as immutable document snapsho
 
   assert.match(
     pdf,
-    /invoice-pdf-v2/,
+    /invoice-pdf-v5/,
   );
 
   assert.match(
@@ -4230,7 +4230,7 @@ test('Invoicing Part 10 provides a live renderer-backed invoice template designe
 
   assert.match(
     pdf,
-    /invoice-pdf-v2/,
+    /invoice-pdf-v5/,
   );
 
   assert.match(
