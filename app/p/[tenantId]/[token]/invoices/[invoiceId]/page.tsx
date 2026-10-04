@@ -7,6 +7,10 @@ import {
 import {
   getCustomerPortalInvoice,
 } from '@/lib/apps/invoicing/service';
+import {
+  getInvoiceCheckoutOptions,
+} from '@/lib/apps/invoicing/payment-checkout';
+import InvoicePayNow from '@/app/apps/invoicing/InvoicePayNow';
 
 import {
   InvoicingError,
@@ -54,6 +58,7 @@ function formatMoney(
 
 export default async function CustomerPortalInvoicePage({
   params,
+  searchParams,
 }: {
   params:
     Promise<{
@@ -63,6 +68,11 @@ export default async function CustomerPortalInvoicePage({
         string;
       invoiceId:
         string;
+    }>;
+  searchParams:
+    Promise<{
+      payment?: string | string[];
+      provider?: string | string[];
     }>;
 }) {
   const {
@@ -104,6 +114,45 @@ export default async function CustomerPortalInvoicePage({
 
     throw error;
   }
+
+  const query =
+    await searchParams;
+
+  const paymentValue =
+    Array.isArray(
+      query.payment,
+    )
+      ? query.payment[0]
+      : query.payment;
+
+  const paymentStatus =
+    [
+      'paid',
+      'pending',
+      'cancelled',
+      'failed',
+    ].includes(
+      paymentValue || '',
+    )
+      ? paymentValue as
+          'paid' |
+          'pending' |
+          'cancelled' |
+          'failed'
+      : null;
+
+  const checkoutOptions =
+    await getInvoiceCheckoutOptions({
+      tenantId,
+      invoiceId:
+        invoice.id,
+      customer:
+        invoice.customer,
+      balanceDue:
+        invoice.balanceDue,
+      status:
+        invoice.status,
+    });
 
   const backHref =
     '/p/' +
@@ -633,6 +682,33 @@ export default async function CustomerPortalInvoicePage({
                 </div>
               </div>
             </div>
+          </section>
+
+          <section className="mt-6">
+            <InvoicePayNow
+              access="portal"
+              tenantId={
+                tenantId
+              }
+              token={
+                token
+              }
+              invoiceId={
+                invoice.id
+              }
+              balanceDue={
+                invoice.balanceDue
+              }
+              currency={
+                invoice.currency
+              }
+              providers={
+                checkoutOptions
+              }
+              paymentStatus={
+                paymentStatus
+              }
+            />
           </section>
 
           {
