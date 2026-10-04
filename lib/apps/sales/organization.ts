@@ -127,15 +127,6 @@ async function requireWorkspaceUsers(
           AND tu.member_type = 'internal'
           AND tu.deleted_at IS NULL
           AND u.deleted_at IS NULL
-          AND LOWER(
-                COALESCE(
-                  u.status,
-                  'active'
-                )
-              ) IN (
-                'active',
-                'verified'
-              )
       `,
       [
         tenantId,
@@ -410,23 +401,75 @@ export async function getSalesOrganizationData() {
       context.pool.query(
         `
           SELECT
-            id,
-            target_scope,
-            team_id,
-            user_id,
-            metric,
-            period_start,
-            period_end,
-            target_value,
-            notes,
-            is_active
-          FROM sales_targets
-          WHERE company_id = $1
-            AND deleted_at IS NULL
+            target.id,
+            target.target_scope,
+            target.team_id,
+            target.user_id,
+            target.metric,
+            target.period_start,
+            target.period_end,
+            target.target_value,
+            target.notes,
+            target.is_active,
+            COALESCE(
+              achievement.actual_value,
+              0
+            ) AS actual_value
+          FROM sales_targets target
+          LEFT JOIN LATERAL (
+            SELECT
+              CASE
+                WHEN target.metric = 'orders'
+                THEN COUNT(*)::numeric
+                WHEN target.metric = 'margin'
+                THEN COALESCE(
+                  SUM(
+                    sales_order.margin_amount
+                  ),
+                  0
+                )
+                ELSE COALESCE(
+                  SUM(
+                    sales_order.subtotal -
+                    sales_order.discount_total
+                  ),
+                  0
+                )
+              END AS actual_value
+            FROM sales_orders_v2 sales_order
+            WHERE sales_order.company_id =
+                  target.company_id
+              AND sales_order.deleted_at
+                  IS NULL
+              AND sales_order.status <>
+                  'cancelled'
+              AND sales_order.order_date BETWEEN
+                  target.period_start
+                  AND target.period_end
+              AND (
+                target.target_scope =
+                  'company'
+                OR (
+                  target.target_scope =
+                    'team'
+                  AND sales_order.sales_team_id =
+                      target.team_id
+                )
+                OR (
+                  target.target_scope =
+                    'user'
+                  AND sales_order.salesperson_user_id =
+                      target.user_id
+                )
+              )
+          ) achievement
+            ON TRUE
+          WHERE target.company_id = $1
+            AND target.deleted_at IS NULL
           ORDER BY
-            period_start DESC,
-            period_end DESC,
-            created_at DESC
+            target.period_start DESC,
+            target.period_end DESC,
+            target.created_at DESC
           LIMIT 500
         `,
         [
@@ -742,6 +785,29 @@ export async function getSalesOrganizationData() {
               row.target_value ||
               0,
             ),
+          actualValue:
+            Number(
+              row.actual_value ||
+              0,
+            ),
+          attainmentPercent:
+            Number(
+              row.target_value ||
+              0,
+            ) >
+              0
+              ? Math.round(
+                  Number(
+                    row.actual_value ||
+                    0,
+                  ) /
+                  Number(
+                    row.target_value,
+                  ) *
+                  10000,
+                ) /
+                100
+              : 0,
           notes:
             row.notes
               ? String(
@@ -1912,6 +1978,35 @@ export async function saveSalesCommissionPlan(
       'BEGIN',
     );
 
+    if (
+      id
+    ) {
+      const history =
+        await client.query(
+          `
+            SELECT 1
+            FROM sales_commission_entries
+            WHERE company_id = $1
+              AND plan_id = $2
+            LIMIT 1
+          `,
+          [
+            context.companyId,
+            id,
+          ],
+        );
+
+      if (
+        history.rows.length >
+          0
+      ) {
+        throw new SalesError(
+          'INVALID_INPUT',
+          'This commission plan already has historical accruals. Create a new plan version instead of changing its commercial terms.',
+        );
+      }
+    }
+
     for (
       const assignment
       of assignments
@@ -2555,4 +2650,95 @@ export async function reverseSalesOrderCommissions(
     );
 
   return result.rows.length;
+}
+
+
+export async function markSalesCommissionPaid(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireSalesContext(
+      SALES_PERMISSIONS
+        .COMMISSION_MANAGE,
+    );
+
+  const entryId =
+    optionalUuid(
+      input.entryId,
+    );
+
+  if (
+    !entryId
+  ) {
+    throw new SalesError(
+      'INVALID_INPUT',
+      'Choose a valid commission entry.',
+    );
+  }
+
+  const result =
+    await context.pool.query(
+      `
+        UPDATE sales_commission_entries
+        SET
+          status = 'paid',
+          paid_at = NOW(),
+          updated_by = $3,
+          updated_at = NOW(),
+          metadata =
+            metadata ||
+            jsonb_build_object(
+              'paidBy',
+              $3::text
+            )
+        WHERE id = $1
+          AND company_id = $2
+          AND status = 'accrued'
+        RETURNING
+          id,
+          commission_amount,
+          currency,
+          paid_at
+      `,
+      [
+        entryId,
+        context.companyId,
+        context.userId,
+      ],
+    );
+
+  if (
+    result.rows.length !==
+      1
+  ) {
+    throw new SalesError(
+      'INVALID_INPUT',
+      'Only an accrued commission can be marked as paid.',
+    );
+  }
+
+  return {
+    id:
+      String(
+        result.rows[0].id,
+      ),
+    status:
+      'paid',
+    commissionAmount:
+      money(
+        result.rows[0]
+          .commission_amount,
+      ),
+    currency:
+      String(
+        result.rows[0]
+          .currency,
+      ),
+    paidAt:
+      new Date(
+        result.rows[0]
+          .paid_at,
+      ).toISOString(),
+  };
 }
