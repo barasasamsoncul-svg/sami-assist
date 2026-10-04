@@ -973,3 +973,42 @@ test('Category 18: SaMi AI streams live responses without bypassing the tool-saf
     /SaMi is responding…/,
   );
 });
+
+
+test('Category 18: business data answers never substitute database code for tool-backed results', async () => {
+  const service = await source(
+    'lib/services/workspace-ai.ts',
+  );
+
+  assert.match(
+    service,
+    /Only provide code, commands, SQL, JSON, configuration, schemas or implementation snippets when the user explicitly asks/,
+  );
+  assert.match(
+    service,
+    /For business or workspace data requests, use only the permission-filtered SaMi tools/,
+  );
+  assert.match(
+    service,
+    /Never show or suggest SQL, database queries, connection code, API request code/,
+  );
+  assert.match(
+    service,
+    /Do not tell the user to query the database, run SQL, inspect tables, call internal APIs or change backend code/,
+  );
+});
+
+test('Category 18: confirmation claims are atomic before write-tool execution', async () => {
+  const service = await source(
+    'lib/services/workspace-ai.ts',
+  );
+
+  assert.match(
+    service,
+    /UPDATE ai_actions[\s\S]*status = 'running'[\s\S]*status =[\s\S]*'pending_confirmation'[\s\S]*expires_at > NOW\(\)[\s\S]*RETURNING id/,
+  );
+  assert.match(
+    service,
+    /claimed\.rows\.length !==[\s\S]*1/,
+  );
+});
