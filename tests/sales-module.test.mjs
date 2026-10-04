@@ -1252,3 +1252,48 @@ test('Sales 3.2 keeps stock return, invoice credit and cash refund as separate a
   assert.match(orderUi, /Returned/);
   assert.match(orderUi, /Credited/);
 });
+
+
+test('Sales roadmap Part 2 exposes a standalone customer and contact workspace backed by the shared customer master', async () => {
+  const [
+    page,
+    workspace,
+    customerUi,
+    queries,
+    commands,
+    route,
+    types,
+  ] = await Promise.all([
+    source('app/apps/sales/page.tsx'),
+    source('app/apps/sales/SalesWorkspaceClient.tsx'),
+    source('app/apps/sales/SalesCustomersManager.tsx'),
+    source('lib/apps/sales/queries.ts'),
+    source('lib/apps/sales/commands.ts'),
+    source('app/api/apps/sales/route.ts'),
+    source('lib/apps/sales/types.ts'),
+  ]);
+
+  assert.match(page, /customers/);
+  assert.match(page, /Customers & Contacts/);
+  assert.match(page, /Roadmap Part 2/);
+  assert.match(workspace, /SalesCustomersManager/);
+  assert.match(workspace, /Customers & contacts/);
+  assert.match(customerUi, /Roadmap Part 2/);
+  assert.match(customerUi, /Customer identity & primary contact/);
+  assert.match(customerUi, /create_customer/);
+  assert.match(customerUi, /update_customer/);
+  assert.match(customerUi, /Primary contact/);
+  assert.match(queries, /customer_type/);
+  assert.match(queries, /contact_name/);
+  assert.match(queries, /registration_number/);
+  assert.match(queries, /credit_limit/);
+  assert.match(queries, /canManageBillingCustomers/);
+  assert.match(commands, /createInvoicingCustomer/);
+  assert.match(commands, /updateInvoicingCustomer/);
+  assert.match(commands, /createSalesCustomer/);
+  assert.match(commands, /updateSalesCustomer/);
+  assert.match(route, /create_customer:[\s\S]*createSalesCustomer/);
+  assert.match(route, /update_customer:[\s\S]*updateSalesCustomer/);
+  assert.match(types, /contactName: string \| null/);
+  assert.match(types, /canManageBillingCustomers: boolean/);
+});
