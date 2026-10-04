@@ -482,6 +482,8 @@ async function normalizeQuoteLines(
   options: {
     pricelistId:
       string | null;
+    billingCustomerId:
+      string | null;
     quoteDate:
       string;
     currency:
@@ -708,6 +710,8 @@ async function normalizeQuoteLines(
           pricelistId:
             options.pricelistId,
           catalogItemId,
+          billingCustomerId:
+            options.billingCustomerId,
           quantity,
           baseUnitPrice,
           quoteDate:
@@ -1218,6 +1222,8 @@ export async function createSalesQuote(
         input.lines,
         {
           pricelistId,
+          billingCustomerId:
+            customer.billingCustomerId,
           quoteDate,
           currency,
         },
@@ -1642,6 +1648,8 @@ export async function updateSalesQuoteDraft(
         input.lines,
         {
           pricelistId,
+          billingCustomerId:
+            customer.billingCustomerId,
           quoteDate,
           currency,
         },
