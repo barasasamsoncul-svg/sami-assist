@@ -77,38 +77,49 @@ test('provider refund adapters cover Stripe PayPal Paystack Flutterwave and Pesa
   );
 });
 
-test('provider refund authority reserves balances and posts Accounting only after provider success', async () => {
+test('provider refund authority reserves gateway work in integration events and posts financial refunds only after success', async () => {
   const [
     service,
     commands,
     credits,
     schema,
+    queries,
   ] = await Promise.all([
     source('lib/apps/invoicing/provider-refund-service.ts'),
     source('lib/apps/invoicing/commands.ts'),
     source('lib/apps/invoicing/credit-notes.ts'),
     source('lib/apps/invoicing/schema.sql'),
+    source('lib/apps/invoicing/queries.ts'),
   ]);
 
-  assert.match(service, /createPendingPaymentRefund/);
-  assert.match(service, /createPendingCreditRefund/);
-  assert.match(service, /status IN \([\s\S]*'pending'[\s\S]*'requires_action'/s);
-  assert.match(service, /reserved_refund_amount/);
-  assert.match(service, /reserved_credit_refund/);
+  assert.match(service, /createPaymentAttempt/);
+  assert.match(service, /createCreditAttempt/);
+  assert.match(service, /event_key='invoicing\.provider_refund'/);
+  assert.match(service, /INSERT INTO integration_events/);
+  assert.match(service, /reserved_amount/);
+  assert.match(service, /pending_provider_refunds/);
   assert.match(service, /createInvoiceProviderRefundRemote/);
   assert.match(service, /getInvoiceProviderRefundRemote/);
+  assert.match(service, /refundInvoicePayment/);
+  assert.match(service, /refundInvoiceCreditNote/);
+  assert.match(service, /providerStatus:\s*'succeeded'/);
 
-  assert.match(commands, /finalizeInvoicePaymentProviderRefund/);
-  assert.match(commands, /Only a pending provider refund can be finalized/);
   assert.match(commands, /postInvoicePaymentRefundToAccounting/);
-  assert.match(credits, /finalizeInvoiceCreditNoteProviderRefund/);
-  assert.match(credits, /Only a pending provider credit refund can be finalized/);
   assert.match(credits, /postCreditNoteRefundToAccounting/);
+  assert.doesNotMatch(commands, /finalizeInvoicePaymentProviderRefund/);
+  assert.doesNotMatch(credits, /finalizeInvoiceCreditNoteProviderRefund/);
 
   assert.match(
     schema,
-    /status IN \([\s\S]*'pending'[\s\S]*'requires_action'[\s\S]*'posted'[\s\S]*'failed'[\s\S]*'reversed'/s,
+    /status VARCHAR\(20\) NOT NULL DEFAULT 'posted'[\s\S]*CHECK \(status IN \('posted','reversed'\)\)/s,
   );
+  assert.doesNotMatch(
+    schema,
+    /invoicing_payment_refunds[\s\S]{0,1200}'pending'/s,
+    'Financial refund rows must not carry pending provider state.',
+  );
+  assert.match(queries, /e\.event_key='invoicing\.provider_refund'/);
+  assert.match(queries, /e\.status IN \('pending','failed'\)/);
 });
 
 test('payment and credit-note refund actions route through the provider-aware authority', async () => {
@@ -172,7 +183,7 @@ test('completed external refunds cannot be falsely reversed inside SaMi', async 
   assert.match(creditUi, /refund\.status ===[\s\S]*'posted'[\s\S]*!refund\.provider/s);
 });
 
-test('Invoicing 2.23 migrates provider refund states without advertising control versions early', async () => {
+test('Invoicing 2.23 is a schema-neutral runtime upgrade and does not advertise control versions early', async () => {
   const [
     manifest,
     runtime,
@@ -190,11 +201,29 @@ test('Invoicing 2.23 migrates provider refund states without advertising control
   assert.match(manifest, /key:\s*"invoicing"[\s\S]*version:\s*'2\.23\.0'/);
   assert.match(runtime, /INVOICING_2_22_0_TO_2_23_0/);
   assert.match(migration, /fromVersion:\s*'2\.22\.0'[\s\S]*toVersion:\s*'2\.23\.0'/);
-  assert.match(migration, /pending[\s\S]*requires_action[\s\S]*posted[\s\S]*failed[\s\S]*reversed/s);
+  assert.match(migration, /run:\s*async \(\) => \{\}/);
+  assert.doesNotMatch(migration, /ALTER TABLE|CREATE TABLE|DROP CONSTRAINT|executeSafeSamiModuleMigrationSql/i);
   assert.match(script, /runSamiModuleMigrations/);
   assert.match(script, /expand-before-promote/);
   assert.match(script, /controlVersionUpdated:[\s\S]*false/);
   assert.doesNotMatch(script, /UPDATE\s+tenant_modules/i);
   assert.match(pkg, /migrate:invoicing:2\.23:release/);
   assert.match(pkg, /test:invoicing:2\.23:release/);
+});
+
+
+test('unsupported provider reversals require explicit external completion confirmation', async () => {
+  const [
+    service,
+    ui,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/provider-refund-service.ts'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+  ]);
+
+  assert.match(service, /manualProviderRefundConfirmed/);
+  assert.match(service, /Complete the provider reversal first/);
+  assert.match(service, /External provider refund confirmed manually/);
+  assert.match(ui, /manualProviderRefundConfirmed/);
+  assert.match(ui, /I have already completed the refund in the provider account/);
 });
