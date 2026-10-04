@@ -427,11 +427,11 @@ export async function getSalesWorkspaceData():
             )::int
               AS converted_count,
             COALESCE(
-              SUM(total_amount),
+              SUM(base_total_amount),
               0
             ) AS quote_value,
             COALESCE(
-              SUM(total_amount)
+              SUM(base_total_amount)
                 FILTER (
                   WHERE status IN (
                     'accepted',
@@ -457,7 +457,7 @@ export async function getSalesWorkspaceData():
                 COUNT(*)::int
                   AS count,
                 COALESCE(
-                  SUM(total_amount),
+                  SUM(base_total_amount),
                   0
                 )
                   AS amount
@@ -490,7 +490,7 @@ export async function getSalesWorkspaceData():
                 COUNT(*)::int
                   AS quote_count,
                 COALESCE(
-                  SUM(total_amount),
+                  SUM(base_total_amount),
                   0
                 )
                   AS amount
@@ -519,7 +519,7 @@ export async function getSalesWorkspaceData():
                 COUNT(*)::int
                   AS quote_count,
                 COALESCE(
-                  SUM(total_amount),
+                  SUM(base_total_amount),
                   0
                 )
                   AS amount
@@ -557,6 +557,11 @@ export async function getSalesWorkspaceData():
             quote_date,
             valid_until,
             currency,
+            base_currency,
+            exchange_rate,
+            exchange_rate_date,
+            exchange_rate_source,
+            base_total_amount,
             customer_name,
             customer_email,
             total_amount,
@@ -597,6 +602,11 @@ export async function getSalesWorkspaceData():
                 o.invoice_status,
                 o.order_date,
                 o.currency,
+                o.base_currency,
+                o.exchange_rate,
+                o.exchange_rate_date,
+                o.exchange_rate_source,
+                o.base_total_amount,
                 o.customer_name,
                 o.total_amount,
                 COALESCE(
@@ -829,7 +839,8 @@ export async function getSalesWorkspaceData():
             ) =>
               sum +
               Number(
-                row.total_amount ||
+                row.base_total_amount ??
+                row.total_amount ??
                 0,
               ),
             0,
@@ -989,6 +1000,35 @@ export async function getSalesWorkspaceData():
             String(
               row.currency,
             ),
+          baseCurrency:
+            String(
+              row.base_currency ||
+              companyRow.currency ||
+              row.currency,
+            ),
+          exchangeRate:
+            Number(
+              row.exchange_rate ||
+              1,
+            ),
+          exchangeRateDate:
+            String(
+              row.exchange_rate_date ||
+              row.quote_date,
+            ).slice(
+              0,
+              10,
+            ),
+          exchangeRateSource:
+            String(
+              row.exchange_rate_source ||
+              'base',
+            ),
+          baseTotalAmount:
+            money(
+              row.base_total_amount ??
+              row.total_amount,
+            ),
           customerName:
             String(
               row.customer_name,
@@ -1117,6 +1157,35 @@ export async function getSalesWorkspaceData():
           currency:
             String(
               row.currency,
+            ),
+          baseCurrency:
+            String(
+              row.base_currency ||
+              companyRow.currency ||
+              row.currency,
+            ),
+          exchangeRate:
+            Number(
+              row.exchange_rate ||
+              1,
+            ),
+          exchangeRateDate:
+            String(
+              row.exchange_rate_date ||
+              row.order_date,
+            ).slice(
+              0,
+              10,
+            ),
+          exchangeRateSource:
+            String(
+              row.exchange_rate_source ||
+              'base',
+            ),
+          baseTotalAmount:
+            money(
+              row.base_total_amount ??
+              row.total_amount,
             ),
           customerName:
             String(
@@ -1573,6 +1642,11 @@ export async function getSalesQuoteDetail(
             quote_date,
             valid_until,
             currency,
+            base_currency,
+            exchange_rate,
+            exchange_rate_date,
+            exchange_rate_source,
+            base_total_amount,
             reference,
             approval_status,
             approval_requested_at,
@@ -1783,6 +1857,37 @@ export async function getSalesQuoteDetail(
     currency:
       String(
         row.currency,
+      ),
+    baseCurrency:
+      String(
+        row.base_currency ||
+        context.company
+          .currentCompany
+          .currency ||
+        row.currency,
+      ),
+    exchangeRate:
+      Number(
+        row.exchange_rate ||
+        1,
+      ),
+    exchangeRateDate:
+      String(
+        row.exchange_rate_date ||
+        row.quote_date,
+      ).slice(
+        0,
+        10,
+      ),
+    exchangeRateSource:
+      String(
+        row.exchange_rate_source ||
+        'base',
+      ),
+    baseTotalAmount:
+      money(
+        row.base_total_amount ??
+        row.total_amount,
       ),
     customerName:
       String(
@@ -2627,6 +2732,37 @@ export async function getSalesOrderDetail(
     currency:
       String(
         row.currency,
+      ),
+    baseCurrency:
+      String(
+        row.base_currency ||
+        context.company
+          .currentCompany
+          .currency ||
+        row.currency,
+      ),
+    exchangeRate:
+      Number(
+        row.exchange_rate ||
+        1,
+      ),
+    exchangeRateDate:
+      String(
+        row.exchange_rate_date ||
+        row.order_date,
+      ).slice(
+        0,
+        10,
+      ),
+    exchangeRateSource:
+      String(
+        row.exchange_rate_source ||
+        'base',
+      ),
+    baseTotalAmount:
+      money(
+        row.base_total_amount ??
+        row.total_amount,
       ),
     customerName:
       String(
