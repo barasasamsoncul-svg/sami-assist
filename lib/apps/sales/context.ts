@@ -63,6 +63,18 @@ export const SALES_PERMISSIONS = {
     'sales.margin.view',
   MARGIN_MANAGE:
     'sales.margin.manage',
+  TEAM_VIEW:
+    'sales.team.view',
+  TEAM_MANAGE:
+    'sales.team.manage',
+  TARGET_VIEW:
+    'sales.target.view',
+  TARGET_MANAGE:
+    'sales.target.manage',
+  COMMISSION_VIEW:
+    'sales.commission.view',
+  COMMISSION_MANAGE:
+    'sales.commission.manage',
   ORDER_VIEW:
     'sales.order.view',
   ORDER_MANAGE:
