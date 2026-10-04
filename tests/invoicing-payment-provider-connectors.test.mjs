@@ -28,6 +28,8 @@ test('invoice payment providers use a guided merchant connection surface instead
 
   assert.match(api, /rejectIntegrationCrossOrigin/);
   assert.match(api, /connectInvoicePaymentProvider/);
+  assert.match(api, /confirmInvoicePaymentProviderSetup/);
+  assert.match(api, /confirm_setup/);
   assert.match(api, /testInvoicePaymentProviderConnection/);
   assert.match(api, /disconnectInvoicePaymentProvider/);
 });
@@ -43,6 +45,8 @@ test('payment provider credentials stay server-side, encrypted and workspace-sco
   assert.match(service, /invoicing\.payment\.record/);
   assert.match(service, /sealIntegrationSecret/);
   assert.match(service, /integration_credentials/);
+  assert.match(service, /confirmInvoicePaymentProviderSetup/);
+  assert.match(service, /callbackConfigured',TRUE/);
   assert.match(cryptoSource, /aes-256-gcm/);
 
   assert.match(adapters, /Auth\/RequestToken/);
