@@ -368,7 +368,7 @@ export default function PaymentIntegrationsWorkspace() {
       show(
         'success',
         providerName + ' connected',
-        'The payment notification setup is saved. SaMi will now accept verified payment notifications and reconcile matching invoices automatically.',
+        'The payment notification setup is saved. SaMi can now receive provider notifications. The webhook will show Verified only after the first signed provider event reaches SaMi.',
       );
     } catch (error) {
       show(
