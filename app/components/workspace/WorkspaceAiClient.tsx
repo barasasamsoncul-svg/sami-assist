@@ -1977,8 +1977,13 @@ export default function WorkspaceAiClient({
         </div>
       ) : (
         <section className="flex min-h-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-3 pb-8 pt-5 sm:px-6 sm:pt-8">
+          <div className="sami-scrollbar min-h-0 flex-1 overflow-y-auto scroll-smooth">
+            <div
+              role="log"
+              aria-live="polite"
+              aria-relevant="additions text"
+              className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-3 pb-8 pt-5 sm:px-6 sm:pt-8"
+            >
               {messages.length ===
                 0 ? (
                 <div className="flex min-h-[55dvh] flex-col items-center justify-center text-center">
@@ -2299,6 +2304,8 @@ export default function WorkspaceAiClient({
                   rows={1}
                   maxLength={8000}
                   placeholder="Message SaMi…"
+                  aria-label="Message SaMi AI"
+                  enterKeyHint="send"
                   className="max-h-48 min-h-11 min-w-0 flex-1 resize-none bg-transparent px-3 py-2.5 text-sm leading-6 outline-none placeholder:text-slate-400"
                 />
 
