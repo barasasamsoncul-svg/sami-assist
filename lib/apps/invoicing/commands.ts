@@ -2266,6 +2266,8 @@ export async function normalizeInvoicingLines(
         null;
       taxSource:
         string;
+      metadata:
+        Record<string, unknown>;
       subtotal: number;
       lineTotal: number;
       sortOrder: number;
@@ -2535,6 +2537,10 @@ export async function normalizeInvoicingLines(
       taxSource:
         taxTreatment
           .source,
+      metadata:
+        plainObject(
+          raw.metadata,
+        ),
       subtotal:
         money(
           gross,
@@ -3332,12 +3338,13 @@ export async function createInvoice(
             tax_rate,
             tax_amount,
             tax_components,
+            metadata,
             subtotal,
             line_total
           )
           VALUES (
             $1,$2,$3,$4,$5,$6,$7,$8,$9,
-            $10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19,$20
+            $10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19::jsonb,$20,$21
           )
         `,
         [
@@ -3360,6 +3367,9 @@ export async function createInvoice(
           line.taxAmount,
           JSON.stringify(
             line.taxComponents,
+          ),
+          JSON.stringify(
+            line.metadata,
           ),
           line.subtotal,
           line.lineTotal,
@@ -3651,7 +3661,8 @@ export async function duplicateInvoice(
           discount_value,
           tax_rate_id,
           tax_group_id,
-          tax_rate
+          tax_rate,
+          metadata
         FROM invoicing_invoice_items
         WHERE invoice_id = $1
           AND company_id = $2
@@ -4432,12 +4443,13 @@ export async function updateInvoiceDraft(
             tax_rate,
             tax_amount,
             tax_components,
+            metadata,
             subtotal,
             line_total
           )
           VALUES (
             $1,$2,$3,$4,$5,$6,$7,$8,$9,
-            $10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19,$20
+            $10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19::jsonb,$20,$21
           )
         `,
         [
@@ -4460,6 +4472,9 @@ export async function updateInvoiceDraft(
           line.taxAmount,
           JSON.stringify(
             line.taxComponents,
+          ),
+          JSON.stringify(
+            line.metadata,
           ),
           line.subtotal,
           line.lineTotal,
