@@ -298,6 +298,8 @@ async function loadIssuedInvoicePayload(
             AS company_tax_id,
           company.registration_number
             AS company_registration_number,
+          company.logo_file_id
+            AS company_logo_file_id,
           COALESCE(
             template.layout,
             'modern'
@@ -525,28 +527,46 @@ async function loadIssuedInvoicePayload(
   const row =
     invoiceResult.rows[0];
 
-  let logoJpegBase64:
+  let logoImageBase64:
+    string |
+    null =
+      null;
+
+  let logoImageMimeType:
     string |
     null =
       null;
 
   if (
     row.show_company_logo !==
-      false &&
-    typeof row.template_logo_url ===
-      'string' &&
-    row.template_logo_url
-      .startsWith(
-        'workspace-file:',
-      )
+      false
   ) {
-    const fileId =
+    let fileId =
+      '';
+
+    if (
+      typeof row.template_logo_url ===
+        'string' &&
       row.template_logo_url
-        .slice(
-          'workspace-file:'
-            .length,
+        .startsWith(
+          'workspace-file:',
         )
-        .trim();
+    ) {
+      fileId =
+        row.template_logo_url
+          .slice(
+            'workspace-file:'
+              .length,
+          )
+          .trim();
+    } else if (
+      row.company_logo_file_id
+    ) {
+      fileId =
+        String(
+          row.company_logo_file_id,
+        );
+    }
 
     if (
       /^[0-9a-f-]{36}$/i.test(
@@ -575,14 +595,23 @@ async function loadIssuedInvoicePayload(
       const fileRow =
         file.rows[0];
 
-      if (
-        fileRow &&
+      const mimeType =
         String(
-          fileRow.mime_type ||
+          fileRow
+            ?.mime_type ||
           '',
         )
-          .toLowerCase() ===
-          'image/jpeg'
+          .trim()
+          .toLowerCase();
+
+      if (
+        fileRow &&
+        [
+          'image/jpeg',
+          'image/png',
+        ].includes(
+          mimeType,
+        )
       ) {
         try {
           const bytes =
@@ -600,10 +629,13 @@ async function loadIssuedInvoicePayload(
               1024 *
               1024
           ) {
-            logoJpegBase64 =
+            logoImageBase64 =
               bytes.toString(
                 'base64',
               );
+
+            logoImageMimeType =
+              mimeType;
           }
         } catch (
           error
@@ -936,7 +968,8 @@ async function loadIssuedInvoicePayload(
         showCompanyLogo:
           row.show_company_logo !==
           false,
-        logoJpegBase64,
+        logoImageBase64,
+        logoImageMimeType,
         showCompanyAddress:
           row.show_company_address !==
           false,
