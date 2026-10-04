@@ -127,6 +127,44 @@ function salesCapabilities(
         SALES_PERMISSIONS
           .SETTINGS_MANAGE,
       ),
+    canRevise:
+      can(
+        SALES_PERMISSIONS
+          .QUOTE_REVISE,
+      ),
+    canManageOptionalProducts:
+      can(
+        SALES_PERMISSIONS
+          .QUOTE_OPTIONAL_MANAGE,
+      ),
+    canViewPricing:
+      can(
+        SALES_PERMISSIONS
+          .PRICING_VIEW,
+      ) ||
+      can(
+        SALES_PERMISSIONS
+          .PRICING_MANAGE,
+      ),
+    canManagePricing:
+      can(
+        SALES_PERMISSIONS
+          .PRICING_MANAGE,
+      ),
+    canViewMargin:
+      can(
+        SALES_PERMISSIONS
+          .MARGIN_VIEW,
+      ) ||
+      can(
+        SALES_PERMISSIONS
+          .MARGIN_MANAGE,
+      ),
+    canManageMargin:
+      can(
+        SALES_PERMISSIONS
+          .MARGIN_MANAGE,
+      ),
     canUseBillingCustomers:
       crossCan(
         INVOICING_CUSTOMER_VIEW,
@@ -220,6 +258,7 @@ export async function getSalesWorkspaceData():
     quotes,
     orders,
     templates,
+    pricelists,
     settings,
     billingCustomers,
     catalogItems,
@@ -401,6 +440,10 @@ export async function getSalesWorkspaceData():
             customer_name,
             customer_email,
             total_amount,
+            current_revision,
+            pricelist_id,
+            margin_amount,
+            margin_percent,
             reference,
             approval_status,
             sales_order_id,
@@ -501,6 +544,36 @@ export async function getSalesWorkspaceData():
         ],
       ),
 
+      access.canViewPricing
+        ? context.pool.query(
+            `
+              SELECT
+                id,
+                name,
+                code,
+                currency,
+                billing_customer_id,
+                valid_from,
+                valid_until,
+                priority,
+                is_active
+              FROM sales_pricelists
+              WHERE company_id = $1
+                AND deleted_at IS NULL
+              ORDER BY
+                is_active DESC,
+                priority,
+                LOWER(name)
+              LIMIT 250
+            `,
+            [
+              context.companyId,
+            ],
+          )
+        : Promise.resolve({
+            rows: [],
+          }),
+
       context.pool.query(
         `
           SELECT
@@ -571,6 +644,7 @@ export async function getSalesWorkspaceData():
                 item.description,
                 item.unit,
                 item.unit_price,
+                item.metadata,
                 tax.name
                   AS tax_name,
                 COALESCE(
@@ -793,6 +867,32 @@ export async function getSalesWorkspaceData():
             money(
               row.total_amount,
             ),
+          currentRevision:
+            Math.max(
+              1,
+              Number(
+                row.current_revision ||
+                1,
+              ),
+            ),
+          pricelistId:
+            row.pricelist_id
+              ? String(
+                  row.pricelist_id,
+                )
+              : null,
+          marginAmount:
+            access.canViewMargin
+              ? money(
+                  row.margin_amount,
+                )
+              : null,
+          marginPercent:
+            access.canViewMargin
+              ? money(
+                  row.margin_percent,
+                )
+              : null,
           reference:
             row.reference
               ? String(
@@ -1019,6 +1119,66 @@ export async function getSalesWorkspaceData():
             money(
               row.tax_rate,
             ),
+          unitCost:
+            access.canViewMargin
+              ? money(
+                  row.metadata
+                    ?.standardCost ??
+                  row.metadata
+                    ?.unitCost ??
+                  0,
+                )
+              : null,
+        }),
+      ),
+
+    pricelists:
+      pricelists.rows.map(
+        row => ({
+          id:
+            String(
+              row.id,
+            ),
+          name:
+            String(
+              row.name,
+            ),
+          code:
+            row.code
+              ? String(
+                  row.code,
+                )
+              : null,
+          currency:
+            String(
+              row.currency,
+            ),
+          billingCustomerId:
+            row.billing_customer_id
+              ? String(
+                  row.billing_customer_id,
+                )
+              : null,
+          validFrom:
+            row.valid_from
+              ? String(
+                  row.valid_from,
+                )
+              : null,
+          validUntil:
+            row.valid_until
+              ? String(
+                  row.valid_until,
+                )
+              : null,
+          priority:
+            Number(
+              row.priority ||
+              100,
+            ),
+          isActive:
+            row.is_active ===
+              true,
         }),
       ),
 
@@ -1163,6 +1323,8 @@ export async function getSalesQuoteDetail(
     lines,
     history,
     deliveries,
+    revisions,
+    optionalItems,
   ] =
     await Promise.all([
       context.pool.query(
@@ -1202,6 +1364,10 @@ export async function getSalesQuoteDetail(
             tax_total,
             shipping_total,
             total_amount,
+            current_revision,
+            pricelist_id,
+            margin_amount,
+            margin_percent,
             notes,
             terms,
             internal_notes,
@@ -1238,6 +1404,10 @@ export async function getSalesQuoteDetail(
             unit,
             quantity,
             unit_price,
+            unit_cost,
+            cost_total,
+            margin_amount,
+            margin_percent,
             discount_type,
             discount_value,
             discount_amount,
@@ -1301,6 +1471,52 @@ export async function getSalesQuoteDetail(
           context.companyId,
         ],
       ),
+
+      context.pool.query(
+        `
+          SELECT
+            id,
+            revision_number,
+            reason,
+            created_at
+          FROM sales_quote_revisions
+          WHERE quote_id = $1
+            AND company_id = $2
+          ORDER BY
+            revision_number DESC
+          LIMIT 100
+        `,
+        [
+          quoteId,
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            id,
+            catalog_item_id,
+            description,
+            sku_snapshot,
+            unit,
+            quantity,
+            unit_price,
+            tax_name_snapshot,
+            tax_rate,
+            is_selected
+          FROM sales_quote_optional_items
+          WHERE quote_id = $1
+            AND company_id = $2
+          ORDER BY
+            sort_order,
+            id
+        `,
+        [
+          quoteId,
+          context.companyId,
+        ],
+      ),
     ]);
 
   if (
@@ -1354,6 +1570,38 @@ export async function getSalesQuoteDetail(
       money(
         row.total_amount,
       ),
+    currentRevision:
+      Math.max(
+        1,
+        Number(
+          row.current_revision ||
+          1,
+        ),
+      ),
+    pricelistId:
+      row.pricelist_id
+        ? String(
+            row.pricelist_id,
+          )
+        : null,
+    marginAmount:
+      salesCapabilities(
+        context.permissions.isOwner,
+        context.permissions.permissionSet,
+      ).canViewMargin
+        ? money(
+            row.margin_amount,
+          )
+        : null,
+    marginPercent:
+      salesCapabilities(
+        context.permissions.isOwner,
+        context.permissions.permissionSet,
+      ).canViewMargin
+        ? money(
+            row.margin_percent,
+          )
+        : null,
     reference:
       row.reference
         ? String(
@@ -1555,6 +1803,42 @@ export async function getSalesQuoteDetail(
             money(
               line.unit_price,
             ),
+          unitCost:
+            salesCapabilities(
+              context.permissions.isOwner,
+              context.permissions.permissionSet,
+            ).canViewMargin
+              ? money(
+                  line.unit_cost,
+                )
+              : null,
+          costTotal:
+            salesCapabilities(
+              context.permissions.isOwner,
+              context.permissions.permissionSet,
+            ).canViewMargin
+              ? money(
+                  line.cost_total,
+                )
+              : null,
+          marginAmount:
+            salesCapabilities(
+              context.permissions.isOwner,
+              context.permissions.permissionSet,
+            ).canViewMargin
+              ? money(
+                  line.margin_amount,
+                )
+              : null,
+          marginPercent:
+            salesCapabilities(
+              context.permissions.isOwner,
+              context.permissions.permissionSet,
+            ).canViewMargin
+              ? money(
+                  line.margin_percent,
+                )
+              : null,
           discountType:
             line.discount_type ===
               'fixed'
@@ -1590,6 +1874,81 @@ export async function getSalesQuoteDetail(
             money(
               line.line_total,
             ),
+        }),
+      ),
+    optionalItems:
+      optionalItems.rows.map(
+        item => ({
+          id:
+            String(
+              item.id,
+            ),
+          catalogItemId:
+            item.catalog_item_id
+              ? String(
+                  item.catalog_item_id,
+                )
+              : null,
+          description:
+            String(
+              item.description,
+            ),
+          sku:
+            item.sku_snapshot
+              ? String(
+                  item.sku_snapshot,
+                )
+              : null,
+          unit:
+            String(
+              item.unit ||
+              'unit',
+            ),
+          quantity:
+            Number(
+              item.quantity,
+            ),
+          unitPrice:
+            money(
+              item.unit_price,
+            ),
+          taxName:
+            item.tax_name_snapshot
+              ? String(
+                  item.tax_name_snapshot,
+                )
+              : null,
+          taxRate:
+            Number(
+              item.tax_rate ||
+              0,
+            ),
+          isSelected:
+            item.is_selected ===
+              true,
+        }),
+      ),
+    revisions:
+      revisions.rows.map(
+        item => ({
+          id:
+            String(
+              item.id,
+            ),
+          revisionNumber:
+            Number(
+              item.revision_number,
+            ),
+          reason:
+            item.reason
+              ? String(
+                  item.reason,
+                )
+              : null,
+          createdAt:
+            new Date(
+              item.created_at,
+            ).toISOString(),
         }),
       ),
     history:
