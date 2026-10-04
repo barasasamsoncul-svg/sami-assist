@@ -71,6 +71,7 @@ export function workspaceFileErrorResponse(error: unknown) {
       'COMPANY_ACCESS_DENIED',
       'FILES_VIEW_REQUIRED',
       'FILES_MANAGE_REQUIRED',
+      'AI_USE_REQUIRED',
       'WORKSPACE_SUBSCRIPTION_REQUIRED',
     ]);
     const notFound = new Set(['FILE_NOT_FOUND']);
