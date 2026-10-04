@@ -16,6 +16,7 @@ import {
   Download,
   FileText,
   LayoutDashboard,
+  LayoutTemplate,
   PackageCheck,
   Plus,
   RefreshCw,
@@ -43,6 +44,8 @@ import SalesQuoteComposer from '@/app/apps/sales/SalesQuoteComposer';
 
 import SalesCustomersManager from '@/app/apps/sales/SalesCustomersManager';
 
+import SalesTemplatesManager from '@/app/apps/sales/SalesTemplatesManager';
+
 import SalesPricingManager from '@/app/apps/sales/SalesPricingManager';
 
 import SalesOrganizationManager from '@/app/apps/sales/SalesOrganizationManager';
@@ -58,6 +61,7 @@ type View =
   | 'overview'
   | 'customers'
   | 'quotes'
+  | 'templates'
   | 'orders'
   | 'organization'
   | 'operations'
@@ -96,6 +100,16 @@ const TUTORIAL:
         'Create and control quotations',
       description:
         'Build quotes from customers and products, apply taxes and discounts, use approval rules, send securely and track customer response.',
+    },
+    {
+      id:
+        'templates',
+      section:
+        'templates',
+      title:
+        'Build quotation templates',
+      description:
+        'Create reusable quotation branding, notes, commercial terms and footer defaults without mixing template management into global Sales settings.',
     },
     {
       id:
@@ -697,6 +711,16 @@ export default function SalesWorkspaceClient({
       },
       {
         key:
+          'templates',
+        label:
+          'Quotation templates',
+        icon:
+          LayoutTemplate,
+        visible:
+          true,
+      },
+      {
+        key:
           'orders',
         label:
           'Sales orders',
@@ -1094,6 +1118,30 @@ export default function SalesWorkspaceClient({
                 </div>
               </div>
             </section>
+          )
+        }
+
+        {
+          view ===
+            'templates' &&
+          (
+            <SalesTemplatesManager
+              data={
+                initialData
+              }
+              busy={
+                busy
+              }
+              request={
+                request
+              }
+              showSuccess={
+                showSuccess
+              }
+              showError={
+                showError
+              }
+            />
           )
         }
 
@@ -1884,163 +1932,6 @@ function Settings({
         </div>
       </form>
 
-      <form
-        className="sami-surface rounded-[24px] p-4"
-        onSubmit={
-          async event => {
-            event.preventDefault();
-
-            const target =
-              event.currentTarget;
-
-            const form =
-              new FormData(
-                target,
-              );
-
-            try {
-              await request({
-                action:
-                  'save_template',
-                name:
-                  form.get(
-                    'name',
-                  ),
-                primaryColor:
-                  form.get(
-                    'primaryColor',
-                  ),
-                secondaryColor:
-                  form.get(
-                    'secondaryColor',
-                  ),
-                footerText:
-                  form.get(
-                    'footerText',
-                  ),
-                notes:
-                  form.get(
-                    'notes',
-                  ),
-                terms:
-                  form.get(
-                    'terms',
-                  ),
-                isDefault:
-                  form.get(
-                    'isDefault',
-                  ) ===
-                    'on',
-              });
-
-              target.reset();
-
-              showSuccess(
-                'Template saved',
-                'The quotation template is ready to use.',
-              );
-            } catch (
-              error
-            ) {
-              showError(
-                'Template could not be saved',
-                error instanceof
-                  Error
-                  ? error.message
-                  : 'SaMi could not save the template.',
-              );
-            }
-          }
-        }
-      >
-        <h2 className="text-sm font-black">
-          Quotation templates
-        </h2>
-
-        <div className="mt-3 space-y-3">
-          <SettingInput
-            name="name"
-            label="Template name"
-            required
-          />
-          <SettingInput
-            name="primaryColor"
-            label="Primary color"
-            defaultValue={
-              data.settings
-                .primaryColor
-            }
-          />
-          <SettingInput
-            name="secondaryColor"
-            label="Secondary color"
-            defaultValue={
-              data.settings
-                .secondaryColor
-            }
-          />
-          <SettingArea
-            name="notes"
-            label="Default notes"
-          />
-          <SettingArea
-            name="terms"
-            label="Default terms"
-          />
-          <SettingArea
-            name="footerText"
-            label="Footer"
-          />
-          <Check
-            name="isDefault"
-            label="Make default"
-            defaultChecked={
-              false
-            }
-          />
-
-          <button
-            type="submit"
-            disabled={
-              busy
-            }
-            className="h-11 w-full rounded-xl border border-[var(--sami-border)] text-sm font-black disabled:opacity-60"
-          >
-            Save template
-          </button>
-        </div>
-
-        <div className="mt-5 space-y-2">
-          {
-            data.templates.map(
-              template => (
-                <div
-                  key={
-                    template.id
-                  }
-                  className="rounded-xl border border-[var(--sami-border)] p-3"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-black">
-                      {
-                        template.name
-                      }
-                    </p>
-                    {
-                      template.isDefault &&
-                      (
-                        <span className="rounded-full bg-blue-500/10 px-2 py-1 text-[10px] font-black text-blue-700 dark:text-blue-300">
-                          Default
-                        </span>
-                      )
-                    }
-                  </div>
-                </div>
-              ),
-            )
-          }
-        </div>
-      </form>
       {
         data.capabilities
           .canManagePricing &&
