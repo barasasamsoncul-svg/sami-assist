@@ -874,14 +874,14 @@ export async function checkIntegrationConnectionHealth(
     `
       UPDATE integration_connections
       SET
-        health_status = $3,
+        health_status = $3::text,
         status =
           CASE
-            WHEN $3 = 'healthy'
+            WHEN $3::text = 'healthy'
             THEN 'connected'
-            WHEN $3 = 'revoked'
+            WHEN $3::text = 'revoked'
             THEN 'revoked'
-            WHEN $3 = 'expired'
+            WHEN $3::text = 'expired'
             THEN 'expired'
             ELSE 'degraded'
           END,
