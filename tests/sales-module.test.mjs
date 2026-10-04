@@ -850,3 +850,29 @@ test('Sales v3 does not expose margin data to users without margin permissions',
   assert.match(composer, /canManageMargin[\s\S]*Unit cost/);
   assert.match(detail, /canViewMargin[\s\S]*Cost \/ margin/);
 });
+
+
+test('Sales v3 customer portal materializes selected optional products before acceptance', async () => {
+  const [
+    publicQuote,
+    publicActions,
+    publicRoute,
+    migration,
+  ] = await Promise.all([
+    source('lib/apps/sales/public.ts'),
+    source('app/q/[tenantId]/[token]/PublicSalesQuoteActions.tsx'),
+    source('app/api/public/sales/[tenantId]/[token]/route.ts'),
+    source('lib/apps/sales/migrations/2.2.0-to-3.0.0.ts'),
+  ]);
+
+  assert.match(migration, /sales_quote_optional_items[\s\S]*unit_cost/);
+  assert.match(publicQuote, /selectedOptionalItemIds/);
+  assert.match(publicQuote, /sales_quote_optional_items/);
+  assert.match(publicQuote, /INSERT INTO sales_quote_items/);
+  assert.match(publicQuote, /optional_products_selected/);
+  assert.match(publicQuote, /margin_percent/);
+  assert.match(publicActions, /Optional products/);
+  assert.match(publicActions, /selectedOptionalItemIds/);
+  assert.match(publicActions, /accepted quotation total will be recalculated securely/);
+  assert.match(publicRoute, /selectedOptionalItemIds/);
+});
