@@ -1210,8 +1210,8 @@ test(
 
     assert.match(
       globals,
-      /Platform-wide visibility contract[\s\S]*data-sami-admin-shell[\s\S]*text-zinc-300[\s\S]*text-zinc-700[\s\S]*var\(--sami-muted\)/,
-      'Workspace, standalone apps and Platform Admin must share one contrast contract across slate and zinc utility colors.',
+      /Platform-wide visibility contract[\s\S]*data-sami-admin-shell[\s\S]*data-sami-ai-chat[\s\S]*text-zinc-300[\s\S]*text-zinc-700[\s\S]*var\(--sami-muted\)/,
+      'Workspace, standalone apps, SaMi AI and Platform Admin must share one contrast contract across slate and zinc utility colors.',
     );
 
     assert.match(
