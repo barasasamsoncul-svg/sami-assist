@@ -2906,7 +2906,7 @@ test('Accounting 2.33 release expansion defers control-plane promotion', async (
 
 
 
-test('Invoicing 2.23 provider refunds are migration-backed and release-safe', async () => {
+test('Invoicing 2.23 provider refunds are runtime-backed and release-safe without tenant DDL', async () => {
   const [
     manifest,
     runtime,
@@ -2930,9 +2930,11 @@ test('Invoicing 2.23 provider refunds are migration-backed and release-safe', as
     migration,
     /fromVersion:\s*'2\.22\.0'[\s\S]*toVersion:\s*'2\.23\.0'/,
   );
-  assert.match(migration, /invoicing_payment_refunds_status_check/);
-  assert.match(migration, /invoicing_credit_note_refunds_status_check/);
-  assert.match(migration, /requires_action/);
+  assert.match(migration, /run:\s*async \(\) => \{\}/);
+  assert.doesNotMatch(
+    migration,
+    /ALTER TABLE|CREATE TABLE|DROP CONSTRAINT|executeSafeSamiModuleMigrationSql/i,
+  );
   assert.match(script, /moduleKey:\s*'invoicing'/);
   assert.match(script, /targetVersion:\s*manifest\.version/);
   assert.match(script, /expand-before-promote/);
