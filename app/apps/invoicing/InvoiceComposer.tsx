@@ -856,9 +856,9 @@ export default function InvoiceComposer({
     );
 
   return (
-    <div className="space-y-5 pb-24 sm:pb-0">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="space-y-4">
+    <div className="min-w-0 space-y-5 pb-28 sm:pb-0">
+      <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="min-w-0 space-y-4">
           <section className="rounded-[22px] border border-[var(--sami-border)] bg-[var(--sami-surface)] p-4">
             <div className="flex items-center gap-2">
               <UserRound className="h-4 w-4 text-blue-600" />
@@ -868,8 +868,8 @@ export default function InvoiceComposer({
               </p>
             </div>
 
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <label className="block space-y-1 md:col-span-2">
+            <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <label className="block min-w-0 space-y-1 sm:col-span-2 xl:col-span-1">
                 <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
                   Customer
                 </span>
@@ -1103,7 +1103,7 @@ export default function InvoiceComposer({
               </label>
             </div>
 
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <div className="mt-3 grid min-w-0 gap-3 lg:grid-cols-2">
               <label className="block space-y-1">
                 <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
                   Service / supply date
@@ -1146,7 +1146,7 @@ export default function InvoiceComposer({
             {
               selectedCustomer &&
               (
-                <div className="mt-4 grid gap-3 rounded-2xl bg-slate-50 p-3 text-xs dark:bg-white/[0.03] sm:grid-cols-2 lg:grid-cols-4">
+                <div className="mt-4 grid min-w-0 gap-3 rounded-2xl bg-slate-50 p-3 text-xs dark:bg-white/[0.03] sm:grid-cols-2 xl:grid-cols-4">
                   <div>
                     <p className="font-black text-slate-400">
                       Billing contact
@@ -1233,7 +1233,7 @@ export default function InvoiceComposer({
             }
           </section>
 
-          <section className="overflow-hidden rounded-[22px] border border-[var(--sami-border)] bg-[var(--sami-surface)]">
+          <section className="min-w-0 rounded-[22px] border border-[var(--sami-border)] bg-[var(--sami-surface)]">
             <div className="flex flex-col gap-3 border-b border-[var(--sami-border)] p-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="flex items-center gap-2">
@@ -1265,7 +1265,7 @@ export default function InvoiceComposer({
               </button>
             </div>
 
-            <div className="space-y-3 p-3 sm:p-4">
+            <div className="min-w-0 space-y-3 p-3 sm:p-4">
               {
                 lines.map(
                   (line, index) => {
@@ -1275,9 +1275,9 @@ export default function InvoiceComposer({
                     return (
                       <div
                         key={index}
-                        className="rounded-2xl border border-[var(--sami-border)] p-3"
+                        className="min-w-0 rounded-2xl border border-[var(--sami-border)] p-3"
                       >
-                        <div className="grid gap-2 lg:grid-cols-[minmax(210px,1.1fr)_minmax(240px,1.5fr)_90px_130px]">
+                        <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(180px,1fr)_minmax(220px,1.4fr)_90px_130px]">
                           <label className="space-y-1">
                             <span className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-400">
                               Product / service
@@ -1396,7 +1396,7 @@ export default function InvoiceComposer({
                           </label>
                         </div>
 
-                        <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-[110px_120px_130px_120px_minmax(120px,1fr)_44px] lg:items-end">
+                        <div className="mt-2 grid min-w-0 gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-[110px_120px_130px_120px_minmax(120px,1fr)_44px] 2xl:items-end">
                           <label className="space-y-1">
                             <span className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-400">
                               Unit
@@ -1682,7 +1682,7 @@ export default function InvoiceComposer({
             </div>
           </section>
 
-          <section className="grid gap-4 rounded-[22px] border border-[var(--sami-border)] bg-[var(--sami-surface)] p-4 md:grid-cols-2">
+          <section className="grid min-w-0 gap-4 rounded-[22px] border border-[var(--sami-border)] bg-[var(--sami-surface)] p-4 lg:grid-cols-2">
             <label className="space-y-1">
               <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
                 Customer-facing notes
@@ -1719,7 +1719,7 @@ export default function InvoiceComposer({
           </section>
         </div>
 
-        <aside className="h-fit space-y-4 xl:sticky xl:top-4">
+        <aside className="min-w-0 h-fit space-y-4 2xl:sticky 2xl:top-4">
           <section className="rounded-[22px] border border-[var(--sami-border)] bg-[var(--sami-surface)] p-4">
             <div className="flex items-center gap-2">
               <Receipt className="h-4 w-4 text-blue-600" />
@@ -1830,7 +1830,7 @@ export default function InvoiceComposer({
             </div>
           </section>
 
-          <section className="hidden rounded-[22px] border border-[var(--sami-border)] bg-[var(--sami-surface)] p-4 sm:block">
+          <section className="rounded-[22px] border border-[var(--sami-border)] bg-[var(--sami-surface)] p-4 max-sm:hidden">
             <p className="text-xs font-black">
               Document controls
             </p>
