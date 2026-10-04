@@ -1101,6 +1101,61 @@ test('Category 18: AI attachments are private to AI use without granting generic
 });
 
 
+test('Category 18: rich document extraction is a core SaMi AI capability, not an Accounting-only path', async () => {
+  const [
+    attachments,
+    extraction,
+  ] = await Promise.all([
+    source('lib/ai/attachments.ts'),
+    source('lib/ai/document-extraction.ts'),
+  ]);
+
+  assert.match(
+    extraction,
+    /SAMI_AI_DOCUMENT_EXTRACTOR_URL/,
+  );
+  assert.match(
+    extraction,
+    /SAMI_AI_DOCUMENT_EXTRACTOR_BEARER_TOKEN/,
+  );
+  assert.match(
+    extraction,
+    /application\/pdf/,
+  );
+  assert.match(
+    extraction,
+    /document-text-v1/,
+  );
+  assert.match(
+    extraction,
+    /sami_ai_attachment_text_extraction/,
+  );
+  assert.doesNotMatch(
+    extraction,
+    /@\/lib\/apps\//,
+    'Core document extraction must remain module-agnostic.',
+  );
+
+  assert.match(
+    attachments,
+    /extractSamiAiDocumentText/,
+  );
+  assert.match(
+    attachments,
+    /extractableDocument/,
+  );
+  assert.match(
+    attachments,
+    /Extracted document content:/,
+  );
+  assert.doesNotMatch(
+    attachments,
+    /@\/lib\/apps\//,
+    'SaMi AI attachment reading must not depend on a named business app.',
+  );
+});
+
+
 test('Category 18: active generation never blocks follow-up composition controls', async () => {
   const client = await source(
     'app/components/workspace/WorkspaceAiClient.tsx',
