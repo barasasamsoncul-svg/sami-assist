@@ -108,7 +108,8 @@ export type SalesErrorCode =
   | 'ORDER_NOT_FOUND'
   | 'DELIVERY_FAILED'
   | 'BILLING_CUSTOMER_REQUIRED'
-  | 'INVOICING_REQUIRED';
+  | 'INVOICING_REQUIRED'
+  | 'RETURN_CREDIT_LINK_MISSING';
 
 
 export class SalesError
