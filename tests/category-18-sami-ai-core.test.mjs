@@ -1012,3 +1012,86 @@ test('Category 18: confirmation claims are atomic before write-tool execution', 
     /claimed\.rows\.length !==[\s\S]*1/,
   );
 });
+
+
+test('Category 18: AI chat parity keeps generation scoped and confirmations visible', async () => {
+  const [
+    client,
+    service,
+  ] = await Promise.all([
+    source('app/components/workspace/WorkspaceAiClient.tsx'),
+    source('lib/services/workspace-ai.ts'),
+  ]);
+
+  assert.match(
+    client,
+    /generationStatesRef/,
+  );
+  assert.match(
+    client,
+    /conversationRunKey/,
+  );
+  assert.match(
+    client,
+    /selectedConversationIdRef/,
+  );
+  assert.match(
+    client,
+    /Thinking…/,
+  );
+  assert.match(
+    client,
+    /SpeechRecognition|webkitSpeechRecognition/,
+  );
+  assert.match(
+    client,
+    /speechSynthesis/,
+  );
+  assert.match(
+    client,
+    /iconOnly = true/,
+  );
+  assert.match(
+    service,
+    /actionConfirmation/,
+  );
+  assert.match(
+    service,
+    /completed successfully/,
+  );
+  assert.match(
+    service,
+    /confirmationMessage/,
+  );
+});
+
+test('Category 18: AI attachments are private to AI use without granting generic file management', async () => {
+  const [
+    attachmentService,
+    workspaceFiles,
+  ] = await Promise.all([
+    source('lib/ai/attachments.ts'),
+    source('lib/services/workspace-files.ts'),
+  ]);
+
+  assert.match(
+    attachmentService,
+    /SAMI_PERMISSIONS[\s\S]*AI_USE/,
+  );
+  assert.match(
+    attachmentService,
+    /uploaded_by = \$4[\s\S]*purpose =[\s\S]*'ai_attachment'/,
+  );
+  assert.match(
+    workspaceFiles,
+    /'ai_attachment'/,
+  );
+  assert.match(
+    workspaceFiles,
+    /SAMI_PERMISSIONS[\s\S]*AI_USE/,
+  );
+  assert.match(
+    workspaceFiles,
+    /row\.uploaded_by !==[\s\S]*context\.userId/,
+  );
+});
