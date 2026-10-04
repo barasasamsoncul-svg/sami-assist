@@ -2591,6 +2591,9 @@ export default function InvoiceDetailClient({
                               invoices={
                                 data.invoices
                               }
+                              sourcePayments={
+                                invoice.payments
+                              }
                               busy={
                                 busy
                               }
