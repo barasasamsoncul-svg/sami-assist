@@ -48,6 +48,7 @@ export const dynamic =
 
 type SalesView =
   | 'overview'
+  | 'customers'
   | 'quotes'
   | 'orders'
   | 'organization'
@@ -125,6 +126,14 @@ export default async function SalesPage({
   const availableViews:
     SalesView[] = [
       'overview',
+      ...(
+        data.capabilities
+          .canUseBillingCustomers
+          ? [
+              'customers' as const,
+            ]
+          : []
+      ),
       'quotes',
       ...(
         data.capabilities
@@ -196,6 +205,25 @@ export default async function SalesPage({
       description:
         'Pipeline health, conversion and sales value.',
     },
+    ...(
+      data.capabilities
+        .canUseBillingCustomers
+        ? [
+            {
+              key:
+                'customers',
+              label:
+                'Customers & Contacts',
+              href:
+                '/apps/sales?view=customers',
+              description:
+                'Roadmap Part 2 · Shared customer master and primary contacts.',
+              badge:
+                data.billingCustomers.length,
+            },
+          ]
+        : []
+    ),
     {
       key:
         'quotes',
