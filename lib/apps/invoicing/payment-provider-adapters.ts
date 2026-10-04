@@ -45,6 +45,7 @@ export type NormalizedInvoicePayment = {
   amount: number;
   currency: string;
   providerReference: string;
+  providerTransactionId?: string;
   method: string;
   paymentDate?: string;
   notes?: string;
@@ -726,6 +727,9 @@ export async function verifyAndNormalizeInvoicePaymentWebhook(input: {
       currency: cleanString(body.currency, 12).toUpperCase(),
       providerReference:
         cleanString(body.confirmation_code, 255) || trackingId,
+      providerTransactionId:
+        cleanString(body.confirmation_code, 255) ||
+        undefined,
       method: cleanString(body.payment_method, 50) || 'Pesapal',
       paymentDate: cleanString(body.created_date, 80) || undefined,
     };
@@ -767,6 +771,10 @@ export async function verifyAndNormalizeInvoicePaymentWebhook(input: {
         typeof session.payment_intent === 'string'
           ? session.payment_intent
           : session.id,
+      providerTransactionId:
+        typeof session.payment_intent === 'string'
+          ? session.payment_intent
+          : undefined,
       method: 'Stripe',
       paymentDate: new Date(event.created * 1000).toISOString(),
     };
@@ -801,6 +809,10 @@ export async function verifyAndNormalizeInvoicePaymentWebhook(input: {
         ),
       currency: paystackCurrency,
       providerReference: cleanString(data.reference, 255),
+      providerTransactionId:
+        cleanString(data.reference, 255) ||
+        cleanString(data.id, 100) ||
+        undefined,
       method: cleanString(data.channel, 50) || 'Paystack',
       paymentDate: cleanString(data.paid_at, 80) || undefined,
     };
@@ -883,6 +895,9 @@ export async function verifyAndNormalizeInvoicePaymentWebhook(input: {
       providerReference:
         cleanString(data.flw_ref, 255) ||
         cleanString(data.tx_ref, 255),
+      providerTransactionId:
+        cleanString(data.id, 100) ||
+        undefined,
       method: cleanString(data.payment_type, 50) || 'Flutterwave',
       paymentDate: cleanString(data.created_at, 80) || undefined,
     };
@@ -909,6 +924,7 @@ export async function verifyAndNormalizeInvoicePaymentWebhook(input: {
       amount: Number(body.TransAmount || 0),
       currency: 'KES',
       providerReference: transId,
+      providerTransactionId: transId,
       method: 'M-PESA',
       paymentDate: cleanString(body.TransTime, 80) || undefined,
       notes: 'Verified through the registered M-PESA C2B callback URL.',
@@ -1002,6 +1018,7 @@ export async function verifyAndNormalizeInvoicePaymentWebhook(input: {
     amount: Number(amount.value || 0),
     currency: cleanString(amount.currency_code, 12).toUpperCase(),
     providerReference: captureId,
+    providerTransactionId: captureId,
     method: 'PayPal',
     paymentDate: cleanString(resource.create_time, 80) || undefined,
   };

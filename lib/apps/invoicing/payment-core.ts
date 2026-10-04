@@ -53,6 +53,7 @@ export async function recordInvoicePaymentCore(input:{
   source?:'manual'|'gateway'|'bank_feed'|'automation';
   sourceProvider?:string|null;
   externalEventId?:string|null;
+  providerTransactionId?:string|null;
 }):Promise<InvoicingPaymentCoreResult>{
   const paymentAmount=money(input.amount);
   if(!Number.isFinite(paymentAmount)||paymentAmount<=0){
@@ -187,11 +188,11 @@ export async function recordInvoicePaymentCore(input:{
       `INSERT INTO invoicing_payments(
          company_id,payment_number,customer_id,payment_date,amount,currency,
          exchange_rate,method,reference,idempotency_key,accounting_model,status,
-         notes,created_by,updated_by
+         notes,metadata,created_by,updated_by
        )
        VALUES(
          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-         'customer_credit','posted',$11,$12,$12
+         'customer_credit','posted',$11,$12::jsonb,$13,$13
        )
        RETURNING id`,
       [
@@ -206,6 +207,20 @@ export async function recordInvoicePaymentCore(input:{
         paymentReference||null,
         idempotencyKey,
         nullableText(input.notes,3000),
+        JSON.stringify({
+          source:
+            input.source ||
+            'manual',
+          sourceProvider:
+            input.sourceProvider ||
+            null,
+          externalEventId:
+            input.externalEventId ||
+            null,
+          providerTransactionId:
+            input.providerTransactionId ||
+            null,
+        }),
         input.userId,
       ],
     );

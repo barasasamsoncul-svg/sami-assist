@@ -79,6 +79,7 @@ export default function CreditNoteLifecyclePanel({
   customerId,
   currency,
   invoices,
+  sourcePayments,
   busy,
   run,
   capabilities,
@@ -91,6 +92,10 @@ export default function CreditNoteLifecyclePanel({
     string;
   invoices:
     InvoicingInvoiceSummary[];
+  sourcePayments:
+    InvoicingInvoiceDetail[
+      'payments'
+    ];
   busy:
     boolean;
   run:
@@ -128,6 +133,38 @@ export default function CreditNoteLifecyclePanel({
         ) =>
           right.balanceDue -
           left.balanceDue,
+      );
+
+  const providerPayments =
+    sourcePayments
+      .filter(
+        payment =>
+          Boolean(
+            payment.sourceProvider,
+          ) &&
+          [
+            'invoicing_payment_stripe',
+            'invoicing_payment_paypal',
+            'invoicing_payment_paystack',
+            'invoicing_payment_flutterwave',
+            'invoicing_payment_pesapal',
+          ].includes(
+            payment.sourceProvider ||
+            '',
+          ),
+      )
+      .filter(
+        (
+          payment,
+          index,
+          values,
+        ) =>
+          values.findIndex(
+            candidate =>
+              candidate.id ===
+              payment.id,
+          ) ===
+          index,
       );
 
   const postedManualApplications =
@@ -392,6 +429,32 @@ export default function CreditNoteLifecyclePanel({
                               : ''
                           }
                         </p>
+                        {
+                          refund.provider && (
+                            <p className="mt-1 text-[9px] leading-4 text-blue-700 dark:text-blue-300">
+                              {
+                                refund.provider
+                              } · {
+                                refund.providerStatus ||
+                                refund.status
+                              }{
+                                refund.providerPaymentNumber
+                                  ? ' · original ' +
+                                    refund.providerPaymentNumber
+                                  : ''
+                              }
+                            </p>
+                          )
+                        }
+                        {
+                          refund.providerMessage && (
+                            <p className="mt-1 max-w-2xl text-[9px] leading-4 text-slate-500">
+                              {
+                                refund.providerMessage
+                              }
+                            </p>
+                          )
+                        }
                       </div>
 
                       <span className="text-[9px] font-black uppercase text-slate-500">
@@ -404,8 +467,87 @@ export default function CreditNoteLifecyclePanel({
                     {
                       capabilities
                         .canRefundCredit &&
+                      refund.provider &&
+                      [
+                        'pending',
+                        'requires_action',
+                      ].includes(
+                        refund.status,
+                      ) &&
+                      (
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={
+                              busy
+                            }
+                            onClick={
+                              () =>
+                                void run(
+                                  {
+                                    action:
+                                      'check_provider_refund',
+                                    refundKind:
+                                      'credit_note',
+                                    refundId:
+                                      refund.id,
+                                  },
+                                  'Provider refund status refreshed.',
+                                )
+                            }
+                            className="h-9 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 text-[9px] font-black text-blue-700 disabled:opacity-50 dark:text-blue-300"
+                          >
+                            Check status
+                          </button>
+
+                          {
+                            refund.manualConfirmationRequired && (
+                              <button
+                                type="button"
+                                disabled={
+                                  busy
+                                }
+                                onClick={
+                                  () => {
+                                    if (
+                                      !window.confirm(
+                                        'Confirm only after the provider merchant dashboard shows this refund as completed. SaMi will post the credit refund and Accounting entry immediately.',
+                                      )
+                                    ) {
+                                      return;
+                                    }
+
+                                    void run(
+                                      {
+                                        action:
+                                          'confirm_provider_refund',
+                                        refundKind:
+                                          'credit_note',
+                                        refundId:
+                                          refund.id,
+                                        confirmed:
+                                          true,
+                                      },
+                                      'Provider refund completion confirmed and posted.',
+                                    );
+                                  }
+                                }
+                                className="h-9 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 text-[9px] font-black text-emerald-700 disabled:opacity-50 dark:text-emerald-300"
+                              >
+                                Confirm completed
+                              </button>
+                            )
+                          }
+                        </div>
+                      )
+                    }
+
+                    {
+                      capabilities
+                        .canRefundCredit &&
                       refund.status ===
                         'posted' &&
+                      !refund.provider &&
                       (
                         <form
                           className="mt-2 flex flex-col gap-2 sm:flex-row"
@@ -627,6 +769,10 @@ export default function CreditNoteLifecyclePanel({
                           'refund_credit_note',
                         creditNoteId:
                           credit.id,
+                        paymentId:
+                          form.get(
+                            'paymentId',
+                          ),
                         amount:
                           form.get(
                             'amount',
@@ -652,7 +798,7 @@ export default function CreditNoteLifecyclePanel({
                             'refund',
                           ),
                       },
-                      'Customer credit refunded.',
+                      'Refund request processed. Provider-backed refunds post only after provider confirmation.',
                     );
 
                   if (
@@ -666,6 +812,56 @@ export default function CreditNoteLifecyclePanel({
               <p className="text-[10px] font-black">
                 Refund available credit
               </p>
+
+              {
+                providerPayments.length > 0 && (
+                  <>
+                    <select
+                      name="paymentId"
+                      defaultValue=""
+                      className="mt-2 h-9 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-2 text-[10px]"
+                    >
+                      <option value="">
+                        Manual / offline refund
+                      </option>
+                      {
+                        providerPayments.map(
+                          payment => (
+                            <option
+                              key={
+                                payment.id
+                              }
+                              value={
+                                payment.id
+                              }
+                            >
+                              {
+                                payment.paymentNumber
+                              } · {
+                                (
+                                  payment.sourceProvider ||
+                                  ''
+                                ).replace(
+                                  'invoicing_payment_',
+                                  '',
+                                )
+                              } · {
+                                money(
+                                  payment.amount,
+                                  currency,
+                                )
+                              }
+                            </option>
+                          ),
+                        )
+                      }
+                    </select>
+                    <p className="mt-1 text-[9px] leading-4 text-slate-500">
+                      Choose the original online payment to send money back through its connected provider, or leave Manual / offline refund selected when the money was returned outside SaMi.
+                    </p>
+                  </>
+                )
+              }
 
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <input

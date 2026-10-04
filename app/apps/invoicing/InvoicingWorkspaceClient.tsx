@@ -223,6 +223,28 @@ function formatMoney(
 }
 
 
+function requestKey(
+  prefix:
+    string,
+) {
+  return (
+    prefix +
+    ':' +
+    (
+      typeof crypto !==
+        'undefined' &&
+      'randomUUID' in
+        crypto
+        ? crypto.randomUUID()
+        : Date.now()
+            .toString(
+              36,
+            )
+    )
+  );
+}
+
+
 function csvCell(
   value:
     unknown,
@@ -640,6 +662,108 @@ function TextArea({
         className="w-full min-w-0 rounded-xl border border-[var(--sami-border)] bg-transparent px-3 py-2 text-sm outline-none transition focus:border-blue-500"
       />
     </label>
+  );
+}
+
+
+function ProviderRefundControls({
+  refundKind,
+  refund,
+  pending,
+  run,
+}: {
+  refundKind:
+    'payment' |
+    'credit_note';
+  refund: {
+    id:
+      string;
+    provider:
+      string |
+      null;
+    providerMessage:
+      string |
+      null;
+    manualConfirmationRequired:
+      boolean;
+  };
+  pending:
+    boolean;
+  run:
+    (
+      payload:
+        Record<
+          string,
+          unknown
+        >,
+      message:
+        string,
+    ) =>
+      Promise<boolean>;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <button
+        type="button"
+        disabled={
+          pending
+        }
+        onClick={
+          () =>
+            void run(
+              {
+                action:
+                  'check_provider_refund',
+                refundKind,
+                refundId:
+                  refund.id,
+              },
+              'Provider refund status refreshed.',
+            )
+        }
+        className="h-9 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 text-[10px] font-black text-blue-700 disabled:opacity-60 dark:text-blue-300"
+      >
+        Check status
+      </button>
+
+      {
+        refund.manualConfirmationRequired && (
+          <button
+            type="button"
+            disabled={
+              pending
+            }
+            onClick={
+              () => {
+                if (
+                  !window.confirm(
+                    'Confirm only after the provider merchant dashboard shows this refund as completed. SaMi will post the financial refund and Accounting entry immediately.',
+                  )
+                ) {
+                  return;
+                }
+
+                void run(
+                  {
+                    action:
+                      'confirm_provider_refund',
+                    refundKind,
+                    refundId:
+                      refund.id,
+                    confirmed:
+                      true,
+                  },
+                  'Provider refund completion confirmed and posted.',
+                );
+              }
+            }
+            className="h-9 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 text-[10px] font-black text-emerald-700 disabled:opacity-60 dark:text-emerald-300"
+          >
+            Confirm completed
+          </button>
+        )
+      }
+    </div>
   );
 }
 
@@ -7484,8 +7608,17 @@ function Retainers({
                                             form.get(
                                               'reason',
                                             ),
+                                          idempotencyKey:
+                                            requestKey(
+                                              'payment-refund',
+                                            ),
+                                          manualProviderRefundConfirmed:
+                                            form.get(
+                                              'manualProviderRefundConfirmed',
+                                            ) ===
+                                              'yes',
                                         },
-                                        'Unused retainer amount refunded.',
+                                        'Refund request submitted. Provider-backed refunds are posted after provider confirmation.',
                                       );
 
                                     if (
@@ -7532,6 +7665,17 @@ function Retainers({
                                   placeholder="Refund reference"
                                   className="mt-2 h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-2 text-xs"
                                 />
+                                <label className="mt-2 flex items-start gap-2 rounded-xl border border-[var(--sami-border)] bg-slate-500/[0.03] p-2 text-[10px] leading-4 text-slate-500">
+                                  <input
+                                    type="checkbox"
+                                    name="manualProviderRefundConfirmed"
+                                    value="yes"
+                                    className="mt-0.5"
+                                  />
+                                  <span>
+                                    If this payment provider cannot be reversed automatically, I have already completed the refund in the provider account and want SaMi to record the confirmed financial refund.
+                                  </span>
+                                </label>
                                 <div className="mt-2 flex gap-2">
                                   <input
                                     name="reason"
@@ -7698,6 +7842,16 @@ function Retainers({
                                       )
                                     } · {
                                       refund.status
+                                    }{
+                                      refund.provider
+                                        ? ' · ' +
+                                          refund.provider
+                                        : ''
+                                    }{
+                                      refund.providerMessage
+                                        ? ' · ' +
+                                          refund.providerMessage
+                                        : ''
                                     }
                                   </span>
                                 ),
@@ -8393,7 +8547,59 @@ function Payments({
                                           refund.reason
                                         }
                                       </p>
+                                      {
+                                        refund.provider && (
+                                          <p className="mt-1 text-[10px] leading-4 text-blue-700 dark:text-blue-300">
+                                            {
+                                              refund.provider
+                                            } · {
+                                              refund.providerStatus ||
+                                              refund.status
+                                            }{
+                                              refund.externalRefundId
+                                                ? ' · ' +
+                                                  refund.externalRefundId
+                                                : ''
+                                            }
+                                          </p>
+                                        )
+                                      }
+                                      {
+                                        refund.providerMessage && (
+                                          <p className="mt-1 max-w-2xl text-[10px] leading-4 text-slate-500">
+                                            {
+                                              refund.providerMessage
+                                            }
+                                          </p>
+                                        )
+                                      }
                                     </div>
+
+                                    {
+                                      data.capabilities
+                                        .canRefundPayment &&
+                                      refund.provider &&
+                                      [
+                                        'pending',
+                                        'requires_action',
+                                      ].includes(
+                                        refund.status,
+                                      ) &&
+                                      (
+                                        <ProviderRefundControls
+                                          refundKind="payment"
+                                          refund={
+                                            refund
+                                          }
+                                          pending={
+                                            pending
+                                          }
+                                          run={
+                                            run
+                                          }
+                                        />
+                                      )
+                                    }
 
                                     {
                                       data.capabilities
@@ -8401,6 +8607,7 @@ function Payments({
                                       !payment.reconciledAt &&
                                       refund.status ===
                                         'posted' &&
+                                      !refund.provider &&
                                       (
                                         <form
                                           className="flex gap-2"
@@ -8633,8 +8840,17 @@ function Payments({
                                             form.get(
                                               'reason',
                                             ),
+                                          idempotencyKey:
+                                            requestKey(
+                                              'payment-refund',
+                                            ),
+                                          manualProviderRefundConfirmed:
+                                            form.get(
+                                              'manualProviderRefundConfirmed',
+                                            ) ===
+                                              'yes',
                                         },
-                                        'Unapplied payment amount refunded.',
+                                        'Refund request submitted. Provider-backed refunds are posted after provider confirmation.',
                                       );
 
                                     if (
@@ -8691,6 +8907,17 @@ function Payments({
                                   placeholder="Refund reference"
                                   className="mt-2 h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-2 text-xs"
                                 />
+                                <label className="mt-2 flex items-start gap-2 rounded-xl border border-[var(--sami-border)] bg-slate-500/[0.03] p-2 text-[10px] leading-4 text-slate-500">
+                                  <input
+                                    type="checkbox"
+                                    name="manualProviderRefundConfirmed"
+                                    value="yes"
+                                    className="mt-0.5"
+                                  />
+                                  <span>
+                                    If this payment provider cannot be reversed automatically, I have already completed the refund in the provider account and want SaMi to record the confirmed financial refund.
+                                  </span>
+                                </label>
                                 <div className="mt-2 flex gap-2">
                                   <input
                                     name="reason"

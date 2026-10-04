@@ -3,16 +3,16 @@
   "locks": {
     "invoicing": {
       "status": "locked",
-      "moduleVersion": "2.22.0",
+      "moduleVersion": "2.23.0",
       "referenceStandard": true,
-      "baselineCommit": "0264ab03e5b2dc36475264e70b023f035b19592d",
+      "baselineCommit": "aae50f8db0757b096d0619f1a4dd325efb23eee0",
       "baselineBranch": "main",
       "lockedAt": "2026-10-04",
-      "policy": "Invoicing 2.22.0 preserves the completed billing product, business-owner payment-provider connections, customer-facing hosted Pay Now, Safaricom M-PESA Express STK Push, and truthful payment-webhook observability. Provider setup now distinguishes callbackConfigured from callbackVerified: owner confirmation or provider API registration can make a callback configured, but SaMi only marks it verified after a provider event has been cryptographically or provider-authoritatively validated. Existing last_received_at evidence remains backward-compatible. Customer checkout remains available once setup is configured because provider-return verification and the authoritative settlement core still protect posting. M-PESA retains C2B Paybill/Till reconciliation and encrypted STK credentials. The release gate includes Invoicing/payment regressions, provider connector contracts, quality locks, module migrations, responsive/app UI, ERP integration, TypeScript and production build.",
+      "policy": "Invoicing 2.23.0 preserves the completed billing product, verified merchant payment connections, customer Pay Now, M-PESA STK/C2B reconciliation, truthful webhook health, and provider-authoritative refunds. Pending gateway refund work is stored only in the existing integration_events ledger; financial refund tables remain posted/reversed settlement records. Stripe, PayPal, Paystack and Flutterwave refunds post financially only after provider-confirmed success; Pesapal requires explicit merchant completion confirmation because request acceptance is not settlement. Unsupported automatic reversals such as M-PESA require explicit confirmation that the external reversal was completed before SaMi records the financial refund. Completed external refunds cannot be reversed internally. The release gate includes 72+ Invoicing/payment/refund regressions, Accounting parity, quality locks, migrations, responsive/app UI, ERP integration, TypeScript and production build.",
       "protectedTrees": {
-        "lib/apps/invoicing": "f90dbe4699158bfc195c87648927873ccbf58ba1",
-        "app/apps/invoicing": "742317eb94ae38ab3d1b3ad27ab78774a95c9dbc",
-        "app/api/apps/invoicing": "ae88ec4e4109dc962fd2a7823caaf47ccf43ffd9",
+        "lib/apps/invoicing": "d5461cfbd65148236e5eaad78008510a126c381c",
+        "app/apps/invoicing": "3a5685e4109b0dc06250f251cea48bcfb41a5b40",
+        "app/api/apps/invoicing": "5e1249fb5fde81512f645a2463fb1e4263dcca9f",
         "app/api/internal/invoicing": "b2b22efc33d3b038495ccdd343845257789334a1",
         "app/i/[tenantId]/[token]": "f29ae9c4d6b72e5d5632e9fba2775955f0df3601",
         "app/p/[tenantId]/[token]": "1e4a46ce6eff533d762e0d543679a197112bb92a",

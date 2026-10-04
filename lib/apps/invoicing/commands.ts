@@ -7392,6 +7392,18 @@ export async function refundInvoicePayment(
       2000,
     );
 
+  const refundIdempotencyKey =
+    cleanText(
+      input.idempotencyKey,
+      120,
+    ) ||
+    null;
+
+  const refundMetadata =
+    plainObject(
+      input.metadata,
+    );
+
   if (!reason) {
     throw new InvoicingError(
       'INVALID_INPUT',
@@ -7406,6 +7418,61 @@ export async function refundInvoicePayment(
     await client.query(
       'BEGIN',
     );
+
+    if (
+      refundIdempotencyKey
+    ) {
+      const duplicate =
+        await client.query(
+          `
+            SELECT
+              id,
+              refund_number,
+              amount,
+              status
+            FROM invoicing_payment_refunds
+            WHERE company_id = $1
+              AND payment_id = $2
+              AND idempotency_key = $3
+            LIMIT 1
+          `,
+          [
+            context.companyId,
+            paymentId,
+            refundIdempotencyKey,
+          ],
+        );
+
+      if (
+        duplicate.rows[0]
+      ) {
+        await client.query(
+          'COMMIT',
+        );
+
+        return {
+          refundId:
+            String(
+              duplicate.rows[0].id,
+            ),
+          refundNumber:
+            String(
+              duplicate.rows[0].refund_number,
+            ),
+          paymentId,
+          status:
+            String(
+              duplicate.rows[0].status,
+            ),
+          amount:
+            money(
+              duplicate.rows[0].amount,
+            ),
+          duplicate:
+            true,
+        };
+      }
+    }
 
     const paymentResult =
       await client.query(
@@ -7515,13 +7582,16 @@ export async function refundInvoicePayment(
             reference,
             reason,
             status,
+            idempotency_key,
+            metadata,
             created_by,
             updated_by
           )
           VALUES (
             $1,$2,$3,$4,$5,$6,$7,$8,$9,
             'posted',
-            $10,$10
+            $10,$11::jsonb,
+            $12,$12
           )
           RETURNING id
         `,
@@ -7548,6 +7618,10 @@ export async function refundInvoicePayment(
           ) ||
           null,
           reason,
+          refundIdempotencyKey,
+          JSON.stringify(
+            refundMetadata,
+          ),
           context.userId,
         ],
       );
@@ -7646,6 +7720,8 @@ export async function refundInvoicePayment(
           unapplied -
           amount,
         ),
+      duplicate:
+        false,
     };
   } catch (
     error
@@ -7712,6 +7788,7 @@ export async function reverseInvoicePaymentRefund(
             r.payment_id,
             r.refund_number,
             r.status,
+            r.metadata,
             p.payment_number,
             p.reconciled_at
           FROM invoicing_payment_refunds r
@@ -7750,6 +7827,21 @@ export async function reverseInvoicePaymentRefund(
       throw new InvoicingError(
         'INVOICE_STATE_INVALID',
         'Only a posted refund can be reversed.',
+      );
+    }
+
+    const refundMetadata =
+      plainObject(
+        refund.metadata,
+      );
+
+    if (
+      refundMetadata.providerRefundEventId ||
+      refundMetadata.providerKey
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'A completed provider refund cannot be reversed inside SaMi. Record a new customer payment if the money is collected again.',
       );
     }
 

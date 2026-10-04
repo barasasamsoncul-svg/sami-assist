@@ -35,6 +35,10 @@ import {
   recordInvoicePayment,
   refundInvoiceCreditNote,
   refundInvoicePayment,
+  checkInvoiceProviderRefund,
+  confirmInvoiceProviderRefund,
+  requestInvoiceCreditNoteRefund,
+  requestInvoicePaymentRefund,
   retryInvoiceReminder,
   retryRecurringInvoiceTemplate,
   reverseInvoiceCreditApplication,
@@ -631,7 +635,21 @@ export async function POST(
 
       case 'refund_payment':
         result =
-          await refundInvoicePayment(
+          await requestInvoicePaymentRefund(
+            payload,
+          );
+        break;
+
+      case 'check_provider_refund':
+        result =
+          await checkInvoiceProviderRefund(
+            payload,
+          );
+        break;
+
+      case 'confirm_provider_refund':
+        result =
+          await confirmInvoiceProviderRefund(
             payload,
           );
         break;
@@ -680,7 +698,7 @@ export async function POST(
 
       case 'refund_credit_note':
         result =
-          await refundInvoiceCreditNote(
+          await requestInvoiceCreditNoteRefund(
             payload,
           );
         break;

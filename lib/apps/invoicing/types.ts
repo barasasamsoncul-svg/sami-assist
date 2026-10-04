@@ -133,6 +133,7 @@ export type InvoicingPaymentSummary = {
   exchangeRate: number;
   method: string;
   reference: string | null;
+  sourceProvider: string | null;
   allocatedAmount: number;
   refundedAmount: number;
   unappliedAmount: number;
@@ -155,6 +156,11 @@ export type InvoicingPaymentSummary = {
     amount: number;
     status: string;
     reason: string;
+    provider: string | null;
+    providerStatus: string | null;
+    providerMessage: string | null;
+    externalRefundId: string | null;
+    manualConfirmationRequired: boolean;
   }>;
 };
 
@@ -195,6 +201,11 @@ export type InvoicingRetainerSummary = {
     amount: number;
     status: string;
     reason: string;
+    provider: string | null;
+    providerStatus: string | null;
+    providerMessage: string | null;
+    externalRefundId: string | null;
+    manualConfirmationRequired: boolean;
   }>;
 };
 
@@ -446,6 +457,7 @@ export type InvoicingInvoiceDetail = {
     amount: number;
     method: string;
     reference: string | null;
+    sourceProvider: string | null;
     allocationId: string;
     allocationStatus: string;
     operationKey: string | null;
@@ -483,6 +495,13 @@ export type InvoicingInvoiceDetail = {
       reason: string;
       status: string;
       reversalReason: string | null;
+      provider: string | null;
+      providerStatus: string | null;
+      providerMessage: string | null;
+      externalRefundId: string | null;
+      providerPaymentId: string | null;
+      providerPaymentNumber: string | null;
+      manualConfirmationRequired: boolean;
     }>;
   }>;
   history: Array<{

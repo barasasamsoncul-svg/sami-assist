@@ -118,3 +118,11 @@ export {
   saveInvoicingTaxLocalization,
   saveInvoicingTaxRule,
 } from '@/lib/apps/invoicing/tax-engine';
+
+
+export {
+  checkInvoiceProviderRefund,
+  confirmInvoiceProviderRefund,
+  requestInvoiceCreditNoteRefund,
+  requestInvoicePaymentRefund,
+} from '@/lib/apps/invoicing/provider-refund-service';

@@ -1813,6 +1813,8 @@ export async function receiveMpesaStkCallback(
         'KES',
       providerReference:
         receipt,
+      providerTransactionId:
+        receipt,
       method:
         'M-PESA STK',
       paymentDate:
