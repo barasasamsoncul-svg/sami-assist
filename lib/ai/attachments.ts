@@ -113,15 +113,13 @@ function canReadWorkspaceFiles(
       .permissionContext
       .permissionSet
       .has(
-        SAMI_PERMISSIONS
-          .FILES_VIEW,
+        SAMI_PERMISSIONS.FILES_VIEW,
       ) ||
     context
       .permissionContext
       .permissionSet
       .has(
-        SAMI_PERMISSIONS
-          .FILES_MANAGE,
+        SAMI_PERMISSIONS.FILES_MANAGE,
       )
   );
 }
@@ -137,15 +135,13 @@ function canUseAiAttachments(
       .permissionContext
       .permissionSet
       .has(
-        SAMI_PERMISSIONS
-          .AI_USE,
+        SAMI_PERMISSIONS.AI_USE,
       ) ||
     context
       .permissionContext
       .permissionSet
       .has(
-        SAMI_PERMISSIONS
-          .FILES_MANAGE,
+        SAMI_PERMISSIONS.FILES_MANAGE,
       )
   );
 }
