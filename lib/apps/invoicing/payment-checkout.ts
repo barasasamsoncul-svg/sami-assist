@@ -1028,6 +1028,36 @@ export async function handleInvoiceCheckoutReturn(input: {
         payment,
     });
 
+  const pool =
+    await getTenantPoolByTenantId(
+      tenantId,
+    );
+
+  await pool.query(
+    `
+      UPDATE integration_connections
+      SET
+        health_status='healthy',
+        last_health_check_at=NOW(),
+        settings=(
+          COALESCE(settings,'{}'::jsonb)
+          - 'lastSettlementError'
+          - 'lastSettlementErrorAt'
+        ),
+        updated_at=NOW()
+      WHERE id=$1
+        AND company_id=$2
+        AND status='connected'
+        AND archived_at IS NULL
+    `,
+    [
+      connection.id,
+      companyId,
+    ],
+  ).catch(
+    () => undefined,
+  );
+
   return {
     redirectPath:
       backPath +
