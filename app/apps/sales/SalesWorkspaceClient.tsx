@@ -12,6 +12,7 @@ import Link from 'next/link';
 
 import {
   BarChart3,
+  ContactRound,
   Download,
   FileText,
   LayoutDashboard,
@@ -40,6 +41,8 @@ import WorkspaceTutorial, {
 
 import SalesQuoteComposer from '@/app/apps/sales/SalesQuoteComposer';
 
+import SalesCustomersManager from '@/app/apps/sales/SalesCustomersManager';
+
 import SalesPricingManager from '@/app/apps/sales/SalesPricingManager';
 
 import SalesOrganizationManager from '@/app/apps/sales/SalesOrganizationManager';
@@ -53,6 +56,7 @@ import type {
 
 type View =
   | 'overview'
+  | 'customers'
   | 'quotes'
   | 'orders'
   | 'organization'
@@ -72,6 +76,16 @@ const TUTORIAL:
         'Read the sales pipeline',
       description:
         'Review quoted value, accepted business, converted orders and quotation response activity.',
+    },
+    {
+      id:
+        'customers',
+      section:
+        'customers',
+      title:
+        'Maintain customers and contacts',
+      description:
+        'Create and edit the shared customer identity used by Sales quotations, orders and downstream Invoicing without duplicating master data.',
     },
     {
       id:
@@ -661,6 +675,18 @@ export default function SalesWorkspaceClient({
       },
       {
         key:
+          'customers',
+        label:
+          'Customers & contacts',
+        icon:
+          ContactRound,
+        visible:
+          initialData
+            .capabilities
+            .canUseBillingCustomers,
+      },
+      {
+        key:
           'quotes',
         label:
           'Quotations',
@@ -862,6 +888,33 @@ export default function SalesWorkspaceClient({
             <Overview
               data={
                 initialData
+              }
+            />
+          )
+        }
+
+        {
+          view ===
+            'customers' &&
+          initialData
+            .capabilities
+            .canUseBillingCustomers &&
+          (
+            <SalesCustomersManager
+              data={
+                initialData
+              }
+              busy={
+                busy
+              }
+              request={
+                request
+              }
+              showSuccess={
+                showSuccess
+              }
+              showError={
+                showError
               }
             />
           )
