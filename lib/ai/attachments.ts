@@ -12,6 +12,12 @@ import {
   getPrivateObjectBytes,
 } from '@/lib/storage/object-storage';
 
+import {
+  extractSamiAiDocumentText,
+  getSamiAiDocumentExtractorStatus,
+  isSamiAiExtractableDocument,
+} from '@/lib/ai/document-extraction';
+
 import type {
   SamiAiRuntimeContext,
 } from '@/lib/ai/types';
@@ -24,6 +30,7 @@ export type SamiAiAttachment = {
   extension: string | null;
   sizeBytes: number;
   readableAsText: boolean;
+  extractableDocument: boolean;
 };
 
 
@@ -334,6 +341,12 @@ function mapAttachment(
         mimeType,
         extension,
       ),
+
+    extractableDocument:
+      isSamiAiExtractableDocument(
+        mimeType,
+        extension,
+      ),
   };
 }
 
@@ -491,12 +504,100 @@ export async function buildSamiAiAttachmentContext(
       `Attachment: ${attachment.name} | ${attachment.mimeType} | ${attachment.sizeBytes} bytes`;
 
     if (
+      attachment
+        .extractableDocument
+    ) {
+      const extractor =
+        getSamiAiDocumentExtractorStatus();
+
+      if (
+        !extractor
+          .configured
+      ) {
+        sections.push(
+          header,
+          'Content note: this document can be analyzed by SaMi AI, but the workspace document-extraction service is not configured. Do not claim to have read its contents.',
+        );
+
+        continue;
+      }
+
+      if (
+        attachment
+          .sizeBytes >
+        extractor
+          .maxInputBytes
+      ) {
+        sections.push(
+          header,
+          `Content note: document extraction was skipped because this file exceeds the configured extraction limit of ${extractor.maxInputBytes} bytes.`,
+        );
+
+        continue;
+      }
+
+      try {
+        const bytes =
+          await getPrivateObjectBytes(
+            attachment
+              .storageKey,
+          );
+
+        const extracted =
+          await extractSamiAiDocumentText({
+            name:
+              attachment.name,
+            mimeType:
+              attachment.mimeType,
+            extension:
+              attachment.extension,
+            bytes,
+          });
+
+        if (
+          !extracted
+        ) {
+          sections.push(
+            header,
+            'Content note: this document was not extracted for this request. Do not claim to have read its contents.',
+          );
+
+          continue;
+        }
+
+        sections.push(
+          header,
+          [
+            'Extracted document content:',
+            extracted.text,
+            extracted.truncated
+              ? '[SaMi note: extracted text was truncated to the configured AI document context limit.]'
+              : '',
+          ]
+            .filter(
+              Boolean,
+            )
+            .join(
+              '\n',
+            ),
+        );
+      } catch {
+        sections.push(
+          header,
+          'Content note: SaMi could not extract this private document for this request. Do not claim to know its contents.',
+        );
+      }
+
+      continue;
+    }
+
+    if (
       !attachment
         .readableAsText
     ) {
       sections.push(
         header,
-        'Content note: this file is attached and retained, but the active text attachment pipeline does not extract this file type. Do not claim to have read its contents.',
+        'Content note: this file is attached and retained, but SaMi AI does not have an active extractor for this file type. Do not claim to have read its contents.',
       );
 
       continue;
