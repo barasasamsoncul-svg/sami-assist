@@ -750,7 +750,13 @@ async function verifyStripeReturn(
     ...reference,
     status: 'succeeded',
     amount:
-      Number(session.amount_total || 0) / 100,
+      fromMinorUnits(
+        session.amount_total,
+        cleanString(
+          session.currency,
+          12,
+        ).toUpperCase(),
+      ),
     currency:
       cleanString(
         session.currency,
@@ -815,7 +821,14 @@ async function verifyPaystackReturn(
       cleanString(data.reference, 255),
     ...invoice,
     status: 'succeeded',
-    amount: Number(data.amount || 0) / 100,
+    amount:
+      fromMinorUnits(
+        data.amount,
+        cleanString(
+          data.currency,
+          12,
+        ).toUpperCase(),
+      ),
     currency:
       cleanString(
         data.currency,
