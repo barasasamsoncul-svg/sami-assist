@@ -530,6 +530,14 @@ export async function ensureSalesDefaults(
         'order',
         'SO-',
       ],
+      [
+        'shipment',
+        'SHP-',
+      ],
+      [
+        'return',
+        'RMA-',
+      ],
     ] as const
   ) {
     await pool.query(
