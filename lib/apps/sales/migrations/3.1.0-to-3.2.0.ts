@@ -99,6 +99,10 @@ const SQL = `
     ADD COLUMN IF NOT EXISTS returned_quantity NUMERIC(18,4) NOT NULL DEFAULT 0
       CHECK (returned_quantity >= 0);
 
+  ALTER TABLE public.sales_order_items_v2
+    ADD COLUMN IF NOT EXISTS credited_quantity NUMERIC(18,4) NOT NULL DEFAULT 0
+      CHECK (credited_quantity >= 0);
+
   CREATE TABLE IF NOT EXISTS public.sales_shipments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL,
@@ -215,6 +219,20 @@ const SQL = `
 
   CREATE INDEX IF NOT EXISTS idx_sales_return_credits_return
     ON public.sales_return_credits(company_id, return_id, created_at);
+
+  CREATE TABLE IF NOT EXISTS public.sales_return_credit_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL,
+    return_credit_id UUID NOT NULL REFERENCES public.sales_return_credits(id) ON DELETE CASCADE,
+    return_item_id UUID NOT NULL REFERENCES public.sales_return_items(id) ON DELETE RESTRICT,
+    invoice_item_id UUID NOT NULL,
+    quantity NUMERIC(18,4) NOT NULL CHECK (quantity > 0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(return_credit_id, return_item_id, invoice_item_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_sales_return_credit_items_return
+    ON public.sales_return_credit_items(company_id, return_item_id);
 
   CREATE TABLE IF NOT EXISTS public.sales_forecast_snapshots (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
