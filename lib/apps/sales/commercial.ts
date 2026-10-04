@@ -7,6 +7,7 @@ import type {
 import {
   cleanText,
   ensureSalesDefaults,
+  hasSalesPermission,
   money,
   nullableText,
   numberInput,
@@ -229,10 +230,31 @@ function normalizeRules(
 
 export async function getSalesCommercialData() {
   const context =
-    await requireSalesContext(
+    await requireSalesContext();
+
+  if (
+    !hasSalesPermission(
+      context.permissions
+        .isOwner,
+      context.permissions
+        .permissionSet,
       SALES_PERMISSIONS
         .PRICING_VIEW,
+    ) &&
+    !hasSalesPermission(
+      context.permissions
+        .isOwner,
+      context.permissions
+        .permissionSet,
+      SALES_PERMISSIONS
+        .PRICING_MANAGE,
+    )
+  ) {
+    throw new SalesError(
+      'SALES_PERMISSION_REQUIRED',
+      'Sales pricing access is required.',
     );
+  }
 
   await ensureSalesDefaults(
     context.pool,
@@ -429,6 +451,11 @@ export async function saveSalesPricelist(
       input.rules,
     );
 
+  const billingCustomerId =
+    optionalUuid(
+      input.billingCustomerId,
+    );
+
   const client =
     await context.pool.connect();
 
@@ -436,6 +463,59 @@ export async function saveSalesPricelist(
     await client.query(
       'BEGIN',
     );
+
+    if (
+      billingCustomerId
+    ) {
+      const customerTable =
+        await client.query(
+          `
+            SELECT
+              to_regclass(
+                'public.invoicing_customers'
+              ) IS NOT NULL
+                AS ready
+          `,
+        );
+
+      if (
+        customerTable.rows[0]
+          ?.ready !==
+          true
+      ) {
+        throw new SalesError(
+          'INVOICING_REQUIRED',
+          'Install Invoicing before assigning a pricelist to a billing customer.',
+        );
+      }
+
+      const customer =
+        await client.query(
+          `
+            SELECT 1
+            FROM invoicing_customers
+            WHERE id = $1
+              AND company_id = $2
+              AND status = 'active'
+              AND deleted_at IS NULL
+            LIMIT 1
+          `,
+          [
+            billingCustomerId,
+            context.companyId,
+          ],
+        );
+
+      if (
+        customer.rows.length !==
+          1
+      ) {
+        throw new SalesError(
+          'INVALID_INPUT',
+          'Choose a valid active customer for this pricelist.',
+        );
+      }
+    }
 
     const header =
       id
@@ -467,9 +547,7 @@ export async function saveSalesPricelist(
                 80,
               ),
               currency,
-              optionalUuid(
-                input.billingCustomerId,
-              ),
+              billingCustomerId,
               validFrom,
               validUntil,
               Math.round(
@@ -518,9 +596,7 @@ export async function saveSalesPricelist(
                 80,
               ),
               currency,
-              optionalUuid(
-                input.billingCustomerId,
-              ),
+              billingCustomerId,
               validFrom,
               validUntil,
               Math.round(
@@ -642,6 +718,7 @@ export async function resolveSalesPricelistUnitPrice(
     companyId: string;
     pricelistId: string | null;
     catalogItemId: string | null;
+    billingCustomerId: string | null;
     quantity: number;
     baseUnitPrice: number;
     quoteDate: string;
@@ -703,6 +780,11 @@ export async function resolveSalesPricelistUnitPrice(
           AND p.is_active = TRUE
           AND p.deleted_at IS NULL
           AND (
+            p.billing_customer_id IS NULL
+            OR p.billing_customer_id =
+               $6
+          )
+          AND (
             p.valid_from IS NULL
             OR p.valid_from <=
                $5::date
@@ -720,6 +802,7 @@ export async function resolveSalesPricelistUnitPrice(
         input.catalogItemId,
         input.quantity,
         input.quoteDate,
+        input.billingCustomerId,
       ],
     );
 
