@@ -16,6 +16,7 @@ import {
   getSalesCommercialData,
   getSalesOrganizationData,
   getSalesOrderDetail,
+  markSalesCommissionPaid,
   getSalesQuoteDetail,
   getSalesWorkspaceData,
   requestSalesQuoteApproval,
@@ -411,6 +412,8 @@ export async function POST(
           saveSalesTarget,
         save_commission_plan:
           saveSalesCommissionPlan,
+        mark_commission_paid:
+          markSalesCommissionPaid,
         send_quote:
           sendSalesQuote,
         change_quote_status:
