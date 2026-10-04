@@ -38,7 +38,7 @@
     "test:hardening": "node --test tests/pre-module-core-hardening.test.mjs",
     "migrate:modules": "node --conditions=react-server --import tsx scripts/migrate-workspace-modules.ts",
     "test:module-migrations": "node --test tests/module-migrations.test.mjs",
-    "test:invoicing": "node --test tests/invoicing-module.test.mjs",
+    "test:invoicing": "node --test tests/invoicing-module.test.mjs tests/invoicing-payment-provider-connectors.test.mjs",
     "test:enterprise-suite": "node --test tests/enterprise-suite.test.mjs",
     "test:sales": "node --test tests/sales-module.test.mjs",
     "test:locks": "node --test tests/module-quality-locks.test.mjs",
