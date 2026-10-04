@@ -894,5 +894,6 @@ export type CreateInvoiceInput = {
   shippingTotal?: unknown;
   roundingAdjustment?: unknown;
   confirm?: unknown;
+  advanceApplications?: unknown;
   lines?: unknown;
 };
