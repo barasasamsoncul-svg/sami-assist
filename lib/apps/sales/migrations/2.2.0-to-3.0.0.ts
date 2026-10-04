@@ -133,6 +133,7 @@ const SQL = `
     quote_id UUID NOT NULL REFERENCES public.sales_quotes(id) ON DELETE CASCADE,
     company_id UUID NOT NULL,
     catalog_item_id UUID,
+    external_product_id UUID,
     sort_order INTEGER NOT NULL DEFAULT 0,
     description TEXT NOT NULL,
     sku_snapshot VARCHAR(180),
