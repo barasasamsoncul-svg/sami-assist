@@ -5,18 +5,18 @@
       "status": "locked",
       "moduleVersion": "2.22.0",
       "referenceStandard": true,
-      "baselineCommit": "a89b8ae1221448711154c6e3b79b521fda276288",
+      "baselineCommit": "7f862092f13d1e58c1011771dd73050bdca90f53",
       "baselineBranch": "main",
       "lockedAt": "2026-10-04",
-      "policy": "Invoicing 2.22.0 preserves the completed billing product and now exposes business-owner payment-provider connections for Pesapal, M-PESA, Stripe, Paystack, Flutterwave and PayPal. Long-term merchant credentials remain encrypted and workspace-scoped; provider-native callbacks are verified, duplicate-safe and routed through the authoritative payment, allocation, invoice-status and Accounting-posting core. The ordinary Invoicing UI does not expose bearer-token or generic webhook configuration. The release gate includes Invoicing regressions, payment-provider connector contracts, parity-hardening, quality locks, module migrations, responsive/app UI, ERP integration, TypeScript and production build.",
+      "policy": "Invoicing 2.22.0 preserves the completed billing product, business-owner payment provider connections, and customer-facing Pay Now for public and portal invoices. Hosted checkout is supported through connected Pesapal, Stripe, Paystack, Flutterwave and PayPal accounts while direct M-PESA remains verified C2B reconciliation. Customer checkout never accepts browser-supplied financial authority: invoice identity, balance and currency are derived server-side; merchant credentials remain encrypted; provider returns and signed webhooks converge on duplicate-safe settlement through the authoritative payment, allocation, invoice-status and Accounting-posting core. The release gate includes Invoicing regressions, customer checkout contracts, payment-provider connector contracts, parity-hardening, quality locks, module migrations, responsive/app UI, ERP integration, TypeScript and production build.",
       "protectedTrees": {
-        "lib/apps/invoicing": "d9685ec62945275ba87a0e248e0fb4113b58e32b",
-        "app/apps/invoicing": "0bb933742e82805874f1b03fd9f4176f7e7837ac",
+        "lib/apps/invoicing": "64bb692c836b2de60d842d94c0bd85c16da1fa43",
+        "app/apps/invoicing": "7e089e7b51c689f6f17a9f676ee5bcca3df779f2",
         "app/api/apps/invoicing": "ae88ec4e4109dc962fd2a7823caaf47ccf43ffd9",
         "app/api/internal/invoicing": "b2b22efc33d3b038495ccdd343845257789334a1",
-        "app/i/[tenantId]/[token]": "62510a8ae454347c3d5e211895fdf27fb6a70bc7",
-        "app/p/[tenantId]/[token]": "bd3d543da2bd0c28953828e2f658edfbcdd0a2cc",
-        "app/api/public/invoicing": "b0440971da2a5047ab05a2c28c16fb422a9d0878"
+        "app/i/[tenantId]/[token]": "a93eac3e7bf1a4404d3a6cc24581291f127896bc",
+        "app/p/[tenantId]/[token]": "276e85436eef153f5911c37db52bf0800f89db48",
+        "app/api/public/invoicing": "26d63f6d39b91bdacbae96015183fad872b5baa8"
       }
     }
   }
