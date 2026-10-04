@@ -162,3 +162,39 @@ test('verified gateway settlement casts numeric allocation arithmetic and does n
     /registers the Pesapal IPN automatically/,
   );
 });
+
+
+test('provider Check retries verified payment events that previously failed during invoice posting', async () => {
+  const [
+    connections,
+    workspace,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/payment-provider-connections.ts'),
+    source('app/apps/invoicing/PaymentIntegrationsWorkspace.tsx'),
+  ]);
+
+  assert.match(
+    connections,
+    /retryFailedVerifiedPayments/,
+  );
+  assert.match(
+    connections,
+    /event_key='invoicing\.payment\.succeeded'/,
+  );
+  assert.match(
+    connections,
+    /status='failed'/,
+  );
+  assert.match(
+    connections,
+    /recordVerifiedExternalInvoiceSettlement/,
+  );
+  assert.match(
+    connections,
+    /lastRecoveryRecovered/,
+  );
+  assert.match(
+    workspace,
+    /previously verified payment/,
+  );
+});
