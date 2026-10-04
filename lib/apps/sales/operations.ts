@@ -3727,13 +3727,31 @@ export async function refundSalesReturnCredit(
         'Refund for Sales return',
       idempotencyKey:
         (
-          'sales-return-credit:' +
-          returnCreditId +
-          ':refund:' +
           cleanText(
             input.idempotencyKey,
             80,
           )
+            ? (
+                'sales-return-credit:' +
+                returnCreditId +
+                ':refund:' +
+                cleanText(
+                  input.idempotencyKey,
+                  80,
+                )
+              )
+            : (
+                'sales-return-credit:' +
+                returnCreditId +
+                ':refund:' +
+                available.toFixed(
+                  2,
+                ) +
+                ':' +
+                amount.toFixed(
+                  2,
+                )
+              )
         ).slice(
           0,
           120,
@@ -3750,8 +3768,45 @@ export async function refundSalesReturnCredit(
       },
     });
 
+  const authoritative =
+    await context.pool.query(
+      `
+        SELECT
+          balance.available_amount,
+          COALESCE(
+            SUM(
+              CASE
+                WHEN refund_row.status = 'posted'
+                THEN refund_row.amount
+                ELSE 0
+              END
+            ),
+            0
+          ) AS refunded_amount
+        FROM invoicing_credit_note_balances balance
+        LEFT JOIN invoicing_credit_note_refunds refund_row
+          ON refund_row.credit_note_id =
+             balance.credit_note_id
+         AND refund_row.company_id =
+             balance.company_id
+        WHERE balance.company_id = $1
+          AND balance.credit_note_id = $2
+        GROUP BY
+          balance.available_amount
+        LIMIT 1
+      `,
+      [
+        context.companyId,
+        String(
+          row.credit_note_id,
+        ),
+      ],
+    );
+
   const availableAfter =
     money(
+      authoritative.rows[0]
+        ?.available_amount ??
       refund.availableCredit ??
       Math.max(
         0,
@@ -3760,14 +3815,26 @@ export async function refundSalesReturnCredit(
       ),
     );
 
+  const authoritativeRefunded =
+    money(
+      authoritative.rows[0]
+        ?.refunded_amount ??
+      (
+        Number(
+          refund.duplicate
+            ? 0
+            : amount,
+        ) +
+        0
+      ),
+    );
+
   await context.pool.query(
     `
       UPDATE sales_return_credits
       SET
         available_credit = $3,
-        refunded_amount =
-          refunded_amount +
-          $4,
+        refunded_amount = $4,
         updated_by = $5,
         updated_at = NOW()
       WHERE id = $1
@@ -3777,7 +3844,7 @@ export async function refundSalesReturnCredit(
       returnCreditId,
       context.companyId,
       availableAfter,
-      amount,
+      authoritativeRefunded,
       context.userId,
     ],
   );
