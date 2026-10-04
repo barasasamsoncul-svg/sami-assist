@@ -51,3 +51,18 @@ export {
   saveSalesTeam,
   saveSalesTerritory,
 } from '@/lib/apps/sales/organization';
+
+
+export {
+  applySalesOrderDeposit,
+  approveSalesReturn,
+  createSalesReturn,
+  createSalesShipment,
+  getSalesOperationsData,
+  issueSalesReturnCredit,
+  receiveSalesReturn,
+  recordSalesOrderDeposit,
+  refundSalesReturnCredit,
+  setSalesOrderDepositRequirement,
+  updateSalesShipmentStatus,
+} from '@/lib/apps/sales/operations';
