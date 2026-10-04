@@ -1913,6 +1913,15 @@ export async function getSalesQuoteDetail(
             money(
               item.unit_price,
             ),
+          unitCost:
+            salesCapabilities(
+              context.permissions.isOwner,
+              context.permissions.permissionSet,
+            ).canViewMargin
+              ? money(
+                  item.unit_cost,
+                )
+              : null,
           taxName:
             item.tax_name_snapshot
               ? String(
