@@ -11,6 +11,7 @@ export {
 } from '@/lib/apps/sales/queries';
 
 export {
+  applySalesQuoteTemplate,
   cancelSalesOrder,
   changeSalesQuoteStatus,
   convertSalesQuoteToInvoice,
@@ -23,6 +24,7 @@ export {
   reviewSalesQuoteApproval,
   saveSalesQuoteTemplate,
   sendSalesQuote,
+  updateSalesCatalogItem,
   updateSalesCustomer,
   updateSalesOrderFulfillment,
   updateSalesQuoteDraft,
