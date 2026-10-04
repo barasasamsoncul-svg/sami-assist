@@ -7,6 +7,53 @@ import {
 } from '@/lib/modules/migration-safety';
 
 const SQL = `
+  ALTER TABLE public.sales_sequences
+    DROP CONSTRAINT IF EXISTS sales_sequences_document_type_check;
+
+  ALTER TABLE public.sales_sequences
+    ADD CONSTRAINT sales_sequences_document_type_check
+      CHECK (document_type IN ('quote','order','shipment','return'));
+
+  INSERT INTO public.sales_sequences (
+    company_id,
+    document_type,
+    prefix,
+    next_number,
+    padding,
+    format
+  )
+  SELECT
+    company_id,
+    'shipment',
+    'SHP-',
+    1,
+    6,
+    '{prefix}{number}'
+  FROM public.sales_sequences
+  GROUP BY company_id
+  ON CONFLICT (company_id, document_type)
+  DO NOTHING;
+
+  INSERT INTO public.sales_sequences (
+    company_id,
+    document_type,
+    prefix,
+    next_number,
+    padding,
+    format
+  )
+  SELECT
+    company_id,
+    'return',
+    'RMA-',
+    1,
+    6,
+    '{prefix}{number}'
+  FROM public.sales_sequences
+  GROUP BY company_id
+  ON CONFLICT (company_id, document_type)
+  DO NOTHING;
+
   ALTER TABLE public.sales_quotes
     ADD COLUMN IF NOT EXISTS deposit_type VARCHAR(20) NOT NULL DEFAULT 'none'
       CHECK (deposit_type IN ('none','percent','fixed'));
