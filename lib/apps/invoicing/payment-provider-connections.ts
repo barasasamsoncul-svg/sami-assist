@@ -1143,12 +1143,10 @@ export async function receiveInvoicePaymentProviderWebhook(input: {
       pool.query(
         `
           UPDATE integration_connections
-          SET health_status='degraded',
-              last_health_check_at=NOW(),
-              settings=COALESCE(settings,'{}'::jsonb) ||
+          SET settings=COALESCE(settings,'{}'::jsonb) ||
                 jsonb_build_object(
-                  'lastWebhookError',$2::text,
-                  'lastWebhookErrorAt',NOW()
+                  'lastSettlementError',$2::text,
+                  'lastSettlementErrorAt',NOW()
                 ),
               updated_at=NOW()
           WHERE id=$1
