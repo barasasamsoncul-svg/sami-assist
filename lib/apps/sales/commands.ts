@@ -4748,6 +4748,19 @@ export async function createSalesOrderInvoice(
                     item.line
                       .tax_rate,
                   ),
+                metadata: {
+                  sourceModule:
+                    'sales',
+                  salesOrderId:
+                    orderId,
+                  salesOrderLineId:
+                    String(
+                      item.line.id,
+                    ),
+                  salesInvoiceBatchId:
+                    batchId,
+                  sourceReference,
+                },
               }),
             ),
         });
