@@ -35,6 +35,7 @@ export type InvoicingPaymentCoreResult={
   allocatedAmount:number;
   unappliedAmount:number;
   refundedAmount?:number;
+  reconciled?:boolean;
   reused:boolean;
 };
 
@@ -121,6 +122,7 @@ export async function recordInvoicePaymentCore(input:{
           allocatedAmount:money(previous.rows[0].allocated_amount),
           refundedAmount:money(previous.rows[0].refunded_amount),
           unappliedAmount:money(previous.rows[0].unapplied_amount),
+          reconciled:false,
           reused:true,
         };
       }
@@ -304,6 +306,37 @@ export async function recordInvoicePaymentCore(input:{
       invoiceExchangeRate:Number(invoice.exchange_rate||1),
     });
 
+    const autoReconciled =
+      input.source === 'gateway' &&
+      unappliedAmount <= 0.0001;
+
+    if(autoReconciled){
+      await client.query(
+        `UPDATE invoicing_payments
+         SET reconciled_at=NOW(),
+             reconciled_by=$3,
+             reconciliation_reference=COALESCE(NULLIF($4,''),reference),
+             reconciliation_notes=$5,
+             metadata=COALESCE(metadata,'{}'::jsonb) ||
+               jsonb_build_object(
+                 'autoReconciled',TRUE,
+                 'autoReconciledAt',NOW(),
+                 'autoReconciledProvider',$6::text
+               ),
+             updated_by=$3,
+             updated_at=NOW()
+         WHERE id=$1 AND company_id=$2 AND status='posted'`,
+        [
+          paymentId,
+          input.companyId,
+          input.userId,
+          paymentReference,
+          'Automatically reconciled after provider-verified payment detection.',
+          input.sourceProvider||paymentMethod,
+        ],
+      );
+    }
+
     await recordInvoicingActivity(client,{
       companyId:input.companyId,
       userId:input.userId,
@@ -320,6 +353,7 @@ export async function recordInvoicePaymentCore(input:{
         source:input.source||'manual',
         sourceProvider:input.sourceProvider||null,
         externalEventId:input.externalEventId||null,
+        autoReconciled,
       },
     });
 
@@ -333,6 +367,7 @@ export async function recordInvoicePaymentCore(input:{
       remainingBalance:remaining,
       allocatedAmount:allocationAmount,
       unappliedAmount,
+      reconciled:autoReconciled,
       reused:false,
     };
   }catch(error){
