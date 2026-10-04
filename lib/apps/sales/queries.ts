@@ -282,6 +282,10 @@ function salesCapabilities(
         INVOICING_CUSTOMER_VIEW,
         INVOICING_CUSTOMER_MANAGE,
       ),
+    canManageBillingCustomers:
+      crossCan(
+        INVOICING_CUSTOMER_MANAGE,
+      ),
     canUseCatalog:
       crossCan(
         INVOICING_CATALOG_VIEW,
@@ -721,18 +725,30 @@ export async function getSalesWorkspaceData():
             `
               SELECT
                 id,
+                customer_type,
                 name,
+                legal_name,
+                contact_name,
                 email,
                 phone,
                 tax_id,
+                registration_number,
                 billing_address,
                 shipping_address,
-                currency
+                city,
+                state,
+                postal_code,
+                country,
+                country_code,
+                currency,
+                credit_limit,
+                notes,
+                status
               FROM invoicing_customers
               WHERE company_id = $1
-                AND status = 'active'
                 AND deleted_at IS NULL
               ORDER BY
+                CASE WHEN status = 'active' THEN 0 ELSE 1 END,
                 LOWER(name)
               LIMIT 500
             `,
@@ -1146,10 +1162,27 @@ export async function getSalesWorkspaceData():
             String(
               row.id,
             ),
+          customerType:
+            String(
+              row.customer_type ||
+              'company',
+            ),
           name:
             String(
               row.name,
             ),
+          legalName:
+            row.legal_name
+              ? String(
+                  row.legal_name,
+                )
+              : null,
+          contactName:
+            row.contact_name
+              ? String(
+                  row.contact_name,
+                )
+              : null,
           email:
             row.email
               ? String(
@@ -1168,6 +1201,12 @@ export async function getSalesWorkspaceData():
                   row.tax_id,
                 )
               : null,
+          registrationNumber:
+            row.registration_number
+              ? String(
+                  row.registration_number,
+                )
+              : null,
           billingAddress:
             row.billing_address
               ? String(
@@ -1180,11 +1219,61 @@ export async function getSalesWorkspaceData():
                   row.shipping_address,
                 )
               : null,
+          city:
+            row.city
+              ? String(
+                  row.city,
+                )
+              : null,
+          state:
+            row.state
+              ? String(
+                  row.state,
+                )
+              : null,
+          postalCode:
+            row.postal_code
+              ? String(
+                  row.postal_code,
+                )
+              : null,
+          country:
+            row.country
+              ? String(
+                  row.country,
+                )
+              : null,
+          countryCode:
+            row.country_code
+              ? String(
+                  row.country_code,
+                )
+              : null,
           currency:
             String(
               row.currency ||
               companyRow.currency ||
               'KES',
+            ),
+          creditLimit:
+            row.credit_limit ===
+              null ||
+            row.credit_limit ===
+              undefined
+              ? null
+              : Number(
+                  row.credit_limit,
+                ),
+          notes:
+            row.notes
+              ? String(
+                  row.notes,
+                )
+              : null,
+          status:
+            String(
+              row.status ||
+              'active',
             ),
         }),
       ),
