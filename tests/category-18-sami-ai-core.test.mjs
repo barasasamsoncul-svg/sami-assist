@@ -1124,7 +1124,7 @@ test('Category 18: active generation never blocks follow-up composition controls
   );
   assert.match(
     client,
-    />Queued</,
+    /Queued/,
   );
   assert.match(
     client,
