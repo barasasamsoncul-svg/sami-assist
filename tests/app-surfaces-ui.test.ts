@@ -664,6 +664,18 @@ test(
       'Shared SaMi surfaces must establish a safe foreground color.',
     );
 
+    assert.match(
+      appShell,
+      /sami-dark-surface[\s\S]*bg-slate-950/,
+      'Command app sidebars must declare a permanent dark-surface contrast context.',
+    );
+
+    assert.match(
+      appShell,
+      /profile\.header ===[\s\S]*'command'[\s\S]*'immersive'[\s\S]*sami-dark-surface/,
+      'Command and immersive app headers must opt into permanent dark-surface contrast.',
+    );
+
     for (const sourceText of [
       workspaceShell,
       appShell,
@@ -1199,25 +1211,32 @@ test(
     );
     assert.match(
       globals,
-      /Cross-app visibility hardening[\s\S]*text-slate-300[\s\S]*background-color:\s*var\(--sami-surface\)/,
-      'Workspace text and legacy light surfaces must remain readable in both themes.',
-    );
-    assert.match(
-      globals,
-      /Standalone app visibility contract[\s\S]*\[data-sami-app\][\s\S]*text-slate-300[\s\S]*background-color:\s*var\(--sami-surface\)/,
-      'Standalone app shells must receive the same light/dark visibility hardening as the dashboard workspace shell.',
+      /Unified SaMi application visibility contract[\s\S]*data-sami-workspace-shell[\s\S]*data-sami-app[\s\S]*data-sami-admin-shell[\s\S]*data-sami-ai-chat/,
+      'Workspace, standalone apps, SaMi AI and Platform Admin must share one visibility contract instead of overlapping page-specific contracts.',
     );
 
     assert.match(
       globals,
-      /Platform-wide visibility contract[\s\S]*data-sami-admin-shell[\s\S]*data-sami-ai-chat[\s\S]*text-zinc-300[\s\S]*text-zinc-700[\s\S]*var\(--sami-muted\)/,
-      'Workspace, standalone apps, SaMi AI and Platform Admin must share one contrast contract across slate and zinc utility colors.',
+      /sami-dark-surface[\s\S]*#cbd5e1\s*!important/,
+      'Permanently dark command surfaces must preserve light secondary copy even when the document theme is light.',
     );
 
     assert.match(
       globals,
-      /data-sami-admin-shell[\s\S]*bg-zinc-50[\s\S]*background-color:\s*var\(--sami-surface\)/,
-      'Legacy Admin light surfaces must be normalized in dark mode instead of preserving light backgrounds with dark-theme text.',
+      /bg-white\/[\s\S]*bg-zinc-100\/[\s\S]*:not\(\[class\*='dark:bg-'\]\)[\s\S]*background-color:\s*var\(--sami-surface\)/,
+      'Translucent legacy light surfaces must normalize in dark mode unless they already declare an explicit dark background.',
+    );
+
+    assert.match(
+      globals,
+      /border-slate-200[\s\S]*border-zinc-200[\s\S]*var\(--sami-border-strong\)/,
+      'Legacy light borders must normalize to the shared dark-theme border token.',
+    );
+
+    assert.doesNotMatch(
+      globals,
+      /Cross-app visibility hardening|Standalone app visibility contract|Invoicing visibility contract|Workspace visibility contract/,
+      'Retired visibility layers must not remain in globals.css and fight the unified cascade.',
     );
     assert.doesNotMatch(
       loader,

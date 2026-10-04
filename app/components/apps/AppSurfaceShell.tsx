@@ -361,7 +361,7 @@ export default function AppSurfaceShell({
         'overflow-hidden rounded-[24px] border border-[var(--sami-border)] shadow-[var(--sami-shadow-sm)]',
         profile.header ===
           'command'
-          ? 'bg-slate-950 text-white dark:bg-[#0a0d13]'
+          ? 'sami-dark-surface bg-slate-950 text-white dark:bg-[#0a0d13]'
           : profile.header ===
               'immersive'
             ? 'bg-[var(--sami-surface)]'
@@ -873,6 +873,12 @@ export default function AppSurfaceShell({
                   headerClasses(
                     profile,
                   ),
+                  profile.header ===
+                      'command' ||
+                    profile.header ===
+                      'immersive'
+                    ? 'sami-dark-surface'
+                    : '',
                   'relative mb-5 sm:mb-6',
                 ].join(
                   ' ',

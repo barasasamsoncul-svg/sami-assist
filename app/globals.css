@@ -262,289 +262,12 @@ svg {
 }
 
 
-/* Invoicing visibility contract */
-[data-sami-app='invoicing'] {
-  color: var(--foreground);
-}
-
-[data-sami-app='invoicing'] :where(
-  .text-slate-300,
-  .text-slate-400,
-  .text-slate-500
-) {
-  color: #475569;
-}
-
-[data-sami-app='invoicing'] :where(
-  .text-slate-600,
-  .text-slate-700
-) {
-  color: #334155;
-}
-
-.dark [data-sami-app='invoicing'] :where(
-  .text-slate-300,
-  .text-slate-400,
-  .text-slate-500,
-  .text-slate-600,
-  .text-slate-700
-) {
-  color: #cbd5e1;
-}
-
-[data-sami-app='invoicing'] :where(
-  p,
-  span,
-  label,
-  td,
-  th,
-  summary,
-  a,
-  button
-) {
-  text-underline-offset: 2px;
-}
-
-[data-sami-app='invoicing'] :where(
-  input,
-  textarea,
-  select
-) {
-  color: var(--foreground);
-  background-color: var(--sami-surface);
-}
-
-[data-sami-app='invoicing'] :where(
-  input,
-  textarea
-)::placeholder {
-  color: #64748b;
-  opacity: 1;
-}
-
-.dark [data-sami-app='invoicing'] :where(
-  input,
-  textarea
-)::placeholder {
-  color: #a8b3c7;
-}
-
-[data-sami-app='invoicing'] :where(
-  .break-words,
-  .whitespace-normal
-) {
-  overflow-wrap: anywhere;
-  word-break: normal;
-}
-
-[data-sami-app='invoicing'] :where(
-  [title]
-) {
-  max-width: 100%;
-}
-
-
-/* Workspace visibility contract */
-[data-sami-workspace-shell='true'] {
-  color: var(--foreground);
-}
-
-[data-sami-workspace-shell='true'] :where(
-  .text-slate-300,
-  .text-slate-400
-) {
-  color: #64748b;
-}
-
-[data-sami-workspace-shell='true'] :where(
-  .text-slate-500
-) {
-  color: #475569;
-}
-
-[data-sami-workspace-shell='true'] :where(
-  .text-slate-600,
-  .text-slate-700
-) {
-  color: #334155;
-}
-
-.dark [data-sami-workspace-shell='true'] :where(
-  .text-slate-300,
-  .text-slate-400,
-  .text-slate-500
-) {
-  color: #cbd5e1;
-}
-
-.dark [data-sami-workspace-shell='true'] :where(
-  .text-slate-600,
-  .text-slate-700
-) {
-  color: #a8b3c7;
-}
-
-[data-sami-workspace-shell='true'] :where(
-  input,
-  textarea,
-  select
-) {
-  color: var(--foreground);
-}
-
-[data-sami-workspace-shell='true'] :where(
-  input,
-  textarea
-)::placeholder {
-  color: var(--sami-muted);
-  opacity: 1;
-}
-
-
 /*
- * Cross-app visibility hardening.
- * A few standalone app surfaces still carry old Tailwind slate utilities.
- * Keep those readable in both themes regardless of component stylesheet
- * ordering, while preserving explicit semantic/brand selected states.
- */
-[data-sami-workspace-shell='true'] :where(
-  .text-slate-300,
-  .text-slate-400,
-  .text-slate-500,
-  .text-slate-600,
-  .text-slate-700
-) {
-  color: var(--sami-muted) !important;
-}
-
-.dark [data-sami-workspace-shell='true'] :where(
-  .text-slate-900,
-  .text-slate-950,
-  .text-black
-):not(.sami-contrast-invert):not(.sami-nav-selected):not([class*='dark:text-slate-950']) {
-  color: var(--foreground) !important;
-}
-
-.dark [data-sami-workspace-shell='true'] [class~='bg-white']:not([class*='dark:bg-white']) {
-  background-color: var(--sami-surface) !important;
-  color: var(--foreground);
-}
-
-.dark [data-sami-workspace-shell='true'] :where(
-  [class~='bg-slate-50'],
-  [class~='bg-slate-100']
-):not([class*='dark:bg-']) {
-  background-color: var(--sami-surface-soft) !important;
-  color: var(--foreground);
-}
-
-[data-sami-workspace-shell='true'] :where(
-  input,
-  textarea,
-  select,
-  option,
-  optgroup
-) {
-  background-color: var(--sami-surface);
-  color: var(--foreground) !important;
-}
-
-[data-sami-workspace-shell='true'] :where(
-  .sami-surface,
-  .sami-surface-raised,
-  .sami-soft-surface
-) {
-  color: var(--foreground);
-}
-
-
-
-/*
- * Standalone app visibility contract.
- * Dedicated modules such as Accounting and Invoicing use data-sami-app
- * instead of the dashboard workspace-shell attribute. Apply the same
- * foreground/surface guarantees there so old utility classes cannot become
- * unreadable until hover when themes change.
- */
-[data-sami-app] {
-  color: var(--foreground);
-}
-
-[data-sami-app] :where(
-  .text-slate-300,
-  .text-slate-400,
-  .text-slate-500,
-  .text-slate-600,
-  .text-slate-700
-):not(.sami-nav-active-accent):not(.sami-nav-selected):not(.sami-nav-selected-ai):not(.sami-contrast-invert) {
-  color: var(--sami-muted) !important;
-}
-
-.dark [data-sami-app] :where(
-  .text-slate-900,
-  .text-slate-950,
-  .text-black
-):not(.sami-contrast-invert):not(.sami-nav-selected):not(.sami-nav-selected-ai):not(.sami-nav-active-accent):not([class*='dark:text-slate-950']) {
-  color: var(--foreground) !important;
-}
-
-.dark [data-sami-app] [class~='bg-white']:not([class*='dark:bg-white']) {
-  background-color: var(--sami-surface) !important;
-  color: var(--foreground);
-}
-
-.dark [data-sami-app] :where(
-  [class~='bg-slate-50'],
-  [class~='bg-slate-100']
-):not([class*='dark:bg-']) {
-  background-color: var(--sami-surface-soft) !important;
-  color: var(--foreground);
-}
-
-[data-sami-app] :where(
-  input,
-  textarea,
-  select,
-  option,
-  optgroup
-) {
-  color: var(--foreground) !important;
-}
-
-[data-sami-app] :where(
-  input,
-  textarea,
-  select
-) {
-  background-color: var(--sami-surface);
-  border-color: var(--sami-border-strong);
-}
-
-[data-sami-app] :where(
-  input,
-  textarea
-)::placeholder {
-  color: var(--sami-muted);
-  opacity: 1;
-}
-
-[data-sami-app] :where(
-  table,
-  td,
-  th,
-  label,
-  summary
-) {
-  color: inherit;
-}
-
-
-/*
- * Platform-wide visibility contract.
+ * Unified SaMi application visibility contract.
  *
- * Workspace, every standalone app, and Platform Admin must resolve legacy
- * slate/zinc utility colors through the same SaMi theme tokens. This prevents
- * page-specific fixes from leaving unreadable text or controls elsewhere.
+ * One contract owns authenticated Workspace, standalone apps, SaMi AI and
+ * Platform Admin. Dark command/immersive surfaces opt into
+ * .sami-dark-surface so light-theme normalization never turns their copy dark.
  */
 :where(
   [data-sami-workspace-shell='true'],
@@ -556,6 +279,7 @@ svg {
   color: var(--foreground);
 }
 
+/* Readable secondary copy on theme-following surfaces. */
 :where(
   [data-sami-workspace-shell='true'],
   [data-sami-app],
@@ -576,6 +300,42 @@ svg {
   color: var(--sami-muted) !important;
 }
 
+/*
+ * Permanently dark surfaces are dark in BOTH application themes.
+ * Their secondary copy must therefore stay light even while the document
+ * itself is in light mode.
+ */
+.sami-dark-surface {
+  color: #f8fafc !important;
+}
+
+.sami-dark-surface :where(
+  .text-slate-300,
+  .text-slate-400,
+  .text-slate-500,
+  .text-slate-600,
+  .text-slate-700,
+  .text-zinc-300,
+  .text-zinc-400,
+  .text-zinc-500,
+  .text-zinc-600,
+  .text-zinc-700
+):not(.sami-nav-selected):not(.sami-nav-selected-ai):not(.sami-nav-active-accent) {
+  color: #cbd5e1 !important;
+}
+
+.sami-dark-surface :where(
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6
+) {
+  color: #f8fafc;
+}
+
+/* Old dark text utilities must never survive on a dark-theme canvas. */
 .dark :where(
   [data-sami-workspace-shell='true'],
   [data-sami-app],
@@ -591,6 +351,10 @@ svg {
   color: var(--foreground) !important;
 }
 
+/*
+ * Normalize legacy light cards in dark mode, including translucent utilities.
+ * Explicit dark:bg-* variants remain authoritative.
+ */
 .dark :where(
   [data-sami-workspace-shell='true'],
   [data-sami-app],
@@ -598,15 +362,35 @@ svg {
   [data-sami-ai-chat='true']
 ) :where(
   [class~='bg-white'],
+  [class*='bg-white/'],
   [class~='bg-slate-50'],
+  [class*='bg-slate-50/'],
   [class~='bg-slate-100'],
+  [class*='bg-slate-100/'],
   [class~='bg-zinc-50'],
-  [class~='bg-zinc-100']
-):not([class*='dark:bg-white']):not([class*='dark:bg-slate-']):not([class*='dark:bg-zinc-']) {
+  [class*='bg-zinc-50/'],
+  [class~='bg-zinc-100'],
+  [class*='bg-zinc-100/']
+):not([class*='dark:bg-']) {
   background-color: var(--sami-surface) !important;
   color: var(--foreground);
 }
 
+.dark :where(
+  [data-sami-workspace-shell='true'],
+  [data-sami-app],
+  [data-sami-admin-shell='true'],
+  [data-sami-ai-chat='true']
+) :where(
+  [class~='border-slate-200'],
+  [class*='border-slate-200/'],
+  [class~='border-zinc-200'],
+  [class*='border-zinc-200/']
+):not([class*='dark:border-']) {
+  border-color: var(--sami-border-strong) !important;
+}
+
+/* Form controls inherit the active theme explicitly. */
 :where(
   [data-sami-workspace-shell='true'],
   [data-sami-app],
@@ -645,8 +429,21 @@ svg {
   input,
   textarea
 )::placeholder {
-  color: var(--sami-muted) !important;
+  color: var(--sami-subtle) !important;
   opacity: 1;
+}
+
+:where(
+  [data-sami-workspace-shell='true'],
+  [data-sami-app],
+  [data-sami-admin-shell='true'],
+  [data-sami-ai-chat='true']
+) :where(
+  .sami-surface,
+  .sami-surface-raised,
+  .sami-soft-surface
+) {
+  color: var(--foreground);
 }
 
 :where(
