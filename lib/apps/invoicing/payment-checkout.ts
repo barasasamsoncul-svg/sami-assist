@@ -319,6 +319,7 @@ async function companyIdForInvoice(
 async function loadCheckoutConnections(input: {
   tenantId: string;
   companyId: string;
+  allowDegraded?: boolean;
 }) {
   const pool =
     await getTenantPoolByTenantId(
@@ -338,7 +339,13 @@ async function loadCheckoutConnections(input: {
           ON cr.connection_id=c.id
         WHERE c.company_id=$1::uuid
           AND c.status='connected'
-          AND c.health_status IN ('healthy','unknown')
+          AND (
+            c.health_status IN ('healthy','unknown')
+            OR (
+              $3::boolean = TRUE
+              AND c.health_status = 'degraded'
+            )
+          )
           AND c.archived_at IS NULL
           AND c.provider_key = ANY($2::text[])
         ORDER BY c.updated_at DESC
@@ -351,6 +358,7 @@ async function loadCheckoutConnections(input: {
         ].map(
           providerStorageKey,
         ),
+        input.allowDegraded === true,
       ],
     );
 
@@ -506,11 +514,14 @@ async function requireCheckoutConnection(input: {
   tenantId: string;
   companyId: string;
   provider: InvoiceCheckoutProviderKey;
+  allowDegraded?: boolean;
 }) {
   const connections =
     await loadCheckoutConnections({
       tenantId: input.tenantId,
       companyId: input.companyId,
+      allowDegraded:
+        input.allowDegraded,
     });
   const connection =
     connections.find(
@@ -949,6 +960,8 @@ export async function handleInvoiceCheckoutReturn(input: {
       tenantId,
       companyId,
       provider,
+      allowDegraded:
+        true,
     });
 
   const payment =
