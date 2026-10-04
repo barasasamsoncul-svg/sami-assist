@@ -1,8 +1,13 @@
 import 'server-only';
 
+import {
+  deflateSync,
+  inflateSync,
+} from 'node:zlib';
+
 
 export const INVOICE_PDF_RENDERER_VERSION =
-  'invoice-pdf-v3';
+  'invoice-pdf-v4';
 
 
 export type PdfInvoice = {
@@ -67,7 +72,9 @@ export type PdfInvoice = {
     showLineTax: boolean;
     showLineDiscount: boolean;
     showCompanyLogo: boolean;
-    logoJpegBase64: string | null;
+    logoJpegBase64?: string | null;
+    logoImageBase64?: string | null;
+    logoImageMimeType?: string | null;
     showCompanyAddress: boolean;
     showCompanyContact: boolean;
     showTaxId: boolean;
@@ -680,62 +687,710 @@ function jpegDimensions(
 }
 
 
+function paethPredictor(
+  left:
+    number,
+  up:
+    number,
+  upLeft:
+    number,
+) {
+  const estimate =
+    left +
+    up -
+    upLeft;
+
+  const leftDistance =
+    Math.abs(
+      estimate -
+      left,
+    );
+
+  const upDistance =
+    Math.abs(
+      estimate -
+      up,
+    );
+
+  const upLeftDistance =
+    Math.abs(
+      estimate -
+      upLeft,
+    );
+
+  if (
+    leftDistance <=
+      upDistance &&
+    leftDistance <=
+      upLeftDistance
+  ) {
+    return left;
+  }
+
+  if (
+    upDistance <=
+    upLeftDistance
+  ) {
+    return up;
+  }
+
+  return upLeft;
+}
+
+
+function decodePngForPdf(
+  bytes:
+    Buffer,
+) {
+  const signature =
+    Buffer.from([
+      0x89,
+      0x50,
+      0x4e,
+      0x47,
+      0x0d,
+      0x0a,
+      0x1a,
+      0x0a,
+    ]);
+
+  if (
+    bytes.length <
+      33 ||
+    !bytes
+      .subarray(
+        0,
+        8,
+      )
+      .equals(
+        signature,
+      )
+  ) {
+    return null;
+  }
+
+  let offset =
+    8;
+
+  let width =
+    0;
+  let height =
+    0;
+  let bitDepth =
+    0;
+  let colorType =
+    -1;
+  let interlace =
+    1;
+
+  const idat:
+    Buffer[] =
+      [];
+
+  while (
+    offset +
+      12 <=
+    bytes.length
+  ) {
+    const length =
+      bytes.readUInt32BE(
+        offset,
+      );
+
+    const type =
+      bytes
+        .subarray(
+          offset +
+            4,
+          offset +
+            8,
+        )
+        .toString(
+          'ascii',
+        );
+
+    const dataStart =
+      offset +
+      8;
+
+    const dataEnd =
+      dataStart +
+      length;
+
+    if (
+      dataEnd +
+        4 >
+      bytes.length
+    ) {
+      return null;
+    }
+
+    const data =
+      bytes.subarray(
+        dataStart,
+        dataEnd,
+      );
+
+    if (
+      type ===
+      'IHDR'
+    ) {
+      if (
+        data.length !==
+        13
+      ) {
+        return null;
+      }
+
+      width =
+        data.readUInt32BE(
+          0,
+        );
+
+      height =
+        data.readUInt32BE(
+          4,
+        );
+
+      bitDepth =
+        data[8];
+
+      colorType =
+        data[9];
+
+      interlace =
+        data[12];
+    } else if (
+      type ===
+      'IDAT'
+    ) {
+      idat.push(
+        Buffer.from(
+          data,
+        ),
+      );
+    } else if (
+      type ===
+      'IEND'
+    ) {
+      break;
+    }
+
+    offset =
+      dataEnd +
+      4;
+  }
+
+  if (
+    width <=
+      0 ||
+    height <=
+      0 ||
+    width *
+      height >
+      8_000_000 ||
+    bitDepth !==
+      8 ||
+    interlace !==
+      0 ||
+    ![
+      0,
+      2,
+      4,
+      6,
+    ].includes(
+      colorType,
+    ) ||
+    idat.length ===
+      0
+  ) {
+    return null;
+  }
+
+  const bytesPerPixel =
+    colorType ===
+      0
+      ? 1
+      : colorType ===
+          2
+        ? 3
+        : colorType ===
+            4
+          ? 2
+          : 4;
+
+  const rowBytes =
+    width *
+    bytesPerPixel;
+
+  let inflated:
+    Buffer;
+
+  try {
+    inflated =
+      inflateSync(
+        Buffer.concat(
+          idat,
+        ),
+      );
+  } catch {
+    return null;
+  }
+
+  const expected =
+    (
+      rowBytes +
+      1
+    ) *
+    height;
+
+  if (
+    inflated.length <
+    expected
+  ) {
+    return null;
+  }
+
+  const decoded =
+    Buffer.alloc(
+      rowBytes *
+      height,
+    );
+
+  let inputOffset =
+    0;
+
+  for (
+    let y =
+      0;
+    y <
+      height;
+    y +=
+      1
+  ) {
+    const filter =
+      inflated[
+        inputOffset
+      ];
+
+    inputOffset +=
+      1;
+
+    const rowOffset =
+      y *
+      rowBytes;
+
+    for (
+      let x =
+        0;
+      x <
+        rowBytes;
+      x +=
+        1
+    ) {
+      const raw =
+        inflated[
+          inputOffset +
+          x
+        ];
+
+      const left =
+        x >=
+          bytesPerPixel
+          ? decoded[
+              rowOffset +
+              x -
+              bytesPerPixel
+            ]
+          : 0;
+
+      const up =
+        y >
+          0
+          ? decoded[
+              rowOffset -
+              rowBytes +
+              x
+            ]
+          : 0;
+
+      const upLeft =
+        y >
+            0 &&
+        x >=
+          bytesPerPixel
+          ? decoded[
+              rowOffset -
+              rowBytes +
+              x -
+              bytesPerPixel
+            ]
+          : 0;
+
+      let predictor =
+        0;
+
+      if (
+        filter ===
+        1
+      ) {
+        predictor =
+          left;
+      } else if (
+        filter ===
+        2
+      ) {
+        predictor =
+          up;
+      } else if (
+        filter ===
+        3
+      ) {
+        predictor =
+          Math.floor(
+            (
+              left +
+              up
+            ) /
+              2,
+          );
+      } else if (
+        filter ===
+        4
+      ) {
+        predictor =
+          paethPredictor(
+            left,
+            up,
+            upLeft,
+          );
+      } else if (
+        filter !==
+        0
+      ) {
+        return null;
+      }
+
+      decoded[
+        rowOffset +
+        x
+      ] =
+        (
+          raw +
+          predictor
+        ) &
+        0xff;
+    }
+
+    inputOffset +=
+      rowBytes;
+  }
+
+  const rgb =
+    Buffer.alloc(
+      width *
+      height *
+      3,
+    );
+
+  for (
+    let pixel =
+      0;
+    pixel <
+      width *
+        height;
+    pixel +=
+      1
+  ) {
+    const source =
+      pixel *
+      bytesPerPixel;
+
+    const target =
+      pixel *
+      3;
+
+    let red =
+      0;
+    let green =
+      0;
+    let blue =
+      0;
+    let alpha =
+      255;
+
+    if (
+      colorType ===
+      0
+    ) {
+      red =
+        decoded[
+          source
+        ];
+      green =
+        red;
+      blue =
+        red;
+    } else if (
+      colorType ===
+      2
+    ) {
+      red =
+        decoded[
+          source
+        ];
+      green =
+        decoded[
+          source +
+          1
+        ];
+      blue =
+        decoded[
+          source +
+          2
+        ];
+    } else if (
+      colorType ===
+      4
+    ) {
+      red =
+        decoded[
+          source
+        ];
+      green =
+        red;
+      blue =
+        red;
+      alpha =
+        decoded[
+          source +
+          1
+        ];
+    } else {
+      red =
+        decoded[
+          source
+        ];
+      green =
+        decoded[
+          source +
+          1
+        ];
+      blue =
+        decoded[
+          source +
+          2
+        ];
+      alpha =
+        decoded[
+          source +
+          3
+        ];
+    }
+
+    if (
+      alpha <
+      255
+    ) {
+      const background =
+        255 *
+        (
+          255 -
+          alpha
+        );
+
+      red =
+        Math.round(
+          (
+            red *
+              alpha +
+            background
+          ) /
+            255,
+        );
+
+      green =
+        Math.round(
+          (
+            green *
+              alpha +
+            background
+          ) /
+            255,
+        );
+
+      blue =
+        Math.round(
+          (
+            blue *
+              alpha +
+            background
+          ) /
+            255,
+        );
+    }
+
+    rgb[target] =
+      red;
+    rgb[
+      target +
+      1
+    ] =
+      green;
+    rgb[
+      target +
+      2
+    ] =
+      blue;
+  }
+
+  return {
+    width,
+    height,
+    bytes:
+      deflateSync(
+        rgb,
+      ),
+    filter:
+      'FlateDecode',
+  } as const;
+}
+
+
 function logoGeometry(
   invoice:
     PdfInvoice,
 ) {
   if (
     !invoice.template
-      .showCompanyLogo ||
-    !invoice.template
-      .logoJpegBase64
+      .showCompanyLogo
+  ) {
+    return null;
+  }
+
+  const encoded =
+    invoice.template
+      .logoImageBase64 ||
+    invoice.template
+      .logoJpegBase64 ||
+    null;
+
+  if (
+    !encoded
   ) {
     return null;
   }
 
   try {
-    const bytes =
+    const sourceBytes =
       Buffer.from(
-        invoice.template
-          .logoJpegBase64,
+        encoded,
         'base64',
       );
 
-    const dimensions =
-      jpegDimensions(
-        bytes,
-      );
+    const mimeType =
+      (
+        invoice.template
+          .logoImageMimeType ||
+        (
+          invoice.template
+            .logoJpegBase64
+            ? 'image/jpeg'
+            : ''
+        )
+      )
+        .trim()
+        .toLowerCase();
+
+    let sourceWidth =
+      0;
+
+    let sourceHeight =
+      0;
+
+    let pdfBytes =
+      sourceBytes;
+
+    let filter:
+      'DCTDecode' |
+      'FlateDecode' =
+        'DCTDecode';
 
     if (
-      !dimensions
+      mimeType ===
+        'image/png'
     ) {
-      return null;
+      const decoded =
+        decodePngForPdf(
+          sourceBytes,
+        );
+
+      if (
+        !decoded
+      ) {
+        return null;
+      }
+
+      sourceWidth =
+        decoded.width;
+
+      sourceHeight =
+        decoded.height;
+
+      pdfBytes =
+        decoded.bytes;
+
+      filter =
+        decoded.filter;
+    } else {
+      const dimensions =
+        jpegDimensions(
+          sourceBytes,
+        );
+
+      if (
+        !dimensions
+      ) {
+        return null;
+      }
+
+      sourceWidth =
+        dimensions.width;
+
+      sourceHeight =
+        dimensions.height;
     }
 
     const maxWidth =
       78;
+
     const maxHeight =
       42;
+
     const scale =
       Math.min(
         maxWidth /
-          dimensions.width,
+          sourceWidth,
         maxHeight /
-          dimensions.height,
+          sourceHeight,
       );
 
     return {
-      bytes,
+      bytes:
+        pdfBytes,
+      sourceWidth,
+      sourceHeight,
+      filter,
       width:
         Math.max(
           1,
-          dimensions.width *
+          sourceWidth *
             scale,
         ),
       height:
         Math.max(
           1,
-          dimensions.height *
+          sourceHeight *
             scale,
         ),
     };
@@ -2570,19 +3225,15 @@ export function renderInvoicePdf(
       logoObjectId,
       '<< /Type /XObject /Subtype /Image /Width ' +
       Math.round(
-        jpegDimensions(
-          logo.bytes,
-        )?.width ||
-        1,
+        logo.sourceWidth,
       ) +
       ' /Height ' +
       Math.round(
-        jpegDimensions(
-          logo.bytes,
-        )?.height ||
-        1,
+        logo.sourceHeight,
       ) +
-      ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' +
+      ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /' +
+      logo.filter +
+      ' /Length ' +
       logo.bytes.length +
       ' >>\nstream\n' +
       logo.bytes.toString(
