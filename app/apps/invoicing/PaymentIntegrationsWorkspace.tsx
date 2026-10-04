@@ -415,6 +415,13 @@ export default function PaymentIntegrationsWorkspace() {
       const body = await response.json() as {
         success?: boolean;
         error?: string;
+        result?: {
+          recovery?: {
+            attempted?: number;
+            recovered?: number;
+            stillFailed?: number;
+          };
+        };
       };
       if (!response.ok || body.success !== true) {
         throw new Error(
