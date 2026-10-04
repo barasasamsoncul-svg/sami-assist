@@ -59,6 +59,7 @@ type AiAttachment = {
   extension: string | null;
   sizeBytes: number;
   readableAsText?: boolean;
+  extractableDocument?: boolean;
 };
 
 type Message = {
@@ -3383,7 +3384,11 @@ export default function WorkspaceAiClient({
                   title={
                     status?.attachments
                       ?.canUpload
-                      ? 'Attach file'
+                      ? status.attachments
+                          .documentExtraction
+                          .configured
+                        ? 'Attach file — PDF and Office document analysis is available'
+                        : 'Attach file — text files are readable; rich document extraction is not configured'
                       : 'File attachments are not available for this SaMi AI account'
                   }
                   disabled={
