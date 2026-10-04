@@ -1694,37 +1694,85 @@ export async function getInvoicingWorkspaceData():
               '[]'::jsonb
             )
               AS allocations,
-            COALESCE(
-              (
-                SELECT JSONB_AGG(
-                  JSONB_BUILD_OBJECT(
-                    'id', r.id,
-                    'refundNumber', r.refund_number,
-                    'refundDate', r.refund_date,
-                    'amount', r.amount,
-                    'status', r.status,
-                    'reason', r.reason,
-                    'provider', r.metadata->>'provider',
-                    'providerStatus', r.metadata->>'providerStatus',
-                    'providerMessage', r.metadata->>'providerMessage',
-                    'externalRefundId', r.metadata->>'externalRefundId',
-                    'manualConfirmationRequired',
-                      COALESCE(
-                        (r.metadata->>'manualConfirmationRequired')::boolean,
-                        FALSE
-                      )
+            (
+              COALESCE(
+                (
+                  SELECT JSONB_AGG(
+                    JSONB_BUILD_OBJECT(
+                      'id', r.id,
+                      'refundNumber', r.refund_number,
+                      'refundDate', r.refund_date,
+                      'amount', r.amount,
+                      'status', r.status,
+                      'reason', r.reason,
+                      'provider', r.metadata->>'provider',
+                      'providerStatus', r.metadata->>'providerStatus',
+                      'providerMessage', r.metadata->>'providerMessage',
+                      'externalRefundId', r.metadata->>'externalRefundId',
+                      'manualConfirmationRequired',
+                        COALESCE(
+                          (r.metadata->>'manualConfirmationRequired')::boolean,
+                          FALSE
+                        )
+                    )
+                    ORDER BY
+                      r.refund_date,
+                      r.id
                   )
-                  ORDER BY
-                    r.refund_date,
-                    r.id
-                )
-                FROM invoicing_payment_refunds r
-                WHERE r.payment_id = p.id
-                  AND r.company_id = p.company_id
-              ),
-              '[]'::jsonb
-            )
-              AS refunds
+                  FROM invoicing_payment_refunds r
+                  WHERE r.payment_id = p.id
+                    AND r.company_id = p.company_id
+                ),
+                '[]'::jsonb
+              )
+              ||
+              COALESCE(
+                (
+                  SELECT JSONB_AGG(
+                    JSONB_BUILD_OBJECT(
+                      'id', e.id,
+                      'refundNumber',
+                        CASE
+                          WHEN e.status='failed'
+                          THEN 'Provider refund failed'
+                          ELSE 'Provider refund pending'
+                        END,
+                      'refundDate', e.payload->>'refundDate',
+                      'amount', (e.payload->>'amount')::numeric,
+                      'status',
+                        CASE
+                          WHEN e.status='failed'
+                          THEN 'failed'
+                          ELSE COALESCE(
+                            NULLIF(e.payload->>'providerStatus',''),
+                            'pending'
+                          )
+                        END,
+                      'reason', e.payload->>'reason',
+                      'provider', e.payload->>'provider',
+                      'providerStatus', e.payload->>'providerStatus',
+                      'providerMessage', e.payload->>'providerMessage',
+                      'externalRefundId', e.payload->>'externalRefundId',
+                      'manualConfirmationRequired',
+                        COALESCE(
+                          (e.payload->>'manualConfirmationRequired')::boolean,
+                          FALSE
+                        )
+                    )
+                    ORDER BY
+                      e.occurred_at,
+                      e.id
+                  )
+                  FROM integration_events e
+                  WHERE e.company_id=p.company_id
+                    AND e.event_key='invoicing.provider_refund'
+                    AND e.status IN ('pending','failed')
+                    AND e.payload->>'refundKind'='payment'
+                    AND e.payload->>'paymentId'=p.id::text
+                ),
+                '[]'::jsonb
+              )
+            ) AS refunds
           FROM invoicing_payments p
           LEFT JOIN invoicing_customers c
             ON c.id = p.customer_id
@@ -1793,35 +1841,84 @@ export async function getInvoicingWorkspaceData():
               ),
               '[]'::jsonb
             ) AS allocations,
-            COALESCE(
-              (
-                SELECT JSONB_AGG(
-                  JSONB_BUILD_OBJECT(
-                    'id', refund.id,
-                    'refundNumber', refund.refund_number,
-                    'refundDate', refund.refund_date,
-                    'amount', refund.amount,
-                    'status', refund.status,
-                    'reason', refund.reason,
-                    'provider', refund.metadata->>'provider',
-                    'providerStatus', refund.metadata->>'providerStatus',
-                    'providerMessage', refund.metadata->>'providerMessage',
-                    'externalRefundId', refund.metadata->>'externalRefundId',
-                    'manualConfirmationRequired',
-                      COALESCE(
-                        (refund.metadata->>'manualConfirmationRequired')::boolean,
-                        FALSE
-                      )
+            (
+              COALESCE(
+                (
+                  SELECT JSONB_AGG(
+                    JSONB_BUILD_OBJECT(
+                      'id', refund.id,
+                      'refundNumber', refund.refund_number,
+                      'refundDate', refund.refund_date,
+                      'amount', refund.amount,
+                      'status', refund.status,
+                      'reason', refund.reason,
+                      'provider', refund.metadata->>'provider',
+                      'providerStatus', refund.metadata->>'providerStatus',
+                      'providerMessage', refund.metadata->>'providerMessage',
+                      'externalRefundId', refund.metadata->>'externalRefundId',
+                      'manualConfirmationRequired',
+                        COALESCE(
+                          (refund.metadata->>'manualConfirmationRequired')::boolean,
+                          FALSE
+                        )
+                    )
+                    ORDER BY
+                      refund.refund_date,
+                      refund.id
                   )
-                  ORDER BY
-                    refund.refund_date,
-                    refund.id
-                )
-                FROM invoicing_payment_refunds refund
-                WHERE refund.payment_id = b.payment_id
-                  AND refund.company_id = b.company_id
-              ),
-              '[]'::jsonb
+                  FROM invoicing_payment_refunds refund
+                  WHERE refund.payment_id = b.payment_id
+                    AND refund.company_id = b.company_id
+                ),
+                '[]'::jsonb
+              )
+              ||
+              COALESCE(
+                (
+                  SELECT JSONB_AGG(
+                    JSONB_BUILD_OBJECT(
+                      'id', e.id,
+                      'refundNumber',
+                        CASE
+                          WHEN e.status='failed'
+                          THEN 'Provider refund failed'
+                          ELSE 'Provider refund pending'
+                        END,
+                      'refundDate', e.payload->>'refundDate',
+                      'amount', (e.payload->>'amount')::numeric,
+                      'status',
+                        CASE
+                          WHEN e.status='failed'
+                          THEN 'failed'
+                          ELSE COALESCE(
+                            NULLIF(e.payload->>'providerStatus',''),
+                            'pending'
+                          )
+                        END,
+                      'reason', e.payload->>'reason',
+                      'provider', e.payload->>'provider',
+                      'providerStatus', e.payload->>'providerStatus',
+                      'providerMessage', e.payload->>'providerMessage',
+                      'externalRefundId', e.payload->>'externalRefundId',
+                      'manualConfirmationRequired',
+                        COALESCE(
+                          (e.payload->>'manualConfirmationRequired')::boolean,
+                          FALSE
+                        )
+                    )
+                    ORDER BY
+                      e.occurred_at,
+                      e.id
+                  )
+                  FROM integration_events e
+                  WHERE e.company_id=b.company_id
+                    AND e.event_key='invoicing.provider_refund'
+                    AND e.status IN ('pending','failed')
+                    AND e.payload->>'refundKind'='payment'
+                    AND e.payload->>'paymentId'=b.payment_id::text
+                ),
+                '[]'::jsonb
+              )
             ) AS refunds
           FROM invoicing_retainer_balances b
           INNER JOIN invoicing_customers customer
@@ -5518,57 +5615,94 @@ export async function getInvoicingInvoiceDetail(
               ),
               '[]'::jsonb
             ) AS applications,
-            COALESCE(
-              (
-                SELECT JSONB_AGG(
-                  JSONB_BUILD_OBJECT(
-                    'id',
-                    refund.id,
-                    'refundNumber',
-                    refund.refund_number,
-                    'refundDate',
-                    refund.refund_date,
-                    'amount',
-                    refund.amount,
-                    'method',
-                    refund.method,
-                    'reference',
-                    refund.reference,
-                    'reason',
-                    refund.reason,
-                    'status',
-                    refund.status,
-                    'reversalReason',
-                    refund.reversal_reason,
-                    'provider',
-                    refund.metadata->>'provider',
-                    'providerStatus',
-                    refund.metadata->>'providerStatus',
-                    'providerMessage',
-                    refund.metadata->>'providerMessage',
-                    'externalRefundId',
-                    refund.metadata->>'externalRefundId',
-                    'providerPaymentId',
-                    refund.metadata->>'providerPaymentId',
-                    'providerPaymentNumber',
-                    refund.metadata->>'providerPaymentNumber',
-                    'manualConfirmationRequired',
-                    COALESCE(
-                      (refund.metadata->>'manualConfirmationRequired')::boolean,
-                      FALSE
+            (
+              COALESCE(
+                (
+                  SELECT JSONB_AGG(
+                    JSONB_BUILD_OBJECT(
+                      'id', refund.id,
+                      'refundNumber', refund.refund_number,
+                      'refundDate', refund.refund_date,
+                      'amount', refund.amount,
+                      'method', refund.method,
+                      'reference', refund.reference,
+                      'reason', refund.reason,
+                      'status', refund.status,
+                      'reversalReason', refund.reversal_reason,
+                      'provider', refund.metadata->>'provider',
+                      'providerStatus', refund.metadata->>'providerStatus',
+                      'providerMessage', refund.metadata->>'providerMessage',
+                      'externalRefundId', refund.metadata->>'externalRefundId',
+                      'providerPaymentId', refund.metadata->>'providerPaymentId',
+                      'providerPaymentNumber', refund.metadata->>'providerPaymentNumber',
+                      'manualConfirmationRequired',
+                        COALESCE(
+                          (refund.metadata->>'manualConfirmationRequired')::boolean,
+                          FALSE
+                        )
                     )
+                    ORDER BY
+                      refund.refund_date DESC,
+                      refund.id DESC
                   )
-                  ORDER BY
-                    refund.refund_date DESC,
-                    refund.id DESC
-                )
-                FROM invoicing_credit_note_refunds refund
-                WHERE refund.credit_note_id =
-                      note.id
-                  AND refund.company_id =
-                      note.company_id
-              ),
-              '[]'::jsonb
+                  FROM invoicing_credit_note_refunds refund
+                  WHERE refund.credit_note_id=note.id
+                    AND refund.company_id=note.company_id
+                ),
+                '[]'::jsonb
+              )
+              ||
+              COALESCE(
+                (
+                  SELECT JSONB_AGG(
+                    JSONB_BUILD_OBJECT(
+                      'id', e.id,
+                      'refundNumber',
+                        CASE
+                          WHEN e.status='failed'
+                          THEN 'Provider refund failed'
+                          ELSE 'Provider refund pending'
+                        END,
+                      'refundDate', e.payload->>'refundDate',
+                      'amount', (e.payload->>'amount')::numeric,
+                      'method', e.payload->>'provider',
+                      'reference', e.payload->>'providerReference',
+                      'reason', e.payload->>'reason',
+                      'status',
+                        CASE
+                          WHEN e.status='failed'
+                          THEN 'failed'
+                          ELSE COALESCE(
+                            NULLIF(e.payload->>'providerStatus',''),
+                            'pending'
+                          )
+                        END,
+                      'reversalReason', NULL,
+                      'provider', e.payload->>'provider',
+                      'providerStatus', e.payload->>'providerStatus',
+                      'providerMessage', e.payload->>'providerMessage',
+                      'externalRefundId', e.payload->>'externalRefundId',
+                      'providerPaymentId', e.payload->>'providerPaymentId',
+                      'providerPaymentNumber', e.payload->>'providerPaymentNumber',
+                      'manualConfirmationRequired',
+                        COALESCE(
+                          (e.payload->>'manualConfirmationRequired')::boolean,
+                          FALSE
+                        )
+                    )
+                    ORDER BY
+                      e.occurred_at DESC,
+                      e.id DESC
+                  )
+                  FROM integration_events e
+                  WHERE e.company_id=note.company_id
+                    AND e.event_key='invoicing.provider_refund'
+                    AND e.status IN ('pending','failed')
+                    AND e.payload->>'refundKind'='credit_note'
+                    AND e.payload->>'creditNoteId'=note.id::text
+                ),
+                '[]'::jsonb
+              )
             ) AS refunds
           FROM invoicing_credit_notes note
           LEFT JOIN invoicing_credit_note_balances balance
