@@ -1326,3 +1326,54 @@ test('Sales roadmap Part 5 exposes quotation templates as a standalone Sales des
   assert.match(commands, /saveSalesQuoteTemplate/);
   assert.match(commands, /sales_quote_templates/);
 });
+
+
+test('Sales roadmap Parts 6 and 7 expose standalone PDF builder and product catalogue workspaces', async () => {
+  const [
+    page,
+    workspace,
+    pdfBuilder,
+    catalogue,
+    commands,
+    queries,
+    route,
+    types,
+  ] = await Promise.all([
+    source('app/apps/sales/page.tsx'),
+    source('app/apps/sales/SalesWorkspaceClient.tsx'),
+    source('app/apps/sales/SalesQuotePdfBuilder.tsx'),
+    source('app/apps/sales/SalesProductCatalogueManager.tsx'),
+    source('lib/apps/sales/commands.ts'),
+    source('lib/apps/sales/queries.ts'),
+    source('app/api/apps/sales/route.ts'),
+    source('lib/apps/sales/types.ts'),
+  ]);
+
+  assert.match(page, /Quote \/ PDF Builder/);
+  assert.match(page, /Roadmap Part 6/);
+  assert.match(page, /Product Catalogue/);
+  assert.match(page, /Roadmap Part 7/);
+  assert.match(workspace, /SalesQuotePdfBuilder/);
+  assert.match(workspace, /SalesProductCatalogueManager/);
+  assert.match(pdfBuilder, /Roadmap Part 6/);
+  assert.match(pdfBuilder, /apply_quote_template/);
+  assert.match(pdfBuilder, /Open generated PDF/);
+  assert.match(pdfBuilder, /\/api\/apps\/sales\/quotes\//);
+  assert.match(catalogue, /Roadmap Part 7/);
+  assert.match(catalogue, /create_catalog_item/);
+  assert.match(catalogue, /update_catalog_item/);
+  assert.match(catalogue, /Product catalogue/);
+  assert.match(commands, /applySalesQuoteTemplate/);
+  assert.match(commands, /quote\.template_applied/);
+  assert.match(commands, /createSalesCatalogItem/);
+  assert.match(commands, /updateSalesCatalogItem/);
+  assert.match(queries, /template_id/);
+  assert.match(queries, /item_type/);
+  assert.match(queries, /canManageCatalog/);
+  assert.match(route, /apply_quote_template:[\s\S]*applySalesQuoteTemplate/);
+  assert.match(route, /create_catalog_item:[\s\S]*createSalesCatalogItem/);
+  assert.match(route, /update_catalog_item:[\s\S]*updateSalesCatalogItem/);
+  assert.match(types, /templateId: string \| null/);
+  assert.match(types, /itemType: string/);
+  assert.match(types, /canManageCatalog: boolean/);
+});
