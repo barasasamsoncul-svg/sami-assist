@@ -86,3 +86,39 @@ test('provider notifications are verified and converge on the existing idempoten
   assert.match(route, /request\.text\(\)/);
   assert.doesNotMatch(route, /authorization.*Bearer/i);
 });
+
+
+test('manual webhook setup is not reported as verified until SaMi validates a real provider event', async () => {
+  const [
+    service,
+    ui,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/payment-provider-connections.ts'),
+    source('app/apps/invoicing/PaymentIntegrationsWorkspace.tsx'),
+  ]);
+
+  assert.match(
+    service,
+    /'callbackConfigured',TRUE,[\s\S]*'callbackVerified',FALSE/s,
+    'Owner confirmation may enable the configured callback path but must not fake provider verification.',
+  );
+  assert.match(
+    service,
+    /'callbackVerified',TRUE,[\s\S]*'callbackVerifiedAt',NOW\(\)/s,
+    'A successfully verified provider event must advance webhook verification state.',
+  );
+  assert.match(
+    service,
+    /settings\.callbackVerified === true[\s\S]*Boolean\(row\.last_received_at\)/s,
+    'Existing connections with processed provider events remain recognized as verified.',
+  );
+
+  assert.match(ui, /Configured · awaiting event/);
+  assert.match(ui, />Verified</);
+  assert.match(ui, /Last verified event/);
+  assert.match(ui, /Verified webhooks/);
+  assert.match(
+    ui,
+    /This checks the merchant API connection; webhook verification is tracked separately/,
+  );
+});
