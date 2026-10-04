@@ -386,7 +386,6 @@ export async function connectInvoicePaymentProviderRemote(input: {
 
   if (input.provider === 'stripe') {
     const stripe = new Stripe(secrets.secretKey!);
-    const account = await stripe.accounts.retrieve();
     const webhook = await stripe.webhookEndpoints.create({
       url: input.callbackUrl,
       enabled_events: ['checkout.session.completed'],
@@ -404,12 +403,8 @@ export async function connectInvoicePaymentProviderRemote(input: {
         webhookSecret: webhook.secret,
         providerWebhookId: webhook.id,
       },
-      externalAccountId: account.id,
-      externalAccountName:
-        account.business_profile?.name ||
-        account.settings?.dashboard?.display_name ||
-        account.email ||
-        'Stripe account',
+      externalAccountId: null,
+      externalAccountName: 'Stripe account',
       manualSetup: null,
     };
   }
@@ -543,7 +538,7 @@ export async function testInvoicePaymentProviderRemote(
   }
   if (secrets.provider === 'stripe') {
     const stripe = new Stripe(secrets.secretKey!);
-    await stripe.accounts.retrieve();
+    await stripe.webhookEndpoints.list({ limit: 1 });
     return;
   }
   if (secrets.provider === 'paystack') {
