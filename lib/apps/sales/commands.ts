@@ -21,6 +21,12 @@ import {
 } from '@/lib/apps/sales/commercial';
 
 import {
+  recordSalesOrderCommissionEntries,
+  resolveSalesAssignmentForUser,
+  reverseSalesOrderCommissions,
+} from '@/lib/apps/sales/organization';
+
+import {
   postSalesFulfillmentToInventory,
   releaseSalesOrderReservations,
   reserveSalesOrderInventory,
@@ -1263,6 +1269,17 @@ export async function createSalesQuote(
         'quote',
       );
 
+    const salesAssignment =
+      await resolveSalesAssignmentForUser(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+        },
+      );
+
     const result =
       await client.query(
         `
@@ -1295,6 +1312,9 @@ export async function createSalesQuote(
             notes,
             terms,
             internal_notes,
+            salesperson_user_id,
+            sales_team_id,
+            territory_id,
             created_by,
             updated_by
           )
@@ -1302,8 +1322,8 @@ export async function createSalesQuote(
             $1,$2,$3,$4,
             'draft',
             $5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
-            $15,$16,$17,$18,$19,$20,$21,$22,$23,
-            $24,$25,$26,$27,$28,$29,$30,$30
+            $15,$16,$17,$18,$19,$20,$21,$22,$23,$24,
+            $25,$26,$27,$28,$29,$30,$31,$31
           )
           RETURNING
             id,
@@ -1358,6 +1378,11 @@ export async function createSalesQuote(
             input.internalNotes,
             6000,
           ),
+          context.userId,
+          salesAssignment
+            .salesTeamId,
+          salesAssignment
+            .territoryId,
           context.userId,
         ],
       );
@@ -2999,6 +3024,49 @@ export async function createSalesOrderFromQuote(
         'order',
       );
 
+    const salespersonUserId =
+      row.salesperson_user_id
+        ? String(
+            row.salesperson_user_id,
+          )
+        : context.userId;
+
+    let salesTeamId =
+      row.sales_team_id
+        ? String(
+            row.sales_team_id,
+          )
+        : null;
+
+    let territoryId =
+      row.territory_id
+        ? String(
+            row.territory_id,
+          )
+        : null;
+
+    if (
+      !salesTeamId
+    ) {
+      const assignment =
+        await resolveSalesAssignmentForUser(
+          client,
+          {
+            companyId:
+              context.companyId,
+            userId:
+              salespersonUserId,
+          },
+        );
+
+      salesTeamId =
+        assignment.salesTeamId;
+
+      territoryId =
+        territoryId ||
+        assignment.territoryId;
+    }
+
     const order =
       await client.query(
         `
@@ -3025,6 +3093,9 @@ export async function createSalesOrderFromQuote(
             cost_total,
             margin_amount,
             margin_percent,
+            salesperson_user_id,
+            sales_team_id,
+            territory_id,
             notes,
             terms,
             created_by,
@@ -3035,8 +3106,8 @@ export async function createSalesOrderFromQuote(
             'confirmed',
             CURRENT_DATE,
             $4,$5,$6,$7,$8,$9,$10,
-            $11,$12,$13,$14,$15,$16,$17,$18,
-            $19,$20,$21,$22,$23,$23
+            $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
+            $21,$22,$23,$24,$25,$26,$26
           )
           RETURNING
             id,
@@ -3064,6 +3135,9 @@ export async function createSalesOrderFromQuote(
           row.cost_total,
           row.margin_amount,
           row.margin_percent,
+          salespersonUserId,
+          salesTeamId,
+          territoryId,
           row.notes,
           row.terms,
           context.userId,
@@ -3173,12 +3247,62 @@ export async function createSalesOrderFromQuote(
       },
     );
 
+    await recordSalesOrderCommissionEntries(
+      client,
+      {
+        companyId:
+          context.companyId,
+        orderId,
+        salespersonUserId,
+        salesTeamId,
+        orderDate:
+          new Date()
+            .toISOString()
+            .slice(
+              0,
+              10,
+            ),
+        currency:
+          String(
+            row.currency,
+          ),
+        revenueAmount:
+          money(
+            row.subtotal,
+          ) -
+          money(
+            row.discount_total,
+          ),
+        marginAmount:
+          money(
+            row.margin_amount,
+          ),
+        userId:
+          context.userId,
+      },
+    );
+
     await client.query(
       `
         UPDATE sales_quotes
         SET
           sales_order_id = $3,
           status = 'converted',
+          salesperson_user_id =
+            COALESCE(
+              salesperson_user_id,
+              $5
+            ),
+          sales_team_id =
+            COALESCE(
+              sales_team_id,
+              $6
+            ),
+          territory_id =
+            COALESCE(
+              territory_id,
+              $7
+            ),
           converted_at =
             COALESCE(
               converted_at,
@@ -3196,6 +3320,9 @@ export async function createSalesOrderFromQuote(
         context.companyId,
         orderId,
         context.userId,
+        salespersonUserId,
+        salesTeamId,
+        territoryId,
       ],
     );
 
@@ -3883,6 +4010,18 @@ export async function cancelSalesOrder(
         userId:
           context.userId,
         orderId,
+      },
+    );
+
+    await reverseSalesOrderCommissions(
+      client,
+      {
+        companyId:
+          context.companyId,
+        orderId,
+        userId:
+          context.userId,
+        reason,
       },
     );
 
