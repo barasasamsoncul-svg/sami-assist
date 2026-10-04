@@ -46,6 +46,10 @@ import SalesCustomersManager from '@/app/apps/sales/SalesCustomersManager';
 
 import SalesTemplatesManager from '@/app/apps/sales/SalesTemplatesManager';
 
+import SalesQuotePdfBuilder from '@/app/apps/sales/SalesQuotePdfBuilder';
+
+import SalesProductCatalogueManager from '@/app/apps/sales/SalesProductCatalogueManager';
+
 import SalesPricingManager from '@/app/apps/sales/SalesPricingManager';
 
 import SalesOrganizationManager from '@/app/apps/sales/SalesOrganizationManager';
@@ -62,6 +66,8 @@ type View =
   | 'customers'
   | 'quotes'
   | 'templates'
+  | 'pdf-builder'
+  | 'catalogue'
   | 'orders'
   | 'organization'
   | 'operations'
@@ -110,6 +116,26 @@ const TUTORIAL:
         'Build quotation templates',
       description:
         'Create reusable quotation branding, notes, commercial terms and footer defaults without mixing template management into global Sales settings.',
+    },
+    {
+      id:
+        'pdf-builder',
+      section:
+        'pdf-builder',
+      title:
+        'Build quotation PDFs',
+      description:
+        'Apply quotation templates to drafts, preview customer-facing presentation and open the real server-generated PDF.',
+    },
+    {
+      id:
+        'catalogue',
+      section:
+        'catalogue',
+      title:
+        'Maintain the Sales catalogue',
+      description:
+        'Create and edit the shared product and service master used by quotations and downstream invoices.',
     },
     {
       id:
@@ -721,6 +747,28 @@ export default function SalesWorkspaceClient({
       },
       {
         key:
+          'pdf-builder',
+        label:
+          'Quote / PDF builder',
+        icon:
+          FileText,
+        visible:
+          true,
+      },
+      {
+        key:
+          'catalogue',
+        label:
+          'Product catalogue',
+        icon:
+          PackageCheck,
+        visible:
+          initialData
+            .capabilities
+            .canUseCatalog,
+      },
+      {
+        key:
           'orders',
         label:
           'Sales orders',
@@ -1126,6 +1174,57 @@ export default function SalesWorkspaceClient({
             'templates' &&
           (
             <SalesTemplatesManager
+              data={
+                initialData
+              }
+              busy={
+                busy
+              }
+              request={
+                request
+              }
+              showSuccess={
+                showSuccess
+              }
+              showError={
+                showError
+              }
+            />
+          )
+        }
+
+        {
+          view ===
+            'pdf-builder' &&
+          (
+            <SalesQuotePdfBuilder
+              data={
+                initialData
+              }
+              busy={
+                busy
+              }
+              request={
+                request
+              }
+              showSuccess={
+                showSuccess
+              }
+              showError={
+                showError
+              }
+            />
+          )
+        }
+
+        {
+          view ===
+            'catalogue' &&
+          initialData
+            .capabilities
+            .canUseCatalog &&
+          (
+            <SalesProductCatalogueManager
               data={
                 initialData
               }
