@@ -208,6 +208,8 @@ export async function getInvoicePaymentProviderState() {
           : row.last_received_at || null,
       manualSetupRequired: settings.manualSetupRequired === true,
       autoReconcile: settings.autoReconcile !== false,
+      checkoutPrimary:
+        settings.checkoutPrimary === true,
       endpointStatus: row.endpoint_status
         ? String(row.endpoint_status)
         : null,
@@ -379,6 +381,27 @@ export async function connectInvoicePaymentProvider(input: {
       );
     }
 
+    await client.query(
+      `
+        UPDATE integration_connections
+        SET
+          settings =
+            COALESCE(settings,'{}'::jsonb) ||
+            jsonb_build_object(
+              'checkoutPrimary',
+              FALSE
+            ),
+          updated_at = NOW()
+        WHERE company_id = $1
+          AND provider_key LIKE 'invoicing_payment_%'
+          AND status = 'connected'
+          AND archived_at IS NULL
+      `,
+      [
+        context.runtime.companyId,
+      ],
+    );
+
     const connection = await client.query(
       `
         INSERT INTO integration_connections (
@@ -424,6 +447,7 @@ export async function connectInvoicePaymentProvider(input: {
           callbackVerifiedAt: null,
           manualSetupRequired: remote.manualSetup !== null,
           autoReconcile: true,
+          checkoutPrimary: true,
           providerWebhookId: remote.secrets.providerWebhookId || null,
           pesapalIpnId: remote.secrets.pesapalIpnId || null,
         }),
@@ -655,6 +679,157 @@ export async function confirmInvoicePaymentProviderSetup(
     callbackConfigured: true,
     callbackVerified: false,
   };
+}
+
+
+export async function setPrimaryInvoicePaymentProvider(
+  connectionId:
+    unknown,
+) {
+  const context =
+    await resolveWorkspaceIntegrationContext(
+      'manage',
+    );
+
+  requireProviderPermission(
+    context,
+  );
+
+  const id =
+    cleanText(
+      connectionId,
+      80,
+    );
+
+  if (
+    !/^[0-9a-f-]{36}$/i.test(
+      id,
+    )
+  ) {
+    throw new WorkspaceIntegrationError(
+      'INVALID_INTEGRATION',
+      'A valid payment provider connection is required.',
+    );
+  }
+
+  const pool =
+    await getTenantPoolByTenantId(
+      context.runtime
+        .tenantId,
+    );
+
+  const client =
+    await pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const selected =
+      await client.query(
+        `
+          SELECT
+            id,
+            name,
+            provider_key
+          FROM integration_connections
+          WHERE id = $1::uuid
+            AND company_id = $2::uuid
+            AND provider_key LIKE 'invoicing_payment_%'
+            AND status = 'connected'
+            AND archived_at IS NULL
+          FOR UPDATE
+        `,
+        [
+          id,
+          context.runtime
+            .companyId,
+        ],
+      );
+
+    if (
+      !selected.rows[0]
+    ) {
+      throw new WorkspaceIntegrationError(
+        'INTEGRATION_NOT_FOUND',
+        'Payment provider connection could not be found.',
+      );
+    }
+
+    await client.query(
+      `
+        UPDATE integration_connections
+        SET
+          settings =
+            COALESCE(settings,'{}'::jsonb) ||
+            jsonb_build_object(
+              'checkoutPrimary',
+              id = $1::uuid
+            ),
+          updated_by = $3,
+          updated_at = NOW()
+        WHERE company_id = $2::uuid
+          AND provider_key LIKE 'invoicing_payment_%'
+          AND status = 'connected'
+          AND archived_at IS NULL
+      `,
+      [
+        id,
+        context.runtime
+          .companyId,
+        context.runtime
+          .userId,
+      ],
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    await audit(
+      context.runtime,
+      {
+        action:
+          'invoicing.payment_provider.checkout_primary_changed',
+        resourceId:
+          id,
+        summary:
+          String(
+            selected.rows[0]
+              .name,
+          ) +
+          ' is now the customer Pay now route.',
+        metadata: {
+          providerKey:
+            String(
+              selected.rows[0]
+                .provider_key,
+            ),
+        },
+      },
+    );
+
+    return {
+      connectionId:
+        id,
+      checkoutPrimary:
+        true,
+    };
+  } catch (
+    error
+  ) {
+    await client.query(
+      'ROLLBACK',
+    )
+      .catch(
+        () => undefined,
+      );
+
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 
