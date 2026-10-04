@@ -20,6 +20,7 @@ import {
   Search,
   Settings2,
   ShoppingCart,
+  UsersRound,
 } from 'lucide-react';
 
 import {
@@ -40,6 +41,8 @@ import SalesQuoteComposer from '@/app/apps/sales/SalesQuoteComposer';
 
 import SalesPricingManager from '@/app/apps/sales/SalesPricingManager';
 
+import SalesOrganizationManager from '@/app/apps/sales/SalesOrganizationManager';
+
 import type {
   SalesWorkspaceData,
 } from '@/lib/apps/sales/types';
@@ -49,6 +52,7 @@ type View =
   | 'overview'
   | 'quotes'
   | 'orders'
+  | 'organization'
   | 'reports'
   | 'settings';
 
@@ -84,6 +88,16 @@ const TUTORIAL:
         'Run accepted sales',
       description:
         'Accepted quotations become sales orders. Track fulfillment separately from invoicing and create partial invoices safely.',
+    },
+    {
+      id:
+        'organization',
+      section:
+        'organization',
+      title:
+        'Manage the sales organization',
+      description:
+        'Build teams and territories, set quotas and manage commission plans against real sales-order performance.',
     },
     {
       id:
@@ -655,6 +669,18 @@ export default function SalesWorkspaceClient({
       },
       {
         key:
+          'organization',
+        label:
+          'Teams & performance',
+        icon:
+          UsersRound,
+        visible:
+          initialData
+            .capabilities
+            .canViewOrganization,
+      },
+      {
+        key:
           'reports',
         label:
           'Reports',
@@ -740,7 +766,7 @@ export default function SalesWorkspaceClient({
               </h1>
 
               <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">
-                Quotations, approvals, customer responses, orders, fulfillment and invoice handoff in one controlled flow.
+                Quotations, pricing, teams, targets, commissions, customer responses, orders, fulfillment and invoice handoff in one controlled flow.
               </p>
             </div>
 
@@ -1095,6 +1121,30 @@ export default function SalesWorkspaceClient({
                 }
               </div>
             </section>
+          )
+        }
+
+        {
+          view ===
+            'organization' &&
+          initialData
+            .capabilities
+            .canViewOrganization &&
+          (
+            <SalesOrganizationManager
+              busy={
+                busy
+              }
+              request={
+                request
+              }
+              showSuccess={
+                showSuccess
+              }
+              showError={
+                showError
+              }
+            />
           )
         }
 
