@@ -873,6 +873,7 @@ export type CreateInvoiceLineInput = {
   taxRateId?: unknown;
   taxGroupId?: unknown;
   taxRate?: unknown;
+  metadata?: unknown;
 };
 
 export type CreateInvoiceInput = {
