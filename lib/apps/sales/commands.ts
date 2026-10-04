@@ -484,6 +484,8 @@ async function normalizeQuoteLines(
       string | null;
     quoteDate:
       string;
+    currency:
+      string;
   },
 ): Promise<
   NormalizedQuoteLine[]
@@ -712,6 +714,17 @@ async function normalizeQuoteLines(
             options.quoteDate,
         },
       );
+
+    if (
+      pricing.currency &&
+      pricing.currency !==
+        options.currency
+    ) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'The selected pricelist currency must match the quotation currency.',
+      );
+    }
 
     const unitPrice =
       pricing.unitPrice;
@@ -1170,6 +1183,29 @@ export async function createSalesQuote(
       );
     }
 
+    const currency =
+      cleanText(
+        input.currency ||
+        customer.currency ||
+        settings.default_currency ||
+        context.company
+          .currentCompany.currency ||
+        'KES',
+        3,
+      )
+        .toUpperCase();
+
+    if (
+      !/^[A-Z]{3}$/.test(
+        currency,
+      )
+    ) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'Currency must be a three-letter code.',
+      );
+    }
+
     const pricelistId =
       optionalUuid(
         input.pricelistId,
@@ -1183,6 +1219,7 @@ export async function createSalesQuote(
         {
           pricelistId,
           quoteDate,
+          currency,
         },
       );
 
@@ -1219,29 +1256,6 @@ export async function createSalesQuote(
         context.userId,
         'quote',
       );
-
-    const currency =
-      cleanText(
-        input.currency ||
-        customer.currency ||
-        settings.default_currency ||
-        context.company
-          .currentCompany.currency ||
-        'KES',
-        3,
-      )
-        .toUpperCase();
-
-    if (
-      !/^[A-Z]{3}$/.test(
-        currency,
-      )
-    ) {
-      throw new SalesError(
-        'INVALID_INPUT',
-        'Currency must be a three-letter code.',
-      );
-    }
 
     const result =
       await client.query(
@@ -1595,6 +1609,27 @@ export async function updateSalesQuoteDraft(
       );
     }
 
+    const currency =
+      cleanText(
+        input.currency ||
+        customer.currency ||
+        settings.default_currency ||
+        'KES',
+        3,
+      )
+        .toUpperCase();
+
+    if (
+      !/^[A-Z]{3}$/.test(
+        currency,
+      )
+    ) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'Currency must be a three-letter code.',
+      );
+    }
+
     const pricelistId =
       optionalUuid(
         input.pricelistId,
@@ -1608,6 +1643,7 @@ export async function updateSalesQuoteDraft(
         {
           pricelistId,
           quoteDate,
+          currency,
         },
       );
 
@@ -1636,27 +1672,6 @@ export async function updateSalesQuoteDraft(
       approvalRequired
         ? 'draft'
         : 'not_required';
-
-    const currency =
-      cleanText(
-        input.currency ||
-        customer.currency ||
-        settings.default_currency ||
-        'KES',
-        3,
-      )
-        .toUpperCase();
-
-    if (
-      !/^[A-Z]{3}$/.test(
-        currency,
-      )
-    ) {
-      throw new SalesError(
-        'INVALID_INPUT',
-        'Currency must be a three-letter code.',
-      );
-    }
 
     await client.query(
       `
@@ -1955,9 +1970,15 @@ export async function duplicateSalesQuote(
               line.unit_price,
             ),
           unitCost:
-            money(
-              line.unit_cost,
-            ),
+            crossPermission(
+              context,
+              SALES_PERMISSIONS
+                .MARGIN_MANAGE,
+            )
+              ? money(
+                  line.unit_cost,
+                )
+              : undefined,
           discountType:
             line.discount_type,
           discountValue:
