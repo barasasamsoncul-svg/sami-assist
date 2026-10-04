@@ -51,6 +51,8 @@ test('payment provider credentials stay server-side, encrypted and workspace-sco
 
   assert.match(adapters, /Auth\/RequestToken/);
   assert.match(adapters, /oauth\/v1\/generate\?grant_type=client_credentials/);
+  assert.match(adapters, /Lipa na M-PESA Online passkey/);
+  assert.match(adapters, /shortCodeType/);
   assert.match(adapters, /webhookEndpoints\.create/);
   assert.match(adapters, /x-paystack-signature/);
   assert.match(adapters, /flutterwave-signature/);
