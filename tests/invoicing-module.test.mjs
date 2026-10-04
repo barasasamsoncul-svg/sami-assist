@@ -7496,3 +7496,117 @@ test('Invoice branding defaults to the current company logo and allows a private
     'JPEG logos must continue to render natively in PDFs.',
   );
 });
+
+
+test('Verified customer checkout auto-reconciles exact provider payments and keeps Pay now provider-agnostic', async () => {
+  const [
+    paymentCore,
+    payNow,
+    checkout,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/payment-core.ts'),
+    source('app/apps/invoicing/InvoicePayNow.tsx'),
+    source('lib/apps/invoicing/payment-checkout.ts'),
+  ]);
+
+  assert.match(
+    paymentCore,
+    /input\.source === 'gateway'[\s\S]*unappliedAmount <= 0\.0001/s,
+    'Provider-verified payments with no unapplied remainder must auto-reconcile.',
+  );
+
+  assert.match(
+    paymentCore,
+    /reconciled_at=NOW\(\)/,
+  );
+
+  assert.match(
+    paymentCore,
+    /Automatically reconciled after provider-verified payment detection/,
+  );
+
+  assert.match(
+    checkout,
+    /return \[[\s\S]*provider:[\s\S]*selected\.provider/s,
+    'The server must expose only the business-selected checkout route.',
+  );
+
+  assert.match(
+    payNow,
+    /Pay now/,
+  );
+
+  assert.doesNotMatch(
+    payNow,
+    /Choose a payment provider/,
+    'Customers must not choose between the business payment providers.',
+  );
+
+  assert.doesNotMatch(
+    payNow,
+    /Pay with \{/,
+    'The checkout action must not present provider selection wording.',
+  );
+});
+
+
+test('Issued invoice PDF repair detects partial line loss including a missing first item', async () => {
+  const snapshots =
+    await source(
+      'lib/apps/invoicing/document-snapshots.ts',
+    );
+
+  assert.match(
+    snapshots,
+    /snapshotLines\.length !==[\s\S]*databaseCount/s,
+    'A partially damaged snapshot must be rebuilt when its line count differs from the invoice.',
+  );
+
+  assert.match(
+    snapshots,
+    /first_description/,
+  );
+
+  assert.match(
+    snapshots,
+    /snapshotDescription !==[\s\S]*databaseDescription/s,
+    'The first invoice line identity must be checked so a missing first item cannot survive snapshot reuse.',
+  );
+});
+
+
+test('Invoicing Accounting integration bootstraps only the first fiscal period for system postings', async () => {
+  const accounting =
+    await source(
+      'lib/apps/invoicing/accounting.ts',
+    );
+
+  assert.match(
+    accounting,
+    /ensureSystemPostingPeriod/,
+  );
+
+  assert.match(
+    accounting,
+    /COUNT\(\*\)::int[\s\S]*accounting_fiscal_periods/s,
+    'Automatic period creation must only occur after checking existing company periods.',
+  );
+
+  assert.match(
+    accounting,
+    /Number\([\s\S]*existingPeriods[\s\S]*>\s*0[\s\S]*return/s,
+    'Businesses already managing periods must keep explicit period control.',
+  );
+
+  assert.match(
+    accounting,
+    /INSERT INTO accounting_fiscal_periods[\s\S]*'open'/s,
+    'A company with no fiscal periods must receive a safe open period for its first system-generated posting.',
+  );
+
+  assert.match(
+    accounting,
+    /global_lock_date/,
+    'Automatic system posting must continue respecting Accounting lock dates.',
+  );
+});
