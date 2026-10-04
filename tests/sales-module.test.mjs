@@ -621,7 +621,7 @@ test('Sales v3 is registered into manifests, migrations, Search and SaMi AI', as
 
   assert.match(
     manifest,
-    /key: "sales",[\s\S]*version: '3\\.0\\.0'/s,
+    /key: "sales",[\s\S]*version: '3\.0\.0'/s,
   );
 
   assert.match(
