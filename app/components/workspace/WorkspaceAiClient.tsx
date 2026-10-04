@@ -1720,6 +1720,12 @@ export default function WorkspaceAiClient({
           ],
         );
 
+      setGenerationStates(
+        current => ({
+          ...current,
+        }),
+      );
+
       return 'queued' as const;
     }
 
