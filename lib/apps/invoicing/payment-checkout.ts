@@ -505,7 +505,7 @@ export async function getInvoiceCheckoutOptions(input: {
 async function requireCheckoutConnection(input: {
   tenantId: string;
   companyId: string;
-  provider: HostedInvoicePaymentProviderKey;
+  provider: InvoiceCheckoutProviderKey;
 }) {
   const connections =
     await loadCheckoutConnections({
