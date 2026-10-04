@@ -559,6 +559,93 @@ async function loadConnectionSecrets(input: {
   };
 }
 
+export async function confirmInvoicePaymentProviderSetup(
+  connectionId: unknown,
+) {
+  const context = await resolveWorkspaceIntegrationContext('manage');
+  requireProviderPermission(context);
+
+  const id = cleanText(connectionId, 80);
+  if (!/^[0-9a-f-]{36}$/i.test(id)) {
+    throw new WorkspaceIntegrationError(
+      'INVALID_INTEGRATION',
+      'A valid payment provider connection is required.',
+    );
+  }
+
+  const connection = await loadConnectionSecrets({
+    tenantId: context.runtime.tenantId,
+    companyId: context.runtime.companyId,
+    connectionId: id,
+  });
+
+  const definition = getInvoicePaymentProviderDefinition(
+    connection.provider,
+  );
+
+  if (!definition || definition.setupMode !== 'guided') {
+    throw new WorkspaceIntegrationError(
+      'INVALID_INTEGRATION',
+      'This provider does not require a manual callback setup step.',
+    );
+  }
+
+  const pool = await getTenantPoolByTenantId(
+    context.runtime.tenantId,
+  );
+
+  const result = await pool.query(
+    `
+      UPDATE integration_connections
+      SET
+        settings = COALESCE(settings,'{}'::jsonb) ||
+          jsonb_build_object(
+            'callbackConfigured',TRUE,
+            'manualSetupConfirmedAt',NOW()
+          ),
+        health_status = 'healthy',
+        last_health_check_at = NOW(),
+        updated_by = $3,
+        updated_at = NOW()
+      WHERE id = $1
+        AND company_id = $2
+        AND status = 'connected'
+        AND archived_at IS NULL
+      RETURNING id
+    `,
+    [
+      id,
+      context.runtime.companyId,
+      context.runtime.userId,
+    ],
+  );
+
+  if (!result.rows[0]) {
+    throw new WorkspaceIntegrationError(
+      'INTEGRATION_NOT_FOUND',
+      'Payment provider connection could not be found.',
+    );
+  }
+
+  await audit(context.runtime, {
+    action: 'invoicing.payment_provider.manual_setup_confirmed',
+    resourceId: id,
+    summary:
+      connection.name +
+      ' payment notification setup was confirmed.',
+    metadata: {
+      provider: connection.provider,
+    },
+  });
+
+  return {
+    connectionId: id,
+    status: 'connected',
+    healthStatus: 'healthy',
+    callbackConfigured: true,
+  };
+}
+
 export async function testInvoicePaymentProviderConnection(
   connectionId: unknown,
 ) {
