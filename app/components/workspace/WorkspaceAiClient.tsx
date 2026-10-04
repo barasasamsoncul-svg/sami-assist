@@ -2922,6 +2922,7 @@ function MessageBubble({
                 ? Check
                 : Copy
             }
+            iconOnly
           />
 
           {!assistant && (
@@ -2994,6 +2995,7 @@ function MessageBubble({
               icon={
                 RefreshCw
               }
+              iconOnly
             />
           )}
         </div>
@@ -3008,6 +3010,7 @@ function MessageAction({
   onClick,
   icon: Icon,
   active = false,
+  iconOnly = false,
 }: {
   label:
     string;
@@ -3018,6 +3021,8 @@ function MessageAction({
   icon:
     typeof Copy;
   active?:
+    boolean;
+  iconOnly?:
     boolean;
 }) {
   return (
@@ -3036,7 +3041,9 @@ function MessageAction({
         onClick
       }
       className={[
-        'inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-[9px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40',
+        iconOnly
+          ? 'inline-flex h-8 w-8 items-center justify-center rounded-lg text-[9px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40'
+          : 'inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-[9px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40',
         active
           ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300'
           : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/10 dark:hover:text-slate-200',
@@ -3045,9 +3052,11 @@ function MessageAction({
       )}
     >
       <Icon className="h-3.5 w-3.5" />
-      <span className="hidden sm:inline">
-        {label}
-      </span>
+      {!iconOnly && (
+        <span className="hidden sm:inline">
+          {label}
+        </span>
+      )}
     </button>
   );
 }
