@@ -69,6 +69,10 @@ import {
   type SamiAiAttachment,
 } from '@/lib/ai/attachments';
 
+import {
+  getSamiAiDocumentExtractorStatus,
+} from '@/lib/ai/document-extraction';
+
 import type {
   SamiAiProviderMessage,
   SamiAiRuntimeContext,
@@ -1661,6 +1665,9 @@ export async function getWorkspaceAiStatus() {
       context.runtime,
     );
 
+  const documentExtractor =
+    getSamiAiDocumentExtractorStatus();
+
   const pool =
     await getTenantPoolByTenantId(
       context.runtime
@@ -1855,6 +1862,17 @@ export async function getWorkspaceAiStatus() {
           context.runtime,
         ),
       ...getSamiAiAttachmentLimits(),
+      documentExtraction: {
+        configured:
+          documentExtractor
+            .configured,
+        maxInputBytes:
+          documentExtractor
+            .maxInputBytes,
+        maxTextChars:
+          documentExtractor
+            .maxTextChars,
+      },
     },
     preferences: {
       memoryEnabled:
