@@ -53,6 +53,8 @@ type SalesView =
   | 'templates'
   | 'pdf-builder'
   | 'catalogue'
+  | 'pricelists'
+  | 'advanced-pricing'
   | 'orders'
   | 'organization'
   | 'operations'
@@ -145,6 +147,15 @@ export default async function SalesPage({
           .canUseCatalog
           ? [
               'catalogue' as const,
+            ]
+          : []
+      ),
+      ...(
+        data.capabilities
+          .canViewPricing
+          ? [
+              'pricelists' as const,
+              'advanced-pricing' as const,
             ]
           : []
       ),
@@ -286,6 +297,35 @@ export default async function SalesPage({
                 'Roadmap Part 7 · Products and services used by Sales quotations.',
               badge:
                 data.catalogItems.length,
+            },
+          ]
+        : []
+    ),
+    ...(
+      data.capabilities
+        .canViewPricing
+        ? [
+            {
+              key:
+                'pricelists',
+              label:
+                'Pricelists',
+              href:
+                '/apps/sales?view=pricelists',
+              description:
+                'Roadmap Part 8 · Customer scope, currency, validity and precedence.',
+              badge:
+                data.pricelists.length,
+            },
+            {
+              key:
+                'advanced-pricing',
+              label:
+                'Advanced Pricing',
+              href:
+                '/apps/sales?view=advanced-pricing',
+              description:
+                'Roadmap Part 9 · Product, quantity, discount and markup pricing rules.',
             },
           ]
         : []
