@@ -630,39 +630,57 @@ export async function getSalesOperationsData(
             rows:
               [],
           }),
-      context.pool.query(
-        `
-          SELECT
-            order_row.id,
-            order_row.order_number,
-            order_row.customer_name,
-            order_row.currency,
-            order_row.total_amount,
-            order_row.deposit_type,
-            order_row.deposit_value,
-            order_row.deposit_required_amount,
-            order_row.deposit_received_amount,
-            order_row.deposit_status,
-            order_row.deposit_retainer_id,
-            order_row.deposit_payment_id
-          FROM sales_orders_v2 order_row
-          WHERE order_row.company_id = $1
-            AND order_row.deleted_at IS NULL
-            AND (
-              order_row.deposit_type <>
-                'none'
-              OR order_row.deposit_received_amount >
-                 0
-            )
-          ORDER BY
-            order_row.created_at DESC
-          LIMIT 250
-        `,
+      permissionAny(
+        context,
         [
-          context.companyId,
+          SALES_PERMISSIONS
+            .DEPOSIT_MANAGE,
         ],
-      ),
-      context.pool.query(
+      )
+        ? context.pool.query(
+            `
+              SELECT
+                order_row.id,
+                order_row.order_number,
+                order_row.customer_name,
+                order_row.currency,
+                order_row.total_amount,
+                order_row.deposit_type,
+                order_row.deposit_value,
+                order_row.deposit_required_amount,
+                order_row.deposit_received_amount,
+                order_row.deposit_status,
+                order_row.deposit_retainer_id,
+                order_row.deposit_payment_id
+              FROM sales_orders_v2 order_row
+              WHERE order_row.company_id = $1
+                AND order_row.deleted_at IS NULL
+                AND (
+                  order_row.deposit_type <>
+                    'none'
+                  OR order_row.deposit_received_amount >
+                     0
+                )
+              ORDER BY
+                order_row.created_at DESC
+              LIMIT 250
+            `,
+            [
+              context.companyId,
+            ],
+          )
+        : Promise.resolve({
+            rows:
+              [],
+          }),
+      permissionAny(
+        context,
+        [
+          SALES_PERMISSIONS
+            .FORECAST_VIEW,
+        ],
+      )
+        ? context.pool.query(
         `
           WITH quote_pipeline AS (
             SELECT
@@ -740,6 +758,25 @@ export async function getSalesOperationsData(
           horizonDays,
         ],
       ),
+    ]);
+        : Promise.resolve({
+            rows: [
+              {
+                open_pipeline:
+                  0,
+                weighted_pipeline:
+                  0,
+                expiring_7_days:
+                  0,
+                committed_orders:
+                  0,
+                order_count:
+                  0,
+                expected_revenue:
+                  0,
+              },
+            ],
+          }),
     ]);
 
   const forecastRow =
@@ -1291,13 +1328,15 @@ export async function recordSalesOrderDeposit(
   if (
     required >
       0 &&
-    amount >
-      required +
-        0.0001
+    Math.abs(
+      amount -
+      required,
+    ) >
+      0.0001
   ) {
     throw new SalesError(
       'INVALID_INPUT',
-      'Deposit amount cannot exceed the configured order deposit requirement.',
+      'The recorded deposit must match the configured order deposit requirement.',
       {
         requiredAmount:
           required,
@@ -3118,8 +3157,15 @@ export async function issueSalesReturnCredit(
         SELECT
           item.id,
           item.sales_order_line_id,
-          item.quantity
+          item.quantity,
+          line.invoiced_quantity,
+          line.credited_quantity
         FROM sales_return_items item
+        INNER JOIN sales_order_items_v2 line
+          ON line.id =
+             item.sales_order_line_id
+         AND line.company_id =
+             item.company_id
         WHERE item.return_id = $1
           AND item.company_id = $2
         ORDER BY
@@ -3155,6 +3201,29 @@ export async function issueSalesReturnCredit(
     let remaining =
       Number(
         returnItem.quantity,
+      );
+
+    let mappedQuantity =
+      0;
+
+    const expectedCreditQuantity =
+      Math.min(
+        Number(
+          returnItem.quantity,
+        ),
+        Math.max(
+          0,
+          Number(
+            returnItem
+              .invoiced_quantity ||
+            0,
+          ) -
+          Number(
+            returnItem
+              .credited_quantity ||
+            0,
+          ),
+        ),
       );
 
     const invoiceItems =
@@ -3303,6 +3372,31 @@ export async function issueSalesReturnCredit(
 
       remaining -=
         quantity;
+
+      mappedQuantity +=
+        quantity;
+    }
+
+    if (
+      expectedCreditQuantity >
+        0.000001 &&
+      mappedQuantity +
+        0.000001 <
+        expectedCreditQuantity
+    ) {
+      throw new SalesError(
+        'RETURN_CREDIT_LINK_MISSING',
+        'This return includes quantities invoiced before Sales line-source tracking was enabled. Issue the unmatched credit from Invoicing manually; SaMi will not guess the invoice line mapping.',
+        {
+          salesOrderLineId:
+            String(
+              returnItem
+                .sales_order_line_id,
+            ),
+          expectedCreditQuantity,
+          mappedQuantity,
+        },
+      );
     }
   }
 
