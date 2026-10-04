@@ -229,6 +229,11 @@ export type SalesWorkspaceData = {
     canManagePricing: boolean;
     canViewMargin: boolean;
     canManageMargin: boolean;
+    canViewOrganization: boolean;
+    canManageTeams: boolean;
+    canManageTargets: boolean;
+    canViewCommissions: boolean;
+    canManageCommissions: boolean;
     canUseBillingCustomers: boolean;
     canUseCatalog: boolean;
   };
