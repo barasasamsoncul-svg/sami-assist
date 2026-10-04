@@ -3,16 +3,16 @@
   "locks": {
     "invoicing": {
       "status": "locked",
-      "moduleVersion": "2.22.0",
+      "moduleVersion": "2.23.0",
       "referenceStandard": true,
-      "baselineCommit": "0264ab03e5b2dc36475264e70b023f035b19592d",
+      "baselineCommit": "c80f9b9be3642a126fc0d05d3606c7fcd0526868",
       "baselineBranch": "main",
       "lockedAt": "2026-10-04",
-      "policy": "Invoicing 2.22.0 preserves the completed billing product, business-owner payment-provider connections, customer-facing hosted Pay Now, Safaricom M-PESA Express STK Push, and truthful payment-webhook observability. Provider setup now distinguishes callbackConfigured from callbackVerified: owner confirmation or provider API registration can make a callback configured, but SaMi only marks it verified after a provider event has been cryptographically or provider-authoritatively validated. Existing last_received_at evidence remains backward-compatible. Customer checkout remains available once setup is configured because provider-return verification and the authoritative settlement core still protect posting. M-PESA retains C2B Paybill/Till reconciliation and encrypted STK credentials. The release gate includes Invoicing/payment regressions, provider connector contracts, quality locks, module migrations, responsive/app UI, ERP integration, TypeScript and production build.",
+      "policy": "Invoicing 2.23.0 preserves the completed billing product, verified merchant payment connections, customer Pay Now, M-PESA STK/C2B reconciliation, truthful webhook health, and provider-authoritative refunds. Provider-backed payments retain their original refundable transaction identity. Stripe, PayPal, Paystack and Flutterwave refunds remain pending until provider status proves completion; Pesapal accepted requests require explicit merchant completion confirmation because API acceptance is not settlement. Pending/requires_action/failed refunds do not reduce financial balances or post Accounting; only finalized posted refunds do. M-PESA reversal remains intentionally manual until Daraja initiator/security credentials are implemented. Completed external refunds cannot be reversed internally. The release gate includes 71+ Invoicing/payment/refund regressions, Accounting parity, quality locks, migrations, responsive/app UI, ERP integration, TypeScript and production build.",
       "protectedTrees": {
-        "lib/apps/invoicing": "f90dbe4699158bfc195c87648927873ccbf58ba1",
-        "app/apps/invoicing": "742317eb94ae38ab3d1b3ad27ab78774a95c9dbc",
-        "app/api/apps/invoicing": "ae88ec4e4109dc962fd2a7823caaf47ccf43ffd9",
+        "lib/apps/invoicing": "733b96e718002a35211a29cd6c0d0cbd073cd9e2",
+        "app/apps/invoicing": "d84232773ae33cc384e7fc750a7c683fa5ef71db",
+        "app/api/apps/invoicing": "5e1249fb5fde81512f645a2463fb1e4263dcca9f",
         "app/api/internal/invoicing": "b2b22efc33d3b038495ccdd343845257789334a1",
         "app/i/[tenantId]/[token]": "f29ae9c4d6b72e5d5632e9fba2775955f0df3601",
         "app/p/[tenantId]/[token]": "1e4a46ce6eff533d762e0d543679a197112bb92a",
