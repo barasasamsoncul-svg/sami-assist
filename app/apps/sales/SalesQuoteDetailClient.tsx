@@ -30,6 +30,8 @@ import {
 
 import SalesQuoteComposer from '@/app/apps/sales/SalesQuoteComposer';
 
+import SalesOptionalProductsEditor from '@/app/apps/sales/SalesOptionalProductsEditor';
+
 import type {
   SalesQuoteDetail,
   SalesWorkspaceData,
@@ -701,6 +703,46 @@ export default function SalesQuoteDetailClient({
                 }
               />
             </div>
+
+            {
+              quote.status ===
+                'draft' &&
+              workspace
+                .capabilities
+                .canManageOptionalProducts &&
+              (
+                <SalesOptionalProductsEditor
+                  quote={
+                    quote
+                  }
+                  workspace={
+                    workspace
+                  }
+                  busy={
+                    isBusy
+                  }
+                  onSave={
+                    async items => {
+                      const result =
+                        await run(
+                          {
+                            action:
+                              'save_optional_items',
+                            quoteId:
+                              quote.id,
+                            items,
+                          },
+                          'Optional products saved.',
+                        );
+
+                      return Boolean(
+                        result,
+                      );
+                    }
+                  }
+                />
+              )
+            }
 
             {
               quote.optionalItems
