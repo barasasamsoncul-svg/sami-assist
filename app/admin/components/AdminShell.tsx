@@ -35,14 +35,8 @@ export default function AdminShell({
 
   return (
     <div
-      className="
-        min-h-screen
-        bg-zinc-50
-        text-zinc-950
-
-        dark:bg-zinc-950
-        dark:text-zinc-100
-      "
+      data-sami-admin-shell="true"
+      className="sami-canvas min-h-screen text-[var(--foreground)] transition-colors"
     >
       <AdminSidebar
         admin={admin}
