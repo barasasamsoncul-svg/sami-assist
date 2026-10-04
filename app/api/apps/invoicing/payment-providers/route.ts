@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 
 import {
+  confirmInvoicePaymentProviderSetup,
   connectInvoicePaymentProvider,
   disconnectInvoicePaymentProvider,
   getInvoicePaymentProviderState,
@@ -49,6 +50,16 @@ export async function POST(request: NextRequest) {
         success: true,
         result,
       }, 201);
+    }
+
+    if (operation === 'confirm_setup') {
+      const result = await confirmInvoicePaymentProviderSetup(
+        body.connectionId,
+      );
+      return integrationJson({
+        success: true,
+        result,
+      });
     }
 
     if (operation === 'test') {
