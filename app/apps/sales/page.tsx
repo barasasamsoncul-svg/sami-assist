@@ -50,6 +50,7 @@ type SalesView =
   | 'overview'
   | 'quotes'
   | 'orders'
+  | 'organization'
   | 'reports'
   | 'settings';
 
@@ -134,6 +135,14 @@ export default async function SalesPage({
       ),
       ...(
         data.capabilities
+          .canViewOrganization
+          ? [
+              'organization' as const,
+            ]
+          : []
+      ),
+      ...(
+        data.capabilities
           .canViewReports
           ? [
               'reports' as const,
@@ -205,6 +214,23 @@ export default async function SalesPage({
                 'Fulfillment, delivery and invoice readiness.',
               badge:
                 data.orders.length,
+            },
+          ]
+        : []
+    ),
+    ...(
+      data.capabilities
+        .canViewOrganization
+        ? [
+            {
+              key:
+                'organization',
+              label:
+                'Teams & performance',
+              href:
+                '/apps/sales?view=organization',
+              description:
+                'Territories, sales teams, targets and commission plans.',
             },
           ]
         : []
@@ -301,7 +327,7 @@ export default async function SalesPage({
         0
       }
       title="Sales"
-      description="Quotations, approvals, sales orders, fulfillment and invoicing."
+      description="Quotations, pricing, teams, targets, commissions, fulfillment and invoicing."
       contextLabel={
         data.company.name
       }
