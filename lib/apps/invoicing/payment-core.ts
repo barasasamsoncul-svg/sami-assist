@@ -12,6 +12,7 @@ import {
   recordInvoicingActivity,
 } from '@/lib/apps/invoicing/context';
 import {
+  postInvoiceConfirmationToAccounting,
   postInvoicePaymentAllocationToAccounting,
   postInvoicePaymentToAccounting,
 } from '@/lib/apps/invoicing/accounting';
@@ -277,6 +278,18 @@ export async function recordInvoicePaymentCore(input:{
         'Payment '+paymentNumber+' recorded',
         input.userId,
       ],
+    );
+
+    await postInvoiceConfirmationToAccounting(
+      client,
+      {
+        companyId:
+          input.companyId,
+        userId:
+          input.userId,
+        invoiceId:
+          input.invoiceId,
+      },
     );
 
     await postInvoicePaymentToAccounting(client,{
