@@ -10,6 +10,7 @@ import {
   Gauge,
   Loader2,
   Menu,
+  Mic,
   Pencil,
   Paperclip,
   FileText,
@@ -21,6 +22,7 @@ import {
   ThumbsDown,
   ThumbsUp,
   TriangleAlert,
+  Volume2,
   X,
 } from 'lucide-react';
 
@@ -100,6 +102,75 @@ type AiStreamEvent = {
     pendingActions?: PendingAction[];
   };
 };
+
+type BrowserSpeechRecognitionEvent = {
+  results: ArrayLike<{
+    isFinal?: boolean;
+    0?: {
+      transcript?: string;
+    };
+  }>;
+};
+
+type BrowserSpeechRecognition = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+  onresult:
+    | ((event: BrowserSpeechRecognitionEvent) => void)
+    | null;
+  onerror:
+    | ((event: { error?: string }) => void)
+    | null;
+  onend:
+    | (() => void)
+    | null;
+};
+
+type BrowserSpeechRecognitionConstructor =
+  new () => BrowserSpeechRecognition;
+
+const NEW_CONVERSATION_RUN_KEY =
+  '__new_conversation__';
+
+function conversationRunKey(
+  conversationId:
+    string | null,
+) {
+  return (
+    conversationId ||
+    NEW_CONVERSATION_RUN_KEY
+  );
+}
+
+function speechRecognitionConstructor():
+  BrowserSpeechRecognitionConstructor | null {
+  if (
+    typeof window ===
+    'undefined'
+  ) {
+    return null;
+  }
+
+  const speechWindow =
+    window as typeof window & {
+      SpeechRecognition?:
+        BrowserSpeechRecognitionConstructor;
+      webkitSpeechRecognition?:
+        BrowserSpeechRecognitionConstructor;
+    };
+
+  return (
+    speechWindow
+      .SpeechRecognition ||
+    speechWindow
+      .webkitSpeechRecognition ||
+    null
+  );
+}
 
 async function readJson(
   response: Response,
@@ -278,10 +349,37 @@ export default function WorkspaceAiClient({
       null,
     );
 
-  const abortControllerRef =
-    useRef<AbortController | null>(
+  const selectedConversationIdRef =
+    useRef<string | null>(
+      selectedConversationId,
+    );
+
+  const abortControllersRef =
+    useRef(
+      new Map<
+        string,
+        AbortController
+      >(),
+    );
+
+  const generationStatesRef =
+    useRef<
+      Record<
+        string,
+        {
+          receiving:
+            boolean;
+        }
+      >
+    >({});
+
+  const recognitionRef =
+    useRef<BrowserSpeechRecognition | null>(
       null,
     );
+
+  const voiceBaseDraftRef =
+    useRef('');
 
   const composerRef =
     useRef<HTMLTextAreaElement | null>(
@@ -305,16 +403,45 @@ export default function WorkspaceAiClient({
     useState(true);
 
   const [
-    sending,
-    setSending,
+    generationStates,
+    setGenerationStates,
+  ] =
+    useState<
+      Record<
+        string,
+        {
+          receiving:
+            boolean;
+        }
+      >
+    >({});
+
+  const [
+    listening,
+    setListening,
   ] =
     useState(false);
 
-  const [
-    receiving,
-    setReceiving,
-  ] =
-    useState(false);
+  const currentRunKey =
+    conversationRunKey(
+      selectedConversationId,
+    );
+
+  const currentGeneration =
+    generationStates[
+      currentRunKey
+    ] ||
+    null;
+
+  const sending =
+    Boolean(
+      currentGeneration,
+    );
+
+  const receiving =
+    currentGeneration
+      ?.receiving ===
+    true;
 
   const [
     error,
@@ -384,6 +511,77 @@ export default function WorkspaceAiClient({
       ],
     );
 
+  useEffect(
+    () => {
+      selectedConversationIdRef
+        .current =
+        selectedConversationId;
+    },
+    [
+      selectedConversationId,
+    ],
+  );
+
+  useEffect(
+    () => {
+      return () => {
+        for (
+          const controller
+          of abortControllersRef
+            .current
+            .values()
+        ) {
+          controller.abort();
+        }
+
+        recognitionRef
+          .current
+          ?.abort();
+
+        if (
+          typeof window !==
+            'undefined'
+        ) {
+          window
+            .speechSynthesis
+            ?.cancel();
+        }
+      };
+    },
+    [],
+  );
+
+  function setGenerationState(
+    key: string,
+    value:
+      | {
+          receiving:
+            boolean;
+        }
+      | null,
+  ) {
+    const next = {
+      ...generationStatesRef
+        .current,
+    };
+
+    if (value) {
+      next[key] =
+        value;
+    } else {
+      delete next[
+        key
+      ];
+    }
+
+    generationStatesRef
+      .current =
+      next;
+
+    setGenerationStates(
+      next,
+    );
+  }
 
   const selectedConversation =
     useMemo(
@@ -677,6 +875,12 @@ export default function WorkspaceAiClient({
   );
 
   function newConversation() {
+    recognitionRef
+      .current
+      ?.stop();
+
+    setListening(false);
+
     setSelectedConversationId(
       null,
     );
@@ -697,6 +901,12 @@ export default function WorkspaceAiClient({
     conversationId:
       string,
   ) {
+    recognitionRef
+      .current
+      ?.stop();
+
+    setListening(false);
+
     setSelectedConversationId(
       conversationId,
     );
@@ -726,8 +936,20 @@ export default function WorkspaceAiClient({
         string;
     },
   ) {
+    const originConversationId =
+      selectedConversationIdRef
+        .current;
+
+    const runKey =
+      conversationRunKey(
+        originConversationId,
+      );
+
     if (
-      sending ||
+      generationStatesRef
+        .current[
+          runKey
+        ] ||
       !status?.configured
     ) {
       return;
@@ -736,8 +958,20 @@ export default function WorkspaceAiClient({
     const controller =
       new AbortController();
 
-    abortControllerRef.current =
-      controller;
+    abortControllersRef
+      .current
+      .set(
+        runKey,
+        controller,
+      );
+
+    setGenerationState(
+      runKey,
+      {
+        receiving:
+          false,
+      },
+    );
 
     const streamMessageId =
       'streaming-' +
@@ -745,6 +979,15 @@ export default function WorkspaceAiClient({
 
     let streamVisible =
       false;
+
+    let streamContent =
+      '';
+
+    const isViewingOrigin =
+      () =>
+        selectedConversationIdRef
+          .current ===
+        originConversationId;
 
     const removeStreamMessage =
       () => {
@@ -754,20 +997,30 @@ export default function WorkspaceAiClient({
           return;
         }
 
-        setMessages(
-          current =>
-            current.filter(
-              message =>
-                message.id !==
-                streamMessageId,
-            ),
-        );
+        if (
+          isViewingOrigin()
+        ) {
+          setMessages(
+            current =>
+              current.filter(
+                message =>
+                  message.id !==
+                  streamMessageId,
+              ),
+          );
+        }
 
         streamVisible =
           false;
+        streamContent =
+          '';
 
-        setReceiving(
-          false,
+        setGenerationState(
+          runKey,
+          {
+            receiving:
+              false,
+          },
         );
       };
 
@@ -781,68 +1034,85 @@ export default function WorkspaceAiClient({
           return;
         }
 
+        streamContent +=
+          delta;
+
+        streamVisible =
+          true;
+
+        setGenerationState(
+          runKey,
+          {
+            receiving:
+              true,
+          },
+        );
+
         if (
-          !streamVisible
+          !isViewingOrigin()
         ) {
-          streamVisible =
-            true;
-
-          setReceiving(
-            true,
-          );
-
-          setMessages(
-            current => [
-              ...current,
-              {
-                id:
-                  streamMessageId,
-                conversationId:
-                  selectedConversationId ||
-                  'pending',
-                role:
-                  'assistant',
-                content:
-                  delta,
-                status:
-                  'streaming',
-                correlationId:
-                  null,
-                feedback:
-                  null,
-                attachments:
-                  [],
-                createdAt:
-                  new Date()
-                    .toISOString(),
-              },
-            ],
-          );
-
           return;
         }
 
         setMessages(
-          current =>
-            current.map(
+          current => {
+            const existing =
+              current.some(
+                message =>
+                  message.id ===
+                  streamMessageId,
+              );
+
+            if (
+              !existing
+            ) {
+              return [
+                ...current,
+                {
+                  id:
+                    streamMessageId,
+                  conversationId:
+                    originConversationId ||
+                    'pending',
+                  role:
+                    'assistant',
+                  content:
+                    streamContent,
+                  status:
+                    'streaming',
+                  correlationId:
+                    null,
+                  feedback:
+                    null,
+                  attachments:
+                    [],
+                  createdAt:
+                    new Date()
+                      .toISOString(),
+                },
+              ];
+            }
+
+            return current.map(
               message =>
                 message.id ===
                   streamMessageId
                   ? {
                       ...message,
                       content:
-                        message
-                          .content +
-                        delta,
+                        streamContent,
                     }
                   : message,
-            ),
+            );
+          },
         );
       };
 
-    setSending(true);
-    setReceiving(false);
-    setError(null);
+    if (
+      isViewingOrigin()
+    ) {
+      setError(null);
+    }
 
     try {
       const response =
@@ -865,7 +1135,7 @@ export default function WorkspaceAiClient({
             body:
               JSON.stringify({
                 conversationId:
-                  selectedConversationId,
+                  originConversationId,
                 message:
                   input.message,
                 mode:
@@ -1064,12 +1334,16 @@ export default function WorkspaceAiClient({
           completedResult
             .conversation
             ?.id ||
-          selectedConversationId ||
+          originConversationId ||
           '',
         );
 
+      const stillViewingOrigin =
+        isViewingOrigin();
+
       if (
-        conversationId
+        conversationId &&
+        stillViewingOrigin
       ) {
         setSelectedConversationId(
           conversationId,
@@ -1084,79 +1358,87 @@ export default function WorkspaceAiClient({
         completedResult
           .assistantMessage;
 
-      setMessages(
-        current => {
-          let replacedPendingUser =
-            false;
-
-          let replacedStream =
-            false;
-
-          const next =
-            current.map(
-              message => {
-                if (
-                  persistedUser &&
-                  !replacedPendingUser &&
-                  message.role ===
-                    'user' &&
-                  message.status ===
-                    'sending'
-                ) {
-                  replacedPendingUser =
-                    true;
-
-                  return persistedUser;
-                }
-
-                if (
-                  persistedAssistant &&
-                  message.id ===
-                    streamMessageId
-                ) {
-                  replacedStream =
-                    true;
-
-                  return persistedAssistant;
-                }
-
-                return message;
-              },
-            );
-
-          if (
-            persistedAssistant &&
-            !replacedStream
-          ) {
-            next.push(
-              persistedAssistant,
-            );
-          }
-
-          return next;
-        },
-      );
+      if (
+        stillViewingOrigin
+      ) {
+        setMessages(
+          current => {
+            let replacedPendingUser =
+              false;
+  
+            let replacedStream =
+              false;
+  
+            const next =
+              current.map(
+                message => {
+                  if (
+                    persistedUser &&
+                    !replacedPendingUser &&
+                    message.role ===
+                      'user' &&
+                    message.status ===
+                      'sending'
+                  ) {
+                    replacedPendingUser =
+                      true;
+  
+                    return persistedUser;
+                  }
+  
+                  if (
+                    persistedAssistant &&
+                    message.id ===
+                      streamMessageId
+                  ) {
+                    replacedStream =
+                      true;
+  
+                    return persistedAssistant;
+                  }
+  
+                  return message;
+                },
+              );
+  
+            if (
+              persistedAssistant &&
+              !replacedStream
+            ) {
+              next.push(
+                persistedAssistant,
+              );
+            }
+  
+            return next;
+          },
+        );
+  
+  
+      }
 
       streamVisible =
         false;
+      streamContent =
+        '';
 
-      setReceiving(
-        false,
-      );
+      if (
+        stillViewingOrigin
+      ) {
+        setPendingActions(
+          Array.isArray(
+            completedResult
+              .pendingActions,
+          )
+            ? completedResult
+                .pendingActions
+            : [],
+        );
 
-      setPendingActions(
-        Array.isArray(
-          completedResult
-            .pendingActions,
-        )
-          ? completedResult
-              .pendingActions
-          : [],
-      );
-
-      setEditingMessageId(
-        null,
-      );
+        setEditingMessageId(
+          null,
+        );
+      }
 
       void (async () => {
         try {
@@ -1168,7 +1450,10 @@ export default function WorkspaceAiClient({
           if (
             conversationId &&
             input.mode !==
-              'send'
+              'send' &&
+            selectedConversationIdRef
+              .current ===
+              conversationId
           ) {
             await loadConversation(
               conversationId,
@@ -1204,8 +1489,26 @@ export default function WorkspaceAiClient({
         );
 
       if (aborted) {
-        setError(null);
+        if (
+          isViewingOrigin()
+        ) {
+          setError(null);
 
+          if (
+            input.restoreDraft
+          ) {
+            setDraft(
+              input.restoreDraft,
+            );
+          }
+        }
+
+        return false;
+      }
+
+      if (
+        isViewingOrigin()
+      ) {
         if (
           input.restoreDraft
         ) {
@@ -1214,37 +1517,25 @@ export default function WorkspaceAiClient({
           );
         }
 
-        return false;
-      }
-
-      if (
-        input.restoreDraft
-      ) {
-        setDraft(
-          input.restoreDraft,
+        setError(
+          candidate instanceof Error
+            ? candidate.message
+            : 'SaMi AI could not complete that request.',
         );
       }
 
-      setError(
-        candidate instanceof Error
-          ? candidate.message
-          : 'SaMi AI could not complete that request.',
-      );
-
       return false;
     } finally {
-      setReceiving(false);
+      abortControllersRef
+        .current
+        .delete(
+          runKey,
+        );
 
-      if (
-        abortControllerRef
-          .current ===
-        controller
-      ) {
-        abortControllerRef.current =
-          null;
-      }
-
-      setSending(false);
+      setGenerationState(
+        runKey,
+        null,
+      );
     }
   }
 
@@ -1506,6 +1797,10 @@ export default function WorkspaceAiClient({
   }
 
   async function sendMessage() {
+    const originConversationId =
+      selectedConversationIdRef
+        .current;
+
     const message =
       draft.trim();
 
@@ -1593,9 +1888,15 @@ export default function WorkspaceAiClient({
           message,
       });
 
+    const stillViewingOrigin =
+      selectedConversationIdRef
+        .current ===
+      originConversationId;
+
     if (
       !sent &&
-      optimisticMessageId
+      optimisticMessageId &&
+      stillViewingOrigin
     ) {
       setMessages(
         current =>
@@ -1613,7 +1914,8 @@ export default function WorkspaceAiClient({
 
     if (
       sent &&
-      targetMessageId
+      targetMessageId &&
+      stillViewingOrigin
     ) {
       setDraft('');
       setPendingAttachments(
@@ -1879,8 +2181,17 @@ export default function WorkspaceAiClient({
   }
 
   function stopGenerating() {
-    abortControllerRef
+    const runKey =
+      conversationRunKey(
+        selectedConversationIdRef
+          .current,
+      );
+
+    abortControllersRef
       .current
+      .get(
+        runKey,
+      )
       ?.abort();
   }
 
@@ -2209,6 +2520,191 @@ export default function WorkspaceAiClient({
     }
   }
 
+  function toggleVoiceInput() {
+    if (
+      listening
+    ) {
+      recognitionRef
+        .current
+        ?.stop();
+
+      setListening(
+        false,
+      );
+
+      return;
+    }
+
+    const Constructor =
+      speechRecognitionConstructor();
+
+    if (!Constructor) {
+      setError(
+        'Voice input is not supported by this browser. Use a current Chromium-based browser or type your message.',
+      );
+
+      return;
+    }
+
+    const recognition =
+      new Constructor();
+
+    recognition.continuous =
+      true;
+    recognition.interimResults =
+      true;
+    recognition.lang =
+      navigator.language ||
+      'en-US';
+
+    voiceBaseDraftRef.current =
+      draft.trim();
+
+    recognition.onresult =
+      event => {
+        const parts:
+          string[] =
+          [];
+
+        for (
+          let index =
+            0;
+          index <
+            event.results
+              .length;
+          index +=
+            1
+        ) {
+          const transcript =
+            event.results[
+              index
+            ]?.[0]
+              ?.transcript
+              ?.trim();
+
+          if (
+            transcript
+          ) {
+            parts.push(
+              transcript,
+            );
+          }
+        }
+
+        const transcript =
+          parts.join(
+            ' ',
+          );
+
+        setDraft(
+          [
+            voiceBaseDraftRef
+              .current,
+            transcript,
+          ]
+            .filter(
+              Boolean,
+            )
+            .join(
+              ' ',
+            ),
+        );
+      };
+
+    recognition.onerror =
+      event => {
+        setListening(
+          false,
+        );
+
+        recognitionRef.current =
+          null;
+
+        if (
+          event.error !==
+          'aborted'
+        ) {
+          setError(
+            'SaMi could not hear the microphone clearly. Check browser microphone permission and try again.',
+          );
+        }
+      };
+
+    recognition.onend =
+      () => {
+        setListening(
+          false,
+        );
+
+        if (
+          recognitionRef
+            .current ===
+          recognition
+        ) {
+          recognitionRef.current =
+            null;
+        }
+      };
+
+    recognitionRef.current =
+      recognition;
+
+    setError(null);
+    setListening(true);
+
+    try {
+      recognition.start();
+    } catch {
+      recognitionRef.current =
+        null;
+
+      setListening(false);
+
+      setError(
+        'SaMi could not start voice input. Check microphone permission and try again.',
+      );
+    }
+  }
+
+  function speakMessage(
+    message:
+      Message,
+  ) {
+    if (
+      typeof window ===
+        'undefined' ||
+      !(
+        'speechSynthesis'
+        in window
+      )
+    ) {
+      setError(
+        'Read aloud is not supported by this browser.',
+      );
+
+      return;
+    }
+
+    window
+      .speechSynthesis
+      .cancel();
+
+    const utterance =
+      new SpeechSynthesisUtterance(
+        message.content,
+      );
+
+    utterance.lang =
+      navigator.language ||
+      'en-US';
+
+    window
+      .speechSynthesis
+      .speak(
+        utterance,
+      );
+  }
+
   function handleKeyDown(
     event:
       KeyboardEvent<HTMLTextAreaElement>,
@@ -2478,6 +2974,11 @@ export default function WorkspaceAiClient({
                               feedback,
                             )
                         }
+                        onSpeak={() =>
+                          speakMessage(
+                            message,
+                          )
+                        }
                       />
                     ),
                   )}
@@ -2488,8 +2989,8 @@ export default function WorkspaceAiClient({
                         <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
                         <span className="truncate">
                           {receiving
-                            ? 'SaMi is responding…'
-                            : 'SaMi is working…'}
+                            ? 'Responding…'
+                            : 'Thinking…'}
                         </span>
                       </span>
 
@@ -2690,6 +3191,49 @@ export default function WorkspaceAiClient({
                     <Paperclip className="h-4 w-4" />
                   )}
                 </button>
+
+                <button
+                  type="button"
+                  aria-label={
+                    listening
+                      ? 'Stop voice input'
+                      : 'Start voice input'
+                  }
+                  title={
+                    listening
+                      ? 'Stop voice input'
+                      : 'Voice input'
+                  }
+                  aria-pressed={
+                    listening
+                  }
+                  disabled={
+                    sending
+                  }
+                  onClick={
+                    toggleVoiceInput
+                  }
+                  className={[
+                    'flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-35',
+                    listening
+                      ? 'bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300'
+                      : 'text-slate-500 hover:bg-slate-200/70 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white',
+                  ].join(
+                    ' ',
+                  )}
+                >
+                  <Mic
+                    className={[
+                      'h-4 w-4',
+                      listening
+                        ? 'animate-pulse'
+                        : '',
+                    ].join(
+                      ' ',
+                    )}
+                  />
+                </button>
+
                 <textarea
                   ref={
                     composerRef
@@ -2796,6 +3340,7 @@ function MessageBubble({
   onEdit,
   onRegenerate,
   onFeedback,
+  onSpeak,
 }: {
   message:
     Message;
@@ -2817,6 +3362,8 @@ function MessageBubble({
         | 'up'
         | 'down',
     ) => void;
+  onSpeak:
+    () => void;
 }) {
   const assistant =
     message.role ===
@@ -2943,6 +3490,19 @@ function MessageBubble({
           {assistant && (
             <>
               <MessageAction
+                label="Read aloud"
+                disabled={
+                  disabled
+                }
+                onClick={
+                  onSpeak
+                }
+                icon={
+                  Volume2
+                }
+              />
+
+              <MessageAction
                 label="Helpful"
                 active={
                   message.feedback ===
@@ -3010,7 +3570,7 @@ function MessageAction({
   onClick,
   icon: Icon,
   active = false,
-  iconOnly = false,
+  iconOnly = true,
 }: {
   label:
     string;
