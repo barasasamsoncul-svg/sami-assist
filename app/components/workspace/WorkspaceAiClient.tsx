@@ -18,7 +18,6 @@ import {
   Send,
   ShieldCheck,
   Sparkles,
-  Square,
   ThumbsDown,
   ThumbsUp,
   TriangleAlert,
@@ -2396,21 +2395,6 @@ export default function WorkspaceAiClient({
     }
   }
 
-  function stopGenerating() {
-    const runKey =
-      conversationRunKey(
-        selectedConversationIdRef
-          .current,
-      );
-
-    abortControllersRef
-      .current
-      .get(
-        runKey,
-      )
-      ?.abort();
-  }
-
   async function updateConversation(
     conversationId:
       string,
@@ -3227,39 +3211,15 @@ export default function WorkspaceAiClient({
                     ),
                   )}
 
-                  {sending && (
-                    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-500 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-300">
-                      <span className="inline-flex min-w-0 items-center gap-2">
-                        <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-                        <span className="truncate">
-                          {receiving
-                            ? 'Responding…'
-                            : 'Thinking…'}
-                          {(
-                            queuedRequestsRef
-                              .current
-                              .get(
-                                currentRunKey,
-                              )
-                              ?.length ||
-                            0
-                          ) >
-                            0
-                            ? ' · follow-up queued'
-                            : ''}
+                  {sending &&
+                    !receiving && (
+                    <div className="px-1 text-[11px] text-slate-500 dark:text-slate-400">
+                      <span className="inline-flex items-center gap-2">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <span>
+                          Thinking…
                         </span>
                       </span>
-
-                      <button
-                        type="button"
-                        onClick={
-                          stopGenerating
-                        }
-                        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-[9px] font-bold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/10"
-                      >
-                        <Square className="h-3 w-3 fill-current" />
-                        Stop
-                      </button>
                     </div>
                   )}
                 </div>
