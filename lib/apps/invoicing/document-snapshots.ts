@@ -1331,6 +1331,57 @@ export async function createPrimaryInvoiceDocumentSnapshot(
 }
 
 
+async function primarySnapshotNeedsLineRepair(
+  pool:
+    Pool,
+  input: {
+    companyId:
+      string;
+    invoiceId:
+      string;
+    snapshot:
+      InvoiceDocumentSnapshot;
+  },
+) {
+  if (
+    Array.isArray(
+      input.snapshot.payload
+        ?.lines,
+    ) &&
+    input.snapshot.payload
+      .lines.length >
+      0
+  ) {
+    return false;
+  }
+
+  const result =
+    await pool.query(
+      `
+        SELECT
+          COUNT(*)::int
+            AS line_count
+        FROM invoicing_invoice_items
+        WHERE invoice_id =
+              $1
+          AND company_id =
+              $2
+      `,
+      [
+        input.invoiceId,
+        input.companyId,
+      ],
+    );
+
+  return Number(
+    result.rows[0]
+      ?.line_count ||
+    0,
+  ) >
+    0;
+}
+
+
 export async function ensurePrimaryInvoiceDocumentSnapshot(
   pool:
     Pool,
@@ -1354,7 +1405,20 @@ export async function ensurePrimaryInvoiceDocumentSnapshot(
     );
 
   if (
-    existing
+    existing &&
+    !(
+      await primarySnapshotNeedsLineRepair(
+        pool,
+        {
+          companyId:
+            input.companyId,
+          invoiceId:
+            input.invoiceId,
+          snapshot:
+            existing,
+        },
+      )
+    )
   ) {
     return existing;
   }
@@ -1370,7 +1434,13 @@ export async function ensurePrimaryInvoiceDocumentSnapshot(
     const snapshot =
       await createPrimaryInvoiceDocumentSnapshot(
         client,
-        input,
+        {
+          ...input,
+          replacePrimary:
+            Boolean(
+              existing,
+            ),
+        },
       );
 
     await client.query(
