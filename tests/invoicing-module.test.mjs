@@ -7380,7 +7380,7 @@ test('Invoicing preserves external module line-source metadata without owning ex
 
   assert.match(
     commands,
-    /SELECT[\s\S]*metadata[\s\S]*FROM invoicing_invoice_items[\s\S]*duplicateInvoice/s,
+    /duplicateInvoice[\s\S]*SELECT[\s\S]*metadata[\s\S]*FROM invoicing_invoice_items/s,
     'Invoice duplication must preserve line source metadata rather than dropping traceability.',
   );
 });
