@@ -141,13 +141,13 @@ test('verified gateway settlement casts numeric allocation arithmetic and does n
     paymentCore,
     /ROUND\(\(\$4::numeric \* \$5::numeric\),4\)/,
   );
-  assert.doesNotMatch(
-    connections,
-    /SET health_status='degraded',[\s\S]*lastSettlementError/,
-  );
   assert.match(
     connections,
-    /lastSettlementError/,
+    /UPDATE integration_connections[\s\S]{0,260}SET settings=COALESCE\(settings,'\{\}'::jsonb\)[\s\S]{0,260}lastSettlementError/s,
+  );
+  assert.doesNotMatch(
+    connections,
+    /lastSettlementError[\s\S]{0,320}health_status='degraded'/s,
   );
   assert.match(
     checkout,

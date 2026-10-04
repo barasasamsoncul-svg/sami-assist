@@ -278,6 +278,10 @@ export async function getAccountingPayables(input: {
 
     const pageSize = 50;
     const offset = (filters.page - 1) * pageSize;
+    const limitParam =
+      "$" + (documentParams.length + 1);
+    const offsetParam =
+      "$" + (documentParams.length + 2);
     const pagedParams = [...documentParams, pageSize, offset];
 
     const documents = await client.query(
@@ -295,8 +299,8 @@ export async function getAccountingPayables(input: {
          ON b.company_id=d.company_id AND b.document_id=d.id
        WHERE ${documentWhere.join(" AND ")}
        ORDER BY d.document_date DESC,d.created_at DESC,d.id DESC
-       LIMIT ${pagedParams.length - 1}
-       OFFSET ${pagedParams.length}`,
+       LIMIT ${limitParam}
+       OFFSET ${offsetParam}`,
       pagedParams,
     );
 

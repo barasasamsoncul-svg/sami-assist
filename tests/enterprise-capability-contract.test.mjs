@@ -84,6 +84,29 @@ test('shared enterprise modules expose only backed cross-cutting capabilities', 
     'Invoice payment settlement must remain an explicit Invoicing-owned provider.',
   );
 
+  for (
+    const providerKey
+    of [
+      'invoicing_payment_pesapal',
+      'invoicing_payment_mpesa',
+      'invoicing_payment_stripe',
+      'invoicing_payment_paystack',
+      'invoicing_payment_flutterwave',
+      'invoicing_payment_paypal',
+    ]
+  ) {
+    assert.match(
+      appIntegrations,
+      new RegExp(
+        "key:'" +
+        providerKey +
+        "'[\\s\\S]*moduleKey:'invoicing'",
+      ),
+      providerKey +
+        ' must remain an explicit Invoicing-owned merchant connector.',
+    );
+  }
+
   assert.equal(
     (
       appIntegrations.match(
@@ -91,8 +114,8 @@ test('shared enterprise modules expose only backed cross-cutting capabilities', 
       ) ||
       []
     ).length,
-    3,
-    'The shared runtime must not fabricate providers beyond the three deliberately registered finance connectors.',
+    9,
+    'The shared runtime must expose only the nine deliberately registered Accounting and Invoicing connectors.',
   );
 
   assert.doesNotMatch(

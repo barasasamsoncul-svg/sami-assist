@@ -177,3 +177,15 @@ test('Accounting 2.34 and Invoicing 2.23 migrations and module extensions are re
   assert.match(hooks,/accounting_document_extractions/);
   assert.match(hooks,/accounting_custom_reports/);
 });
+
+test('Accounting payables pagination binds LIMIT and OFFSET instead of sending unused PostgreSQL parameters',async()=>{
+  const payables=await source('lib/apps/accounting/payables.ts');
+  assert.ok(payables.includes('const limitParam ='));
+  assert.ok(payables.includes('"$" + (documentParams.length + 1)'));
+  assert.ok(payables.includes('const offsetParam ='));
+  assert.ok(payables.includes('"$" + (documentParams.length + 2)'));
+  assert.ok(payables.includes('LIMIT ${limitParam}'));
+  assert.ok(payables.includes('OFFSET ${offsetParam}'));
+  assert.ok(payables.includes('pagedParams,'));
+  assert.equal(payables.includes('LIMIT ${pagedParams.length - 1}'),false);
+});

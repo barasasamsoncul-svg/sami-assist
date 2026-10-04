@@ -10,9 +10,9 @@
       "lockedAt": "2026-10-04",
       "policy": "Invoicing 2.23.0 preserves the completed billing product, verified merchant payment connections, customer Pay Now, M-PESA STK/C2B reconciliation, truthful webhook health, provider-authoritative refunds, and auth-safe API boundaries. Pending gateway refund work is stored only in the existing integration_events ledger; financial refund tables remain posted/reversed settlement records. Stripe, PayPal, Paystack and Flutterwave refunds post financially only after provider-confirmed success; Pesapal requires explicit merchant completion confirmation because request acceptance is not settlement. Unsupported automatic reversals such as M-PESA require explicit confirmation that the external reversal was completed before SaMi records the financial refund. Completed external refunds cannot be reversed internally. Invoicing API tenant/company authentication failures are normalized to 401/403 rather than generic 500 responses. The release gate includes Invoicing/payment/refund regressions, Accounting parity, quality locks, migrations, responsive/app UI, ERP integration, TypeScript and production build. The locked Invoicing domain also permits plain-object invoice-line source metadata so first-party modules can retain exact source-record traceability without moving invoice, payment, credit-note, refund, or accounting authority outside Invoicing.",
       "protectedTrees": {
-        "lib/apps/invoicing": "d1c6c87ff20abc5b84ed554f3deaa745462d63b6",
-        "app/apps/invoicing": "3a5685e4109b0dc06250f251cea48bcfb41a5b40",
-        "app/api/apps/invoicing": "31d6ac1e3f3f01c61d442f0936eebcedc134faba",
+        "lib/apps/invoicing": "e7f44b7087d2cb457e1facf9e2bf9fcc4319c578",
+        "app/apps/invoicing": "87783210047c2a834a9981101b04ccd7fe5c49b7",
+        "app/api/apps/invoicing": "145f20b3de737f8bd58d5603219549fa3bbb4f91",
         "app/api/internal/invoicing": "b2b22efc33d3b038495ccdd343845257789334a1",
         "app/i/[tenantId]/[token]": "f29ae9c4d6b72e5d5632e9fba2775955f0df3601",
         "app/p/[tenantId]/[token]": "1e4a46ce6eff533d762e0d543679a197112bb92a",

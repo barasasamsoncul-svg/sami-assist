@@ -438,7 +438,7 @@ export default function InvoicePayNow({
                       Pay securely online
                     </p>
                     <p className="mt-1 text-xs leading-5 text-blue-800">
-                      Pay the outstanding invoice balance securely. SaMi uses this business's configured payment route automatically and posts only provider-verified payments.
+                      Pay the outstanding invoice balance securely. SaMi uses this business&apos;s configured payment route automatically and posts only provider-verified payments.
                     </p>
 
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
