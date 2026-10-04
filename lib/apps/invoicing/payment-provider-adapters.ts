@@ -60,6 +60,36 @@ function safeObject(value: unknown) {
     : {};
 }
 
+function safeArray(value: unknown) {
+  return Array.isArray(value) ? value : [];
+}
+
+function currencyExponent(currency: string) {
+  const code = currency.trim().toUpperCase();
+  if (
+    [
+      'BIF','CLP','DJF','GNF','JPY','KMF','KRW','MGA',
+      'PYG','RWF','UGX','VND','VUV','XAF','XOF','XPF',
+    ].includes(code)
+  ) {
+    return 0;
+  }
+  if (
+    ['BHD','IQD','JOD','KWD','LYD','OMR','TND'].includes(code)
+  ) {
+    return 3;
+  }
+  return 2;
+}
+
+function fromMinorUnits(
+  amount: unknown,
+  currency: string,
+) {
+  const value = Number(amount || 0);
+  return value / 10 ** currencyExponent(currency);
+}
+
 function required(
   values: Record<string, unknown>,
   key: string,
@@ -594,7 +624,14 @@ function timingSafeTextEqual(a: string, b: string) {
 }
 
 function metadataReference(value: unknown) {
-  const object = safeObject(value);
+  let object = safeObject(value);
+  if (typeof value === 'string') {
+    try {
+      object = safeObject(JSON.parse(value));
+    } catch {
+      object = {};
+    }
+  }
   return {
     invoiceId:
       cleanString(object.invoiceId, 100) ||
@@ -647,9 +684,21 @@ export async function verifyAndNormalizeInvoicePaymentWebhook(input: {
     }
     const status = cleanString(body.payment_status_description, 40).toUpperCase();
     if (status !== 'COMPLETED') return null;
+    const invoiceIdCandidate =
+      merchantReference.split(':')[0] || '';
+    const invoiceId =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        invoiceIdCandidate,
+      )
+        ? invoiceIdCandidate
+        : undefined;
     return {
       externalEventId: trackingId + ':' + status,
-      invoiceNumber: merchantReference,
+      invoiceId,
+      invoiceNumber:
+        invoiceId
+          ? undefined
+          : merchantReference,
       status: 'succeeded',
       amount: Number(body.amount),
       currency: cleanString(body.currency, 12).toUpperCase(),
@@ -680,16 +729,22 @@ export async function verifyAndNormalizeInvoicePaymentWebhook(input: {
       reference.invoiceNumber = clientReference;
     }
     if (!reference.invoiceId && !reference.invoiceNumber) return null;
+    const sessionCurrency =
+      cleanString(session.currency, 12).toUpperCase();
     return {
-      externalEventId: event.id,
+      externalEventId: session.id,
       ...reference,
       status: 'succeeded',
-      amount: Number(session.amount_total || 0) / 100,
-      currency: cleanString(session.currency, 12).toUpperCase(),
+      amount:
+        fromMinorUnits(
+          session.amount_total,
+          sessionCurrency,
+        ),
+      currency: sessionCurrency,
       providerReference:
         typeof session.payment_intent === 'string'
           ? session.payment_intent
-          : event.id,
+          : session.id,
       method: 'Stripe',
       paymentDate: new Date(event.created * 1000).toISOString(),
     };
@@ -709,14 +764,20 @@ export async function verifyAndNormalizeInvoicePaymentWebhook(input: {
     const data = safeObject(event.data);
     const reference = metadataReference(data.metadata);
     if (!reference.invoiceId && !reference.invoiceNumber) return null;
+    const paystackCurrency =
+      cleanString(data.currency, 12).toUpperCase();
     return {
       externalEventId:
         cleanString(data.id, 100) ||
         cleanString(data.reference, 255),
       ...reference,
       status: 'succeeded',
-      amount: Number(data.amount || 0) / 100,
-      currency: cleanString(data.currency, 12).toUpperCase(),
+      amount:
+        fromMinorUnits(
+          data.amount,
+          paystackCurrency,
+        ),
+      currency: paystackCurrency,
       providerReference: cleanString(data.reference, 255),
       method: cleanString(data.channel, 50) || 'Paystack',
       paymentDate: cleanString(data.paid_at, 80) || undefined,
@@ -726,47 +787,80 @@ export async function verifyAndNormalizeInvoicePaymentWebhook(input: {
   if (secrets.provider === 'flutterwave') {
     const legacy = cleanString(input.headers.get('verif-hash'), 1_000);
     const modern = cleanString(input.headers.get('flutterwave-signature'), 2_000);
-    let verified = false;
+    let signatureValid = false;
     if (modern && secrets.webhookSecret) {
       const expected = crypto
         .createHmac('sha256', secrets.webhookSecret)
         .update(input.rawBody, 'utf8')
         .digest('base64');
-      verified = timingSafeTextEqual(modern, expected);
+      signatureValid = timingSafeTextEqual(modern, expected);
     } else if (legacy && secrets.webhookSecret) {
-      verified = timingSafeTextEqual(legacy, secrets.webhookSecret);
+      signatureValid = timingSafeTextEqual(legacy, secrets.webhookSecret);
     }
-    if (!verified) throw new Error('Flutterwave webhook signature is invalid.');
+    if (!signatureValid) {
+      throw new Error('Flutterwave webhook signature is invalid.');
+    }
+
     const event = safeObject(JSON.parse(input.rawBody || '{}'));
-    const data = safeObject(event.data);
-    const status = cleanString(data.status, 40).toLowerCase();
+    const eventData = safeObject(event.data);
     const eventName =
       cleanString(event.type, 100).toLowerCase() ||
       cleanString(event.event, 100).toLowerCase();
+    if (!eventName.includes('charge')) return null;
+
+    const transactionId = cleanString(eventData.id, 100);
+    const txRef = cleanString(eventData.tx_ref, 255);
+    if (!transactionId && !txRef) return null;
+
+    const verifyUrl = transactionId
+      ? 'https://api.flutterwave.com/v3/transactions/' +
+        encodeURIComponent(transactionId) +
+        '/verify'
+      : 'https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref=' +
+        encodeURIComponent(txRef);
+
+    const response = await fetchWithTimeout(
+      verifyUrl,
+      {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          Authorization: 'Bearer ' + secrets.secretKey,
+        },
+      },
+    );
+    const verified = await jsonBody(response);
+    const data = safeObject(verified.data);
     if (
-      !['successful', 'succeeded'].includes(status) ||
-      !eventName.includes('charge')
+      !response.ok ||
+      cleanString(verified.status, 40).toLowerCase() !== 'success'
     ) {
+      throw new Error(
+        cleanString(verified.message, 400) ||
+        'Flutterwave transaction verification failed.',
+      );
+    }
+    if (cleanString(data.status, 40).toLowerCase() !== 'successful') {
       return null;
     }
+
     const reference = metadataReference(data.meta || data.metadata);
-    const txRef = cleanString(data.tx_ref, 160);
-    if (!reference.invoiceId && !reference.invoiceNumber && txRef) {
-      reference.invoiceNumber = txRef;
+    if (!reference.invoiceId && !reference.invoiceNumber) {
+      return null;
     }
-    if (!reference.invoiceId && !reference.invoiceNumber) return null;
+
     return {
       externalEventId:
         cleanString(data.id, 100) ||
         cleanString(data.flw_ref, 255) ||
-        txRef,
+        cleanString(data.tx_ref, 255),
       ...reference,
       status: 'succeeded',
       amount: Number(data.amount || data.charged_amount || 0),
       currency: cleanString(data.currency, 12).toUpperCase(),
       providerReference:
         cleanString(data.flw_ref, 255) ||
-        txRef,
+        cleanString(data.tx_ref, 255),
       method: cleanString(data.payment_type, 50) || 'Flutterwave',
       paymentDate: cleanString(data.created_at, 80) || undefined,
     };
@@ -837,17 +931,55 @@ export async function verifyAndNormalizeInvoicePaymentWebhook(input: {
   }
   const resource = safeObject(event.resource);
   const amount = safeObject(resource.amount);
-  const invoiceId = cleanString(resource.custom_id, 100) || undefined;
-  const invoiceNumber = cleanString(resource.invoice_id, 160) || undefined;
+  const captureId = cleanString(resource.id, 255);
+  let invoiceId = cleanString(resource.custom_id, 100) || undefined;
+  let invoiceNumber = cleanString(resource.invoice_id, 160) || undefined;
+
+  if (!invoiceId && !invoiceNumber) {
+    const supplementary = safeObject(resource.supplementary_data);
+    const relatedIds = safeObject(supplementary.related_ids);
+    const orderId = cleanString(relatedIds.order_id, 255);
+
+    if (orderId) {
+      const orderResponse = await fetchWithTimeout(
+        providerBase('paypal', secrets.environment) +
+          '/v2/checkout/orders/' +
+          encodeURIComponent(orderId),
+        {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json',
+            Authorization: 'Bearer ' + token,
+          },
+        },
+      );
+      const order = await jsonBody(orderResponse);
+      if (orderResponse.ok) {
+        const unit = safeObject(
+          safeArray(order.purchase_units)[0],
+        );
+        invoiceId =
+          cleanString(unit.custom_id, 100) ||
+          cleanString(unit.reference_id, 100) ||
+          undefined;
+        invoiceNumber =
+          cleanString(unit.invoice_id, 160) ||
+          undefined;
+      }
+    }
+  }
+
   if (!invoiceId && !invoiceNumber) return null;
+  if (!captureId) return null;
+
   return {
-    externalEventId: cleanString(event.id, 255),
+    externalEventId: captureId,
     invoiceId,
     invoiceNumber,
     status: 'succeeded',
     amount: Number(amount.value || 0),
     currency: cleanString(amount.currency_code, 12).toUpperCase(),
-    providerReference: cleanString(resource.id, 255),
+    providerReference: captureId,
     method: 'PayPal',
     paymentDate: cleanString(resource.create_time, 80) || undefined,
   };
