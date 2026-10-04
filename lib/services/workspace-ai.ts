@@ -3894,6 +3894,40 @@ export async function confirmWorkspaceAiAction(
       },
     );
 
+    const confirmationMessage =
+      await persistMessage(
+        context,
+        {
+          conversationId:
+            String(
+              action
+                .conversation_id,
+            ),
+          role:
+            'assistant',
+          content:
+            'Confirmed — ' +
+            String(
+              action
+                .action_name ||
+              'the requested action',
+            ) +
+            ' completed successfully.',
+          status:
+            'completed',
+          correlationId:
+            crypto
+              .randomUUID(),
+          metadata: {
+            actionConfirmation:
+              true,
+            actionId,
+            toolKey:
+              tool.key,
+          },
+        },
+      );
+
     try {
       await recordWorkspaceAuditEvent({
         tenantId:
@@ -3942,6 +3976,10 @@ export async function confirmWorkspaceAiAction(
       result:
         redactValue(
           output,
+        ),
+      message:
+        mapMessage(
+          confirmationMessage,
         ),
     };
   } catch (
