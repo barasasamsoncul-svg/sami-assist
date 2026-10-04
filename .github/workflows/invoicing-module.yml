@@ -70,4 +70,4 @@ jobs:
         run: npm ci
 
       - name: Final Invoicing release gate
-        run: npm run test:invoicing:2.22:release
+        run: npm run test:invoicing:2.23:release
