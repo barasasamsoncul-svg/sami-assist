@@ -139,6 +139,7 @@ const SQL = `
     unit VARCHAR(60) NOT NULL DEFAULT 'unit',
     quantity NUMERIC(18,4) NOT NULL DEFAULT 1 CHECK (quantity > 0),
     unit_price NUMERIC(18,2) NOT NULL DEFAULT 0 CHECK (unit_price >= 0),
+    unit_cost NUMERIC(18,4) NOT NULL DEFAULT 0 CHECK (unit_cost >= 0),
     tax_name_snapshot VARCHAR(180),
     tax_rate NUMERIC(8,4) NOT NULL DEFAULT 0 CHECK (tax_rate BETWEEN 0 AND 100),
     is_selected BOOLEAN NOT NULL DEFAULT FALSE,
