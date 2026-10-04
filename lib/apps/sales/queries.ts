@@ -1591,6 +1591,7 @@ export async function getSalesQuoteDetail(
             shipping_total,
             total_amount,
             current_revision,
+            template_id,
             pricelist_id,
             margin_amount,
             margin_percent,
@@ -1805,6 +1806,12 @@ export async function getSalesQuoteDetail(
           1,
         ),
       ),
+    templateId:
+      row.template_id
+        ? String(
+            row.template_id,
+          )
+        : null,
     pricelistId:
       row.pricelist_id
         ? String(
