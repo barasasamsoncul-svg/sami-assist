@@ -32,6 +32,11 @@ export type SamiAiWorkspaceStatus = {
     canUpload: boolean;
     maxFilesPerMessage: number;
     maxTextBytesPerFile: number;
+    documentExtraction: {
+      configured: boolean;
+      maxInputBytes: number;
+      maxTextChars: number;
+    };
   };
   preferences: {
     memoryEnabled: boolean;
