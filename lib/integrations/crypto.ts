@@ -86,7 +86,7 @@ function keyForVersion(
     !value
   ) {
     throw new Error(
-      'SaMi integration encryption key is not configured.',
+      'SaMi secure integrations are unavailable because the platform encryption service is not configured.',
     );
   }
 
