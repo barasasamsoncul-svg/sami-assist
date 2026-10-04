@@ -7526,6 +7526,12 @@ test('Verified customer checkout auto-reconciles exact provider payments and kee
   );
 
   assert.match(
+    paymentCore,
+    /postInvoiceConfirmationToAccounting[\s\S]*postInvoicePaymentToAccounting/s,
+    'Payment detection must idempotently backfill the invoice confirmation journal before posting cash and allocation.',
+  );
+
+  assert.match(
     checkout,
     /return \[[\s\S]*provider:[\s\S]*selected\.provider/s,
     'The server must expose only the business-selected checkout route.',
