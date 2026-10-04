@@ -2646,6 +2646,580 @@ async function invoiceExchangeRate(
 }
 
 
+type InvoiceAdvanceApplication = {
+  paymentId:
+    string;
+  amount:
+    number;
+};
+
+
+function normalizeInvoiceAdvanceApplications(
+  value:
+    unknown,
+):
+  InvoiceAdvanceApplication[] {
+  if (
+    value ===
+      undefined ||
+    value ===
+      null
+  ) {
+    return [];
+  }
+
+  if (
+    !Array.isArray(
+      value,
+    )
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Invoice advances must be supplied as a list.',
+    );
+  }
+
+  if (
+    value.length >
+      20
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Apply no more than 20 advance payments to one invoice.',
+    );
+  }
+
+  const seen =
+    new Set<string>();
+
+  return value.map(
+    (
+      raw,
+      index,
+    ) => {
+      const item =
+        plainObject(
+          raw,
+        );
+
+      const paymentId =
+        requireUuid(
+          item.paymentId,
+          'Advance payment ' +
+          String(
+            index +
+            1,
+          ),
+        );
+
+      if (
+        seen.has(
+          paymentId,
+        )
+      ) {
+        throw new InvoicingError(
+          'INVALID_INPUT',
+          'The same advance payment cannot be applied twice.',
+        );
+      }
+
+      seen.add(
+        paymentId,
+      );
+
+      const amount =
+        numberInput(
+          item.amount,
+          'Advance amount',
+          {
+            min:
+              0.0001,
+          },
+        );
+
+      return {
+        paymentId,
+        amount:
+          money(
+            amount,
+          ),
+      };
+    },
+  );
+}
+
+
+async function applyInvoiceAdvancesDuringCreate(
+  client:
+    PoolClient,
+  input: {
+    companyId:
+      string;
+    userId:
+      string;
+    invoiceId:
+      string;
+    invoiceNumber:
+      string;
+    customerId:
+      string;
+    invoiceCurrency:
+      string;
+    invoiceExchangeRate:
+      number;
+    totalAmount:
+      number;
+    applications:
+      InvoiceAdvanceApplication[];
+    allowCrossCurrencyPayments:
+      boolean;
+    allowPartialPayments:
+      boolean;
+  },
+) {
+  if (
+    input.applications.length ===
+      0
+  ) {
+    return {
+      status:
+        'confirmed',
+      appliedInvoiceAmount:
+        0,
+      balanceDue:
+        money(
+          input.totalAmount,
+        ),
+    };
+  }
+
+  const prepared:
+    Array<{
+      paymentId:
+        string;
+      paymentNumber:
+        string;
+      paymentDate:
+        string;
+      paymentCurrency:
+        string;
+      paymentExchangeRate:
+        number;
+      paymentAmount:
+        number;
+      invoiceAmount:
+        number;
+      basePaymentAmount:
+        number;
+      baseInvoiceAmount:
+        number;
+      realizedFxAmount:
+        number;
+    }> = [];
+
+  let totalInvoiceAmount =
+    0;
+
+  for (
+    const application
+    of input.applications
+  ) {
+    const paymentResult =
+      await client.query(
+        `
+          SELECT
+            p.id,
+            p.payment_number,
+            p.customer_id,
+            p.payment_date,
+            p.currency,
+            p.exchange_rate,
+            p.status,
+            p.reconciled_at,
+            b.unapplied_amount
+          FROM invoicing_payments p
+          INNER JOIN invoicing_payment_balances b
+            ON b.payment_id =
+               p.id
+           AND b.company_id =
+               p.company_id
+          WHERE p.id =
+                $1
+            AND p.company_id =
+                $2
+            AND p.deleted_at
+                IS NULL
+          FOR UPDATE OF p
+        `,
+        [
+          application
+            .paymentId,
+          input.companyId,
+        ],
+      );
+
+    if (
+      paymentResult.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'PAYMENT_NOT_FOUND',
+        'A selected customer advance could not be found.',
+      );
+    }
+
+    const payment =
+      paymentResult.rows[0];
+
+    if (
+      String(
+        payment.customer_id,
+      ) !==
+      input.customerId
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'A selected advance belongs to a different customer.',
+      );
+    }
+
+    if (
+      String(
+        payment.status,
+      ) !==
+        'posted'
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Only posted customer advances can be applied.',
+      );
+    }
+
+    if (
+      payment.reconciled_at
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Unreconcile the selected advance before applying it to a new invoice.',
+      );
+    }
+
+    const unapplied =
+      money(
+        payment.unapplied_amount,
+      );
+
+    if (
+      application.amount >
+      unapplied +
+        0.0001
+    ) {
+      throw new InvoicingError(
+        'PAYMENT_EXCEEDS_BALANCE',
+        'A selected advance amount exceeds its available balance.',
+        {
+          paymentId:
+            application
+              .paymentId,
+          availableAmount:
+            unapplied,
+        },
+      );
+    }
+
+    const paymentCurrency =
+      String(
+        payment.currency,
+      )
+        .trim()
+        .toUpperCase();
+
+    const sameCurrency =
+      paymentCurrency ===
+      input.invoiceCurrency;
+
+    if (
+      !sameCurrency &&
+      !input
+        .allowCrossCurrencyPayments
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'Cross-currency advance application is disabled in Invoicing settings.',
+      );
+    }
+
+    const paymentExchangeRate =
+      Number(
+        payment.exchange_rate ||
+        1,
+      );
+
+    if (
+      !Number.isFinite(
+        paymentExchangeRate,
+      ) ||
+      paymentExchangeRate <=
+        0 ||
+      !Number.isFinite(
+        input.invoiceExchangeRate,
+      ) ||
+      input.invoiceExchangeRate <=
+        0
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'The selected advance or invoice has an invalid locked exchange rate.',
+      );
+    }
+
+    const paymentAmount =
+      money(
+        application.amount,
+      );
+
+    const invoiceAmount =
+      sameCurrency
+        ? paymentAmount
+        : money(
+            (
+              paymentAmount *
+              paymentExchangeRate
+            ) /
+              input
+                .invoiceExchangeRate,
+          );
+
+    totalInvoiceAmount =
+      money(
+        totalInvoiceAmount +
+        invoiceAmount,
+      );
+
+    if (
+      totalInvoiceAmount >
+      input.totalAmount +
+        0.0001
+    ) {
+      throw new InvoicingError(
+        'PAYMENT_EXCEEDS_BALANCE',
+        'Selected customer advances exceed the invoice total.',
+        {
+          invoiceTotal:
+            input.totalAmount,
+          selectedAdvanceValue:
+            totalInvoiceAmount,
+        },
+      );
+    }
+
+    const basePaymentAmount =
+      money(
+        paymentAmount *
+        paymentExchangeRate,
+      );
+
+    const baseInvoiceAmount =
+      money(
+        invoiceAmount *
+        input.invoiceExchangeRate,
+      );
+
+    prepared.push({
+      paymentId:
+        application
+          .paymentId,
+      paymentNumber:
+        String(
+          payment.payment_number,
+        ),
+      paymentDate:
+        String(
+          payment.payment_date,
+        ).slice(
+          0,
+          10,
+        ),
+      paymentCurrency,
+      paymentExchangeRate,
+      paymentAmount,
+      invoiceAmount,
+      basePaymentAmount,
+      baseInvoiceAmount,
+      realizedFxAmount:
+        money(
+          basePaymentAmount -
+          baseInvoiceAmount,
+        ),
+    });
+  }
+
+  if (
+    input.allowPartialPayments ===
+      false &&
+    totalInvoiceAmount <
+      input.totalAmount -
+        0.0001
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Partial payments are disabled. The selected customer advances must cover the full invoice balance.',
+    );
+  }
+
+  for (
+    const item
+    of prepared
+  ) {
+    const operationKey =
+      (
+        'invoice-create-advance:' +
+        input.invoiceId +
+        ':' +
+        item.paymentId
+      ).slice(
+        0,
+        160,
+      );
+
+    const allocation =
+      await client.query(
+        `
+          INSERT INTO invoicing_payment_allocations (
+            company_id,
+            payment_id,
+            invoice_id,
+            amount,
+            payment_amount,
+            invoice_amount,
+            payment_exchange_rate,
+            invoice_exchange_rate,
+            base_payment_amount,
+            base_invoice_amount,
+            realized_fx_amount,
+            status,
+            operation_key,
+            created_by
+          )
+          VALUES (
+            $1,$2,$3,$4,$5,$4,$6,$7,$8,$9,$10,
+            'posted',
+            $11,$12
+          )
+          RETURNING id
+        `,
+        [
+          input.companyId,
+          item.paymentId,
+          input.invoiceId,
+          item.invoiceAmount,
+          item.paymentAmount,
+          item.paymentExchangeRate,
+          input.invoiceExchangeRate,
+          item.basePaymentAmount,
+          item.baseInvoiceAmount,
+          item.realizedFxAmount,
+          operationKey,
+          input.userId,
+        ],
+      );
+
+    const allocationId =
+      String(
+        allocation.rows[0]
+          .id,
+      );
+
+    await postInvoicePaymentAllocationToAccounting(
+      client,
+      {
+        companyId:
+          input.companyId,
+        userId:
+          input.userId,
+        allocationId,
+        operationKey,
+        paymentId:
+          item.paymentId,
+        paymentNumber:
+          item.paymentNumber,
+        invoiceId:
+          input.invoiceId,
+        invoiceNumber:
+          input.invoiceNumber,
+        allocationDate:
+          item.paymentDate,
+        paymentAmount:
+          item.paymentAmount,
+        invoiceAmount:
+          item.invoiceAmount,
+        paymentExchangeRate:
+          item.paymentExchangeRate,
+        invoiceExchangeRate:
+          input.invoiceExchangeRate,
+      },
+    );
+
+    await recordInvoicingActivity(
+      client,
+      {
+        companyId:
+          input.companyId,
+        userId:
+          input.userId,
+        invoiceId:
+          input.invoiceId,
+        type:
+          'invoice.advance_applied',
+        content:
+          'Customer advance ' +
+          item.paymentNumber +
+          ' applied to invoice ' +
+          input.invoiceNumber +
+          '.',
+        metadata: {
+          paymentId:
+            item.paymentId,
+          paymentNumber:
+            item.paymentNumber,
+          paymentAmount:
+            item.paymentAmount,
+          paymentCurrency:
+            item.paymentCurrency,
+          invoiceAmount:
+            item.invoiceAmount,
+          invoiceCurrency:
+            input.invoiceCurrency,
+          realizedFxAmount:
+            item.realizedFxAmount,
+          operationKey,
+        },
+      },
+    );
+  }
+
+  const settlement =
+    await reconcileInvoiceSettlementStatus(
+      client,
+      input.companyId,
+      input.userId,
+      input.invoiceId,
+      'Customer advance applied during invoice creation.',
+    );
+
+  return {
+    status:
+      settlement.status,
+    appliedInvoiceAmount:
+      money(
+        totalInvoiceAmount,
+      ),
+    balanceDue:
+      settlement.balanceDue,
+  };
+}
+
+
 export async function createInvoice(
   input:
     CreateInvoiceInput,
@@ -2743,6 +3317,16 @@ export async function createInvoice(
           exchangeRate:
             Number(
               replay.exchangeRate,
+            ),
+          appliedAdvanceAmount:
+            Number(
+              replay.appliedAdvanceAmount ||
+              0,
+            ),
+          balanceDue:
+            Number(
+              replay.balanceDue ??
+              replay.totalAmount,
             ),
         };
       }
@@ -3406,6 +3990,14 @@ export async function createInvoice(
       ],
     );
 
+    let advanceSettlement = {
+      status,
+      appliedInvoiceAmount:
+        0,
+      balanceDue:
+        totalAmount,
+    };
+
     if (
       status ===
         'confirmed'
@@ -3420,6 +4012,37 @@ export async function createInvoice(
           invoiceId,
         },
       );
+
+      advanceSettlement =
+        await applyInvoiceAdvancesDuringCreate(
+          client,
+          {
+            companyId:
+              context.companyId,
+            userId:
+              context.userId,
+            invoiceId,
+            invoiceNumber,
+            customerId,
+            invoiceCurrency:
+              currency,
+            invoiceExchangeRate:
+              exchangeRate,
+            totalAmount,
+            applications:
+              normalizeInvoiceAdvanceApplications(
+                input.advanceApplications,
+              ),
+            allowCrossCurrencyPayments:
+              settings
+                .allow_cross_currency_payments !==
+              false,
+            allowPartialPayments:
+              settings
+                .allow_partial_payments !==
+              false,
+          },
+        );
 
       await createPrimaryInvoiceDocumentSnapshot(
         client,
@@ -3461,10 +4084,18 @@ export async function createInvoice(
       id:
         invoiceId,
       invoiceNumber,
-      status,
+      status:
+        advanceSettlement
+          .status,
       totalAmount,
       currency,
       exchangeRate,
+      appliedAdvanceAmount:
+        advanceSettlement
+          .appliedInvoiceAmount,
+      balanceDue:
+        advanceSettlement
+          .balanceDue,
     };
 
     if (
