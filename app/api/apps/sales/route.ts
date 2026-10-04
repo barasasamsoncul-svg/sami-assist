@@ -11,12 +11,16 @@ import {
   createSalesOrderFromQuote,
   createSalesOrderInvoice,
   createSalesQuote,
+  createSalesQuoteRevision,
   duplicateSalesQuote,
+  getSalesCommercialData,
   getSalesOrderDetail,
   getSalesQuoteDetail,
   getSalesWorkspaceData,
   requestSalesQuoteApproval,
   reviewSalesQuoteApproval,
+  saveSalesPricelist,
+  saveSalesQuoteOptionalItems,
   saveSalesQuoteTemplate,
   sendSalesQuote,
   updateSalesOrderFulfillment,
@@ -164,6 +168,25 @@ export async function GET(
     NextRequest,
 ) {
   try {
+    const commercial =
+      request.nextUrl
+        .searchParams
+        .get(
+          'commercial',
+        );
+
+    if (
+      commercial ===
+        '1'
+    ) {
+      return json({
+        success:
+          true,
+        commercial:
+          await getSalesCommercialData(),
+      });
+    }
+
     const quoteId =
       request.nextUrl
         .searchParams
@@ -350,6 +373,12 @@ export async function POST(
           updateSalesQuoteDraft,
         duplicate_quote:
           duplicateSalesQuote,
+        revise_quote:
+          createSalesQuoteRevision,
+        save_optional_items:
+          saveSalesQuoteOptionalItems,
+        save_pricelist:
+          saveSalesPricelist,
         send_quote:
           sendSalesQuote,
         change_quote_status:
