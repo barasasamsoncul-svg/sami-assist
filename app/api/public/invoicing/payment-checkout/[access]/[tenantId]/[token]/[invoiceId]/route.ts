@@ -7,6 +7,7 @@ import {
   InvoicingError,
 } from '@/lib/apps/invoicing/context';
 import {
+  checkInvoiceMpesaStkPayment,
   createInvoiceCheckout,
   type InvoiceCheckoutAccess,
 } from '@/lib/apps/invoicing/payment-checkout';
@@ -137,6 +138,53 @@ export async function POST(
             Record<string, unknown>
         : {};
 
+    const operation =
+      typeof payload.operation ===
+        'string'
+        ? payload.operation
+            .trim()
+            .toLowerCase()
+        : 'start';
+
+    if (
+      operation ===
+        'status'
+    ) {
+      const result =
+        await checkInvoiceMpesaStkPayment({
+          access:
+            access as InvoiceCheckoutAccess,
+          tenantId,
+          token,
+          invoiceId,
+          checkoutRequestId:
+            payload.checkoutRequestId,
+        });
+
+      return json({
+        success:
+          true,
+        result,
+      });
+    }
+
+    if (
+      operation !==
+        'start'
+    ) {
+      return json(
+        {
+          success:
+            false,
+          code:
+            'INVALID_CHECKOUT_OPERATION',
+          error:
+            'Choose a supported payment action.',
+        },
+        400,
+      );
+    }
+
     const result =
       await createInvoiceCheckout({
         access:
@@ -146,6 +194,8 @@ export async function POST(
         invoiceId,
         provider:
           payload.provider,
+        phoneNumber:
+          payload.phoneNumber,
         origin:
           request.nextUrl.origin,
       });
