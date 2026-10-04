@@ -61,6 +61,7 @@ type LoadedConnection = {
   providerKey: string;
   ownerUserId: string;
   environment: 'sandbox' | 'live';
+  checkoutPrimary: boolean;
   secrets: InvoicePaymentProviderSecrets;
 };
 
@@ -348,7 +349,16 @@ async function loadCheckoutConnections(input: {
           )
           AND c.archived_at IS NULL
           AND c.provider_key = ANY($2::text[])
-        ORDER BY c.updated_at DESC
+        ORDER BY
+          CASE
+            WHEN COALESCE(
+              (c.settings->>'checkoutPrimary')::boolean,
+              FALSE
+            )
+            THEN 0
+            ELSE 1
+          END,
+          c.updated_at DESC
       `,
       [
         input.companyId,
@@ -416,6 +426,9 @@ async function loadCheckoutConnections(input: {
       ownerUserId:
         String(row.owner_user_id),
       environment,
+      checkoutPrimary:
+        settings.checkoutPrimary ===
+          true,
       secrets:
         payload.providerData,
     });
@@ -472,8 +485,8 @@ export async function getInvoiceCheckoutOptions(input: {
       companyId,
     });
 
-  return connections
-    .filter(
+  const eligible =
+    connections.filter(
       connection => {
         if (
           connection.provider ===
@@ -494,20 +507,35 @@ export async function getInvoiceCheckoutOptions(input: {
           input.customer,
         );
       },
-    )
-    .map(
-      connection => ({
-        provider:
-          connection.provider,
-        name:
-          getInvoicePaymentProviderDefinition(
-            connection.provider,
-          )?.name ||
-          connection.provider,
-        environment:
-          connection.environment,
-      }),
     );
+
+  const selected =
+    eligible.find(
+      connection =>
+        connection.checkoutPrimary,
+    ) ||
+    eligible[0];
+
+  if (
+    !selected
+  ) {
+    return [] as
+      InvoiceCheckoutOption[];
+  }
+
+  return [
+    {
+      provider:
+        selected.provider,
+      name:
+        getInvoicePaymentProviderDefinition(
+          selected.provider,
+        )?.name ||
+        selected.provider,
+      environment:
+        selected.environment,
+    },
+  ];
 }
 
 async function requireCheckoutConnection(input: {
@@ -667,64 +695,66 @@ export async function createInvoiceCheckout(input: {
     );
   }
 
-  const providerText =
-    cleanText(
-      input.provider,
-      80,
-    ).toLowerCase();
-
-  const isMpesa =
-    providerText ===
-      'mpesa';
-
-  if (
-    !isMpesa &&
-    !canProviderCreateHostedCheckout(
-      providerText as InvoicePaymentProviderKey,
-    )
-  ) {
-    throw new InvoicingError(
-      'INVALID_INPUT',
-      'Choose a supported online payment provider.',
-    );
-  }
-
-  const provider =
-    providerText as InvoiceCheckoutProviderKey;
-
-  if (
-    provider !==
-      'mpesa'
-  ) {
-    const requirement =
-      checkoutCustomerRequirement(
-        provider,
-        invoice.customer,
-      );
-    if (requirement) {
-      throw new InvoicingError(
-        'INVALID_INPUT',
-        requirement,
-      );
-    }
-  }
-
   const tenantId =
     requireUuid(
       input.tenantId,
       'Workspace',
     );
+
   const companyId =
     await companyIdForInvoice(
       tenantId,
       invoice.id,
     );
-  const connection =
-    await requireCheckoutConnection({
+
+  const connections =
+    await loadCheckoutConnections({
       tenantId,
       companyId,
-      provider,
     });
+
+  const eligible =
+    connections.filter(
+      connection => {
+        if (
+          connection.provider ===
+            'mpesa'
+        ) {
+          return !mpesaStkCheckoutRequirement({
+            secrets:
+              connection.secrets,
+            amount:
+              invoice.balanceDue,
+            currency:
+              invoice.currency,
+          });
+        }
+
+        return !checkoutCustomerRequirement(
+          connection.provider,
+          invoice.customer,
+        );
+      },
+    );
+
+  const connection =
+    eligible.find(
+      item =>
+        item.checkoutPrimary,
+    ) ||
+    eligible[0];
+
+  if (
+    !connection
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'This business has not configured an online payment route for this invoice.',
+    );
+  }
+
+  const provider =
+    connection.provider;
 
   await enforceCheckoutRateLimit({
     tenantId,
@@ -785,7 +815,9 @@ export async function createInvoiceCheckout(input: {
           currency:
             invoice.currency,
           phoneNumber:
-            input.phoneNumber,
+            input.phoneNumber ||
+            invoice.customer
+              .phone,
           callbackOrigin:
             origin,
         });
