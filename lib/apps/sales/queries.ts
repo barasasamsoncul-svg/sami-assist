@@ -291,6 +291,10 @@ function salesCapabilities(
         INVOICING_CATALOG_VIEW,
         INVOICING_CATALOG_MANAGE,
       ),
+    canManageCatalog:
+      crossCan(
+        INVOICING_CATALOG_MANAGE,
+      ),
   };
 }
 
@@ -557,6 +561,7 @@ export async function getSalesWorkspaceData():
             customer_email,
             total_amount,
             current_revision,
+            template_id,
             pricelist_id,
             margin_amount,
             margin_percent,
@@ -767,12 +772,15 @@ export async function getSalesWorkspaceData():
             `
               SELECT
                 item.id,
+                item.item_type,
                 item.name,
                 item.sku,
                 item.description,
                 item.unit,
                 item.unit_price,
                 item.metadata,
+                tax.id
+                  AS tax_rate_id,
                 tax.name
                   AS tax_name,
                 COALESCE(
@@ -1003,6 +1011,12 @@ export async function getSalesWorkspaceData():
                 1,
               ),
             ),
+          templateId:
+            row.template_id
+              ? String(
+                  row.template_id,
+                )
+              : null,
           pricelistId:
             row.pricelist_id
               ? String(
@@ -1285,6 +1299,11 @@ export async function getSalesWorkspaceData():
             String(
               row.id,
             ),
+          itemType:
+            String(
+              row.item_type ||
+              'service',
+            ),
           name:
             String(
               row.name,
@@ -1310,6 +1329,12 @@ export async function getSalesWorkspaceData():
             money(
               row.unit_price,
             ),
+          taxRateId:
+            row.tax_rate_id
+              ? String(
+                  row.tax_rate_id,
+                )
+              : null,
           taxName:
             row.tax_name
               ? String(
