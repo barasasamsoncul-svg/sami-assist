@@ -3660,6 +3660,21 @@ export async function updateSalesOrderFulfillment(
         );
       }
 
+      if (
+        deliveredQuantity <
+          Number(
+            existingLine.rows[0]
+              .delivered_quantity ||
+            0,
+          ) -
+            0.000001
+      ) {
+        throw new SalesError(
+          'INVALID_INPUT',
+          'Delivered quantity cannot be reduced directly. Create a Sales return so stock, credits and refunds remain auditable.',
+        );
+      }
+
       await postSalesFulfillmentToInventory(
         client,
         {
@@ -4748,6 +4763,19 @@ export async function createSalesOrderInvoice(
                     item.line
                       .tax_rate,
                   ),
+                metadata: {
+                  sourceModule:
+                    'sales',
+                  salesOrderId:
+                    orderId,
+                  salesOrderLineId:
+                    String(
+                      item.line.id,
+                    ),
+                  salesInvoiceBatchId:
+                    batchId,
+                  sourceReference,
+                },
               }),
             ),
         });

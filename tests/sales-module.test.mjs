@@ -627,7 +627,7 @@ test('Sales v3 is registered into manifests, migrations, Search and SaMi AI', as
 
   assert.match(
     manifest,
-    /key: "sales",[\s\S]*version: '3\.1\.0'/s,
+    /key: "sales",[\s\S]*version: '3\.2\.0'/s,
   );
 
   assert.match(
@@ -980,7 +980,6 @@ test('Sales 3.1 models canonical teams territories targets and commissions', asy
     'Quotation SQL placeholders must stay aligned after commercial and organization snapshots are added.',
   );
 
-  assert.match(manifest, /version: '3\.1\.0'/);
   assert.match(manifest, /sales\.territory\.company/);
   assert.match(manifest, /sales\.team\.company/);
   assert.match(manifest, /sales\.target\.company/);
@@ -1053,4 +1052,203 @@ test('Sales 3.1 commission accrual remains tied to immutable order snapshots', a
     /WHERE company_id = \$1[\s\S]*order_id = \$2[\s\S]*status = 'accrued'/,
     'Order cancellation must reverse only unpaid accrued commissions.',
   );
+});
+
+
+test('Sales 3.2 runs deposits, shipments, returns and forecasting through authoritative module boundaries', async () => {
+  const [
+    schema,
+    migration,
+    runtimeMigrations,
+    context,
+    operations,
+    commands,
+    manifest,
+    api,
+    page,
+    workspace,
+    operationsUi,
+    orderUi,
+    invoicingTypes,
+    invoicingCommands,
+  ] = await Promise.all([
+    source('lib/apps/sales/schema.sql'),
+    source('lib/apps/sales/migrations/3.1.0-to-3.2.0.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/apps/sales/context.ts'),
+    source('lib/apps/sales/operations.ts'),
+    source('lib/apps/sales/commands.ts'),
+    source('lib/modules/first-party.ts'),
+    source('app/api/apps/sales/route.ts'),
+    source('app/apps/sales/page.tsx'),
+    source('app/apps/sales/SalesWorkspaceClient.tsx'),
+    source('app/apps/sales/SalesOperationsManager.tsx'),
+    source('app/apps/sales/SalesOrderDetailClient.tsx'),
+    source('lib/apps/invoicing/types.ts'),
+    source('lib/apps/invoicing/commands.ts'),
+  ]);
+
+  assert.match(runtimeMigrations, /SALES_3_1_0_TO_3_2_0/);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.2\.0'/s);
+
+  for (const table of [
+    'sales_shipments',
+    'sales_shipment_items',
+    'sales_returns',
+    'sales_return_items',
+    'sales_return_credits',
+    'sales_return_credit_items',
+    'sales_forecast_snapshots',
+  ]) {
+    assert.match(schema, new RegExp('public\\.' + table));
+    assert.match(migration, new RegExp('public\\.' + table));
+  }
+
+  for (const field of [
+    'deposit_required_amount',
+    'deposit_received_amount',
+    'deposit_retainer_id',
+    'deposit_payment_id',
+    'returned_quantity',
+    'credited_quantity',
+  ]) {
+    assert.match(schema, new RegExp(field));
+    assert.match(migration, new RegExp(field));
+  }
+
+  for (const permission of [
+    'sales.shipping.view',
+    'sales.shipping.manage',
+    'sales.return.view',
+    'sales.return.manage',
+    'sales.deposit.manage',
+    'sales.forecast.view',
+  ]) {
+    assert.match(context, new RegExp(permission.replaceAll('.', '\\.')));
+    assert.match(manifest, new RegExp(permission.replaceAll('.', '\\.')));
+  }
+
+  assert.match(migration, /'shipment'/);
+  assert.match(migration, /'return'/);
+  assert.match(context, /'SHP-'/);
+  assert.match(context, /'RMA-'/);
+
+  assert.match(operations, /recordCustomerRetainer/);
+  assert.match(operations, /retainerType:[\s\S]*'deposit'/);
+  assert.match(operations, /allocateInvoicePayment/);
+  assert.match(operations, /postSalesFulfillmentToInventory/);
+  assert.match(operations, /issueInvoiceCreditNote/);
+  assert.match(operations, /refundInvoiceCreditNote/);
+  assert.match(
+    operations,
+    /available\.toFixed\([\s\S]*amount\.toFixed\(/,
+    'Default Sales refund idempotency must change with the remaining credit state so a deliberate second partial refund is not collapsed into the first.',
+  );
+  assert.match(
+    operations,
+    /invoicing_credit_note_balances[\s\S]*invoicing_credit_note_refunds[\s\S]*refunded_amount = \$4/s,
+    'Sales refund bookkeeping must reconcile from Invoicing authoritative balances so retries cannot double-count refunded totals.',
+  );
+  assert.match(operations, /RETURN_CREDIT_LINK_MISSING/);
+  assert.match(operations, /weighted_pipeline/);
+  assert.match(operations, /sales_forecast_snapshots/);
+
+  assert.match(
+    operations,
+    /DEPOSIT_MANAGE[\s\S]*\? context\.pool\.query[\s\S]*deposit_required_amount/,
+    'Deposit operational data must remain permission-scoped.',
+  );
+
+  assert.match(
+    operations,
+    /FORECAST_VIEW[\s\S]*\? context\.pool\.query[\s\S]*WITH quote_pipeline/,
+    'Forecast data must remain permission-scoped.',
+  );
+
+  assert.match(
+    commands,
+    /Delivered quantity cannot be reduced directly[\s\S]*Create a Sales return/,
+    'Direct fulfillment decrements must not bypass the formal return workflow.',
+  );
+
+  assert.match(invoicingTypes, /metadata\?: unknown/);
+  assert.match(
+    invoicingCommands,
+    /metadata:[\s\S]*plainObject\([\s\S]*raw\.metadata/,
+    'Invoice normalization must preserve trusted caller source metadata.',
+  );
+  assert.match(
+    invoicingCommands,
+    /INSERT INTO invoicing_invoice_items[\s\S]*metadata[\s\S]*::jsonb/,
+    'Invoice items must persist source metadata.',
+  );
+  assert.match(
+    commands,
+    /sourceModule:[\s\S]*'sales'[\s\S]*salesOrderId:[\s\S]*salesOrderLineId/,
+    'Sales-created invoice lines must carry exact Sales source identity.',
+  );
+
+  for (const action of [
+    'set_deposit_requirement',
+    'record_order_deposit',
+    'apply_order_deposit',
+    'create_shipment',
+    'update_shipment_status',
+    'create_return',
+    'approve_return',
+    'receive_return',
+    'issue_return_credit',
+    'refund_return_credit',
+  ]) {
+    assert.ok(api.includes(action), action);
+  }
+
+  assert.match(page, /view=operations/);
+  assert.match(page, /Operations/);
+  assert.match(workspace, /SalesOperationsManager/);
+  assert.match(operationsUi, /Revenue outlook/);
+  assert.match(operationsUi, /Shipments & tracking/);
+  assert.match(operationsUi, /Returns, credits & refunds/);
+  assert.match(operationsUi, /Customer deposits/);
+  assert.match(orderUi, /Create shipment/);
+  assert.match(orderUi, /Create return/);
+  assert.match(orderUi, /Customer deposit/);
+});
+
+test('Sales 3.2 keeps stock return, invoice credit and cash refund as separate auditable events', async () => {
+  const [
+    migration,
+    operations,
+    orderUi,
+  ] = await Promise.all([
+    source('lib/apps/sales/migrations/3.1.0-to-3.2.0.ts'),
+    source('lib/apps/sales/operations.ts'),
+    source('app/apps/sales/SalesOrderDetailClient.tsx'),
+  ]);
+
+  assert.match(migration, /returned_quantity/);
+  assert.match(migration, /credited_quantity/);
+  assert.match(migration, /sales_return_credits/);
+  assert.match(migration, /sales_return_credit_items/);
+
+  assert.match(
+    operations,
+    /nextDeliveredQuantity:[\s\S]*next/,
+    'Receiving returned goods must reverse the authoritative delivered quantity through Inventory.',
+  );
+
+  assert.match(
+    operations,
+    /credited_quantity[\s\S]*LEAST\([\s\S]*returned_quantity/,
+    'Invoice credit evidence must be bounded by physical returned quantity.',
+  );
+
+  assert.match(
+    operations,
+    /refundInvoiceCreditNote[\s\S]*available_credit[\s\S]*refunded_amount/,
+    'Cash refunds must occur only from available customer credit.',
+  );
+
+  assert.match(orderUi, /Returned/);
+  assert.match(orderUi, /Credited/);
 });

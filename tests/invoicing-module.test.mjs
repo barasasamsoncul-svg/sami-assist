@@ -7344,3 +7344,43 @@ test('Invoicing API maps trusted auth boundary failures instead of returning gen
   );
   assert.match(route, /code:[\s\S]*error\.code/s);
 });
+
+
+test('Invoicing preserves external module line-source metadata without owning external workflow state', async () => {
+  const [
+    types,
+    commands,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/types.ts'),
+    source('lib/apps/invoicing/commands.ts'),
+  ]);
+
+  assert.match(types, /CreateInvoiceLineInput[\s\S]*metadata\?: unknown/);
+  assert.match(
+    commands,
+    /metadata:[\s\S]*plainObject\([\s\S]*raw\.metadata/,
+    'External source metadata must be normalized as a plain JSON object.',
+  );
+
+  const inserts =
+    commands.match(
+      /INSERT INTO invoicing_invoice_items[\s\S]*?VALUES \([\s\S]*?\)/g,
+    ) || [];
+
+  assert.ok(
+    inserts.length >= 2,
+    'Create and draft-update invoice item paths must both remain present.',
+  );
+
+  assert.match(
+    commands,
+    /INSERT INTO invoicing_invoice_items[\s\S]*metadata,[\s\S]*\$19::jsonb/s,
+    'Invoice item metadata must be persisted as JSONB.',
+  );
+
+  assert.match(
+    commands,
+    /duplicateInvoice[\s\S]*SELECT[\s\S]*metadata[\s\S]*FROM invoicing_invoice_items/s,
+    'Invoice duplication must preserve line source metadata rather than dropping traceability.',
+  );
+});

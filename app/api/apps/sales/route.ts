@@ -4,7 +4,8 @@ import {
 } from 'next/server';
 
 import {
-  SalesError,
+  applySalesOrderDeposit,
+  approveSalesReturn,
   cancelSalesOrder,
   changeSalesQuoteStatus,
   convertSalesQuoteToInvoice,
@@ -12,26 +13,36 @@ import {
   createSalesOrderInvoice,
   createSalesQuote,
   createSalesQuoteRevision,
+  createSalesReturn,
+  createSalesShipment,
   duplicateSalesQuote,
   getSalesCommercialData,
-  getSalesOrganizationData,
+  getSalesOperationsData,
   getSalesOrderDetail,
-  markSalesCommissionPaid,
+  getSalesOrganizationData,
   getSalesQuoteDetail,
   getSalesWorkspaceData,
+  issueSalesReturnCredit,
+  markSalesCommissionPaid,
+  receiveSalesReturn,
+  recordSalesOrderDeposit,
+  refundSalesReturnCredit,
   requestSalesQuoteApproval,
   reviewSalesQuoteApproval,
+  SalesError,
   saveSalesCommissionPlan,
   saveSalesPricelist,
   saveSalesQuoteOptionalItems,
+  saveSalesQuoteTemplate,
   saveSalesTarget,
   saveSalesTeam,
   saveSalesTerritory,
-  saveSalesQuoteTemplate,
   sendSalesQuote,
+  setSalesOrderDepositRequirement,
   updateSalesOrderFulfillment,
   updateSalesQuoteDraft,
   updateSalesSettings,
+  updateSalesShipmentStatus,
 } from '@/lib/apps/sales/service';
 
 
@@ -174,6 +185,31 @@ export async function GET(
     NextRequest,
 ) {
   try {
+    const operations =
+      request.nextUrl
+        .searchParams
+        .get(
+          'operations',
+        );
+
+    if (
+      operations ===
+        '1'
+    ) {
+      return json({
+        success:
+          true,
+        operations:
+          await getSalesOperationsData(
+            request.nextUrl
+              .searchParams
+              .get(
+                'horizon',
+              ),
+          ),
+      });
+    }
+
     const organization =
       request.nextUrl
         .searchParams
@@ -414,6 +450,26 @@ export async function POST(
           saveSalesCommissionPlan,
         mark_commission_paid:
           markSalesCommissionPaid,
+        set_deposit_requirement:
+          setSalesOrderDepositRequirement,
+        record_order_deposit:
+          recordSalesOrderDeposit,
+        apply_order_deposit:
+          applySalesOrderDeposit,
+        create_shipment:
+          createSalesShipment,
+        update_shipment_status:
+          updateSalesShipmentStatus,
+        create_return:
+          createSalesReturn,
+        approve_return:
+          approveSalesReturn,
+        receive_return:
+          receiveSalesReturn,
+        issue_return_credit:
+          issueSalesReturnCredit,
+        refund_return_credit:
+          refundSalesReturnCredit,
         send_quote:
           sendSalesQuote,
         change_quote_status:

@@ -75,6 +75,18 @@ export const SALES_PERMISSIONS = {
     'sales.commission.view',
   COMMISSION_MANAGE:
     'sales.commission.manage',
+  SHIPPING_VIEW:
+    'sales.shipping.view',
+  SHIPPING_MANAGE:
+    'sales.shipping.manage',
+  RETURN_VIEW:
+    'sales.return.view',
+  RETURN_MANAGE:
+    'sales.return.manage',
+  DEPOSIT_MANAGE:
+    'sales.deposit.manage',
+  FORECAST_VIEW:
+    'sales.forecast.view',
   ORDER_VIEW:
     'sales.order.view',
   ORDER_MANAGE:
@@ -96,7 +108,8 @@ export type SalesErrorCode =
   | 'ORDER_NOT_FOUND'
   | 'DELIVERY_FAILED'
   | 'BILLING_CUSTOMER_REQUIRED'
-  | 'INVOICING_REQUIRED';
+  | 'INVOICING_REQUIRED'
+  | 'RETURN_CREDIT_LINK_MISSING';
 
 
 export class SalesError
@@ -518,6 +531,14 @@ export async function ensureSalesDefaults(
         'order',
         'SO-',
       ],
+      [
+        'shipment',
+        'SHP-',
+      ],
+      [
+        'return',
+        'RMA-',
+      ],
     ] as const
   ) {
     await pool.query(
@@ -589,7 +610,9 @@ export async function nextSalesNumber(
     string,
   documentType:
     'quote' |
-    'order',
+    'order' |
+    'shipment' |
+    'return',
 ) {
   const result =
     await client.query(

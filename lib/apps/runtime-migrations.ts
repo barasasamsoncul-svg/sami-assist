@@ -180,6 +180,10 @@ import {
 } from '@/lib/apps/sales/migrations/3.0.0-to-3.1.0';
 
 import {
+  SALES_3_1_0_TO_3_2_0,
+} from '@/lib/apps/sales/migrations/3.1.0-to-3.2.0';
+
+import {
   ENTERPRISE_SPECIALIST_DEPTH_MIGRATIONS,
   ENTERPRISE_STRICT_PARITY_MIGRATIONS,
   ENTERPRISE_SUITE_COMPLETION_MIGRATIONS,
@@ -244,6 +248,7 @@ export const SALES_RUNTIME_MIGRATIONS:
     SALES_2_1_0_TO_2_2_0,
     SALES_2_2_0_TO_3_0_0,
     SALES_3_0_0_TO_3_1_0,
+    SALES_3_1_0_TO_3_2_0,
   ];
 
 export const INVOICING_RUNTIME_MIGRATIONS:
