@@ -1297,3 +1297,32 @@ test('Sales roadmap Part 2 exposes a standalone customer and contact workspace b
   assert.match(types, /contactName: string \| null/);
   assert.match(types, /canManageBillingCustomers: boolean/);
 });
+
+
+test('Sales roadmap Part 5 exposes quotation templates as a standalone Sales destination', async () => {
+  const [
+    page,
+    workspace,
+    templates,
+    commands,
+  ] = await Promise.all([
+    source('app/apps/sales/page.tsx'),
+    source('app/apps/sales/SalesWorkspaceClient.tsx'),
+    source('app/apps/sales/SalesTemplatesManager.tsx'),
+    source('lib/apps/sales/commands.ts'),
+  ]);
+
+  assert.match(page, /Quotation Templates/);
+  assert.match(page, /view=templates/);
+  assert.match(page, /Roadmap Part 5/);
+  assert.match(workspace, /SalesTemplatesManager/);
+  assert.match(workspace, /Quotation templates/);
+  assert.match(templates, /Roadmap Part 5/);
+  assert.match(templates, /Template library/);
+  assert.match(templates, /save_template/);
+  assert.match(templates, /Default notes/);
+  assert.match(templates, /Default terms/);
+  assert.match(templates, /Document footer/);
+  assert.match(commands, /saveSalesQuoteTemplate/);
+  assert.match(commands, /sales_quote_templates/);
+});
