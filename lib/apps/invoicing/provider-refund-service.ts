@@ -1433,7 +1433,7 @@ async function applyRemoteResult(
       status:
         'failed',
       provider:
-        payload.provider ||
+        attempt.payload.provider ||
         null,
       providerMessage:
         remote.message,
@@ -1602,7 +1602,7 @@ async function executeRemoteRefund(
       status:
         'requires_action',
       provider:
-        payload.provider ||
+        attempt.payload.provider ||
         null,
       providerMessage:
         uncertain
