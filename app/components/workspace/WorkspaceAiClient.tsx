@@ -775,16 +775,28 @@ export default function WorkspaceAiClient({
         null,
       );
 
-      await Promise.all([
-        loadConversations(),
-        loadStatus(),
-      ]);
+      try {
+        await Promise.all([
+          loadConversations(),
+          loadStatus(),
+        ]);
 
-      if (
-        conversationId
+        if (
+          conversationId
+        ) {
+          await loadConversation(
+            conversationId,
+          );
+        }
+      } catch (
+        refreshError
       ) {
-        await loadConversation(
-          conversationId,
+        setError(
+          refreshError instanceof
+            Error
+            ? 'Your message was saved, but this chat could not refresh: ' +
+              refreshError.message
+            : 'Your message was saved, but this chat could not refresh. Reopen the conversation to load the saved response.',
         );
       }
 
