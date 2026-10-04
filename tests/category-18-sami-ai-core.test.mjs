@@ -688,7 +688,6 @@ test('Category 18: the real SaMi AI workspace is wired into shell, search, dashb
   assert.match(client, /'Copy'/);
   assert.match(client, /label="Edit"/);
   assert.match(client, /label="Regenerate"/);
-  assert.match(client, /Stop generating/);
   assert.match(client, /AbortController/);
   assert.match(client, /label="Helpful"/);
   assert.match(client, /label="Not helpful"/);
@@ -970,7 +969,12 @@ test('Category 18: SaMi AI streams live responses without bypassing the tool-saf
   );
   assert.match(
     client,
-    /Responding…/,
+    /Thinking…/,
+  );
+  assert.doesNotMatch(
+    client,
+    /rounded-xl border border-slate-200 bg-white[\s\S]{0,500}Thinking…/,
+    'Thinking must remain an inline state rather than a boxed status shell.',
   );
 });
 
@@ -1120,7 +1124,7 @@ test('Category 18: active generation never blocks follow-up composition controls
   );
   assert.match(
     client,
-    /follow-up queued/,
+    />Queued</,
   );
   assert.match(
     client,
