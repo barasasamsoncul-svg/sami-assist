@@ -50,6 +50,7 @@ type SalesView =
   | 'overview'
   | 'customers'
   | 'quotes'
+  | 'templates'
   | 'orders'
   | 'organization'
   | 'operations'
@@ -135,6 +136,7 @@ export default async function SalesPage({
           : []
       ),
       'quotes',
+      'templates',
       ...(
         data.capabilities
           .canViewOrders
@@ -235,6 +237,18 @@ export default async function SalesPage({
         'Create, approve, send and convert quotations.',
       badge:
         data.quotes.length,
+    },
+    {
+      key:
+        'templates',
+      label:
+        'Quotation Templates',
+      href:
+        '/apps/sales?view=templates',
+      description:
+        'Roadmap Part 5 · Reusable quotation presentation and commercial defaults.',
+      badge:
+        data.templates.length,
     },
     ...(
       data.capabilities
