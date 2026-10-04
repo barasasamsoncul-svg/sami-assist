@@ -798,6 +798,47 @@ test('Category 24 Settings navigation avoids duplicate dead account pages', asyn
 });
 
 
+test('Category 24 admin shell participates in the shared SaMi visibility contract', async () => {
+  const [
+    shell,
+    globals,
+  ] = await Promise.all([
+    source('app/admin/components/AdminShell.tsx'),
+    source('app/globals.css'),
+  ]);
+
+  assert.match(
+    shell,
+    /data-sami-admin-shell="true"/,
+  );
+
+  assert.match(
+    shell,
+    /sami-canvas[\s\S]*text-\[var\(--foreground\)\]/,
+  );
+
+  assert.match(
+    globals,
+    /data-sami-admin-shell/,
+  );
+
+  assert.match(
+    globals,
+    /text-zinc-300[\s\S]*text-zinc-700/,
+  );
+
+  assert.match(
+    globals,
+    /bg-zinc-50[\s\S]*bg-zinc-100/,
+  );
+
+  assert.match(
+    globals,
+    /opacity:\s*0\.72/,
+  );
+});
+
+
 test('Category 24 internal platform operations remain outside the workspace shell', async () => {
   const shell = await source('app/components/workspace/WorkspaceShell.tsx');
 
