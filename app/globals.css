@@ -538,6 +538,141 @@ svg {
   color: inherit;
 }
 
+
+/*
+ * Platform-wide visibility contract.
+ *
+ * Workspace, every standalone app, and Platform Admin must resolve legacy
+ * slate/zinc utility colors through the same SaMi theme tokens. This prevents
+ * page-specific fixes from leaving unreadable text or controls elsewhere.
+ */
+:where(
+  [data-sami-workspace-shell='true'],
+  [data-sami-app],
+  [data-sami-admin-shell='true']
+) {
+  background-color: var(--sami-canvas);
+  color: var(--foreground);
+}
+
+:where(
+  [data-sami-workspace-shell='true'],
+  [data-sami-app],
+  [data-sami-admin-shell='true']
+) :where(
+  .text-slate-300,
+  .text-slate-400,
+  .text-slate-500,
+  .text-slate-600,
+  .text-slate-700,
+  .text-zinc-300,
+  .text-zinc-400,
+  .text-zinc-500,
+  .text-zinc-600,
+  .text-zinc-700
+):not(.sami-nav-selected):not(.sami-nav-selected-ai):not(.sami-nav-active-accent):not(.sami-contrast-invert) {
+  color: var(--sami-muted) !important;
+}
+
+.dark :where(
+  [data-sami-workspace-shell='true'],
+  [data-sami-app],
+  [data-sami-admin-shell='true']
+) :where(
+  .text-slate-900,
+  .text-slate-950,
+  .text-zinc-900,
+  .text-zinc-950,
+  .text-black
+):not(.sami-nav-selected):not(.sami-nav-selected-ai):not(.sami-nav-active-accent):not(.sami-contrast-invert):not([class*='dark:text-slate-950']):not([class*='dark:text-zinc-950']) {
+  color: var(--foreground) !important;
+}
+
+.dark :where(
+  [data-sami-workspace-shell='true'],
+  [data-sami-app],
+  [data-sami-admin-shell='true']
+) :where(
+  [class~='bg-white'],
+  [class~='bg-slate-50'],
+  [class~='bg-slate-100'],
+  [class~='bg-zinc-50'],
+  [class~='bg-zinc-100']
+):not([class*='dark:bg-white']):not([class*='dark:bg-slate-']):not([class*='dark:bg-zinc-']) {
+  background-color: var(--sami-surface) !important;
+  color: var(--foreground);
+}
+
+:where(
+  [data-sami-workspace-shell='true'],
+  [data-sami-app],
+  [data-sami-admin-shell='true']
+) :where(
+  input,
+  textarea,
+  select,
+  option,
+  optgroup
+) {
+  color: var(--foreground) !important;
+}
+
+:where(
+  [data-sami-workspace-shell='true'],
+  [data-sami-app],
+  [data-sami-admin-shell='true']
+) :where(
+  input,
+  textarea,
+  select
+) {
+  background-color: var(--sami-surface);
+  border-color: var(--sami-border-strong);
+}
+
+:where(
+  [data-sami-workspace-shell='true'],
+  [data-sami-app],
+  [data-sami-admin-shell='true']
+) :where(
+  input,
+  textarea
+)::placeholder {
+  color: var(--sami-muted) !important;
+  opacity: 1;
+}
+
+:where(
+  [data-sami-workspace-shell='true'],
+  [data-sami-app],
+  [data-sami-admin-shell='true']
+) :where(
+  table,
+  thead,
+  tbody,
+  tr,
+  td,
+  th,
+  label,
+  summary
+) {
+  color: inherit;
+}
+
+:where(
+  [data-sami-workspace-shell='true'],
+  [data-sami-app],
+  [data-sami-admin-shell='true']
+) :where(
+  button:disabled,
+  input:disabled,
+  textarea:disabled,
+  select:disabled,
+  [aria-disabled='true']
+) {
+  opacity: 0.72;
+}
+
 /* Semantic selected navigation states */
 .sami-nav-selected,
 .sami-contrast-invert {
