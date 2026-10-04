@@ -51,6 +51,8 @@ type SalesView =
   | 'customers'
   | 'quotes'
   | 'templates'
+  | 'pdf-builder'
+  | 'catalogue'
   | 'orders'
   | 'organization'
   | 'operations'
@@ -137,6 +139,15 @@ export default async function SalesPage({
       ),
       'quotes',
       'templates',
+      'pdf-builder',
+      ...(
+        data.capabilities
+          .canUseCatalog
+          ? [
+              'catalogue' as const,
+            ]
+          : []
+      ),
       ...(
         data.capabilities
           .canViewOrders
@@ -250,6 +261,35 @@ export default async function SalesPage({
       badge:
         data.templates.length,
     },
+    {
+      key:
+        'pdf-builder',
+      label:
+        'Quote / PDF Builder',
+      href:
+        '/apps/sales?view=pdf-builder',
+      description:
+        'Roadmap Part 6 · Apply templates, preview presentation and open generated PDFs.',
+    },
+    ...(
+      data.capabilities
+        .canUseCatalog
+        ? [
+            {
+              key:
+                'catalogue',
+              label:
+                'Product Catalogue',
+              href:
+                '/apps/sales?view=catalogue',
+              description:
+                'Roadmap Part 7 · Products and services used by Sales quotations.',
+              badge:
+                data.catalogItems.length,
+            },
+          ]
+        : []
+    ),
     ...(
       data.capabilities
         .canViewOrders
