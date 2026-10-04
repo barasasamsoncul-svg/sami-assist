@@ -38,6 +38,8 @@ import WorkspaceTutorial, {
 
 import SalesQuoteComposer from '@/app/apps/sales/SalesQuoteComposer';
 
+import SalesPricingManager from '@/app/apps/sales/SalesPricingManager';
+
 import type {
   SalesWorkspaceData,
 } from '@/lib/apps/sales/types';
@@ -1886,6 +1888,30 @@ function Settings({
           }
         </div>
       </form>
+      {
+        data.capabilities
+          .canManagePricing &&
+        (
+          <SalesPricingManager
+            data={
+              data
+            }
+            busy={
+              busy
+            }
+            request={
+              request
+            }
+            showSuccess={
+              showSuccess
+            }
+            showError={
+              showError
+            }
+          />
+        )
+      }
+
     </section>
   );
 }
