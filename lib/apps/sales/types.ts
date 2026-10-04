@@ -99,13 +99,6 @@ export type SalesQuoteDetail =
     discountTotal: number;
     taxTotal: number;
     shippingTotal: number;
-    depositType: 'none' | 'percent' | 'fixed';
-    depositValue: number;
-    depositRequiredAmount: number;
-    depositReceivedAmount: number;
-    depositStatus: string;
-    depositRetainerId: string | null;
-    depositPaymentId: string | null;
     notes: string | null;
     terms: string | null;
     internalNotes: string | null;
@@ -193,6 +186,13 @@ export type SalesOrderDetail =
     discountTotal: number;
     taxTotal: number;
     shippingTotal: number;
+    depositType: 'none' | 'percent' | 'fixed';
+    depositValue: number;
+    depositRequiredAmount: number;
+    depositReceivedAmount: number;
+    depositStatus: string;
+    depositRetainerId: string | null;
+    depositPaymentId: string | null;
     notes: string | null;
     terms: string | null;
     lines: SalesOrderLine[];
