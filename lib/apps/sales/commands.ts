@@ -17,6 +17,10 @@ import {
 } from '@/lib/apps/sales/delivery';
 
 import {
+  resolveSalesPricelistUnitPrice,
+} from '@/lib/apps/sales/commercial';
+
+import {
   postSalesFulfillmentToInventory,
   releaseSalesOrderReservations,
   reserveSalesOrderInventory,
@@ -64,6 +68,14 @@ type NormalizedQuoteLine = {
   quantity:
     number;
   unitPrice:
+    number;
+  unitCost:
+    number;
+  costTotal:
+    number;
+  marginAmount:
+    number;
+  marginPercent:
     number;
   discountType:
     'percent' |
@@ -467,6 +479,12 @@ async function normalizeQuoteLines(
     >,
   input:
     unknown,
+  options: {
+    pricelistId:
+      string | null;
+    quoteDate:
+      string;
+  },
 ): Promise<
   NormalizedQuoteLine[]
 > {
@@ -591,6 +609,7 @@ async function normalizeQuoteLines(
               item.unit,
               item.unit_price,
               item.external_product_id,
+              item.metadata,
               tax.name
                 AS tax_name,
               COALESCE(
@@ -669,13 +688,70 @@ async function normalizeQuoteLines(
         },
       );
 
-    const unitPrice =
+    const baseUnitPrice =
       numberInput(
         item.unitPrice ??
         catalog
           ?.unit_price ??
         0,
         'Unit price',
+      );
+
+    const pricing =
+      await resolveSalesPricelistUnitPrice(
+        client,
+        {
+          companyId:
+            context.companyId,
+          pricelistId:
+            options.pricelistId,
+          catalogItemId,
+          quantity,
+          baseUnitPrice,
+          quoteDate:
+            options.quoteDate,
+        },
+      );
+
+    const unitPrice =
+      pricing.unitPrice;
+
+    const metadata =
+      catalog?.metadata &&
+      typeof catalog.metadata ===
+        'object' &&
+      !Array.isArray(
+        catalog.metadata,
+      )
+        ? catalog.metadata as
+            Record<string, unknown>
+        : {};
+
+    const requestedUnitCost =
+      item.unitCost;
+
+    if (
+      requestedUnitCost !==
+        undefined &&
+      !crossPermission(
+        context,
+        SALES_PERMISSIONS
+          .MARGIN_MANAGE,
+      )
+    ) {
+      throw new SalesError(
+        'SALES_PERMISSION_REQUIRED',
+        'Margin-management permission is required to override item cost.',
+      );
+    }
+
+    const unitCost =
+      numberInput(
+        requestedUnitCost ??
+        metadata.standardCost ??
+        metadata.unitCost ??
+        0,
+        'Unit cost',
       );
 
     const discountType =
@@ -760,6 +836,28 @@ async function normalizeQuoteLines(
         taxAmount,
       );
 
+    const costTotal =
+      money(
+        quantity *
+        unitCost,
+      );
+
+    const marginAmount =
+      money(
+        taxable -
+        costTotal,
+      );
+
+    const marginPercent =
+      taxable >
+        0
+        ? money(
+            marginAmount /
+            taxable *
+            100,
+          )
+        : 0;
+
     lines.push({
       catalogItemId,
       externalProductId:
@@ -789,6 +887,10 @@ async function normalizeQuoteLines(
         'unit',
       quantity,
       unitPrice,
+      unitCost,
+      costTotal,
+      marginAmount,
+      marginPercent,
       discountType,
       discountValue,
       discountAmount,
@@ -837,6 +939,10 @@ async function insertQuoteLines(
           unit,
           quantity,
           unit_price,
+          unit_cost,
+          cost_total,
+          margin_amount,
+          margin_percent,
           discount_type,
           discount_value,
           discount_amount,
@@ -848,7 +954,7 @@ async function insertQuoteLines(
         )
         VALUES (
           $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-          $11,$12,$13,$14,$15,$16,$17,$18
+          $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22
         )
       `,
       [
@@ -862,6 +968,10 @@ async function insertQuoteLines(
         line.unit,
         line.quantity,
         line.unitPrice,
+        line.unitCost,
+        line.costTotal,
+        line.marginAmount,
+        line.marginPercent,
         line.discountType,
         line.discountValue,
         line.discountAmount,
@@ -929,11 +1039,49 @@ function totals(
       shipping,
     );
 
+  const costTotal =
+    money(
+      lines.reduce(
+        (
+          sum,
+          line,
+        ) =>
+          sum +
+          line.costTotal,
+        0,
+      ),
+    );
+
+  const netRevenue =
+    money(
+      subtotal -
+      discountTotal,
+    );
+
+  const marginAmount =
+    money(
+      netRevenue -
+      costTotal,
+    );
+
+  const marginPercent =
+    netRevenue >
+      0
+      ? money(
+          marginAmount /
+          netRevenue *
+          100,
+        )
+      : 0;
+
   return {
     subtotal,
     discountTotal,
     taxTotal,
     totalAmount,
+    costTotal,
+    marginAmount,
+    marginPercent,
   };
 }
 
@@ -1022,11 +1170,20 @@ export async function createSalesQuote(
       );
     }
 
+    const pricelistId =
+      optionalUuid(
+        input.pricelistId,
+      );
+
     const lines =
       await normalizeQuoteLines(
         client,
         context,
         input.lines,
+        {
+          pricelistId,
+          quoteDate,
+        },
       );
 
     const shippingTotal =
@@ -1111,6 +1268,10 @@ export async function createSalesQuote(
             tax_total,
             shipping_total,
             total_amount,
+            pricelist_id,
+            cost_total,
+            margin_amount,
+            margin_percent,
             notes,
             terms,
             internal_notes,
@@ -1122,7 +1283,7 @@ export async function createSalesQuote(
             'draft',
             $5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
             $15,$16,$17,$18,$19,$20,$21,$22,$23,
-            $24,$24
+            $24,$25,$26,$27,$28,$29,$30,$30
           )
           RETURNING
             id,
@@ -1155,6 +1316,10 @@ export async function createSalesQuote(
           calculated.taxTotal,
           shippingTotal,
           calculated.totalAmount,
+          pricelistId,
+          calculated.costTotal,
+          calculated.marginAmount,
+          calculated.marginPercent,
           nullableText(
             input.notes ||
             template
@@ -1430,11 +1595,20 @@ export async function updateSalesQuoteDraft(
       );
     }
 
+    const pricelistId =
+      optionalUuid(
+        input.pricelistId,
+      );
+
     const lines =
       await normalizeQuoteLines(
         client,
         context,
         input.lines,
+        {
+          pricelistId,
+          quoteDate,
+        },
       );
 
     const shippingTotal =
@@ -1513,10 +1687,14 @@ export async function updateSalesQuoteDraft(
           tax_total = $18,
           shipping_total = $19,
           total_amount = $20,
-          notes = $21,
-          terms = $22,
-          internal_notes = $23,
-          updated_by = $24,
+          pricelist_id = $21,
+          cost_total = $22,
+          margin_amount = $23,
+          margin_percent = $24,
+          notes = $25,
+          terms = $26,
+          internal_notes = $27,
+          updated_by = $28,
           updated_at = NOW()
         WHERE id = $1
           AND company_id = $2
@@ -1547,6 +1725,10 @@ export async function updateSalesQuoteDraft(
         calculated.taxTotal,
         shippingTotal,
         calculated.totalAmount,
+        pricelistId,
+        calculated.costTotal,
+        calculated.marginAmount,
+        calculated.marginPercent,
         nullableText(
           input.notes ||
           template
@@ -1694,6 +1876,7 @@ export async function duplicateSalesQuote(
           unit,
           quantity,
           unit_price,
+          unit_cost,
           discount_type,
           discount_value,
           tax_name_snapshot,
@@ -1719,6 +1902,8 @@ export async function duplicateSalesQuote(
       row.billing_customer_id,
     templateId:
       row.template_id,
+    pricelistId:
+      row.pricelist_id,
     quoteDate:
       isoDate(
         null,
@@ -1768,6 +1953,10 @@ export async function duplicateSalesQuote(
           unitPrice:
             money(
               line.unit_price,
+            ),
+          unitCost:
+            money(
+              line.unit_cost,
             ),
           discountType:
             line.discount_type,
