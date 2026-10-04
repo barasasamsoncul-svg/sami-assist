@@ -99,6 +99,13 @@ export type SalesQuoteDetail =
     discountTotal: number;
     taxTotal: number;
     shippingTotal: number;
+    depositType: 'none' | 'percent' | 'fixed';
+    depositValue: number;
+    depositRequiredAmount: number;
+    depositReceivedAmount: number;
+    depositStatus: string;
+    depositRetainerId: string | null;
+    depositPaymentId: string | null;
     notes: string | null;
     terms: string | null;
     internalNotes: string | null;
@@ -161,6 +168,8 @@ export type SalesOrderLine = {
   quantity: number;
   deliveredQuantity: number;
   invoicedQuantity: number;
+  returnedQuantity: number;
+  creditedQuantity: number;
   invoiceableQuantity: number;
   unitPrice: number;
   discountType: 'percent' | 'fixed';
@@ -187,6 +196,50 @@ export type SalesOrderDetail =
     notes: string | null;
     terms: string | null;
     lines: SalesOrderLine[];
+    shipments: Array<{
+      id: string;
+      shipmentNumber: string;
+      status: string;
+      carrier: string | null;
+      serviceLevel: string | null;
+      trackingNumber: string | null;
+      trackingUrl: string | null;
+      recipientName: string | null;
+      proofNote: string | null;
+      shippedAt: string | null;
+      deliveredAt: string | null;
+      inventoryPostedAt: string | null;
+      items: Array<{
+        id: string;
+        salesOrderLineId: string;
+        quantity: number;
+      }>;
+    }>;
+    returns: Array<{
+      id: string;
+      returnNumber: string;
+      status: string;
+      reason: string;
+      requestedAt: string;
+      approvedAt: string | null;
+      receivedAt: string | null;
+      creditedAt: string | null;
+      refundedAt: string | null;
+      items: Array<{
+        id: string;
+        salesOrderLineId: string;
+        quantity: number;
+      }>;
+      credits: Array<{
+        id: string;
+        invoiceId: string;
+        creditNoteId: string;
+        creditNoteNumber: string;
+        amount: number;
+        availableCredit: number;
+        refundedAmount: number;
+      }>;
+    }>;
     invoices: Array<{
       batchId: string;
       invoiceId: string | null;
@@ -234,6 +287,13 @@ export type SalesWorkspaceData = {
     canManageTargets: boolean;
     canViewCommissions: boolean;
     canManageCommissions: boolean;
+    canViewOperations: boolean;
+    canViewShipping: boolean;
+    canManageShipping: boolean;
+    canViewReturns: boolean;
+    canManageReturns: boolean;
+    canManageDeposits: boolean;
+    canViewForecast: boolean;
     canUseBillingCustomers: boolean;
     canUseCatalog: boolean;
   };
