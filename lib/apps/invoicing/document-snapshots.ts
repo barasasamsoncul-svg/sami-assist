@@ -23,6 +23,10 @@ import {
   type PdfInvoice,
 } from '@/lib/apps/invoicing/pdf';
 
+import {
+  getPrivateObjectBytes,
+} from '@/lib/storage/object-storage';
+
 
 export type InvoiceSnapshotReason =
   | 'confirmed'
@@ -405,6 +409,13 @@ async function loadIssuedInvoicePayload(
           )
             AS show_line_discount,
           COALESCE(
+            template.show_company_logo,
+            TRUE
+          )
+            AS show_company_logo,
+          template.logo_url
+            AS template_logo_url,
+          COALESCE(
             template.show_company_address,
             TRUE
           )
@@ -513,6 +524,98 @@ async function loadIssuedInvoicePayload(
 
   const row =
     invoiceResult.rows[0];
+
+  let logoJpegBase64:
+    string |
+    null =
+      null;
+
+  if (
+    row.show_company_logo !==
+      false &&
+    typeof row.template_logo_url ===
+      'string' &&
+    row.template_logo_url
+      .startsWith(
+        'workspace-file:',
+      )
+  ) {
+    const fileId =
+      row.template_logo_url
+        .slice(
+          'workspace-file:'
+            .length,
+        )
+        .trim();
+
+    if (
+      /^[0-9a-f-]{36}$/i.test(
+        fileId,
+      )
+    ) {
+      const file =
+        await queryable.query(
+          `
+            SELECT
+              storage_key,
+              mime_type
+            FROM files
+            WHERE id = $1::uuid
+              AND company_id = $2::uuid
+              AND status = 'active'
+              AND deleted_at IS NULL
+            LIMIT 1
+          `,
+          [
+            fileId,
+            companyId,
+          ],
+        );
+
+      const fileRow =
+        file.rows[0];
+
+      if (
+        fileRow &&
+        String(
+          fileRow.mime_type ||
+          '',
+        )
+          .toLowerCase() ===
+          'image/jpeg'
+      ) {
+        try {
+          const bytes =
+            await getPrivateObjectBytes(
+              String(
+                fileRow.storage_key,
+              ),
+            );
+
+          if (
+            bytes.length >
+              0 &&
+            bytes.length <=
+              4 *
+              1024 *
+              1024
+          ) {
+            logoJpegBase64 =
+              bytes.toString(
+                'base64',
+              );
+          }
+        } catch (
+          error
+        ) {
+          console.error(
+            '[Invoicing PDF] Logo storage read failed:',
+            error,
+          );
+        }
+      }
+    }
+  }
 
   const sourceStatus =
     String(
@@ -830,6 +933,10 @@ async function loadIssuedInvoicePayload(
         showLineDiscount:
           row.show_line_discount !==
           false,
+        showCompanyLogo:
+          row.show_company_logo !==
+          false,
+        logoJpegBase64,
         showCompanyAddress:
           row.show_company_address !==
           false,
