@@ -1502,6 +1502,7 @@ export async function getSalesQuoteDetail(
             unit,
             quantity,
             unit_price,
+            unit_cost,
             tax_name_snapshot,
             tax_rate,
             is_selected
