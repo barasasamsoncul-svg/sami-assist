@@ -11,6 +11,7 @@ import {
   convertSalesQuoteToInvoice,
   createSalesOrderFromQuote,
   createSalesOrderInvoice,
+  createSalesCustomer,
   createSalesQuote,
   createSalesQuoteRevision,
   createSalesReturn,
@@ -39,6 +40,7 @@ import {
   saveSalesTerritory,
   sendSalesQuote,
   setSalesOrderDepositRequirement,
+  updateSalesCustomer,
   updateSalesOrderFulfillment,
   updateSalesQuoteDraft,
   updateSalesSettings,
@@ -428,6 +430,10 @@ export async function POST(
         ) =>
           Promise<unknown>
       > = {
+        create_customer:
+          createSalesCustomer,
+        update_customer:
+          updateSalesCustomer,
         create_quote:
           createSalesQuote,
         update_quote:
