@@ -1049,18 +1049,45 @@ async function queryMpesaStk(
       response,
     );
 
+  const providerMessage =
+    cleanString(
+      body.errorMessage,
+      500,
+    ) ||
+    cleanString(
+      body.ResponseDescription,
+      500,
+    ) ||
+    cleanString(
+      body.ResultDesc,
+      500,
+    );
+
+  const isProcessing =
+    /processing|in progress|request is being processed/i.test(
+      providerMessage,
+    );
+
   if (
     !response.ok
   ) {
+    if (
+      isProcessing
+    ) {
+      return {
+        resultCode:
+          null,
+        resultDesc:
+          providerMessage ||
+          'M-PESA is still processing this payment.',
+        merchantRequestId:
+          null,
+        checkoutRequestId,
+      };
+    }
+
     throw new Error(
-      cleanString(
-        body.errorMessage,
-        500,
-      ) ||
-      cleanString(
-        body.ResponseDescription,
-        500,
-      ) ||
+      providerMessage ||
       'Safaricom could not verify the M-PESA prompt.',
     );
   }
@@ -1076,11 +1103,32 @@ async function queryMpesaStk(
     responseCode !==
       '0'
   ) {
+    if (
+      isProcessing
+    ) {
+      return {
+        resultCode:
+          null,
+        resultDesc:
+          providerMessage ||
+          'M-PESA is still processing this payment.',
+        merchantRequestId:
+          cleanString(
+            body.MerchantRequestID,
+            255,
+          ) ||
+          null,
+        checkoutRequestId:
+          cleanString(
+            body.CheckoutRequestID,
+            255,
+          ) ||
+          checkoutRequestId,
+      };
+    }
+
     throw new Error(
-      cleanString(
-        body.ResponseDescription,
-        500,
-      ) ||
+      providerMessage ||
       'Safaricom rejected the M-PESA status check.',
     );
   }
