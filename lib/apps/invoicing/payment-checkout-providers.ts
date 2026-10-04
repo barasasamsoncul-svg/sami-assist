@@ -234,6 +234,14 @@ function toMinorUnits(
   return Math.round(amount * 10 ** exponent);
 }
 
+function fromMinorUnits(
+  amount: unknown,
+  currency: string,
+) {
+  const value = Number(amount || 0);
+  return value / 10 ** currencyExponent(currency);
+}
+
 function amountString(
   amount: number,
   currency: string,
