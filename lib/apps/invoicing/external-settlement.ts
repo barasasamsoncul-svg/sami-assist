@@ -115,6 +115,12 @@ export async function recordVerifiedExternalInvoiceSettlement(input:{
     source:'gateway',
     sourceProvider:input.providerKey,
     externalEventId:input.externalEventId,
+    providerTransactionId:
+      cleanText(
+        payload.providerTransactionId,
+        255,
+      ) ||
+      null,
   });
 
   await recordWorkspaceAuditEvent({
@@ -131,6 +137,12 @@ export async function recordVerifiedExternalInvoiceSettlement(input:{
     metadata:{
       providerKey:input.providerKey,
       externalEventId:input.externalEventId,
+      providerTransactionId:
+        cleanText(
+          payload.providerTransactionId,
+          255,
+        ) ||
+        null,
       invoiceId:String(invoice.rows[0].id),
       invoiceNumber:String(invoice.rows[0].invoice_number),
       amount,
