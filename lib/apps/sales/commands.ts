@@ -5394,103 +5394,125 @@ export async function applySalesQuoteTemplate(
       'Quotation template',
     );
 
-  const result =
-    await context.pool.query(
-      `
-        UPDATE sales_quotes quote
-        SET
-          template_id =
-            template.id,
-          notes =
-            COALESCE(
-              template.notes,
-              quote.notes
-            ),
-          terms =
-            COALESCE(
-              template.terms,
-              quote.terms
-            ),
-          updated_by = $4,
-          updated_at = NOW()
-        FROM sales_quote_templates template
-        WHERE quote.id = $1
-          AND quote.company_id = $2
-          AND quote.deleted_at IS NULL
-          AND quote.status = 'draft'
-          AND template.id = $3
-          AND template.company_id = $2
-          AND template.deleted_at IS NULL
-        RETURNING
-          quote.id,
-          quote.quote_number,
-          template.id AS template_id,
-          template.name AS template_name
-      `,
-      [
-        quoteId,
-        context.companyId,
-        templateId,
-        context.userId,
-      ],
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
     );
 
-  if (
-    result.rows.length !==
-      1
-  ) {
-    throw new SalesError(
-      'QUOTE_STATE_INVALID',
-      'Choose an existing draft quotation and quotation template.',
-    );
-  }
+    const result =
+      await client.query(
+        `
+          UPDATE sales_quotes quote
+          SET
+            template_id =
+              template.id,
+            notes =
+              COALESCE(
+                template.notes,
+                quote.notes
+              ),
+            terms =
+              COALESCE(
+                template.terms,
+                quote.terms
+              ),
+            updated_by = $4,
+            updated_at = NOW()
+          FROM sales_quote_templates template
+          WHERE quote.id = $1
+            AND quote.company_id = $2
+            AND quote.deleted_at IS NULL
+            AND quote.status = 'draft'
+            AND template.id = $3
+            AND template.company_id = $2
+            AND template.deleted_at IS NULL
+          RETURNING
+            quote.id,
+            quote.quote_number,
+            template.id AS template_id,
+            template.name AS template_name
+        `,
+        [
+          quoteId,
+          context.companyId,
+          templateId,
+          context.userId,
+        ],
+      );
 
-  await recordSalesActivity(
-    context.pool,
-    {
-      companyId:
-        context.companyId,
-      userId:
-        context.userId,
-      model:
-        'sales.quote',
-      recordId:
+    if (
+      result.rows.length !==
+        1
+    ) {
+      throw new SalesError(
+        'QUOTE_STATE_INVALID',
+        'Choose an existing draft quotation and quotation template.',
+      );
+    }
+
+    await recordSalesActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
         quoteId,
-      type:
-        'quote.template_applied',
-      content:
-        'Quotation template ' +
-        String(
-          result.rows[0]
-            .template_name,
-        ) +
-        ' applied to ' +
+        type:
+          'quote.template_applied',
+        content:
+          'Quotation template ' +
+          String(
+            result.rows[0]
+              .template_name,
+          ) +
+          ' applied to ' +
+          String(
+            result.rows[0]
+              .quote_number,
+          ) +
+          '.',
+      },
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return {
+      quoteId,
+      quoteNumber:
         String(
           result.rows[0]
             .quote_number,
-        ) +
-        '.',
-    },
-  );
+        ),
+      templateId:
+        String(
+          result.rows[0]
+            .template_id,
+        ),
+      templateName:
+        String(
+          result.rows[0]
+            .template_name,
+        ),
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
 
-  return {
-    quoteId,
-    quoteNumber:
-      String(
-        result.rows[0]
-          .quote_number,
-      ),
-    templateId:
-      String(
-        result.rows[0]
-          .template_id,
-      ),
-    templateName:
-      String(
-        result.rows[0]
-          .template_name,
-      ),
-  };
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 
