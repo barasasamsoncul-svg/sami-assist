@@ -1123,8 +1123,11 @@ export default function WorkspaceAiClient({
     const targetMessageId =
       editingMessageId;
 
+    const sentAttachments =
+      pendingAttachments;
+
     const attachmentIds =
-      pendingAttachments.map(
+      sentAttachments.map(
         attachment =>
           attachment.id,
       );
@@ -1158,7 +1161,7 @@ export default function WorkspaceAiClient({
             feedback:
               null,
             attachments:
-              pendingAttachments,
+              sentAttachments,
             createdAt:
               new Date()
                 .toISOString(),
@@ -1198,6 +1201,10 @@ export default function WorkspaceAiClient({
               item.id !==
               optimisticMessageId,
           ),
+      );
+
+      setPendingAttachments(
+        sentAttachments,
       );
     }
 
