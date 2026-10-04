@@ -3990,6 +3990,46 @@ export async function createInvoice(
       ],
     );
 
+    const requestedAdvanceApplications =
+      normalizeInvoiceAdvanceApplications(
+        input.advanceApplications,
+      );
+
+    if (
+      status !==
+        'confirmed' &&
+      requestedAdvanceApplications
+        .length >
+        0
+    ) {
+      await client.query(
+        `
+          UPDATE invoicing_invoices
+          SET
+            metadata =
+              COALESCE(
+                metadata,
+                '{}'::jsonb
+              ) ||
+              jsonb_build_object(
+                'pendingAdvanceApplications',
+                $3::jsonb
+              ),
+            updated_at =
+              NOW()
+          WHERE id = $1
+            AND company_id = $2
+        `,
+        [
+          invoiceId,
+          context.companyId,
+          JSON.stringify(
+            requestedAdvanceApplications,
+          ),
+        ],
+      );
+    }
+
     let advanceSettlement = {
       status,
       appliedInvoiceAmount:
@@ -4030,9 +4070,7 @@ export async function createInvoice(
               exchangeRate,
             totalAmount,
             applications:
-              normalizeInvoiceAdvanceApplications(
-                input.advanceApplications,
-              ),
+              requestedAdvanceApplications,
             allowCrossCurrencyPayments:
               settings
                 .allow_cross_currency_payments !==
@@ -5569,7 +5607,12 @@ export async function changeInvoiceStatus(
           `
             SELECT
               status,
-              invoice_number
+              invoice_number,
+              customer_id,
+              currency,
+              exchange_rate,
+              total_amount,
+              metadata
             FROM invoicing_invoices
             WHERE id = $1
               AND company_id = $2
@@ -5585,7 +5628,9 @@ export async function changeInvoiceStatus(
         client.query(
           `
             SELECT
-              require_approval
+              require_approval,
+              allow_cross_currency_payments,
+              allow_partial_payments
             FROM invoicing_settings
             WHERE company_id = $1
             LIMIT 1
@@ -5813,6 +5858,94 @@ export async function changeInvoiceStatus(
           invoiceId,
         },
       );
+
+      const metadata =
+        plainObject(
+          current.rows[0]
+            .metadata,
+        );
+
+      const pendingAdvanceApplications =
+        normalizeInvoiceAdvanceApplications(
+          metadata
+            .pendingAdvanceApplications,
+        );
+
+      if (
+        pendingAdvanceApplications
+          .length >
+          0
+      ) {
+        await applyInvoiceAdvancesDuringCreate(
+          client,
+          {
+            companyId:
+              context.companyId,
+            userId:
+              context.userId,
+            invoiceId,
+            invoiceNumber:
+              String(
+                current.rows[0]
+                  .invoice_number,
+              ),
+            customerId:
+              String(
+                current.rows[0]
+                  .customer_id,
+              ),
+            invoiceCurrency:
+              String(
+                current.rows[0]
+                  .currency,
+              ),
+            invoiceExchangeRate:
+              Number(
+                current.rows[0]
+                  .exchange_rate ||
+                1,
+              ),
+            totalAmount:
+              money(
+                current.rows[0]
+                  .total_amount,
+              ),
+            applications:
+              pendingAdvanceApplications,
+            allowCrossCurrencyPayments:
+              settingsResult
+                .rows[0]
+                ?.allow_cross_currency_payments !==
+              false,
+            allowPartialPayments:
+              settingsResult
+                .rows[0]
+                ?.allow_partial_payments !==
+              false,
+          },
+        );
+
+        await client.query(
+          `
+            UPDATE invoicing_invoices
+            SET
+              metadata =
+                COALESCE(
+                  metadata,
+                  '{}'::jsonb
+                ) -
+                'pendingAdvanceApplications',
+              updated_at =
+                NOW()
+            WHERE id = $1
+              AND company_id = $2
+          `,
+          [
+            invoiceId,
+            context.companyId,
+          ],
+        );
+      }
 
       await createPrimaryInvoiceDocumentSnapshot(
         client,
