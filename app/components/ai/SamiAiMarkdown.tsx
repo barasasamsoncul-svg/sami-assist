@@ -541,9 +541,15 @@ const components:
 
     ol({
       children,
+      start,
     }) {
       return (
-        <ol className="my-3 ml-6 list-decimal space-y-2 pl-1 marker:font-semibold marker:text-slate-500 dark:marker:text-slate-400">
+        <ol
+          start={
+            start
+          }
+          className="my-3 ml-6 list-outside list-decimal space-y-2 pl-1 marker:font-semibold marker:text-slate-500 dark:marker:text-slate-400"
+        >
           {children}
         </ol>
       );
@@ -563,7 +569,7 @@ const components:
       children,
     }) {
       return (
-        <li className="pl-1 leading-7">
+        <li className="pl-1 leading-7 [&>p]:my-0">
           {children}
         </li>
       );
