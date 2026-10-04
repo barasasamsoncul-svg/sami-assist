@@ -50,7 +50,9 @@ import SalesQuotePdfBuilder from '@/app/apps/sales/SalesQuotePdfBuilder';
 
 import SalesProductCatalogueManager from '@/app/apps/sales/SalesProductCatalogueManager';
 
-import SalesPricingManager from '@/app/apps/sales/SalesPricingManager';
+import SalesPricelistsManager from '@/app/apps/sales/SalesPricelistsManager';
+
+import SalesAdvancedPricingManager from '@/app/apps/sales/SalesAdvancedPricingManager';
 
 import SalesOrganizationManager from '@/app/apps/sales/SalesOrganizationManager';
 
@@ -68,6 +70,8 @@ type View =
   | 'templates'
   | 'pdf-builder'
   | 'catalogue'
+  | 'pricelists'
+  | 'advanced-pricing'
   | 'orders'
   | 'organization'
   | 'operations'
@@ -136,6 +140,26 @@ const TUTORIAL:
         'Maintain the Sales catalogue',
       description:
         'Create and edit the shared product and service master used by quotations and downstream invoices.',
+    },
+    {
+      id:
+        'pricelists',
+      section:
+        'pricelists',
+      title:
+        'Manage pricelists',
+      description:
+        'Set customer scope, currency, validity and precedence without mixing those controls with advanced pricing rules.',
+    },
+    {
+      id:
+        'advanced-pricing',
+      section:
+        'advanced-pricing',
+      title:
+        'Configure advanced pricing',
+      description:
+        'Set product and quantity rules using fixed pricing, percentage discounts and markups.',
     },
     {
       id:
@@ -769,6 +793,30 @@ export default function SalesWorkspaceClient({
       },
       {
         key:
+          'pricelists',
+        label:
+          'Pricelists',
+        icon:
+          FileText,
+        visible:
+          initialData
+            .capabilities
+            .canViewPricing,
+      },
+      {
+        key:
+          'advanced-pricing',
+        label:
+          'Advanced pricing',
+        icon:
+          BarChart3,
+        visible:
+          initialData
+            .capabilities
+            .canViewPricing,
+      },
+      {
+        key:
           'orders',
         label:
           'Sales orders',
@@ -1225,6 +1273,60 @@ export default function SalesWorkspaceClient({
             .canUseCatalog &&
           (
             <SalesProductCatalogueManager
+              data={
+                initialData
+              }
+              busy={
+                busy
+              }
+              request={
+                request
+              }
+              showSuccess={
+                showSuccess
+              }
+              showError={
+                showError
+              }
+            />
+          )
+        }
+
+        {
+          view ===
+            'pricelists' &&
+          initialData
+            .capabilities
+            .canViewPricing &&
+          (
+            <SalesPricelistsManager
+              data={
+                initialData
+              }
+              busy={
+                busy
+              }
+              request={
+                request
+              }
+              showSuccess={
+                showSuccess
+              }
+              showError={
+                showError
+              }
+            />
+          )
+        }
+
+        {
+          view ===
+            'advanced-pricing' &&
+          initialData
+            .capabilities
+            .canViewPricing &&
+          (
+            <SalesAdvancedPricingManager
               data={
                 initialData
               }
@@ -2030,30 +2132,6 @@ function Settings({
           </button>
         </div>
       </form>
-
-      {
-        data.capabilities
-          .canManagePricing &&
-        (
-          <SalesPricingManager
-            data={
-              data
-            }
-            busy={
-              busy
-            }
-            request={
-              request
-            }
-            showSuccess={
-              showSuccess
-            }
-            showError={
-              showError
-            }
-          />
-        )
-      }
 
     </section>
   );
