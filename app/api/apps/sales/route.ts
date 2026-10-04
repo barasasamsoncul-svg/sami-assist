@@ -5,6 +5,7 @@ import {
 
 import {
   applySalesOrderDeposit,
+  applySalesQuoteTemplate,
   approveSalesReturn,
   cancelSalesOrder,
   changeSalesQuoteStatus,
@@ -41,6 +42,7 @@ import {
   sendSalesQuote,
   setSalesOrderDepositRequirement,
   updateSalesCustomer,
+  updateSalesCatalogItem,
   updateSalesOrderFulfillment,
   updateSalesQuoteDraft,
   updateSalesSettings,
@@ -434,6 +436,12 @@ export async function POST(
           createSalesCustomer,
         update_customer:
           updateSalesCustomer,
+        create_catalog_item:
+          createSalesCatalogItem,
+        update_catalog_item:
+          updateSalesCatalogItem,
+        apply_quote_template:
+          applySalesQuoteTemplate,
         create_quote:
           createSalesQuote,
         update_quote:
