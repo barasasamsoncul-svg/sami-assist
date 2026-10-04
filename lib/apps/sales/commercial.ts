@@ -1282,6 +1282,16 @@ export async function saveSalesQuoteOptionalItems(
       ],
     );
 
+    const canManageMargin =
+      hasSalesPermission(
+        context.permissions
+          .isOwner,
+        context.permissions
+          .permissionSet,
+        SALES_PERMISSIONS
+          .MARGIN_MANAGE,
+      );
+
     let index =
       0;
 
@@ -1306,6 +1316,90 @@ export async function saveSalesQuoteOptionalItems(
       const item =
         raw as
           Record<string, unknown>;
+
+      const catalogItemId =
+        optionalUuid(
+          item.catalogItemId,
+        );
+
+      let catalogUnitCost =
+        0;
+
+      if (
+        catalogItemId
+      ) {
+        const catalog =
+          await client.query(
+            `
+              SELECT metadata
+              FROM invoicing_catalog_items
+              WHERE id = $1
+                AND company_id = $2
+                AND deleted_at IS NULL
+              LIMIT 1
+            `,
+            [
+              catalogItemId,
+              context.companyId,
+            ],
+          );
+
+        if (
+          catalog.rows.length !==
+            1
+        ) {
+          throw new SalesError(
+            'INVALID_INPUT',
+            'Choose a valid catalog item for the optional product.',
+          );
+        }
+
+        const metadata =
+          catalog.rows[0]
+            ?.metadata &&
+          typeof catalog.rows[0]
+            .metadata ===
+            'object' &&
+          !Array.isArray(
+            catalog.rows[0]
+              .metadata,
+          )
+            ? catalog.rows[0]
+                .metadata as
+                  Record<
+                    string,
+                    unknown
+                  >
+            : {};
+
+        catalogUnitCost =
+          numberInput(
+            metadata.standardCost ??
+            metadata.unitCost ??
+            0,
+            'Optional product unit cost',
+          );
+      }
+
+      if (
+        item.unitCost !==
+          undefined &&
+        !canManageMargin
+      ) {
+        throw new SalesError(
+          'SALES_PERMISSION_REQUIRED',
+          'Margin-management permission is required to override optional-product cost.',
+        );
+      }
+
+      const unitCost =
+        item.unitCost !==
+          undefined
+          ? numberInput(
+              item.unitCost,
+              'Optional product unit cost',
+            )
+          : catalogUnitCost;
 
       const description =
         cleanText(
@@ -1334,21 +1428,20 @@ export async function saveSalesQuoteOptionalItems(
             unit,
             quantity,
             unit_price,
+            unit_cost,
             tax_name_snapshot,
             tax_rate,
             created_by,
             updated_by
           )
           VALUES (
-            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13
           )
         `,
         [
           quoteId,
           context.companyId,
-          optionalUuid(
-            item.catalogItemId,
-          ),
+          catalogItemId,
           index,
           description,
           nullableText(
@@ -1377,6 +1470,7 @@ export async function saveSalesQuoteOptionalItems(
             0,
             'Optional product unit price',
           ),
+          unitCost,
           nullableText(
             item.taxName,
             180,
