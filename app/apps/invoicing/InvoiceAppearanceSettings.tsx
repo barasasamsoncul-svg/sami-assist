@@ -5,7 +5,10 @@ import {
 } from 'react';
 
 import {
+  ImageIcon,
   Palette,
+  Upload,
+  X,
 } from 'lucide-react';
 
 import type {
@@ -20,6 +23,308 @@ type Submitter = (
   message:
     string,
 ) => Promise<boolean>;
+
+
+async function normalizeLogoFile(
+  file:
+    File,
+) {
+  if (
+    !file.type
+      .toLowerCase()
+      .startsWith(
+        'image/',
+      )
+  ) {
+    throw new Error(
+      'Choose an image file for the invoice logo.',
+    );
+  }
+
+  if (
+    file.size >
+      8 *
+      1024 *
+      1024
+  ) {
+    throw new Error(
+      'Logo image must be 8 MB or smaller.',
+    );
+  }
+
+  const bitmap =
+    await createImageBitmap(
+      file,
+    );
+
+  try {
+    const maxWidth =
+      1200;
+    const maxHeight =
+      500;
+
+    const scale =
+      Math.min(
+        1,
+        maxWidth /
+          Math.max(
+            1,
+            bitmap.width,
+          ),
+        maxHeight /
+          Math.max(
+            1,
+            bitmap.height,
+          ),
+      );
+
+    const width =
+      Math.max(
+        1,
+        Math.round(
+          bitmap.width *
+          scale,
+        ),
+      );
+
+    const height =
+      Math.max(
+        1,
+        Math.round(
+          bitmap.height *
+          scale,
+        ),
+      );
+
+    const canvas =
+      document.createElement(
+        'canvas',
+      );
+
+    canvas.width =
+      width;
+    canvas.height =
+      height;
+
+    const context =
+      canvas.getContext(
+        '2d',
+      );
+
+    if (
+      !context
+    ) {
+      throw new Error(
+        'SaMi could not prepare this logo image.',
+      );
+    }
+
+    context.fillStyle =
+      '#ffffff';
+
+    context.fillRect(
+      0,
+      0,
+      width,
+      height,
+    );
+
+    context.drawImage(
+      bitmap,
+      0,
+      0,
+      width,
+      height,
+    );
+
+    const blob =
+      await new Promise<Blob>(
+        (
+          resolve,
+          reject,
+        ) => {
+          canvas.toBlob(
+            value => {
+              if (
+                value
+              ) {
+                resolve(
+                  value,
+                );
+              } else {
+                reject(
+                  new Error(
+                    'SaMi could not convert this logo.',
+                  ),
+                );
+              }
+            },
+            'image/jpeg',
+            0.92,
+          );
+        },
+      );
+
+    return {
+      blob,
+      preview:
+        canvas.toDataURL(
+          'image/jpeg',
+          0.88,
+        ),
+    };
+  } finally {
+    bitmap.close();
+  }
+}
+
+
+async function uploadInvoiceLogo(
+  file:
+    File,
+) {
+  const normalized =
+    await normalizeLogoFile(
+      file,
+    );
+
+  const fileName =
+    'invoice-logo-' +
+    Date.now()
+      .toString(
+        36,
+      ) +
+    '.jpg';
+
+  const intentResponse =
+    await fetch(
+      '/api/workspace/files/upload-intent',
+      {
+        method:
+          'POST',
+        headers: {
+          'Content-Type':
+            'application/json',
+        },
+        body:
+          JSON.stringify({
+            fileName,
+            mimeType:
+              'image/jpeg',
+            sizeBytes:
+              normalized
+                .blob
+                .size,
+            purpose:
+              'invoice_logo',
+          }),
+      },
+    );
+
+  const intent =
+    await intentResponse
+      .json()
+      .catch(
+        () => ({}),
+      ) as {
+        success?: boolean;
+        error?: string;
+        file?: {
+          id?: string;
+        };
+        upload?: {
+          url?: string;
+          method?: string;
+          headers?: Record<
+            string,
+            string
+          >;
+        };
+      };
+
+  if (
+    !intentResponse.ok ||
+    intent.success !==
+      true ||
+    !intent.file?.id ||
+    !intent.upload?.url
+  ) {
+    throw new Error(
+      intent.error ||
+      'SaMi could not start the logo upload.',
+    );
+  }
+
+  const uploadResponse =
+    await fetch(
+      intent.upload.url,
+      {
+        method:
+          intent.upload
+            .method ||
+          'PUT',
+        headers:
+          intent.upload
+            .headers ||
+          {
+            'Content-Type':
+              'image/jpeg',
+          },
+        body:
+          normalized.blob,
+      },
+    );
+
+  if (
+    !uploadResponse.ok
+  ) {
+    throw new Error(
+      'SaMi could not upload the invoice logo.',
+    );
+  }
+
+  const completeResponse =
+    await fetch(
+      '/api/workspace/files/' +
+      encodeURIComponent(
+        intent.file.id,
+      ) +
+      '/complete',
+      {
+        method:
+          'POST',
+      },
+    );
+
+  const complete =
+    await completeResponse
+      .json()
+      .catch(
+        () => ({}),
+      ) as {
+        success?: boolean;
+        error?: string;
+      };
+
+  if (
+    !completeResponse.ok ||
+    complete.success !==
+      true
+  ) {
+    throw new Error(
+      complete.error ||
+      'SaMi could not finish the logo upload.',
+    );
+  }
+
+  return {
+    reference:
+      'workspace-file:' +
+      intent.file.id,
+    preview:
+      normalized.preview,
+  };
+}
 
 
 type DesignerState = {
@@ -175,11 +480,15 @@ function initialDesignerState(
 function MiniPreview({
   state,
   version,
+  logoPreview,
 }: {
   state:
     DesignerState;
   version:
     number;
+  logoPreview:
+    string |
+    null;
 }) {
   const rowGap =
     state.density ===
@@ -260,10 +569,27 @@ function MiniPreview({
               {
                 state.showCompanyLogo &&
                 (
-                  <div
-                    className="mb-2 h-7 w-16 rounded border border-current/20 bg-white/90"
-                    title="Company logo"
-                  />
+                  logoPreview
+                    ? (
+                        <img
+                          src={
+                            logoPreview
+                          }
+                          alt="Company logo preview"
+                          className="mb-2 h-9 max-w-28 object-contain object-left"
+                        />
+                      )
+                    : state.logoUrl
+                      ? (
+                          <div
+                            className="mb-2 inline-flex h-9 items-center gap-2 rounded border border-current/20 bg-white/90 px-2 text-[8px] font-black text-slate-500"
+                            title="Uploaded company logo"
+                          >
+                            <ImageIcon className="h-3 w-3" />
+                            Logo uploaded
+                          </div>
+                        )
+                      : null
                 )
               }
               <p className="text-sm font-black">
@@ -563,6 +889,37 @@ function TemplateFields({
         ),
     );
 
+
+  const [
+    logoPreview,
+    setLogoPreview,
+  ] =
+    useState<
+      string |
+      null
+    >(
+      null,
+    );
+
+  const [
+    logoUploading,
+    setLogoUploading,
+  ] =
+    useState(
+      false,
+    );
+
+  const [
+    logoError,
+    setLogoError,
+  ] =
+    useState<
+      string |
+      null
+    >(
+      null,
+    );
+
   function set<
     K extends
       keyof DesignerState
@@ -811,22 +1168,142 @@ function TemplateFields({
             }
           />
 
-          <TextField
-            name="logoUrl"
-            label="Logo URL"
-            value={
-              state.logoUrl
-            }
-            type="url"
-            placeholder="https://..."
-            onChange={
-              value =>
-                set(
-                  'logoUrl',
-                  value,
+          <div className="space-y-1 md:col-span-2 xl:col-span-1">
+            <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-600 dark:text-slate-300">
+              Company logo
+            </span>
+
+            <input
+              type="hidden"
+              name="logoUrl"
+              value={
+                state.logoUrl
+              }
+            />
+
+            <div className="rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-2.5">
+              <div className="flex items-center gap-2">
+                <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-blue-600 px-3 text-xs font-black text-white">
+                  <Upload className="h-4 w-4" />
+                  {
+                    logoUploading
+                      ? 'Uploading...'
+                      : state.logoUrl
+                        ? 'Replace logo'
+                        : 'Upload logo'
+                  }
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    disabled={
+                      logoUploading
+                    }
+                    onChange={
+                      async event => {
+                        const file =
+                          event.target
+                            .files?.[0];
+
+                        event.currentTarget
+                          .value =
+                          '';
+
+                        if (
+                          !file
+                        ) {
+                          return;
+                        }
+
+                        setLogoUploading(
+                          true,
+                        );
+
+                        setLogoError(
+                          null,
+                        );
+
+                        try {
+                          const uploaded =
+                            await uploadInvoiceLogo(
+                              file,
+                            );
+
+                          set(
+                            'logoUrl',
+                            uploaded
+                              .reference,
+                          );
+
+                          setLogoPreview(
+                            uploaded
+                              .preview,
+                          );
+                        } catch (
+                          error
+                        ) {
+                          setLogoError(
+                            error instanceof
+                              Error
+                              ? error.message
+                              : 'SaMi could not upload this logo.',
+                          );
+                        } finally {
+                          setLogoUploading(
+                            false,
+                          );
+                        }
+                      }
+                    }
+                  />
+                </label>
+
+                {
+                  state.logoUrl &&
+                  (
+                    <button
+                      type="button"
+                      onClick={
+                        () => {
+                          set(
+                            'logoUrl',
+                            '',
+                          );
+
+                          setLogoPreview(
+                            null,
+                          );
+
+                          setLogoError(
+                            null,
+                          );
+                        }
+                      }
+                      className="inline-flex h-10 items-center gap-2 rounded-lg border border-[var(--sami-border)] px-3 text-xs font-black text-red-600"
+                    >
+                      <X className="h-4 w-4" />
+                      Remove
+                    </button>
+                  )
+                }
+              </div>
+
+              <p className="mt-2 text-[10px] leading-4 text-slate-500">
+                PNG, JPG or WebP. SaMi stores the logo privately and embeds it directly into generated invoice PDFs.
+              </p>
+
+              {
+                logoError &&
+                (
+                  <p className="mt-2 text-[10px] font-bold text-red-600">
+                    {
+                      logoError
+                    }
+                  </p>
                 )
-            }
-          />
+              }
+            </div>
+          </div>
 
           <ColorField
             name="primaryColor"
@@ -1022,6 +1499,9 @@ function TemplateFields({
         version={
           template?.designVersion ||
           1
+        }
+        logoPreview={
+          logoPreview
         }
       />
     </div>
