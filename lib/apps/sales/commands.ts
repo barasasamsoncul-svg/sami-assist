@@ -12,13 +12,69 @@ import {
   updateInvoicingCustomer,
 } from '@/lib/apps/invoicing/commands';
 
+function translateCustomerMasterError(
+  error:
+    unknown,
+): never {
+  const source =
+    error as {
+      code?: unknown;
+      message?: unknown;
+      details?: unknown;
+    };
+
+  const code =
+    typeof source?.code ===
+      'string'
+      ? source.code
+      : '';
+
+  if (
+    code ===
+      'INVOICING_PERMISSION_REQUIRED'
+  ) {
+    throw new SalesError(
+      'SALES_PERMISSION_REQUIRED',
+      'Customer-management access is required for this Sales action.',
+    );
+  }
+
+  throw new SalesError(
+    'INVALID_INPUT',
+    typeof source?.message ===
+      'string'
+      ? source.message
+      : 'SaMi could not save this customer.',
+    source?.details &&
+    typeof source.details ===
+      'object'
+      ? source.details as
+          Record<string, unknown>
+      : undefined,
+  );
+}
+
+
 export async function createSalesCustomer(
   input:
     Record<string, unknown>,
 ) {
-  return createInvoicingCustomer(
-    input,
+  await requireSalesContext(
+    SALES_PERMISSIONS
+      .QUOTE_CREATE,
   );
+
+  try {
+    return await createInvoicingCustomer(
+      input,
+    );
+  } catch (
+    error
+  ) {
+    return translateCustomerMasterError(
+      error,
+    );
+  }
 }
 
 
@@ -26,9 +82,22 @@ export async function updateSalesCustomer(
   input:
     Record<string, unknown>,
 ) {
-  return updateInvoicingCustomer(
-    input,
+  await requireSalesContext(
+    SALES_PERMISSIONS
+      .QUOTE_EDIT,
   );
+
+  try {
+    return await updateInvoicingCustomer(
+      input,
+    );
+  } catch (
+    error
+  ) {
+    return translateCustomerMasterError(
+      error,
+    );
+  }
 }
 
 
