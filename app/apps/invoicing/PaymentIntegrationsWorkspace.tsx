@@ -55,6 +55,8 @@ type Connection = {
   externalAccountId: string | null;
   externalAccountName: string | null;
   callbackConfigured: boolean;
+  callbackVerified: boolean;
+  callbackVerifiedAt: string | null;
   manualSetupRequired: boolean;
   autoReconcile: boolean;
   endpointStatus: string | null;
@@ -297,7 +299,7 @@ export default function PaymentIntegrationsWorkspace() {
         show(
           'success',
           selected.name + ' connected',
-          'SaMi verified the account and enabled automatic invoice payment notifications. Temporary access tokens and callback handling are managed by SaMi.',
+          'SaMi verified the merchant account and configured the callback where the provider supports automatic registration. Webhook verification will be shown after the first signed provider event reaches SaMi. Temporary access tokens remain server-side.',
         );
       }
     } catch (error) {
@@ -420,7 +422,7 @@ export default function PaymentIntegrationsWorkspace() {
           ? 'Connection verified'
           : 'Provider disconnected',
         operation === 'test'
-          ? 'SaMi reached the provider successfully. Automatic reconciliation remains active.'
+          ? 'SaMi reached the provider successfully. This checks the merchant API connection; webhook verification is tracked separately after a signed provider event reaches SaMi.'
           : 'The provider credentials were removed from SaMi and automatic reconciliation was stopped.',
       );
     } catch (error) {
@@ -458,6 +460,13 @@ export default function PaymentIntegrationsWorkspace() {
   const connectedCount =
     state?.connections.filter(
       connection => connection.status === 'connected',
+    ).length || 0;
+
+  const verifiedWebhookCount =
+    state?.connections.filter(
+      connection =>
+        connection.status === 'connected' &&
+        connection.callbackVerified,
     ).length || 0;
 
   const latestPayment = [...(state?.connections || [])]
@@ -508,9 +517,13 @@ export default function PaymentIntegrationsWorkspace() {
             detail="Payment accounts connected to this company"
           />
           <SummaryCard
-            label="Automatic reconciliation"
-            value={connectedCount > 0 ? 'Ready' : 'Not connected'}
-            detail="Verified provider events use the same invoice payment ledger"
+            label="Verified webhooks"
+            value={
+              connectedCount > 0
+                ? verifiedWebhookCount + '/' + connectedCount
+                : 'None yet'
+            }
+            detail="A webhook becomes verified only after SaMi receives and validates a signed provider event"
           />
           <SummaryCard
             label="Latest provider payment"
@@ -578,7 +591,29 @@ export default function PaymentIntegrationsWorkspace() {
                   </div>
                   <div className="mt-1 flex justify-between gap-3">
                     <span className="text-slate-500 dark:text-slate-400">
-                      Last check
+                      Webhook
+                    </span>
+                    <span className="text-right font-bold">
+                      {!connection.callbackConfigured
+                        ? 'Setup required'
+                        : connection.callbackVerified
+                          ? 'Verified'
+                          : 'Configured · awaiting event'}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex justify-between gap-3">
+                    <span className="text-slate-500 dark:text-slate-400">
+                      Last verified event
+                    </span>
+                    <span className="text-right font-bold">
+                      {connection.callbackVerifiedAt
+                        ? formatDate(connection.callbackVerifiedAt)
+                        : 'None yet'}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex justify-between gap-3">
+                    <span className="text-slate-500 dark:text-slate-400">
+                      Last API check
                     </span>
                     <span className="text-right font-bold">
                       {connection.lastHealthCheckAt
