@@ -295,6 +295,7 @@ export type SalesWorkspaceData = {
     canManageDeposits: boolean;
     canViewForecast: boolean;
     canUseBillingCustomers: boolean;
+    canManageBillingCustomers: boolean;
     canUseCatalog: boolean;
   };
   metrics: {
@@ -326,13 +327,25 @@ export type SalesWorkspaceData = {
   orders: SalesOrderSummary[];
   billingCustomers: Array<{
     id: string;
+    customerType: string;
     name: string;
+    legalName: string | null;
+    contactName: string | null;
     email: string | null;
     phone: string | null;
     taxId: string | null;
+    registrationNumber: string | null;
     billingAddress: string | null;
     shippingAddress: string | null;
+    city: string | null;
+    state: string | null;
+    postalCode: string | null;
+    country: string | null;
+    countryCode: string | null;
     currency: string;
+    creditLimit: number | null;
+    notes: string | null;
+    status: string;
   }>;
   catalogItems: Array<{
     id: string;
