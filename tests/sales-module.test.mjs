@@ -30,7 +30,7 @@ async function source(
 }
 
 
-test('Sales v2 models quote approval, order fulfillment and invoice state independently', async () => {
+test('Sales v3 models commercial pricing, quote approval, order fulfillment and invoice state independently', async () => {
   const schema =
     await source(
       'lib/apps/sales/schema.sql',
@@ -157,6 +157,12 @@ test('Sales context is tenant/company scoped and permission controlled', async (
       'sales.quote.send',
       'sales.quote.approve_internal',
       'sales.quote.convert',
+      'sales.quote.revise',
+      'sales.quote.optional.manage',
+      'sales.pricing.view',
+      'sales.pricing.manage',
+      'sales.margin.view',
+      'sales.margin.manage',
       'sales.order.manage',
       'sales.report.view',
       'sales.settings.manage',
@@ -548,6 +554,9 @@ test('Sales API exposes the complete quotation-to-cash action surface', async ()
       'create_quote',
       'update_quote',
       'duplicate_quote',
+      'revise_quote',
+      'save_optional_items',
+      'save_pricelist',
       'send_quote',
       'change_quote_status',
       'request_quote_approval',
@@ -571,7 +580,7 @@ test('Sales API exposes the complete quotation-to-cash action surface', async ()
 });
 
 
-test('Sales v2 is registered into manifests, migrations, Search and SaMi AI', async () => {
+test('Sales v3 is registered into manifests, migrations, Search and SaMi AI', async () => {
   const [
     manifest,
     migrationEngine,
@@ -612,7 +621,7 @@ test('Sales v2 is registered into manifests, migrations, Search and SaMi AI', as
 
   assert.match(
     manifest,
-    /key: "sales",[\s\S]*version: '2\.2\.0'/s,
+    /key: "sales",[\s\S]*version: '3\\.0\\.0'/s,
   );
 
   assert.match(
@@ -638,6 +647,11 @@ test('Sales v2 is registered into manifests, migrations, Search and SaMi AI', as
   assert.match(
     runtimeMigrations,
     /SALES_2_1_0_TO_2_2_0/,
+  );
+
+  assert.match(
+    runtimeMigrations,
+    /SALES_2_2_0_TO_3_0_0/,
   );
 
   const inventoryBridge =
@@ -754,3 +768,85 @@ test('Sales 2.2 captures signed customer quotation acceptance as auditable comme
   assert.match(publicRoute, /acceptanceNote/);
 });
 
+
+
+test('Sales v3 commercial engine locks pricing, revision history, optional products and margin security', async () => {
+  const [
+    schema,
+    migration,
+    commercial,
+    commands,
+    queries,
+    composer,
+    detail,
+  ] = await Promise.all([
+    source('lib/apps/sales/schema.sql'),
+    source('lib/apps/sales/migrations/2.2.0-to-3.0.0.ts'),
+    source('lib/apps/sales/commercial.ts'),
+    source('lib/apps/sales/commands.ts'),
+    source('lib/apps/sales/queries.ts'),
+    source('app/apps/sales/SalesQuoteComposer.tsx'),
+    source('app/apps/sales/SalesQuoteDetailClient.tsx'),
+  ]);
+
+  for (const table of [
+    'sales_pricelists',
+    'sales_pricelist_rules',
+    'sales_quote_revisions',
+    'sales_quote_optional_items',
+  ]) {
+    assert.match(schema, new RegExp('public\\.' + table));
+    assert.match(migration, new RegExp('public\\.' + table));
+  }
+
+  for (const field of [
+    'current_revision',
+    'pricelist_id',
+    'unit_cost',
+    'cost_total',
+    'margin_amount',
+    'margin_percent',
+  ]) {
+    assert.match(schema, new RegExp(field));
+    assert.match(migration, new RegExp(field));
+  }
+
+  assert.match(commercial, /resolveSalesPricelistUnitPrice/);
+  assert.match(commercial, /discount_percent/);
+  assert.match(commercial, /markup_percent/);
+  assert.match(commercial, /createSalesQuoteRevision/);
+  assert.match(commercial, /snapshot JSONB|snapshot,/);
+  assert.match(commercial, /saveSalesQuoteOptionalItems/);
+  assert.match(commercial, /company_id = \$2|company_id = \$1/);
+
+  assert.match(commands, /selected pricelist currency must match the quotation currency/);
+  assert.match(commands, /metadata\.standardCost/);
+  assert.match(commands, /SALES_PERMISSIONS[\s\S]*MARGIN_MANAGE/);
+  assert.match(commands, /marginPercent/);
+  assert.match(commands, /pricelist_id/);
+  assert.match(commands, /sales_order_items_v2[\s\S]*unit_cost[\s\S]*margin_amount/);
+
+  assert.match(queries, /canViewMargin/);
+  assert.match(queries, /canManageMargin/);
+  assert.match(queries, /sales_pricelists/);
+  assert.match(queries, /sales_quote_revisions/);
+  assert.match(queries, /sales_quote_optional_items/);
+
+  assert.match(composer, /Pricelist/);
+  assert.match(composer, /Unit cost/);
+  assert.match(composer, /Estimated margin/);
+  assert.match(detail, /Revision history/);
+  assert.match(detail, /Optional products/);
+  assert.match(detail, /Cost \/ margin/);
+});
+
+test('Sales v3 does not expose margin data to users without margin permissions', async () => {
+  const queries = await source('lib/apps/sales/queries.ts');
+  const composer = await source('app/apps/sales/SalesQuoteComposer.tsx');
+  const detail = await source('app/apps/sales/SalesQuoteDetailClient.tsx');
+
+  assert.match(queries, /access\.canViewMargin[\s\S]*row\.margin_amount/);
+  assert.match(queries, /access\.canViewMargin[\s\S]*row\.metadata/);
+  assert.match(composer, /canManageMargin[\s\S]*Unit cost/);
+  assert.match(detail, /canViewMargin[\s\S]*Cost \/ margin/);
+});
