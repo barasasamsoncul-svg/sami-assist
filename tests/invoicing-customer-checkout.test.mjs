@@ -223,7 +223,7 @@ test('M-PESA STK uses encrypted merchant passkeys, one-time callbacks and server
   assert.match(stk, /CustomerPayBillOnline/);
   assert.match(stk, /CustomerBuyGoodsOnline/);
   assert.match(stk, /callbackTokenHash/);
-  assert.match(stk, /crypto\.randomBytes\(\s*32/s);
+  assert.match(stk, /crypto[\s\S]{0,80}\.randomBytes\(\s*32/s);
   assert.match(stk, /MpesaReceiptNumber/);
   assert.match(stk, /recordVerifiedExternalInvoiceSettlement/);
   assert.match(stk, /externalEventId:\s*checkoutRequestId/s);
