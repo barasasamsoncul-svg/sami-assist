@@ -5,6 +5,7 @@ import {
   connectInvoicePaymentProvider,
   disconnectInvoicePaymentProvider,
   getInvoicePaymentProviderState,
+  setPrimaryInvoicePaymentProvider,
   testInvoicePaymentProviderConnection,
 } from '@/lib/apps/invoicing/payment-provider-connections';
 import {
@@ -64,6 +65,16 @@ export async function POST(request: NextRequest) {
 
     if (operation === 'test') {
       const result = await testInvoicePaymentProviderConnection(
+        body.connectionId,
+      );
+      return integrationJson({
+        success: true,
+        result,
+      });
+    }
+
+    if (operation === 'make_primary') {
+      const result = await setPrimaryInvoicePaymentProvider(
         body.connectionId,
       );
       return integrationJson({
