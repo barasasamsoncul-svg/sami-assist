@@ -970,7 +970,7 @@ test('Category 18: SaMi AI streams live responses without bypassing the tool-saf
   );
   assert.match(
     client,
-    /SaMi is responding…/,
+    /Responding…/,
   );
 });
 
@@ -1093,5 +1093,53 @@ test('Category 18: AI attachments are private to AI use without granting generic
   assert.match(
     workspaceFiles,
     /row\.uploaded_by !==[\s\S]*context\.userId/,
+  );
+});
+
+
+test('Category 18: active generation never blocks follow-up composition controls', async () => {
+  const client = await source(
+    'app/components/workspace/WorkspaceAiClient.tsx',
+  );
+
+  assert.match(
+    client,
+    /queuedRequestsRef/,
+  );
+  assert.match(
+    client,
+    /submitChatRequest/,
+  );
+  assert.match(
+    client,
+    /'queued' as const/,
+  );
+  assert.match(
+    client,
+    /Queue follow-up message/,
+  );
+  assert.match(
+    client,
+    /follow-up queued/,
+  );
+  assert.match(
+    client,
+    /status:\s*willQueue[\s\S]*\? 'queued'[\s\S]*: 'sending'/,
+  );
+
+  assert.doesNotMatch(
+    client,
+    /disabled=\{\s*sending\s*\}[\s\S]{0,300}toggleVoiceInput/,
+    'Voice input must remain available while another answer is generating.',
+  );
+  assert.doesNotMatch(
+    client,
+    /sending \|\|\s*uploadingAttachments/,
+    'Attachment upload must not be disabled merely because generation is active.',
+  );
+  assert.doesNotMatch(
+    client,
+    /if \(\s*sending \|\|\s*message\.role !==\s*'user'/,
+    'Editing a user message must not be blocked by generation state.',
   );
 });
