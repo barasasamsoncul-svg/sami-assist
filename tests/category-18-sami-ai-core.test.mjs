@@ -877,3 +877,99 @@ test('Category 18: full-suite gate includes AI core regression coverage', async 
     /test:category18/,
   );
 });
+
+
+test('Category 18: SaMi AI streams live responses without bypassing the tool-safe runtime', async () => {
+  const [
+    provider,
+    service,
+    route,
+    client,
+  ] = await Promise.all([
+    source('lib/ai/provider.ts'),
+    source('lib/services/workspace-ai.ts'),
+    source('app/api/workspace/ai/chat/route.ts'),
+    source('app/components/workspace/WorkspaceAiClient.tsx'),
+  ]);
+
+  assert.match(
+    provider,
+    /export async function streamSamiAiChat/,
+  );
+  assert.match(
+    provider,
+    /stream:\s*true/,
+  );
+  assert.match(
+    provider,
+    /for await/,
+  );
+  assert.match(
+    provider,
+    /onContentDelta/,
+  );
+
+  assert.match(
+    service,
+    /streamSamiAiChat/,
+  );
+  assert.match(
+    service,
+    /onContentReset/,
+  );
+  assert.match(
+    service,
+    /pending_confirmation/,
+    'Streaming must retain the existing confirmation-gated write path.',
+  );
+
+  assert.match(
+    route,
+    /application\/x-ndjson/,
+  );
+  assert.match(
+    route,
+    /ReadableStream/,
+  );
+  assert.match(
+    route,
+    /type:\s*'delta'/,
+  );
+  assert.match(
+    route,
+    /type:\s*'reset'/,
+  );
+  assert.match(
+    route,
+    /type:\s*'done'/,
+  );
+  assert.match(
+    route,
+    /generationController/,
+  );
+
+  assert.match(
+    client,
+    /application\/x-ndjson/,
+  );
+  assert.match(
+    client,
+    /\.getReader\(\)/,
+  );
+  assert.match(
+    client,
+    /new TextDecoder\(\)/,
+  );
+  assert.match(
+    client,
+    /streaming-/,
+  );
+  assert.match(
+    client,
+    /appendStreamDelta/,
+  );
+  assert.match(
+    client,
+    /SaMi is responding…/,
+  );
+});
