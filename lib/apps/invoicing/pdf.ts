@@ -7,7 +7,7 @@ import {
 
 
 export const INVOICE_PDF_RENDERER_VERSION =
-  'invoice-pdf-v4';
+  'invoice-pdf-v5';
 
 
 export type PdfInvoice = {
@@ -2203,19 +2203,44 @@ function renderItemPage(
     const line
     of pageLines
   ) {
-    content +=
-      textCommand(
+    const descriptionLines =
+      wrap(
+        line.description,
         42,
-        y,
-        truncate(
-          line.description,
-          35,
-        ),
-        {
-          size:
-            7.5,
-          bold:
-            true,
+      )
+        .slice(
+          0,
+          2,
+        );
+
+    (
+      descriptionLines.length >
+        0
+        ? descriptionLines
+        : [
+            'Item',
+          ]
+    )
+      .forEach(
+        (
+          descriptionLine,
+          descriptionIndex,
+        ) => {
+          content +=
+            textCommand(
+              42,
+              y -
+                descriptionIndex *
+                  10,
+              descriptionLine,
+              {
+                size:
+                  7.5,
+                bold:
+                  descriptionIndex ===
+                  0,
+              },
+            );
         },
       );
 
@@ -2357,6 +2382,12 @@ function renderItemPage(
           ' | ',
         );
 
+    const detailOffset =
+      descriptionLines.length >
+        1
+        ? 22
+        : 12;
+
     if (
       subline
     ) {
@@ -2364,7 +2395,7 @@ function renderItemPage(
         textCommand(
           42,
           y -
-            11,
+            detailOffset,
           truncate(
             subline,
             80,
@@ -2381,26 +2412,49 @@ function renderItemPage(
         );
     }
 
+    const rowHeight =
+      invoice.template
+        .density ===
+        'compact'
+        ? (
+            descriptionLines.length >
+              1 ||
+            subline
+              ? 34
+              : 25
+          )
+        : invoice.template
+            .density ===
+            'spacious'
+          ? (
+              descriptionLines.length >
+                1 ||
+              subline
+                ? 46
+                : 37
+            )
+          : (
+              descriptionLines.length >
+                1 ||
+              subline
+                ? 40
+                : 31
+            );
+
     content +=
       lineCommand(
         36,
         y -
-          17,
+          rowHeight +
+          8,
         559,
         y -
-          17,
+          rowHeight +
+          8,
       );
 
     y -=
-      invoice.template
-        .density ===
-        'compact'
-        ? 25
-        : invoice.template
-            .density ===
-            'spacious'
-          ? 37
-          : 31;
+      rowHeight;
   }
 
   if (
@@ -2990,12 +3044,12 @@ export function renderInvoicePdf(
     invoice.template
       .density ===
       'compact'
-      ? 10
+      ? 8
       : invoice.template
           .density ===
           'spacious'
-        ? 6
-        : 8;
+        ? 5
+        : 6;
 
   for (
     let index =
