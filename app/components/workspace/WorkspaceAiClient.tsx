@@ -2496,6 +2496,31 @@ export default function WorkspaceAiClient({
         );
       }
 
+      setPendingActions(
+        current =>
+          current.filter(
+            action =>
+              action.id !==
+              actionId,
+          ),
+      );
+
+      if (
+        data.message &&
+        selectedConversationId
+      ) {
+        setMessages(
+          current => [
+            ...current.filter(
+              message =>
+                message.id !==
+                data.message.id,
+            ),
+            data.message,
+          ],
+        );
+      }
+
       if (
         selectedConversationId
       ) {
@@ -2504,7 +2529,10 @@ export default function WorkspaceAiClient({
         );
       }
 
-      await loadStatus();
+      await Promise.all([
+        loadStatus(),
+        loadConversations(),
+      ]);
     } catch (
       candidate
     ) {
