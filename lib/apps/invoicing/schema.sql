@@ -694,7 +694,15 @@ CREATE TABLE IF NOT EXISTS public.invoicing_payment_allocations (
   base_invoice_amount NUMERIC(19,4),
   realized_fx_amount NUMERIC(19,4) NOT NULL DEFAULT 0,
   status VARCHAR(20) NOT NULL DEFAULT 'posted'
-    CHECK (status IN ('posted','reversed')),
+    CHECK (
+      status IN (
+        'pending',
+        'requires_action',
+        'posted',
+        'failed',
+        'reversed'
+      )
+    ),
   operation_key VARCHAR(160),
   created_by UUID,
   reversed_at TIMESTAMPTZ,
@@ -1066,7 +1074,15 @@ CREATE TABLE IF NOT EXISTS public.invoicing_credit_note_refunds (
   reference VARCHAR(255),
   reason TEXT NOT NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'posted'
-    CHECK (status IN ('posted','reversed')),
+    CHECK (
+      status IN (
+        'pending',
+        'requires_action',
+        'posted',
+        'failed',
+        'reversed'
+      )
+    ),
   idempotency_key VARCHAR(120),
   created_by UUID,
   reversed_by UUID,
