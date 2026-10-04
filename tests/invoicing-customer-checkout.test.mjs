@@ -10,7 +10,7 @@ async function source(file) {
     .replace(/\r\n/g, '\n');
 }
 
-test('customer Pay Now supports hosted providers plus verified M-PESA STK without exposing merchant secrets', async () => {
+test('customer Pay Now uses the business-selected route while supporting hosted providers and verified M-PESA STK', async () => {
   const [
     providers,
     service,
@@ -46,11 +46,13 @@ test('customer Pay Now supports hosted providers plus verified M-PESA STK withou
   );
   assert.match(service, /mpesaStkCheckoutRequirement/);
   assert.match(service, /createMpesaStkPush/);
-  assert.match(client, /Send M-PESA prompt/);
+  assert.match(service, /connection\.checkoutPrimary/);
+  assert.match(service, /return \[\s*\{[\s\S]*selected\.provider/s);
+  assert.match(client, /Pay now/);
   assert.match(client, /phoneNumber/);
 
   assert.match(client, /Pay securely online/);
-  assert.match(client, /Pay with/);
+  assert.doesNotMatch(client, /Pay with/);
   assert.match(client, /JSON\.stringify\(\{[\s\S]*provider/s);
   assert.doesNotMatch(
     client,
@@ -229,7 +231,7 @@ test('M-PESA STK uses encrypted merchant passkeys, one-time callbacks and server
   assert.match(stk, /externalEventId:\s*checkoutRequestId/s);
   assert.match(stk, /amount !==\s*intent\.amount/s);
 
-  assert.match(checkout, /providerText ===\s*'mpesa'/s);
+  assert.match(checkout, /provider ===\s*'mpesa'/s);
   assert.match(checkout, /checkMpesaStkStatus/);
   assert.match(route, /operation ===\s*'status'/s);
   assert.match(callbackRoute, /receiveMpesaStkCallback/);
