@@ -681,7 +681,7 @@ test('Category 18: the real SaMi AI workspace is wired into shell, search, dashb
   assert.match(page, /shell\.aiAvailable/);
 
   assert.match(client, /\/api\/workspace\/ai\/chat/);
-  assert.match(client, /ReactMarkdown/);
+  assert.match(client, /SamiAiMarkdown/);
   assert.match(client, /Confirmation required/);
   assert.match(client, /copiedMessageId/);
   assert.match(client, /'Copied'/);
@@ -713,6 +713,9 @@ test('Category 18: the real SaMi AI workspace is wired into shell, search, dashb
   assert.match(service, /mode ===\s*'regenerate'/);
   assert.match(service, /supersedeConversationFromMessage/);
   assert.match(service, /status =\s*'superseded'/);
+  assert.match(service, /Default to fast response behavior/);
+  assert.match(service, /shortest complete answer/);
+  assert.match(service, /deeper multi-step reasoning only when/);
 
   assert.match(sidebar, /href="\/ai"/);
 
@@ -743,6 +746,41 @@ test('Category 18: the real SaMi AI workspace is wired into shell, search, dashb
     'Unfinished Files UI must remain hidden.',
   );
 });
+
+test('Category 18: SaMi AI response presentation follows the premium chat composition contract', async () => {
+  const [
+    client,
+    markdown,
+    service,
+  ] = await Promise.all([
+    source('app/components/workspace/WorkspaceAiClient.tsx'),
+    source('app/components/ai/SamiAiMarkdown.tsx'),
+    source('lib/services/workspace-ai.ts'),
+  ]);
+
+  assert.match(client, /SamiAiMarkdown/);
+  assert.match(client, /optimistic-/);
+  assert.match(client, /scrollIntoView/);
+  assert.match(client, /composer\.style\.height/);
+  assert.match(client, /Enter to send · Shift\+Enter for a new line/);
+  assert.match(client, /data-sami-ai-chat="true"/);
+  assert.match(client, /Your message was saved, but this chat could not refresh/);
+
+  assert.match(markdown, /data-sami-ai-markdown="true"/);
+  assert.match(markdown, /list-decimal/);
+  assert.match(markdown, /start=/);
+  assert.match(markdown, /Copy code/);
+  assert.match(markdown, /markdownSegments/);
+  assert.match(markdown, /SamiMarkdownTable/);
+  assert.match(markdown, /overflow-x-auto/);
+
+  assert.match(service, /Response composition standard/);
+  assert.match(service, /use a numbered list in the actual execution order/);
+  assert.match(service, /prefer a compact Markdown table/);
+  assert.match(service, /fenced Markdown code blocks/);
+  assert.match(service, /use bullets instead of artificial numbering/);
+});
+
 
 test('Category 18: Home dashboard analysis excludes activity telemetry and uses business signals', async () => {
   const [

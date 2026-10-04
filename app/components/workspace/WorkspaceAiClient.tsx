@@ -33,8 +33,7 @@ import {
   type KeyboardEvent,
 } from 'react';
 
-import ReactMarkdown from 'react-markdown';
-
+import SamiAiMarkdown from '@/app/components/ai/SamiAiMarkdown';
 import SamiAiSidebar from '@/app/components/ai/SamiAiSidebar';
 import SamiAiUsagePanel from '@/app/components/ai/SamiAiUsagePanel';
 
@@ -276,6 +275,11 @@ export default function WorkspaceAiClient({
       null,
     );
 
+  const messagesEndRef =
+    useRef<HTMLDivElement | null>(
+      null,
+    );
+
   const [
     loading,
     setLoading,
@@ -370,6 +374,48 @@ export default function WorkspaceAiClient({
         selectedConversationId,
       ],
     );
+
+  useEffect(
+    () => {
+      const composer =
+        composerRef.current;
+
+      if (!composer) {
+        return;
+      }
+
+      composer.style.height =
+        '0px';
+
+      composer.style.height =
+        Math.min(
+          composer.scrollHeight,
+          192,
+        ) + 'px';
+    },
+    [
+      draft,
+    ],
+  );
+
+  useEffect(
+    () => {
+      messagesEndRef
+        .current
+        ?.scrollIntoView({
+          block: 'end',
+          behavior:
+            sending
+              ? 'smooth'
+              : 'auto',
+        });
+    },
+    [
+      messages.length,
+      pendingActions.length,
+      sending,
+    ],
+  );
 
   const lastAssistantMessageId =
     useMemo(
@@ -729,16 +775,28 @@ export default function WorkspaceAiClient({
         null,
       );
 
-      await Promise.all([
-        loadConversations(),
-        loadStatus(),
-      ]);
+      try {
+        await Promise.all([
+          loadConversations(),
+          loadStatus(),
+        ]);
 
-      if (
-        conversationId
+        if (
+          conversationId
+        ) {
+          await loadConversation(
+            conversationId,
+          );
+        }
+      } catch (
+        refreshError
       ) {
-        await loadConversation(
-          conversationId,
+        setError(
+          refreshError instanceof
+            Error
+            ? 'Your message was saved, but this chat could not refresh: ' +
+              refreshError.message
+            : 'Your message was saved, but this chat could not refresh. Reopen the conversation to load the saved response.',
         );
       }
 
@@ -1077,11 +1135,57 @@ export default function WorkspaceAiClient({
     const targetMessageId =
       editingMessageId;
 
+    const sentAttachments =
+      pendingAttachments;
+
     const attachmentIds =
-      pendingAttachments.map(
+      sentAttachments.map(
         attachment =>
           attachment.id,
       );
+
+    const optimisticMessageId =
+      targetMessageId
+        ? null
+        : 'optimistic-' +
+          Date.now();
+
+    if (
+      optimisticMessageId
+    ) {
+      setMessages(
+        current => [
+          ...current,
+          {
+            id:
+              optimisticMessageId,
+            conversationId:
+              selectedConversationId ||
+              'pending',
+            role:
+              'user',
+            content:
+              message,
+            status:
+              'sending',
+            correlationId:
+              null,
+            feedback:
+              null,
+            attachments:
+              sentAttachments,
+            createdAt:
+              new Date()
+                .toISOString(),
+          },
+        ],
+      );
+
+      setDraft('');
+      setPendingAttachments(
+        [],
+      );
+    }
 
     const sent =
       await runChatRequest({
@@ -1099,7 +1203,26 @@ export default function WorkspaceAiClient({
       });
 
     if (
-      sent
+      !sent &&
+      optimisticMessageId
+    ) {
+      setMessages(
+        current =>
+          current.filter(
+            item =>
+              item.id !==
+              optimisticMessageId,
+          ),
+      );
+
+      setPendingAttachments(
+        sentAttachments,
+      );
+    }
+
+    if (
+      sent &&
+      targetMessageId
     ) {
       setDraft('');
       setPendingAttachments(
@@ -1710,7 +1833,7 @@ export default function WorkspaceAiClient({
   }
 
   return (
-    <div className="flex h-[100dvh] min-h-[100dvh] overflow-hidden bg-[#F7F7F8] text-slate-950 dark:bg-[#0D0D0D] dark:text-white">
+    <div data-sami-ai-chat="true" className="flex h-[100dvh] min-h-[100dvh] overflow-hidden bg-[#F7F7F8] text-slate-950 dark:bg-[#0D0D0D] dark:text-white">
       <SamiAiSidebar
         conversations={
           conversations
@@ -1866,8 +1989,13 @@ export default function WorkspaceAiClient({
         </div>
       ) : (
         <section className="flex min-h-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-3 pb-8 pt-5 sm:px-6 sm:pt-8">
+          <div className="sami-scrollbar min-h-0 flex-1 overflow-y-auto scroll-smooth">
+            <div
+              role="log"
+              aria-live="polite"
+              aria-relevant="additions text"
+              className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-3 pb-8 pt-5 sm:px-6 sm:pt-8"
+            >
               {messages.length ===
                 0 ? (
                 <div className="flex min-h-[55dvh] flex-col items-center justify-center text-center">
@@ -2037,6 +2165,14 @@ export default function WorkspaceAiClient({
                   )}
                 </div>
               )}
+
+              <div
+                ref={
+                  messagesEndRef
+                }
+                aria-hidden="true"
+                className="h-px"
+              />
             </div>
           </div>
 
@@ -2180,6 +2316,8 @@ export default function WorkspaceAiClient({
                   rows={1}
                   maxLength={8000}
                   placeholder="Message SaMi…"
+                  aria-label="Message SaMi AI"
+                  enterKeyHint="send"
                   className="max-h-48 min-h-11 min-w-0 flex-1 resize-none bg-transparent px-3 py-2.5 text-sm leading-6 outline-none placeholder:text-slate-400"
                 />
 
@@ -2228,7 +2366,10 @@ export default function WorkspaceAiClient({
                 </button>
               </div>
 
-              <p className="mt-2 text-center text-[9px] text-slate-400">
+              <p className="mt-2 text-center text-[9px] leading-4 text-slate-400">
+                <span className="hidden sm:inline">
+                  Enter to send · Shift+Enter for a new line ·{' '}
+                </span>
                 SaMi can make mistakes. Business actions still follow your current company, app access and permissions.
               </p>
             </div>
@@ -2345,11 +2486,9 @@ function MessageBubble({
             )}
 
           {assistant ? (
-            <div className="prose prose-sm max-w-none break-words text-inherit prose-headings:text-inherit prose-strong:text-inherit prose-code:text-inherit dark:prose-invert">
-              <ReactMarkdown>
-                {message.content}
-              </ReactMarkdown>
-            </div>
+            <SamiAiMarkdown>
+              {message.content}
+            </SamiAiMarkdown>
           ) : (
             <p className="whitespace-pre-wrap break-words">
               {message.content}
