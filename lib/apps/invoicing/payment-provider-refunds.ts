@@ -444,7 +444,11 @@ function normalizeFlutterwaveStatus(
 
   if (
     [
-      'completed',
+      'completed-bank-transfer',
+      'completed-momo',
+      'completed-mpgs',
+      'completed-offline',
+      'completed-preauth',
       'successful',
       'succeeded',
     ].includes(
@@ -459,6 +463,8 @@ function normalizeFlutterwaveStatus(
       'new',
       'pending',
       'processing',
+      'completed',
+      'pending-momo',
     ].includes(
       value,
     )
