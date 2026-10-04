@@ -727,6 +727,9 @@ export async function verifyAndNormalizeInvoicePaymentWebhook(input: {
       currency: cleanString(body.currency, 12).toUpperCase(),
       providerReference:
         cleanString(body.confirmation_code, 255) || trackingId,
+      providerTransactionId:
+        cleanString(body.confirmation_code, 255) ||
+        undefined,
       method: cleanString(body.payment_method, 50) || 'Pesapal',
       paymentDate: cleanString(body.created_date, 80) || undefined,
     };
@@ -768,6 +771,10 @@ export async function verifyAndNormalizeInvoicePaymentWebhook(input: {
         typeof session.payment_intent === 'string'
           ? session.payment_intent
           : session.id,
+      providerTransactionId:
+        typeof session.payment_intent === 'string'
+          ? session.payment_intent
+          : undefined,
       method: 'Stripe',
       paymentDate: new Date(event.created * 1000).toISOString(),
     };
@@ -802,6 +809,10 @@ export async function verifyAndNormalizeInvoicePaymentWebhook(input: {
         ),
       currency: paystackCurrency,
       providerReference: cleanString(data.reference, 255),
+      providerTransactionId:
+        cleanString(data.reference, 255) ||
+        cleanString(data.id, 100) ||
+        undefined,
       method: cleanString(data.channel, 50) || 'Paystack',
       paymentDate: cleanString(data.paid_at, 80) || undefined,
     };
