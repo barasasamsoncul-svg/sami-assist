@@ -32,6 +32,25 @@ import {
 } from '@/lib/apps/invoicing/context';
 
 
+function plainObject(
+  value:
+    unknown,
+):
+  Record<string, unknown> {
+  return (
+    value &&
+    typeof value ===
+      'object' &&
+    !Array.isArray(
+      value,
+    )
+  )
+    ? value as
+        Record<string, unknown>
+    : {};
+}
+
+
 async function refreshCreditStatus(
   client:
     PoolClient,
@@ -1690,6 +1709,11 @@ export async function refundInvoiceCreditNote(
       255,
     );
 
+  const refundMetadata =
+    plainObject(
+      input.metadata,
+    );
+
   const key =
     operationKey(
       input.idempotencyKey,
@@ -1838,12 +1862,13 @@ export async function refundInvoiceCreditNote(
             reason,
             status,
             idempotency_key,
+            metadata,
             created_by
           )
           VALUES (
             $1,$2,$3,$4,$5,$6,$7,$8,
             'posted',
-            $9,$10
+            $9,$10::jsonb,$11
           )
           RETURNING
             id
@@ -1858,6 +1883,9 @@ export async function refundInvoiceCreditNote(
           reference,
           reason,
           key,
+          JSON.stringify(
+            refundMetadata,
+          ),
           context.userId,
         ],
       );
@@ -2012,6 +2040,7 @@ export async function reverseInvoiceCreditNoteRefund(
             r.refund_number,
             r.amount,
             r.status,
+            r.metadata,
             n.invoice_id
           FROM invoicing_credit_note_refunds r
           INNER JOIN invoicing_credit_notes n
@@ -2048,6 +2077,21 @@ export async function reverseInvoiceCreditNoteRefund(
       throw new InvoicingError(
         'INVOICE_STATE_INVALID',
         'Only a posted credit refund can be reversed.',
+      );
+    }
+
+    const refundMetadata =
+      plainObject(
+        refund.metadata,
+      );
+
+    if (
+      refundMetadata.providerRefundEventId ||
+      refundMetadata.providerKey
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'A completed provider refund cannot be reversed inside SaMi. Record a new customer payment if the money is collected again.',
       );
     }
 
