@@ -7166,17 +7166,19 @@ test('Invoicing Part 27 closes standalone routes and the production release vali
 });
 
 
-test('Invoicing exposes the automatic payment gateway as a visible module surface', async () => {
+test('Invoicing exposes automatic payments through a business-owner provider connection surface', async () => {
   const [
     navigation,
     client,
     workspace,
-    integrations,
+    catalog,
+    api,
   ] = await Promise.all([
     source('lib/apps/invoicing/navigation.ts'),
     source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
     source('app/apps/invoicing/PaymentIntegrationsWorkspace.tsx'),
-    source('app/integrations/IntegrationsClient.tsx'),
+    source('lib/apps/invoicing/payment-provider-catalog.ts'),
+    source('app/api/apps/invoicing/payment-providers/route.ts'),
   ]);
 
   assert.match(
@@ -7191,54 +7193,76 @@ test('Invoicing exposes the automatic payment gateway as a visible module surfac
 
   assert.match(
     workspace,
-    /invoicing_payment_gateway/,
+    /Automatic invoice payments/,
   );
 
   assert.match(
     workspace,
-    /invoicing\.payment\.succeeded/,
+    /Connect &amp; Test/,
   );
 
   assert.match(
     workspace,
-    /invoiceId or invoiceNumber/,
+    /Payment notification URL/,
+    'Providers that cannot register callbacks automatically must receive a guided copy-and-save step.',
   );
 
-  assert.match(
+  assert.doesNotMatch(
     workspace,
-    /Configure gateway/,
+    /\/integrations\?provider=invoicing_payment_gateway/,
+    'Ordinary business users must not be sent to the developer webhook console.',
+  );
+
+  for (const providerKey of [
+    'pesapal',
+    'mpesa',
+    'stripe',
+    'paystack',
+    'flutterwave',
+    'paypal',
+  ]) {
+    assert.match(
+      catalog,
+      new RegExp("key: '" + providerKey + "'"),
+      providerKey + ' must be available in the invoice payment provider catalog.',
+    );
+  }
+
+  assert.match(
+    api,
+    /connectInvoicePaymentProvider/,
   );
 
   assert.match(
-    integrations,
-    /searchParams\.get\([\s\S]*'provider'/s,
-    'The global Integrations control center must focus the provider requested from Invoicing.',
+    api,
+    /testInvoicePaymentProviderConnection/,
   );
 
   assert.match(
-    integrations,
-    /provider\.key/,
-    'Provider-key search must make deep links stable even if the display name changes.',
+    api,
+    /disconnectInvoicePaymentProvider/,
   );
 });
 
 
-test('Invoicing exposes automatic payment settlement as a first-class module surface', async () => {
+test('Invoicing preserves the legacy normalized gateway seam while native provider callbacks settle through the same authoritative core', async () => {
   const [
     navigation,
     workspace,
     route,
     integrationUi,
-    integrationCenter,
-    provider,
+    legacyProvider,
+    nativeProviderService,
+    nativeProviderAdapters,
     settlement,
   ] = await Promise.all([
     source('lib/apps/invoicing/navigation.ts'),
     source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
     source('app/apps/invoicing/payment-integrations/page.tsx'),
     source('app/apps/invoicing/PaymentIntegrationsWorkspace.tsx'),
-    source('app/integrations/IntegrationsClient.tsx'),
     source('lib/apps/invoicing/integration-provider.ts'),
+    source('lib/apps/invoicing/payment-provider-connections.ts'),
+    source('lib/apps/invoicing/payment-provider-adapters.ts'),
     source('lib/apps/invoicing/external-settlement.ts'),
   ]);
 
@@ -7257,41 +7281,41 @@ test('Invoicing exposes automatic payment settlement as a first-class module sur
     /view="paymentIntegrations"/,
   );
 
-  assert.match(
-    integrationUi,
-    /invoicing_payment_gateway/,
-  );
-
-  assert.match(
+  assert.doesNotMatch(
     integrationUi,
     /\/integrations\?provider=invoicing_payment_gateway/,
+    'The app-owned merchant surface must not expose the legacy generic gateway configuration flow.',
   );
 
   assert.match(
-    integrationUi,
-    /invoicing\.payment\.succeeded/,
-  );
-
-  assert.match(
-    integrationCenter,
-    /url\.searchParams\.get\(\s*'provider'/s,
-    'The global Integrations center must accept a provider focus from an app-owned integration surface.',
-  );
-
-  assert.match(
-    integrationCenter,
-    /provider\.key/,
-    'Provider search must include provider keys so app deep-links can focus the exact connector.',
-  );
-
-  assert.match(
-    provider,
+    legacyProvider,
     /key:'invoicing_payment_gateway'/,
+    'The legacy normalized provider bridge remains available for backwards-compatible server integrations.',
   );
 
   assert.match(
-    provider,
+    legacyProvider,
     /invoicing\.payment\.succeeded/,
+  );
+
+  assert.match(
+    nativeProviderService,
+    /verifyAndNormalizeInvoicePaymentWebhook/,
+  );
+
+  assert.match(
+    nativeProviderService,
+    /recordVerifiedExternalInvoiceSettlement/,
+  );
+
+  assert.match(
+    nativeProviderAdapters,
+    /x-paystack-signature/,
+  );
+
+  assert.match(
+    nativeProviderAdapters,
+    /verify-webhook-signature/,
   );
 
   assert.match(
