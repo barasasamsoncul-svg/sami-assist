@@ -829,12 +829,22 @@ test('Category 24 admin shell participates in the shared SaMi visibility contrac
 
   assert.match(
     globals,
-    /bg-zinc-50[\s\S]*bg-zinc-100/,
+    /bg-zinc-50[\s\S]*bg-zinc-100[\s\S]*:not\(\[class\*='dark:bg-'\]\)/,
   );
 
   assert.match(
     globals,
     /opacity:\s*0\.72/,
+  );
+
+  assert.match(
+    globals,
+    /Unified SaMi application visibility contract/,
+  );
+
+  assert.doesNotMatch(
+    globals,
+    /Cross-app visibility hardening|Standalone app visibility contract/,
   );
 });
 
