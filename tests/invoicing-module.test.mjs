@@ -7575,7 +7575,7 @@ test('Issued invoice PDF repair detects partial line loss including a missing fi
 });
 
 
-test('Invoicing Accounting integration bootstraps only the first fiscal period for system postings', async () => {
+test('Invoicing Accounting integration safely fills uncovered system-posting periods', async () => {
   const accounting =
     await source(
       'lib/apps/invoicing/accounting.ts',
@@ -7588,20 +7588,20 @@ test('Invoicing Accounting integration bootstraps only the first fiscal period f
 
   assert.match(
     accounting,
-    /COUNT\(\*\)::int[\s\S]*accounting_fiscal_periods/s,
-    'Automatic period creation must only occur after checking existing company periods.',
+    /coveringAfterLock/,
+    'SaMi must re-check for a covering period after taking the company advisory lock.',
   );
 
   assert.match(
     accounting,
-    /Number\([\s\S]*existingPeriods[\s\S]*>\s*0[\s\S]*return/s,
-    'Businesses already managing periods must keep explicit period control.',
+    /daterange\([\s\S]*starts_on[\s\S]*ends_on[\s\S]*&&[\s\S]*daterange/s,
+    'Automatic period creation must refuse to overlap any period the business already manages.',
   );
 
   assert.match(
     accounting,
     /INSERT INTO accounting_fiscal_periods[\s\S]*'open'/s,
-    'A company with no fiscal periods must receive a safe open period for its first system-generated posting.',
+    'A genuinely uncovered month may receive an open period so system-generated invoice postings do not silently lag.',
   );
 
   assert.match(
