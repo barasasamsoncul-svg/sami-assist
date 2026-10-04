@@ -1056,7 +1056,7 @@ export async function respondToPublicSalesQuote(
               optional.quote_id,
               optional.company_id,
               optional.catalog_item_id,
-              catalog.external_product_id,
+              optional.external_product_id,
               10000 +
                 optional.sort_order,
               optional.description,
@@ -1137,13 +1137,6 @@ export async function respondToPublicSalesQuote(
                 2
               )
             FROM sales_quote_optional_items optional
-            LEFT JOIN invoicing_catalog_items catalog
-              ON catalog.id =
-                 optional.catalog_item_id
-             AND catalog.company_id =
-                 optional.company_id
-             AND catalog.deleted_at
-                 IS NULL
             WHERE optional.quote_id = $1
               AND optional.company_id = $2
               AND optional.is_selected =
