@@ -43,6 +43,7 @@ export {
 
 export {
   getSalesOrganizationData,
+  markSalesCommissionPaid,
   recordSalesOrderCommissionEntries,
   reverseSalesOrderCommissions,
   saveSalesCommissionPlan,
