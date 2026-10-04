@@ -255,3 +255,30 @@ test('M-PESA STK only offers exact whole-KES settlement and normalizes Kenyan ph
   assert.match(stk, /Amount:\s*input\.amount/s);
   assert.match(stk, /invoiceId:\s*intent\.invoiceId/s);
 });
+
+
+test('first-event webhook verification does not block customer checkout after callback setup is configured', async () => {
+  const [
+    checkout,
+    connections,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/payment-checkout.ts'),
+    source('lib/apps/invoicing/payment-provider-connections.ts'),
+  ]);
+
+  assert.match(
+    checkout,
+    /settings\.callbackConfigured !== true/,
+    'Customer checkout should require the callback setup to be configured.',
+  );
+  assert.doesNotMatch(
+    checkout,
+    /callbackVerified !== true/,
+    'First signed webhook verification is observability, not a reason to disable an otherwise provider-verified checkout flow.',
+  );
+  assert.match(
+    connections,
+    /callbackVerified:\s*false/,
+    'New provider connections must begin without pretending a provider event has already arrived.',
+  );
+});
