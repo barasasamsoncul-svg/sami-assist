@@ -15,6 +15,7 @@ export {
   cancelSalesOrder,
   changeSalesQuoteStatus,
   convertSalesQuoteToInvoice,
+  createSalesCatalogItem,
   createSalesOrderFromQuote,
   createSalesOrderInvoice,
   createSalesCustomer,
