@@ -1691,6 +1691,21 @@ async function workflowFieldsForTable(
 }
 
 
+const IMMUTABLE_ENTERPRISE_BOUNDARY_TABLES =
+  new Set<string>([
+    /*
+     * These tables are append-only or revision/evidence stores. They are
+     * company-scoped but intentionally do not expose generic soft deletion.
+     * Their mutations are blocked by domain hooks and must go through the
+     * dedicated Accounting services that preserve audit/evidence semantics.
+     */
+    'accounting_collaboration_comment_revisions',
+    'accounting_custom_report_runs',
+    'accounting_journal_line_dimensions',
+    'accounting_recovery_runs',
+  ]);
+
+
 function assertEnterpriseTableBoundaryReady(
   table:
     string,
@@ -1705,16 +1720,36 @@ function assertEnterpriseTableBoundaryReady(
       ),
     );
 
-  const missing =
-    [
+  const missing:
+    string[] =
+      [];
+
+  if (
+    !names.has(
       'company_id',
-      'deleted_at',
-    ].filter(
-      column =>
-        !names.has(
-          column,
-        ),
+    )
+  ) {
+    missing.push(
+      'company_id',
     );
+  }
+
+  const immutableBoundary =
+    IMMUTABLE_ENTERPRISE_BOUNDARY_TABLES
+      .has(
+        table,
+      );
+
+  if (
+    !immutableBoundary &&
+    !names.has(
+      'deleted_at',
+    )
+  ) {
+    missing.push(
+      'deleted_at',
+    );
+  }
 
   if (
     missing.length >
@@ -1728,6 +1763,10 @@ function assertEnterpriseTableBoundaryReady(
       ' has not completed SaMi enterprise boundary hardening.',
       {
         table,
+        boundaryMode:
+          immutableBoundary
+            ? 'company-scoped-immutable'
+            : 'company-scoped-soft-delete',
         missingBoundaryColumns:
           missing,
       },

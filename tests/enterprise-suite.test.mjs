@@ -1929,10 +1929,18 @@ test('enterprise runtime reconciles stale installed schemas before workspace rea
 
 
 test('enterprise runtime fails closed until every business table has completed boundary hardening', async () => {
-  const service =
-    await source(
-      'lib/apps/enterprise/service.ts',
-    );
+  const [
+    service,
+    hooks,
+  ] =
+    await Promise.all([
+      source(
+        'lib/apps/enterprise/service.ts',
+      ),
+      source(
+        'lib/apps/enterprise/domain-hooks.ts',
+      ),
+    ]);
 
   assert.match(
     service,
@@ -1947,6 +1955,48 @@ test('enterprise runtime fails closed until every business table has completed b
   assert.match(
     service,
     /'company_id'[\s\S]*'deleted_at'/s,
+  );
+
+  assert.match(
+    service,
+    /IMMUTABLE_ENTERPRISE_BOUNDARY_TABLES/,
+    'Append-only evidence tables need an explicit boundary policy rather than fake soft-delete semantics.',
+  );
+
+  for (
+    const table
+    of [
+      'accounting_collaboration_comment_revisions',
+      'accounting_custom_report_runs',
+      'accounting_journal_line_dimensions',
+      'accounting_recovery_runs',
+    ]
+  ) {
+    assert.ok(
+      service.includes(
+        "'" +
+        table +
+        "'",
+      ),
+      table +
+      ' must be explicitly recognized as company-scoped immutable evidence.',
+    );
+
+    assert.ok(
+      hooks.includes(
+        "'" +
+        table +
+        "'",
+      ),
+      table +
+      ' must remain blocked from generic enterprise mutations.',
+    );
+  }
+
+  assert.match(
+    service,
+    /!immutableBoundary[\s\S]*!names\.has\([\s\S]*'deleted_at'/s,
+    'Ordinary business tables must still fail closed unless they have the soft-delete boundary.',
   );
 
   const readTableStart =
