@@ -761,9 +761,11 @@ test('Category 18: SaMi AI response presentation follows the premium chat compos
   assert.match(client, /composer\.style\.height/);
   assert.match(client, /Enter to send · Shift\+Enter for a new line/);
   assert.match(client, /data-sami-ai-chat="true"/);
+  assert.match(client, /Your message was saved, but this chat could not refresh/);
 
   assert.match(markdown, /data-sami-ai-markdown="true"/);
   assert.match(markdown, /list-decimal/);
+  assert.match(markdown, /start=/);
   assert.match(markdown, /Copy code/);
   assert.match(markdown, /markdownSegments/);
   assert.match(markdown, /SamiMarkdownTable/);
