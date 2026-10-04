@@ -24,6 +24,7 @@ type DraftLine = {
   unit: string;
   quantity: string;
   unitPrice: string;
+  unitCost: string;
   discountType:
     'percent' |
     'fixed';
@@ -60,6 +61,8 @@ function blankLine():
     quantity:
       '1',
     unitPrice:
+      '0',
+    unitCost:
       '0',
     discountType:
       'percent',
@@ -312,6 +315,17 @@ export default function SalesQuoteComposer({
     );
 
   const [
+    pricelistId,
+    setPricelistId,
+  ] =
+    useState(
+      initialQuote
+        ?.pricelistId ||
+      '',
+    );
+
+
+  const [
     lines,
     setLines,
   ] =
@@ -341,6 +355,11 @@ export default function SalesQuoteComposer({
             unitPrice:
               String(
                 line.unitPrice,
+              ),
+            unitCost:
+              String(
+                line.unitCost ||
+                0,
               ),
             discountType:
               line.discountType,
@@ -372,6 +391,9 @@ export default function SalesQuoteComposer({
           0;
 
         let tax =
+          0;
+
+        let cost =
           0;
 
         for (
@@ -436,6 +458,16 @@ export default function SalesQuoteComposer({
           discount +=
             discountAmount;
 
+          cost +=
+            qty *
+            Math.max(
+              0,
+              Number(
+                line.unitCost,
+              ) ||
+              0,
+            );
+
           tax +=
             taxable *
             Math.min(
@@ -460,11 +492,28 @@ export default function SalesQuoteComposer({
             0,
           );
 
+        const netRevenue =
+          subtotal -
+          discount;
+
+        const margin =
+          netRevenue -
+          cost;
+
         return {
           subtotal,
           discount,
           tax,
           shipping,
+          cost,
+          margin,
+          marginPercent:
+            netRevenue >
+              0
+              ? margin /
+                netRevenue *
+                100
+              : 0,
           total:
             subtotal -
             discount +
@@ -548,6 +597,11 @@ export default function SalesQuoteComposer({
           String(
             item.unitPrice,
           ),
+        unitCost:
+          String(
+            item.unitCost ||
+            0,
+          ),
         taxName:
           item.taxName ||
           '',
@@ -580,6 +634,9 @@ export default function SalesQuoteComposer({
         undefined,
       templateId:
         templateId ||
+        undefined,
+      pricelistId:
+        pricelistId ||
         undefined,
       quoteDate,
       validUntil,
@@ -633,6 +690,13 @@ export default function SalesQuoteComposer({
               Number(
                 line.unitPrice,
               ),
+            unitCost:
+              data.capabilities
+                .canManageMargin
+                ? Number(
+                    line.unitCost,
+                  )
+                : undefined,
             discountType:
               line.discountType,
             discountValue:
@@ -1085,6 +1149,30 @@ export default function SalesQuoteComposer({
                       }
                     />
 
+                    {
+                      data.capabilities
+                        .canManageMargin &&
+                      (
+                        <Input
+                          label="Unit cost"
+                          type="number"
+                          value={
+                            line.unitCost
+                          }
+                          onChange={
+                            value =>
+                              patchLine(
+                                index,
+                                {
+                                  unitCost:
+                                    value,
+                                },
+                              )
+                          }
+                        />
+                      )
+                    }
+
                     <Input
                       label="Tax %"
                       type="number"
@@ -1268,6 +1356,37 @@ export default function SalesQuoteComposer({
                 )
               }
             />
+
+            {
+              data.capabilities
+                .canViewMargin &&
+              <>
+                <Row
+                  label="Estimated cost"
+                  value={
+                    formatMoney(
+                      totals.cost,
+                      currency,
+                    )
+                  }
+                />
+                <Row
+                  label="Estimated margin"
+                  value={
+                    formatMoney(
+                      totals.margin,
+                      currency,
+                    ) +
+                    ' · ' +
+                    totals.marginPercent
+                      .toFixed(
+                        1,
+                      ) +
+                    '%'
+                  }
+                />
+              </>
+            }
 
             <label className="flex items-center justify-between gap-3">
               <span className="text-slate-500">
