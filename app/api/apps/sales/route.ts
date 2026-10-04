@@ -14,13 +14,19 @@ import {
   createSalesQuoteRevision,
   duplicateSalesQuote,
   getSalesCommercialData,
+  getSalesOrganizationData,
   getSalesOrderDetail,
+  markSalesCommissionPaid,
   getSalesQuoteDetail,
   getSalesWorkspaceData,
   requestSalesQuoteApproval,
   reviewSalesQuoteApproval,
+  saveSalesCommissionPlan,
   saveSalesPricelist,
   saveSalesQuoteOptionalItems,
+  saveSalesTarget,
+  saveSalesTeam,
+  saveSalesTerritory,
   saveSalesQuoteTemplate,
   sendSalesQuote,
   updateSalesOrderFulfillment,
@@ -168,6 +174,25 @@ export async function GET(
     NextRequest,
 ) {
   try {
+    const organization =
+      request.nextUrl
+        .searchParams
+        .get(
+          'organization',
+        );
+
+    if (
+      organization ===
+        '1'
+    ) {
+      return json({
+        success:
+          true,
+        organization:
+          await getSalesOrganizationData(),
+      });
+    }
+
     const commercial =
       request.nextUrl
         .searchParams
@@ -379,6 +404,16 @@ export async function POST(
           saveSalesQuoteOptionalItems,
         save_pricelist:
           saveSalesPricelist,
+        save_sales_territory:
+          saveSalesTerritory,
+        save_sales_team:
+          saveSalesTeam,
+        save_sales_target:
+          saveSalesTarget,
+        save_commission_plan:
+          saveSalesCommissionPlan,
+        mark_commission_paid:
+          markSalesCommissionPaid,
         send_quote:
           sendSalesQuote,
         change_quote_status:

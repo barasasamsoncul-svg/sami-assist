@@ -165,6 +165,55 @@ function salesCapabilities(
         SALES_PERMISSIONS
           .MARGIN_MANAGE,
       ),
+    canViewOrganization:
+      can(
+        SALES_PERMISSIONS
+          .TEAM_VIEW,
+      ) ||
+      can(
+        SALES_PERMISSIONS
+          .TEAM_MANAGE,
+      ) ||
+      can(
+        SALES_PERMISSIONS
+          .TARGET_VIEW,
+      ) ||
+      can(
+        SALES_PERMISSIONS
+          .TARGET_MANAGE,
+      ) ||
+      can(
+        SALES_PERMISSIONS
+          .COMMISSION_VIEW,
+      ) ||
+      can(
+        SALES_PERMISSIONS
+          .COMMISSION_MANAGE,
+      ),
+    canManageTeams:
+      can(
+        SALES_PERMISSIONS
+          .TEAM_MANAGE,
+      ),
+    canManageTargets:
+      can(
+        SALES_PERMISSIONS
+          .TARGET_MANAGE,
+      ),
+    canViewCommissions:
+      can(
+        SALES_PERMISSIONS
+          .COMMISSION_VIEW,
+      ) ||
+      can(
+        SALES_PERMISSIONS
+          .COMMISSION_MANAGE,
+      ),
+    canManageCommissions:
+      can(
+        SALES_PERMISSIONS
+          .COMMISSION_MANAGE,
+      ),
     canUseBillingCustomers:
       crossCan(
         INVOICING_CUSTOMER_VIEW,
