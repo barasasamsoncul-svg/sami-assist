@@ -199,6 +199,13 @@ export async function getInvoicePaymentProviderState() {
         ? String(row.external_account_name)
         : null,
       callbackConfigured: settings.callbackConfigured === true,
+      callbackVerified:
+        settings.callbackVerified === true ||
+        Boolean(row.last_received_at),
+      callbackVerifiedAt:
+        settings.callbackVerifiedAt
+          ? String(settings.callbackVerifiedAt)
+          : row.last_received_at || null,
       manualSetupRequired: settings.manualSetupRequired === true,
       autoReconcile: settings.autoReconcile !== false,
       endpointStatus: row.endpoint_status
@@ -413,6 +420,8 @@ export async function connectInvoicePaymentProvider(input: {
           paymentProvider: provider.key,
           environment,
           callbackConfigured: remote.manualSetup === null,
+          callbackVerified: false,
+          callbackVerifiedAt: null,
           manualSetupRequired: remote.manualSetup !== null,
           autoReconcile: true,
           providerWebhookId: remote.secrets.providerWebhookId || null,
@@ -601,6 +610,7 @@ export async function confirmInvoicePaymentProviderSetup(
         settings = COALESCE(settings,'{}'::jsonb) ||
           jsonb_build_object(
             'callbackConfigured',TRUE,
+            'callbackVerified',FALSE,
             'manualSetupConfirmedAt',NOW()
           ),
         health_status = 'healthy',
@@ -632,7 +642,7 @@ export async function confirmInvoicePaymentProviderSetup(
     resourceId: id,
     summary:
       connection.name +
-      ' payment notification setup was confirmed.',
+      ' payment notification setup was saved and is awaiting a verified provider event.',
     metadata: {
       provider: connection.provider,
     },
@@ -643,6 +653,7 @@ export async function confirmInvoicePaymentProviderSetup(
     status: 'connected',
     healthStatus: 'healthy',
     callbackConfigured: true,
+    callbackVerified: false,
   };
 }
 
@@ -916,6 +927,28 @@ export async function receiveInvoicePaymentProviderWebhook(input: {
       },
     };
   }
+
+  await pool.query(
+    `
+      UPDATE integration_connections
+      SET
+        settings =
+          COALESCE(settings,'{}'::jsonb) ||
+          jsonb_build_object(
+            'callbackVerified',TRUE,
+            'callbackVerifiedAt',NOW()
+          ),
+        updated_at=NOW()
+      WHERE id=$1
+        AND company_id=$2
+        AND status='connected'
+        AND archived_at IS NULL
+    `,
+    [
+      endpoint.connection_id,
+      endpoint.company_id,
+    ],
+  );
 
   const existing = await pool.query(
     `
