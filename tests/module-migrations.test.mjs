@@ -2943,3 +2943,32 @@ test('Invoicing 2.23 provider refunds are runtime-backed and release-safe withou
   assert.match(pkg, /migrate:invoicing:2\.23:release/);
   assert.match(pkg, /test:invoicing:2\.23:release/);
 });
+
+
+test('production release expands pending module schemas without promoting control versions', async () => {
+  const [script,pkg] = await Promise.all([
+    source('scripts/migrate-installed-modules-before-release.ts'),
+    source('package.json'),
+  ]);
+
+  assert.match(script,/runSamiModuleMigrations/);
+  assert.match(script,/compareSamiModuleVersions/);
+  assert.match(script,/mode:[\s\S]*expand-before-promote/);
+  assert.match(script,/controlVersionUpdated:[\s\S]*false/);
+  assert.match(script,/tenant_modules/);
+  assert.doesNotMatch(script,/UPDATE\s+tenant_modules/i);
+  assert.match(pkg,/migrate:modules:release/);
+});
+
+test('Vercel build migrates modules only for production after a successful application build', async () => {
+  const [script,pkg] = await Promise.all([
+    source('scripts/vercel-production-build.mjs'),
+    source('package.json'),
+  ]);
+
+  assert.match(script,/run\([\s\S]*'build'[\s\S]*\)/);
+  assert.match(script,/process\.env\.VERCEL_ENV[\s\S]*production/);
+  assert.match(script,/run\([\s\S]*'migrate:modules:release'[\s\S]*\)/);
+  assert.match(script,/Production module migration skipped outside Vercel production/);
+  assert.match(pkg,/build:vercel/);
+});
