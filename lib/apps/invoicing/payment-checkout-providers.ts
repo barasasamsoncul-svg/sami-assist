@@ -710,6 +710,9 @@ async function verifyPesapalReturn(
     providerReference:
       cleanString(body.confirmation_code, 255) ||
       trackingId,
+    providerTransactionId:
+      cleanString(body.confirmation_code, 255) ||
+      undefined,
     method:
       cleanString(body.payment_method, 50) ||
       'Pesapal',
@@ -774,6 +777,10 @@ async function verifyStripeReturn(
       typeof session.payment_intent === 'string'
         ? session.payment_intent
         : session.id,
+    providerTransactionId:
+      typeof session.payment_intent === 'string'
+        ? session.payment_intent
+        : undefined,
     method: 'Stripe',
   };
 }
@@ -844,6 +851,10 @@ async function verifyPaystackReturn(
       ).toUpperCase(),
     providerReference:
       cleanString(data.reference, 255),
+    providerTransactionId:
+      cleanString(data.reference, 255) ||
+      cleanString(data.id, 100) ||
+      undefined,
     method:
       cleanString(data.channel, 50) ||
       'Paystack',
@@ -938,6 +949,9 @@ async function verifyFlutterwaveReturn(
     providerReference:
       cleanString(data.flw_ref, 255) ||
       cleanString(data.tx_ref, 255),
+    providerTransactionId:
+      cleanString(data.id, 100) ||
+      undefined,
     method:
       cleanString(
         data.payment_type,
@@ -1076,6 +1090,9 @@ async function verifyPayPalReturn(
       ).toUpperCase(),
     providerReference:
       cleanString(found.capture.id, 255),
+    providerTransactionId:
+      cleanString(found.capture.id, 255) ||
+      undefined,
     method: 'PayPal',
     paymentDate:
       cleanString(
