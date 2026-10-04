@@ -125,6 +125,8 @@ export default function PaymentIntegrationsWorkspace() {
     useState<Record<string, string>>({});
   const [manualSetup, setManualSetup] =
     useState<ManualSetup | null>(null);
+  const [manualConnectionId, setManualConnectionId] =
+    useState<string | null>(null);
   const [overlay, setOverlay] =
     useState<OverlayState>(CLOSED_OVERLAY);
 
@@ -209,6 +211,7 @@ export default function PaymentIntegrationsWorkspace() {
     );
     setCredentials({});
     setManualSetup(null);
+    setManualConnectionId(null);
   }
 
   async function connect() {
@@ -248,6 +251,7 @@ export default function PaymentIntegrationsWorkspace() {
         success?: boolean;
         error?: string;
         result?: {
+          connectionId?: string;
           providerName?: string;
           manualSetup?: ManualSetup | null;
         };
@@ -262,10 +266,15 @@ export default function PaymentIntegrationsWorkspace() {
       setCredentials({});
       await load();
 
-      if (body.result?.manualSetup) {
+      if (
+        body.result?.manualSetup &&
+        body.result.connectionId
+      ) {
         setManualSetup(body.result.manualSetup);
+        setManualConnectionId(body.result.connectionId);
       } else {
         setSelected(null);
+        setManualConnectionId(null);
         show(
           'success',
           selected.name + ' connected',
@@ -279,6 +288,74 @@ export default function PaymentIntegrationsWorkspace() {
         error instanceof Error
           ? error.message
           : selected.name + ' could not be connected.',
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function confirmManualSetup() {
+    if (!selected || !manualConnectionId) {
+      show(
+        'error',
+        'Setup could not be confirmed',
+        'SaMi no longer has the connection reference for this setup. Reopen the provider and try again.',
+      );
+      return;
+    }
+
+    setBusy('confirm:' + manualConnectionId);
+
+    try {
+      const response = await fetch(
+        '/api/apps/invoicing/payment-providers',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          credentials: 'same-origin',
+          cache: 'no-store',
+          body: JSON.stringify({
+            operation: 'confirm_setup',
+            connectionId: manualConnectionId,
+          }),
+        },
+      );
+
+      const body = await response.json() as {
+        success?: boolean;
+        error?: string;
+      };
+
+      if (!response.ok || body.success !== true) {
+        throw new Error(
+          body.error ||
+          selected.name + ' setup could not be confirmed.',
+        );
+      }
+
+      const providerName = selected.name;
+
+      setSelected(null);
+      setManualSetup(null);
+      setManualConnectionId(null);
+
+      await load();
+
+      show(
+        'success',
+        providerName + ' connected',
+        'The payment notification setup is saved. SaMi will now accept verified payment notifications and reconcile matching invoices automatically.',
+      );
+    } catch (error) {
+      show(
+        'error',
+        'Setup confirmation failed',
+        error instanceof Error
+          ? error.message
+          : selected.name + ' setup could not be confirmed.',
       );
     } finally {
       setBusy(null);
@@ -566,6 +643,7 @@ export default function PaymentIntegrationsWorkspace() {
             if (event.target === event.currentTarget && !busy) {
               setSelected(null);
               setManualSetup(null);
+              setManualConnectionId(null);
             }
           }}
         >
@@ -590,6 +668,7 @@ export default function PaymentIntegrationsWorkspace() {
                   if (!busy) {
                     setSelected(null);
                     setManualSetup(null);
+                    setManualConnectionId(null);
                   }
                 }}
                 className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
@@ -706,18 +785,18 @@ export default function PaymentIntegrationsWorkspace() {
 
                 <button
                   type="button"
-                  onClick={() => {
-                    setSelected(null);
-                    setManualSetup(null);
-                    show(
-                      'success',
-                      selected.name + ' connected',
-                      'The account is connected. Complete the one provider-dashboard step shown above so payment notifications can reach SaMi.',
-                    );
-                  }}
-                  className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-black text-white dark:bg-white dark:text-slate-950"
+                  onClick={() => void confirmManualSetup()}
+                  disabled={
+                    busy !== null ||
+                    !manualConnectionId
+                  }
+                  className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-black text-white disabled:opacity-50 dark:bg-white dark:text-slate-950"
                 >
-                  <CheckCircle2 className="h-4 w-4" />
+                  {busy === 'confirm:' + manualConnectionId ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4" />
+                  )}
                   I have saved it
                 </button>
               </>
