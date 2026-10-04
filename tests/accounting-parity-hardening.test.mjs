@@ -143,12 +143,13 @@ test('localization packs are versioned and never import statutory tax rates',asy
   assert.match(ui,/Import versioned pack/);
 });
 
-test('2.34 and 2.22 migrations and module extensions are registered',async()=>{
-  const [manifest,migrations,accountingMigration,invoicingMigration,workspace,panel,catalog,depth,hooks]=await Promise.all([
+test('Accounting 2.34 and Invoicing 2.23 migrations and module extensions are registered',async()=>{
+  const [manifest,migrations,accountingMigration,invoicingMigration,invoicingRefundMigration,workspace,panel,catalog,depth,hooks]=await Promise.all([
     source('lib/modules/first-party.ts'),
     source('lib/apps/runtime-migrations.ts'),
     source('lib/apps/accounting/migrations/2.33.0-to-2.34.0.ts'),
     source('lib/apps/invoicing/migrations/2.21.0-to-2.22.0.ts'),
+    source('lib/apps/invoicing/migrations/2.22.0-to-2.23.0.ts'),
     source('app/apps/accounting/AccountingWorkspace.tsx'),
     source('app/apps/accounting/AccountingFoundationPanel.tsx'),
     source('lib/apps/enterprise/specialist-catalog.ts'),
@@ -158,12 +159,14 @@ test('2.34 and 2.22 migrations and module extensions are registered',async()=>{
 
   assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.34\.0'/);
   assert.match(manifest,/key:\s*"accounting"[\s\S]*integrationProviders:\s*true/);
-  assert.match(manifest,/key:\s*"invoicing"[\s\S]*version:\s*'2\.22\.0'/);
+  assert.match(manifest,/key:\s*"invoicing"[\s\S]*version:\s*'2\.23\.0'/);
   assert.match(manifest,/key:\s*"invoicing"[\s\S]*integrationProviders:\s*true/);
   assert.match(migrations,/ACCOUNTING_2_33_0_TO_2_34_0/);
   assert.match(migrations,/INVOICING_2_21_0_TO_2_22_0/);
+  assert.match(migrations,/INVOICING_2_22_0_TO_2_23_0/);
   assert.match(accountingMigration,/fromVersion:'2\.33\.0'[\s\S]*toVersion:'2\.34\.0'/);
   assert.match(invoicingMigration,/fromVersion:'2\.21\.0'[\s\S]*toVersion:'2\.22\.0'/);
+  assert.match(invoicingRefundMigration,/fromVersion:\s*'2\.22\.0'[\s\S]*toVersion:\s*'2\.23\.0'/);
   assert.match(workspace,/document-capture[\s\S]*AccountingDocumentCapture/);
   assert.match(workspace,/custom-reports[\s\S]*AccountingCustomReports/);
   assert.match(panel,/"document-capture"/);
