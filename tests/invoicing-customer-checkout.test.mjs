@@ -1,0 +1,186 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+
+const root = process.cwd();
+
+async function source(file) {
+  return (await readFile(path.join(root, file), 'utf8'))
+    .replace(/\r\n/g, '\n');
+}
+
+test('customer Pay Now supports five hosted providers without exposing merchant secrets', async () => {
+  const [
+    providers,
+    service,
+    client,
+    publicPage,
+    portalPage,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/payment-checkout-providers.ts'),
+    source('lib/apps/invoicing/payment-checkout.ts'),
+    source('app/apps/invoicing/InvoicePayNow.tsx'),
+    source('app/i/[tenantId]/[token]/page.tsx'),
+    source('app/p/[tenantId]/[token]/invoices/[invoiceId]/page.tsx'),
+  ]);
+
+  for (const provider of [
+    'pesapal',
+    'stripe',
+    'paystack',
+    'flutterwave',
+    'paypal',
+  ]) {
+    assert.match(
+      providers,
+      new RegExp("'" + provider + "'"),
+      provider + ' must be available as a hosted invoice checkout provider.',
+    );
+  }
+
+  assert.doesNotMatch(
+    providers,
+    /HOSTED_INVOICE_PAYMENT_PROVIDERS[\s\S]{0,250}'mpesa'/,
+    'Direct M-PESA C2B remains automatic reconciliation, not a fake hosted checkout.',
+  );
+
+  assert.match(client, /Pay securely online/);
+  assert.match(client, /Pay with/);
+  assert.match(client, /JSON\.stringify\(\{[\s\S]*provider/s);
+  assert.doesNotMatch(
+    client,
+    /secretKey|consumerSecret|clientSecret|webhookSecret/,
+    'Customer UI must never receive merchant secrets.',
+  );
+
+  assert.match(publicPage, /<InvoicePayNow/);
+  assert.match(publicPage, /access="public"/);
+  assert.match(portalPage, /<InvoicePayNow/);
+  assert.match(portalPage, /access="portal"/);
+
+  assert.match(service, /openIntegrationSecret/);
+  assert.match(service, /settings\.callbackConfigured !== true/);
+  assert.match(service, /settings\.autoReconcile === false/);
+});
+
+test('checkout amount and invoice authority are always server-derived', async () => {
+  const [
+    service,
+    checkoutRoute,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/payment-checkout.ts'),
+    source('app/api/public/invoicing/payment-checkout/[access]/[tenantId]/[token]/[invoiceId]/route.ts'),
+  ]);
+
+  assert.match(service, /getPublicInvoice/);
+  assert.match(service, /getCustomerPortalInvoice/);
+  assert.match(service, /invoice\.balanceDue/);
+  assert.match(service, /invoice\.currency/);
+  assert.match(service, /invoice\.invoiceNumber/);
+  assert.match(service, /invoice\.id/);
+
+  assert.doesNotMatch(
+    checkoutRoute,
+    /payload\.amount|payload\.currency|payload\.invoiceNumber/,
+    'Public checkout must never trust browser financial values.',
+  );
+
+  assert.match(checkoutRoute, /sameOrigin/);
+  assert.match(checkoutRoute, /content-length/);
+  assert.match(service, /Too many payment attempts/);
+  assert.match(service, /INTERVAL '15 minutes'/);
+});
+
+test('hosted provider checkouts embed SaMi invoice identity and return through verified server flows', async () => {
+  const [
+    providers,
+    service,
+    returnRoute,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/payment-checkout-providers.ts'),
+    source('lib/apps/invoicing/payment-checkout.ts'),
+    source('app/api/public/invoicing/payment-return/[access]/[tenantId]/[token]/[invoiceId]/[provider]/route.ts'),
+  ]);
+
+  assert.match(providers, /SubmitOrderRequest/);
+  assert.match(providers, /checkout\.sessions\.create/);
+  assert.match(providers, /transaction\/initialize/);
+  assert.match(providers, /api\.flutterwave\.com\/v3\/payments/);
+  assert.match(providers, /\/v2\/checkout\/orders/);
+
+  assert.match(providers, /invoiceId/);
+  assert.match(providers, /invoiceNumber/);
+  assert.match(providers, /client_reference_id/);
+  assert.match(providers, /custom_id/);
+  assert.match(providers, /invoice_id/);
+
+  assert.match(service, /verifyInvoicePaymentCheckoutReturn/);
+  assert.match(service, /recordVerifiedExternalInvoiceSettlement/);
+  assert.match(service, /matchesInvoice/);
+  assert.match(service, /payment\.currency\.toUpperCase\(\)/);
+  assert.match(returnRoute, /NextResponse\.redirect/);
+  assert.match(returnRoute, /payment: 'failed'/);
+});
+
+test('return verification and webhooks converge on duplicate-safe provider transaction identities', async () => {
+  const [
+    checkoutProviders,
+    webhookAdapters,
+    settlement,
+    paymentCore,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/payment-checkout-providers.ts'),
+    source('lib/apps/invoicing/payment-provider-adapters.ts'),
+    source('lib/apps/invoicing/external-settlement.ts'),
+    source('lib/apps/invoicing/payment-core.ts'),
+  ]);
+
+  assert.match(checkoutProviders, /externalEventId: session\.id/);
+  assert.match(webhookAdapters, /externalEventId: session\.id/);
+
+  assert.match(checkoutProviders, /externalEventId:[\s\S]*found\.capture\.id/s);
+  assert.match(webhookAdapters, /externalEventId: captureId/);
+
+  assert.match(checkoutProviders, /trackingId \+ ':COMPLETED'/);
+  assert.match(webhookAdapters, /trackingId \+ ':' \+ status/);
+
+  assert.match(checkoutProviders, /cleanString\(data\.id, 100\)/);
+  assert.match(webhookAdapters, /cleanString\(data\.id, 100\)/);
+
+  assert.match(settlement, /gateway:'\+input\.providerKey\+':'\+input\.externalEventId/);
+  assert.match(paymentCore, /idempotencyKey/);
+  assert.match(paymentCore, /postInvoicePaymentToAccounting/);
+});
+
+test('Flutterwave and PayPal returns are provider-verified before settlement', async () => {
+  const [
+    checkoutProviders,
+    webhookAdapters,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/payment-checkout-providers.ts'),
+    source('lib/apps/invoicing/payment-provider-adapters.ts'),
+  ]);
+
+  assert.match(
+    checkoutProviders,
+    /transactions\/verify_by_reference|transactions\/.*\/verify/s,
+  );
+  assert.match(
+    webhookAdapters,
+    /transactions\/verify_by_reference|transactions\/.*\/verify/s,
+  );
+  assert.match(
+    checkoutProviders,
+    /\/v2\/checkout\/orders\/.*\/capture/s,
+  );
+  assert.match(
+    webhookAdapters,
+    /verify-webhook-signature/,
+  );
+  assert.match(
+    webhookAdapters,
+    /\/v2\/checkout\/orders\//,
+    'PayPal webhooks must recover invoice metadata from the order when capture payloads omit it.',
+  );
+});
