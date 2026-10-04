@@ -3639,6 +3639,7 @@ export async function refundSalesReturnCredit(
           credit.return_id,
           credit.credit_note_id,
           credit.available_credit,
+          credit.refunded_amount,
           return_row.status
         FROM sales_return_credits credit
         INNER JOIN sales_returns return_row
@@ -3820,12 +3821,14 @@ export async function refundSalesReturnCredit(
       authoritative.rows[0]
         ?.refunded_amount ??
       (
-        Number(
+        money(
+          row.refunded_amount,
+        ) +
+        (
           refund.duplicate
             ? 0
-            : amount,
-        ) +
-        0
+            : amount
+        )
       ),
     );
 
