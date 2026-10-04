@@ -59,6 +59,251 @@ function nodeText(
   return '';
 }
 
+type MarkdownSegment =
+  | {
+      type:
+        'markdown';
+      content:
+        string;
+    }
+  | {
+      type:
+        'table';
+      headers:
+        string[];
+      rows:
+        string[][];
+    };
+
+function splitTableRow(
+  line:
+    string,
+) {
+  let value =
+    line.trim();
+
+  if (
+    value.startsWith(
+      '|',
+    )
+  ) {
+    value =
+      value.slice(
+        1,
+      );
+  }
+
+  if (
+    value.endsWith(
+      '|',
+    )
+  ) {
+    value =
+      value.slice(
+        0,
+        -1,
+      );
+  }
+
+  return value
+    .split('|')
+    .map(
+      cell =>
+        cell.trim(),
+    );
+}
+
+function isTableDivider(
+  line:
+    string,
+) {
+  const cells =
+    splitTableRow(
+      line,
+    );
+
+  return (
+    cells.length >
+      0 &&
+    cells.every(
+      cell =>
+        /^:?-{3,}:?$/.test(
+          cell.replace(
+            /\s/g,
+            '',
+          ),
+        ),
+    )
+  );
+}
+
+function normalizeTableRow(
+  cells:
+    string[],
+  width:
+    number,
+) {
+  return Array.from(
+    {
+      length:
+        width,
+    },
+    (
+      _,
+      index,
+    ) =>
+      cells[index] ||
+      '',
+  );
+}
+
+function markdownSegments(
+  value:
+    string,
+):
+  MarkdownSegment[] {
+  const lines =
+    value.split(
+      '\n',
+    );
+
+  const segments:
+    MarkdownSegment[] =
+    [];
+
+  let buffer:
+    string[] =
+    [];
+
+  let inFence =
+    false;
+
+  function flush() {
+    if (
+      buffer.length ===
+        0
+    ) {
+      return;
+    }
+
+    segments.push({
+      type:
+        'markdown',
+      content:
+        buffer.join(
+          '\n',
+        ),
+    });
+
+    buffer =
+      [];
+  }
+
+  for (
+    let index = 0;
+    index <
+      lines.length;
+    index += 1
+  ) {
+    const line =
+      lines[index];
+
+    if (
+      /^\s*(```|~~~)/.test(
+        line,
+      )
+    ) {
+      inFence =
+        !inFence;
+      buffer.push(
+        line,
+      );
+      continue;
+    }
+
+    const next =
+      lines[
+        index + 1
+      ];
+
+    if (
+      !inFence &&
+      next !==
+        undefined &&
+      line.includes(
+        '|',
+      ) &&
+      isTableDivider(
+        next,
+      )
+    ) {
+      const headers =
+        splitTableRow(
+          line,
+        );
+
+      if (
+        headers.length <
+          2
+      ) {
+        buffer.push(
+          line,
+        );
+        continue;
+      }
+
+      flush();
+
+      const rows:
+        string[][] =
+        [];
+
+      index +=
+        2;
+
+      while (
+        index <
+          lines.length &&
+        lines[index]
+          .trim() &&
+        lines[index]
+          .includes('|')
+      ) {
+        rows.push(
+          normalizeTableRow(
+            splitTableRow(
+              lines[index],
+            ),
+            headers.length,
+          ),
+        );
+
+        index +=
+          1;
+      }
+
+      segments.push({
+        type:
+          'table',
+        headers,
+        rows,
+      });
+
+      index -=
+        1;
+      continue;
+    }
+
+    buffer.push(
+      line,
+    );
+  }
+
+  flush();
+
+  return segments;
+}
+
 function languageLabel(
   node:
     ReactNode,
@@ -468,24 +713,137 @@ const components:
     },
   };
 
+function SamiMarkdownTable({
+  headers,
+  rows,
+}: {
+  headers:
+    string[];
+  rows:
+    string[][];
+}) {
+  return (
+    <div className="sami-scrollbar my-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-white/10">
+      <table className="min-w-full border-collapse text-left text-xs sm:text-sm">
+        <thead className="bg-slate-50 dark:bg-white/[0.05]">
+          <tr>
+            {headers.map(
+              (
+                header,
+                index,
+              ) => (
+                <th
+                  key={
+                    index
+                  }
+                  className="border-b border-slate-200 px-3 py-2.5 font-bold text-slate-800 dark:border-white/10 dark:text-slate-100"
+                >
+                  <ReactMarkdown
+                    components={
+                      components
+                    }
+                  >
+                    {header}
+                  </ReactMarkdown>
+                </th>
+              ),
+            )}
+          </tr>
+        </thead>
+
+        <tbody>
+          {rows.map(
+            (
+              row,
+              rowIndex,
+            ) => (
+              <tr
+                key={
+                  rowIndex
+                }
+                className="border-b border-slate-100 last:border-b-0 dark:border-white/[0.06]"
+              >
+                {row.map(
+                  (
+                    cell,
+                    cellIndex,
+                  ) => (
+                    <td
+                      key={
+                        cellIndex
+                      }
+                      className="px-3 py-2.5 align-top text-slate-700 dark:text-slate-200"
+                    >
+                      <ReactMarkdown
+                        components={
+                          components
+                        }
+                      >
+                        {cell}
+                      </ReactMarkdown>
+                    </td>
+                  ),
+                )}
+              </tr>
+            ),
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function SamiAiMarkdown({
   children,
 }: {
   children:
     string;
 }) {
+  const segments =
+    markdownSegments(
+      children,
+    );
+
   return (
     <div
       data-sami-ai-markdown="true"
       className="min-w-0 break-words text-[14px] leading-7 sm:text-[15px]"
     >
-      <ReactMarkdown
-        components={
-          components
-        }
-      >
-        {children}
-      </ReactMarkdown>
+      {segments.map(
+        (
+          segment,
+          index,
+        ) =>
+          segment.type ===
+          'table' ? (
+            <SamiMarkdownTable
+              key={
+                'table-' +
+                index
+              }
+              headers={
+                segment.headers
+              }
+              rows={
+                segment.rows
+              }
+            />
+          ) : (
+            <ReactMarkdown
+              key={
+                'markdown-' +
+                index
+              }
+              components={
+                components
+              }
+            >
+              {
+                segment.content
+              }
+            </ReactMarkdown>
+          ),
+      )}
     </div>
   );
 }
