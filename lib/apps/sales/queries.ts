@@ -214,6 +214,69 @@ function salesCapabilities(
         SALES_PERMISSIONS
           .COMMISSION_MANAGE,
       ),
+    canViewOperations:
+      can(
+        SALES_PERMISSIONS
+          .SHIPPING_VIEW,
+      ) ||
+      can(
+        SALES_PERMISSIONS
+          .SHIPPING_MANAGE,
+      ) ||
+      can(
+        SALES_PERMISSIONS
+          .RETURN_VIEW,
+      ) ||
+      can(
+        SALES_PERMISSIONS
+          .RETURN_MANAGE,
+      ) ||
+      can(
+        SALES_PERMISSIONS
+          .DEPOSIT_MANAGE,
+      ) ||
+      can(
+        SALES_PERMISSIONS
+          .FORECAST_VIEW,
+      ),
+    canViewShipping:
+      can(
+        SALES_PERMISSIONS
+          .SHIPPING_VIEW,
+      ) ||
+      can(
+        SALES_PERMISSIONS
+          .SHIPPING_MANAGE,
+      ),
+    canManageShipping:
+      can(
+        SALES_PERMISSIONS
+          .SHIPPING_MANAGE,
+      ),
+    canViewReturns:
+      can(
+        SALES_PERMISSIONS
+          .RETURN_VIEW,
+      ) ||
+      can(
+        SALES_PERMISSIONS
+          .RETURN_MANAGE,
+      ),
+    canManageReturns:
+      can(
+        SALES_PERMISSIONS
+          .RETURN_MANAGE,
+      ),
+    canManageDeposits:
+      can(
+        SALES_PERMISSIONS
+          .DEPOSIT_MANAGE,
+      ),
+    canViewForecast:
+      can(
+        SALES_PERMISSIONS
+          .FORECAST_VIEW,
+      ),
     canUseBillingCustomers:
       crossCan(
         INVOICING_CUSTOMER_VIEW,
@@ -1727,6 +1790,43 @@ export async function getSalesQuoteDetail(
       money(
         row.shipping_total,
       ),
+    depositType:
+      row.deposit_type ===
+        'percent'
+        ? 'percent'
+        : row.deposit_type ===
+            'fixed'
+          ? 'fixed'
+          : 'none',
+    depositValue:
+      money(
+        row.deposit_value,
+      ),
+    depositRequiredAmount:
+      money(
+        row.deposit_required_amount,
+      ),
+    depositReceivedAmount:
+      money(
+        row.deposit_received_amount,
+      ),
+    depositStatus:
+      String(
+        row.deposit_status ||
+        'none',
+      ),
+    depositRetainerId:
+      row.deposit_retainer_id
+        ? String(
+            row.deposit_retainer_id,
+          )
+        : null,
+    depositPaymentId:
+      row.deposit_payment_id
+        ? String(
+            row.deposit_payment_id,
+          )
+        : null,
     notes:
       row.notes
         ? String(
@@ -2117,6 +2217,8 @@ export async function getSalesOrderDetail(
     lines,
     invoices,
     history,
+    shipments,
+    returns,
   ] =
     await Promise.all([
       context.pool.query(
@@ -2174,6 +2276,8 @@ export async function getSalesOrderDetail(
             quantity,
             delivered_quantity,
             invoiced_quantity,
+            returned_quantity,
+            credited_quantity,
             unit_price,
             discount_type,
             discount_value,
@@ -2227,6 +2331,134 @@ export async function getSalesOrderDetail(
           ORDER BY
             created_at DESC
           LIMIT 200
+        `,
+        [
+          orderId,
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            shipment.id,
+            shipment.shipment_number,
+            shipment.status,
+            shipment.carrier,
+            shipment.service_level,
+            shipment.tracking_number,
+            shipment.tracking_url,
+            shipment.recipient_name,
+            shipment.proof_note,
+            shipment.shipped_at,
+            shipment.delivered_at,
+            shipment.inventory_posted_at,
+            COALESCE(
+              jsonb_agg(
+                jsonb_build_object(
+                  'id',
+                  item.id,
+                  'salesOrderLineId',
+                  item.sales_order_line_id,
+                  'quantity',
+                  item.quantity
+                )
+                ORDER BY item.id
+              )
+              FILTER (
+                WHERE item.id IS NOT NULL
+              ),
+              '[]'::jsonb
+            ) AS items
+          FROM sales_shipments shipment
+          LEFT JOIN sales_shipment_items item
+            ON item.shipment_id =
+               shipment.id
+           AND item.company_id =
+               shipment.company_id
+          WHERE shipment.sales_order_id = $1
+            AND shipment.company_id = $2
+          GROUP BY
+            shipment.id
+          ORDER BY
+            shipment.created_at DESC
+        `,
+        [
+          orderId,
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            return_row.id,
+            return_row.return_number,
+            return_row.status,
+            return_row.reason,
+            return_row.requested_at,
+            return_row.approved_at,
+            return_row.received_at,
+            return_row.credited_at,
+            return_row.refunded_at,
+            COALESCE(
+              (
+                SELECT
+                  jsonb_agg(
+                    jsonb_build_object(
+                      'id',
+                      item.id,
+                      'salesOrderLineId',
+                      item.sales_order_line_id,
+                      'quantity',
+                      item.quantity
+                    )
+                    ORDER BY item.id
+                  )
+                FROM sales_return_items item
+                WHERE item.return_id =
+                      return_row.id
+                  AND item.company_id =
+                      return_row.company_id
+              ),
+              '[]'::jsonb
+            ) AS items,
+            COALESCE(
+              (
+                SELECT
+                  jsonb_agg(
+                    jsonb_build_object(
+                      'id',
+                      credit.id,
+                      'invoiceId',
+                      credit.invoice_id,
+                      'creditNoteId',
+                      credit.credit_note_id,
+                      'creditNoteNumber',
+                      credit.credit_note_number,
+                      'amount',
+                      credit.amount,
+                      'availableCredit',
+                      credit.available_credit,
+                      'refundedAmount',
+                      credit.refunded_amount
+                    )
+                    ORDER BY
+                      credit.created_at
+                  )
+                FROM sales_return_credits credit
+                WHERE credit.return_id =
+                      return_row.id
+                  AND credit.company_id =
+                      return_row.company_id
+              ),
+              '[]'::jsonb
+            ) AS credits
+          FROM sales_returns return_row
+          WHERE return_row.sales_order_id = $1
+            AND return_row.company_id = $2
+          ORDER BY
+            return_row.created_at DESC
         `,
         [
           orderId,
@@ -2471,6 +2703,16 @@ export async function getSalesOrderDetail(
               delivered,
             invoicedQuantity:
               invoiced,
+            returnedQuantity:
+              Number(
+                line.returned_quantity ||
+                0,
+              ),
+            creditedQuantity:
+              Number(
+                line.credited_quantity ||
+                0,
+              ),
             invoiceableQuantity:
               Math.max(
                 0,
@@ -2506,6 +2748,225 @@ export async function getSalesOrderDetail(
               ),
           };
         },
+      ),
+    shipments:
+      shipments.rows.map(
+        item => ({
+          id:
+            String(
+              item.id,
+            ),
+          shipmentNumber:
+            String(
+              item.shipment_number,
+            ),
+          status:
+            String(
+              item.status,
+            ),
+          carrier:
+            item.carrier
+              ? String(
+                  item.carrier,
+                )
+              : null,
+          serviceLevel:
+            item.service_level
+              ? String(
+                  item.service_level,
+                )
+              : null,
+          trackingNumber:
+            item.tracking_number
+              ? String(
+                  item.tracking_number,
+                )
+              : null,
+          trackingUrl:
+            item.tracking_url
+              ? String(
+                  item.tracking_url,
+                )
+              : null,
+          recipientName:
+            item.recipient_name
+              ? String(
+                  item.recipient_name,
+                )
+              : null,
+          proofNote:
+            item.proof_note
+              ? String(
+                  item.proof_note,
+                )
+              : null,
+          shippedAt:
+            item.shipped_at
+              ? new Date(
+                  item.shipped_at,
+                ).toISOString()
+              : null,
+          deliveredAt:
+            item.delivered_at
+              ? new Date(
+                  item.delivered_at,
+                ).toISOString()
+              : null,
+          inventoryPostedAt:
+            item.inventory_posted_at
+              ? new Date(
+                  item.inventory_posted_at,
+                ).toISOString()
+              : null,
+          items:
+            Array.isArray(
+              item.items,
+            )
+              ? item.items.map(
+                  (
+                    line:
+                      Record<
+                        string,
+                        unknown
+                      >,
+                  ) => ({
+                    id:
+                      String(
+                        line.id,
+                      ),
+                    salesOrderLineId:
+                      String(
+                        line.salesOrderLineId,
+                      ),
+                    quantity:
+                      Number(
+                        line.quantity ||
+                        0,
+                      ),
+                  }),
+                )
+              : [],
+        }),
+      ),
+    returns:
+      returns.rows.map(
+        item => ({
+          id:
+            String(
+              item.id,
+            ),
+          returnNumber:
+            String(
+              item.return_number,
+            ),
+          status:
+            String(
+              item.status,
+            ),
+          reason:
+            String(
+              item.reason,
+            ),
+          requestedAt:
+            new Date(
+              item.requested_at,
+            ).toISOString(),
+          approvedAt:
+            item.approved_at
+              ? new Date(
+                  item.approved_at,
+                ).toISOString()
+              : null,
+          receivedAt:
+            item.received_at
+              ? new Date(
+                  item.received_at,
+                ).toISOString()
+              : null,
+          creditedAt:
+            item.credited_at
+              ? new Date(
+                  item.credited_at,
+                ).toISOString()
+              : null,
+          refundedAt:
+            item.refunded_at
+              ? new Date(
+                  item.refunded_at,
+                ).toISOString()
+              : null,
+          items:
+            Array.isArray(
+              item.items,
+            )
+              ? item.items.map(
+                  (
+                    line:
+                      Record<
+                        string,
+                        unknown
+                      >,
+                  ) => ({
+                    id:
+                      String(
+                        line.id,
+                      ),
+                    salesOrderLineId:
+                      String(
+                        line.salesOrderLineId,
+                      ),
+                    quantity:
+                      Number(
+                        line.quantity ||
+                        0,
+                      ),
+                  }),
+                )
+              : [],
+          credits:
+            Array.isArray(
+              item.credits,
+            )
+              ? item.credits.map(
+                  (
+                    credit:
+                      Record<
+                        string,
+                        unknown
+                      >,
+                  ) => ({
+                    id:
+                      String(
+                        credit.id,
+                      ),
+                    invoiceId:
+                      String(
+                        credit.invoiceId,
+                      ),
+                    creditNoteId:
+                      String(
+                        credit.creditNoteId,
+                      ),
+                    creditNoteNumber:
+                      String(
+                        credit.creditNoteNumber,
+                      ),
+                    amount:
+                      money(
+                        credit.amount,
+                      ),
+                    availableCredit:
+                      money(
+                        credit.availableCredit,
+                      ),
+                    refundedAmount:
+                      money(
+                        credit.refundedAmount,
+                      ),
+                  }),
+                )
+              : [],
+        }),
       ),
     invoices:
       invoices.rows.map(
