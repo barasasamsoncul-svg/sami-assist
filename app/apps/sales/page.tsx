@@ -51,6 +51,7 @@ type SalesView =
   | 'quotes'
   | 'orders'
   | 'organization'
+  | 'operations'
   | 'reports'
   | 'settings';
 
@@ -138,6 +139,14 @@ export default async function SalesPage({
           .canViewOrganization
           ? [
               'organization' as const,
+            ]
+          : []
+      ),
+      ...(
+        data.capabilities
+          .canViewOperations
+          ? [
+              'operations' as const,
             ]
           : []
       ),
@@ -237,6 +246,23 @@ export default async function SalesPage({
     ),
     ...(
       data.capabilities
+        .canViewOperations
+        ? [
+            {
+              key:
+                'operations',
+              label:
+                'Operations',
+              href:
+                '/apps/sales?view=operations',
+              description:
+                'Deposits, shipments, returns, refunds and revenue forecast.',
+            },
+          ]
+        : []
+    ),
+    ...(
+      data.capabilities
         .canViewReports
         ? [
             {
@@ -327,7 +353,7 @@ export default async function SalesPage({
         0
       }
       title="Sales"
-      description="Quotations, pricing, teams, targets, commissions, fulfillment and invoicing."
+      description="Quotations, pricing, teams, deposits, shipping, returns, forecasting and invoicing."
       contextLabel={
         data.company.name
       }
