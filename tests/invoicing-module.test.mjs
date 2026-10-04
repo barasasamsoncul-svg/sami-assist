@@ -7384,3 +7384,115 @@ test('Invoicing preserves external module line-source metadata without owning ex
     'Invoice duplication must preserve line source metadata rather than dropping traceability.',
   );
 });
+
+
+test('New Invoice detects and applies customer advances without consuming draft balances', async () => {
+  const [
+    composer,
+    commands,
+    types,
+  ] = await Promise.all([
+    source('app/apps/invoicing/InvoiceComposer.tsx'),
+    source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/invoicing/types.ts'),
+  ]);
+
+  assert.match(
+    composer,
+    /Available customer advances/,
+  );
+  assert.match(
+    composer,
+    /data\.retainers/,
+  );
+  assert.match(
+    composer,
+    /availableAmount/,
+  );
+  assert.match(
+    composer,
+    /advanceApplications:[\s\S]*confirm/s,
+    'Draft invoice saves must not consume customer advances.',
+  );
+  assert.match(
+    commands,
+    /normalizeInvoiceAdvanceApplications/,
+  );
+  assert.match(
+    commands,
+    /applyInvoiceAdvancesDuringCreate/,
+  );
+  assert.match(
+    commands,
+    /pendingAdvanceApplications/,
+    'Approval-required invoices must preserve selected advances until posting.',
+  );
+  assert.match(
+    commands,
+    /FOR UPDATE OF p/,
+    'Advance payment balances must be revalidated under a database lock.',
+  );
+  assert.match(
+    commands,
+    /invoice\.advance_applied/,
+  );
+  assert.match(
+    types,
+    /advanceApplications\?: unknown/,
+  );
+});
+
+
+test('Invoice branding defaults to the current company logo and allows a private per-template override', async () => {
+  const [
+    appearance,
+    snapshots,
+    pdf,
+  ] = await Promise.all([
+    source('app/apps/invoicing/InvoiceAppearanceSettings.tsx'),
+    source('lib/apps/invoicing/document-snapshots.ts'),
+    source('lib/apps/invoicing/pdf.ts'),
+  ]);
+
+  assert.doesNotMatch(
+    appearance,
+    /label="Logo URL"/,
+    'Business users must not be asked to paste a logo URL.',
+  );
+  assert.match(
+    appearance,
+    /uses the current company logo automatically/i,
+  );
+  assert.match(
+    appearance,
+    /Upload override/,
+  );
+  assert.match(
+    appearance,
+    /\/api\/workspace\/organization\/logo\?companyId=/,
+  );
+  assert.match(
+    snapshots,
+    /company\.logo_file_id/,
+    'PDF snapshots must fall back to the selected company identity.',
+  );
+  assert.match(
+    snapshots,
+    /template_logo_url/,
+    'A template-specific uploaded logo must remain able to override company branding.',
+  );
+  assert.match(
+    pdf,
+    /logoImageBase64/,
+  );
+  assert.match(
+    pdf,
+    /decodePngForPdf/,
+    'Company PNG logos must render through the server PDF engine.',
+  );
+  assert.match(
+    pdf,
+    /DCTDecode/,
+    'JPEG logos must continue to render natively in PDFs.',
+  );
+});
