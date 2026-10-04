@@ -1377,3 +1377,38 @@ test('Sales roadmap Parts 6 and 7 expose standalone PDF builder and product cata
   assert.match(types, /itemType: string/);
   assert.match(types, /canManageCatalog: boolean/);
 });
+
+
+test('Sales roadmap Parts 8 and 9 separate pricelist scope from advanced pricing rules', async () => {
+  const [
+    page,
+    workspace,
+    pricelists,
+    advanced,
+    commercial,
+  ] = await Promise.all([
+    source('app/apps/sales/page.tsx'),
+    source('app/apps/sales/SalesWorkspaceClient.tsx'),
+    source('app/apps/sales/SalesPricelistsManager.tsx'),
+    source('app/apps/sales/SalesAdvancedPricingManager.tsx'),
+    source('lib/apps/sales/commercial.ts'),
+  ]);
+
+  assert.match(page, /Roadmap Part 8/);
+  assert.match(page, /Roadmap Part 9/);
+  assert.match(page, /view=pricelists/);
+  assert.match(page, /view=advanced-pricing/);
+  assert.match(workspace, /SalesPricelistsManager/);
+  assert.match(workspace, /SalesAdvancedPricingManager/);
+  assert.doesNotMatch(workspace, /SalesPricingManager/);
+  assert.match(pricelists, /Roadmap Part 8/);
+  assert.match(pricelists, /save_pricelist/);
+  assert.doesNotMatch(pricelists, /rules:/);
+  assert.match(advanced, /Roadmap Part 9/);
+  assert.match(advanced, /discount_percent/);
+  assert.match(advanced, /markup_percent/);
+  assert.match(advanced, /minQuantity/);
+  assert.match(advanced, /rules:/);
+  assert.match(commercial, /input\.rules !==[\s\S]*undefined/);
+  assert.match(commercial, /DELETE FROM sales_pricelist_rules/);
+});
