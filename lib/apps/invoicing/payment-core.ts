@@ -234,8 +234,8 @@ export async function recordInvoicePaymentCore(input:{
        )
        VALUES(
          $1,$2,$3,$4,$4,$4,$5,$5,
-         ROUND(($4*$5)::numeric,4),
-         ROUND(($4*$5)::numeric,4),
+         ROUND(($4::numeric * $5::numeric),4),
+         ROUND(($4::numeric * $5::numeric),4),
          0,'posted','initial:'||gen_random_uuid()::text,$6
        )
        RETURNING id,operation_key`,
