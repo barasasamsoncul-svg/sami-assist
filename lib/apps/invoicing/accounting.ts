@@ -392,27 +392,26 @@ async function ensureSystemPostingPeriod(
     ],
   );
 
-  const existingPeriods =
+  const coveringAfterLock =
     await client.query(
       `
-        SELECT
-          COUNT(*)::int
-            AS count
+        SELECT id
         FROM accounting_fiscal_periods
         WHERE company_id = $1
           AND deleted_at IS NULL
+          AND $2::date
+              BETWEEN starts_on
+                  AND ends_on
+        LIMIT 1
       `,
       [
         input.companyId,
+        input.journalDate,
       ],
     );
 
   if (
-    Number(
-      existingPeriods.rows[0]
-        ?.count ||
-      0,
-    ) >
+    coveringAfterLock.rows.length >
       0
   ) {
     return;
@@ -423,88 +422,92 @@ async function ensureSystemPostingPeriod(
       input.journalDate,
     );
 
-  const startMonth =
-    Math.min(
-      12,
-      Math.max(
-        1,
-        Number(
-          policy
-            .fiscal_year_start_month ||
-          1,
-        ),
-      ),
-    );
-
-  const startDay =
-    Math.min(
-      31,
-      Math.max(
-        1,
-        Number(
-          policy
-            .fiscal_year_start_day ||
-          1,
-        ),
-      ),
-    );
-
-  let startYear =
-    date.year;
-
-  const thisYearStart =
-    safeUtcDate(
-      date.year,
-      startMonth,
-      startDay,
-    );
-
-  const journal =
+  const startsOn =
     safeUtcDate(
       date.year,
       date.month,
-      date.day,
+      1,
     );
 
-  if (
-    journal <
-    thisYearStart
-  ) {
-    startYear -=
-      1;
-  }
-
-  const startsOn =
-    safeUtcDate(
-      startYear,
-      startMonth,
-      startDay,
-    );
-
-  const nextStart =
-    safeUtcDate(
-      startYear +
-        1,
-      startMonth,
-      startDay,
-    );
+  const nextMonth =
+    date.month ===
+      12
+      ? safeUtcDate(
+          date.year +
+            1,
+          1,
+          1,
+        )
+      : safeUtcDate(
+          date.year,
+          date.month +
+            1,
+          1,
+        );
 
   const endsOn =
     new Date(
-      nextStart
+      nextMonth
         .getTime() -
       86_400_000,
     );
 
-  const name =
-    'FY ' +
+  const startText =
     dateOnly(
       startsOn,
-    ) +
-    ' – ' +
+    );
+
+  const endText =
     dateOnly(
       endsOn,
     );
+
+  const overlap =
+    await client.query(
+      `
+        SELECT id
+        FROM accounting_fiscal_periods
+        WHERE company_id = $1
+          AND deleted_at IS NULL
+          AND daterange(
+                starts_on,
+                ends_on,
+                '[]'
+              ) &&
+              daterange(
+                $2::date,
+                $3::date,
+                '[]'
+              )
+        LIMIT 1
+      `,
+      [
+        input.companyId,
+        startText,
+        endText,
+      ],
+    );
+
+  if (
+    overlap.rows.length >
+      0
+  ) {
+    return;
+  }
+
+  const name =
+    startsOn
+      .toLocaleString(
+        'en',
+        {
+          month:
+            'long',
+          year:
+            'numeric',
+          timeZone:
+            'UTC',
+        },
+      );
 
   await client.query(
     `
@@ -526,12 +529,8 @@ async function ensureSystemPostingPeriod(
     [
       input.companyId,
       name,
-      dateOnly(
-        startsOn,
-      ),
-      dateOnly(
-        endsOn,
-      ),
+      startText,
+      endText,
       input.userId,
     ],
   );
