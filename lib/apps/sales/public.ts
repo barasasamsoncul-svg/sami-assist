@@ -915,6 +915,34 @@ export async function respondToPublicSalesQuote(
           )
         : null;
 
+    if (
+      input.action ===
+        'accept' &&
+      input.selectedOptionalItemIds !==
+        undefined &&
+      !Array.isArray(
+        input.selectedOptionalItemIds,
+      )
+    ) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'Optional product selections must be a list.',
+      );
+    }
+
+    if (
+      Array.isArray(
+        input.selectedOptionalItemIds,
+      ) &&
+      input.selectedOptionalItemIds.length >
+        100
+    ) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'Select up to 100 optional products.',
+      );
+    }
+
     const selectedOptionalItemIds =
       input.action ===
         'accept' &&
