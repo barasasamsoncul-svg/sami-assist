@@ -744,6 +744,39 @@ test('Category 18: the real SaMi AI workspace is wired into shell, search, dashb
   );
 });
 
+test('Category 18: SaMi AI response presentation follows the premium chat composition contract', async () => {
+  const [
+    client,
+    markdown,
+    service,
+  ] = await Promise.all([
+    source('app/components/workspace/WorkspaceAiClient.tsx'),
+    source('app/components/ai/SamiAiMarkdown.tsx'),
+    source('lib/services/workspace-ai.ts'),
+  ]);
+
+  assert.match(client, /SamiAiMarkdown/);
+  assert.match(client, /optimistic-/);
+  assert.match(client, /scrollIntoView/);
+  assert.match(client, /composer\.style\.height/);
+  assert.match(client, /Enter to send · Shift\+Enter for a new line/);
+  assert.match(client, /data-sami-ai-chat="true"/);
+
+  assert.match(markdown, /data-sami-ai-markdown="true"/);
+  assert.match(markdown, /list-decimal/);
+  assert.match(markdown, /Copy code/);
+  assert.match(markdown, /markdownSegments/);
+  assert.match(markdown, /SamiMarkdownTable/);
+  assert.match(markdown, /overflow-x-auto/);
+
+  assert.match(service, /Response composition standard/);
+  assert.match(service, /use a numbered list in the actual execution order/);
+  assert.match(service, /prefer a compact Markdown table/);
+  assert.match(service, /fenced Markdown code blocks/);
+  assert.match(service, /use bullets instead of artificial numbering/);
+});
+
+
 test('Category 18: Home dashboard analysis excludes activity telemetry and uses business signals', async () => {
   const [
     page,
