@@ -14,6 +14,7 @@ import {
   createSalesQuoteRevision,
   duplicateSalesQuote,
   getSalesCommercialData,
+  getSalesOperationsData,
   getSalesOrganizationData,
   getSalesOrderDetail,
   markSalesCommissionPaid,
@@ -174,6 +175,31 @@ export async function GET(
     NextRequest,
 ) {
   try {
+    const operations =
+      request.nextUrl
+        .searchParams
+        .get(
+          'operations',
+        );
+
+    if (
+      operations ===
+        '1'
+    ) {
+      return json({
+        success:
+          true,
+        operations:
+          await getSalesOperationsData(
+            request.nextUrl
+              .searchParams
+              .get(
+                'horizon',
+              ),
+          ),
+      });
+    }
+
     const organization =
       request.nextUrl
         .searchParams
@@ -414,6 +440,26 @@ export async function POST(
           saveSalesCommissionPlan,
         mark_commission_paid:
           markSalesCommissionPaid,
+        set_deposit_requirement:
+          setSalesOrderDepositRequirement,
+        record_order_deposit:
+          recordSalesOrderDeposit,
+        apply_order_deposit:
+          applySalesOrderDeposit,
+        create_shipment:
+          createSalesShipment,
+        update_shipment_status:
+          updateSalesShipmentStatus,
+        create_return:
+          createSalesReturn,
+        approve_return:
+          approveSalesReturn,
+        receive_return:
+          receiveSalesReturn,
+        issue_return_credit:
+          issueSalesReturnCredit,
+        refund_return_credit:
+          refundSalesReturnCredit,
         send_quote:
           sendSalesQuote,
         change_quote_status:
