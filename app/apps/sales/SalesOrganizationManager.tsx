@@ -50,6 +50,8 @@ type SalesTarget = {
   periodStart: string;
   periodEnd: string;
   targetValue: number;
+  actualValue: number;
+  attainmentPercent: number;
   notes: string | null;
   isActive: boolean;
 };
@@ -1252,18 +1254,47 @@ export default function SalesOrganizationManager({
                                   )
                                 }
                               </div>
-                              <div className="text-right">
+                              <div className="min-w-32 text-right">
                                 <p className="text-sm font-black">
                                   {
+                                    target.actualValue
+                                      .toLocaleString()
+                                  } / {
                                     target.targetValue
                                       .toLocaleString()
                                   }
                                 </p>
-                                <State
-                                  active={
-                                    target.isActive
-                                  }
-                                />
+                                <p className="mt-1 text-[10px] font-black text-blue-700 dark:text-blue-300">
+                                  {
+                                    target.attainmentPercent
+                                      .toFixed(
+                                        1,
+                                      )
+                                  }% achieved
+                                </p>
+                                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-500/10">
+                                  <div
+                                    className="h-full rounded-full bg-blue-600"
+                                    style={{
+                                      width:
+                                        Math.min(
+                                          100,
+                                          Math.max(
+                                            0,
+                                            target.attainmentPercent,
+                                          ),
+                                        ) +
+                                        '%',
+                                    }}
+                                  />
+                                </div>
+                                <div className="mt-2">
+                                  <State
+                                    active={
+                                      target.isActive
+                                    }
+                                  />
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -1802,14 +1833,61 @@ export default function SalesOrganizationManager({
                                     }
                                   </p>
                                 </div>
-                                <p className="text-sm font-black">
+                                <div className="text-right">
+                                  <p className="text-sm font-black">
+                                    {
+                                      money(
+                                        entry.commissionAmount,
+                                        entry.currency,
+                                      )
+                                    }
+                                  </p>
                                   {
-                                    money(
-                                      entry.commissionAmount,
-                                      entry.currency,
+                                    entry.status ===
+                                      'accrued' &&
+                                    data.capabilities
+                                      .canManageCommissions &&
+                                    (
+                                      <button
+                                        type="button"
+                                        disabled={
+                                          busy
+                                        }
+                                        onClick={
+                                          async () => {
+                                            try {
+                                              await request({
+                                                action:
+                                                  'mark_commission_paid',
+                                                entryId:
+                                                  entry.id,
+                                              });
+
+                                              showSuccess(
+                                                'Commission marked paid',
+                                                'The payout status and audit timestamp were recorded.',
+                                              );
+
+                                              await refresh();
+                                            } catch (
+                                              error
+                                            ) {
+                                              showError(
+                                                'Commission payout failed',
+                                                error instanceof Error
+                                                  ? error.message
+                                                  : 'SaMi could not update this commission.',
+                                              );
+                                            }
+                                          }
+                                        }
+                                        className="mt-1 rounded-lg border border-[var(--sami-border)] px-2 py-1 text-[10px] font-black"
+                                      >
+                                        Mark paid
+                                      </button>
                                     )
                                   }
-                                </p>
+                                </div>
                               </div>
                             ),
                           )
