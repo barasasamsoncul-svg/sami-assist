@@ -103,7 +103,7 @@ export function getSamiAiAttachmentLimits() {
 }
 
 
-function canReadFiles(
+function canReadWorkspaceFiles(
   context:
     SamiAiRuntimeContext,
 ) {
@@ -113,15 +113,35 @@ function canReadFiles(
       .permissionContext
       .permissionSet
       .has(
-        SAMI_PERMISSIONS
-          .FILES_VIEW,
+        SAMI_PERMISSIONS.FILES_VIEW,
       ) ||
     context
       .permissionContext
       .permissionSet
       .has(
-        SAMI_PERMISSIONS
-          .FILES_MANAGE,
+        SAMI_PERMISSIONS.FILES_MANAGE,
+      )
+  );
+}
+
+
+function canUseAiAttachments(
+  context:
+    SamiAiRuntimeContext,
+) {
+  return (
+    context.isOwner ||
+    context
+      .permissionContext
+      .permissionSet
+      .has(
+        SAMI_PERMISSIONS.AI_USE,
+      ) ||
+    context
+      .permissionContext
+      .permissionSet
+      .has(
+        SAMI_PERMISSIONS.FILES_MANAGE,
       )
   );
 }
@@ -131,15 +151,8 @@ export function canUploadSamiAiAttachments(
   context:
     SamiAiRuntimeContext,
 ) {
-  return (
-    context.isOwner ||
-    context
-      .permissionContext
-      .permissionSet
-      .has(
-        SAMI_PERMISSIONS
-          .FILES_MANAGE,
-      )
+  return canUseAiAttachments(
+    context,
   );
 }
 
@@ -347,13 +360,19 @@ export async function resolveSamiAiAttachments(
     >;
   }
 
+  const canReadAll =
+    canReadWorkspaceFiles(
+      context,
+    );
+
   if (
-    !canReadFiles(
+    !canReadAll &&
+    !canUseAiAttachments(
       context,
     )
   ) {
     throw new Error(
-      'You do not have permission to attach workspace files to SaMi AI.',
+      'You do not have permission to attach files to SaMi AI.',
     );
   }
 
@@ -378,10 +397,20 @@ export async function resolveSamiAiAttachments(
           AND id = ANY($2::uuid[])
           AND status = 'active'
           AND deleted_at IS NULL
+          AND (
+            $3::boolean
+            OR (
+              uploaded_by = $4
+              AND purpose =
+                'ai_attachment'
+            )
+          )
       `,
       [
         context.companyId,
         ids,
+        canReadAll,
+        context.userId,
       ],
     );
 

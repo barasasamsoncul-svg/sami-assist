@@ -45,6 +45,7 @@ export type WorkspaceFileErrorCode =
   | 'COMPANY_ACCESS_DENIED'
   | 'FILES_VIEW_REQUIRED'
   | 'FILES_MANAGE_REQUIRED'
+  | 'AI_USE_REQUIRED'
   | 'INVALID_FILE_ID'
   | 'INVALID_FILE_NAME'
   | 'INVALID_FILE_SIZE'
@@ -224,11 +225,41 @@ function assertSupportedExtension(fileName: string) {
   }
 }
 
-function assertPermission(context: PermissionContext, mode: 'view' | 'manage') {
+function assertPermission(
+  context: PermissionContext,
+  mode:
+    | 'view'
+    | 'manage'
+    | 'ai_attachment',
+) {
   if (context.isOwner) return;
 
-  const canManage = permissionContextHas(context, SAMI_PERMISSIONS.FILES_MANAGE);
-  if (mode === 'manage' && !canManage) {
+  const canManage =
+    permissionContextHas(
+      context,
+      SAMI_PERMISSIONS.FILES_MANAGE,
+    );
+
+  if (
+    mode ===
+      'ai_attachment' &&
+    !canManage &&
+    !permissionContextHas(
+      context,
+      SAMI_PERMISSIONS.AI_USE,
+    )
+  ) {
+    throw new WorkspaceFileError(
+      'AI_USE_REQUIRED',
+      'You do not have permission to use SaMi AI attachments.',
+    );
+  }
+
+  if (
+    mode ===
+      'manage' &&
+    !canManage
+  ) {
     throw new WorkspaceFileError(
       'FILES_MANAGE_REQUIRED',
       'You do not have permission to manage workspace files.',
@@ -238,7 +269,10 @@ function assertPermission(context: PermissionContext, mode: 'view' | 'manage') {
   if (
     mode === 'view' &&
     !canManage &&
-    !permissionContextHas(context, SAMI_PERMISSIONS.FILES_VIEW)
+    !permissionContextHas(
+      context,
+      SAMI_PERMISSIONS.FILES_VIEW,
+    )
   ) {
     throw new WorkspaceFileError(
       'FILES_VIEW_REQUIRED',
@@ -247,7 +281,12 @@ function assertPermission(context: PermissionContext, mode: 'view' | 'manage') {
   }
 }
 
-async function resolveFileContext(mode: 'view' | 'manage'): Promise<FileRequestContext> {
+async function resolveFileContext(
+  mode:
+    | 'view'
+    | 'manage'
+    | 'ai_attachment',
+): Promise<FileRequestContext> {
   const [permissions, session] = await Promise.all([
     getPermissionContext(),
     getSession(),
@@ -470,12 +509,37 @@ export async function createWorkspaceFileUploadIntent(
   },
   audit?: WorkspaceFileAuditContext,
 ) {
-  const context = await resolveFileContext('manage');
-  const fileName = safeOriginalName(input.fileName);
-  assertSupportedExtension(fileName);
+  const purpose =
+    safePurpose(
+      input.purpose,
+    );
 
-  const mimeType = safeMimeType(input.mimeType);
-  const sizeBytes = safeFileSize(input.sizeBytes);
+  const context =
+    await resolveFileContext(
+      purpose ===
+        'ai_attachment'
+        ? 'ai_attachment'
+        : 'manage',
+    );
+
+  const fileName =
+    safeOriginalName(
+      input.fileName,
+    );
+
+  assertSupportedExtension(
+    fileName,
+  );
+
+  const mimeType =
+    safeMimeType(
+      input.mimeType,
+    );
+
+  const sizeBytes =
+    safeFileSize(
+      input.sizeBytes,
+    );
 
   try {
     await assertStorageAllocationAvailable({
@@ -519,7 +583,6 @@ export async function createWorkspaceFileUploadIntent(
     throw error;
   }
 
-  const purpose = safePurpose(input.purpose);
   const extension = fileExtension(fileName);
   const fileId = crypto.randomUUID();
   const storageKey = createObjectKey(context, fileId, extension);
@@ -648,9 +711,44 @@ export async function completeWorkspaceFileUpload(
   fileId: string,
   audit?: WorkspaceFileAuditContext,
 ): Promise<WorkspaceFileSummary> {
-  const context = await resolveFileContext('manage');
-  const id = requireFileId(fileId);
-  const row = await loadFileRow(context, id, ['pending_upload']);
+  const context =
+    await resolveFileContext(
+      'ai_attachment',
+    );
+
+  const id =
+    requireFileId(
+      fileId,
+    );
+
+  const row =
+    await loadFileRow(
+      context,
+      id,
+      [
+        'pending_upload',
+      ],
+    );
+
+  if (
+    row.purpose !==
+      'ai_attachment'
+  ) {
+    assertPermission(
+      context.permissions,
+      'manage',
+    );
+  } else if (
+    !context.permissions
+      .isOwner &&
+    row.uploaded_by !==
+      context.userId
+  ) {
+    throw new WorkspaceFileError(
+      'FILE_NOT_FOUND',
+      'The file could not be found.',
+    );
+  }
 
   const expiresAt = isoDate(row.upload_expires_at);
   if (!expiresAt || new Date(expiresAt).getTime() <= Date.now()) {

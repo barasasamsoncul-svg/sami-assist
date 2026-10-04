@@ -688,7 +688,6 @@ test('Category 18: the real SaMi AI workspace is wired into shell, search, dashb
   assert.match(client, /'Copy'/);
   assert.match(client, /label="Edit"/);
   assert.match(client, /label="Regenerate"/);
-  assert.match(client, /Stop generating/);
   assert.match(client, /AbortController/);
   assert.match(client, /label="Helpful"/);
   assert.match(client, /label="Not helpful"/);
@@ -970,6 +969,181 @@ test('Category 18: SaMi AI streams live responses without bypassing the tool-saf
   );
   assert.match(
     client,
-    /SaMi is responding…/,
+    /Thinking…/,
+  );
+  assert.doesNotMatch(
+    client,
+    /rounded-xl border border-slate-200 bg-white[\s\S]{0,500}Thinking…/,
+    'Thinking must remain an inline state rather than a boxed status shell.',
+  );
+});
+
+
+test('Category 18: business data answers never substitute database code for tool-backed results', async () => {
+  const service = await source(
+    'lib/services/workspace-ai.ts',
+  );
+
+  assert.match(
+    service,
+    /Only provide code, commands, SQL, JSON, configuration, schemas or implementation snippets when the user explicitly asks/,
+  );
+  assert.match(
+    service,
+    /For business or workspace data requests, use only the permission-filtered SaMi tools/,
+  );
+  assert.match(
+    service,
+    /Never show or suggest SQL, database queries, connection code, API request code/,
+  );
+  assert.match(
+    service,
+    /Do not tell the user to query the database, run SQL, inspect tables, call internal APIs or change backend code/,
+  );
+});
+
+test('Category 18: confirmation claims are atomic before write-tool execution', async () => {
+  const service = await source(
+    'lib/services/workspace-ai.ts',
+  );
+
+  assert.match(
+    service,
+    /UPDATE ai_actions[\s\S]*status = 'running'[\s\S]*status =[\s\S]*'pending_confirmation'[\s\S]*expires_at > NOW\(\)[\s\S]*RETURNING id/,
+  );
+  assert.match(
+    service,
+    /claimed\.rows\.length !==[\s\S]*1/,
+  );
+});
+
+
+test('Category 18: AI chat parity keeps generation scoped and confirmations visible', async () => {
+  const [
+    client,
+    service,
+  ] = await Promise.all([
+    source('app/components/workspace/WorkspaceAiClient.tsx'),
+    source('lib/services/workspace-ai.ts'),
+  ]);
+
+  assert.match(
+    client,
+    /generationStatesRef/,
+  );
+  assert.match(
+    client,
+    /conversationRunKey/,
+  );
+  assert.match(
+    client,
+    /selectedConversationIdRef/,
+  );
+  assert.match(
+    client,
+    /Thinking…/,
+  );
+  assert.match(
+    client,
+    /SpeechRecognition|webkitSpeechRecognition/,
+  );
+  assert.match(
+    client,
+    /speechSynthesis/,
+  );
+  assert.match(
+    client,
+    /iconOnly = true/,
+  );
+  assert.match(
+    service,
+    /actionConfirmation/,
+  );
+  assert.match(
+    service,
+    /completed successfully/,
+  );
+  assert.match(
+    service,
+    /confirmationMessage/,
+  );
+});
+
+test('Category 18: AI attachments are private to AI use without granting generic file management', async () => {
+  const [
+    attachmentService,
+    workspaceFiles,
+  ] = await Promise.all([
+    source('lib/ai/attachments.ts'),
+    source('lib/services/workspace-files.ts'),
+  ]);
+
+  assert.match(
+    attachmentService,
+    /SAMI_PERMISSIONS[\s\S]*AI_USE/,
+  );
+  assert.match(
+    attachmentService,
+    /uploaded_by = \$4[\s\S]*purpose =[\s\S]*'ai_attachment'/,
+  );
+  assert.match(
+    workspaceFiles,
+    /'ai_attachment'/,
+  );
+  assert.match(
+    workspaceFiles,
+    /SAMI_PERMISSIONS[\s\S]*AI_USE/,
+  );
+  assert.match(
+    workspaceFiles,
+    /row\.uploaded_by !==[\s\S]*context\.userId/,
+  );
+});
+
+
+test('Category 18: active generation never blocks follow-up composition controls', async () => {
+  const client = await source(
+    'app/components/workspace/WorkspaceAiClient.tsx',
+  );
+
+  assert.match(
+    client,
+    /queuedRequestsRef/,
+  );
+  assert.match(
+    client,
+    /submitChatRequest/,
+  );
+  assert.match(
+    client,
+    /'queued' as const/,
+  );
+  assert.match(
+    client,
+    /Queue follow-up message/,
+  );
+  assert.match(
+    client,
+    /Queued/,
+  );
+  assert.match(
+    client,
+    /status:\s*willQueue[\s\S]*\? 'queued'[\s\S]*: 'sending'/,
+  );
+
+  assert.doesNotMatch(
+    client,
+    /disabled=\{\s*sending\s*\}[\s\S]{0,300}toggleVoiceInput/,
+    'Voice input must remain available while another answer is generating.',
+  );
+  assert.doesNotMatch(
+    client,
+    /sending \|\|\s*uploadingAttachments/,
+    'Attachment upload must not be disabled merely because generation is active.',
+  );
+  assert.doesNotMatch(
+    client,
+    /if \(\s*sending \|\|\s*message\.role !==\s*'user'/,
+    'Editing a user message must not be blocked by generation state.',
   );
 });
