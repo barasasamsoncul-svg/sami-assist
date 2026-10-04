@@ -2191,6 +2191,81 @@ export async function saveSalesCommissionPlan(
   }
 }
 
+export async function resolveSalesAssignmentForUser(
+  client:
+    PoolClient,
+  input: {
+    companyId:
+      string;
+    userId:
+      string;
+  },
+) {
+  const result =
+    await client.query(
+      `
+        SELECT
+          member.team_id,
+          team.territory_id
+        FROM sales_team_members member
+        INNER JOIN sales_teams team
+          ON team.id =
+             member.team_id
+         AND team.company_id =
+             member.company_id
+        WHERE member.company_id = $1
+          AND member.user_id = $2
+          AND member.is_active = TRUE
+          AND team.is_active = TRUE
+          AND team.deleted_at IS NULL
+        ORDER BY
+          CASE
+            WHEN member.role = 'manager'
+            THEN 0
+            ELSE 1
+          END,
+          LOWER(team.name),
+          team.id
+        LIMIT 1
+      `,
+      [
+        input.companyId,
+        input.userId,
+      ],
+    );
+
+  if (
+    result.rows.length !==
+      1
+  ) {
+    return {
+      salesTeamId:
+        null,
+      territoryId:
+        null,
+    };
+  }
+
+  return {
+    salesTeamId:
+      result.rows[0]
+        .team_id
+        ? String(
+            result.rows[0]
+              .team_id,
+          )
+        : null,
+    territoryId:
+      result.rows[0]
+        .territory_id
+        ? String(
+            result.rows[0]
+              .territory_id,
+          )
+        : null,
+  };
+}
+
 export async function recordSalesOrderCommissionEntries(
   client:
     PoolClient,
