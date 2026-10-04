@@ -681,84 +681,83 @@ export async function getSalesOperationsData(
         ],
       )
         ? context.pool.query(
-        `
-          WITH quote_pipeline AS (
-            SELECT
-              COALESCE(
-                SUM(total_amount),
-                0
-              ) AS open_pipeline,
-              COALESCE(
-                SUM(
-                  total_amount *
-                  CASE status
-                    WHEN 'draft' THEN 0.20
-                    WHEN 'sent' THEN 0.40
-                    WHEN 'viewed' THEN 0.60
-                    WHEN 'accepted' THEN 1.00
-                    ELSE 0
-                  END
-                ),
-                0
-              ) AS weighted_pipeline,
-              COUNT(*) FILTER (
-                WHERE valid_until IS NOT NULL
-                  AND valid_until BETWEEN
-                      CURRENT_DATE
-                      AND CURRENT_DATE + 7
-              ) AS expiring_7_days
-            FROM sales_quotes
-            WHERE company_id = $1
-              AND deleted_at IS NULL
-              AND status IN (
-                'draft',
-                'sent',
-                'viewed',
-                'accepted'
+            `
+              WITH quote_pipeline AS (
+                SELECT
+                  COALESCE(
+                    SUM(total_amount),
+                    0
+                  ) AS open_pipeline,
+                  COALESCE(
+                    SUM(
+                      total_amount *
+                      CASE status
+                        WHEN 'draft' THEN 0.20
+                        WHEN 'sent' THEN 0.40
+                        WHEN 'viewed' THEN 0.60
+                        WHEN 'accepted' THEN 1.00
+                        ELSE 0
+                      END
+                    ),
+                    0
+                  ) AS weighted_pipeline,
+                  COUNT(*) FILTER (
+                    WHERE valid_until IS NOT NULL
+                      AND valid_until BETWEEN
+                          CURRENT_DATE
+                          AND CURRENT_DATE + 7
+                  ) AS expiring_7_days
+                FROM sales_quotes
+                WHERE company_id = $1
+                  AND deleted_at IS NULL
+                  AND status IN (
+                    'draft',
+                    'sent',
+                    'viewed',
+                    'accepted'
+                  )
+                  AND (
+                    valid_until IS NULL
+                    OR valid_until <=
+                       CURRENT_DATE +
+                       $2::int
+                  )
+              ),
+              committed AS (
+                SELECT
+                  COALESCE(
+                    SUM(
+                      subtotal -
+                      discount_total
+                    ),
+                    0
+                  ) AS committed_orders,
+                  COUNT(*) AS order_count
+                FROM sales_orders_v2
+                WHERE company_id = $1
+                  AND deleted_at IS NULL
+                  AND status =
+                      'confirmed'
+                  AND invoice_status <>
+                      'invoiced'
               )
-              AND (
-                valid_until IS NULL
-                OR valid_until <=
-                   CURRENT_DATE +
-                   $2::int
-              )
-          ),
-          committed AS (
-            SELECT
-              COALESCE(
-                SUM(
-                  subtotal -
-                  discount_total
-                ),
-                0
-              ) AS committed_orders,
-              COUNT(*) AS order_count
-            FROM sales_orders_v2
-            WHERE company_id = $1
-              AND deleted_at IS NULL
-              AND status =
-                  'confirmed'
-              AND invoice_status <>
-                  'invoiced'
+              SELECT
+                quote_pipeline.open_pipeline,
+                quote_pipeline.weighted_pipeline,
+                quote_pipeline.expiring_7_days,
+                committed.committed_orders,
+                committed.order_count,
+                quote_pipeline.weighted_pipeline +
+                  committed.committed_orders
+                  AS expected_revenue
+              FROM quote_pipeline,
+                   committed
+            `,
+            [
+              context.companyId,
+              horizonDays,
+            ],
           )
-          SELECT
-            quote_pipeline.open_pipeline,
-            quote_pipeline.weighted_pipeline,
-            quote_pipeline.expiring_7_days,
-            committed.committed_orders,
-            committed.order_count,
-            quote_pipeline.weighted_pipeline +
-              committed.committed_orders
-              AS expected_revenue
-          FROM quote_pipeline,
-               committed
-        `,
-        [
-          context.companyId,
-          horizonDays,
-        ],
-      ),
-    ]);
         : Promise.resolve({
             rows: [
               {
