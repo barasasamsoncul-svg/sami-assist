@@ -893,6 +893,91 @@ export default function SalesQuoteComposer({
             />
 
             {
+              data.capabilities
+                .canViewPricing &&
+              data.pricelists
+                .length >
+                0 &&
+              (
+                <label className="sm:col-span-2">
+                  <Label>
+                    Pricelist
+                  </Label>
+                  <select
+                    value={
+                      pricelistId
+                    }
+                    onChange={
+                      event => {
+                        const next =
+                          event.target
+                            .value;
+
+                        setPricelistId(
+                          next,
+                        );
+
+                        const selected =
+                          data.pricelists
+                            .find(
+                              item =>
+                                item.id ===
+                                  next,
+                            );
+
+                        if (
+                          selected
+                        ) {
+                          setCurrency(
+                            selected
+                              .currency,
+                          );
+                        }
+                      }
+                    }
+                    className="mt-1 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                  >
+                    <option value="">
+                      Standard prices
+                    </option>
+                    {
+                      data.pricelists
+                        .filter(
+                          item =>
+                            item.isActive,
+                        )
+                        .map(
+                          item => (
+                            <option
+                              key={
+                                item.id
+                              }
+                              value={
+                                item.id
+                              }
+                            >
+                              {
+                                item.name
+                              }
+                              {
+                                item.code
+                                  ? ' · ' +
+                                    item.code
+                                  : ''
+                              }
+                            </option>
+                          ),
+                        )
+                    }
+                  </select>
+                  <p className="mt-1 text-[10px] text-slate-500">
+                    Matching quantity and product rules are recalculated securely when the quotation is saved.
+                  </p>
+                </label>
+              )
+            }
+
+            {
               data.templates
                 .length >
                 0 &&
