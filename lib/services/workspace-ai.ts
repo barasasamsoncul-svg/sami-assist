@@ -42,6 +42,7 @@ import {
 
 import {
   completeSamiAiChat,
+  streamSamiAiChat,
 } from '@/lib/ai/provider';
 
 import {
@@ -2882,6 +2883,16 @@ export async function sendWorkspaceAiMessage(
     moduleContext?: unknown;
     signal?:
       AbortSignal;
+    onContentDelta?:
+      (
+        delta: string,
+      ) =>
+        | void
+        | Promise<void>;
+    onContentReset?:
+      () =>
+        | void
+        | Promise<void>;
   },
 ) {
   const resolved =
@@ -3291,14 +3302,35 @@ export async function sendWorkspaceAiMessage(
         );
       }
 
+      let streamedThisRound =
+        false;
+
       const completion =
-        await completeSamiAiChat({
-          messages,
-          tools:
-            providerTools,
-          signal:
-            input.signal,
-        });
+        input.onContentDelta
+          ? await streamSamiAiChat({
+              messages,
+              tools:
+                providerTools,
+              signal:
+                input.signal,
+              onContentDelta:
+                async delta => {
+                  streamedThisRound =
+                    true;
+
+                  await input
+                    .onContentDelta?.(
+                      delta,
+                    );
+                },
+            })
+          : await completeSamiAiChat({
+              messages,
+              tools:
+                providerTools,
+              signal:
+                input.signal,
+            });
 
       inputTokens =
         inputTokens === null ||
@@ -3334,7 +3366,25 @@ export async function sendWorkspaceAiMessage(
         finalContent =
           completion.content ||
           'I could not produce a response for that request.';
+
+        if (
+          input.onContentDelta &&
+          !streamedThisRound
+        ) {
+          await input
+            .onContentDelta(
+              finalContent,
+            );
+        }
+
         break;
+      }
+
+      if (
+        streamedThisRound
+      ) {
+        await input
+          .onContentReset?.();
       }
 
       toolCallsCount +=
@@ -3519,6 +3569,11 @@ export async function sendWorkspaceAiMessage(
         0
           ? 'I prepared an action that requires your confirmation before SaMi can execute it.'
           : 'I reached the tool-execution limit before completing that request. Please narrow the request and try again.';
+
+      await input
+        .onContentDelta?.(
+          finalContent,
+        );
     }
 
     const assistantMessage =

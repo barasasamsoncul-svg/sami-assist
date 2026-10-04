@@ -83,6 +83,24 @@ type PendingAction = {
   expiresAt: string | null;
 };
 
+type AiStreamEvent = {
+  type?:
+    | 'delta'
+    | 'reset'
+    | 'done'
+    | 'error';
+  delta?: string;
+  error?: string;
+  result?: {
+    conversation?: {
+      id?: unknown;
+    };
+    userMessage?: Message;
+    assistantMessage?: Message;
+    pendingActions?: PendingAction[];
+  };
+};
+
 async function readJson(
   response: Response,
 ) {
@@ -293,6 +311,12 @@ export default function WorkspaceAiClient({
     useState(false);
 
   const [
+    receiving,
+    setReceiving,
+  ] =
+    useState(false);
+
+  const [
     error,
     setError,
   ] =
@@ -375,6 +399,15 @@ export default function WorkspaceAiClient({
       ],
     );
 
+  const lastMessageContentLength =
+    messages.length >
+    0
+      ? messages[
+          messages.length -
+            1
+        ].content.length
+      : 0;
+
   useEffect(
     () => {
       const composer =
@@ -405,14 +438,18 @@ export default function WorkspaceAiClient({
         ?.scrollIntoView({
           block: 'end',
           behavior:
-            sending
-              ? 'smooth'
-              : 'auto',
+            receiving
+              ? 'auto'
+              : sending
+                ? 'smooth'
+                : 'auto',
         });
     },
     [
       messages.length,
+      lastMessageContentLength,
       pendingActions.length,
+      receiving,
       sending,
     ],
   );
@@ -702,7 +739,109 @@ export default function WorkspaceAiClient({
     abortControllerRef.current =
       controller;
 
+    const streamMessageId =
+      'streaming-' +
+      Date.now();
+
+    let streamVisible =
+      false;
+
+    const removeStreamMessage =
+      () => {
+        if (
+          !streamVisible
+        ) {
+          return;
+        }
+
+        setMessages(
+          current =>
+            current.filter(
+              message =>
+                message.id !==
+                streamMessageId,
+            ),
+        );
+
+        streamVisible =
+          false;
+
+        setReceiving(
+          false,
+        );
+      };
+
+    const appendStreamDelta =
+      (
+        delta: string,
+      ) => {
+        if (
+          !delta
+        ) {
+          return;
+        }
+
+        if (
+          !streamVisible
+        ) {
+          streamVisible =
+            true;
+
+          setReceiving(
+            true,
+          );
+
+          setMessages(
+            current => [
+              ...current,
+              {
+                id:
+                  streamMessageId,
+                conversationId:
+                  selectedConversationId ||
+                  'pending',
+                role:
+                  'assistant',
+                content:
+                  delta,
+                status:
+                  'streaming',
+                correlationId:
+                  null,
+                feedback:
+                  null,
+                attachments:
+                  [],
+                createdAt:
+                  new Date()
+                    .toISOString(),
+              },
+            ],
+          );
+
+          return;
+        }
+
+        setMessages(
+          current =>
+            current.map(
+              message =>
+                message.id ===
+                  streamMessageId
+                  ? {
+                      ...message,
+                      content:
+                        message
+                          .content +
+                        delta,
+                    }
+                  : message,
+            ),
+        );
+      };
+
     setSending(true);
+    setReceiving(false);
     setError(null);
 
     try {
@@ -721,7 +860,7 @@ export default function WorkspaceAiClient({
               'Content-Type':
                 'application/json',
               Accept:
-                'application/json',
+                'application/x-ndjson',
             },
             body:
               JSON.stringify({
@@ -740,24 +879,190 @@ export default function WorkspaceAiClient({
           },
         );
 
-      const data =
-        await readJson(
-          response,
-        );
-
       if (
-        !response.ok ||
-        !data.success
+        !response.ok
       ) {
+        const data =
+          await readJson(
+            response,
+          );
+
         throw new Error(
           data.error ||
             'SaMi AI could not complete that request.',
         );
       }
 
+      if (
+        !response.body
+      ) {
+        throw new Error(
+          'SaMi AI could not start a live response.',
+        );
+      }
+
+      const reader =
+        response.body
+          .getReader();
+
+      const decoder =
+        new TextDecoder();
+
+      let buffer =
+        '';
+
+      const streamState: {
+        completedResult:
+          AiStreamEvent[
+            'result'
+          ];
+      } = {
+        completedResult:
+          undefined,
+      };
+
+      const processLine =
+        (
+          line: string,
+        ) => {
+          if (
+            !line.trim()
+          ) {
+            return;
+          }
+
+          const event =
+            JSON.parse(
+              line,
+            ) as
+              AiStreamEvent;
+
+          if (
+            event.type ===
+              'delta' &&
+            typeof event
+              .delta ===
+              'string'
+          ) {
+            appendStreamDelta(
+              event.delta,
+            );
+
+            return;
+          }
+
+          if (
+            event.type ===
+            'reset'
+          ) {
+            removeStreamMessage();
+            return;
+          }
+
+          if (
+            event.type ===
+            'error'
+          ) {
+            throw new Error(
+              event.error ||
+                'SaMi AI could not complete that request.',
+            );
+          }
+
+          if (
+            event.type ===
+            'done'
+          ) {
+            streamState
+              .completedResult =
+              event.result;
+          }
+        };
+
+      while (
+        true
+      ) {
+        const {
+          done,
+          value,
+        } =
+          await reader
+            .read();
+
+        if (
+          done
+        ) {
+          break;
+        }
+
+        buffer +=
+          decoder.decode(
+            value,
+            {
+              stream:
+                true,
+            },
+          );
+
+        let newline =
+          buffer.indexOf(
+            '\n',
+          );
+
+        while (
+          newline >=
+          0
+        ) {
+          const line =
+            buffer.slice(
+              0,
+              newline,
+            );
+
+          buffer =
+            buffer.slice(
+              newline +
+                1,
+            );
+
+          processLine(
+            line,
+          );
+
+          newline =
+            buffer.indexOf(
+              '\n',
+            );
+        }
+      }
+
+      buffer +=
+        decoder.decode();
+
+      if (
+        buffer.trim()
+      ) {
+        processLine(
+          buffer,
+        );
+      }
+
+      const completedResult =
+        streamState
+          .completedResult;
+
+      if (
+        !completedResult
+      ) {
+        throw new Error(
+          'SaMi AI response ended before it could be saved.',
+        );
+      }
+
       const conversationId =
         String(
-          data.conversation
+          completedResult
+            .conversation
             ?.id ||
           selectedConversationId ||
           '',
@@ -771,39 +1076,123 @@ export default function WorkspaceAiClient({
         );
       }
 
+      const persistedUser =
+        completedResult
+          .userMessage;
+
+      const persistedAssistant =
+        completedResult
+          .assistantMessage;
+
+      setMessages(
+        current => {
+          let replacedPendingUser =
+            false;
+
+          let replacedStream =
+            false;
+
+          const next =
+            current.map(
+              message => {
+                if (
+                  persistedUser &&
+                  !replacedPendingUser &&
+                  message.role ===
+                    'user' &&
+                  message.status ===
+                    'sending'
+                ) {
+                  replacedPendingUser =
+                    true;
+
+                  return persistedUser;
+                }
+
+                if (
+                  persistedAssistant &&
+                  message.id ===
+                    streamMessageId
+                ) {
+                  replacedStream =
+                    true;
+
+                  return persistedAssistant;
+                }
+
+                return message;
+              },
+            );
+
+          if (
+            persistedAssistant &&
+            !replacedStream
+          ) {
+            next.push(
+              persistedAssistant,
+            );
+          }
+
+          return next;
+        },
+      );
+
+      streamVisible =
+        false;
+
+      setReceiving(
+        false,
+      );
+
+      setPendingActions(
+        Array.isArray(
+          completedResult
+            .pendingActions,
+        )
+          ? completedResult
+              .pendingActions
+          : [],
+      );
+
       setEditingMessageId(
         null,
       );
 
-      try {
-        await Promise.all([
-          loadConversations(),
-          loadStatus(),
-        ]);
+      void (async () => {
+        try {
+          await Promise.all([
+            loadConversations(),
+            loadStatus(),
+          ]);
 
-        if (
-          conversationId
+          if (
+            conversationId &&
+            input.mode !==
+              'send'
+          ) {
+            await loadConversation(
+              conversationId,
+            );
+          }
+        } catch (
+          refreshError
         ) {
-          await loadConversation(
-            conversationId,
+          setError(
+            refreshError instanceof
+              Error
+              ? 'Your message was saved, but this chat could not refresh: ' +
+                refreshError.message
+              : 'Your message was saved, but this chat could not refresh. Reopen the conversation to load the saved response.',
           );
         }
-      } catch (
-        refreshError
-      ) {
-        setError(
-          refreshError instanceof
-            Error
-            ? 'Your message was saved, but this chat could not refresh: ' +
-              refreshError.message
-            : 'Your message was saved, but this chat could not refresh. Reopen the conversation to load the saved response.',
-        );
-      }
+      })();
 
       return true;
     } catch (
       candidate
     ) {
+      removeStreamMessage();
+
       const aborted =
         controller.signal
           .aborted ||
@@ -844,6 +1233,8 @@ export default function WorkspaceAiClient({
 
       return false;
     } finally {
+      setReceiving(false);
+
       if (
         abortControllerRef
           .current ===
@@ -2096,7 +2487,9 @@ export default function WorkspaceAiClient({
                       <span className="inline-flex min-w-0 items-center gap-2">
                         <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
                         <span className="truncate">
-                          SaMi is working…
+                          {receiving
+                            ? 'SaMi is responding…'
+                            : 'SaMi is working…'}
                         </span>
                       </span>
 
