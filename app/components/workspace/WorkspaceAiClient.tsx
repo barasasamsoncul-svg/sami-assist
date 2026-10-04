@@ -911,11 +911,15 @@ export default function WorkspaceAiClient({
       let buffer =
         '';
 
-      let completedResult:
-        AiStreamEvent[
-          'result'
-        ] =
-        undefined;
+      const streamState: {
+        completedResult:
+          AiStreamEvent[
+            'result'
+          ];
+      } = {
+        completedResult:
+          undefined,
+      };
 
       const processLine =
         (
@@ -969,7 +973,8 @@ export default function WorkspaceAiClient({
             event.type ===
             'done'
           ) {
-            completedResult =
+            streamState
+              .completedResult =
               event.result;
           }
         };
@@ -1041,6 +1046,10 @@ export default function WorkspaceAiClient({
           buffer,
         );
       }
+
+      const completedResult =
+        streamState
+          .completedResult;
 
       if (
         !completedResult
