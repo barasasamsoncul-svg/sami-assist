@@ -1585,7 +1585,6 @@ export async function applySalesOrderDeposit(
 
   return {
     orderId,
-    invoiceId,
     depositStatus:
       nextStatus,
     ...allocation,
@@ -3746,6 +3745,16 @@ export async function refundSalesReturnCredit(
       },
     });
 
+  const availableAfter =
+    money(
+      refund.availableCredit ??
+      Math.max(
+        0,
+        available -
+        amount,
+      ),
+    );
+
   await context.pool.query(
     `
       UPDATE sales_return_credits
@@ -3762,7 +3771,7 @@ export async function refundSalesReturnCredit(
     [
       returnCreditId,
       context.companyId,
-      refund.availableCredit,
+      availableAfter,
       amount,
       context.userId,
     ],
@@ -3853,6 +3862,6 @@ export async function refundSalesReturnCredit(
     amount:
       refund.amount,
     availableCredit:
-      refund.availableCredit,
+      availableAfter,
   };
 }
