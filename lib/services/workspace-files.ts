@@ -237,8 +237,7 @@ function assertPermission(
   const canManage =
     permissionContextHas(
       context,
-      SAMI_PERMISSIONS
-        .FILES_MANAGE,
+      SAMI_PERMISSIONS.FILES_MANAGE,
     );
 
   if (
@@ -247,8 +246,7 @@ function assertPermission(
     !canManage &&
     !permissionContextHas(
       context,
-      SAMI_PERMISSIONS
-        .AI_USE,
+      SAMI_PERMISSIONS.AI_USE,
     )
   ) {
     throw new WorkspaceFileError(
@@ -273,8 +271,7 @@ function assertPermission(
     !canManage &&
     !permissionContextHas(
       context,
-      SAMI_PERMISSIONS
-        .FILES_VIEW,
+      SAMI_PERMISSIONS.FILES_VIEW,
     )
   ) {
     throw new WorkspaceFileError(
