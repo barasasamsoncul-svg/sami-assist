@@ -33,8 +33,7 @@ import {
   type KeyboardEvent,
 } from 'react';
 
-import ReactMarkdown from 'react-markdown';
-
+import SamiAiMarkdown from '@/app/components/ai/SamiAiMarkdown';
 import SamiAiSidebar from '@/app/components/ai/SamiAiSidebar';
 import SamiAiUsagePanel from '@/app/components/ai/SamiAiUsagePanel';
 
@@ -276,6 +275,11 @@ export default function WorkspaceAiClient({
       null,
     );
 
+  const messagesEndRef =
+    useRef<HTMLDivElement | null>(
+      null,
+    );
+
   const [
     loading,
     setLoading,
@@ -370,6 +374,48 @@ export default function WorkspaceAiClient({
         selectedConversationId,
       ],
     );
+
+  useEffect(
+    () => {
+      const composer =
+        composerRef.current;
+
+      if (!composer) {
+        return;
+      }
+
+      composer.style.height =
+        '0px';
+
+      composer.style.height =
+        Math.min(
+          composer.scrollHeight,
+          192,
+        ) + 'px';
+    },
+    [
+      draft,
+    ],
+  );
+
+  useEffect(
+    () => {
+      messagesEndRef
+        .current
+        ?.scrollIntoView({
+          block: 'end',
+          behavior:
+            sending
+              ? 'smooth'
+              : 'auto',
+        });
+    },
+    [
+      messages.length,
+      pendingActions.length,
+      sending,
+    ],
+  );
 
   const lastAssistantMessageId =
     useMemo(
@@ -1083,6 +1129,49 @@ export default function WorkspaceAiClient({
           attachment.id,
       );
 
+    const optimisticMessageId =
+      targetMessageId
+        ? null
+        : 'optimistic-' +
+          Date.now();
+
+    if (
+      optimisticMessageId
+    ) {
+      setMessages(
+        current => [
+          ...current,
+          {
+            id:
+              optimisticMessageId,
+            conversationId:
+              selectedConversationId ||
+              'pending',
+            role:
+              'user',
+            content:
+              message,
+            status:
+              'sending',
+            correlationId:
+              null,
+            feedback:
+              null,
+            attachments:
+              pendingAttachments,
+            createdAt:
+              new Date()
+                .toISOString(),
+          },
+        ],
+      );
+
+      setDraft('');
+      setPendingAttachments(
+        [],
+      );
+    }
+
     const sent =
       await runChatRequest({
         mode:
@@ -1099,7 +1188,22 @@ export default function WorkspaceAiClient({
       });
 
     if (
-      sent
+      !sent &&
+      optimisticMessageId
+    ) {
+      setMessages(
+        current =>
+          current.filter(
+            item =>
+              item.id !==
+              optimisticMessageId,
+          ),
+      );
+    }
+
+    if (
+      sent &&
+      targetMessageId
     ) {
       setDraft('');
       setPendingAttachments(
@@ -1710,7 +1814,7 @@ export default function WorkspaceAiClient({
   }
 
   return (
-    <div className="flex h-[100dvh] min-h-[100dvh] overflow-hidden bg-[#F7F7F8] text-slate-950 dark:bg-[#0D0D0D] dark:text-white">
+    <div data-sami-ai-chat="true" className="flex h-[100dvh] min-h-[100dvh] overflow-hidden bg-[#F7F7F8] text-slate-950 dark:bg-[#0D0D0D] dark:text-white">
       <SamiAiSidebar
         conversations={
           conversations
@@ -2037,6 +2141,14 @@ export default function WorkspaceAiClient({
                   )}
                 </div>
               )}
+
+              <div
+                ref={
+                  messagesEndRef
+                }
+                aria-hidden="true"
+                className="h-px"
+              />
             </div>
           </div>
 
@@ -2228,7 +2340,10 @@ export default function WorkspaceAiClient({
                 </button>
               </div>
 
-              <p className="mt-2 text-center text-[9px] text-slate-400">
+              <p className="mt-2 text-center text-[9px] leading-4 text-slate-400">
+                <span className="hidden sm:inline">
+                  Enter to send · Shift+Enter for a new line ·{' '}
+                </span>
                 SaMi can make mistakes. Business actions still follow your current company, app access and permissions.
               </p>
             </div>
@@ -2345,11 +2460,9 @@ function MessageBubble({
             )}
 
           {assistant ? (
-            <div className="prose prose-sm max-w-none break-words text-inherit prose-headings:text-inherit prose-strong:text-inherit prose-code:text-inherit dark:prose-invert">
-              <ReactMarkdown>
-                {message.content}
-              </ReactMarkdown>
-            </div>
+            <SamiAiMarkdown>
+              {message.content}
+            </SamiAiMarkdown>
           ) : (
             <p className="whitespace-pre-wrap break-words">
               {message.content}
