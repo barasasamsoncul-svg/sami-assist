@@ -13,6 +13,7 @@ import {
   Save,
   Trash2,
   UserRound,
+  WalletCards,
 } from 'lucide-react';
 
 import type {
@@ -353,6 +354,13 @@ export default function InvoiceComposer({
       : [emptyLine(data)],
   );
 
+  const [
+    advanceAmounts,
+    setAdvanceAmounts,
+  ] = useState<
+    Record<string, number>
+  >({});
+
   const selectedCustomer =
     data.customers.find(
       customer =>
@@ -505,6 +513,280 @@ export default function InvoiceComposer({
       ],
     );
 
+  const customerAdvances =
+    useMemo(
+      () =>
+        data.retainers
+          .filter(
+            item =>
+              item.customerId ===
+                customerId &&
+              item.availableAmount >
+                0.0001 &&
+              ![
+                'refunded',
+                'cancelled',
+                'reversed',
+              ].includes(
+                item.status,
+              ),
+          )
+          .sort(
+            (
+              left,
+              right,
+            ) =>
+              left.receivedDate
+                .localeCompare(
+                  right.receivedDate,
+                ),
+          ),
+      [
+        customerId,
+        data.retainers,
+      ],
+    );
+
+  const selectedAdvanceApplications =
+    useMemo(
+      () =>
+        customerAdvances
+          .map(
+            item => ({
+              retainer:
+                item,
+              amount:
+                Math.max(
+                  0,
+                  Math.min(
+                    item.availableAmount,
+                    Number(
+                      advanceAmounts[
+                        item.id
+                      ] ||
+                      0,
+                    ),
+                  ),
+                ),
+            }),
+          )
+          .filter(
+            item =>
+              item.amount >
+              0.0001,
+          ),
+      [
+        advanceAmounts,
+        customerAdvances,
+      ],
+    );
+
+  const advanceInvoiceValue =
+    useMemo(
+      () =>
+        selectedAdvanceApplications
+          .reduce(
+            (
+              sum,
+              item,
+            ) => {
+              const paymentRate =
+                Number(
+                  item.retainer
+                    .exchangeRate ||
+                  1,
+                );
+
+              const invoiceRate =
+                Number(
+                  exchangeRate ||
+                  1,
+                );
+
+              if (
+                item.retainer
+                  .currency ===
+                currency
+              ) {
+                return (
+                  sum +
+                  item.amount
+                );
+              }
+
+              if (
+                !data.settings
+                  .allowCrossCurrencyPayments ||
+                !Number.isFinite(
+                  paymentRate,
+                ) ||
+                paymentRate <=
+                  0 ||
+                !Number.isFinite(
+                  invoiceRate,
+                ) ||
+                invoiceRate <=
+                  0
+              ) {
+                return sum;
+              }
+
+              return (
+                sum +
+                (
+                  item.amount *
+                  paymentRate
+                ) /
+                  invoiceRate
+              );
+            },
+            0,
+          ),
+      [
+        currency,
+        data.settings
+          .allowCrossCurrencyPayments,
+        exchangeRate,
+        selectedAdvanceApplications,
+      ],
+    );
+
+  const projectedBalance =
+    Math.max(
+      0,
+      totals.total -
+        advanceInvoiceValue,
+    );
+
+  function safeAdvanceAmount(
+    retainerId: string,
+  ) {
+    const target =
+      customerAdvances.find(
+        item =>
+          item.id ===
+          retainerId,
+      );
+
+    if (!target) {
+      return 0;
+    }
+
+    const otherInvoiceValue =
+      selectedAdvanceApplications
+        .filter(
+          item =>
+            item.retainer.id !==
+            retainerId,
+        )
+        .reduce(
+          (
+            sum,
+            item,
+          ) => {
+            const paymentRate =
+              Number(
+                item.retainer
+                  .exchangeRate ||
+                1,
+              );
+
+            const invoiceRate =
+              Number(
+                exchangeRate ||
+                1,
+              );
+
+            if (
+              item.retainer
+                .currency ===
+              currency
+            ) {
+              return (
+                sum +
+                item.amount
+              );
+            }
+
+            if (
+              !data.settings
+                .allowCrossCurrencyPayments ||
+              paymentRate <=
+                0 ||
+              invoiceRate <=
+                0
+            ) {
+              return sum;
+            }
+
+            return (
+              sum +
+              (
+                item.amount *
+                paymentRate
+              ) /
+                invoiceRate
+            );
+          },
+          0,
+        );
+
+    const remainingInvoice =
+      Math.max(
+        0,
+        totals.total -
+          otherInvoiceValue,
+      );
+
+    if (
+      target.currency ===
+      currency
+    ) {
+      return Math.min(
+        target.availableAmount,
+        remainingInvoice,
+      );
+    }
+
+    if (
+      !data.settings
+        .allowCrossCurrencyPayments
+    ) {
+      return 0;
+    }
+
+    const paymentRate =
+      Number(
+        target.exchangeRate ||
+        1,
+      );
+
+    const invoiceRate =
+      Number(
+        exchangeRate ||
+        1,
+      );
+
+    if (
+      paymentRate <=
+        0 ||
+      invoiceRate <=
+        0
+    ) {
+      return 0;
+    }
+
+    return Math.min(
+      target.availableAmount,
+      (
+        remainingInvoice *
+        invoiceRate
+      ) /
+        paymentRate,
+    );
+  }
+
+
   function updateLine(
     index: number,
     patch: Partial<ComposerLine>,
@@ -587,6 +869,10 @@ export default function InvoiceComposer({
     value: string,
   ) {
     setCustomerId(value);
+
+    setAdvanceAmounts(
+      {},
+    );
 
     const customer =
       data.customers.find(
@@ -716,6 +1002,19 @@ export default function InvoiceComposer({
       notes,
       terms,
       confirm,
+      advanceApplications:
+        confirm
+          ? selectedAdvanceApplications
+              .map(
+                item => ({
+                  paymentId:
+                    item.retainer
+                      .paymentId,
+                  amount:
+                    item.amount,
+                }),
+              )
+          : [],
       lines:
         lines.map(
           line => ({
@@ -841,6 +1140,10 @@ export default function InvoiceComposer({
             data,
           ),
         ],
+      );
+
+      setAdvanceAmounts(
+        {},
       );
     }
   }
@@ -1228,6 +1531,187 @@ export default function InvoiceComposer({
                       </div>
                     )
                   }
+                </div>
+              )
+            }
+
+            {
+              selectedCustomer &&
+              customerAdvances.length >
+                0 &&
+              (
+                <div className="mt-4 rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.05] p-3 sm:p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-xl bg-emerald-500/10 p-2 text-emerald-700 dark:text-emerald-300">
+                      <WalletCards className="h-4 w-4" />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-black">
+                        Available customer advances
+                      </p>
+
+                      <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                        SaMi found deposit or advance balances for this customer. Choose how much to apply when this invoice is confirmed.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 space-y-2">
+                    {
+                      customerAdvances.map(
+                        advance => {
+                          const crossCurrency =
+                            advance.currency !==
+                            currency;
+
+                          const disabled =
+                            crossCurrency &&
+                            !data.settings
+                              .allowCrossCurrencyPayments;
+
+                          const selectedAmount =
+                            Number(
+                              advanceAmounts[
+                                advance.id
+                              ] ||
+                              0,
+                            );
+
+                          return (
+                            <div
+                              key={
+                                advance.id
+                              }
+                              className="grid min-w-0 gap-2 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-3 lg:grid-cols-[minmax(0,1fr)_150px_auto] lg:items-end"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate text-xs font-black">
+                                  {
+                                    advance.retainerType ===
+                                      'deposit'
+                                      ? 'Deposit '
+                                      : 'Advance '
+                                  }
+                                  {
+                                    advance.retainerNumber
+                                  }
+                                </p>
+
+                                <p className="mt-1 text-[11px] text-slate-500">
+                                  Available {
+                                    formatMoney(
+                                      advance.availableAmount,
+                                      advance.currency,
+                                    )
+                                  }
+                                  {
+                                    crossCurrency
+                                      ? ' · ' +
+                                        (
+                                          data.settings
+                                            .allowCrossCurrencyPayments
+                                            ? 'cross-currency conversion uses locked rates'
+                                            : 'different currency'
+                                        )
+                                      : ''
+                                  }
+                                </p>
+                              </div>
+
+                              <label className="block">
+                                <span className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+                                  Use amount
+                                </span>
+
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={
+                                    advance.availableAmount
+                                  }
+                                  step="0.01"
+                                  disabled={
+                                    disabled
+                                  }
+                                  value={
+                                    selectedAmount ||
+                                    ''
+                                  }
+                                  onChange={
+                                    event =>
+                                      setAdvanceAmounts(
+                                        current => ({
+                                          ...current,
+                                          [advance.id]:
+                                            Math.max(
+                                              0,
+                                              Number(
+                                                event.target.value ||
+                                                0,
+                                              ),
+                                            ),
+                                        }),
+                                      )
+                                  }
+                                  className="mt-1 h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-2 text-xs disabled:opacity-50"
+                                />
+                              </label>
+
+                              <button
+                                type="button"
+                                disabled={
+                                  disabled ||
+                                  totals.total <=
+                                    0
+                                }
+                                onClick={
+                                  () =>
+                                    setAdvanceAmounts(
+                                      current => ({
+                                        ...current,
+                                        [advance.id]:
+                                          safeAdvanceAmount(
+                                            advance.id,
+                                          ),
+                                      }),
+                                    )
+                                }
+                                className="h-10 rounded-lg border border-emerald-500/30 px-3 text-xs font-black text-emerald-700 disabled:opacity-40 dark:text-emerald-300"
+                              >
+                                Use available
+                              </button>
+                            </div>
+                          );
+                        },
+                      )
+                    }
+                  </div>
+
+                  {
+                    selectedAdvanceApplications.length >
+                      0 &&
+                    (
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-emerald-500/10 px-3 py-2 text-xs">
+                        <span className="font-bold text-emerald-800 dark:text-emerald-200">
+                          Advance applied on confirmation
+                        </span>
+
+                        <span className="font-black text-emerald-800 dark:text-emerald-200">
+                          Remaining {
+                            formatMoney(
+                              projectedBalance,
+                              currency,
+                            )
+                          }
+                        </span>
+                      </div>
+                    )
+                  }
+
+                  <p className="mt-2 text-[10px] leading-4 text-slate-500">
+                    Saving a draft does not consume the advance. SaMi applies it only when the invoice is posted/confirmed.
+                  </p>
                 </div>
               )
             }
