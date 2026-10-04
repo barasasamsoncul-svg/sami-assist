@@ -1325,13 +1325,20 @@ export async function saveSalesQuoteOptionalItems(
       let catalogUnitCost =
         0;
 
+      let externalProductId:
+        string |
+        null =
+          null;
+
       if (
         catalogItemId
       ) {
         const catalog =
           await client.query(
             `
-              SELECT metadata
+              SELECT
+                external_product_id,
+                metadata
               FROM invoicing_catalog_items
               WHERE id = $1
                 AND company_id = $2
@@ -1353,6 +1360,15 @@ export async function saveSalesQuoteOptionalItems(
             'Choose a valid catalog item for the optional product.',
           );
         }
+
+        externalProductId =
+          catalog.rows[0]
+            ?.external_product_id
+            ? String(
+                catalog.rows[0]
+                  .external_product_id,
+              )
+            : null;
 
         const metadata =
           catalog.rows[0]
@@ -1422,6 +1438,7 @@ export async function saveSalesQuoteOptionalItems(
             quote_id,
             company_id,
             catalog_item_id,
+            external_product_id,
             sort_order,
             description,
             sku_snapshot,
@@ -1435,13 +1452,14 @@ export async function saveSalesQuoteOptionalItems(
             updated_by
           )
           VALUES (
-            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$14
           )
         `,
         [
           quoteId,
           context.companyId,
           catalogItemId,
+          externalProductId,
           index,
           description,
           nullableText(
