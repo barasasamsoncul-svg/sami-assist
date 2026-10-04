@@ -123,6 +123,7 @@ export type SalesQuoteDetail =
       unit: string;
       quantity: number;
       unitPrice: number;
+      unitCost: number | null;
       taxName: string | null;
       taxRate: number;
       isSelected: boolean;
