@@ -1207,6 +1207,18 @@ test(
       /Standalone app visibility contract[\s\S]*\[data-sami-app\][\s\S]*text-slate-300[\s\S]*background-color:\s*var\(--sami-surface\)/,
       'Standalone app shells must receive the same light/dark visibility hardening as the dashboard workspace shell.',
     );
+
+    assert.match(
+      globals,
+      /Platform-wide visibility contract[\s\S]*data-sami-admin-shell[\s\S]*text-zinc-300[\s\S]*text-zinc-700[\s\S]*var\(--sami-muted\)/,
+      'Workspace, standalone apps and Platform Admin must share one contrast contract across slate and zinc utility colors.',
+    );
+
+    assert.match(
+      globals,
+      /data-sami-admin-shell[\s\S]*bg-zinc-50[\s\S]*background-color:\s*var\(--sami-surface\)/,
+      'Legacy Admin light surfaces must be normalized in dark mode instead of preserving light backgrounds with dark-theme text.',
+    );
     assert.doesNotMatch(
       loader,
       /getWorkspaceNotificationSummary/,
