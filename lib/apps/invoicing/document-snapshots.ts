@@ -1483,6 +1483,14 @@ async function primarySnapshotNeedsLineRepair(
       InvoiceDocumentSnapshot;
   },
 ) {
+  if (
+    input.snapshot
+      .rendererVersion !==
+    INVOICE_PDF_RENDERER_VERSION
+  ) {
+    return true;
+  }
+
   const snapshotLines =
     Array.isArray(
       input.snapshot.payload
