@@ -481,6 +481,7 @@ function MiniPreview({
   state,
   version,
   logoPreview,
+  companyLogoUrl,
 }: {
   state:
     DesignerState;
@@ -489,6 +490,8 @@ function MiniPreview({
   logoPreview:
     string |
     null;
+  companyLogoUrl:
+    string;
 }) {
   const rowGap =
     state.density ===
@@ -575,7 +578,7 @@ function MiniPreview({
                           src={
                             logoPreview
                           }
-                          alt="Company logo preview"
+                          alt="Invoice logo override preview"
                           className="mb-2 h-9 max-w-28 object-contain object-left"
                         />
                       )
@@ -583,13 +586,29 @@ function MiniPreview({
                       ? (
                           <div
                             className="mb-2 inline-flex h-9 items-center gap-2 rounded border border-current/20 bg-white/90 px-2 text-[8px] font-black text-slate-500"
-                            title="Uploaded company logo"
+                            title="Uploaded invoice logo override"
                           >
                             <ImageIcon className="h-3 w-3" />
-                            Logo uploaded
+                            Invoice logo
                           </div>
                         )
-                      : null
+                      : (
+                          <img
+                            src={
+                              companyLogoUrl
+                            }
+                            alt="Current company logo"
+                            className="mb-2 h-9 max-w-28 object-contain object-left"
+                            onError={
+                              event => {
+                                event.currentTarget
+                                  .style
+                                  .display =
+                                  'none';
+                              }
+                            }
+                          />
+                        )
                 )
               }
               <p className="text-sm font-black">
@@ -873,10 +892,13 @@ function MiniPreview({
 
 function TemplateFields({
   template,
+  companyId,
 }: {
   template:
     InvoicingTemplateSummary |
     null;
+  companyId:
+    string;
 }) {
   const [
     state,
@@ -1189,8 +1211,8 @@ function TemplateFields({
                     logoUploading
                       ? 'Uploading...'
                       : state.logoUrl
-                        ? 'Replace logo'
-                        : 'Upload logo'
+                        ? 'Replace override'
+                        : 'Upload override'
                   }
                   <input
                     type="file"
@@ -1282,14 +1304,14 @@ function TemplateFields({
                       className="inline-flex h-10 items-center gap-2 rounded-lg border border-[var(--sami-border)] px-3 text-xs font-black text-red-600"
                     >
                       <X className="h-4 w-4" />
-                      Remove
+                      Use company logo
                     </button>
                   )
                 }
               </div>
 
               <p className="mt-2 text-[10px] leading-4 text-slate-500">
-                PNG, JPG or WebP. SaMi stores the logo privately and embeds it directly into generated invoice PDFs.
+                SaMi uses the current company logo automatically. Upload a PNG, JPG or WebP here only when invoices for this company need different branding.
               </p>
 
               {
@@ -1502,6 +1524,12 @@ function TemplateFields({
         }
         logoPreview={
           logoPreview
+        }
+        companyLogoUrl={
+          '/api/workspace/organization/logo?companyId=' +
+          encodeURIComponent(
+            companyId,
+          )
         }
       />
     </div>
@@ -2051,6 +2079,9 @@ export default function InvoiceAppearanceSettings({
             template={
               null
             }
+            companyId={
+              data.company.id
+            }
           />
 
           <div className="mt-5 flex justify-end">
@@ -2143,6 +2174,9 @@ export default function InvoiceAppearanceSettings({
                   <TemplateFields
                     template={
                       template
+                    }
+                    companyId={
+                      data.company.id
                     }
                   />
 
