@@ -1643,6 +1643,8 @@ export async function getInvoicingWorkspaceData():
             p.exchange_rate,
             p.method,
             p.reference,
+            p.metadata->>'sourceProvider'
+              AS source_provider,
             b.allocated_amount,
             b.refunded_amount,
             b.unapplied_amount,
@@ -1701,7 +1703,16 @@ export async function getInvoicingWorkspaceData():
                     'refundDate', r.refund_date,
                     'amount', r.amount,
                     'status', r.status,
-                    'reason', r.reason
+                    'reason', r.reason,
+                    'provider', r.metadata->>'provider',
+                    'providerStatus', r.metadata->>'providerStatus',
+                    'providerMessage', r.metadata->>'providerMessage',
+                    'externalRefundId', r.metadata->>'externalRefundId',
+                    'manualConfirmationRequired',
+                      COALESCE(
+                        (r.metadata->>'manualConfirmationRequired')::boolean,
+                        FALSE
+                      )
                   )
                   ORDER BY
                     r.refund_date,
@@ -1791,7 +1802,16 @@ export async function getInvoicingWorkspaceData():
                     'refundDate', refund.refund_date,
                     'amount', refund.amount,
                     'status', refund.status,
-                    'reason', refund.reason
+                    'reason', refund.reason,
+                    'provider', refund.metadata->>'provider',
+                    'providerStatus', refund.metadata->>'providerStatus',
+                    'providerMessage', refund.metadata->>'providerMessage',
+                    'externalRefundId', refund.metadata->>'externalRefundId',
+                    'manualConfirmationRequired',
+                      COALESCE(
+                        (refund.metadata->>'manualConfirmationRequired')::boolean,
+                        FALSE
+                      )
                   )
                   ORDER BY
                     refund.refund_date,
@@ -3451,6 +3471,12 @@ export async function getInvoicingWorkspaceData():
                   row.reference,
                 )
               : null,
+          sourceProvider:
+            row.source_provider
+              ? String(
+                  row.source_provider,
+                )
+              : null,
           allocatedAmount:
             money(
               row.allocated_amount,
@@ -3573,6 +3599,33 @@ export async function getInvoicingWorkspaceData():
                       String(
                         item.reason,
                       ),
+                    provider:
+                      item.provider
+                        ? String(
+                            item.provider,
+                          )
+                        : null,
+                    providerStatus:
+                      item.providerStatus
+                        ? String(
+                            item.providerStatus,
+                          )
+                        : null,
+                    providerMessage:
+                      item.providerMessage
+                        ? String(
+                            item.providerMessage,
+                          )
+                        : null,
+                    externalRefundId:
+                      item.externalRefundId
+                        ? String(
+                            item.externalRefundId,
+                          )
+                        : null,
+                    manualConfirmationRequired:
+                      item.manualConfirmationRequired ===
+                        true,
                   }),
                 )
               : [],
@@ -3638,6 +3691,20 @@ export async function getInvoicingWorkspaceData():
                       amount: money(item.amount),
                       status: String(item.status),
                       reason: String(item.reason),
+                      provider: item.provider
+                        ? String(item.provider)
+                        : null,
+                      providerStatus: item.providerStatus
+                        ? String(item.providerStatus)
+                        : null,
+                      providerMessage: item.providerMessage
+                        ? String(item.providerMessage)
+                        : null,
+                      externalRefundId: item.externalRefundId
+                        ? String(item.externalRefundId)
+                        : null,
+                      manualConfirmationRequired:
+                        item.manualConfirmationRequired === true,
                     }),
                   )
                 : [],
@@ -5361,6 +5428,8 @@ export async function getInvoicingInvoiceDetail(
                 a.amount,
                 p.method,
                 p.reference,
+                p.metadata->>'sourceProvider'
+                  AS source_provider,
                 p.reconciled_at,
                 a.id AS allocation_id,
                 a.status AS allocation_status,
@@ -5470,7 +5539,24 @@ export async function getInvoicingInvoiceDetail(
                     'status',
                     refund.status,
                     'reversalReason',
-                    refund.reversal_reason
+                    refund.reversal_reason,
+                    'provider',
+                    refund.metadata->>'provider',
+                    'providerStatus',
+                    refund.metadata->>'providerStatus',
+                    'providerMessage',
+                    refund.metadata->>'providerMessage',
+                    'externalRefundId',
+                    refund.metadata->>'externalRefundId',
+                    'providerPaymentId',
+                    refund.metadata->>'providerPaymentId',
+                    'providerPaymentNumber',
+                    refund.metadata->>'providerPaymentNumber',
+                    'manualConfirmationRequired',
+                    COALESCE(
+                      (refund.metadata->>'manualConfirmationRequired')::boolean,
+                      FALSE
+                    )
                   )
                   ORDER BY
                     refund.refund_date DESC,
@@ -5919,6 +6005,12 @@ export async function getInvoicingInvoiceDetail(
                   payment.reference,
                 )
               : null,
+          sourceProvider:
+            payment.source_provider
+              ? String(
+                  payment.source_provider,
+                )
+              : null,
           allocationId:
             String(
               payment.allocation_id,
@@ -6055,6 +6147,32 @@ export async function getInvoicingInvoiceDetail(
                       item.reversalReason
                         ? String(item.reversalReason)
                         : null,
+                    provider:
+                      item.provider
+                        ? String(item.provider)
+                        : null,
+                    providerStatus:
+                      item.providerStatus
+                        ? String(item.providerStatus)
+                        : null,
+                    providerMessage:
+                      item.providerMessage
+                        ? String(item.providerMessage)
+                        : null,
+                    externalRefundId:
+                      item.externalRefundId
+                        ? String(item.externalRefundId)
+                        : null,
+                    providerPaymentId:
+                      item.providerPaymentId
+                        ? String(item.providerPaymentId)
+                        : null,
+                    providerPaymentNumber:
+                      item.providerPaymentNumber
+                        ? String(item.providerPaymentNumber)
+                        : null,
+                    manualConfirmationRequired:
+                      item.manualConfirmationRequired === true,
                   }),
                 )
               : [],
