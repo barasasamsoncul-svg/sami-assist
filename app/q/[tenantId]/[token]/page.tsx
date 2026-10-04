@@ -428,6 +428,12 @@ export default async function PublicSalesQuotePage({
                     quote.portal
                       .allowRejection
                   }
+                  currency={
+                    quote.currency
+                  }
+                  optionalItems={
+                    quote.optionalItems
+                  }
                 />
               )
             }
