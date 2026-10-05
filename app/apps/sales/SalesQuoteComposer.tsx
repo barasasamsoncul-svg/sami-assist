@@ -218,6 +218,12 @@ export default function SalesQuoteComposer({
     );
 
   const [
+    manualExchangeRate,
+    setManualExchangeRate,
+  ] =
+    useState('');
+
+  const [
     quoteDate,
     setQuoteDate,
   ] =
@@ -641,6 +647,15 @@ export default function SalesQuoteComposer({
       quoteDate,
       validUntil,
       currency,
+      exchangeRate:
+        currency !==
+          data.company
+            .currency &&
+        manualExchangeRate
+          ? Number(
+              manualExchangeRate,
+            )
+          : undefined,
       reference,
       customerName:
         customerId
@@ -882,6 +897,28 @@ export default function SalesQuoteComposer({
               }
               required
             />
+            {
+              currency !==
+                data.company
+                  .currency &&
+              (
+                <Input
+                  label={
+                    'Manual FX rate to ' +
+                    data.company
+                      .currency +
+                    ' (optional)'
+                  }
+                  type="number"
+                  value={
+                    manualExchangeRate
+                  }
+                  onChange={
+                    setManualExchangeRate
+                  }
+                />
+              )
+            }
             <Input
               label="Reference"
               value={
