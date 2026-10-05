@@ -55,6 +55,7 @@ type SalesView =
   | 'catalogue'
   | 'pricelists'
   | 'advanced-pricing'
+  | 'currencies'
   | 'orders'
   | 'organization'
   | 'operations'
@@ -156,6 +157,7 @@ export default async function SalesPage({
           ? [
               'pricelists' as const,
               'advanced-pricing' as const,
+              'currencies' as const,
             ]
           : []
       ),
@@ -326,6 +328,16 @@ export default async function SalesPage({
                 '/apps/sales?view=advanced-pricing',
               description:
                 'Roadmap Part 9 · Product, quantity, discount and markup pricing rules.',
+            },
+            {
+              key:
+                'currencies',
+              label:
+                'Currency & FX',
+              href:
+                '/apps/sales?view=currencies',
+              description:
+                'Roadmap Part 10 · Dated exchange rates and base-currency exposure.',
             },
           ]
         : []
