@@ -1771,7 +1771,13 @@ export async function updateSalesQuoteDraft(
             id,
             quote_number,
             status,
-            approval_status
+            approval_status,
+            quote_date,
+            currency,
+            base_currency,
+            exchange_rate,
+            exchange_rate_date,
+            exchange_rate_source
           FROM sales_quotes
           WHERE id = $1
             AND company_id = $2
@@ -1914,20 +1920,88 @@ export async function updateSalesQuoteDraft(
       )
         .toUpperCase();
 
+    const existingQuote =
+      existing.rows[0];
+
+    const canKeepLockedRate =
+      (
+        input.exchangeRate ===
+          undefined ||
+        input.exchangeRate ===
+          null ||
+        input.exchangeRate ===
+          ''
+      ) &&
+      String(
+        existingQuote.currency ||
+        '',
+      ).toUpperCase() ===
+        currency &&
+      String(
+        existingQuote
+          .base_currency ||
+        '',
+      ).toUpperCase() ===
+        baseCurrency &&
+      String(
+        existingQuote
+          .quote_date ||
+        '',
+      ).slice(
+        0,
+        10,
+      ) ===
+        quoteDate &&
+      Number(
+        existingQuote
+          .exchange_rate ||
+        0,
+      ) >
+        0;
+
     const exchangeRate =
-      await resolveSalesExchangeRate(
-        client,
-        {
-          companyId:
-            context.companyId,
-          currency,
-          baseCurrency,
-          effectiveDate:
-            quoteDate,
-          manualRate:
-            input.exchangeRate,
-        },
-      );
+      canKeepLockedRate
+        ? {
+            currency,
+            baseCurrency,
+            rate:
+              Number(
+                existingQuote
+                  .exchange_rate,
+              ),
+            effectiveDate:
+              String(
+                existingQuote
+                  .exchange_rate_date ||
+                quoteDate,
+              ).slice(
+                0,
+                10,
+              ),
+            source:
+              String(
+                existingQuote
+                  .exchange_rate_source ||
+                'locked',
+              ),
+            sourceName:
+              null,
+            manualOverride:
+              false,
+          }
+        : await resolveSalesExchangeRate(
+            client,
+            {
+              companyId:
+                context.companyId,
+              currency,
+              baseCurrency,
+              effectiveDate:
+                quoteDate,
+              manualRate:
+                input.exchangeRate,
+            },
+          );
 
     const pricelistId =
       optionalUuid(
