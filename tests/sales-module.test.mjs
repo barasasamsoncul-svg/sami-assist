@@ -1412,3 +1412,67 @@ test('Sales roadmap Parts 8 and 9 separate pricelist scope from advanced pricing
   assert.match(commercial, /input\.rules !==[\s\S]*undefined/);
   assert.match(commercial, /DELETE FROM sales_pricelist_rules/);
 });
+
+
+test('Sales roadmap Part 10 locks multi-currency values and reports in base currency', async () => {
+  const [
+    currencies,
+    migration,
+    runtimeMigrations,
+    modules,
+    commands,
+    queries,
+    types,
+    schema,
+  ] = await Promise.all([
+    source('lib/apps/sales/currencies.ts'),
+    source('lib/apps/sales/migrations/3.2.0-to-3.3.0.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/sales/commands.ts'),
+    source('lib/apps/sales/queries.ts'),
+    source('lib/apps/sales/types.ts'),
+    source('lib/apps/sales/schema.sql'),
+  ]);
+
+  assert.match(currencies, /resolveInvoicingExchangeRate/);
+  assert.match(currencies, /saveInvoicingCurrency/);
+  assert.match(currencies, /saveInvoicingExchangeRate/);
+  assert.match(currencies, /resolveSalesExchangeRate/);
+  assert.match(currencies, /salesBaseAmount/);
+  assert.match(currencies, /manual_override/);
+  assert.match(currencies, /No shared Currency Center is installed/);
+
+  assert.match(migration, /fromVersion:[\s\S]*'3\.2\.0'/);
+  assert.match(migration, /toVersion:[\s\S]*'3\.3\.0'/);
+  assert.match(migration, /base_currency/);
+  assert.match(migration, /exchange_rate NUMERIC\(19,8\)/);
+  assert.match(migration, /base_total_amount/);
+  assert.match(runtimeMigrations, /SALES_3_2_0_TO_3_3_0/);
+  assert.match(modules, /key: "sales"[\s\S]*version: '3\.3\.0'/);
+
+  assert.match(commands, /resolveSalesExchangeRate/);
+  assert.match(commands, /salesBaseAmount/);
+  assert.match(commands, /exchange_rate_source/);
+  assert.match(commands, /base_total_amount/);
+  assert.match(commands, /input\.exchangeRate \?\?[\s\S]*orderRow\.exchange_rate/);
+
+  assert.match(queries, /SUM\(base_total_amount\)/);
+  assert.match(queries, /baseCurrency:/);
+  assert.match(queries, /exchangeRate:/);
+  assert.match(queries, /exchangeRateDate:/);
+  assert.match(queries, /exchangeRateSource:/);
+  assert.match(queries, /baseTotalAmount:/);
+
+  assert.match(types, /baseCurrency: string/);
+  assert.match(types, /exchangeRate: number/);
+  assert.match(types, /exchangeRateDate: string/);
+  assert.match(types, /exchangeRateSource: string/);
+  assert.match(types, /baseTotalAmount: number/);
+  assert.match(types, /exchangeRate\?: unknown/);
+
+  assert.match(schema, /base_currency VARCHAR\(3\)/);
+  assert.match(schema, /exchange_rate NUMERIC\(19,8\)/);
+  assert.match(schema, /exchange_rate_source VARCHAR\(120\)/);
+  assert.match(schema, /base_total_amount NUMERIC\(18,2\)/);
+});
