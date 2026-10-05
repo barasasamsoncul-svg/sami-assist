@@ -1414,7 +1414,7 @@ test('Sales roadmap Parts 8 and 9 separate pricelist scope from advanced pricing
 });
 
 
-test('Sales roadmap Part 10 locks multi-currency values and reports in base currency', async () => {
+test('Sales roadmap Part 10 locks multi-currency values and exposes Currency & FX operations', async () => {
   const [
     currencies,
     migration,
@@ -1424,6 +1424,12 @@ test('Sales roadmap Part 10 locks multi-currency values and reports in base curr
     queries,
     types,
     schema,
+    route,
+    service,
+    page,
+    workspace,
+    currencyUi,
+    composer,
   ] = await Promise.all([
     source('lib/apps/sales/currencies.ts'),
     source('lib/apps/sales/migrations/3.2.0-to-3.3.0.ts'),
@@ -1433,6 +1439,12 @@ test('Sales roadmap Part 10 locks multi-currency values and reports in base curr
     source('lib/apps/sales/queries.ts'),
     source('lib/apps/sales/types.ts'),
     source('lib/apps/sales/schema.sql'),
+    source('app/api/apps/sales/route.ts'),
+    source('lib/apps/sales/service.ts'),
+    source('app/apps/sales/page.tsx'),
+    source('app/apps/sales/SalesWorkspaceClient.tsx'),
+    source('app/apps/sales/SalesCurrenciesManager.tsx'),
+    source('app/apps/sales/SalesQuoteComposer.tsx'),
   ]);
 
   assert.match(currencies, /resolveInvoicingExchangeRate/);
@@ -1453,6 +1465,8 @@ test('Sales roadmap Part 10 locks multi-currency values and reports in base curr
 
   assert.match(commands, /resolveSalesExchangeRate/);
   assert.match(commands, /salesBaseAmount/);
+  assert.match(commands, /canKeepLockedRate/);
+  assert.match(commands, /existingQuote[\s\S]*exchange_rate/);
   assert.match(commands, /exchange_rate_source/);
   assert.match(commands, /base_total_amount/);
   assert.match(commands, /input\.exchangeRate \?\?[\s\S]*orderRow\.exchange_rate/);
@@ -1471,8 +1485,38 @@ test('Sales roadmap Part 10 locks multi-currency values and reports in base curr
   assert.match(types, /baseTotalAmount: number/);
   assert.match(types, /exchangeRate\?: unknown/);
 
-  assert.match(schema, /base_currency VARCHAR\(3\)/);
-  assert.match(schema, /exchange_rate NUMERIC\(19,8\)/);
-  assert.match(schema, /exchange_rate_source VARCHAR\(120\)/);
-  assert.match(schema, /base_total_amount NUMERIC\(18,2\)/);
+  assert.equal(
+    (schema.match(/base_currency VARCHAR\(3\)/g) || []).length,
+    2,
+  );
+  assert.equal(
+    (schema.match(/exchange_rate NUMERIC\(19,8\)/g) || []).length,
+    2,
+  );
+  assert.match(schema, /CHECK \(base_currency ~ '\^\[A-Z\]\{3\}\$'\)/);
+  assert.match(schema, /idx_sales_quotes_currency_date/);
+  assert.match(schema, /idx_sales_orders_currency_date/);
+
+  assert.match(service, /getSalesCurrencyData/);
+  assert.match(service, /saveSalesCurrency/);
+  assert.match(service, /saveSalesExchangeRate/);
+  assert.match(route, /currencies ===[\s\S]*getSalesCurrencyData/);
+  assert.match(route, /save_currency:[\s\S]*saveSalesCurrency/);
+  assert.match(route, /save_exchange_rate:[\s\S]*saveSalesExchangeRate/);
+
+  assert.match(page, /'currencies'/);
+  assert.match(page, /Currency & FX/);
+  assert.match(page, /Roadmap Part 10/);
+  assert.match(workspace, /SalesCurrenciesManager/);
+  assert.match(workspace, /view ===[\s\S]*'currencies'/);
+  assert.match(currencyUi, /Roadmap Part 10/);
+  assert.match(currencyUi, /\/api\/apps\/sales\?currencies=1/);
+  assert.match(currencyUi, /save_currency/);
+  assert.match(currencyUi, /save_exchange_rate/);
+  assert.match(currencyUi, /Quotation exposure/);
+  assert.match(currencyUi, /Sales-order exposure/);
+
+  assert.match(composer, /manualExchangeRate/);
+  assert.match(composer, /Manual FX rate to/);
+  assert.match(composer, /exchangeRate:[\s\S]*manualExchangeRate/);
 });
