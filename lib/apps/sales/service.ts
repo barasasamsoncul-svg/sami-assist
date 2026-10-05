@@ -71,3 +71,10 @@ export {
   setSalesOrderDepositRequirement,
   updateSalesShipmentStatus,
 } from '@/lib/apps/sales/operations';
+
+
+export {
+  getSalesCurrencyData,
+  saveSalesCurrency,
+  saveSalesExchangeRate,
+} from '@/lib/apps/sales/currencies';
