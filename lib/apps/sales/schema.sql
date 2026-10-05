@@ -71,6 +71,14 @@ CREATE TABLE IF NOT EXISTS public.sales_quotes (
   quote_date DATE NOT NULL DEFAULT CURRENT_DATE,
   valid_until DATE,
   currency VARCHAR(3) NOT NULL DEFAULT 'KES',
+  base_currency VARCHAR(3) NOT NULL DEFAULT 'KES'
+    CHECK (base_currency ~ '^[A-Z]{3}$'),
+  exchange_rate NUMERIC(19,8) NOT NULL DEFAULT 1
+    CHECK (exchange_rate > 0),
+  exchange_rate_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  exchange_rate_source VARCHAR(120) NOT NULL DEFAULT 'base',
+  base_total_amount NUMERIC(18,2) NOT NULL DEFAULT 0
+    CHECK (base_total_amount >= 0),
   reference VARCHAR(255),
   salesperson_user_id UUID,
   approval_status VARCHAR(30) NOT NULL DEFAULT 'not_required'
@@ -124,6 +132,10 @@ CREATE INDEX IF NOT EXISTS idx_sales_quotes_company_status
   ON public.sales_quotes(company_id, status, quote_date DESC)
   WHERE deleted_at IS NULL;
 
+CREATE INDEX IF NOT EXISTS idx_sales_quotes_currency_date
+  ON public.sales_quotes(company_id, currency, quote_date DESC)
+  WHERE deleted_at IS NULL;
+
 CREATE INDEX IF NOT EXISTS idx_sales_quotes_customer
   ON public.sales_quotes(company_id, billing_customer_id)
   WHERE deleted_at IS NULL;
@@ -173,6 +185,14 @@ CREATE TABLE IF NOT EXISTS public.sales_orders_v2 (
     CHECK (invoice_status IN ('not_invoiced','partial','invoiced')),
   order_date DATE NOT NULL DEFAULT CURRENT_DATE,
   currency VARCHAR(3) NOT NULL DEFAULT 'KES',
+  base_currency VARCHAR(3) NOT NULL DEFAULT 'KES'
+    CHECK (base_currency ~ '^[A-Z]{3}$'),
+  exchange_rate NUMERIC(19,8) NOT NULL DEFAULT 1
+    CHECK (exchange_rate > 0),
+  exchange_rate_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  exchange_rate_source VARCHAR(120) NOT NULL DEFAULT 'base',
+  base_total_amount NUMERIC(18,2) NOT NULL DEFAULT 0
+    CHECK (base_total_amount >= 0),
   reference VARCHAR(255),
   customer_name VARCHAR(255) NOT NULL,
   customer_email VARCHAR(255),
@@ -205,6 +225,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_orders_v2_quote
 
 CREATE INDEX IF NOT EXISTS idx_sales_orders_v2_company_status
   ON public.sales_orders_v2(company_id, status, order_date DESC)
+  WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_sales_orders_currency_date
+  ON public.sales_orders_v2(company_id, currency, order_date DESC)
   WHERE deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS public.sales_order_items_v2 (

@@ -20,6 +20,7 @@ import {
   createSalesShipment,
   duplicateSalesQuote,
   getSalesCommercialData,
+  getSalesCurrencyData,
   getSalesOperationsData,
   getSalesOrderDetail,
   getSalesOrganizationData,
@@ -34,6 +35,8 @@ import {
   reviewSalesQuoteApproval,
   SalesError,
   saveSalesCommissionPlan,
+  saveSalesCurrency,
+  saveSalesExchangeRate,
   saveSalesPricelist,
   saveSalesQuoteOptionalItems,
   saveSalesQuoteTemplate,
@@ -253,6 +256,25 @@ export async function GET(
       });
     }
 
+    const currencies =
+      request.nextUrl
+        .searchParams
+        .get(
+          'currencies',
+        );
+
+    if (
+      currencies ===
+        '1'
+    ) {
+      return json({
+        success:
+          true,
+        currencies:
+          await getSalesCurrencyData(),
+      });
+    }
+
     const quoteId =
       request.nextUrl
         .searchParams
@@ -455,6 +477,10 @@ export async function POST(
           saveSalesQuoteOptionalItems,
         save_pricelist:
           saveSalesPricelist,
+        save_currency:
+          saveSalesCurrency,
+        save_exchange_rate:
+          saveSalesExchangeRate,
         save_sales_territory:
           saveSalesTerritory,
         save_sales_team:

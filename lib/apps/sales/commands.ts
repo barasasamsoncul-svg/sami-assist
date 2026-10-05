@@ -202,6 +202,11 @@ import {
 } from '@/lib/apps/sales/commercial';
 
 import {
+  resolveSalesExchangeRate,
+  salesBaseAmount,
+} from '@/lib/apps/sales/currencies';
+
+import {
   recordSalesOrderCommissionEntries,
   resolveSalesAssignmentForUser,
   reverseSalesOrderCommissions,
@@ -1397,6 +1402,32 @@ export async function createSalesQuote(
       );
     }
 
+    const baseCurrency =
+      cleanText(
+        context.company
+          .currentCompany
+          .currency ||
+        settings.default_currency ||
+        'KES',
+        3,
+      )
+        .toUpperCase();
+
+    const exchangeRate =
+      await resolveSalesExchangeRate(
+        client,
+        {
+          companyId:
+            context.companyId,
+          currency,
+          baseCurrency,
+          effectiveDate:
+            quoteDate,
+          manualRate:
+            input.exchangeRate,
+        },
+      );
+
     const pricelistId =
       optionalUuid(
         input.pricelistId,
@@ -1573,6 +1604,36 @@ export async function createSalesQuote(
         result.rows[0].id,
       );
 
+    const baseTotalAmount =
+      salesBaseAmount(
+        calculated.totalAmount,
+        exchangeRate.rate,
+      );
+
+    await client.query(
+      `
+        UPDATE sales_quotes
+        SET
+          base_currency = $3,
+          exchange_rate = $4,
+          exchange_rate_date = $5,
+          exchange_rate_source = $6,
+          base_total_amount = $7
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [
+        quoteId,
+        context.companyId,
+        exchangeRate.baseCurrency,
+        exchangeRate.rate,
+        exchangeRate.effectiveDate,
+        exchangeRate.sourceName ||
+          exchangeRate.source,
+        baseTotalAmount,
+      ],
+    );
+
     await insertQuoteLines(
       client,
       context.companyId,
@@ -1710,7 +1771,13 @@ export async function updateSalesQuoteDraft(
             id,
             quote_number,
             status,
-            approval_status
+            approval_status,
+            quote_date,
+            currency,
+            base_currency,
+            exchange_rate,
+            exchange_rate_date,
+            exchange_rate_source
           FROM sales_quotes
           WHERE id = $1
             AND company_id = $2
@@ -1841,6 +1908,100 @@ export async function updateSalesQuoteDraft(
         'Currency must be a three-letter code.',
       );
     }
+
+    const baseCurrency =
+      cleanText(
+        context.company
+          .currentCompany
+          .currency ||
+        settings.default_currency ||
+        'KES',
+        3,
+      )
+        .toUpperCase();
+
+    const existingQuote =
+      existing.rows[0];
+
+    const canKeepLockedRate =
+      (
+        input.exchangeRate ===
+          undefined ||
+        input.exchangeRate ===
+          null ||
+        input.exchangeRate ===
+          ''
+      ) &&
+      String(
+        existingQuote.currency ||
+        '',
+      ).toUpperCase() ===
+        currency &&
+      String(
+        existingQuote
+          .base_currency ||
+        '',
+      ).toUpperCase() ===
+        baseCurrency &&
+      String(
+        existingQuote
+          .quote_date ||
+        '',
+      ).slice(
+        0,
+        10,
+      ) ===
+        quoteDate &&
+      Number(
+        existingQuote
+          .exchange_rate ||
+        0,
+      ) >
+        0;
+
+    const exchangeRate =
+      canKeepLockedRate
+        ? {
+            currency,
+            baseCurrency,
+            rate:
+              Number(
+                existingQuote
+                  .exchange_rate,
+              ),
+            effectiveDate:
+              String(
+                existingQuote
+                  .exchange_rate_date ||
+                quoteDate,
+              ).slice(
+                0,
+                10,
+              ),
+            source:
+              String(
+                existingQuote
+                  .exchange_rate_source ||
+                'locked',
+              ),
+            sourceName:
+              null,
+            manualOverride:
+              false,
+          }
+        : await resolveSalesExchangeRate(
+            client,
+            {
+              companyId:
+                context.companyId,
+              currency,
+              baseCurrency,
+              effectiveDate:
+                quoteDate,
+              manualRate:
+                input.exchangeRate,
+            },
+          );
 
     const pricelistId =
       optionalUuid(
@@ -1977,6 +2138,36 @@ export async function updateSalesQuoteDraft(
           6000,
         ),
         context.userId,
+      ],
+    );
+
+    const baseTotalAmount =
+      salesBaseAmount(
+        calculated.totalAmount,
+        exchangeRate.rate,
+      );
+
+    await client.query(
+      `
+        UPDATE sales_quotes
+        SET
+          base_currency = $3,
+          exchange_rate = $4,
+          exchange_rate_date = $5,
+          exchange_rate_source = $6,
+          base_total_amount = $7
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [
+        quoteId,
+        context.companyId,
+        exchangeRate.baseCurrency,
+        exchangeRate.rate,
+        exchangeRate.effectiveDate,
+        exchangeRate.sourceName ||
+          exchangeRate.source,
+        baseTotalAmount,
       ],
     );
 
@@ -3329,6 +3520,51 @@ export async function createSalesOrderFromQuote(
       String(
         order.rows[0].id,
       );
+
+    await client.query(
+      `
+        UPDATE sales_orders_v2
+        SET
+          base_currency = $3,
+          exchange_rate = $4,
+          exchange_rate_date = $5,
+          exchange_rate_source = $6,
+          base_total_amount = $7
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [
+        orderId,
+        context.companyId,
+        String(
+          row.base_currency ||
+          context.company
+            .currentCompany
+            .currency ||
+          row.currency,
+        ),
+        Number(
+          row.exchange_rate ||
+          1,
+        ),
+        String(
+          row.exchange_rate_date ||
+          row.quote_date,
+        ).slice(
+          0,
+          10,
+        ),
+        String(
+          row.exchange_rate_source ||
+          'base',
+        ),
+        Number(
+          row.base_total_amount ||
+          row.total_amount ||
+          0,
+        ),
+      ],
+    );
 
     await client.query(
       `
@@ -4878,7 +5114,8 @@ export async function createSalesOrderInvoice(
           currency:
             orderRow.currency,
           exchangeRate:
-            input.exchangeRate,
+            input.exchangeRate ??
+            orderRow.exchange_rate,
           reference:
             sourceReference,
           notes:

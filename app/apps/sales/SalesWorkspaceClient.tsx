@@ -54,6 +54,8 @@ import SalesPricelistsManager from '@/app/apps/sales/SalesPricelistsManager';
 
 import SalesAdvancedPricingManager from '@/app/apps/sales/SalesAdvancedPricingManager';
 
+import SalesCurrenciesManager from '@/app/apps/sales/SalesCurrenciesManager';
+
 import SalesOrganizationManager from '@/app/apps/sales/SalesOrganizationManager';
 
 import SalesOperationsManager from '@/app/apps/sales/SalesOperationsManager';
@@ -72,6 +74,7 @@ type View =
   | 'catalogue'
   | 'pricelists'
   | 'advanced-pricing'
+  | 'currencies'
   | 'orders'
   | 'organization'
   | 'operations'
@@ -160,6 +163,16 @@ const TUTORIAL:
         'Configure advanced pricing',
       description:
         'Set product and quantity rules using fixed pricing, percentage discounts and markups.',
+    },
+    {
+      id:
+        'currencies',
+      section:
+        'currencies',
+      title:
+        'Control currency and FX',
+      description:
+        'Maintain dated exchange rates, review transaction-currency exposure and keep Sales reporting normalized to the company base currency.',
     },
     {
       id:
@@ -1327,6 +1340,33 @@ export default function SalesWorkspaceClient({
             .canViewPricing &&
           (
             <SalesAdvancedPricingManager
+              data={
+                initialData
+              }
+              busy={
+                busy
+              }
+              request={
+                request
+              }
+              showSuccess={
+                showSuccess
+              }
+              showError={
+                showError
+              }
+            />
+          )
+        }
+
+        {
+          view ===
+            'currencies' &&
+          initialData
+            .capabilities
+            .canViewPricing &&
+          (
+            <SalesCurrenciesManager
               data={
                 initialData
               }

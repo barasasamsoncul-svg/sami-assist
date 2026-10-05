@@ -55,6 +55,11 @@ export type SalesQuoteSummary = {
   quoteDate: string;
   validUntil: string | null;
   currency: string;
+  baseCurrency: string;
+  exchangeRate: number;
+  exchangeRateDate: string;
+  exchangeRateSource: string;
+  baseTotalAmount: number;
   customerName: string;
   customerEmail: string | null;
   totalAmount: number;
@@ -82,6 +87,11 @@ export type SalesOrderSummary = {
   invoiceStatus: string;
   orderDate: string;
   currency: string;
+  baseCurrency: string;
+  exchangeRate: number;
+  exchangeRateDate: string;
+  exchangeRateSource: string;
+  baseTotalAmount: number;
   customerName: string;
   totalAmount: number;
   deliveredPercent: number;
@@ -411,6 +421,7 @@ export type CreateSalesQuoteInput = {
   quoteDate?: unknown;
   validUntil?: unknown;
   currency?: unknown;
+  exchangeRate?: unknown;
   reference?: unknown;
   customerName?: unknown;
   customerEmail?: unknown;
