@@ -125,6 +125,10 @@ CREATE INDEX IF NOT EXISTS idx_sales_quotes_company_status
   ON public.sales_quotes(company_id, status, quote_date DESC)
   WHERE deleted_at IS NULL;
 
+CREATE INDEX IF NOT EXISTS idx_sales_quotes_currency_date
+  ON public.sales_quotes(company_id, currency, quote_date DESC)
+  WHERE deleted_at IS NULL;
+
 CREATE INDEX IF NOT EXISTS idx_sales_quotes_customer
   ON public.sales_quotes(company_id, billing_customer_id)
   WHERE deleted_at IS NULL;
@@ -176,7 +180,6 @@ CREATE TABLE IF NOT EXISTS public.sales_orders_v2 (
   currency VARCHAR(3) NOT NULL DEFAULT 'KES',
   base_currency VARCHAR(3) NOT NULL DEFAULT 'KES'
     CHECK (base_currency ~ '^[A-Z]{3}
-  customer_name VARCHAR(255) NOT NULL,
   customer_email VARCHAR(255),
   customer_phone VARCHAR(80),
   customer_tax_id VARCHAR(120),
@@ -207,6 +210,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_orders_v2_quote
 
 CREATE INDEX IF NOT EXISTS idx_sales_orders_v2_company_status
   ON public.sales_orders_v2(company_id, status, order_date DESC)
+  WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_sales_orders_currency_date
+  ON public.sales_orders_v2(company_id, currency, order_date DESC)
   WHERE deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS public.sales_order_items_v2 (
