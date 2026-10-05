@@ -50,6 +50,11 @@ type SalesView =
   | 'overview'
   | 'customers'
   | 'quotes'
+  | 'templates'
+  | 'pdf-builder'
+  | 'catalogue'
+  | 'pricelists'
+  | 'advanced-pricing'
   | 'orders'
   | 'organization'
   | 'operations'
@@ -135,6 +140,25 @@ export default async function SalesPage({
           : []
       ),
       'quotes',
+      'templates',
+      'pdf-builder',
+      ...(
+        data.capabilities
+          .canUseCatalog
+          ? [
+              'catalogue' as const,
+            ]
+          : []
+      ),
+      ...(
+        data.capabilities
+          .canViewPricing
+          ? [
+              'pricelists' as const,
+              'advanced-pricing' as const,
+            ]
+          : []
+      ),
       ...(
         data.capabilities
           .canViewOrders
@@ -236,6 +260,76 @@ export default async function SalesPage({
       badge:
         data.quotes.length,
     },
+    {
+      key:
+        'templates',
+      label:
+        'Quotation Templates',
+      href:
+        '/apps/sales?view=templates',
+      description:
+        'Roadmap Part 5 · Reusable quotation presentation and commercial defaults.',
+      badge:
+        data.templates.length,
+    },
+    {
+      key:
+        'pdf-builder',
+      label:
+        'Quote / PDF Builder',
+      href:
+        '/apps/sales?view=pdf-builder',
+      description:
+        'Roadmap Part 6 · Apply templates, preview presentation and open generated PDFs.',
+    },
+    ...(
+      data.capabilities
+        .canUseCatalog
+        ? [
+            {
+              key:
+                'catalogue',
+              label:
+                'Product Catalogue',
+              href:
+                '/apps/sales?view=catalogue',
+              description:
+                'Roadmap Part 7 · Products and services used by Sales quotations.',
+              badge:
+                data.catalogItems.length,
+            },
+          ]
+        : []
+    ),
+    ...(
+      data.capabilities
+        .canViewPricing
+        ? [
+            {
+              key:
+                'pricelists',
+              label:
+                'Pricelists',
+              href:
+                '/apps/sales?view=pricelists',
+              description:
+                'Roadmap Part 8 · Customer scope, currency, validity and precedence.',
+              badge:
+                data.pricelists.length,
+            },
+            {
+              key:
+                'advanced-pricing',
+              label:
+                'Advanced Pricing',
+              href:
+                '/apps/sales?view=advanced-pricing',
+              description:
+                'Roadmap Part 9 · Product, quantity, discount and markup pricing rules.',
+            },
+          ]
+        : []
+    ),
     ...(
       data.capabilities
         .canViewOrders

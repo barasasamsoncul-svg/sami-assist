@@ -1297,3 +1297,118 @@ test('Sales roadmap Part 2 exposes a standalone customer and contact workspace b
   assert.match(types, /contactName: string \| null/);
   assert.match(types, /canManageBillingCustomers: boolean/);
 });
+
+
+test('Sales roadmap Part 5 exposes quotation templates as a standalone Sales destination', async () => {
+  const [
+    page,
+    workspace,
+    templates,
+    commands,
+  ] = await Promise.all([
+    source('app/apps/sales/page.tsx'),
+    source('app/apps/sales/SalesWorkspaceClient.tsx'),
+    source('app/apps/sales/SalesTemplatesManager.tsx'),
+    source('lib/apps/sales/commands.ts'),
+  ]);
+
+  assert.match(page, /Quotation Templates/);
+  assert.match(page, /view=templates/);
+  assert.match(page, /Roadmap Part 5/);
+  assert.match(workspace, /SalesTemplatesManager/);
+  assert.match(workspace, /Quotation templates/);
+  assert.match(templates, /Roadmap Part 5/);
+  assert.match(templates, /Template library/);
+  assert.match(templates, /save_template/);
+  assert.match(templates, /Default notes/);
+  assert.match(templates, /Default terms/);
+  assert.match(templates, /Document footer/);
+  assert.match(commands, /saveSalesQuoteTemplate/);
+  assert.match(commands, /sales_quote_templates/);
+});
+
+
+test('Sales roadmap Parts 6 and 7 expose standalone PDF builder and product catalogue workspaces', async () => {
+  const [
+    page,
+    workspace,
+    pdfBuilder,
+    catalogue,
+    commands,
+    queries,
+    route,
+    types,
+  ] = await Promise.all([
+    source('app/apps/sales/page.tsx'),
+    source('app/apps/sales/SalesWorkspaceClient.tsx'),
+    source('app/apps/sales/SalesQuotePdfBuilder.tsx'),
+    source('app/apps/sales/SalesProductCatalogueManager.tsx'),
+    source('lib/apps/sales/commands.ts'),
+    source('lib/apps/sales/queries.ts'),
+    source('app/api/apps/sales/route.ts'),
+    source('lib/apps/sales/types.ts'),
+  ]);
+
+  assert.match(page, /Quote \/ PDF Builder/);
+  assert.match(page, /Roadmap Part 6/);
+  assert.match(page, /Product Catalogue/);
+  assert.match(page, /Roadmap Part 7/);
+  assert.match(workspace, /SalesQuotePdfBuilder/);
+  assert.match(workspace, /SalesProductCatalogueManager/);
+  assert.match(pdfBuilder, /Roadmap Part 6/);
+  assert.match(pdfBuilder, /apply_quote_template/);
+  assert.match(pdfBuilder, /Open generated PDF/);
+  assert.match(pdfBuilder, /\/api\/apps\/sales\/quotes\//);
+  assert.match(catalogue, /Roadmap Part 7/);
+  assert.match(catalogue, /create_catalog_item/);
+  assert.match(catalogue, /update_catalog_item/);
+  assert.match(catalogue, /Product catalogue/);
+  assert.match(commands, /applySalesQuoteTemplate/);
+  assert.match(commands, /quote\.template_applied/);
+  assert.match(commands, /createSalesCatalogItem/);
+  assert.match(commands, /updateSalesCatalogItem/);
+  assert.match(queries, /template_id/);
+  assert.match(queries, /item_type/);
+  assert.match(queries, /canManageCatalog/);
+  assert.match(route, /apply_quote_template:[\s\S]*applySalesQuoteTemplate/);
+  assert.match(route, /create_catalog_item:[\s\S]*createSalesCatalogItem/);
+  assert.match(route, /update_catalog_item:[\s\S]*updateSalesCatalogItem/);
+  assert.match(types, /templateId: string \| null/);
+  assert.match(types, /itemType: string/);
+  assert.match(types, /canManageCatalog: boolean/);
+});
+
+
+test('Sales roadmap Parts 8 and 9 separate pricelist scope from advanced pricing rules', async () => {
+  const [
+    page,
+    workspace,
+    pricelists,
+    advanced,
+    commercial,
+  ] = await Promise.all([
+    source('app/apps/sales/page.tsx'),
+    source('app/apps/sales/SalesWorkspaceClient.tsx'),
+    source('app/apps/sales/SalesPricelistsManager.tsx'),
+    source('app/apps/sales/SalesAdvancedPricingManager.tsx'),
+    source('lib/apps/sales/commercial.ts'),
+  ]);
+
+  assert.match(page, /Roadmap Part 8/);
+  assert.match(page, /Roadmap Part 9/);
+  assert.match(page, /view=pricelists/);
+  assert.match(page, /view=advanced-pricing/);
+  assert.match(workspace, /SalesPricelistsManager/);
+  assert.match(workspace, /SalesAdvancedPricingManager/);
+  assert.doesNotMatch(workspace, /SalesPricingManager/);
+  assert.match(pricelists, /Roadmap Part 8/);
+  assert.match(pricelists, /save_pricelist/);
+  assert.doesNotMatch(pricelists, /rules:/);
+  assert.match(advanced, /Roadmap Part 9/);
+  assert.match(advanced, /discount_percent/);
+  assert.match(advanced, /markup_percent/);
+  assert.match(advanced, /minQuantity/);
+  assert.match(advanced, /rules:/);
+  assert.match(commercial, /input\.rules !==[\s\S]*undefined/);
+  assert.match(commercial, /DELETE FROM sales_pricelist_rules/);
+});

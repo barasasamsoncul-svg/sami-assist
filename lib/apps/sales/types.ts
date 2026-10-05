@@ -59,6 +59,7 @@ export type SalesQuoteSummary = {
   customerEmail: string | null;
   totalAmount: number;
   currentRevision: number;
+  templateId: string | null;
   pricelistId: string | null;
   marginAmount: number | null;
   marginPercent: number | null;
@@ -297,6 +298,7 @@ export type SalesWorkspaceData = {
     canUseBillingCustomers: boolean;
     canManageBillingCustomers: boolean;
     canUseCatalog: boolean;
+    canManageCatalog: boolean;
   };
   metrics: {
     quoteCount: number;
@@ -349,11 +351,13 @@ export type SalesWorkspaceData = {
   }>;
   catalogItems: Array<{
     id: string;
+    itemType: string;
     name: string;
     sku: string | null;
     description: string | null;
     unit: string;
     unitPrice: number;
+    taxRateId: string | null;
     taxName: string | null;
     taxRate: number;
     unitCost: number | null;
