@@ -627,7 +627,7 @@ test('Sales v3 is registered into manifests, migrations, Search and SaMi AI', as
 
   assert.match(
     manifest,
-    /key: "sales",[\s\S]*version: '3\.2\.0'/s,
+    /key: "sales",[\s\S]*version: '3\.3\.0'/s,
   );
 
   assert.match(
@@ -1089,7 +1089,7 @@ test('Sales 3.2 runs deposits, shipments, returns and forecasting through author
   ]);
 
   assert.match(runtimeMigrations, /SALES_3_1_0_TO_3_2_0/);
-  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.2\.0'/s);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.3\.0'/s);
 
   for (const table of [
     'sales_shipments',
