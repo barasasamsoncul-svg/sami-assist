@@ -277,6 +277,10 @@ function salesCapabilities(
         SALES_PERMISSIONS
           .FORECAST_VIEW,
       ),
+    canViewPipeline:
+      can(SALES_PERMISSIONS.PIPELINE_VIEW) || can(SALES_PERMISSIONS.PIPELINE_MANAGE),
+    canManagePipeline:
+      can(SALES_PERMISSIONS.PIPELINE_MANAGE),
     canUseBillingCustomers:
       crossCan(
         INVOICING_CUSTOMER_VIEW,
