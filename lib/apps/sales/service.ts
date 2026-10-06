@@ -78,3 +78,11 @@ export {
   saveSalesCurrency,
   saveSalesExchangeRate,
 } from '@/lib/apps/sales/currencies';
+
+
+export {
+  createSalesLead,
+  convertSalesLeadToOpportunity,
+  getSalesPipelineData,
+  moveSalesOpportunity,
+} from '@/lib/apps/sales/pipeline';
