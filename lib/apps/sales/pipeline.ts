@@ -1,5 +1,7 @@
 import 'server-only';
 
+import type { PoolClient } from 'pg';
+
 import { cleanText, isoDate, nullableText, numberInput, optionalUuid, requireSalesContext, requireUuid, SALES_PERMISSIONS, SalesError } from '@/lib/apps/sales/context';
 
 const stageSeed = [
@@ -18,7 +20,7 @@ async function ensurePipelineStages(pool: Awaited<ReturnType<typeof requireSales
   }
 }
 
-async function nextPipelineNumber(client: Awaited<ReturnType<Awaited<ReturnType<typeof requireSalesContext>>['pool']['connect']>>, companyId:string, userId:string, type:'lead'|'opportunity', prefix:string) {
+async function nextPipelineNumber(client: PoolClient, companyId:string, userId:string, type:'lead'|'opportunity', prefix:string) {
   await client.query(`INSERT INTO sales_sequences (company_id,document_type,prefix,next_number,padding,format,updated_by) VALUES ($1,$2,$3,1,6,'{prefix}{number}',$4) ON CONFLICT (company_id,document_type) DO NOTHING`,[companyId,type,prefix,userId]);
   const row=await client.query(`SELECT prefix,next_number,padding,format FROM sales_sequences WHERE company_id=$1 AND document_type=$2 FOR UPDATE`,[companyId,type]);
   const x=row.rows[0]; const value=String(x.format).replace('{prefix}',String(x.prefix)).replace('{number}',String(x.next_number).padStart(Number(x.padding), '0'));
