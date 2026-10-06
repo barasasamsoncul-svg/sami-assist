@@ -22,6 +22,10 @@ import {
   getSalesCommercialData,
   getSalesCurrencyData,
   getSalesOperationsData,
+  getSalesPipelineData,
+  createSalesLead,
+  convertSalesLeadToOpportunity,
+  moveSalesOpportunity,
   getSalesOrderDetail,
   getSalesOrganizationData,
   getSalesQuoteDetail,
@@ -193,6 +197,9 @@ export async function GET(
     NextRequest,
 ) {
   try {
+    const pipeline = request.nextUrl.searchParams.get('pipeline');
+    if (pipeline === '1') return json({success:true,pipeline:await getSalesPipelineData()});
+
     const operations =
       request.nextUrl
         .searchParams
