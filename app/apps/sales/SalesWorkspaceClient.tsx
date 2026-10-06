@@ -55,6 +55,7 @@ import SalesPricelistsManager from '@/app/apps/sales/SalesPricelistsManager';
 import SalesAdvancedPricingManager from '@/app/apps/sales/SalesAdvancedPricingManager';
 
 import SalesCurrenciesManager from '@/app/apps/sales/SalesCurrenciesManager';
+import SalesPipelineManager from '@/app/apps/sales/SalesPipelineManager';
 
 import SalesOrganizationManager from '@/app/apps/sales/SalesOrganizationManager';
 
@@ -67,6 +68,7 @@ import type {
 
 type View =
   | 'overview'
+  | 'pipeline'
   | 'customers'
   | 'quotes'
   | 'templates'
@@ -93,6 +95,9 @@ const TUTORIAL:
         'Read the sales pipeline',
       description:
         'Review quoted value, accepted business, converted orders and quotation response activity.',
+    },
+    {
+      id: 'pipeline', section: 'pipeline', title: 'Qualify leads and opportunities', description: 'Capture prospects, qualify opportunities and manage weighted deal stages through won or lost.'
     },
     {
       id:
