@@ -462,6 +462,12 @@ export async function POST(
         ) =>
           Promise<unknown>
       > = {
+        create_lead:
+          createSalesLead,
+        convert_lead:
+          convertSalesLeadToOpportunity,
+        move_opportunity:
+          moveSalesOpportunity,
         create_customer:
           createSalesCustomer,
         update_customer:
