@@ -1520,3 +1520,42 @@ test('Sales roadmap Part 10 locks multi-currency values and exposes Currency & F
   assert.match(composer, /Manual FX rate to/);
   assert.match(composer, /exchangeRate:[\s\S]*manualExchangeRate/);
 });
+
+
+test('Sales roadmap Part 11 owns tenant-scoped leads and opportunity pipeline', async () => {
+  const [migration,runtime,manifest,context,pipeline,route,page,workspace,ui,schema] = await Promise.all([
+    source('lib/apps/sales/migrations/3.3.0-to-3.4.0.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/sales/context.ts'),
+    source('lib/apps/sales/pipeline.ts'),
+    source('app/api/apps/sales/route.ts'),
+    source('app/apps/sales/page.tsx'),
+    source('app/apps/sales/SalesWorkspaceClient.tsx'),
+    source('app/apps/sales/SalesPipelineManager.tsx'),
+    source('lib/apps/sales/schema.sql'),
+  ]);
+  assert.match(runtime,/SALES_3_3_0_TO_3_4_0/);
+  assert.match(manifest,/key: "sales"[\s\S]*version: '3\.4\.0'/);
+  for (const table of ['sales_pipeline_stages','sales_leads','sales_opportunities','sales_opportunity_stage_history']) {
+    assert.match(migration,new RegExp('public\\.'+table));
+    assert.match(schema,new RegExp('public\\.'+table));
+  }
+  for (const permission of ['sales.pipeline.view','sales.pipeline.manage']) {
+    assert.match(context,new RegExp(permission.replaceAll('.','\\.')));
+    assert.match(manifest,new RegExp(permission.replaceAll('.','\\.')));
+  }
+  assert.match(pipeline,/createSalesLead/);
+  assert.match(pipeline,/convertSalesLeadToOpportunity/);
+  assert.match(pipeline,/moveSalesOpportunity/);
+  assert.match(pipeline,/sales_opportunity_stage_history/);
+  assert.match(route,/pipeline === '1'/);
+  assert.match(route,/create_lead/);
+  assert.match(route,/convert_lead/);
+  assert.match(route,/move_opportunity/);
+  assert.match(page,/view=pipeline/);
+  assert.match(page,/Roadmap Part 11/);
+  assert.match(workspace,/SalesPipelineManager/);
+  assert.match(ui,/Leads & Opportunities/);
+  assert.match(ui,/Opportunity pipeline/);
+});
