@@ -48,6 +48,7 @@ export const dynamic =
 
 type SalesView =
   | 'overview'
+  | 'pipeline'
   | 'customers'
   | 'quotes'
   | 'templates'
@@ -132,6 +133,7 @@ export default async function SalesPage({
   const availableViews:
     SalesView[] = [
       'overview',
+      ...(data.capabilities.canViewPipeline ? ['pipeline' as const] : []),
       ...(
         data.capabilities
           .canUseBillingCustomers
@@ -250,6 +252,7 @@ export default async function SalesPage({
           ]
         : []
     ),
+    ...(data.capabilities.canViewPipeline ? [{key:'pipeline',label:'Leads & Opportunities',href:'/apps/sales?view=pipeline',description:'Roadmap Part 11 · Lead qualification and weighted opportunity pipeline.'}] : []),
     {
       key:
         'quotes',
