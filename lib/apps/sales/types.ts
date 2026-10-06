@@ -305,6 +305,8 @@ export type SalesWorkspaceData = {
     canManageReturns: boolean;
     canManageDeposits: boolean;
     canViewForecast: boolean;
+    canViewPipeline: boolean;
+    canManagePipeline: boolean;
     canUseBillingCustomers: boolean;
     canManageBillingCustomers: boolean;
     canUseCatalog: boolean;
