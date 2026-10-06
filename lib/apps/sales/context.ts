@@ -87,6 +87,10 @@ export const SALES_PERMISSIONS = {
     'sales.deposit.manage',
   FORECAST_VIEW:
     'sales.forecast.view',
+  PIPELINE_VIEW:
+    'sales.pipeline.view',
+  PIPELINE_MANAGE:
+    'sales.pipeline.manage',
   ORDER_VIEW:
     'sales.order.view',
   ORDER_MANAGE:
