@@ -1213,8 +1213,8 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
   defineSamiModule({
     key: "sales",
     name: "Sales",
-    version: '3.3.0',
-    description: "Run quotations, pricing, teams, deposits, shipping, returns, commissions, forecasting and invoice handoff.",
+    version: '3.4.0',
+    description: "Run leads, opportunity pipelines, quotations, pricing, teams, deposits, shipping, returns, commissions, forecasting and invoice handoff.",
     category: "sales",
     icon: "shopping-cart",
     route: "apps/sales",
@@ -1392,6 +1392,22 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
     ],
     resources: [
       {
+        key: "lead",
+        label: "Sales lead",
+        table: "sales_leads",
+        companyScoped: true,
+        ownerField: "created_by",
+        permissions: { read: ["sales.pipeline.view"], create: ["sales.pipeline.manage"], write: ["sales.pipeline.manage"] },
+      },
+      {
+        key: "opportunity",
+        label: "Sales opportunity",
+        table: "sales_opportunities",
+        companyScoped: true,
+        ownerField: "created_by",
+        permissions: { read: ["sales.pipeline.view"], create: ["sales.pipeline.manage"], write: ["sales.pipeline.manage"] },
+      },
+      {
         key: "quote",
         label: "Quotation",
         table: "sales_quotes",
@@ -1545,6 +1561,8 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
     ],
     security: {
       permissions: [
+        { key: "sales.pipeline.view", name: "View leads and opportunities", resource: "opportunity", action: "view", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "sales.pipeline.manage", name: "Manage leads and opportunities", resource: "opportunity", action: "manage", scope: "company", defaultSystemRoles: ["admin","member"] },
         { key: "sales.quote.view", name: "View quotations", resource: "quote", action: "view", scope: "company", defaultSystemRoles: ["admin","member"] },
         { key: "sales.quote.create", name: "Create quotations", resource: "quote", action: "create", scope: "company", defaultSystemRoles: ["admin","member"] },
         { key: "sales.quote.edit", name: "Edit draft quotations", resource: "quote", action: "edit", scope: "company", defaultSystemRoles: ["admin","member"] },
@@ -1577,6 +1595,8 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
         { key: "sales.settings.manage", name: "Manage Sales settings", resource: "settings", action: "manage", scope: "company", defaultSystemRoles: ["admin"] },
       ],
       recordPolicies: [
+        { key: "sales.lead.company", name: "Sales leads in current company", resourceKey: "lead", operations: ["read","create","write"], scope: "company" },
+        { key: "sales.opportunity.company", name: "Sales opportunities in current company", resourceKey: "opportunity", operations: ["read","create","write"], scope: "company" },
         { key: "sales.quote.company", name: "Quotations in current company", resourceKey: "quote", operations: ["read","create","write"], scope: "company" },
         { key: "sales.order.company", name: "Sales orders in current company", resourceKey: "order", operations: ["read","write"], scope: "company" },
         { key: "sales.template.company", name: "Quotation templates in current company", resourceKey: "quote_template", operations: ["read","create","write"], scope: "company" },
