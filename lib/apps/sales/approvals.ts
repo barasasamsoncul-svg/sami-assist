@@ -1,7 +1,7 @@
 import 'server-only';
 
 import crypto from 'crypto';
-import type { PoolClient } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import {
   cleanText,
   nullableText,
@@ -31,7 +31,9 @@ function fingerprint(quote: Record<string, unknown>, lines: Record<string, unkno
   return crypto.createHash('sha256').update(JSON.stringify(normalized)).digest('hex');
 }
 
-async function quoteSnapshot(client: PoolClient, companyId: string, quoteId: string, lock = false) {
+type Queryable = Pick<PoolClient, 'query'>;
+
+async function quoteSnapshot(client: Queryable, companyId: string, quoteId: string, lock = false) {
   const quoteResult = await client.query(
     `SELECT * FROM sales_quotes WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL ${lock ? 'FOR UPDATE' : ''}`,
     [quoteId, companyId],
@@ -65,7 +67,7 @@ function policyMatches(policy: Record<string, unknown>, quote: Record<string, un
   return triggers.some(Boolean);
 }
 
-async function currentPolicies(client: PoolClient, companyId: string) {
+async function currentPolicies(client: Queryable, companyId: string) {
   const result = await client.query(
     `SELECT * FROM sales_quote_approval_policies
      WHERE company_id = $1 AND is_active = TRUE AND deleted_at IS NULL
@@ -164,6 +166,20 @@ export async function getSalesQuoteApprovalData() {
     ),
   ]);
   return { policies: policies.rows, requests: queue.rows };
+}
+
+export async function assertSalesQuoteApprovalSatisfied(client: Queryable, companyId: string, quoteId: string) {
+  const snapshot = await quoteSnapshot(client, companyId, quoteId);
+  const matching = (await currentPolicies(client, companyId)).find(policy => policyMatches(policy, snapshot.quote));
+  const settings = await client.query(
+    'SELECT require_quote_approval,quote_approval_threshold FROM sales_settings WHERE company_id=$1',
+    [companyId],
+  );
+  const legacyRequired = settings.rows[0]?.require_quote_approval === true &&
+    Number(snapshot.quote.total_amount || 0) >= Number(settings.rows[0]?.quote_approval_threshold || 0);
+  if ((matching || legacyRequired) && String(snapshot.quote.approval_status || 'not_required') !== 'approved') {
+    throw new SalesError('QUOTE_STATE_INVALID', 'This quotation matches an approval policy and cannot proceed until all internal approval steps are complete.');
+  }
 }
 
 export async function requestAdvancedSalesQuoteApproval(input: Record<string, unknown>) {
