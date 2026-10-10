@@ -246,10 +246,20 @@ export default function SalesQuoteDetailClient({
           payload,
         );
 
-      showSuccess(
-        'Action completed',
-        message,
-      );
+      if (
+        payload.action === 'request_quote_approval' &&
+        result.approvalStatus === 'not_required'
+      ) {
+        showSuccess(
+          'No approval required',
+          'No active approval policy or threshold requires internal approval for this quotation.',
+        );
+      } else {
+        showSuccess(
+          'Action completed',
+          message,
+        );
+      }
 
       return result;
     } catch (
@@ -1112,8 +1122,9 @@ export default function SalesQuoteDetailClient({
             </div>
 
             {
-              quote.approvalStatus ===
-                'draft' &&
+              ['draft', 'not_required', 'rejected'].includes(
+                quote.approvalStatus,
+              ) &&
               workspace
                 .capabilities
                 .canEdit &&
