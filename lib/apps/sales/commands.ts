@@ -2860,7 +2860,12 @@ export async function requestSalesQuoteApproval(
       return {
         id: quoteId,
         approvalStatus: 'pending',
-        ...activeWorkflow,
+        requestId: activeWorkflow.id,
+        currentStepNumber: activeWorkflow.currentStepNumber,
+        currentStepName: activeWorkflow.currentStepName,
+        currentApproverUserId: activeWorkflow.currentApproverUserId,
+        totalSteps: activeWorkflow.totalSteps,
+        requestedAt: activeWorkflow.requestedAt,
       };
     }
 
