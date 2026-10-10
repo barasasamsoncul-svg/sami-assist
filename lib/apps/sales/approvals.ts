@@ -163,20 +163,23 @@ export async function requestAdvancedSalesQuoteApproval(input: Record<string, un
     const quote = snapshot.quote;
     if (String(quote.status) !== 'draft') throw new SalesError('QUOTE_STATE_INVALID', 'Only draft quotations can enter internal approval.');
     if (String(quote.approval_status) === 'pending') {
-      let existing = await client.query(
+      const existing = await client.query(
         `SELECT id,status,current_step_order FROM sales_quote_approval_requests WHERE company_id=$1 AND quote_id=$2 AND status='pending' FOR UPDATE`,
         [context.companyId, quoteId],
       );
+      let requestId = existing.rows[0]?.id ?? null;
+      let currentStepOrder = existing.rows[0]?.current_step_order ?? 1;
       if (!existing.rows.length) {
         const legacyRequest = await client.query(
           `INSERT INTO sales_quote_approval_requests(company_id,quote_id,policy_id,quote_fingerprint,status,current_step_order,requested_by)
            VALUES($1,$2,NULL,$3,'pending',1,$4) RETURNING id,current_step_order`,
           [context.companyId, quoteId, snapshot.fingerprint, quote.approval_requested_by ?? context.userId],
         );
-        existing = { rows: legacyRequest.rows };
+        requestId = legacyRequest.rows[0]?.id ?? null;
+        currentStepOrder = legacyRequest.rows[0]?.current_step_order ?? 1;
       }
       await client.query('COMMIT');
-      return { id: quoteId, approvalStatus: 'pending', requestId: existing.rows[0]?.id ?? null, currentStepOrder: existing.rows[0]?.current_step_order ?? 1 };
+      return { id: quoteId, approvalStatus: 'pending', requestId, currentStepOrder };
     }
     if (!['draft','rejected','not_required'].includes(String(quote.approval_status || 'draft'))) throw new SalesError('QUOTE_STATE_INVALID', 'This quotation cannot be submitted for approval from its current state.');
     const matching = (await currentPolicies(client, context.companyId)).find(policy => policyMatches(policy, quote));
