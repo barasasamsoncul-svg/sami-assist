@@ -626,7 +626,7 @@ test('Sales v3 is registered into manifests, migrations, Search and SaMi AI', as
 
   assert.match(
     manifest,
-    /key: "sales",[\s\S]*version: '3\.4\.1'/s,
+    /key: "sales",[\s\S]*version: '3\.5\.0'/s,
   );
 
   assert.match(
@@ -1092,7 +1092,7 @@ test('Sales 3.2 runs deposits, shipments, returns and forecasting through author
   ]);
 
   assert.match(runtimeMigrations, /SALES_3_1_0_TO_3_2_0/);
-  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.1'/s);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.5\.0'/s);
 
   for (const table of [
     'sales_shipments',
@@ -1478,7 +1478,7 @@ test('Sales roadmap Part 10 locks multi-currency values and exposes Currency & F
   assert.match(migration, /exchange_rate NUMERIC\(19,8\)/);
   assert.match(migration, /base_total_amount/);
   assert.match(runtimeMigrations, /SALES_3_2_0_TO_3_3_0/);
-  assert.match(modules, /key: "sales"[\s\S]*version: '3\.4\.1'/);
+  assert.match(modules, /key: "sales"[\s\S]*version: '3\.5\.0'/);
 
   assert.match(commands, /resolveSalesExchangeRate/);
   assert.match(commands, /salesBaseAmount/);
@@ -1554,7 +1554,7 @@ test('Sales roadmap Part 11 owns tenant-scoped leads and opportunity pipeline', 
     source('lib/apps/sales/schema.sql'),
   ]);
   assert.match(runtime,/SALES_3_3_0_TO_3_4_0/);
-  assert.match(manifest,/key: "sales"[\s\S]*version: '3\.4\.1'/);
+  assert.match(manifest,/key: "sales"[\s\S]*version: '3\.5\.0'/);
   for (const table of ['sales_pipeline_stages','sales_leads','sales_opportunities','sales_opportunity_stage_history']) {
     assert.match(migration,new RegExp('public\\.'+table));
     assert.match(schema,new RegExp('public\\.'+table));
@@ -1580,7 +1580,7 @@ test('Sales roadmap Part 11 owns tenant-scoped leads and opportunity pipeline', 
 });
 
 
-test('Sales 3.4.1 migration is active and approval cannot be bypassed by acceptance or order conversion', async () => {
+test('Sales 3.5.0 migration and sequential approval safeguards are registered', async () => {
   const [
     manifest,
     migration,
@@ -1590,18 +1590,21 @@ test('Sales 3.4.1 migration is active and approval cannot be bypassed by accepta
     delivery,
   ] = await Promise.all([
     source('lib/modules/first-party.ts'),
-    source('lib/apps/sales/migrations/3.4.0-to-3.4.1.ts'),
+    source('lib/apps/sales/migrations/3.4.1-to-3.5.0.ts'),
     source('lib/apps/runtime-migrations.ts'),
     source('lib/apps/sales/commands.ts'),
     source('lib/apps/sales/public.ts'),
     source('lib/apps/sales/delivery.ts'),
   ]);
 
-  assert.match(manifest, /key: "sales"[\s\S]*version: '3\.4\.1'/s);
-  assert.match(migration, /fromVersion:[\s\S]*'3\.4\.0'/);
-  assert.match(migration, /toVersion:[\s\S]*'3\.4\.1'/);
-  assert.match(migration, /ADD COLUMN IF NOT EXISTS stage_id/);
-  assert.match(runtimeMigrations, /SALES_3_4_0_TO_3_4_1/);
+  assert.match(manifest, /key: "sales"[\s\S]*version: '3\.5\.0'/s);
+  assert.match(migration, /fromVersion:[\s\S]*'3\.4\.1'/);
+  assert.match(migration, /toVersion:[\s\S]*'3\.5\.0'/);
+  assert.match(migration, /sales_quote_approval_requests/);
+  assert.match(migration, /sales_quote_approval_decisions/);
+  assert.match(migration, /uq_sales_quote_approval_requests_active_quote/);
+  assert.match(migration, /UNIQUE\(request_id, step_number\)/);
+  assert.match(runtimeMigrations, /SALES_3_4_1_TO_3_5_0/);
 
   assert.match(delivery, /Complete internal quotation approval before sending/);
   assert.match(publicSales, /q\.approval_status/);
@@ -1610,4 +1613,86 @@ test('Sales 3.4.1 migration is active and approval cannot be bypassed by accepta
   assert.match(commands, /approval_status[\s\S]*valid_until/);
   assert.match(commands, /Complete internal quotation approval before accepting this quote/);
   assert.match(commands, /Complete internal quotation approval before creating a sales order/);
+});
+
+
+test('Sales 3.5.0 advanced quote approvals are configured, assigned, ordered and audited', async () => {
+  const [
+    schema,
+    migration,
+    approvalService,
+    commands,
+    api,
+    navigation,
+    page,
+    workspace,
+    approvalUi,
+    quoteDetail,
+    queries,
+    types,
+    manifest,
+    runtimeMigrations,
+  ] = await Promise.all([
+    source('lib/apps/sales/schema.sql'),
+    source('lib/apps/sales/migrations/3.4.1-to-3.5.0.ts'),
+    source('lib/apps/sales/quote-approvals.ts'),
+    source('lib/apps/sales/commands.ts'),
+    source('app/api/apps/sales/route.ts'),
+    source('lib/apps/sales/navigation.ts'),
+    source('app/apps/sales/approvals/page.tsx'),
+    source('app/apps/sales/SalesWorkspaceClient.tsx'),
+    source('app/apps/sales/SalesQuoteApprovalWorkflowManager.tsx'),
+    source('app/apps/sales/SalesQuoteDetailClient.tsx'),
+    source('lib/apps/sales/queries.ts'),
+    source('lib/apps/sales/types.ts'),
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+  ]);
+
+  assert.match(manifest, /key: "sales"[\s\S]*version: '3\.5\.0'/s);
+  assert.match(migration, /fromVersion: '3\.4\.1'/);
+  assert.match(migration, /toVersion: '3\.5\.0'/);
+  assert.match(runtimeMigrations, /SALES_3_4_1_TO_3_5_0/);
+
+  for (const table of [
+    'sales_quote_approval_policies',
+    'sales_quote_approval_policy_steps',
+    'sales_quote_approval_requests',
+    'sales_quote_approval_decisions',
+  ]) {
+    assert.ok(schema.includes('public.' + table), table + ' baseline schema');
+    assert.ok(migration.includes('public.' + table), table + ' migration');
+  }
+
+  assert.match(migration, /uq_sales_quote_approval_requests_active_quote/);
+  assert.match(migration, /UNIQUE\(request_id, step_number\)/);
+  assert.match(approvalService, /hasMatchingSalesQuoteApprovalPolicy/);
+  assert.match(approvalService, /policy\.priority ASC/);
+  assert.match(approvalService, /current_approver_user_id = \$2/);
+  assert.match(approvalService, /current_step_number/);
+  assert.match(approvalService, /step_snapshot/);
+  assert.match(approvalService, /Only the assigned approver can decide this step/);
+  assert.match(approvalService, /out of date/);
+  assert.match(approvalService, /sales_quote_approval_decisions/);
+  assert.match(approvalService, /sales_quote_approval_history/);
+  assert.match(approvalService, /tenant_users tu/);
+  assert.match(approvalService, /tu\.member_type = 'internal'/);
+  assert.match(commands, /hasMatchingSalesQuoteApprovalPolicy/);
+  assert.match(commands, /startSalesQuoteApprovalWorkflow/);
+  assert.match(commands, /reviewSalesQuoteApprovalStep/);
+  assert.match(commands, /sequential approval\. Review the assigned step from the Sales Approval Queue/);
+  assert.match(api, /approval_workflows/);
+  assert.match(api, /save_quote_approval_policy/);
+  assert.match(api, /deactivate_quote_approval_policy/);
+  assert.match(navigation, /'approvals'/);
+  assert.match(navigation, /canApproveInternally/);
+  assert.match(page, /SalesSectionPage view="approvals"/);
+  assert.match(workspace, /SalesQuoteApprovalWorkflowManager/);
+  assert.match(approvalUi, /save_quote_approval_policy/);
+  assert.match(approvalUi, /deactivate_quote_approval_policy/);
+  assert.match(approvalUi, /review_quote_approval/);
+  assert.match(approvalUi, /currentStepNumber/);
+  assert.match(quoteDetail, /Sequential approval in progress/);
+  assert.match(queries, /workflow_request_id/);
+  assert.match(types, /approvalWorkflow:/);
 });
