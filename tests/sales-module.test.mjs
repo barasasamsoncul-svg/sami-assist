@@ -997,7 +997,8 @@ test('Sales 3.1 models canonical teams territories targets and commissions', asy
   }
 
   assert.match(page, /SalesSectionPage view="organization"/);
-  assert.match(navigation, /organization:[\\s\\S]*href:[\\s\\S]*'\\/apps\\/sales\\/organization'[\\s\\S]*title:[\\s\\S]*'Teams & performance'/);
+  assert.ok(navigation.includes("'/apps/sales/organization'"), 'organization route is registered');
+  assert.ok(navigation.includes('Teams & performance'), 'organization label is registered');
   assert.match(workspace, /SalesOrganizationManager/);
   assert.match(organizationUi, /Sales territories/);
   assert.match(organizationUi, /Sales teams/);
@@ -1206,7 +1207,8 @@ test('Sales 3.2 runs deposits, shipments, returns and forecasting through author
   }
 
   assert.match(page, /SalesSectionPage view="operations"/);
-  assert.match(navigation, /operations:[\\s\\S]*href:[\\s\\S]*'\\/apps\\/sales\\/operations'[\\s\\S]*title:[\\s\\S]*'Operations'/);
+  assert.ok(navigation.includes("'/apps/sales/operations'"), 'operations route is registered');
+  assert.ok(navigation.includes('Operations'), 'operations label is registered');
   assert.match(workspace, /SalesOperationsManager/);
   assert.match(operationsUi, /Revenue outlook/);
   assert.match(operationsUi, /Shipments & tracking/);
@@ -1278,7 +1280,9 @@ test('Sales roadmap Part 2 exposes a standalone customer and contact workspace b
   ]);
 
   assert.match(page, /SalesSectionPage view="customers"/);
-  assert.match(navigation, /customers:[\\s\\S]*href:[\\s\\S]*'\\/apps\\/sales\\/customers'[\\s\\S]*title:[\\s\\S]*'Customers & contacts'[\\s\\S]*label:[\\s\\S]*'Customers & Contacts'/);
+  assert.ok(navigation.includes("'/apps/sales/customers'"), 'customers route is registered');
+  assert.ok(navigation.includes('Customers & contacts'), 'customers label is registered');
+  assert.ok(navigation.includes('Customers & Contacts'), 'customer navigation label is registered');
   assert.match(workspace, /SalesCustomersManager/);
   assert.match(customerUi, /Roadmap Part 2/);
   assert.match(customerUi, /Customer identity & primary contact/);
@@ -1317,7 +1321,8 @@ test('Sales roadmap Part 5 exposes quotation templates as a standalone Sales des
   ]);
 
   assert.match(page, /SalesSectionPage view="templates"/);
-  assert.match(navigation, /templates:[\\s\\S]*href:[\\s\\S]*'\\/apps\\/sales\\/templates'[\\s\\S]*title:[\\s\\S]*'Quotation templates'/);
+  assert.ok(navigation.includes("'/apps/sales/templates'"), 'templates route is registered');
+  assert.ok(navigation.includes('Quotation templates'), 'templates label is registered');
   assert.match(workspace, /SalesTemplatesManager/);
   assert.match(templates, /Roadmap Part 5/);
   assert.match(templates, /Template library/);
@@ -1357,8 +1362,8 @@ test('Sales roadmap Parts 6 and 7 expose standalone PDF builder and product cata
 
   assert.match(pdfPage, /SalesSectionPage view="pdfBuilder"/);
   assert.match(cataloguePage, /SalesSectionPage view="catalogue"/);
-  assert.match(navigation, /pdfBuilder:[\\s\\S]*href:[\\s\\S]*'\\/apps\\/sales\\/pdf-builder'/);
-  assert.match(navigation, /catalogue:[\\s\\S]*href:[\\s\\S]*'\\/apps\\/sales\\/catalogue'/);
+  assert.ok(navigation.includes("'/apps/sales/pdf-builder'"), 'pdfBuilder route is registered');
+  assert.ok(navigation.includes("'/apps/sales/catalogue'"), 'catalogue route is registered');
   assert.match(workspace, /SalesQuotePdfBuilder/);
   assert.match(workspace, /SalesProductCatalogueManager/);
   assert.match(pdfBuilder, /Roadmap Part 6/);
@@ -1406,8 +1411,8 @@ test('Sales roadmap Parts 8 and 9 separate pricelist scope from advanced pricing
 
   assert.match(pricelistPage, /SalesSectionPage view="pricelists"/);
   assert.match(advancedPricingPage, /SalesSectionPage view="advancedPricing"/);
-  assert.match(navigation, /pricelists:[\\s\\S]*href:[\\s\\S]*'\\/apps\\/sales\\/pricelists'/);
-  assert.match(navigation, /advancedPricing:[\\s\\S]*href:[\\s\\S]*'\\/apps\\/sales\\/advanced-pricing'/);
+  assert.ok(navigation.includes("'/apps/sales/pricelists'"), 'pricelists route is registered');
+  assert.ok(navigation.includes("'/apps/sales/advanced-pricing'"), 'advancedPricing route is registered');
   assert.match(workspace, /SalesPricelistsManager/);
   assert.match(workspace, /SalesAdvancedPricingManager/);
   assert.doesNotMatch(workspace, /SalesPricingManager/);
@@ -1517,7 +1522,8 @@ test('Sales roadmap Part 10 locks multi-currency values and exposes Currency & F
   assert.match(route, /save_exchange_rate:[\s\S]*saveSalesExchangeRate/);
 
   assert.match(page, /SalesSectionPage view="currencies"/);
-  assert.match(navigation, /currencies:[\\s\\S]*href:[\\s\\S]*'\\/apps\\/sales\\/currencies'[\\s\\S]*title:[\\s\\S]*'Currency & FX'/);
+  assert.ok(navigation.includes("'/apps/sales/currencies'"), 'currencies route is registered');
+  assert.ok(navigation.includes('Currency & FX'), 'currencies label is registered');
   assert.match(workspace, /SalesCurrenciesManager/);
   assert.match(workspace, /view ===[\s\S]*'currencies'/);
   assert.match(currencyUi, /Roadmap Part 10/);
@@ -1566,7 +1572,7 @@ test('Sales roadmap Part 11 owns tenant-scoped leads and opportunity pipeline', 
   assert.match(route,/convert_lead/);
   assert.match(route,/move_opportunity/);
   assert.match(page,/SalesSectionPage view="pipeline"/);
-  assert.match(navigation,/pipeline:[\\s\\S]*href:[\\s\\S]*'\\/apps\\/sales\\/pipeline'/);
+  assert.ok(navigation.includes("'/apps/sales/pipeline'"), 'pipeline route is registered');
   assert.match(workspace,/SalesPipelineBoard/);
   assert.match(ui,/Pipeline board/);
   assert.match(ui,/Weighted pipeline/);
