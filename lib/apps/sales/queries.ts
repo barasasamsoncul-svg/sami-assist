@@ -278,9 +278,33 @@ function salesCapabilities(
           .FORECAST_VIEW,
       ),
     canViewPipeline:
-      can(SALES_PERMISSIONS.PIPELINE_VIEW) || can(SALES_PERMISSIONS.PIPELINE_MANAGE),
+      can(
+        SALES_PERMISSIONS
+          .PIPELINE_VIEW,
+      ) ||
+      can(
+        SALES_PERMISSIONS
+          .PIPELINE_MANAGE,
+      ),
     canManagePipeline:
-      can(SALES_PERMISSIONS.PIPELINE_MANAGE),
+      can(
+        SALES_PERMISSIONS
+          .PIPELINE_MANAGE,
+      ),
+    canMovePipeline:
+      can(
+        SALES_PERMISSIONS
+          .PIPELINE_MANAGE,
+      ) ||
+      can(
+        SALES_PERMISSIONS
+          .PIPELINE_VIEW,
+      ),
+    canManagePipelineStages:
+      can(
+        SALES_PERMISSIONS
+          .PIPELINE_MANAGE,
+      ),
     canUseBillingCustomers:
       crossCan(
         INVOICING_CUSTOMER_VIEW,
@@ -545,45 +569,59 @@ export async function getSalesWorkspaceData():
       context.pool.query(
         `
           SELECT
-            id,
-            quote_number,
+            quote.id,
+            quote.quote_number,
             CASE
-              WHEN status IN (
+              WHEN quote.status IN (
                 'sent',
                 'viewed'
               )
-               AND valid_until IS NOT NULL
-               AND valid_until <
+               AND quote.valid_until IS NOT NULL
+               AND quote.valid_until <
                    CURRENT_DATE
               THEN 'expired'
-              ELSE status
+              ELSE quote.status
             END AS effective_status,
-            quote_date,
-            valid_until,
-            currency,
-            base_currency,
-            exchange_rate,
-            exchange_rate_date,
-            exchange_rate_source,
-            base_total_amount,
-            customer_name,
-            customer_email,
-            total_amount,
-            current_revision,
-            template_id,
-            pricelist_id,
-            margin_amount,
-            margin_percent,
-            reference,
-            approval_status,
-            sales_order_id,
-            latest_invoice_id,
-            created_at
-          FROM sales_quotes
-          WHERE company_id = $1
-            AND deleted_at IS NULL
+            quote.quote_date,
+            quote.valid_until,
+            quote.currency,
+            quote.base_currency,
+            quote.exchange_rate,
+            quote.exchange_rate_date,
+            quote.exchange_rate_source,
+            quote.base_total_amount,
+            quote.customer_name,
+            quote.customer_email,
+            quote.total_amount,
+            quote.current_revision,
+            quote.template_id,
+            quote.pricelist_id,
+            quote.margin_amount,
+            quote.margin_percent,
+            quote.reference,
+            quote.approval_status,
+            quote.sales_order_id,
+            quote.latest_invoice_id,
+            quote.created_at,
+            quote.stage_id,
+            quote.expected_close_date,
+            quote.probability_override,
+            stage.code AS stage_code,
+            stage.name AS stage_name,
+            COALESCE(
+              quote.probability_override,
+              stage.probability,
+              0
+            ) AS probability
+          FROM sales_quotes quote
+          LEFT JOIN sales_pipeline_stages stage
+            ON stage.id = quote.stage_id
+           AND stage.company_id = quote.company_id
+           AND stage.deleted_at IS NULL
+          WHERE quote.company_id = $1
+            AND quote.deleted_at IS NULL
           ORDER BY
-            created_at DESC
+            quote.created_at DESC
           LIMIT 250
         `,
         [
@@ -1100,6 +1138,38 @@ export async function getSalesWorkspaceData():
             row.latest_invoice_id
               ? String(
                   row.latest_invoice_id,
+                )
+              : null,
+          stageId:
+            row.stage_id
+              ? String(
+                  row.stage_id,
+                )
+              : null,
+          stageCode:
+            row.stage_code
+              ? String(
+                  row.stage_code,
+                )
+              : null,
+          stageName:
+            row.stage_name
+              ? String(
+                  row.stage_name,
+                )
+              : null,
+          probability:
+            Number(
+              row.probability ||
+              0,
+            ),
+          expectedCloseDate:
+            row.expected_close_date
+              ? String(
+                  row.expected_close_date,
+                ).slice(
+                  0,
+                  10,
                 )
               : null,
           createdAt:
@@ -1629,68 +1699,82 @@ export async function getSalesQuoteDetail(
       context.pool.query(
         `
           SELECT
-            id,
-            billing_customer_id,
-            quote_number,
+            quote.id,
+            quote.billing_customer_id,
+            quote.quote_number,
             CASE
-              WHEN status IN (
+              WHEN quote.status IN (
                 'sent',
                 'viewed'
               )
-               AND valid_until IS NOT NULL
-               AND valid_until <
+               AND quote.valid_until IS NOT NULL
+               AND quote.valid_until <
                    CURRENT_DATE
               THEN 'expired'
-              ELSE status
+              ELSE quote.status
             END AS effective_status,
-            quote_date,
-            valid_until,
-            currency,
-            base_currency,
-            exchange_rate,
-            exchange_rate_date,
-            exchange_rate_source,
-            base_total_amount,
-            reference,
-            approval_status,
-            approval_requested_at,
-            approved_at,
-            approval_rejected_at,
-            approval_rejection_reason,
-            customer_name,
-            customer_email,
-            customer_phone,
-            customer_tax_id,
-            billing_address,
-            shipping_address,
-            subtotal,
-            discount_total,
-            tax_total,
-            shipping_total,
-            total_amount,
-            current_revision,
-            template_id,
-            pricelist_id,
-            margin_amount,
-            margin_percent,
-            notes,
-            terms,
-            internal_notes,
-            sales_order_id,
-            latest_invoice_id,
-            sent_at,
-            viewed_at,
-            accepted_at,
-            accepted_by_name,
-            accepted_by_email,
-            acceptance_note,
-            rejected_at,
-            converted_at,
-            created_at
-          FROM sales_quotes
-          WHERE id = $1
-            AND company_id = $2
-            AND deleted_at IS NULL
+            quote.quote_date,
+            quote.valid_until,
+            quote.currency,
+            quote.base_currency,
+            quote.exchange_rate,
+            quote.exchange_rate_date,
+            quote.exchange_rate_source,
+            quote.base_total_amount,
+            quote.reference,
+            quote.approval_status,
+            quote.approval_requested_at,
+            quote.approved_at,
+            quote.approval_rejected_at,
+            quote.approval_rejection_reason,
+            quote.customer_name,
+            quote.customer_email,
+            quote.customer_phone,
+            quote.customer_tax_id,
+            quote.billing_address,
+            quote.shipping_address,
+            quote.subtotal,
+            quote.discount_total,
+            quote.tax_total,
+            quote.shipping_total,
+            quote.total_amount,
+            quote.current_revision,
+            quote.template_id,
+            quote.pricelist_id,
+            quote.margin_amount,
+            quote.margin_percent,
+            quote.notes,
+            quote.terms,
+            quote.internal_notes,
+            quote.sales_order_id,
+            quote.latest_invoice_id,
+            quote.sent_at,
+            quote.viewed_at,
+            quote.accepted_at,
+            quote.accepted_by_name,
+            quote.accepted_by_email,
+            quote.acceptance_note,
+            quote.rejected_at,
+            quote.converted_at,
+            quote.created_at,
+            quote.stage_id,
+            quote.expected_close_date,
+            quote.probability_override,
+            stage.code AS stage_code,
+            stage.name AS stage_name,
+            COALESCE(
+              quote.probability_override,
+              stage.probability,
+              0
+            ) AS probability
+          FROM sales_quotes quote
+          LEFT JOIN sales_pipeline_stages stage
+            ON stage.id = quote.stage_id
+           AND stage.company_id = quote.company_id
+           AND stage.deleted_at IS NULL
+          WHERE quote.id = $1
+            AND quote.company_id = $2
+            AND quote.deleted_at IS NULL
           LIMIT 1
         `,
         [
@@ -1966,6 +2050,38 @@ export async function getSalesQuoteDetail(
       row.latest_invoice_id
         ? String(
             row.latest_invoice_id,
+          )
+        : null,
+    stageId:
+      row.stage_id
+        ? String(
+            row.stage_id,
+          )
+        : null,
+    stageCode:
+      row.stage_code
+        ? String(
+            row.stage_code,
+          )
+        : null,
+    stageName:
+      row.stage_name
+        ? String(
+            row.stage_name,
+          )
+        : null,
+    probability:
+      Number(
+        row.probability ||
+        0,
+      ),
+    expectedCloseDate:
+      row.expected_close_date
+        ? String(
+            row.expected_close_date,
+          ).slice(
+            0,
+            10,
           )
         : null,
     createdAt:
