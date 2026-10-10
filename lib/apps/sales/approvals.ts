@@ -1,7 +1,7 @@
 import 'server-only';
 
 import crypto from 'crypto';
-import type { Pool, PoolClient } from 'pg';
+import type { PoolClient } from 'pg';
 import {
   cleanText,
   nullableText,
