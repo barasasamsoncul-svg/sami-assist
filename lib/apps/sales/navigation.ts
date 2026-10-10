@@ -16,6 +16,7 @@ export const SALES_ROUTE_VIEWS = [
   'advancedPricing',
   'currencies',
   'orders',
+  'approvals',
   'organization',
   'operations',
   'reports',
@@ -263,6 +264,23 @@ export const SALES_NAVIGATION:
         'Commercial',
       capability:
         'canViewPricing',
+      sidebar:
+        true,
+    },
+
+    approvals: {
+      href:
+        '/apps/sales/approvals',
+      title:
+        'Approval queue',
+      label:
+        'Approval Queue',
+      description:
+        'Review quotation approvals assigned to you and inspect previous decisions.',
+      group:
+        'Selling',
+      capability:
+        'canApproveInternally',
       sidebar:
         true,
     },
