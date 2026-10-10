@@ -72,6 +72,11 @@ export type SalesQuoteSummary = {
   approvalStatus: string;
   salesOrderId: string | null;
   latestInvoiceId: string | null;
+  stageId: string | null;
+  stageCode: string | null;
+  stageName: string | null;
+  probability: number;
+  expectedCloseDate: string | null;
   createdAt: string | null;
 };
 
@@ -268,6 +273,54 @@ export type SalesOrderDetail =
   };
 
 
+export type SalesPipelineStage = {
+  id: string;
+  code: string;
+  name: string;
+  sequence: number;
+  probability: number;
+  isWon: boolean;
+  isLost: boolean;
+  foldInKanban: boolean;
+  description: string | null;
+  color: string | null;
+  isActive: boolean;
+  quoteCount: number;
+  openValue: number;
+  weightedValue: number;
+};
+
+
+export type SalesStageHistoryEntry = {
+  id: string;
+  fromStageId: string | null;
+  fromStageName: string | null;
+  toStageId: string | null;
+  toStageName: string | null;
+  fromProbability: number | null;
+  toProbability: number | null;
+  reason: string | null;
+  changedBy: string | null;
+  createdAt: string;
+};
+
+
+export type SalesPipelineBoardData = {
+  stages: SalesPipelineStage[];
+  quotes: SalesQuoteSummary[];
+  totals: {
+    openPipeline: number;
+    weightedPipeline: number;
+    byStage: Array<{
+      stageId: string;
+      openValue: number;
+      weightedValue: number;
+      quoteCount: number;
+    }>;
+  };
+};
+
+
 export type SalesWorkspaceData = {
   company: {
     id: string;
@@ -307,6 +360,8 @@ export type SalesWorkspaceData = {
     canViewForecast: boolean;
     canViewPipeline: boolean;
     canManagePipeline: boolean;
+    canMovePipeline: boolean;
+    canManagePipelineStages: boolean;
     canUseBillingCustomers: boolean;
     canManageBillingCustomers: boolean;
     canUseCatalog: boolean;

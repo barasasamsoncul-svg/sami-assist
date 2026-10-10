@@ -12,18 +12,10 @@ import Link from 'next/link';
 
 import {
   BarChart3,
-  ContactRound,
   Download,
-  FileText,
-  LayoutDashboard,
-  LayoutTemplate,
-  PackageCheck,
   Plus,
   RefreshCw,
   Search,
-  Settings2,
-  ShoppingCart,
-  UsersRound,
 } from 'lucide-react';
 
 import {
@@ -55,11 +47,12 @@ import SalesPricelistsManager from '@/app/apps/sales/SalesPricelistsManager';
 import SalesAdvancedPricingManager from '@/app/apps/sales/SalesAdvancedPricingManager';
 
 import SalesCurrenciesManager from '@/app/apps/sales/SalesCurrenciesManager';
-import SalesPipelineManager from '@/app/apps/sales/SalesPipelineManager';
 
 import SalesOrganizationManager from '@/app/apps/sales/SalesOrganizationManager';
 
 import SalesOperationsManager from '@/app/apps/sales/SalesOperationsManager';
+
+import SalesPipelineBoard from '@/app/apps/sales/SalesPipelineBoard';
 
 import type {
   SalesWorkspaceData,
@@ -71,11 +64,12 @@ type View =
   | 'pipeline'
   | 'customers'
   | 'quotes'
+  | 'newQuote'
   | 'templates'
-  | 'pdf-builder'
+  | 'pdfBuilder'
   | 'catalogue'
   | 'pricelists'
-  | 'advanced-pricing'
+  | 'advancedPricing'
   | 'currencies'
   | 'orders'
   | 'organization'
@@ -97,7 +91,14 @@ const TUTORIAL:
         'Review quoted value, accepted business, converted orders and quotation response activity.',
     },
     {
-      id: 'pipeline', section: 'pipeline', title: 'Qualify leads and opportunities', description: 'Capture prospects, qualify opportunities and manage weighted deal stages through won or lost.'
+      id:
+        'pipeline',
+      section:
+        'pipeline',
+      title:
+        'Work the pipeline board',
+      description:
+        'Group open quotes into configurable stages with weighted probabilities, expected close dates and a live weighted-pipeline rollup.',
     },
     {
       id:
@@ -133,7 +134,7 @@ const TUTORIAL:
       id:
         'pdf-builder',
       section:
-        'pdf-builder',
+        'pdfBuilder',
       title:
         'Build quotation PDFs',
       description:
@@ -163,7 +164,7 @@ const TUTORIAL:
       id:
         'advanced-pricing',
       section:
-        'advanced-pricing',
+        'advancedPricing',
       title:
         'Configure advanced pricing',
       description:
@@ -734,167 +735,6 @@ export default function SalesWorkspaceClient({
     }
   }
 
-  const nav:
-    Array<{
-      key:
-        View;
-      label:
-        string;
-      icon:
-        typeof FileText;
-      visible:
-        boolean;
-    }> = [
-      {
-        key:
-          'overview',
-        label:
-          'Overview',
-        icon:
-          LayoutDashboard,
-        visible:
-          true,
-      },
-      {
-        key:
-          'customers',
-        label:
-          'Customers & contacts',
-        icon:
-          ContactRound,
-        visible:
-          initialData
-            .capabilities
-            .canUseBillingCustomers,
-      },
-      {
-        key:
-          'quotes',
-        label:
-          'Quotations',
-        icon:
-          FileText,
-        visible:
-          true,
-      },
-      {
-        key:
-          'templates',
-        label:
-          'Quotation templates',
-        icon:
-          LayoutTemplate,
-        visible:
-          true,
-      },
-      {
-        key:
-          'pdf-builder',
-        label:
-          'Quote / PDF builder',
-        icon:
-          FileText,
-        visible:
-          true,
-      },
-      {
-        key:
-          'catalogue',
-        label:
-          'Product catalogue',
-        icon:
-          PackageCheck,
-        visible:
-          initialData
-            .capabilities
-            .canUseCatalog,
-      },
-      {
-        key:
-          'pricelists',
-        label:
-          'Pricelists',
-        icon:
-          FileText,
-        visible:
-          initialData
-            .capabilities
-            .canViewPricing,
-      },
-      {
-        key:
-          'advanced-pricing',
-        label:
-          'Advanced pricing',
-        icon:
-          BarChart3,
-        visible:
-          initialData
-            .capabilities
-            .canViewPricing,
-      },
-      {
-        key:
-          'orders',
-        label:
-          'Sales orders',
-        icon:
-          ShoppingCart,
-        visible:
-          initialData
-            .capabilities
-            .canViewOrders,
-      },
-      {
-        key:
-          'organization',
-        label:
-          'Teams & performance',
-        icon:
-          UsersRound,
-        visible:
-          initialData
-            .capabilities
-            .canViewOrganization,
-      },
-      {
-        key:
-          'operations',
-        label:
-          'Operations',
-        icon:
-          PackageCheck,
-        visible:
-          initialData
-            .capabilities
-            .canViewOperations,
-      },
-      {
-        key:
-          'reports',
-        label:
-          'Reports',
-        icon:
-          BarChart3,
-        visible:
-          initialData
-            .capabilities
-            .canViewReports,
-      },
-      {
-        key:
-          'settings',
-        label:
-          'Settings',
-        icon:
-          Settings2,
-        visible:
-          initialData
-            .capabilities
-            .canManageSettings,
-      },
-    ];
-
   return (
     <>
       <SaMiOverlay
@@ -911,15 +751,7 @@ export default function SalesWorkspaceClient({
         moduleKey="sales"
         title="Sales tutorial"
         steps={
-          TUTORIAL.filter(
-            step =>
-              nav.some(
-                item =>
-                  item.key ===
-                    step.section &&
-                  item.visible,
-              ),
-          )
+          TUTORIAL
         }
         onStepChange={
           step => {
@@ -956,12 +788,11 @@ export default function SalesWorkspaceClient({
               </h1>
 
               <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">
-                Quotations, pricing, teams, deposits, shipping, returns, commissions, customer responses, forecasting, fulfillment and invoice handoff in one controlled flow.
+                Quotations, pipeline stages, pricing, teams, deposits, shipping, returns, commissions, customer responses, forecasting, fulfillment and invoice handoff in one controlled flow.
               </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
-
               {
                 initialData
                   .capabilities
@@ -1016,7 +847,6 @@ export default function SalesWorkspaceClient({
               </button>
             </div>
           </div>
-
         </section>
 
         {
@@ -1026,6 +856,33 @@ export default function SalesWorkspaceClient({
             <Overview
               data={
                 initialData
+              }
+            />
+          )
+        }
+
+        {
+          view ===
+            'pipeline' &&
+          initialData
+            .capabilities
+            .canViewPipeline &&
+          (
+            <SalesPipelineBoard
+              data={
+                initialData
+              }
+              busy={
+                busy
+              }
+              request={
+                request
+              }
+              showSuccess={
+                showSuccess
+              }
+              showError={
+                showError
               }
             />
           )
@@ -1125,6 +982,9 @@ export default function SalesWorkspaceClient({
                           Customer
                         </th>
                         <th className="px-4 py-3">
+                          Stage
+                        </th>
+                        <th className="px-4 py-3">
                           Status
                         </th>
                         <th className="px-4 py-3">
@@ -1147,7 +1007,7 @@ export default function SalesWorkspaceClient({
                               <tr>
                                 <td
                                   colSpan={
-                                    6
+                                    7
                                   }
                                   className="px-4 py-10 text-center text-sm text-slate-500"
                                 >
@@ -1194,6 +1054,31 @@ export default function SalesWorkspaceClient({
                                         '—'
                                       }
                                     </p>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    {
+                                      quote.stageName
+                                        ? (
+                                            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-slate-600 dark:text-slate-300">
+                                              {
+                                                quote.stageName
+                                              }
+                                              <span className="text-slate-400">
+                                                {
+                                                  Math.round(
+                                                    quote.probability,
+                                                  )
+                                                }
+                                                %
+                                              </span>
+                                            </span>
+                                          )
+                                        : (
+                                            <span className="text-xs text-slate-400">
+                                              —
+                                            </span>
+                                          )
+                                    }
                                   </td>
                                   <td className="px-4 py-3">
                                     <Status
@@ -1261,7 +1146,7 @@ export default function SalesWorkspaceClient({
 
         {
           view ===
-            'pdf-builder' &&
+            'pdfBuilder' &&
           (
             <SalesQuotePdfBuilder
               data={
@@ -1339,7 +1224,7 @@ export default function SalesWorkspaceClient({
 
         {
           view ===
-            'advanced-pricing' &&
+            'advancedPricing' &&
           initialData
             .capabilities
             .canViewPricing &&
@@ -1578,6 +1463,42 @@ export default function SalesWorkspaceClient({
                 showError
               }
             />
+          )
+        }
+
+        {
+          view ===
+            'newQuote' &&
+          (
+            <section className="sami-surface rounded-[26px] p-4 sm:p-5">
+              <div className="mb-4">
+                <h2 className="text-lg font-black">
+                  New quotation
+                </h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Build the complete commercial offer once; SaMi preserves it through approval, acceptance, order and invoice conversion.
+                </p>
+              </div>
+
+              <SalesQuoteComposer
+                data={
+                  initialData
+                }
+                busy={
+                  busy
+                }
+                onSave={
+                  saveQuote
+                }
+                onCancel={
+                  () => {
+                    router.push(
+                      '/apps/sales/quotes',
+                    );
+                  }
+                }
+              />
+            </section>
           )
         }
       </div>
@@ -2177,7 +2098,6 @@ function Settings({
           </button>
         </div>
       </form>
-
     </section>
   );
 }
