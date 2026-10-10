@@ -690,7 +690,7 @@ test('Sales v3 is registered into manifests, migrations, Search and SaMi AI', as
 
   assert.match(
     manifest,
-    /key: "sales",[\s\S]*version: '3\.4\.2'/s,
+    /key: "sales",[\s\S]*version: '3\.4\.3'/s,
   );
 
   assert.match(
@@ -1156,7 +1156,7 @@ test('Sales 3.2 runs deposits, shipments, returns and forecasting through author
   ]);
 
   assert.match(runtimeMigrations, /SALES_3_1_0_TO_3_2_0/);
-  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.2'/s);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.3'/s);
 
   for (const table of [
     'sales_shipments',
@@ -1542,7 +1542,7 @@ test('Sales roadmap Part 10 locks multi-currency values and exposes Currency & F
   assert.match(migration, /exchange_rate NUMERIC\(19,8\)/);
   assert.match(migration, /base_total_amount/);
   assert.match(runtimeMigrations, /SALES_3_2_0_TO_3_3_0/);
-  assert.match(modules, /key: "sales"[\s\S]*version: '3\.4\.2'/);
+  assert.match(modules, /key: "sales"[\s\S]*version: '3\.4\.3'/);
 
   assert.match(commands, /resolveSalesExchangeRate/);
   assert.match(commands, /salesBaseAmount/);
@@ -1618,7 +1618,7 @@ test('Sales roadmap Part 11 owns tenant-scoped leads and opportunity pipeline', 
     source('lib/apps/sales/schema.sql'),
   ]);
   assert.match(runtime,/SALES_3_3_0_TO_3_4_0/);
-  assert.match(manifest,/key: "sales"[\s\S]*version: '3\.4\.2'/);
+  assert.match(manifest,/key: "sales"[\s\S]*version: '3\.4\.3'/);
   for (const table of ['sales_pipeline_stages','sales_leads','sales_opportunities','sales_opportunity_stage_history']) {
     assert.match(migration,new RegExp('public\\.'+table));
     assert.match(schema,new RegExp('public\\.'+table));
@@ -1661,7 +1661,7 @@ test('Sales 3.4.1 migration is active and approval cannot be bypassed by accepta
     source('lib/apps/sales/delivery.ts'),
   ]);
 
-  assert.match(manifest, /key: "sales"[\s\S]*version: '3\.4\.2'/s);
+  assert.match(manifest, /key: "sales"[\s\S]*version: '3\.4\.3'/s);
   assert.match(migration, /fromVersion:[\s\S]*'3\.4\.0'/);
   assert.match(migration, /toVersion:[\s\S]*'3\.4\.1'/);
   assert.match(migration, /ADD COLUMN IF NOT EXISTS stage_id/);
@@ -1689,4 +1689,41 @@ test('Sales API returns correct HTTP statuses for missing or invalid authenticat
   assert.match(handleError, /NO_WORKSPACE_SELECTED:\s*409/);
   assert.match(handleError, /WORKSPACE_DATABASE_UNAVAILABLE:\s*503/);
   assert.match(handleError, /contextErrorStatuses\[error\.code\]\s*\?\?\s*500/);
+});
+
+
+test('Sales Priority 3 secures public acceptance and tracks customer change requests end to end', async () => {
+  const [route, publicService, portalActions, publicPage, queries, types, detailUi, signature] = await Promise.all([
+    source('app/api/public/sales/[tenantId]/[token]/route.ts'),
+    source('lib/apps/sales/public.ts'),
+    source('app/q/[tenantId]/[token]/PublicSalesQuoteActions.tsx'),
+    source('app/q/[tenantId]/[token]/page.tsx'),
+    source('lib/apps/sales/queries.ts'),
+    source('lib/apps/sales/types.ts'),
+    source('app/apps/sales/SalesQuoteDetailClient.tsx'),
+    source('lib/apps/sales/signature.ts'),
+  ]);
+
+  assert.match(route, /request_revision/);
+  assert.match(route, /INVALID_INPUT/);
+  assert.match(publicService, /input\.signatureConsent !== true/);
+  assert.match(publicService, /input\.action === 'request_revision'/);
+  assert.match(publicService, /sales\.quote\.customer_revision_requested/);
+  assert.match(publicService, /acceptance_signature_consent_text/);
+  assert.match(signature, /electronic signature/);
+  assert.match(portalActions, /signatureConsentAccepted/);
+  assert.match(portalActions, /SALES_QUOTE_ELECTRONIC_SIGNATURE_CONSENT/);
+  assert.match(portalActions, /Request changes/);
+  assert.match(publicPage, /PublicSalesQuoteActions/);
+  assert.match(queries, /sales\.quote\.customer_revision_requested/);
+  assert.match(queries, /acceptance_signature_consent_text/);
+  assert.match(types, /acceptedSignatureConsentText: string \| null/);
+  assert.match(types, /customerRevisionRequests: Array/);
+  assert.match(detailUi, /Customer acceptance evidence/);
+  assert.match(detailUi, /Customer change requests/);
+  assert.match(publicPage, /Quotation acceptance recorded/);
+  assert.match(publicPage, /This quotation page does not collect a payment/);
+  assert.match(publicPage, /SaMi Invoicing/);
+  assert.match(publicPage, /Quotation declined/);
+  assert.match(publicPage, /Quotation expired/);
 });

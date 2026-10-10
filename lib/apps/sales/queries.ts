@@ -1694,6 +1694,7 @@ export async function getSalesQuoteDetail(
     deliveries,
     revisions,
     optionalItems,
+    customerRevisionRequests,
   ] =
     await Promise.all([
       context.pool.query(
@@ -1754,6 +1755,7 @@ export async function getSalesQuoteDetail(
             quote.accepted_by_name,
             quote.accepted_by_email,
             quote.acceptance_note,
+            quote.acceptance_signature_consent_text,
             quote.rejected_at,
             quote.converted_at,
             quote.created_at,
@@ -1906,6 +1908,23 @@ export async function getSalesQuoteDetail(
           quoteId,
           context.companyId,
         ],
+      ),
+      context.pool.query(
+        `
+          SELECT id,
+                 metadata->>'requesterName' AS requester_name,
+                 metadata->>'requesterEmail' AS requester_email,
+                 metadata->>'reason' AS reason,
+                 created_at
+          FROM activities
+          WHERE company_id = $1
+            AND model = 'sales.quote'
+            AND record_id = $2
+            AND type = 'sales.quote.customer_revision_requested'
+          ORDER BY created_at DESC
+          LIMIT 100
+        `,
+        [context.companyId, quoteId],
       ),
     ]);
 
@@ -2214,6 +2233,10 @@ export async function getSalesQuoteDetail(
             row.acceptance_note,
           )
         : null,
+    acceptedSignatureConsentText:
+      row.acceptance_signature_consent_text
+        ? String(row.acceptance_signature_consent_text)
+        : null,
     rejectedAt:
       row.rejected_at
         ? new Date(
@@ -2419,6 +2442,14 @@ export async function getSalesQuoteDetail(
             ).toISOString(),
         }),
       ),
+    customerRevisionRequests:
+      customerRevisionRequests.rows.map(item => ({
+        id: String(item.id),
+        requesterName: item.requester_name ? String(item.requester_name) : null,
+        requesterEmail: item.requester_email ? String(item.requester_email) : null,
+        reason: item.reason ? String(item.reason) : '',
+        createdAt: new Date(item.created_at).toISOString(),
+      })),
     history:
       history.rows.map(
         item => ({

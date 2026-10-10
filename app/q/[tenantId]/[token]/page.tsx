@@ -185,6 +185,59 @@ export default async function PublicSalesQuotePage({
           </div>
         </section>
 
+        {quote.status === 'accepted' && (
+          <section
+            role="status"
+            aria-label="Quotation acceptance next steps"
+            className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950 sm:p-5"
+          >
+            <h2 className="text-sm font-black">Quotation acceptance recorded</h2>
+            <p className="mt-2 text-sm leading-6">
+              Thank you. Your acceptance has been recorded. The sales team can now process the order and arrange any required invoice or deposit through SaMi Invoicing.
+            </p>
+            {quote.salesOrderId && (
+              <p className="mt-2 text-sm leading-6">
+                Your accepted quotation is linked to a Sales order.
+              </p>
+            )}
+            {quote.latestInvoiceId ? (
+              <p className="mt-2 text-sm leading-6">
+                A related invoice exists. For your security, invoice details and any payment checkout are handled through the separate secure Invoicing link sent by the seller.
+              </p>
+            ) : (
+              <p className="mt-2 text-sm leading-6">
+                If a payment or deposit is required, the seller will send an invoice or payment request through SaMi Invoicing. This quotation page does not collect a payment.
+              </p>
+            )}
+          </section>
+        )}
+
+        {quote.status === 'rejected' && (
+          <section
+            role="status"
+            aria-label="Quotation declined"
+            className="rounded-2xl border border-slate-200 bg-white p-4 text-slate-800 sm:p-5"
+          >
+            <h2 className="text-sm font-black">Quotation declined</h2>
+            <p className="mt-2 text-sm leading-6">
+              Your response has been recorded. Contact the seller if you would like to discuss changes or receive a revised quotation.
+            </p>
+          </section>
+        )}
+
+        {quote.status === 'expired' && (
+          <section
+            role="status"
+            aria-label="Quotation expired"
+            className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950 sm:p-5"
+          >
+            <h2 className="text-sm font-black">Quotation expired</h2>
+            <p className="mt-2 text-sm leading-6">
+              This quotation is no longer valid for acceptance. Contact the seller to request an updated quotation.
+            </p>
+          </section>
+        )}
+
         <section className="grid gap-4 lg:grid-cols-2">
           <Card
             title="From"

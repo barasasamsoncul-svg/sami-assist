@@ -829,6 +829,53 @@ export default function SalesQuoteDetailClient({
               )
             }
 
+            {quote.acceptedAt && (
+              <div className="sami-surface rounded-[24px] p-4">
+                <h2 className="text-sm font-black">Customer acceptance evidence</h2>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">Accepted by</p>
+                    <p className="mt-1 text-sm font-semibold">{quote.acceptedByName || 'Name not recorded'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">Accepted at</p>
+                    <p className="mt-1 text-sm font-semibold">{new Date(quote.acceptedAt).toLocaleString()}</p>
+                  </div>
+                  {quote.acceptedByEmail && (
+                    <div><p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">Signer email</p><p className="mt-1 break-words text-sm">{quote.acceptedByEmail}</p></div>
+                  )}
+                  {quote.acceptanceNote && (
+                    <div><p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">Acceptance note</p><p className="mt-1 whitespace-pre-wrap text-sm">{quote.acceptanceNote}</p></div>
+                  )}
+                </div>
+                {quote.acceptedSignatureConsentText && (
+                  <div className="mt-4 rounded-xl border border-[var(--sami-border)] p-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">Electronic signature consent recorded</p>
+                    <p className="mt-2 text-sm leading-6">{quote.acceptedSignatureConsentText}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {quote.customerRevisionRequests.length > 0 && (
+              <div className="sami-surface rounded-[24px] p-4">
+                <h2 className="text-sm font-black">Customer change requests</h2>
+                <p className="mt-1 text-xs text-slate-500">These customer requests are part of the quotation activity trail; they do not change the quotation or approval status by themselves.</p>
+                <div className="mt-3 space-y-3">
+                  {quote.customerRevisionRequests.map(request => (
+                    <div key={request.id} className="rounded-xl border border-[var(--sami-border)] p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs font-black">{request.requesterName || 'Customer'}</p>
+                        <p className="text-[10px] text-slate-500">{new Date(request.createdAt).toLocaleString()}</p>
+                      </div>
+                      {request.requesterEmail && <p className="mt-1 break-words text-xs text-slate-500">{request.requesterEmail}</p>}
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{request.reason}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {
               quote.revisions
                 .length >

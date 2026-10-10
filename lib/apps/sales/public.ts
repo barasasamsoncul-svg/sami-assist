@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { assertSalesQuoteApprovalSatisfied } from '@/lib/apps/sales/approvals';
+import { SALES_QUOTE_ELECTRONIC_SIGNATURE_CONSENT } from '@/lib/apps/sales/signature';
 
 import crypto from 'crypto';
 
@@ -702,12 +703,19 @@ export async function respondToPublicSalesQuote(
   input: {
     action:
       'accept' |
-      'reject';
+      'reject' |
+      'request_revision';
     reason?:
       unknown;
     signerName?:
       unknown;
     signerEmail?:
+      unknown;
+    signatureConsent?:
+      unknown;
+    requesterName?:
+      unknown;
+    requesterEmail?:
       unknown;
     acceptanceNote?:
       unknown;
@@ -852,6 +860,31 @@ export async function respondToPublicSalesQuote(
       );
     }
 
+    if (input.action === 'request_revision') {
+      const revisionReason = nullableText(input.reason, 2000);
+      const requesterName = nullableText(input.requesterName, 255);
+      const requesterEmail = nullableText(input.requesterEmail, 320);
+      if (!revisionReason || revisionReason.trim().length < 5) {
+        throw new SalesError('INVALID_INPUT', 'Describe the changes you are requesting (at least 5 characters).');
+      }
+      if (!requesterName || requesterName.trim().length < 2) {
+        throw new SalesError('INVALID_INPUT', 'Enter your name so the sales team knows who requested these changes.');
+      }
+      if (requesterEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(requesterEmail)) {
+        throw new SalesError('INVALID_INPUT', 'Enter a valid email address or leave the email field blank.');
+      }
+      await recordSalesActivity(client, {
+        companyId: String(quote.company_id),
+        userId: null,
+        quoteId: String(quote.id),
+        type: 'sales.quote.customer_revision_requested',
+        content: 'Customer requested changes to quotation ' + String(quote.quote_number) + '.',
+        metadata: { requesterName: requesterName.trim(), requesterEmail: requesterEmail || null, reason: revisionReason.trim() },
+      });
+      await client.query('COMMIT');
+      return { id: String(quote.id), status: current, response: 'revision_requested' };
+    }
+
     if (
       input.action ===
         'accept' &&
@@ -898,6 +931,18 @@ export async function respondToPublicSalesQuote(
       );
     }
 
+    const signerName = input.action === 'accept' ? nullableText(input.signerName, 255) : null;
+    const signerEmail = input.action === 'accept' ? nullableText(input.signerEmail, 320) : null;
+    if (input.action === 'accept' && !signerName) {
+      throw new SalesError('INVALID_INPUT', 'Enter the name of the person accepting this quotation.');
+    }
+    if (input.action === 'accept' && input.signatureConsent !== true) {
+      throw new SalesError('INVALID_INPUT', 'Confirm the electronic signature statement before accepting this quotation.');
+    }
+    if (signerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(signerEmail)) {
+      throw new SalesError('INVALID_INPUT', 'Enter a valid email address or leave the email field blank.');
+    }
+
     const next =
       input.action ===
         'accept'
@@ -913,23 +958,9 @@ export async function respondToPublicSalesQuote(
           )
         : null;
 
-    const signerName =
-      input.action ===
-        'accept'
-        ? nullableText(
-            input.signerName,
-            255,
-          )
-        : null;
-
-    const signerEmail =
-      input.action ===
-        'accept'
-        ? nullableText(
-            input.signerEmail,
-            320,
-          )
-        : null;
+    if (input.action === 'reject' && !reason) {
+      throw new SalesError('INVALID_INPUT', 'Enter a reason for declining this quotation.');
+    }
 
     const acceptanceNote =
       input.action ===
@@ -1366,6 +1397,13 @@ export async function respondToPublicSalesQuote(
               THEN $6
               ELSE acceptance_note
             END,
+          acceptance_signature_consent_text =
+            CASE
+              WHEN $3::varchar(30) =
+                   'accepted'
+              THEN $7
+              ELSE acceptance_signature_consent_text
+            END,
           public_enabled =
             FALSE,
           updated_at =
@@ -1380,6 +1418,7 @@ export async function respondToPublicSalesQuote(
         signerName,
         signerEmail,
         acceptanceNote,
+        input.action === 'accept' ? SALES_QUOTE_ELECTRONIC_SIGNATURE_CONSENT : null,
       ],
     );
 
