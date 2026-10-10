@@ -20,6 +20,8 @@ const emptyStep = (): Step => ({ approverUserId: '', approverRoleKey: 'sales.quo
 export default function SalesApprovalsManager() {
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
+  const [policyId, setPolicyId] = useState<string | null>(null);
+  const [isActive, setIsActive] = useState(true);
   const [name, setName] = useState('');
   const [priority, setPriority] = useState('100');
   const [minTotal, setMinTotal] = useState('');
@@ -49,7 +51,7 @@ export default function SalesApprovalsManager() {
         method: 'POST', cache: 'no-store', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'save_approval_policy', name, priority,
+          action: 'save_approval_policy', policyId, isActive, name, priority,
           minQuoteTotal: minTotal || null,
           maxDiscountPercent: maxDiscount || null,
           minMarginPercent: minMargin || null,
@@ -63,7 +65,7 @@ export default function SalesApprovalsManager() {
       });
       const body = await response.json();
       if (!response.ok || body.success !== true) throw new Error(body.error || 'Could not save policy.');
-      setName(''); setPriority('100'); setMinTotal(''); setMaxDiscount(''); setMinMargin(''); setCurrency(''); setSteps([emptyStep()]);
+      setPolicyId(null); setIsActive(true); setName(''); setPriority('100'); setMinTotal(''); setMaxDiscount(''); setMinMargin(''); setCurrency(''); setSteps([emptyStep()]);
       setNotice('Approval policy saved. New submissions will use the active policy rules.');
       await refresh();
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not save policy.'); }
@@ -88,6 +90,7 @@ export default function SalesApprovalsManager() {
         <h2 className="text-base font-black">Create approval policy</h2>
         <p className="mt-1 text-xs text-slate-500">A policy triggers when any configured condition is met. Higher-priority policies are evaluated first.</p>
         <form onSubmit={savePolicy} className="mt-4 space-y-4">
+          {policyId && <div className="flex items-center justify-between rounded-xl border border-[var(--sami-border)] p-3"><p className="text-xs font-bold">Editing existing policy</p><div className="flex items-center gap-3"><label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" checked={isActive} onChange={e => setIsActive(e.target.checked)} /> Active</label><button type="button" onClick={() => { setPolicyId(null); setIsActive(true); setName(''); setPriority('100'); setMinTotal(''); setMaxDiscount(''); setMinMargin(''); setCurrency(''); setSteps([emptyStep()]); }} className="text-xs font-bold underline">Cancel edit</button></div></div>}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <label className="text-xs font-bold">Policy name<input required maxLength={160} value={name} onChange={e => setName(e.target.value)} className="mt-1 block w-full rounded-xl border border-[var(--sami-border)] bg-transparent p-3 text-sm" placeholder="Large quote approval" /></label>
             <label className="text-xs font-bold">Priority<input type="number" min="1" value={priority} onChange={e => setPriority(e.target.value)} className="mt-1 block w-full rounded-xl border border-[var(--sami-border)] bg-transparent p-3 text-sm" /></label>
@@ -119,7 +122,7 @@ export default function SalesApprovalsManager() {
           {policies.length === 0 && <p className="text-sm text-slate-500">No configurable policies yet. The existing Sales approval threshold remains available as a compatibility fallback.</p>}
           {policies.map(policy => (
             <article key={policy.id} className="rounded-xl border border-[var(--sami-border)] p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-black">{policy.name}</h3><span className="text-xs text-slate-500">{policy.is_active ? 'Active' : 'Inactive'} · priority {policy.priority}</span></div>
+              <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-black">{policy.name}</h3><div className="flex items-center gap-2"><span className="text-xs text-slate-500">{policy.is_active ? 'Active' : 'Inactive'} · priority {policy.priority}</span><button type="button" onClick={() => { setPolicyId(policy.id); setIsActive(policy.is_active); setName(policy.name); setPriority(String(policy.priority)); setMinTotal(policy.min_quote_total == null ? '' : String(policy.min_quote_total)); setMaxDiscount(policy.max_discount_percent == null ? '' : String(policy.max_discount_percent)); setMinMargin(policy.min_margin_percent == null ? '' : String(policy.min_margin_percent)); setCurrency(policy.currency_code || ''); setSteps((policy.steps || []).map(step => ({ approverUserId: String(step.approverUserId || ''), approverRoleKey: String(step.approverRoleKey || ''), requiredApprovals: Number(step.requiredApprovals || 1) }))); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="rounded-lg border border-[var(--sami-border)] px-2 py-1 text-xs font-bold">Edit</button></div></div>
               <p className="mt-1 text-xs text-slate-500">Triggers: {policy.min_quote_total != null ? 'total ≥ ' + policy.min_quote_total + ' ' + (policy.currency_code || 'any currency') : ''}{policy.max_discount_percent != null ? (policy.min_quote_total != null ? ' · ' : '') + 'discount > ' + policy.max_discount_percent + '%' : ''}{policy.min_margin_percent != null ? ((policy.min_quote_total != null || policy.max_discount_percent != null) ? ' · ' : '') + 'margin < ' + policy.min_margin_percent + '%' : ''}</p>
               <p className="mt-1 text-xs text-slate-500">{policy.steps?.length || 0} sequential step(s)</p>
             </article>
