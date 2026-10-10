@@ -96,6 +96,11 @@ export async function saveSalesQuoteApprovalPolicy(input: Record<string, unknown
     const policyId = optionalUuid(input.policyId);
     let savedId = policyId;
     if (policyId) {
+      const inUse = await client.query(
+        `SELECT 1 FROM sales_quote_approval_requests WHERE company_id=$1 AND policy_id=$2 AND status='pending' LIMIT 1`,
+        [context.companyId, policyId],
+      );
+      if (inUse.rows.length) throw new SalesError('QUOTE_STATE_INVALID', 'This policy has pending quotations. Finish or reject those approvals before changing its steps.');
       const updated = await client.query(
         `UPDATE sales_quote_approval_policies SET name=$3,is_active=$4,priority=$5,min_quote_total=$6,max_discount_percent=$7,min_margin_percent=$8,currency_code=$9,updated_by=$10,updated_at=NOW()
          WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL RETURNING id`,
@@ -231,7 +236,9 @@ export async function reviewAdvancedSalesQuoteApproval(input: Record<string, unk
     const request = requestResult.rows[0] as Record<string, unknown>;
     if (String(request.quote_fingerprint) !== snapshot.fingerprint) {
       await client.query(`UPDATE sales_quote_approval_requests SET status='superseded',completed_at=NOW(),updated_at=NOW() WHERE id=$1 AND company_id=$2`, [request.id, context.companyId]);
-      throw new SalesError('QUOTE_STATE_INVALID', 'Quotation terms changed after submission. Submit the updated quotation for approval again.');
+      await client.query(`UPDATE sales_quotes SET approval_status='draft',approval_requested_at=NULL,approval_requested_by=NULL,updated_at=NOW() WHERE id=$1 AND company_id=$2`, [quoteId, context.companyId]);
+      await client.query('COMMIT');
+      throw new SalesError('QUOTE_STATE_INVALID', 'Quotation terms changed after submission. The stale request was closed; submit the updated quotation for approval again.');
     }
     const stepResult = await client.query(
       `SELECT * FROM sales_quote_approval_policy_steps WHERE company_id=$1 AND policy_id=$2 AND step_order=$3`,
