@@ -85,6 +85,7 @@ export async function saveSalesQuoteApprovalPolicy(input: Record<string, unknown
     throw new SalesError('INVALID_INPUT', 'Add between 1 and 10 approval steps.');
   }
   const priority = numberInput(input.priority ?? 100, 'Priority', { min: 1, max: 100000 });
+  if (!Number.isInteger(priority)) throw new SalesError('INVALID_INPUT', 'Priority must be a whole number.');
   const minTotal = input.minQuoteTotal === '' || input.minQuoteTotal == null ? null : numberInput(input.minQuoteTotal, 'Minimum quote total');
   const maxDiscount = input.maxDiscountPercent === '' || input.maxDiscountPercent == null ? null : numberInput(input.maxDiscountPercent, 'Maximum discount percent', { min: 0, max: 100 });
   const minMargin = input.minMarginPercent === '' || input.minMarginPercent == null ? null : numberInput(input.minMarginPercent, 'Minimum margin percent', { min: 0, max: 100 });
@@ -94,13 +95,14 @@ export async function saveSalesQuoteApprovalPolicy(input: Record<string, unknown
   const steps = input.steps.map((raw: unknown, index: number) => {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new SalesError('INVALID_INPUT', 'An approval step is invalid.');
     const step = raw as Record<string, unknown>;
-    const rawUserId = cleanText(step.approverUserId, 36);
+    const rawUserId = cleanText(step.approverUserId, 100);
     const userId = optionalUuid(rawUserId);
     if (rawUserId && !userId) throw new SalesError('INVALID_INPUT', `Step ${index + 1} user ID must be a valid UUID.`);
     const roleKey = cleanText(step.approverRoleKey, 120).toLowerCase() || null;
     if (!userId && !roleKey) throw new SalesError('INVALID_INPUT', `Step ${index + 1} needs a user or permission key.`);
     if (roleKey && !/^[a-z0-9][a-z0-9._:-]*$/.test(roleKey)) throw new SalesError('INVALID_INPUT', `Step ${index + 1} permission key is invalid.`);
     const required = numberInput(step.requiredApprovals ?? 1, 'Required approvals', { min: 1, max: 20 });
+    if (!Number.isInteger(required)) throw new SalesError('INVALID_INPUT', 'Required approvals must be a whole number.');
     if (required > 1 && !roleKey) throw new SalesError('INVALID_INPUT', `Step ${index + 1} needs an approver permission key when more than one approval is required.`);
     return { order: index + 1, userId, roleKey, required };
   });
