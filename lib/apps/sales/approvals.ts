@@ -85,7 +85,9 @@ export async function saveSalesQuoteApprovalPolicy(input: Record<string, unknown
     const roleKey = cleanText(step.approverRoleKey, 120).toLowerCase() || null;
     if (!userId && !roleKey) throw new SalesError('INVALID_INPUT', `Step ${index + 1} needs a user or permission key.`);
     if (roleKey && !/^[a-z0-9][a-z0-9._:-]*$/.test(roleKey)) throw new SalesError('INVALID_INPUT', `Step ${index + 1} permission key is invalid.`);
-    return { order: index + 1, userId, roleKey, required: numberInput(step.requiredApprovals ?? 1, 'Required approvals', { min: 1, max: 20 }) };
+    const required = numberInput(step.requiredApprovals ?? 1, 'Required approvals', { min: 1, max: 20 });
+    if (required > 1 && !roleKey) throw new SalesError('INVALID_INPUT', `Step ${index + 1} needs an approver permission key when more than one approval is required.`);
+    return { order: index + 1, userId, roleKey, required };
   });
 
   const client = await context.pool.connect();
