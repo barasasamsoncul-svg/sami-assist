@@ -54,15 +54,20 @@ test('approval engine enforces sequential assigned reviewers and records immutab
 });
 
 test('quote acceptance and order conversion still require completed approval', async () => {
-  const [commands, publicSales, delivery] = await Promise.all([
+  const [commands, publicSales, delivery, engine] = await Promise.all([
     source('lib/apps/sales/commands.ts'),
     source('lib/apps/sales/public.ts'),
     source('lib/apps/sales/delivery.ts'),
+    source('lib/apps/sales/approvals.ts'),
   ]);
   assert.match(commands, /Complete internal quotation approval before accepting this quote/);
   assert.match(commands, /Complete internal quotation approval before creating a sales order/);
   assert.match(publicSales, /Complete internal quotation approval before accepting this quote/);
   assert.match(delivery, /Complete internal quotation approval before sending/);
+  assert.match(delivery, /assertSalesQuoteApprovalSatisfied/);
+  assert.match(publicSales, /assertSalesQuoteApprovalSatisfied/);
+  assert.match(commands, /assertSalesQuoteApprovalSatisfied/);
+  assert.match(engine, /This quotation matches an approval policy and cannot proceed/);
 });
 
 test('approval policy and queue are available in the Sales UI', async () => {
