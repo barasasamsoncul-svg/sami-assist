@@ -1139,8 +1139,35 @@ export default function SalesQuoteDetailClient({
             }
 
             {
+              quote.approvalStatus === 'pending' &&
+              quote.approvalWorkflow &&
+              (
+                <ActionCard
+                  title="Sequential approval in progress"
+                  text={
+                    'Step ' +
+                    quote.approvalWorkflow.currentStepNumber +
+                    ' of ' +
+                    quote.approvalWorkflow.totalSteps +
+                    ': ' +
+                    quote.approvalWorkflow.currentStepName +
+                    '. Each step must be completed by its assigned approver.'
+                  }
+                >
+                  <Link
+                    href="/apps/sales/approvals"
+                    className="flex h-11 w-full items-center justify-center rounded-xl bg-blue-600 text-xs font-black text-white"
+                  >
+                    Open approval queue
+                  </Link>
+                </ActionCard>
+              )
+            }
+
+            {
               quote.approvalStatus ===
                 'pending' &&
+              !quote.approvalWorkflow &&
               workspace
                 .capabilities
                 .canApproveInternally &&
