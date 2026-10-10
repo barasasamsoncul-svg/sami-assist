@@ -1504,7 +1504,7 @@ test('Sales roadmap Part 10 locks multi-currency values and exposes Currency & F
 
   assert.equal(
     (schema.match(/base_currency VARCHAR\(3\)/g) || []).length,
-    2,
+    3,
   );
   assert.equal(
     (schema.match(/exchange_rate NUMERIC\(19,8\)/g) || []).length,
