@@ -84,7 +84,7 @@ async function getInternalWorkspaceUsers(
   }
 
   const result = await queryControl(
-    \`
+    `
       SELECT
         u.id,
         COALESCE(
@@ -108,7 +108,7 @@ async function getInternalWorkspaceUsers(
         tu.is_owner DESC,
         LOWER(COALESCE(u.full_name, u.email)),
         u.id
-    \`,
+    `,
     [tenantId, uniqueIds],
   );
 
@@ -158,7 +158,7 @@ export async function hasMatchingSalesQuoteApprovalPolicy(
   baseTotalAmount: number,
 ) {
   const result = await client.query(
-    \`
+    `
       SELECT EXISTS (
         SELECT 1
         FROM sales_quote_approval_policies policy
@@ -177,7 +177,7 @@ export async function hasMatchingSalesQuoteApprovalPolicy(
               AND step.company_id = policy.company_id
           )
       ) AS required
-    \`,
+    `,
     [companyId, baseTotalAmount],
   );
 
@@ -190,7 +190,7 @@ export async function getActiveSalesQuoteApprovalRequest(
   quoteId: string,
 ) {
   const result = await client.query(
-    \`
+    `
       SELECT
         id,
         policy_id,
@@ -204,7 +204,7 @@ export async function getActiveSalesQuoteApprovalRequest(
         AND status = 'pending'
       LIMIT 1
       FOR UPDATE
-    \`,
+    `,
     [companyId, quoteId],
   );
 
@@ -236,7 +236,7 @@ export async function startSalesQuoteApprovalWorkflow(
 ) {
   const baseTotalAmount = money(quoteRow.base_total_amount);
   const selected = await client.query(
-    \`
+    `
       SELECT policy.id, policy.name
       FROM sales_quote_approval_policies policy
       WHERE policy.company_id = $1
@@ -259,7 +259,7 @@ export async function startSalesQuoteApprovalWorkflow(
         policy.created_at ASC,
         policy.id ASC
       LIMIT 1
-    \`,
+    `,
     [context.companyId, baseTotalAmount],
   );
 
@@ -267,13 +267,13 @@ export async function startSalesQuoteApprovalWorkflow(
 
   const policy = selected.rows[0];
   const stepsResult = await client.query(
-    \`
+    `
       SELECT step_number, step_name, approver_user_id
       FROM sales_quote_approval_policy_steps
       WHERE company_id = $1
         AND policy_id = $2
       ORDER BY step_number ASC
-    \`,
+    `,
     [context.companyId, policy.id],
   );
 
@@ -317,7 +317,7 @@ export async function startSalesQuoteApprovalWorkflow(
   });
 
   const inserted = await client.query(
-    \`
+    `
       INSERT INTO sales_quote_approval_requests (
         company_id,
         quote_id,
@@ -340,7 +340,7 @@ export async function startSalesQuoteApprovalWorkflow(
         $6, $7, $8, $9, $10::jsonb, $4, $4
       )
       RETURNING id, requested_at
-    \`,
+    `,
     [
       context.companyId,
       quoteId,
@@ -357,7 +357,7 @@ export async function startSalesQuoteApprovalWorkflow(
 
   const request = inserted.rows[0];
   await client.query(
-    \`
+    `
       UPDATE sales_quotes
       SET
         approval_status = 'pending',
@@ -372,17 +372,17 @@ export async function startSalesQuoteApprovalWorkflow(
         updated_by = $4,
         updated_at = NOW()
       WHERE id = $1 AND company_id = $2
-    \`,
+    `,
     [quoteId, context.companyId, request.id, context.userId],
   );
 
   await client.query(
-    \`
+    `
       INSERT INTO sales_quote_approval_history (
         quote_id, company_id, from_status, to_status, reason, changed_by
       )
       VALUES ($1, $2, $3, 'pending', $4, $5)
-    \`,
+    `,
     [
       quoteId,
       context.companyId,
@@ -432,12 +432,12 @@ export async function reviewSalesQuoteApprovalStep(
     await client.query('BEGIN');
 
     const requestReference = await client.query(
-      \`
+      `
         SELECT quote_id
         FROM sales_quote_approval_requests
         WHERE id = $1 AND company_id = $2
         LIMIT 1
-      \`,
+      `,
       [requestId, context.companyId],
     );
 
@@ -451,13 +451,13 @@ export async function reviewSalesQuoteApprovalStep(
     }
 
     const quoteResult = await client.query(
-      \`
+      `
         SELECT id, quote_number, status, approval_status, current_revision,
                approval_workflow_request_id
         FROM sales_quotes
         WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL
         FOR UPDATE
-      \`,
+      `,
       [quoteId, context.companyId],
     );
     if (!quoteResult.rows.length) {
@@ -465,12 +465,12 @@ export async function reviewSalesQuoteApprovalStep(
     }
 
     const requestResult = await client.query(
-      \`
+      `
         SELECT *
         FROM sales_quote_approval_requests
         WHERE id = $1 AND company_id = $2 AND quote_id = $3
         FOR UPDATE
-      \`,
+      `,
       [requestId, context.companyId, quoteId],
     );
     if (!requestResult.rows.length) {
@@ -508,13 +508,13 @@ export async function reviewSalesQuoteApprovalStep(
 
     const outcome = decision === 'approve' ? 'approved' : 'rejected';
     await client.query(
-      \`
+      `
         INSERT INTO sales_quote_approval_decisions (
           company_id, request_id, quote_id, step_number, step_name,
           approver_user_id, decision, note, decided_at
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-      \`,
+      `,
       [
         context.companyId,
         requestId,
@@ -529,16 +529,16 @@ export async function reviewSalesQuoteApprovalStep(
 
     if (outcome === 'rejected') {
       await client.query(
-        \`
+        `
           UPDATE sales_quote_approval_requests
           SET status = 'rejected', current_approver_user_id = NULL,
               completed_at = NOW(), updated_by = $3, updated_at = NOW()
           WHERE id = $1 AND company_id = $2
-        \`,
+        `,
         [requestId, context.companyId, context.userId],
       );
       await client.query(
-        \`
+        `
           UPDATE sales_quotes
           SET approval_status = 'rejected',
               approval_rejected_at = NOW(),
@@ -547,33 +547,33 @@ export async function reviewSalesQuoteApprovalStep(
               updated_by = $3,
               updated_at = NOW()
           WHERE id = $1 AND company_id = $2
-        \`,
+        `,
         [quoteId, context.companyId, context.userId, note],
       );
     } else {
       const nextStep = snapshot[stepNumber];
       if (nextStep) {
         await client.query(
-          \`
+          `
             UPDATE sales_quote_approval_requests
             SET current_step_number = $3, current_approver_user_id = $4,
                 updated_by = $5, updated_at = NOW()
             WHERE id = $1 AND company_id = $2
-          \`,
+          `,
           [requestId, context.companyId, nextStep.stepNumber, nextStep.approverUserId, context.userId],
         );
       } else {
         await client.query(
-          \`
+          `
             UPDATE sales_quote_approval_requests
             SET status = 'approved', current_approver_user_id = NULL,
                 completed_at = NOW(), updated_by = $3, updated_at = NOW()
             WHERE id = $1 AND company_id = $2
-          \`,
+          `,
           [requestId, context.companyId, context.userId],
         );
         await client.query(
-          \`
+          `
             UPDATE sales_quotes
             SET approval_status = 'approved',
                 approved_at = NOW(),
@@ -584,7 +584,7 @@ export async function reviewSalesQuoteApprovalStep(
                 updated_by = $3,
                 updated_at = NOW()
             WHERE id = $1 AND company_id = $2
-          \`,
+          `,
           [quoteId, context.companyId, context.userId],
         );
       }
@@ -605,12 +605,12 @@ export async function reviewSalesQuoteApprovalStep(
           snapshot[stepNumber].stepName + ').';
 
     await client.query(
-      \`
+      `
         INSERT INTO sales_quote_approval_history (
           quote_id, company_id, from_status, to_status, reason, changed_by
         )
         VALUES ($1, $2, 'pending', $3, $4, $5)
-      \`,
+      `,
       [quoteId, context.companyId, historyStatus, historyReason, context.userId],
     );
 
@@ -680,7 +680,7 @@ export async function saveSalesQuoteApprovalPolicy(
   await requireActiveWorkspaceUsers(context.tenantId, steps.map(step => step.approverUserId));
 
   const duplicate = await context.pool.query(
-    \`
+    `
       SELECT 1
       FROM sales_quote_approval_policies
       WHERE company_id = $1
@@ -688,7 +688,7 @@ export async function saveSalesQuoteApprovalPolicy(
         AND deleted_at IS NULL
         AND ($3::uuid IS NULL OR id <> $3)
       LIMIT 1
-    \`,
+    `,
     [context.companyId, name, id],
   );
   if (duplicate.rows.length) {
@@ -702,14 +702,14 @@ export async function saveSalesQuoteApprovalPolicy(
 
     if (policyId) {
       const updated = await client.query(
-        \`
+        `
           UPDATE sales_quote_approval_policies
           SET name = $3, priority = $4, min_base_amount = $5,
               max_base_amount = $6, is_active = $7,
               updated_by = $8, updated_at = NOW()
           WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL
           RETURNING id
-        \`,
+        `,
         [
           policyId,
           context.companyId,
@@ -726,14 +726,14 @@ export async function saveSalesQuoteApprovalPolicy(
       }
     } else {
       const inserted = await client.query(
-        \`
+        `
           INSERT INTO sales_quote_approval_policies (
             company_id, name, priority, min_base_amount, max_base_amount,
             is_active, created_by, updated_by
           )
           VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
           RETURNING id
-        \`,
+        `,
         [
           context.companyId,
           name,
@@ -748,18 +748,18 @@ export async function saveSalesQuoteApprovalPolicy(
     }
 
     await client.query(
-      \`DELETE FROM sales_quote_approval_policy_steps WHERE policy_id = $1 AND company_id = $2\`,
+      `DELETE FROM sales_quote_approval_policy_steps WHERE policy_id = $1 AND company_id = $2`,
       [policyId, context.companyId],
     );
 
     for (const step of steps) {
       await client.query(
-        \`
+        `
           INSERT INTO sales_quote_approval_policy_steps (
             company_id, policy_id, step_number, step_name, approver_user_id
           )
           VALUES ($1, $2, $3, $4, $5)
-        \`,
+        `,
         [context.companyId, policyId, step.stepNumber, step.stepName, step.approverUserId],
       );
     }
@@ -782,12 +782,12 @@ export async function deactivateSalesQuoteApprovalPolicy(
   const context = await requireSalesContext(SALES_PERMISSIONS.SETTINGS_MANAGE);
   const id = requireUuid(input.id, 'Approval policy');
   const result = await context.pool.query(
-    \`
+    `
       UPDATE sales_quote_approval_policies
       SET is_active = FALSE, updated_by = $3, updated_at = NOW()
       WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL
       RETURNING id
-    \`,
+    `,
     [id, context.companyId, context.userId],
   );
   if (!result.rows.length) {
@@ -803,7 +803,7 @@ export async function getSalesQuoteApprovalWorkflowData() {
 
   const policyRows = canManagePolicies
     ? await context.pool.query(
-        \`
+        `
           SELECT
             policy.id, policy.name, policy.priority,
             policy.min_base_amount, policy.max_base_amount,
@@ -828,14 +828,14 @@ export async function getSalesQuoteApprovalWorkflowData() {
           GROUP BY policy.id
           ORDER BY policy.priority ASC, policy.min_base_amount DESC, LOWER(policy.name)
           LIMIT 100
-        \`,
+        `,
         [context.companyId],
       )
     : { rows: [] };
 
   const pending = canReview
     ? await context.pool.query(
-        \`
+        `
           SELECT
             request.id, request.quote_id, request.policy_id,
             request.requested_by, request.requested_at,
@@ -857,7 +857,7 @@ export async function getSalesQuoteApprovalWorkflowData() {
             AND quote.deleted_at IS NULL
           ORDER BY request.requested_at ASC, request.id
           LIMIT 100
-        \`,
+        `,
         [context.companyId, context.userId],
       )
     : { rows: [] };
@@ -865,13 +865,13 @@ export async function getSalesQuoteApprovalWorkflowData() {
   const requestIds = pending.rows.map(row => String(row.id));
   const decisionRows = requestIds.length
     ? await context.pool.query(
-        \`
+        `
           SELECT request_id, step_number, step_name, approver_user_id,
                  decision, note, decided_at
           FROM sales_quote_approval_decisions
           WHERE company_id = $1 AND request_id = ANY($2::uuid[])
           ORDER BY request_id, step_number
-        \`,
+        `,
         [context.companyId, requestIds],
       )
     : { rows: [] };
