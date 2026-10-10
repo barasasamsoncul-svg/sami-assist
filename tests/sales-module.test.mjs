@@ -1721,4 +1721,9 @@ test('Sales Priority 3 secures public acceptance and tracks customer change requ
   assert.match(types, /customerRevisionRequests: Array/);
   assert.match(detailUi, /Customer acceptance evidence/);
   assert.match(detailUi, /Customer change requests/);
+  assert.match(publicPage, /Quotation acceptance recorded/);
+  assert.match(publicPage, /This quotation page does not collect a payment/);
+  assert.match(publicPage, /SaMi Invoicing/);
+  assert.match(publicPage, /Quotation declined/);
+  assert.match(publicPage, /Quotation expired/);
 });
