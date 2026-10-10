@@ -364,6 +364,15 @@ export default function SalesQuoteDetailClient({
                 Sales
               </Link>
 
+              {workspace.capabilities.canManageSettings && (
+                <Link
+                  href="/apps/sales/approvals"
+                  className="inline-flex h-10 items-center rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black"
+                >
+                  Approval policies
+                </Link>
+              )}
+
               <a
                 href={
                   '/api/apps/sales/quotes/' +
