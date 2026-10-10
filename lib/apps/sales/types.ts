@@ -122,6 +122,14 @@ export type SalesQuoteDetail =
     approvedAt: string | null;
     approvalRejectedAt: string | null;
     approvalRejectionReason: string | null;
+    approvalWorkflow: {
+      requestId: string;
+      status: string;
+      currentStepNumber: number;
+      currentStepName: string;
+      currentApproverUserId: string | null;
+      totalSteps: number;
+    } | null;
     sentAt: string | null;
     viewedAt: string | null;
     acceptedAt: string | null;
