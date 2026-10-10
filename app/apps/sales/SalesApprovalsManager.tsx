@@ -15,7 +15,7 @@ type ApprovalRequest = {
   requested_at: string; policy_name: string | null; decisions: Array<Record<string, unknown>>;
 };
 
-const emptyStep = (): Step => ({ approverUserId: '', approverRoleKey: 'sales.quote.approve_internal', requiredApprovals: 1 });
+const emptyStep = (): Step => ({ approverUserId: '', approverRoleKey: '', requiredApprovals: 1 });
 
 export default function SalesApprovalsManager() {
   const [policies, setPolicies] = useState<Policy[]>([]);
@@ -78,7 +78,7 @@ export default function SalesApprovalsManager() {
         <div>
           <p className="text-xs font-black uppercase tracking-widest text-blue-600">SaMi Sales · Part 11</p>
           <h1 className="mt-1 text-2xl font-black">Quote approval workflow</h1>
-          <p className="mt-2 max-w-3xl text-sm text-slate-500">Configure approval triggers and sequential review steps. Each reviewer must have internal-approval permission and match the current step's assigned user or permission key.</p>
+          <p className="mt-2 max-w-3xl text-sm text-slate-500">Configure approval triggers and sequential review steps. Each reviewer must have internal-approval permission. Use a permission key for a role/group, or a user UUID for a specific approver.</p>
         </div>
         <Link href="/apps/sales" className="rounded-xl border border-[var(--sami-border)] px-4 py-2 text-sm font-bold">Back to Sales</Link>
       </header>
