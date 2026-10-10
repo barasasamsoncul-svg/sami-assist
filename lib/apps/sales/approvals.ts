@@ -202,7 +202,7 @@ export async function requestAdvancedSalesQuoteApproval(input: Record<string, un
     );
     const legacyRequired = settings.rows[0]?.require_quote_approval === true && Number(quote.total_amount || 0) >= Number(settings.rows[0]?.quote_approval_threshold || 0);
     if (!matching && !legacyRequired) {
-      await client.query(`UPDATE sales_quotes SET approval_status='not_required',updated_by=$3,updated_at=NOW() WHERE id=$1 AND company_id=$2`, [quoteId, context.companyId, context.userId]);
+      await client.query(`UPDATE sales_quotes SET approval_status='not_required',approval_requested_at=NULL,approval_requested_by=NULL,approval_rejected_at=NULL,approval_rejected_by=NULL,approval_rejection_reason=NULL,updated_by=$3,updated_at=NOW() WHERE id=$1 AND company_id=$2`, [quoteId, context.companyId, context.userId]);
       await client.query('COMMIT');
       return { id: quoteId, approvalStatus: 'not_required', requestId: null };
     }
