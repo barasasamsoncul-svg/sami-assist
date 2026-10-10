@@ -1,5 +1,7 @@
 'use client';
 
+import type { FormEvent } from 'react';
+
 import {
   useCallback,
   useEffect,
@@ -178,7 +180,7 @@ export default function SalesQuoteApprovalWorkflowManager({
     }
   }
 
-  async function savePolicy(event: React.FormEvent<HTMLFormElement>) {
+  async function savePolicy(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     setError('');
