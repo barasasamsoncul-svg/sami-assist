@@ -258,7 +258,7 @@ export async function reviewAdvancedSalesQuoteApproval(input: Record<string, unk
     if (!step && !legacyStep) throw new SalesError('QUOTE_STATE_INVALID', 'The active approval step is no longer configured.');
     if (step) {
       const userAssigned = step.approver_user_id && String(step.approver_user_id) === context.userId;
-      const roleAssigned = step.approver_role_key && context.permissions.permissionSet.has(String(step.approver_role_key));
+      const roleAssigned = step.approver_role_key && (context.permissions.isOwner || context.permissions.permissionSet.has(String(step.approver_role_key)));
       if (!userAssigned && !roleAssigned) throw new SalesError('SALES_PERMISSION_REQUIRED', 'You are not an assigned approver for the current approval step.');
     }
     const existingDecision = await client.query(
