@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { requestAdvancedSalesQuoteApproval, reviewAdvancedSalesQuoteApproval } from '@/lib/apps/sales/approvals';
+import { assertSalesQuoteApprovalSatisfied, requestAdvancedSalesQuoteApproval, reviewAdvancedSalesQuoteApproval } from '@/lib/apps/sales/approvals';
 
 import crypto from 'crypto';
 
@@ -2523,6 +2523,10 @@ export async function changeSalesQuoteStatus(
         'not_required',
       );
 
+    if (nextStatus === 'accepted') {
+      await assertSalesQuoteApprovalSatisfied(client, context.companyId, quoteId);
+    }
+
     if (
       nextStatus === 'accepted' &&
       ![
@@ -2966,6 +2970,8 @@ export async function createSalesOrderFromQuote(
         'Accept the quote before creating a sales order.',
       );
     }
+
+    await assertSalesQuoteApprovalSatisfied(client, context.companyId, quoteId);
 
     const approvalStatus =
       String(
