@@ -327,6 +327,70 @@ test('Sales delivery is secure, logged and multi-channel', async () => {
 });
 
 
+test('Sales quote-to-order is transaction-safe, idempotent, and invoice permission is checked before side effects', async () => {
+  const commands =
+    await source(
+      'lib/apps/sales/commands.ts',
+    );
+
+  const orderStart =
+    commands.indexOf(
+      'export async function createSalesOrderFromQuote(',
+    );
+  const invoiceStart =
+    commands.indexOf(
+      'export async function convertSalesQuoteToInvoice(',
+      orderStart,
+    );
+  const fulfillmentStart =
+    commands.indexOf(
+      'export async function updateSalesOrderFulfillment(',
+      invoiceStart,
+    );
+
+  assert.ok(orderStart >= 0 && invoiceStart > orderStart && fulfillmentStart > invoiceStart);
+
+  const quoteToOrder =
+    commands.slice(
+      orderStart,
+      invoiceStart,
+    );
+
+  assert.match(quoteToOrder, /await client\.query\(\s*'BEGIN'/);
+  assert.match(quoteToOrder, /pg_advisory_xact_lock/);
+  assert.match(quoteToOrder, /FOR UPDATE/);
+  assert.match(quoteToOrder, /row\.sales_order_id/);
+  assert.match(quoteToOrder, /INSERT INTO sales_order_items_v2/);
+  assert.match(quoteToOrder, /sales_order_id = \$3/);
+  assert.match(quoteToOrder, /Complete internal quotation approval before creating a sales order/);
+  assert.match(quoteToOrder, /ROLLBACK/);
+
+  const quoteToInvoice =
+    commands.slice(
+      invoiceStart,
+      fulfillmentStart,
+    );
+  const permissionCheck =
+    quoteToInvoice.indexOf(
+      'await requireSalesContext(',
+    );
+  const orderManagePermission =
+    quoteToInvoice.indexOf(
+      '.ORDER_MANAGE',
+      permissionCheck,
+    );
+  const orderCreation =
+    quoteToInvoice.indexOf(
+      'await createSalesOrderFromQuote(',
+    );
+
+  assert.ok(permissionCheck >= 0);
+  assert.ok(orderManagePermission > permissionCheck);
+  assert.ok(orderCreation > orderManagePermission,
+    'Invoice permission must be confirmed before the quote is converted into an order.');
+});
+
+
 test('Sales order invoicing supports partial quantities without bypassing locked Invoicing', async () => {
   const commands =
     await source(
