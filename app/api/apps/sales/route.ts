@@ -30,6 +30,9 @@ import {
   getSalesOrganizationData,
   getSalesQuoteDetail,
   getSalesWorkspaceData,
+  getSalesQuoteApprovalWorkflowData,
+  saveSalesQuoteApprovalPolicy,
+  deactivateSalesQuoteApprovalPolicy,
   issueSalesReturnCredit,
   markSalesCommissionPaid,
   receiveSalesReturn,
@@ -199,6 +202,14 @@ export async function GET(
   try {
     const pipeline = request.nextUrl.searchParams.get('pipeline');
     if (pipeline === '1') return json({success:true,pipeline:await getSalesPipelineData()});
+
+    const approvalWorkflows = request.nextUrl.searchParams.get('approval_workflows');
+    if (approvalWorkflows === '1') {
+      return json({
+        success: true,
+        approvalWorkflows: await getSalesQuoteApprovalWorkflowData(),
+      });
+    }
 
     const operations =
       request.nextUrl
@@ -532,6 +543,10 @@ export async function POST(
           requestSalesQuoteApproval,
         review_quote_approval:
           reviewSalesQuoteApproval,
+        save_quote_approval_policy:
+          saveSalesQuoteApprovalPolicy,
+        deactivate_quote_approval_policy:
+          deactivateSalesQuoteApprovalPolicy,
         quote_to_order:
           createSalesOrderFromQuote,
         quote_to_invoice:
