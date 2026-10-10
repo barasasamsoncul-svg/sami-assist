@@ -3894,6 +3894,13 @@ export async function convertSalesQuoteToInvoice(
       'Quote',
     );
 
+  // Preflight both action permissions before creating the order; otherwise an
+  // invoice-only permission failure could leave a converted quote and new order.
+  await requireSalesContext(
+    SALES_PERMISSIONS
+      .ORDER_MANAGE,
+  );
+
   const order =
     await createSalesOrderFromQuote({
       quoteId,
