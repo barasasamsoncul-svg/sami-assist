@@ -743,6 +743,7 @@ export async function respondToPublicSalesQuote(
             q.company_id,
             q.quote_number,
             q.status,
+            q.approval_status,
             q.valid_until,
             COALESCE(
               s.allow_online_acceptance,
@@ -858,6 +859,24 @@ export async function respondToPublicSalesQuote(
       throw new SalesError(
         'QUOTE_STATE_INVALID',
         'Online quote acceptance is disabled for this company.',
+      );
+    }
+
+    if (
+      input.action === 'accept' &&
+      ![
+        'approved',
+        'not_required',
+      ].includes(
+        String(
+          quote.approval_status ||
+          'not_required',
+        ),
+      )
+    ) {
+      throw new SalesError(
+        'QUOTE_STATE_INVALID',
+        'Complete internal quotation approval before accepting this quote.',
       );
     }
 
