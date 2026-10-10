@@ -239,6 +239,13 @@ import {
   SalesError,
 } from '@/lib/apps/sales/context';
 
+import {
+  getActiveSalesQuoteApprovalRequest,
+  hasMatchingSalesQuoteApprovalPolicy,
+  reviewSalesQuoteApprovalStep,
+  startSalesQuoteApprovalWorkflow,
+} from '@/lib/apps/sales/quote-approvals';
+
 import type {
   CreateSalesQuoteInput,
 } from '@/lib/apps/sales/types';
@@ -1460,13 +1467,29 @@ export async function createSalesQuote(
         shippingTotal,
       );
 
+    const quoteBaseTotalAmount =
+      salesBaseAmount(
+        calculated.totalAmount,
+        exchangeRate.rate,
+      );
+
+    const policyApprovalRequired =
+      await hasMatchingSalesQuoteApprovalPolicy(
+        client,
+        context.companyId,
+        quoteBaseTotalAmount,
+      );
+
     const approvalRequired =
-      settings.require_quote_approval ===
-        true &&
-      calculated.totalAmount >=
-        money(
-          settings.quote_approval_threshold,
-        );
+      (
+        settings.require_quote_approval ===
+          true &&
+        calculated.totalAmount >=
+          money(
+            settings.quote_approval_threshold,
+          )
+      ) ||
+      policyApprovalRequired;
 
     const approvalStatus =
       approvalRequired
@@ -2035,13 +2058,29 @@ export async function updateSalesQuoteDraft(
         shippingTotal,
       );
 
+    const quoteBaseTotalAmount =
+      salesBaseAmount(
+        calculated.totalAmount,
+        exchangeRate.rate,
+      );
+
+    const policyApprovalRequired =
+      await hasMatchingSalesQuoteApprovalPolicy(
+        client,
+        context.companyId,
+        quoteBaseTotalAmount,
+      );
+
     const approvalRequired =
-      settings.require_quote_approval ===
-        true &&
-      calculated.totalAmount >=
-        money(
-          settings.quote_approval_threshold,
-        );
+      (
+        settings.require_quote_approval ===
+          true &&
+        calculated.totalAmount >=
+          money(
+            settings.quote_approval_threshold,
+          )
+      ) ||
+      policyApprovalRequired;
 
     const approvalStatus =
       approvalRequired
@@ -2059,6 +2098,7 @@ export async function updateSalesQuoteDraft(
           currency = $7,
           reference = $8,
           approval_status = $9,
+          approval_workflow_request_id = NULL,
           approval_requested_at = NULL,
           approval_requested_by = NULL,
           approved_at = NULL,
@@ -2767,9 +2807,7 @@ export async function requestSalesQuoteApproval(
     await context.pool.connect();
 
   try {
-    await client.query(
-      'BEGIN',
-    );
+    await client.query('BEGIN');
 
     const quote =
       await client.query(
@@ -2778,94 +2816,89 @@ export async function requestSalesQuoteApproval(
             quote_number,
             status,
             approval_status,
-            total_amount
+            total_amount,
+            base_total_amount,
+            base_currency,
+            current_revision
           FROM sales_quotes
           WHERE id = $1
             AND company_id = $2
             AND deleted_at IS NULL
           FOR UPDATE
         `,
-        [
-          quoteId,
-          context.companyId,
-        ],
+        [quoteId, context.companyId],
       );
 
-    if (
-      quote.rows.length !==
-        1
-    ) {
-      throw new SalesError(
-        'QUOTE_NOT_FOUND',
-        'Quote was not found.',
-      );
+    if (quote.rows.length !== 1) {
+      throw new SalesError('QUOTE_NOT_FOUND', 'Quote was not found.');
     }
 
-    const row =
-      quote.rows[0];
-
-    if (
-      String(
-        row.status,
-      ) !==
-        'draft'
-    ) {
+    const row = quote.rows[0];
+    if (String(row.status) !== 'draft') {
       throw new SalesError(
         'QUOTE_STATE_INVALID',
         'Only draft quotations can enter internal approval.',
       );
     }
 
-    const current =
-      String(
-        row.approval_status ||
-        'not_required',
+    const current = String(row.approval_status || 'not_required');
+    const activeWorkflow =
+      await getActiveSalesQuoteApprovalRequest(
+        client,
+        context.companyId,
+        quoteId,
       );
 
-    if (
-      current ===
-        'not_required'
-    ) {
-      await client.query(
-        'COMMIT',
-      );
-
+    if (activeWorkflow) {
+      if (current !== 'pending') {
+        throw new SalesError(
+          'QUOTE_STATE_INVALID',
+          'The quotation approval state does not match its active workflow. Refresh the quotation and try again.',
+        );
+      }
+      await client.query('COMMIT');
       return {
-        id:
-          quoteId,
-        approvalStatus:
-          'not_required',
+        id: quoteId,
+        approvalStatus: 'pending',
+        ...activeWorkflow,
       };
     }
 
-    if (
-      current ===
-        'pending'
-    ) {
-      await client.query(
-        'COMMIT',
-      );
-
+    if (current === 'pending') {
+      await client.query('COMMIT');
       return {
-        id:
-          quoteId,
-        approvalStatus:
-          'pending',
+        id: quoteId,
+        approvalStatus: 'pending',
       };
     }
 
-    if (
-      ![
-        'draft',
-        'rejected',
-      ].includes(
-        current,
-      )
-    ) {
+    if (!['not_required', 'draft', 'rejected'].includes(current)) {
       throw new SalesError(
         'QUOTE_STATE_INVALID',
         'This quotation cannot be submitted for approval from its current approval state.',
       );
+    }
+
+    const workflow =
+      await startSalesQuoteApprovalWorkflow(
+        client,
+        context,
+        quoteId,
+        row,
+        current,
+      );
+
+    if (workflow) {
+      await client.query('COMMIT');
+      return workflow;
+    }
+
+    if (current === 'not_required') {
+      await client.query('COMMIT');
+      return {
+        id: quoteId,
+        approvalStatus: 'not_required',
+      };
     }
 
     await client.query(
@@ -2873,8 +2906,11 @@ export async function requestSalesQuoteApproval(
         UPDATE sales_quotes
         SET
           approval_status = 'pending',
+          approval_workflow_request_id = NULL,
           approval_requested_at = NOW(),
           approval_requested_by = $3,
+          approved_at = NULL,
+          approved_by = NULL,
           approval_rejected_at = NULL,
           approval_rejected_by = NULL,
           approval_rejection_reason = NULL,
@@ -2883,11 +2919,7 @@ export async function requestSalesQuoteApproval(
         WHERE id = $1
           AND company_id = $2
       `,
-      [
-        quoteId,
-        context.companyId,
-        context.userId,
-      ],
+      [quoteId, context.companyId, context.userId],
     );
 
     await client.query(
@@ -2900,59 +2932,31 @@ export async function requestSalesQuoteApproval(
           reason,
           changed_by
         )
-        VALUES (
-          $1,$2,$3,
-          'pending',
-          'Submitted for internal sales approval',
-          $4
-        )
+        VALUES ($1, $2, $3, 'pending', 'Submitted for internal sales approval', $4)
       `,
-      [
-        quoteId,
-        context.companyId,
-        current,
-        context.userId,
-      ],
+      [quoteId, context.companyId, current, context.userId],
     );
 
     await recordSalesActivity(
       client,
       {
-        companyId:
-          context.companyId,
-        userId:
-          context.userId,
+        companyId: context.companyId,
+        userId: context.userId,
         quoteId,
-        type:
-          'sales.quote.approval_requested',
-        content:
-          'Quotation ' +
-          String(
-            row.quote_number,
-          ) +
-          ' submitted for approval.',
+        type: 'sales.quote.approval_requested',
+        content: 'Quotation ' + String(row.quote_number) + ' submitted for approval.',
       },
     );
 
-    await client.query(
-      'COMMIT',
-    );
-
+    await client.query('COMMIT');
     return {
-      id:
-        quoteId,
-      approvalStatus:
-        'pending',
+      id: quoteId,
+      approvalStatus: 'pending',
     };
-  } catch (
-    error
-  ) {
+  } catch (error) {
     try {
-      await client.query(
-        'ROLLBACK',
-      );
+      await client.query('ROLLBACK');
     } catch {}
-
     throw error;
   } finally {
     client.release();
@@ -3012,6 +3016,10 @@ export async function reviewSalesQuoteApproval(
     );
   }
 
+  if (input.requestId !== undefined && input.requestId !== null && input.requestId !== '') {
+    return reviewSalesQuoteApprovalStep(input);
+  }
+
   const client =
     await context.pool.connect();
 
@@ -3051,6 +3059,27 @@ export async function reviewSalesQuoteApproval(
 
     const row =
       quote.rows[0];
+
+    const activeWorkflow =
+      await client.query(
+        `
+          SELECT id
+          FROM sales_quote_approval_requests
+          WHERE company_id = $1
+            AND quote_id = $2
+            AND status = 'pending'
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [context.companyId, quoteId],
+      );
+
+    if (activeWorkflow.rows.length > 0) {
+      throw new SalesError(
+        'QUOTE_STATE_INVALID',
+        'This quotation uses sequential approval. Review the assigned step from the Sales Approval Queue.',
+      );
+    }
 
     if (
       String(
