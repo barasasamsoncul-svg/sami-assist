@@ -2614,6 +2614,7 @@ export async function getSalesOrderDetail(
             sku_snapshot,
             unit,
             quantity,
+            shipped_quantity,
             delivered_quantity,
             invoiced_quantity,
             returned_quantity,
@@ -3107,6 +3108,8 @@ export async function getSalesOrderDetail(
                 'unit',
               ),
             quantity,
+            shippedQuantity:
+              Number(line.shipped_quantity || 0),
             deliveredQuantity:
               delivered,
             invoicedQuantity:

@@ -183,6 +183,7 @@ export type SalesOrderLine = {
   sku: string | null;
   unit: string;
   quantity: number;
+  shippedQuantity: number;
   deliveredQuantity: number;
   invoicedQuantity: number;
   returnedQuantity: number;

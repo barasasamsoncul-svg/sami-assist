@@ -3655,6 +3655,7 @@ export async function updateSalesOrderFulfillment(
           `
             SELECT
               quantity,
+              shipped_quantity,
               delivered_quantity,
               external_product_id,
               stock_reservation_id
@@ -3702,63 +3703,47 @@ export async function updateSalesOrderFulfillment(
         );
       }
 
-      await postSalesFulfillmentToInventory(
+      const previousShippedQuantity = Number(existingLine.rows[0].shipped_quantity || 0);
+      const nextShippedQuantity = Math.max(previousShippedQuantity, deliveredQuantity);
+      const shippedDelta = nextShippedQuantity - previousShippedQuantity;
+      const inventoryResult = await postSalesFulfillmentToInventory(
         client,
         {
-          companyId:
-            context.companyId,
-          userId:
-            context.userId,
+          companyId: context.companyId,
+          userId: context.userId,
           orderId,
           lineId,
-          orderedQuantity:
-            Number(
-              existingLine.rows[0]
-                .quantity ||
-              0,
-            ),
-          previousDeliveredQuantity:
-            Number(
-              existingLine.rows[0]
-                .delivered_quantity ||
-              0,
-            ),
-          nextDeliveredQuantity:
-            deliveredQuantity,
-          externalProductId:
-            existingLine.rows[0]
-              .external_product_id
-              ? String(
-                  existingLine.rows[0]
-                    .external_product_id,
-                )
-              : null,
-          reservationId:
-            existingLine.rows[0]
-              .stock_reservation_id
-              ? String(
-                  existingLine.rows[0]
-                    .stock_reservation_id,
-                )
-              : null,
+          orderedQuantity: Number(existingLine.rows[0].quantity || 0),
+          quantityDelta: shippedDelta,
+          nextFulfilledQuantity: nextShippedQuantity,
+          externalProductId: existingLine.rows[0].external_product_id
+            ? String(existingLine.rows[0].external_product_id)
+            : null,
+          reservationId: existingLine.rows[0].stock_reservation_id
+            ? String(existingLine.rows[0].stock_reservation_id)
+            : null,
         },
       );
+
+      if (!inventoryResult.integrated) {
+        throw new SalesError(
+          'INVENTORY_INTEGRATION_UNAVAILABLE',
+          'Inventory could not record this fulfillment. Check the product mapping, warehouse, reservation and Inventory availability, then retry.',
+          inventoryResult,
+        );
+      }
 
       await client.query(
         `
           UPDATE sales_order_items_v2
           SET
-            delivered_quantity = $4
+            shipped_quantity = $4,
+            delivered_quantity = $5
           WHERE id = $1
             AND sales_order_id = $2
             AND company_id = $3
         `,
-        [
-          lineId,
-          orderId,
-          context.companyId,
-          deliveredQuantity,
-        ],
+        [lineId, orderId, context.companyId, nextShippedQuantity, deliveredQuantity],
       );
     }
 

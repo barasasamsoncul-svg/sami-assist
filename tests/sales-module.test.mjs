@@ -690,7 +690,7 @@ test('Sales v3 is registered into manifests, migrations, Search and SaMi AI', as
 
   assert.match(
     manifest,
-    /key: "sales",[\s\S]*version: '3\.4\.3'/s,
+    /key: "sales",[\s\S]*version: '3\.4\.4'/s,
   );
 
   assert.match(
@@ -1156,7 +1156,7 @@ test('Sales 3.2 runs deposits, shipments, returns and forecasting through author
   ]);
 
   assert.match(runtimeMigrations, /SALES_3_1_0_TO_3_2_0/);
-  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.3'/s);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.4'/s);
 
   for (const table of [
     'sales_shipments',
@@ -1301,7 +1301,7 @@ test('Sales 3.2 keeps stock return, invoice credit and cash refund as separate a
 
   assert.match(
     operations,
-    /nextDeliveredQuantity:[\s\S]*next/,
+    /quantityDelta:[\s\S]*nextFulfilledQuantity/,
     'Receiving returned goods must reverse the authoritative delivered quantity through Inventory.',
   );
 
@@ -1542,7 +1542,7 @@ test('Sales roadmap Part 10 locks multi-currency values and exposes Currency & F
   assert.match(migration, /exchange_rate NUMERIC\(19,8\)/);
   assert.match(migration, /base_total_amount/);
   assert.match(runtimeMigrations, /SALES_3_2_0_TO_3_3_0/);
-  assert.match(modules, /key: "sales"[\s\S]*version: '3\.4\.3'/);
+  assert.match(modules, /key: "sales"[\s\S]*version: '3\.4\.4'/);
 
   assert.match(commands, /resolveSalesExchangeRate/);
   assert.match(commands, /salesBaseAmount/);
@@ -1618,7 +1618,7 @@ test('Sales roadmap Part 11 owns tenant-scoped leads and opportunity pipeline', 
     source('lib/apps/sales/schema.sql'),
   ]);
   assert.match(runtime,/SALES_3_3_0_TO_3_4_0/);
-  assert.match(manifest,/key: "sales"[\s\S]*version: '3\.4\.3'/);
+  assert.match(manifest,/key: "sales"[\s\S]*version: '3\.4\.4'/);
   for (const table of ['sales_pipeline_stages','sales_leads','sales_opportunities','sales_opportunity_stage_history']) {
     assert.match(migration,new RegExp('public\\.'+table));
     assert.match(schema,new RegExp('public\\.'+table));
@@ -1661,7 +1661,7 @@ test('Sales 3.4.1 migration is active and approval cannot be bypassed by accepta
     source('lib/apps/sales/delivery.ts'),
   ]);
 
-  assert.match(manifest, /key: "sales"[\s\S]*version: '3\.4\.3'/s);
+  assert.match(manifest, /key: "sales"[\s\S]*version: '3\.4\.4'/s);
   assert.match(migration, /fromVersion:[\s\S]*'3\.4\.0'/);
   assert.match(migration, /toVersion:[\s\S]*'3\.4\.1'/);
   assert.match(migration, /ADD COLUMN IF NOT EXISTS stage_id/);
@@ -1726,4 +1726,41 @@ test('Sales Priority 3 secures public acceptance and tracks customer change requ
   assert.match(publicPage, /SaMi Invoicing/);
   assert.match(publicPage, /Quotation declined/);
   assert.match(publicPage, /Quotation expired/);
+});
+
+
+test('Sales Priority 4 keeps dispatch, delivery, Inventory posting and invoice eligibility consistent', async () => {
+  const [schema, migration, runtime, manifest, operations, inventory, queries, types, commands, orderUi] = await Promise.all([
+    source('lib/apps/sales/schema.sql'),
+    source('lib/apps/sales/migrations/3.4.3-to-3.4.4.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/sales/operations.ts'),
+    source('lib/apps/sales/inventory.ts'),
+    source('lib/apps/sales/queries.ts'),
+    source('lib/apps/sales/types.ts'),
+    source('lib/apps/sales/commands.ts'),
+    source('app/apps/sales/SalesOrderDetailClient.tsx'),
+  ]);
+
+  assert.match(migration, /sales-3\.4\.3-to-3\.4\.4/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS shipped_quantity NUMERIC\(18,4\)/);
+  assert.match(schema, /shipped_quantity NUMERIC\(18,4\)/);
+  assert.match(schema, /CHECK \(delivered_quantity <= shipped_quantity\)/);
+  assert.match(runtime, /SALES_3_4_3_TO_3_4_4/);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.4'/s);
+
+  assert.match(operations, /const shouldRecordDelivery =[\s\S]*String\(row\.status\) !== 'delivered'/);
+  assert.match(operations, /SET shipped_quantity = \$4/);
+  assert.match(operations, /SET delivered_quantity = \$4/);
+  assert.match(operations, /if \(!inventoryResult\.integrated\)/);
+  assert.match(operations, /INVENTORY_INTEGRATION_UNAVAILABLE/);
+  assert.match(operations, /status NOT IN \([\s\S]*'cancelled',[\s\S]*'failed'/);
+  assert.match(operations, /A sales-order line may appear only once in a shipment/);
+  assert.match(inventory, /quantityDelta: number/);
+  assert.match(inventory, /nextFulfilledQuantity: number/);
+  assert.match(queries, /shipped_quantity/);
+  assert.match(types, /shippedQuantity: number/);
+  assert.match(commands, /quantityDelta: shippedDelta/);
+  assert.match(orderUi, /Shipped/);
 });
