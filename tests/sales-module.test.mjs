@@ -1675,3 +1675,18 @@ test('Sales 3.4.1 migration is active and approval cannot be bypassed by accepta
   assert.match(commands, /Complete internal quotation approval before accepting this quote/);
   assert.match(commands, /Complete internal quotation approval before creating a sales order/);
 });
+
+
+test('Sales API returns correct HTTP statuses for missing or invalid authentication context', async () => {
+  const route = await source('app/api/apps/sales/route.ts');
+  const handleErrorStart = route.indexOf('function handleError(');
+  const handleErrorEnd = route.indexOf('export async function GET(', handleErrorStart);
+  const handleError = route.slice(handleErrorStart, handleErrorEnd);
+
+  assert.match(handleError, /error instanceof CompanyContextError/);
+  assert.match(handleError, /error instanceof TenantContextError/);
+  assert.match(handleError, /UNAUTHENTICATED:\s*401/);
+  assert.match(handleError, /NO_WORKSPACE_SELECTED:\s*409/);
+  assert.match(handleError, /WORKSPACE_DATABASE_UNAVAILABLE:\s*503/);
+  assert.match(handleError, /contextErrorStatuses\[error\.code\]\s*\?\?\s*500/);
+});
