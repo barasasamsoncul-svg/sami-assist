@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 
 type Step = { approverUserId: string; approverRoleKey: string; requiredApprovals: number };
@@ -43,7 +43,7 @@ export default function SalesApprovalsManager() {
 
   useEffect(() => { void refresh().catch(e => setError(e instanceof Error ? e.message : 'Could not load approvals.')); }, []);
 
-  async function savePolicy(event: React.FormEvent<HTMLFormElement>) {
+  async function savePolicy(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true); setError(''); setNotice('');
     try {
