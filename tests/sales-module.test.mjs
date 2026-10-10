@@ -478,7 +478,6 @@ test('Sales workspace includes professional operating surfaces, tutorials and ov
       'Overview',
       'Quotations',
       'Sales orders',
-      'Teams & performance',
       'Reports',
       'Settings',
     ]
@@ -899,6 +898,7 @@ test('Sales 3.1 models canonical teams territories targets and commissions', asy
     manifest,
     api,
     page,
+    navigation,
     workspace,
     organizationUi,
   ] = await Promise.all([
@@ -909,7 +909,8 @@ test('Sales 3.1 models canonical teams territories targets and commissions', asy
     source('lib/apps/sales/commands.ts'),
     source('lib/modules/first-party.ts'),
     source('app/api/apps/sales/route.ts'),
-    source('app/apps/sales/page.tsx'),
+    source('app/apps/sales/organization/page.tsx'),
+    source('lib/apps/sales/navigation.ts'),
     source('app/apps/sales/SalesWorkspaceClient.tsx'),
     source('app/apps/sales/SalesOrganizationManager.tsx'),
   ]);
@@ -995,10 +996,9 @@ test('Sales 3.1 models canonical teams territories targets and commissions', asy
     assert.ok(api.includes(action), action);
   }
 
-  assert.match(page, /view=organization/);
-  assert.match(page, /Teams & performance/);
+  assert.match(page, /SalesSectionPage view="organization"/);
+  assert.match(navigation, /organization:[\\s\\S]*href:[\\s\\S]*'\\/apps\\/sales\\/organization'[\\s\\S]*title:[\\s\\S]*'Teams & performance'/);
   assert.match(workspace, /SalesOrganizationManager/);
-  assert.match(workspace, /Teams & performance/);
   assert.match(organizationUi, /Sales territories/);
   assert.match(organizationUi, /Sales teams/);
   assert.match(organizationUi, /New sales target/);
@@ -1066,6 +1066,7 @@ test('Sales 3.2 runs deposits, shipments, returns and forecasting through author
     manifest,
     api,
     page,
+    navigation,
     workspace,
     operationsUi,
     orderUi,
@@ -1080,7 +1081,8 @@ test('Sales 3.2 runs deposits, shipments, returns and forecasting through author
     source('lib/apps/sales/commands.ts'),
     source('lib/modules/first-party.ts'),
     source('app/api/apps/sales/route.ts'),
-    source('app/apps/sales/page.tsx'),
+    source('app/apps/sales/operations/page.tsx'),
+    source('lib/apps/sales/navigation.ts'),
     source('app/apps/sales/SalesWorkspaceClient.tsx'),
     source('app/apps/sales/SalesOperationsManager.tsx'),
     source('app/apps/sales/SalesOrderDetailClient.tsx'),
@@ -1203,8 +1205,8 @@ test('Sales 3.2 runs deposits, shipments, returns and forecasting through author
     assert.ok(api.includes(action), action);
   }
 
-  assert.match(page, /view=operations/);
-  assert.match(page, /Operations/);
+  assert.match(page, /SalesSectionPage view="operations"/);
+  assert.match(navigation, /operations:[\\s\\S]*href:[\\s\\S]*'\\/apps\\/sales\\/operations'[\\s\\S]*title:[\\s\\S]*'Operations'/);
   assert.match(workspace, /SalesOperationsManager/);
   assert.match(operationsUi, /Revenue outlook/);
   assert.match(operationsUi, /Shipments & tracking/);
@@ -1257,6 +1259,7 @@ test('Sales 3.2 keeps stock return, invoice credit and cash refund as separate a
 test('Sales roadmap Part 2 exposes a standalone customer and contact workspace backed by the shared customer master', async () => {
   const [
     page,
+    navigation,
     workspace,
     customerUi,
     queries,
@@ -1264,7 +1267,8 @@ test('Sales roadmap Part 2 exposes a standalone customer and contact workspace b
     route,
     types,
   ] = await Promise.all([
-    source('app/apps/sales/page.tsx'),
+    source('app/apps/sales/customers/page.tsx'),
+    source('lib/apps/sales/navigation.ts'),
     source('app/apps/sales/SalesWorkspaceClient.tsx'),
     source('app/apps/sales/SalesCustomersManager.tsx'),
     source('lib/apps/sales/queries.ts'),
@@ -1273,11 +1277,9 @@ test('Sales roadmap Part 2 exposes a standalone customer and contact workspace b
     source('lib/apps/sales/types.ts'),
   ]);
 
-  assert.match(page, /customers/);
-  assert.match(page, /Customers & Contacts/);
-  assert.match(page, /Roadmap Part 2/);
+  assert.match(page, /SalesSectionPage view="customers"/);
+  assert.match(navigation, /customers:[\\s\\S]*href:[\\s\\S]*'\\/apps\\/sales\\/customers'[\\s\\S]*title:[\\s\\S]*'Customers & contacts'[\\s\\S]*label:[\\s\\S]*'Customers & Contacts'/);
   assert.match(workspace, /SalesCustomersManager/);
-  assert.match(workspace, /Customers & contacts/);
   assert.match(customerUi, /Roadmap Part 2/);
   assert.match(customerUi, /Customer identity & primary contact/);
   assert.match(customerUi, /create_customer/);
@@ -1302,21 +1304,21 @@ test('Sales roadmap Part 2 exposes a standalone customer and contact workspace b
 test('Sales roadmap Part 5 exposes quotation templates as a standalone Sales destination', async () => {
   const [
     page,
+    navigation,
     workspace,
     templates,
     commands,
   ] = await Promise.all([
-    source('app/apps/sales/page.tsx'),
+    source('app/apps/sales/templates/page.tsx'),
+    source('lib/apps/sales/navigation.ts'),
     source('app/apps/sales/SalesWorkspaceClient.tsx'),
     source('app/apps/sales/SalesTemplatesManager.tsx'),
     source('lib/apps/sales/commands.ts'),
   ]);
 
-  assert.match(page, /Quotation Templates/);
-  assert.match(page, /view=templates/);
-  assert.match(page, /Roadmap Part 5/);
+  assert.match(page, /SalesSectionPage view="templates"/);
+  assert.match(navigation, /templates:[\\s\\S]*href:[\\s\\S]*'\\/apps\\/sales\\/templates'[\\s\\S]*title:[\\s\\S]*'Quotation templates'/);
   assert.match(workspace, /SalesTemplatesManager/);
-  assert.match(workspace, /Quotation templates/);
   assert.match(templates, /Roadmap Part 5/);
   assert.match(templates, /Template library/);
   assert.match(templates, /save_template/);
@@ -1330,7 +1332,9 @@ test('Sales roadmap Part 5 exposes quotation templates as a standalone Sales des
 
 test('Sales roadmap Parts 6 and 7 expose standalone PDF builder and product catalogue workspaces', async () => {
   const [
-    page,
+    pdfPage,
+    cataloguePage,
+    navigation,
     workspace,
     pdfBuilder,
     catalogue,
@@ -1339,7 +1343,9 @@ test('Sales roadmap Parts 6 and 7 expose standalone PDF builder and product cata
     route,
     types,
   ] = await Promise.all([
-    source('app/apps/sales/page.tsx'),
+    source('app/apps/sales/pdf-builder/page.tsx'),
+    source('app/apps/sales/catalogue/page.tsx'),
+    source('lib/apps/sales/navigation.ts'),
     source('app/apps/sales/SalesWorkspaceClient.tsx'),
     source('app/apps/sales/SalesQuotePdfBuilder.tsx'),
     source('app/apps/sales/SalesProductCatalogueManager.tsx'),
@@ -1349,10 +1355,10 @@ test('Sales roadmap Parts 6 and 7 expose standalone PDF builder and product cata
     source('lib/apps/sales/types.ts'),
   ]);
 
-  assert.match(page, /Quote \/ PDF Builder/);
-  assert.match(page, /Roadmap Part 6/);
-  assert.match(page, /Product Catalogue/);
-  assert.match(page, /Roadmap Part 7/);
+  assert.match(pdfPage, /SalesSectionPage view="pdfBuilder"/);
+  assert.match(cataloguePage, /SalesSectionPage view="catalogue"/);
+  assert.match(navigation, /pdfBuilder:[\\s\\S]*href:[\\s\\S]*'\\/apps\\/sales\\/pdf-builder'/);
+  assert.match(navigation, /catalogue:[\\s\\S]*href:[\\s\\S]*'\\/apps\\/sales\\/catalogue'/);
   assert.match(workspace, /SalesQuotePdfBuilder/);
   assert.match(workspace, /SalesProductCatalogueManager/);
   assert.match(pdfBuilder, /Roadmap Part 6/);
@@ -1381,23 +1387,27 @@ test('Sales roadmap Parts 6 and 7 expose standalone PDF builder and product cata
 
 test('Sales roadmap Parts 8 and 9 separate pricelist scope from advanced pricing rules', async () => {
   const [
-    page,
+    pricelistPage,
+    advancedPricingPage,
+    navigation,
     workspace,
     pricelists,
     advanced,
     commercial,
   ] = await Promise.all([
-    source('app/apps/sales/page.tsx'),
+    source('app/apps/sales/pricelists/page.tsx'),
+    source('app/apps/sales/advanced-pricing/page.tsx'),
+    source('lib/apps/sales/navigation.ts'),
     source('app/apps/sales/SalesWorkspaceClient.tsx'),
     source('app/apps/sales/SalesPricelistsManager.tsx'),
     source('app/apps/sales/SalesAdvancedPricingManager.tsx'),
     source('lib/apps/sales/commercial.ts'),
   ]);
 
-  assert.match(page, /Roadmap Part 8/);
-  assert.match(page, /Roadmap Part 9/);
-  assert.match(page, /view=pricelists/);
-  assert.match(page, /view=advanced-pricing/);
+  assert.match(pricelistPage, /SalesSectionPage view="pricelists"/);
+  assert.match(advancedPricingPage, /SalesSectionPage view="advancedPricing"/);
+  assert.match(navigation, /pricelists:[\\s\\S]*href:[\\s\\S]*'\\/apps\\/sales\\/pricelists'/);
+  assert.match(navigation, /advancedPricing:[\\s\\S]*href:[\\s\\S]*'\\/apps\\/sales\\/advanced-pricing'/);
   assert.match(workspace, /SalesPricelistsManager/);
   assert.match(workspace, /SalesAdvancedPricingManager/);
   assert.doesNotMatch(workspace, /SalesPricingManager/);
@@ -1427,6 +1437,7 @@ test('Sales roadmap Part 10 locks multi-currency values and exposes Currency & F
     route,
     service,
     page,
+    navigation,
     workspace,
     currencyUi,
     composer,
@@ -1441,7 +1452,8 @@ test('Sales roadmap Part 10 locks multi-currency values and exposes Currency & F
     source('lib/apps/sales/schema.sql'),
     source('app/api/apps/sales/route.ts'),
     source('lib/apps/sales/service.ts'),
-    source('app/apps/sales/page.tsx'),
+    source('app/apps/sales/currencies/page.tsx'),
+    source('lib/apps/sales/navigation.ts'),
     source('app/apps/sales/SalesWorkspaceClient.tsx'),
     source('app/apps/sales/SalesCurrenciesManager.tsx'),
     source('app/apps/sales/SalesQuoteComposer.tsx'),
@@ -1504,9 +1516,8 @@ test('Sales roadmap Part 10 locks multi-currency values and exposes Currency & F
   assert.match(route, /save_currency:[\s\S]*saveSalesCurrency/);
   assert.match(route, /save_exchange_rate:[\s\S]*saveSalesExchangeRate/);
 
-  assert.match(page, /'currencies'/);
-  assert.match(page, /Currency & FX/);
-  assert.match(page, /Roadmap Part 10/);
+  assert.match(page, /SalesSectionPage view="currencies"/);
+  assert.match(navigation, /currencies:[\\s\\S]*href:[\\s\\S]*'\\/apps\\/sales\\/currencies'[\\s\\S]*title:[\\s\\S]*'Currency & FX'/);
   assert.match(workspace, /SalesCurrenciesManager/);
   assert.match(workspace, /view ===[\s\S]*'currencies'/);
   assert.match(currencyUi, /Roadmap Part 10/);
@@ -1523,16 +1534,17 @@ test('Sales roadmap Part 10 locks multi-currency values and exposes Currency & F
 
 
 test('Sales roadmap Part 11 owns tenant-scoped leads and opportunity pipeline', async () => {
-  const [migration,runtime,manifest,context,pipeline,route,page,workspace,ui,schema] = await Promise.all([
+  const [migration,runtime,manifest,context,pipeline,route,page,navigation,workspace,ui,schema] = await Promise.all([
     source('lib/apps/sales/migrations/3.3.0-to-3.4.0.ts'),
     source('lib/apps/runtime-migrations.ts'),
     source('lib/modules/first-party.ts'),
     source('lib/apps/sales/context.ts'),
     source('lib/apps/sales/pipeline.ts'),
     source('app/api/apps/sales/route.ts'),
-    source('app/apps/sales/page.tsx'),
+    source('app/apps/sales/pipeline/page.tsx'),
+    source('lib/apps/sales/navigation.ts'),
     source('app/apps/sales/SalesWorkspaceClient.tsx'),
-    source('app/apps/sales/SalesPipelineManager.tsx'),
+    source('app/apps/sales/SalesPipelineBoard.tsx'),
     source('lib/apps/sales/schema.sql'),
   ]);
   assert.match(runtime,/SALES_3_3_0_TO_3_4_0/);
@@ -1553,11 +1565,12 @@ test('Sales roadmap Part 11 owns tenant-scoped leads and opportunity pipeline', 
   assert.match(route,/create_lead/);
   assert.match(route,/convert_lead/);
   assert.match(route,/move_opportunity/);
-  assert.match(page,/view=pipeline/);
-  assert.match(page,/Roadmap Part 11/);
-  assert.match(workspace,/SalesPipelineManager/);
-  assert.match(ui,/Leads & Opportunities/);
-  assert.match(ui,/Opportunity pipeline/);
+  assert.match(page,/SalesSectionPage view="pipeline"/);
+  assert.match(navigation,/pipeline:[\\s\\S]*href:[\\s\\S]*'\\/apps\\/sales\\/pipeline'/);
+  assert.match(workspace,/SalesPipelineBoard/);
+  assert.match(ui,/Pipeline board/);
+  assert.match(ui,/Weighted pipeline/);
+  assert.match(ui,/New stage/);
 });
 
 
