@@ -1235,7 +1235,7 @@ export async function saveSalesQuoteOptionalItems(
     const quote =
       await client.query(
         `
-          SELECT status
+          SELECT status, approval_status
           FROM sales_quotes
           WHERE id = $1
             AND company_id = $2
@@ -1262,11 +1262,14 @@ export async function saveSalesQuoteOptionalItems(
       String(
         quote.rows[0].status,
       ) !==
-        'draft'
+        'draft' ||
+      ['pending', 'approved'].includes(
+        String(quote.rows[0].approval_status || 'not_required'),
+      )
     ) {
       throw new SalesError(
         'QUOTE_STATE_INVALID',
-        'Optional products can only be changed while the quotation is a draft.',
+        'Optional products cannot be changed unless the quotation is a draft outside the approval workflow.',
       );
     }
 
