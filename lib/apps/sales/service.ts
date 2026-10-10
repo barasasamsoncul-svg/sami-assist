@@ -86,3 +86,5 @@ export {
   getSalesPipelineData,
   moveSalesOpportunity,
 } from '@/lib/apps/sales/pipeline';
+
+export { getSalesQuoteApprovalData, saveSalesQuoteApprovalPolicy } from '@/lib/apps/sales/approvals';
