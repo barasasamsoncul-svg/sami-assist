@@ -2485,6 +2485,7 @@ export async function changeSalesQuoteStatus(
           SELECT
             quote_number,
             status,
+            approval_status,
             valid_until,
             sales_order_id
           FROM sales_quotes
@@ -2513,6 +2514,25 @@ export async function changeSalesQuoteStatus(
       String(
         existing.rows[0].status,
       );
+
+    const approvalStatus =
+      String(
+        existing.rows[0].approval_status ||
+        'not_required',
+      );
+
+    if (
+      nextStatus === 'accepted' &&
+      ![
+        'approved',
+        'not_required',
+      ].includes(approvalStatus)
+    ) {
+      throw new SalesError(
+        'QUOTE_STATE_INVALID',
+        'Complete internal quotation approval before accepting this quote.',
+      );
+    }
 
     const expired =
       existing.rows[0]
@@ -3385,6 +3405,24 @@ export async function createSalesOrderFromQuote(
       throw new SalesError(
         'QUOTE_STATE_INVALID',
         'Accept the quote before creating a sales order.',
+      );
+    }
+
+    const approvalStatus =
+      String(
+        row.approval_status ||
+        'not_required',
+      );
+
+    if (
+      ![
+        'approved',
+        'not_required',
+      ].includes(approvalStatus)
+    ) {
+      throw new SalesError(
+        'QUOTE_STATE_INVALID',
+        'Complete internal quotation approval before creating a sales order.',
       );
     }
 
