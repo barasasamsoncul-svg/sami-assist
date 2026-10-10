@@ -128,6 +128,7 @@ export type SalesQuoteDetail =
     acceptedByName: string | null;
     acceptedByEmail: string | null;
     acceptanceNote: string | null;
+    acceptedSignatureConsentText: string | null;
     rejectedAt: string | null;
     convertedAt: string | null;
     lines: SalesQuoteLine[];
@@ -148,6 +149,13 @@ export type SalesQuoteDetail =
       id: string;
       revisionNumber: number;
       reason: string | null;
+      createdAt: string;
+    }>;
+    customerRevisionRequests: Array<{
+      id: string;
+      requesterName: string | null;
+      requesterEmail: string | null;
+      reason: string;
       createdAt: string;
     }>;
     history: Array<{

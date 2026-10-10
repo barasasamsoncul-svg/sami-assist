@@ -79,11 +79,18 @@ export async function POST(
             >
         : {};
 
-    const action =
-      payload.action ===
-        'reject'
-        ? 'reject'
-        : 'accept';
+    if (!['accept', 'reject', 'request_revision'].includes(String(payload.action || ''))) {
+      return json(
+        {
+          success: false,
+          code: 'INVALID_INPUT',
+          error: 'Action must be accept, reject, or request_revision.',
+        },
+        400,
+      );
+    }
+
+    const action = payload.action as 'accept' | 'reject' | 'request_revision';
 
     return json({
       success:
@@ -100,6 +107,12 @@ export async function POST(
               payload.signerName,
             signerEmail:
               payload.signerEmail,
+            signatureConsent:
+              payload.signatureConsent,
+            requesterName:
+              payload.requesterName,
+            requesterEmail:
+              payload.requesterEmail,
             acceptanceNote:
               payload.acceptanceNote,
             selectedOptionalItemIds:

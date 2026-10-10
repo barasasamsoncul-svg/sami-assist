@@ -114,6 +114,7 @@ CREATE TABLE IF NOT EXISTS public.sales_quotes (
   accepted_by_name VARCHAR(255),
   accepted_by_email VARCHAR(320),
   acceptance_note TEXT,
+  acceptance_signature_consent_text TEXT,
   rejected_at TIMESTAMPTZ,
   expired_at TIMESTAMPTZ,
   converted_at TIMESTAMPTZ,
