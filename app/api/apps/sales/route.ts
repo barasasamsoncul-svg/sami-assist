@@ -29,6 +29,7 @@ import {
   getSalesOrderDetail,
   getSalesOrganizationData,
   getSalesQuoteDetail,
+  getSalesQuoteApprovalData,
   getSalesWorkspaceData,
   issueSalesReturnCredit,
   markSalesCommissionPaid,
@@ -44,6 +45,7 @@ import {
   saveSalesPricelist,
   saveSalesQuoteOptionalItems,
   saveSalesQuoteTemplate,
+  saveSalesQuoteApprovalPolicy,
   saveSalesTarget,
   saveSalesTeam,
   saveSalesTerritory,
@@ -197,6 +199,9 @@ export async function GET(
     NextRequest,
 ) {
   try {
+    const approvals = request.nextUrl.searchParams.get('approvals');
+    if (approvals === '1') return json({ success: true, approvals: await getSalesQuoteApprovalData() });
+
     const pipeline = request.nextUrl.searchParams.get('pipeline');
     if (pipeline === '1') return json({success:true,pipeline:await getSalesPipelineData()});
 
@@ -546,6 +551,8 @@ export async function POST(
           updateSalesSettings,
         save_template:
           saveSalesQuoteTemplate,
+        save_approval_policy:
+          saveSalesQuoteApprovalPolicy,
       };
 
     const handler =
