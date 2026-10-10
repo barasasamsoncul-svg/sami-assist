@@ -34,9 +34,10 @@ test('approval policy evaluation supports total, discount, margin and currency c
 });
 
 test('approval engine enforces sequential assigned reviewers and records immutable decisions', async () => {
-  const [engine, migration] = await Promise.all([
+  const [engine, migration, commercial] = await Promise.all([
     source('lib/apps/sales/approvals.ts'),
     source('lib/apps/sales/migrations/3.4.1-to-3.4.2.ts'),
+    source('lib/apps/sales/commercial.ts'),
   ]);
   assert.match(engine, /current_step_order/);
   assert.match(engine, /approver_user_id/);
@@ -45,6 +46,8 @@ test('approval engine enforces sequential assigned reviewers and records immutab
   assert.match(engine, /already decided this approval step/);
   assert.match(engine, /required_approvals/);
   assert.match(engine, /quote_fingerprint/);
+  assert.match(engine, /optionalLines/);
+  assert.match(commercial, /Optional products cannot be changed unless the quotation is a draft outside the approval workflow/);
   assert.match(engine, /status='superseded'/);
   assert.match(engine, /INSERT INTO sales_quote_approval_decisions/);
   assert.match(migration, /UNIQUE\(request_id, step_order, reviewer_user_id\)/);
