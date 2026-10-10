@@ -4,6 +4,14 @@ import {
 } from 'next/server';
 
 import {
+  CompanyContextError,
+} from '@/lib/auth/company-context';
+
+import {
+  TenantContextError,
+} from '@/lib/auth/tenant-context';
+
+import {
   applySalesOrderDeposit,
   applySalesQuoteTemplate,
   approveSalesReturn,
@@ -138,6 +146,33 @@ function handleError(
   error:
     unknown,
 ) {
+  if (
+    error instanceof CompanyContextError ||
+    error instanceof TenantContextError
+  ) {
+    const contextErrorStatuses: Record<string, number> = {
+      UNAUTHENTICATED: 401,
+      NO_WORKSPACE_SELECTED: 409,
+      WORKSPACE_ACCESS_DENIED: 403,
+      WORKSPACE_DATABASE_UNAVAILABLE: 503,
+      NO_COMPANY_ACCESS: 403,
+      INVALID_COMPANY_ID: 400,
+      COMPANY_ACCESS_DENIED: 403,
+      EMPTY_COMPANY_SELECTION: 400,
+      TOO_MANY_COMPANIES: 400,
+      SESSION_UPDATE_FAILED: 500,
+    };
+
+    return json(
+      {
+        success: false,
+        code: error.code,
+        error: error.message,
+      },
+      contextErrorStatuses[error.code] ?? 500,
+    );
+  }
+
   if (
     error instanceof
     SalesError
