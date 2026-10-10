@@ -16,7 +16,7 @@ import {
 
 const standaloneSurfaceFiles = [
   'app/apps/[appKey]/EnterpriseModulePage.tsx',
-  'app/apps/sales/page.tsx',
+  'app/apps/sales/SalesSectionPage.tsx',
   'app/apps/sales/orders/[orderId]/page.tsx',
   'app/apps/sales/quotes/[quoteId]/page.tsx',
   'app/apps/invoicing/InvoicingSectionPage.tsx',
@@ -26,6 +26,7 @@ const standaloneSurfaceFiles = [
 const delegatingRouteFiles = [
   'app/apps/[appKey]/page.tsx',
   'app/apps/[appKey]/[section]/page.tsx',
+  'app/apps/sales/page.tsx',
   'app/apps/invoicing/page.tsx',
 ];
 
@@ -336,6 +337,23 @@ test(
           path +
             ' must not squeeze Invoicing back into the generic app surface grid',
         );
+      } else if (
+        path ===
+          'app/apps/sales/SalesSectionPage.tsx'
+      ) {
+        assert.match(
+          source,
+          /SalesModuleShell/,
+          path +
+            ' must render the Sales-owned standalone module shell',
+        );
+
+        assert.doesNotMatch(
+          source,
+          /AppSurfaceShell/,
+          path +
+            ' must preserve Sales-specific shell behavior',
+        );
       } else {
         assert.match(
           source,
@@ -365,6 +383,16 @@ test(
           /InvoicingSectionPage/,
           path +
             ' must delegate to the standalone Invoicing section surface',
+        );
+      } else if (
+        path ===
+          'app/apps/sales/page.tsx'
+      ) {
+        assert.match(
+          source,
+          /SalesSectionPage/,
+          path +
+            ' must delegate to the standalone Sales section surface',
         );
       } else {
         assert.match(
