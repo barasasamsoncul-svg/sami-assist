@@ -86,3 +86,10 @@ export {
   getSalesPipelineData,
   moveSalesOpportunity,
 } from '@/lib/apps/sales/pipeline';
+
+
+export {
+  deactivateSalesQuoteApprovalPolicy,
+  getSalesQuoteApprovalWorkflowData,
+  saveSalesQuoteApprovalPolicy,
+} from '@/lib/apps/sales/quote-approvals';
