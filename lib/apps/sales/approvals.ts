@@ -13,7 +13,7 @@ import {
   SalesError,
 } from '@/lib/apps/sales/context';
 
-function fingerprint(quote: Record<string, unknown>, lines: Record<string, unknown>[]) {
+function fingerprint(quote: Record<string, unknown>, lines: Record<string, unknown>[], optionalLines: Record<string, unknown>[] = []) {
   const normalized = {
     quote: Object.fromEntries(
       ['customer_name','customer_email','customer_phone','customer_tax_id','billing_address','shipping_address','quote_date','valid_until','currency','reference','subtotal','discount_total','tax_total','shipping_total','total_amount','margin_amount','margin_percent','notes','terms']
@@ -21,6 +21,10 @@ function fingerprint(quote: Record<string, unknown>, lines: Record<string, unkno
     ),
     lines: lines.map(line => Object.fromEntries(
       ['sort_order','description','sku_snapshot','unit','quantity','unit_price','discount_type','discount_value','discount_amount','tax_rate','tax_amount','subtotal','line_total']
+        .map(key => [key, line[key] ?? null]),
+    )),
+    optionalLines: optionalLines.map(line => Object.fromEntries(
+      ['sort_order','description','sku_snapshot','unit','quantity','unit_price','tax_name_snapshot','tax_rate','is_selected']
         .map(key => [key, line[key] ?? null]),
     )),
   };
@@ -38,7 +42,14 @@ async function quoteSnapshot(client: PoolClient, companyId: string, quoteId: str
      FROM sales_quote_items WHERE quote_id = $1 AND company_id = $2 ORDER BY sort_order, id`,
     [quoteId, companyId],
   );
-  return { quote: quoteResult.rows[0] as Record<string, unknown>, lines: linesResult.rows as Record<string, unknown>[], fingerprint: fingerprint(quoteResult.rows[0], linesResult.rows) };
+  const optionalResult = await client.query(
+    `SELECT sort_order, description, sku_snapshot, unit, quantity, unit_price, tax_name_snapshot, tax_rate, is_selected
+     FROM sales_quote_optional_items WHERE quote_id = $1 AND company_id = $2 ORDER BY sort_order, id`,
+    [quoteId, companyId],
+  );
+  const lines = linesResult.rows as Record<string, unknown>[];
+  const optionalLines = optionalResult.rows as Record<string, unknown>[];
+  return { quote: quoteResult.rows[0] as Record<string, unknown>, lines, optionalLines, fingerprint: fingerprint(quoteResult.rows[0], lines, optionalLines) };
 }
 
 function policyMatches(policy: Record<string, unknown>, quote: Record<string, unknown>) {
