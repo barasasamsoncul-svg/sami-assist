@@ -54,6 +54,8 @@ import SalesOperationsManager from '@/app/apps/sales/SalesOperationsManager';
 
 import SalesPipelineBoard from '@/app/apps/sales/SalesPipelineBoard';
 
+import SalesQuoteApprovalWorkflowManager from '@/app/apps/sales/SalesQuoteApprovalWorkflowManager';
+
 import type {
   SalesWorkspaceData,
 } from '@/lib/apps/sales/types';
@@ -72,6 +74,7 @@ type View =
   | 'advancedPricing'
   | 'currencies'
   | 'orders'
+  | 'approvals'
   | 'organization'
   | 'operations'
   | 'reports'
@@ -1384,6 +1387,19 @@ export default function SalesWorkspaceClient({
 
         {
           view ===
+            'approvals' &&
+          initialData
+            .capabilities
+            .canApproveInternally &&
+          (
+            <SalesQuoteApprovalWorkflowManager
+              mode="queue"
+            />
+          )
+        }
+
+        {
+          view ===
             'organization' &&
           initialData
             .capabilities
@@ -1446,23 +1462,16 @@ export default function SalesWorkspaceClient({
           view ===
             'settings' &&
           (
-            <Settings
-              data={
-                initialData
-              }
-              busy={
-                busy
-              }
-              request={
-                request
-              }
-              showSuccess={
-                showSuccess
-              }
-              showError={
-                showError
-              }
-            />
+            <div className="space-y-4">
+              <Settings
+                data={initialData}
+                busy={busy}
+                request={request}
+                showSuccess={showSuccess}
+                showError={showError}
+              />
+              <SalesQuoteApprovalWorkflowManager mode="policies" />
+            </div>
           )
         }
 
