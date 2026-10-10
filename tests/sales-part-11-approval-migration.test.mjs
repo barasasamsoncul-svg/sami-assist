@@ -55,5 +55,5 @@ test('Sales 3.4.3 migration preserves typed-signature consent evidence and is re
   assert.match(schema, /acceptance_signature_consent_text TEXT/);
   assert.match(registry, /SALES_3_4_2_TO_3_4_3/);
   assert.ok(registry.indexOf('SALES_3_4_1_TO_3_4_2,') < registry.indexOf('SALES_3_4_2_TO_3_4_3,'));
-  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.3'/s);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.4'/s);
 });

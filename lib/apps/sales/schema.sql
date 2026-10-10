@@ -244,6 +244,7 @@ CREATE TABLE IF NOT EXISTS public.sales_order_items_v2 (
   sku_snapshot VARCHAR(180),
   unit VARCHAR(60) NOT NULL DEFAULT 'unit',
   quantity NUMERIC(18,4) NOT NULL DEFAULT 1 CHECK (quantity > 0),
+  shipped_quantity NUMERIC(18,4) NOT NULL DEFAULT 0 CHECK (shipped_quantity >= 0),
   delivered_quantity NUMERIC(18,4) NOT NULL DEFAULT 0 CHECK (delivered_quantity >= 0),
   invoiced_quantity NUMERIC(18,4) NOT NULL DEFAULT 0 CHECK (invoiced_quantity >= 0),
   unit_price NUMERIC(18,2) NOT NULL DEFAULT 0 CHECK (unit_price >= 0),
@@ -257,7 +258,10 @@ CREATE TABLE IF NOT EXISTS public.sales_order_items_v2 (
   subtotal NUMERIC(18,2) NOT NULL DEFAULT 0 CHECK (subtotal >= 0),
   line_total NUMERIC(18,2) NOT NULL DEFAULT 0 CHECK (line_total >= 0),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CHECK (delivered_quantity <= quantity),
+  CONSTRAINT sales_order_items_v2_shipped_quantity_lte_quantity
+    CHECK (shipped_quantity <= quantity),
+  CONSTRAINT sales_order_items_v2_delivered_quantity_lte_shipped
+    CHECK (delivered_quantity <= shipped_quantity),
   CHECK (invoiced_quantity <= quantity)
 );
 

@@ -433,9 +433,9 @@ integration(
           lineId,
           orderedQuantity:
             5,
-          previousDeliveredQuantity:
-            0,
-          nextDeliveredQuantity:
+          quantityDelta:
+            3,
+          nextFulfilledQuantity:
             3,
           externalProductId:
             productId,
