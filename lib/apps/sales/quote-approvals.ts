@@ -57,7 +57,7 @@ function parseSnapshot(value: unknown): WorkflowStepSnapshot[] {
   return parsed.map((item, index) => ({
     stepNumber: Number(item?.stepNumber || index + 1),
     stepName: String(item?.stepName || 'Approval step ' + (index + 1)),
-    approverUserId: String(item?.approverUserId || ''),
+    approverUserId: String(item?.approverUserId || '').toLowerCase(),
     approverName: String(item?.approverName || 'Workspace member'),
     approverEmail: item?.approverEmail ? String(item.approverEmail) : null,
   }));
@@ -482,7 +482,7 @@ export async function reviewSalesQuoteApprovalStep(
     if (String(request.status) !== 'pending') {
       throw new SalesError('QUOTE_STATE_INVALID', 'This approval request has already been completed.');
     }
-    if (String(request.current_approver_user_id || '') !== context.userId) {
+    if (String(request.current_approver_user_id || '').toLowerCase() !== context.userId.toLowerCase()) {
       throw new SalesError('SALES_PERMISSION_REQUIRED', 'Only the assigned approver can decide this step.');
     }
     if (Number(request.current_step_number) !== stepNumber) {
@@ -502,7 +502,7 @@ export async function reviewSalesQuoteApprovalStep(
 
     const snapshot = parseSnapshot(request.step_snapshot);
     const activeStep = snapshot[stepNumber - 1];
-    if (!activeStep || activeStep.approverUserId !== context.userId) {
+    if (!activeStep || activeStep.approverUserId.toLowerCase() !== context.userId.toLowerCase()) {
       throw new SalesError('QUOTE_STATE_INVALID', 'The configured approval step is invalid.');
     }
 
@@ -919,7 +919,7 @@ export async function getSalesQuoteApprovalWorkflowData() {
     list.push({
       stepNumber: Number(row.step_number),
       stepName: String(row.step_name),
-      approverUserId: String(row.approver_user_id),
+      approverUserId: String(row.approver_user_id).toLowerCase(),
       approverName: user?.name || 'Former workspace member',
       decision: String(row.decision),
       note: row.note ? String(row.note) : null,
