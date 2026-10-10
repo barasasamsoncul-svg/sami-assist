@@ -1760,6 +1760,17 @@ export async function getSalesQuoteDetail(
             quote.stage_id,
             quote.expected_close_date,
             quote.probability_override,
+            approval_request.id AS workflow_request_id,
+            approval_request.status AS workflow_request_status,
+            approval_request.current_step_number AS workflow_current_step_number,
+            approval_request.current_approver_user_id AS workflow_current_approver_user_id,
+            approval_request.step_snapshot -> (approval_request.current_step_number - 1) ->> 'stepName'
+              AS workflow_current_step_name,
+            CASE
+              WHEN approval_request.id IS NOT NULL
+              THEN jsonb_array_length(approval_request.step_snapshot)
+              ELSE NULL
+            END AS workflow_total_steps,
             stage.code AS stage_code,
             stage.name AS stage_name,
             COALESCE(
@@ -1772,6 +1783,9 @@ export async function getSalesQuoteDetail(
             ON stage.id = quote.stage_id
            AND stage.company_id = quote.company_id
            AND stage.deleted_at IS NULL
+          LEFT JOIN sales_quote_approval_requests approval_request
+            ON approval_request.id = quote.approval_workflow_request_id
+           AND approval_request.company_id = quote.company_id
           WHERE quote.id = $1
             AND quote.company_id = $2
             AND quote.deleted_at IS NULL
@@ -2177,6 +2191,19 @@ export async function getSalesQuoteDetail(
         ? String(
             row.approval_rejection_reason,
           )
+        : null,
+    approvalWorkflow:
+      row.workflow_request_id
+        ? {
+            requestId: String(row.workflow_request_id),
+            status: String(row.workflow_request_status),
+            currentStepNumber: Number(row.workflow_current_step_number || 1),
+            currentStepName: String(row.workflow_current_step_name || 'Approval step'),
+            currentApproverUserId: row.workflow_current_approver_user_id
+              ? String(row.workflow_current_approver_user_id)
+              : null,
+            totalSteps: Number(row.workflow_total_steps || 1),
+          }
         : null,
     sentAt:
       row.sent_at
