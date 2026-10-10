@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { assertSalesQuoteApprovalSatisfied } from '@/lib/apps/sales/approvals';
+
 import crypto from 'crypto';
 
 import {
@@ -860,6 +862,10 @@ export async function respondToPublicSalesQuote(
         'QUOTE_STATE_INVALID',
         'Online quote acceptance is disabled for this company.',
       );
+    }
+
+    if (input.action === 'accept') {
+      await assertSalesQuoteApprovalSatisfied(client, String(quote.company_id), String(quote.id));
     }
 
     if (
