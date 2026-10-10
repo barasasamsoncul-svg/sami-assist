@@ -40,7 +40,7 @@
     "test:module-migrations": "node --test tests/module-migrations.test.mjs",
     "test:invoicing": "node --test tests/invoicing-module.test.mjs tests/invoicing-payment-provider-connectors.test.mjs tests/invoicing-customer-checkout.test.mjs tests/invoicing-provider-refunds.test.mjs",
     "test:enterprise-suite": "node --test tests/enterprise-suite.test.mjs",
-    "test:sales": "node --test tests/sales-module.test.mjs",
+    "test:sales": "node --test tests/sales-module.test.mjs tests/sales-part-11-approval-migration.test.mjs tests/sales-part-11-approval-engine.test.mjs",
     "test:locks": "node --test tests/module-quality-locks.test.mjs",
     "test:erp-integration": "node --conditions=react-server --import tsx --test tests/erp-parity-integration.test.ts",
     "test:app-ui": "node --import tsx --test tests/app-surfaces-ui.test.ts",
