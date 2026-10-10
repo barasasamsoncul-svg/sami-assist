@@ -76,4 +76,6 @@ test('approval policy and queue are available in the Sales UI', async () => {
   assert.match(ui, /Approval queue and audit trail/);
   assert.match(page, /SalesApprovalsManager/);
   assert.match(detail, /\/apps\/sales\/approvals/);
+  assert.match(detail, /\['draft', 'not_required', 'rejected'\]/);
+  assert.match(detail, /No approval required/);
 });
