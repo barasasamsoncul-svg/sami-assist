@@ -818,6 +818,17 @@ export default function SalesWorkspaceClient({
                 )
               }
 
+              {
+                initialData.capabilities.canManageSettings && (
+                  <Link
+                    href="/apps/sales/approvals"
+                    className="inline-flex h-10 items-center rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black"
+                  >
+                    Quote approvals
+                  </Link>
+                )
+              }
+
               <button
                 type="button"
                 disabled={

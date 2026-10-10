@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { assertSalesQuoteApprovalSatisfied } from '@/lib/apps/sales/approvals';
+
 import crypto from 'crypto';
 
 import type {
@@ -163,6 +165,8 @@ export async function deliverSalesQuote(
 
   const quote =
     result.rows[0];
+
+  await assertSalesQuoteApprovalSatisfied(input.pool, input.companyId, input.quoteId);
 
   if (
     ![
