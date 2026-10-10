@@ -10,7 +10,7 @@ async function source(file) {
 }
 
 test('Sales Part 11 migration defines tenant-scoped quote approval policies and ordered steps', async () => {
-  const migration = await source('lib/apps/sales/migrations/3.4.1-to-3.4.2.ts');
+  const [migration, schema] = await Promise.all([source('lib/apps/sales/migrations/3.4.1-to-3.4.2.ts'), source('lib/apps/sales/schema.sql')]);
 
   for (const table of [
     'sales_quote_approval_policies',
@@ -18,7 +18,8 @@ test('Sales Part 11 migration defines tenant-scoped quote approval policies and 
     'sales_quote_approval_requests',
     'sales_quote_approval_decisions',
   ]) {
-    assert.ok(migration.includes('public.' + table), table);
+    assert.ok(migration.includes('public.' + table), table + ' in migration');
+    assert.ok(schema.includes('public.' + table), table + ' in canonical schema');
   }
 
   assert.match(migration, /UNIQUE\(policy_id, step_order\)/);
