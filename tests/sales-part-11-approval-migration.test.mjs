@@ -34,8 +34,9 @@ test('Sales Part 11 migration defines tenant-scoped quote approval policies and 
 test('Sales Part 11 migration is registered after Sales 3.4.1', async () => {
   const registry = await source('lib/apps/runtime-migrations.ts');
   assert.match(registry, /SALES_3_4_1_TO_3_4_2/);
+  const salesRegistry = registry.slice(registry.indexOf('export const SALES_RUNTIME_MIGRATIONS'));
   assert.ok(
-    registry.indexOf('SALES_3_4_0_TO_3_4_1,') < registry.indexOf('SALES_3_4_1_TO_3_4_2,'),
+    salesRegistry.indexOf('SALES_3_4_0_TO_3_4_1,') < salesRegistry.indexOf('SALES_3_4_1_TO_3_4_2,'),
     'the new migration must run after 3.4.0 -> 3.4.1',
   );
 });
