@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 
 type Step = { approverUserId: string; approverRoleKey: string; requiredApprovals: number };
@@ -33,15 +33,15 @@ export default function SalesApprovalsManager() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     const response = await fetch('/api/apps/sales?approvals=1', { cache: 'no-store', credentials: 'same-origin' });
     const body = await response.json();
     if (!response.ok || body.success !== true) throw new Error(body.error || 'Could not load approval policies.');
     setPolicies(body.approvals.policies || []);
     setRequests(body.approvals.requests || []);
-  }
+  }, []);
 
-  useEffect(() => { void refresh().catch(e => setError(e instanceof Error ? e.message : 'Could not load approvals.')); }, []);
+  useEffect(() => { void refresh().catch(e => setError(e instanceof Error ? e.message : 'Could not load approvals.')); }, [refresh]);
 
   async function savePolicy(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
