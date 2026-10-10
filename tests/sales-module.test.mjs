@@ -627,7 +627,7 @@ test('Sales v3 is registered into manifests, migrations, Search and SaMi AI', as
 
   assert.match(
     manifest,
-    /key: "sales",[\s\S]*version: '3\.4\.0'/s,
+    /key: "sales",[\s\S]*version: '3\.4\.1'/s,
   );
 
   assert.match(
@@ -1089,7 +1089,7 @@ test('Sales 3.2 runs deposits, shipments, returns and forecasting through author
   ]);
 
   assert.match(runtimeMigrations, /SALES_3_1_0_TO_3_2_0/);
-  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.0'/s);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.1'/s);
 
   for (const table of [
     'sales_shipments',
@@ -1461,7 +1461,7 @@ test('Sales roadmap Part 10 locks multi-currency values and exposes Currency & F
   assert.match(migration, /exchange_rate NUMERIC\(19,8\)/);
   assert.match(migration, /base_total_amount/);
   assert.match(runtimeMigrations, /SALES_3_2_0_TO_3_3_0/);
-  assert.match(modules, /key: "sales"[\s\S]*version: '3\.4\.0'/);
+  assert.match(modules, /key: "sales"[\s\S]*version: '3\.4\.1'/);
 
   assert.match(commands, /resolveSalesExchangeRate/);
   assert.match(commands, /salesBaseAmount/);
@@ -1536,7 +1536,7 @@ test('Sales roadmap Part 11 owns tenant-scoped leads and opportunity pipeline', 
     source('lib/apps/sales/schema.sql'),
   ]);
   assert.match(runtime,/SALES_3_3_0_TO_3_4_0/);
-  assert.match(manifest,/key: "sales"[\s\S]*version: '3\.4\.0'/);
+  assert.match(manifest,/key: "sales"[\s\S]*version: '3\.4\.1'/);
   for (const table of ['sales_pipeline_stages','sales_leads','sales_opportunities','sales_opportunity_stage_history']) {
     assert.match(migration,new RegExp('public\\.'+table));
     assert.match(schema,new RegExp('public\\.'+table));
@@ -1558,4 +1558,37 @@ test('Sales roadmap Part 11 owns tenant-scoped leads and opportunity pipeline', 
   assert.match(workspace,/SalesPipelineManager/);
   assert.match(ui,/Leads & Opportunities/);
   assert.match(ui,/Opportunity pipeline/);
+});
+
+
+test('Sales 3.4.1 migration is active and approval cannot be bypassed by acceptance or order conversion', async () => {
+  const [
+    manifest,
+    migration,
+    runtimeMigrations,
+    commands,
+    publicSales,
+    delivery,
+  ] = await Promise.all([
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/sales/migrations/3.4.0-to-3.4.1.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/apps/sales/commands.ts'),
+    source('lib/apps/sales/public.ts'),
+    source('lib/apps/sales/delivery.ts'),
+  ]);
+
+  assert.match(manifest, /key: "sales"[\s\S]*version: '3\.4\.1'/s);
+  assert.match(migration, /fromVersion:[\s\S]*'3\.4\.0'/);
+  assert.match(migration, /toVersion:[\s\S]*'3\.4\.1'/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS stage_id/);
+  assert.match(runtimeMigrations, /SALES_3_4_0_TO_3_4_1/);
+
+  assert.match(delivery, /Complete internal quotation approval before sending/);
+  assert.match(publicSales, /q\.approval_status/);
+  assert.match(publicSales, /Complete internal quotation approval before accepting this quote/);
+
+  assert.match(commands, /approval_status[\s\S]*valid_until/);
+  assert.match(commands, /Complete internal quotation approval before accepting this quote/);
+  assert.match(commands, /Complete internal quotation approval before creating a sales order/);
 });
