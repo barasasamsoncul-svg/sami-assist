@@ -94,7 +94,9 @@ export async function saveSalesQuoteApprovalPolicy(input: Record<string, unknown
   const steps = input.steps.map((raw: unknown, index: number) => {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new SalesError('INVALID_INPUT', 'An approval step is invalid.');
     const step = raw as Record<string, unknown>;
-    const userId = optionalUuid(step.approverUserId);
+    const rawUserId = cleanText(step.approverUserId, 36);
+    const userId = optionalUuid(rawUserId);
+    if (rawUserId && !userId) throw new SalesError('INVALID_INPUT', `Step ${index + 1} user ID must be a valid UUID.`);
     const roleKey = cleanText(step.approverRoleKey, 120).toLowerCase() || null;
     if (!userId && !roleKey) throw new SalesError('INVALID_INPUT', `Step ${index + 1} needs a user or permission key.`);
     if (roleKey && !/^[a-z0-9][a-z0-9._:-]*$/.test(roleKey)) throw new SalesError('INVALID_INPUT', `Step ${index + 1} permission key is invalid.`);
