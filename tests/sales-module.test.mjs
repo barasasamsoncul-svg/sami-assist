@@ -2053,6 +2053,28 @@ test('Sales order workspace offers fulfillment and invoicing work queues alongsi
   assert.match(workspace, /matchesSalesOrderView\([\s\S]*orderStatusView/);
 });
 
+test('Sales order workspace supports a dense register table and preserves the card layout', async () => {
+  const workspace = await source('app/apps/sales/SalesWorkspaceClient.tsx');
+
+  assert.ok(workspace.includes("useState<'register' | 'cards'>"));
+  assert.ok(workspace.includes("useState<'register' | 'cards'>(\n      'register'"));
+  assert.ok(workspace.includes('aria-label="Sales order display mode"'));
+  assert.ok(workspace.includes('aria-pressed={orderDisplayMode === \'register\'}'));
+  assert.ok(workspace.includes('aria-pressed={orderDisplayMode === \'cards\'}'));
+  assert.ok(workspace.includes('aria-label="Sales order register"'));
+  for (const column of ['Order date', 'Customer', 'Fulfillment', 'Invoicing', 'Delivered', 'Invoiced', 'Order value']) {
+    assert.ok(workspace.includes(column), 'Sales order register includes ' + column);
+  }
+  assert.ok(workspace.includes("salesOrderFulfillmentLabel(order.fulfillmentStatus)"));
+  assert.ok(workspace.includes("salesOrderInvoiceLabel(order.invoiceStatus)"));
+  assert.ok(workspace.includes("orderDisplayMode === 'register'"));
+  assert.ok(workspace.includes("orderDisplayMode === 'cards'"));
+  assert.ok(workspace.includes("className=\"grid gap-3\""));
+  assert.ok(workspace.includes("href={'/apps/sales/orders/' + order.id}"));
+  assert.ok(workspace.includes('Math.round(order.deliveredPercent)'));
+  assert.ok(workspace.includes('Math.round(order.invoicedPercent)'));
+});
+
 test('Sales bulk quotation sending is permission-gated, capped, sequential and reports per-quotation outcomes', async () => {
   const [bulk, commands, delivery, service, route, ui] = await Promise.all([
     source('lib/apps/sales/bulk-send.ts'),
