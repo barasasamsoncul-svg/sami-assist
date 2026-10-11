@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { SalesManagementInsightsData } from '@/lib/apps/sales/management-insights';
+import SalesWeightedForecast from '@/app/apps/sales/SalesWeightedForecast';
 
 type Props = {
   data: SalesManagementInsightsData;
@@ -74,6 +75,8 @@ export default function SalesManagementInsights({ data, currency, metrics }: Pro
           }))} />
         </section>
       </section>
+
+      <SalesWeightedForecast rows={data.forecast} />
 
       <section className="sami-surface rounded-[24px] p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
