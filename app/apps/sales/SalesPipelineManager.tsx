@@ -357,6 +357,13 @@ export default function SalesPipelineManager({
               />
             </label>
           ))}
+          <label className="space-y-1 text-xs font-bold text-slate-500">
+            <span>Assigned salesperson</span>
+            <select name="salespersonUserId" defaultValue="" className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100">
+              <option value="">Unassigned</option>
+              {data.salespeople.map(person => <option key={person.id} value={person.id}>{person.name} · {person.email}</option>)}
+            </select>
+          </label>
           <button
             type="submit"
             disabled={busy}
