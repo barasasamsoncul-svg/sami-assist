@@ -39,6 +39,7 @@ import {
   updateSalesLeadActivity,
   editSalesLeadActivity,
   convertSalesLeadToOpportunity,
+  updateSalesOpportunity,
   moveSalesOpportunity,
   getSalesOrderDetail,
   getSalesOrganizationData,
@@ -528,6 +529,8 @@ export async function POST(
           editSalesLeadActivity,
         convert_lead:
           convertSalesLeadToOpportunity,
+        update_opportunity:
+          updateSalesOpportunity,
         move_opportunity:
           moveSalesOpportunity,
         create_customer:
