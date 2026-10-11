@@ -2554,7 +2554,7 @@ test('Sales team lead creation supports tenant-safe balanced automatic assignmen
   assert.ok(assignment.includes('timestamp(a.lastAssignedAt) - timestamp(b.lastAssignedAt)'));
   assert.ok(manager.includes('name="salesTeamId"'));
   assert.ok(manager.includes('Auto-assign using team workload'));
-  assert.ok(manager.includes('Leave the salesperson blank to auto-assign'));
+  assert.ok(manager.includes('Active source rules can choose a team automatically; if none match, the lead remains unassigned.'));
   assert.ok(manager.includes('member_user_ids.includes(person.id)'));
   assert.ok(packageJson.includes('tests/sales-lead-assignment.test.ts'));
 });
