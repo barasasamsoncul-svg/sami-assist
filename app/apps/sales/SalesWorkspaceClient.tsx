@@ -98,8 +98,44 @@ const QUOTE_STATUS_VIEWS: {
   { key: 'awaiting_response', label: 'Awaiting customer' },
   { key: 'accepted', label: 'Accepted' },
   { key: 'converted', label: 'Converted to order' },
+  { key: 'expired', label: 'Expired' },
+  { key: 'expiring_soon', label: 'Expiring in 7 days' },
   { key: 'closed_without_sale', label: 'Closed without sale' },
 ];
+
+
+function isQuoteExpiringWithinSevenDays(
+  quote: SalesWorkspaceData['quotes'][number],
+) {
+  if (
+    (quote.status !== 'sent' && quote.status !== 'viewed') ||
+    !quote.validUntil
+  ) {
+    return false;
+  }
+
+  const parts = quote.validUntil.slice(0, 10).split('-').map(Number);
+  const [year, month, day] = parts;
+
+  if (
+    parts.length !== 3 ||
+    !year ||
+    !month ||
+    !day ||
+    !Number.isFinite(year) ||
+    !Number.isFinite(month) ||
+    !Number.isFinite(day)
+  ) {
+    return false;
+  }
+
+  const now = new Date();
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const expiry = Date.UTC(year, month - 1, day);
+  const daysUntilExpiry = Math.round((expiry - today) / 86_400_000);
+
+  return daysUntilExpiry >= 0 && daysUntilExpiry <= 7;
+}
 
 
 function matchesQuoteStatusView(
@@ -120,6 +156,10 @@ function matchesQuoteStatusView(
       return quote.status === 'accepted';
     case 'converted':
       return quote.status === 'converted';
+    case 'expired':
+      return quote.status === 'expired';
+    case 'expiring_soon':
+      return isQuoteExpiringWithinSevenDays(quote);
     case 'closed_without_sale':
       return quote.status === 'rejected' ||
         quote.status === 'expired' ||
