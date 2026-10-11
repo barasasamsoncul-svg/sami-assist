@@ -47,7 +47,6 @@ function mapSavedView(row: SavedQuoteViewRow): SalesSavedQuoteView {
     id: String(row.id),
     name: String(row.name),
     statusView: row.status_view,
-    scoreView: row.score_view || 'all',
     searchQuery: String(row.search_query || ''),
     createdAt: new Date(row.created_at).toISOString(),
   };
@@ -126,7 +125,6 @@ export async function saveSalesSavedQuoteView(
         context.userId,
         name,
         rawStatusView,
-        rawScoreView,
         searchQuery,
         context.userId,
       ],
@@ -217,7 +215,6 @@ function mapSavedOrderView(row: SavedOrderViewRow): SalesSavedOrderView {
     id: String(row.id),
     name: String(row.name),
     statusView: row.status_view,
-    scoreView: row.score_view || 'all',
     searchQuery: String(row.search_query || ''),
     sortBy: row.sort_by || 'newest',
     createdAt: new Date(row.created_at).toISOString(),
