@@ -6,6 +6,7 @@ import type {
 export const SALES_ROUTE_VIEWS = [
   'overview',
   'pipeline',
+  'opportunities',
   'customers',
   'quotes',
   'newQuote',
@@ -87,6 +88,23 @@ export const SALES_NAVIGATION:
         'Pipeline',
       description:
         'Work the pipeline board with configurable stages, probabilities and weighted value.',
+      group:
+        'Overview',
+      capability:
+        'canViewPipeline',
+      sidebar:
+        true,
+    },
+
+    opportunities: {
+      href:
+        '/apps/sales/opportunities',
+      title:
+        'Leads & Opportunities',
+      label:
+        'Leads & Opportunities',
+      description:
+        'Qualify leads, track opportunities and create quotations without losing customer context.',
       group:
         'Overview',
       capability:
