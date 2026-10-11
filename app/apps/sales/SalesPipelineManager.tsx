@@ -587,6 +587,72 @@ export default function SalesPipelineManager({
                     </div>
                   </form>
                 ) : null}
+
+                {activityLeadId === lead.id ? (
+                  <form onSubmit={event => void createActivity(event, lead)} className="mt-4 grid gap-3 rounded-xl bg-blue-500/[0.04] p-3 sm:grid-cols-2">
+                    <h4 className="text-sm font-black sm:col-span-2">Schedule follow-up</h4>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Activity type</span>
+                      <select value={activityDraft.activityType} onChange={event => setActivityDraft(current => ({ ...current, activityType: event.target.value as ActivityDraft['activityType'] }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100">
+                        <option value="task">Task</option>
+                        <option value="call">Call</option>
+                        <option value="email">Email</option>
+                        <option value="meeting">Meeting</option>
+                        <option value="note">Note</option>
+                      </select>
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Due date</span>
+                      <input type="date" value={activityDraft.dueDate} onChange={event => setActivityDraft(current => ({ ...current, dueDate: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2">
+                      <span>Subject *</span>
+                      <input required value={activityDraft.subject} onChange={event => setActivityDraft(current => ({ ...current, subject: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2">
+                      <span>Assigned to</span>
+                      <select value={activityDraft.assignedUserId} onChange={event => setActivityDraft(current => ({ ...current, assignedUserId: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100">
+                        <option value="">Unassigned</option>
+                        {data.salespeople.map(person => <option key={person.id} value={person.id}>{person.name} · {person.email}</option>)}
+                      </select>
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2">
+                      <span>Details</span>
+                      <textarea rows={2} value={activityDraft.description} onChange={event => setActivityDraft(current => ({ ...current, description: event.target.value }))} className="w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 py-2 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                    </label>
+                    <div className="flex flex-wrap gap-2 sm:col-span-2">
+                      <button type="submit" disabled={busy || !activityDraft.subject.trim()} className="h-10 rounded-lg bg-blue-600 px-3.5 text-xs font-black text-white disabled:opacity-60">{busy ? 'Saving…' : 'Schedule follow-up'}</button>
+                      <button type="button" disabled={busy} onClick={() => setActivityLeadId(null)} className="h-10 rounded-lg border border-[var(--sami-border)] px-3.5 text-xs font-black disabled:opacity-60">Cancel</button>
+                    </div>
+                  </form>
+                ) : null}
+
+                <div className="mt-4 space-y-2 border-t border-[var(--sami-border)] pt-3">
+                  <p className="text-xs font-black">Follow-up activity</p>
+                  {data.activities.filter(activity => activity.lead_id === lead.id).slice(0, 5).length === 0 ? (
+                    <p className="text-xs text-slate-400">No follow-up activities recorded.</p>
+                  ) : data.activities.filter(activity => activity.lead_id === lead.id).slice(0, 5).map(activity => (
+                    <div key={activity.id} className="rounded-lg border border-[var(--sami-border)] p-2.5">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="break-words text-xs font-black">{activity.subject}</p>
+                          <p className="mt-1 text-[10px] text-slate-500">
+                            {activity.activity_type} · {activity.status}
+                            {activity.due_date ? ' · Due ' + String(activity.due_date).slice(0, 10) : ''}
+                            {activity.assigned_user_id ? ' · ' + (data.salespeople.find(person => person.id === activity.assigned_user_id)?.name || 'Assigned user') : ''}
+                          </p>
+                          {activity.description ? <p className="mt-1 whitespace-pre-wrap break-words text-xs text-slate-500">{activity.description}</p> : null}
+                        </div>
+                        {canManagePipeline && activity.status === 'planned' ? (
+                          <div className="flex gap-2">
+                            <button type="button" disabled={busy} onClick={() => void updateActivity(activity.id, 'completed')} className="text-[10px] font-black text-emerald-700 hover:underline disabled:opacity-60">Complete</button>
+                            <button type="button" disabled={busy} onClick={() => void updateActivity(activity.id, 'cancelled')} className="text-[10px] font-black text-slate-500 hover:underline disabled:opacity-60">Cancel</button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </article>
             ))}
           </div>
