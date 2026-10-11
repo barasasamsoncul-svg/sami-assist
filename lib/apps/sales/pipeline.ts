@@ -1,6 +1,7 @@
 import 'server-only';
 
 import type { PoolClient } from 'pg';
+import { queryControl } from '@/lib/db/control';
 
 import { cleanText, isoDate, nullableText, numberInput, optionalUuid, requireSalesContext, requireUuid, SALES_PERMISSIONS, SalesError } from '@/lib/apps/sales/context';
 
@@ -28,25 +29,307 @@ async function nextPipelineNumber(client: PoolClient, companyId:string, userId:s
   return value;
 }
 
+
+async function resolveActiveSalesperson(
+  context: Awaited<ReturnType<typeof requireSalesContext>>,
+  value: unknown,
+) {
+  const rawId = cleanText(value, 64);
+  if (!rawId) return null;
+  const userId = requireUuid(rawId, 'Salesperson');
+  const result = await queryControl(
+    `SELECT u.id
+     FROM tenant_users tu
+     INNER JOIN users u ON u.id = tu.user_id
+     WHERE tu.tenant_id = $1
+       AND tu.user_id = $2
+       AND tu.status = 'active'
+       AND tu.member_type = 'internal'
+       AND tu.deleted_at IS NULL
+       AND u.deleted_at IS NULL
+     LIMIT 1`,
+    [context.tenantId, userId],
+  );
+  if (!result.rows[0]) {
+    throw new SalesError('INVALID_INPUT', 'Choose an active salesperson in this workspace.');
+  }
+  return userId;
+}
+
+function optionalPipelineDate(value: unknown, field: string) {
+  const date = cleanText(value, 10);
+  if (!date) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new SalesError('INVALID_INPUT', field + ' must be a valid date.');
+  }
+  const parsed = new Date(date + 'T00:00:00.000Z');
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+    throw new SalesError('INVALID_INPUT', field + ' must be a valid date.');
+  }
+  return date;
+}
+
 export async function getSalesPipelineData() {
-  const context=await requireSalesContext(SALES_PERMISSIONS.PIPELINE_VIEW);
-  await ensurePipelineStages(context.pool,context.companyId,context.userId);
-  const [stages,leads,opportunities]=await Promise.all([
-    context.pool.query(`SELECT id,name,sequence,probability,stage_type,is_active FROM sales_pipeline_stages WHERE company_id=$1 AND is_active=TRUE ORDER BY sequence,name`,[context.companyId]),
-    context.pool.query(`SELECT id,lead_number,status,name,company_name,contact_name,email,phone,source,salesperson_user_id,sales_team_id,territory_id,created_at FROM sales_leads WHERE company_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 250`,[context.companyId]),
-    context.pool.query(`SELECT o.id,o.opportunity_number,o.lead_id,o.billing_customer_id,o.stage_id,o.name,o.customer_name,o.contact_name,o.email,o.phone,o.currency,o.expected_value,o.probability,o.expected_close_date,o.salesperson_user_id,o.sales_team_id,o.territory_id,o.source,o.latest_quote_id,o.created_at,s.name AS stage_name,s.stage_type FROM sales_opportunities o JOIN sales_pipeline_stages s ON s.id=o.stage_id WHERE o.company_id=$1 AND o.deleted_at IS NULL ORDER BY s.sequence,o.expected_close_date NULLS LAST,o.created_at DESC LIMIT 500`,[context.companyId]),
+  const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_VIEW);
+  await ensurePipelineStages(context.pool, context.companyId, context.userId);
+  const [stages, leads, opportunities, activities, salespeople] = await Promise.all([
+    context.pool.query(
+      `SELECT id,name,sequence,probability,stage_type,is_active
+       FROM sales_pipeline_stages
+       WHERE company_id=$1 AND is_active=TRUE
+       ORDER BY sequence,name`,
+      [context.companyId],
+    ),
+    context.pool.query(
+      `SELECT id,lead_number,status,name,company_name,contact_name,email,phone,source,notes,
+              salesperson_user_id,sales_team_id,territory_id,disqualification_reason,created_at
+       FROM sales_leads
+       WHERE company_id=$1 AND deleted_at IS NULL
+       ORDER BY created_at DESC
+       LIMIT 250`,
+      [context.companyId],
+    ),
+    context.pool.query(
+      `SELECT o.id,o.opportunity_number,o.lead_id,o.billing_customer_id,o.stage_id,o.name,
+              o.customer_name,o.contact_name,o.email,o.phone,o.currency,o.expected_value,o.probability,
+              o.expected_close_date,o.salesperson_user_id,o.sales_team_id,o.territory_id,o.source,
+              o.latest_quote_id,o.created_at,s.name AS stage_name,s.stage_type
+       FROM sales_opportunities o
+       JOIN sales_pipeline_stages s ON s.id=o.stage_id
+       WHERE o.company_id=$1 AND o.deleted_at IS NULL
+       ORDER BY s.sequence,o.expected_close_date NULLS LAST,o.created_at DESC
+       LIMIT 500`,
+      [context.companyId],
+    ),
+    context.pool.query(
+      `SELECT id,lead_id,activity_type,subject,description,due_date,status,assigned_user_id,
+              completed_at,created_at
+       FROM sales_lead_activities
+       WHERE company_id=$1 AND deleted_at IS NULL
+       ORDER BY due_date NULLS LAST,created_at DESC
+       LIMIT 1000`,
+      [context.companyId],
+    ),
+    queryControl(
+      `SELECT u.id,
+              COALESCE(
+                NULLIF(BTRIM(COALESCE(u.full_name,'')),''),
+                NULLIF(BTRIM(CONCAT_WS(' ',u.first_name,u.last_name)),''),
+                u.email
+              ) AS name,
+              u.email
+       FROM tenant_users tu
+       INNER JOIN users u ON u.id=tu.user_id
+       WHERE tu.tenant_id=$1
+         AND tu.status='active'
+         AND tu.member_type='internal'
+         AND tu.deleted_at IS NULL
+         AND u.deleted_at IS NULL
+       ORDER BY LOWER(COALESCE(NULLIF(BTRIM(u.full_name),''),u.email)),u.id`,
+      [context.tenantId],
+    ),
   ]);
-  return {stages:stages.rows,leads:leads.rows,opportunities:opportunities.rows};
+  return {
+    stages: stages.rows,
+    leads: leads.rows,
+    opportunities: opportunities.rows,
+    activities: activities.rows,
+    salespeople: salespeople.rows,
+  };
 }
 
 export async function createSalesLead(input:Record<string,unknown>) {
   const context=await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
   const name=cleanText(input.name,255); if(!name) throw new SalesError('INVALID_INPUT','Lead name is required.');
-  const client=await context.pool.connect();
+  const salespersonUserId = await resolveActiveSalesperson(context, input.salespersonUserId); const client=await context.pool.connect();
   try { await client.query('BEGIN'); const number=await nextPipelineNumber(client,context.companyId,context.userId,'lead','LEAD-');
-    const r=await client.query(`INSERT INTO sales_leads (company_id,lead_number,name,company_name,contact_name,email,phone,source,notes,salesperson_user_id,sales_team_id,territory_id,created_by,updated_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13) RETURNING id,lead_number,status,name`,[context.companyId,number,name,nullableText(input.companyName,255),nullableText(input.contactName,255),nullableText(input.email,320),nullableText(input.phone,80),nullableText(input.source,120),nullableText(input.notes,4000),optionalUuid(input.salespersonUserId),optionalUuid(input.salesTeamId),optionalUuid(input.territoryId),context.userId]);
+    const r=await client.query(`INSERT INTO sales_leads (company_id,lead_number,name,company_name,contact_name,email,phone,source,notes,salesperson_user_id,sales_team_id,territory_id,created_by,updated_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13) RETURNING id,lead_number,status,name`,[context.companyId,number,name,nullableText(input.companyName,255),nullableText(input.contactName,255),nullableText(input.email,320),nullableText(input.phone,80),nullableText(input.source,120),nullableText(input.notes,4000),salespersonUserId,optionalUuid(input.salesTeamId),optionalUuid(input.territoryId),context.userId]);
     await client.query('COMMIT'); return r.rows[0];
   } catch(e){await client.query('ROLLBACK');throw e;} finally{client.release();}
+}
+
+
+export async function updateSalesLead(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
+  const leadId = requireUuid(input.leadId, 'Lead');
+  const name = cleanText(input.name, 255);
+  if (!name) throw new SalesError('INVALID_INPUT', 'Lead name is required.');
+  const email = nullableText(input.email, 320);
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new SalesError('INVALID_INPUT', 'Enter a valid lead email address.');
+  }
+  const salespersonUserId = await resolveActiveSalesperson(context, input.salespersonUserId);
+  const companyName = nullableText(input.companyName, 255);
+  const contactName = nullableText(input.contactName, 255);
+  const phone = nullableText(input.phone, 80);
+  const source = nullableText(input.source, 120);
+  const notes = nullableText(input.notes, 4000);
+  const client = await context.pool.connect();
+  try {
+    await client.query('BEGIN');
+    const current = await client.query(
+      `SELECT status FROM sales_leads
+       WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL
+       FOR UPDATE`,
+      [leadId, context.companyId],
+    );
+    if (!current.rows[0]) throw new SalesError('INVALID_INPUT', 'Lead was not found.');
+    if (current.rows[0].status === 'converted') {
+      throw new SalesError('INVALID_INPUT', 'A converted lead cannot be edited; update its opportunity instead.');
+    }
+    const updated = await client.query(
+      `UPDATE sales_leads
+       SET name=$3,company_name=$4,contact_name=$5,email=$6,phone=$7,source=$8,notes=$9,
+           salesperson_user_id=$10,updated_by=$11,updated_at=NOW()
+       WHERE id=$1 AND company_id=$2
+       RETURNING id,lead_number,status,name,salesperson_user_id`,
+      [leadId, context.companyId, name, companyName, contactName, email, phone, source, notes, salespersonUserId, context.userId],
+    );
+    await client.query('COMMIT');
+    return updated.rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function disqualifySalesLead(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
+  const leadId = requireUuid(input.leadId, 'Lead');
+  const reason = cleanText(input.reason, 2000);
+  if (!reason) throw new SalesError('INVALID_INPUT', 'A reason is required to disqualify a lead.');
+  const client = await context.pool.connect();
+  try {
+    await client.query('BEGIN');
+    const updated = await client.query(
+      `UPDATE sales_leads
+       SET status='disqualified',disqualification_reason=$3,updated_by=$4,updated_at=NOW()
+       WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL AND status <> 'converted'
+       RETURNING id,status`,
+      [leadId, context.companyId, reason, context.userId],
+    );
+    if (!updated.rows[0]) {
+      const exists = await client.query(
+        `SELECT status FROM sales_leads WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL`,
+        [leadId, context.companyId],
+      );
+      if (!exists.rows[0]) throw new SalesError('INVALID_INPUT', 'Lead was not found.');
+      throw new SalesError('INVALID_INPUT', 'A converted lead cannot be disqualified.');
+    }
+    await client.query(
+      `INSERT INTO sales_lead_activities
+         (company_id,lead_id,activity_type,subject,description,status,completed_at,created_by,updated_by)
+       VALUES ($1,$2,'note','Lead disqualified',$3,'completed',NOW(),$4,$4)`,
+      [context.companyId, leadId, reason, context.userId],
+    );
+    await client.query('COMMIT');
+    return updated.rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function reopenSalesLead(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
+  const leadId = requireUuid(input.leadId, 'Lead');
+  const client = await context.pool.connect();
+  try {
+    await client.query('BEGIN');
+    const updated = await client.query(
+      `UPDATE sales_leads
+       SET status='new',disqualification_reason=NULL,updated_by=$3,updated_at=NOW()
+       WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL AND status='disqualified'
+       RETURNING id,status`,
+      [leadId, context.companyId, context.userId],
+    );
+    if (!updated.rows[0]) {
+      const exists = await client.query(
+        `SELECT status FROM sales_leads WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL`,
+        [leadId, context.companyId],
+      );
+      if (!exists.rows[0]) throw new SalesError('INVALID_INPUT', 'Lead was not found.');
+      throw new SalesError('INVALID_INPUT', 'Only a disqualified lead can be reopened.');
+    }
+    await client.query(
+      `INSERT INTO sales_lead_activities
+         (company_id,lead_id,activity_type,subject,description,status,completed_at,created_by,updated_by)
+       VALUES ($1,$2,'note','Lead reopened','Lead returned to the new status.', 'completed',NOW(),$3,$3)`,
+      [context.companyId, leadId, context.userId],
+    );
+    await client.query('COMMIT');
+    return updated.rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function createSalesLeadActivity(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
+  const leadId = requireUuid(input.leadId, 'Lead');
+  const activityType = cleanText(input.activityType, 20).toLowerCase();
+  if (!['call', 'email', 'meeting', 'task', 'note'].includes(activityType)) {
+    throw new SalesError('INVALID_INPUT', 'Choose a valid follow-up activity type.');
+  }
+  const subject = cleanText(input.subject, 255);
+  if (!subject) throw new SalesError('INVALID_INPUT', 'Activity subject is required.');
+  const description = nullableText(input.description, 4000);
+  const dueDate = optionalPipelineDate(input.dueDate, 'Due date');
+  const assignedUserId = await resolveActiveSalesperson(context, input.assignedUserId);
+  const client = await context.pool.connect();
+  try {
+    await client.query('BEGIN');
+    const lead = await client.query(
+      `SELECT status FROM sales_leads
+       WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL
+       FOR UPDATE`,
+      [leadId, context.companyId],
+    );
+    if (!lead.rows[0]) throw new SalesError('INVALID_INPUT', 'Lead was not found.');
+    if (lead.rows[0].status === 'converted' || lead.rows[0].status === 'disqualified') {
+      throw new SalesError('INVALID_INPUT', 'Follow-up activities can only be added to active leads.');
+    }
+    const created = await client.query(
+      `INSERT INTO sales_lead_activities
+         (company_id,lead_id,activity_type,subject,description,due_date,assigned_user_id,created_by,updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8)
+       RETURNING id,lead_id,activity_type,subject,description,due_date,status,assigned_user_id,created_at`,
+      [context.companyId, leadId, activityType, subject, description, dueDate, assignedUserId, context.userId],
+    );
+    await client.query('COMMIT');
+    return created.rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function updateSalesLeadActivity(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
+  const activityId = requireUuid(input.activityId, 'Activity');
+  const status = cleanText(input.status, 20).toLowerCase();
+  if (status !== 'completed' && status !== 'cancelled') {
+    throw new SalesError('INVALID_INPUT', 'Activity status must be completed or cancelled.');
+  }
+  const updated = await context.pool.query(
+    `UPDATE sales_lead_activities
+     SET status=$3,completed_at=CASE WHEN $3='completed' THEN COALESCE(completed_at,NOW()) ELSE NULL END,
+         updated_by=$4,updated_at=NOW()
+     WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL AND status='planned'
+     RETURNING id,lead_id,status,completed_at`,
+    [activityId, context.companyId, status, context.userId],
+  );
+  if (!updated.rows[0]) throw new SalesError('INVALID_INPUT', 'Planned activity was not found.');
+  return updated.rows[0];
 }
 
 export async function convertSalesLeadToOpportunity(input:Record<string,unknown>) {

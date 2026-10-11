@@ -20,6 +20,26 @@ type SalesLead = {
   email: string | null;
   phone: string | null;
   source: string | null;
+  notes: string | null;
+  salesperson_user_id: string | null;
+  sales_team_id?: string | null;
+  territory_id?: string | null;
+  disqualification_reason: string | null;
+};
+
+type Salesperson = { id: string; name: string; email: string };
+
+type SalesLeadActivity = {
+  id: string;
+  lead_id: string;
+  activity_type: 'call' | 'email' | 'meeting' | 'task' | 'note';
+  subject: string;
+  description: string | null;
+  due_date: string | null;
+  status: 'planned' | 'completed' | 'cancelled';
+  assigned_user_id: string | null;
+  completed_at: string | null;
+  created_at: string;
 };
 
 type SalesOpportunity = {
@@ -45,36 +65,34 @@ type PipelineData = {
   stages: PipelineStage[];
   leads: SalesLead[];
   opportunities: SalesOpportunity[];
+  activities: SalesLeadActivity[];
+  salespeople: Salesperson[];
 };
 
 type PipelineAction =
-  | {
-      action: 'create_lead';
-      name: FormDataEntryValue | null;
-      companyName: FormDataEntryValue | null;
-      contactName: FormDataEntryValue | null;
-      email: FormDataEntryValue | null;
-      phone: FormDataEntryValue | null;
-      source: FormDataEntryValue | null;
-    }
-  | {
-      action: 'convert_lead';
-      leadId: string;
-      name: string;
-      expectedValue: string;
-      currency: string;
-      expectedCloseDate: string | null;
-    }
-  | {
-      action: 'move_opportunity';
-      opportunityId: string;
-      stageId: string;
-    };
+  | { action: 'create_lead'; name: FormDataEntryValue | null; companyName: FormDataEntryValue | null; contactName: FormDataEntryValue | null; email: FormDataEntryValue | null; phone: FormDataEntryValue | null; source: FormDataEntryValue | null; salespersonUserId: FormDataEntryValue | null }
+  | { action: 'update_lead'; leadId: string; name: string; companyName: string; contactName: string; email: string; phone: string; source: string; notes: string; salespersonUserId: string | null }
+  | { action: 'disqualify_lead'; leadId: string; reason: string }
+  | { action: 'reopen_lead'; leadId: string }
+  | { action: 'create_lead_activity'; leadId: string; activityType: string; subject: string; description: string; dueDate: string | null; assignedUserId: string | null }
+  | { action: 'update_lead_activity'; activityId: string; status: 'completed' | 'cancelled' }
+  | { action: 'convert_lead'; leadId: string; name: string; expectedValue: string; currency: string; expectedCloseDate: string | null }
+  | { action: 'move_opportunity'; opportunityId: string; stageId: string };
 
 type QualificationDraft = {
   expectedValue: string;
   currency: string;
   expectedCloseDate: string;
+};
+
+type LeadDraft = {
+  name: string; companyName: string; contactName: string; email: string;
+  phone: string; source: string; notes: string; salespersonUserId: string;
+};
+
+type ActivityDraft = {
+  activityType: 'call' | 'email' | 'meeting' | 'task' | 'note';
+  subject: string; description: string; dueDate: string; assignedUserId: string;
 };
 
 function formatMoney(value: number, currency: string) {
@@ -103,13 +121,19 @@ export default function SalesPipelineManager({
   defaultCurrency: string;
 }) {
   const [data, setData] = useState<PipelineData>({
-    stages: [],
-    leads: [],
-    opportunities: [],
+    stages: [], leads: [], opportunities: [], activities: [], salespeople: [],
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [qualifyingLeadId, setQualifyingLeadId] = useState<string | null>(null);
+  const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
+  const [leadDraft, setLeadDraft] = useState<LeadDraft>({ name: '', companyName: '', contactName: '', email: '', phone: '', source: '', notes: '', salespersonUserId: '' });
+  const [disqualifyingLeadId, setDisqualifyingLeadId] = useState<string | null>(null);
+  const [disqualificationReason, setDisqualificationReason] = useState('');
+  const [activityLeadId, setActivityLeadId] = useState<string | null>(null);
+  const [activityDraft, setActivityDraft] = useState<ActivityDraft>({ activityType: 'task', subject: '', description: '', dueDate: '', assignedUserId: '' });
+  const [leadSearch, setLeadSearch] = useState('');
+  const [leadStatusFilter, setLeadStatusFilter] = useState('all');
   const [qualification, setQualification] = useState<QualificationDraft>({
     expectedValue: '',
     currency: normalizedCurrency(defaultCurrency),
@@ -137,6 +161,17 @@ export default function SalesPipelineManager({
       setError(caught instanceof Error ? caught.message : 'Could not load the Sales pipeline.');
     });
   }, [load]);
+
+  const filteredLeads = data.leads.filter(lead => {
+    const search = leadSearch.trim().toLowerCase();
+    const matchesStatus = leadStatusFilter === 'all' || lead.status === leadStatusFilter;
+    const matchesSearch = !search || [
+      lead.name, lead.lead_number, lead.company_name, lead.contact_name,
+      lead.email, lead.phone, lead.source, lead.status,
+      data.salespeople.find(person => person.id === lead.salesperson_user_id)?.name,
+    ].some(value => String(value || '').toLowerCase().includes(search));
+    return matchesStatus && matchesSearch;
+  });
 
   async function action(payload: PipelineAction): Promise<boolean> {
     setBusy(true);
@@ -199,8 +234,88 @@ export default function SalesPipelineManager({
       email: formData.get('email'),
       phone: formData.get('phone'),
       source: formData.get('source'),
+      salespersonUserId: formData.get('salespersonUserId'),
     });
     if (succeeded) form.reset();
+  }
+
+
+  function beginLeadEdit(lead: SalesLead) {
+    setEditingLeadId(lead.id);
+    setQualifyingLeadId(null);
+    setDisqualifyingLeadId(null);
+    setActivityLeadId(null);
+    setLeadDraft({
+      name: lead.name || '',
+      companyName: lead.company_name || '',
+      contactName: lead.contact_name || '',
+      email: lead.email || '',
+      phone: lead.phone || '',
+      source: lead.source || '',
+      notes: lead.notes || '',
+      salespersonUserId: lead.salesperson_user_id || '',
+    });
+    setError('');
+  }
+
+  async function updateLead(event: FormEvent<HTMLFormElement>, lead: SalesLead) {
+    event.preventDefault();
+    const succeeded = await action({
+      action: 'update_lead',
+      leadId: lead.id,
+      ...leadDraft,
+      salespersonUserId: leadDraft.salespersonUserId || null,
+    });
+    if (succeeded) setEditingLeadId(null);
+  }
+
+  async function disqualifyLead(event: FormEvent<HTMLFormElement>, lead: SalesLead) {
+    event.preventDefault();
+    const succeeded = await action({
+      action: 'disqualify_lead',
+      leadId: lead.id,
+      reason: disqualificationReason,
+    });
+    if (succeeded) {
+      setDisqualifyingLeadId(null);
+      setDisqualificationReason('');
+    }
+  }
+
+  function beginActivity(lead: SalesLead) {
+    setActivityLeadId(lead.id);
+    setEditingLeadId(null);
+    setQualifyingLeadId(null);
+    setDisqualifyingLeadId(null);
+    setActivityDraft({
+      activityType: 'task',
+      subject: '',
+      description: '',
+      dueDate: '',
+      assignedUserId: lead.salesperson_user_id || '',
+    });
+    setError('');
+  }
+
+  async function createActivity(event: FormEvent<HTMLFormElement>, lead: SalesLead) {
+    event.preventDefault();
+    const succeeded = await action({
+      action: 'create_lead_activity',
+      leadId: lead.id,
+      activityType: activityDraft.activityType,
+      subject: activityDraft.subject,
+      description: activityDraft.description,
+      dueDate: activityDraft.dueDate || null,
+      assignedUserId: activityDraft.assignedUserId || null,
+    });
+    if (succeeded) {
+      setActivityLeadId(null);
+      setActivityDraft({ activityType: 'task', subject: '', description: '', dueDate: '', assignedUserId: '' });
+    }
+  }
+
+  async function updateActivity(activityId: string, status: 'completed' | 'cancelled') {
+    await action({ action: 'update_lead_activity', activityId, status });
   }
 
   return (
@@ -242,6 +357,13 @@ export default function SalesPipelineManager({
               />
             </label>
           ))}
+          <label className="space-y-1 text-xs font-bold text-slate-500">
+            <span>Assigned salesperson</span>
+            <select name="salespersonUserId" defaultValue="" className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100">
+              <option value="">Unassigned</option>
+              {data.salespeople.map(person => <option key={person.id} value={person.id}>{person.name} · {person.email}</option>)}
+            </select>
+          </label>
           <button
             type="submit"
             disabled={busy}
@@ -261,15 +383,32 @@ export default function SalesPipelineManager({
           <div className="flex items-center justify-between gap-3">
             <h3 className="font-black">Leads</h3>
             <span className="rounded-full border border-[var(--sami-border)] px-2.5 py-1 text-[10px] font-black text-slate-500">
-              {data.leads.length}
+              {filteredLeads.length} / {data.leads.length}
             </span>
           </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_11rem]">
+            <label className="space-y-1 text-xs font-bold text-slate-500">
+              <span>Search leads</span>
+              <input type="search" value={leadSearch} onChange={event => setLeadSearch(event.target.value)} placeholder="Name, company, email, owner…" className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+            </label>
+            <label className="space-y-1 text-xs font-bold text-slate-500">
+              <span>Lead status</span>
+              <select value={leadStatusFilter} onChange={event => setLeadStatusFilter(event.target.value)} className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100">
+                <option value="all">All statuses</option>
+                <option value="new">New</option>
+                <option value="contacted">Contacted</option>
+                <option value="qualified">Qualified</option>
+                <option value="disqualified">Disqualified</option>
+                <option value="converted">Converted</option>
+              </select>
+            </label>
+          </div>
           <div className="mt-3 space-y-2">
-            {data.leads.length === 0 ? (
+            {filteredLeads.length === 0 ? (
               <p className="rounded-xl border border-dashed border-[var(--sami-border)] p-4 text-sm text-slate-500">
-                No leads yet. Capture a prospect above to start the qualification process.
+                {data.leads.length === 0 ? 'No leads yet. Capture a prospect above to start the qualification process.' : 'No leads match the current search and status filter.'}
               </p>
-            ) : data.leads.map(lead => (
+            ) : filteredLeads.map(lead => (
               <article key={lead.id} className="rounded-xl border border-[var(--sami-border)] p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -281,18 +420,46 @@ export default function SalesPipelineManager({
                       <p className="mt-1 break-words text-xs text-slate-500">
                         {lead.company_name || lead.contact_name}
                         {lead.email ? ' · ' + lead.email : ''}
+                        {lead.phone ? ' · ' + lead.phone : ''}
+                      </p>
+                    ) : lead.email || lead.phone ? (
+                      <p className="mt-1 break-words text-xs text-slate-500">
+                        {[lead.email, lead.phone].filter(Boolean).join(' · ')}
+                      </p>
+                    ) : null}
+                    <p className="mt-1 text-xs text-slate-500">
+                      Owner: {data.salespeople.find(person => person.id === lead.salesperson_user_id)?.name || 'Unassigned'}
+                    </p>
+                    {lead.disqualification_reason ? (
+                      <p className="mt-1 break-words text-xs text-rose-600 dark:text-rose-300">
+                        Reason: {lead.disqualification_reason}
                       </p>
                     ) : null}
                   </div>
-                  {canManagePipeline && lead.status !== 'converted' && lead.status !== 'disqualified' ? (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => beginQualification(lead.id)}
-                      className="shrink-0 text-xs font-black text-blue-600 hover:underline disabled:opacity-60"
-                    >
-                      Qualify →
-                    </button>
+                  {canManagePipeline ? (
+                    <div className="flex max-w-[12rem] shrink-0 flex-wrap justify-end gap-x-3 gap-y-2">
+                      {lead.status !== 'converted' && editingLeadId !== lead.id ? (
+                        <button type="button" disabled={busy} onClick={() => beginLeadEdit(lead)} className="text-xs font-black text-slate-600 hover:underline disabled:opacity-60">Edit</button>
+                      ) : null}
+                      {lead.status !== 'converted' && lead.status !== 'disqualified' ? (
+                        <button type="button" disabled={busy} onClick={() => beginQualification(lead.id)} className="text-xs font-black text-blue-600 hover:underline disabled:opacity-60">Qualify →</button>
+                      ) : null}
+                      {lead.status !== 'converted' && lead.status !== 'disqualified' ? (
+                        <button type="button" disabled={busy} onClick={() => {
+                          setDisqualifyingLeadId(lead.id);
+                          setDisqualificationReason('');
+                          setEditingLeadId(null);
+                          setQualifyingLeadId(null);
+                          setActivityLeadId(null);
+                        }} className="text-xs font-black text-rose-600 hover:underline disabled:opacity-60">Disqualify</button>
+                      ) : null}
+                      {lead.status === 'disqualified' ? (
+                        <button type="button" disabled={busy} onClick={() => void action({ action: 'reopen_lead', leadId: lead.id })} className="text-xs font-black text-emerald-700 hover:underline disabled:opacity-60">Reopen</button>
+                      ) : null}
+                      {lead.status !== 'converted' && lead.status !== 'disqualified' ? (
+                        <button type="button" disabled={busy} onClick={() => beginActivity(lead)} className="text-xs font-black text-slate-600 hover:underline disabled:opacity-60">+ Follow-up</button>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
 
@@ -361,6 +528,131 @@ export default function SalesPipelineManager({
                     </div>
                   </form>
                 ) : null}
+
+                {editingLeadId === lead.id ? (
+                  <form onSubmit={event => void updateLead(event, lead)} className="mt-4 grid gap-3 rounded-xl bg-slate-500/[0.04] p-3 sm:grid-cols-2">
+                    <h4 className="text-sm font-black sm:col-span-2">Edit lead details</h4>
+                    <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2">
+                      <span>Lead name *</span>
+                      <input required value={leadDraft.name} onChange={event => setLeadDraft(current => ({ ...current, name: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Company</span>
+                      <input value={leadDraft.companyName} onChange={event => setLeadDraft(current => ({ ...current, companyName: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Contact name</span>
+                      <input value={leadDraft.contactName} onChange={event => setLeadDraft(current => ({ ...current, contactName: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Email</span>
+                      <input type="email" value={leadDraft.email} onChange={event => setLeadDraft(current => ({ ...current, email: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Phone</span>
+                      <input type="tel" value={leadDraft.phone} onChange={event => setLeadDraft(current => ({ ...current, phone: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Source</span>
+                      <input value={leadDraft.source} onChange={event => setLeadDraft(current => ({ ...current, source: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Assigned salesperson</span>
+                      <select value={leadDraft.salespersonUserId} onChange={event => setLeadDraft(current => ({ ...current, salespersonUserId: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100">
+                        <option value="">Unassigned</option>
+                        {data.salespeople.map(person => <option key={person.id} value={person.id}>{person.name} · {person.email}</option>)}
+                      </select>
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2">
+                      <span>Notes</span>
+                      <textarea rows={3} value={leadDraft.notes} onChange={event => setLeadDraft(current => ({ ...current, notes: event.target.value }))} className="w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 py-2 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                    </label>
+                    <div className="flex flex-wrap gap-2 sm:col-span-2">
+                      <button type="submit" disabled={busy || !leadDraft.name.trim()} className="h-10 rounded-lg bg-blue-600 px-3.5 text-xs font-black text-white disabled:opacity-60">{busy ? 'Saving…' : 'Save lead'}</button>
+                      <button type="button" disabled={busy} onClick={() => setEditingLeadId(null)} className="h-10 rounded-lg border border-[var(--sami-border)] px-3.5 text-xs font-black disabled:opacity-60">Cancel</button>
+                    </div>
+                  </form>
+                ) : null}
+
+                {disqualifyingLeadId === lead.id ? (
+                  <form onSubmit={event => void disqualifyLead(event, lead)} className="mt-4 space-y-3 rounded-xl bg-rose-500/[0.04] p-3">
+                    <h4 className="text-sm font-black">Disqualify lead</h4>
+                    <label className="block space-y-1 text-xs font-bold text-slate-500">
+                      <span>Reason for disqualification *</span>
+                      <textarea required rows={3} value={disqualificationReason} onChange={event => setDisqualificationReason(event.target.value)} className="w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 py-2 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="submit" disabled={busy || !disqualificationReason.trim()} className="h-10 rounded-lg bg-rose-600 px-3.5 text-xs font-black text-white disabled:opacity-60">{busy ? 'Saving…' : 'Confirm disqualification'}</button>
+                      <button type="button" disabled={busy} onClick={() => setDisqualifyingLeadId(null)} className="h-10 rounded-lg border border-[var(--sami-border)] px-3.5 text-xs font-black disabled:opacity-60">Cancel</button>
+                    </div>
+                  </form>
+                ) : null}
+
+                {activityLeadId === lead.id ? (
+                  <form onSubmit={event => void createActivity(event, lead)} className="mt-4 grid gap-3 rounded-xl bg-blue-500/[0.04] p-3 sm:grid-cols-2">
+                    <h4 className="text-sm font-black sm:col-span-2">Schedule follow-up</h4>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Activity type</span>
+                      <select value={activityDraft.activityType} onChange={event => setActivityDraft(current => ({ ...current, activityType: event.target.value as ActivityDraft['activityType'] }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100">
+                        <option value="task">Task</option>
+                        <option value="call">Call</option>
+                        <option value="email">Email</option>
+                        <option value="meeting">Meeting</option>
+                        <option value="note">Note</option>
+                      </select>
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Due date</span>
+                      <input type="date" value={activityDraft.dueDate} onChange={event => setActivityDraft(current => ({ ...current, dueDate: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2">
+                      <span>Subject *</span>
+                      <input required value={activityDraft.subject} onChange={event => setActivityDraft(current => ({ ...current, subject: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2">
+                      <span>Assigned to</span>
+                      <select value={activityDraft.assignedUserId} onChange={event => setActivityDraft(current => ({ ...current, assignedUserId: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100">
+                        <option value="">Unassigned</option>
+                        {data.salespeople.map(person => <option key={person.id} value={person.id}>{person.name} · {person.email}</option>)}
+                      </select>
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2">
+                      <span>Details</span>
+                      <textarea rows={2} value={activityDraft.description} onChange={event => setActivityDraft(current => ({ ...current, description: event.target.value }))} className="w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 py-2 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                    </label>
+                    <div className="flex flex-wrap gap-2 sm:col-span-2">
+                      <button type="submit" disabled={busy || !activityDraft.subject.trim()} className="h-10 rounded-lg bg-blue-600 px-3.5 text-xs font-black text-white disabled:opacity-60">{busy ? 'Saving…' : 'Schedule follow-up'}</button>
+                      <button type="button" disabled={busy} onClick={() => setActivityLeadId(null)} className="h-10 rounded-lg border border-[var(--sami-border)] px-3.5 text-xs font-black disabled:opacity-60">Cancel</button>
+                    </div>
+                  </form>
+                ) : null}
+
+                <div className="mt-4 space-y-2 border-t border-[var(--sami-border)] pt-3">
+                  <p className="text-xs font-black">Follow-up activity</p>
+                  {data.activities.filter(activity => activity.lead_id === lead.id).slice(0, 5).length === 0 ? (
+                    <p className="text-xs text-slate-400">No follow-up activities recorded.</p>
+                  ) : data.activities.filter(activity => activity.lead_id === lead.id).slice(0, 5).map(activity => (
+                    <div key={activity.id} className="rounded-lg border border-[var(--sami-border)] p-2.5">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="break-words text-xs font-black">{activity.subject}</p>
+                          <p className="mt-1 text-[10px] text-slate-500">
+                            {activity.activity_type} · {activity.status}
+                            {activity.due_date ? ' · Due ' + String(activity.due_date).slice(0, 10) : ''}
+                            {activity.assigned_user_id ? ' · ' + (data.salespeople.find(person => person.id === activity.assigned_user_id)?.name || 'Assigned user') : ''}
+                          </p>
+                          {activity.description ? <p className="mt-1 whitespace-pre-wrap break-words text-xs text-slate-500">{activity.description}</p> : null}
+                        </div>
+                        {canManagePipeline && activity.status === 'planned' ? (
+                          <div className="flex gap-2">
+                            <button type="button" disabled={busy} onClick={() => void updateActivity(activity.id, 'completed')} className="text-[10px] font-black text-emerald-700 hover:underline disabled:opacity-60">Complete</button>
+                            <button type="button" disabled={busy} onClick={() => void updateActivity(activity.id, 'cancelled')} className="text-[10px] font-black text-slate-500 hover:underline disabled:opacity-60">Cancel</button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </article>
             ))}
           </div>

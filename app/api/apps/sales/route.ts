@@ -32,6 +32,11 @@ import {
   getSalesOperationsData,
   getSalesPipelineData,
   createSalesLead,
+  updateSalesLead,
+  disqualifySalesLead,
+  reopenSalesLead,
+  createSalesLeadActivity,
+  updateSalesLeadActivity,
   convertSalesLeadToOpportunity,
   moveSalesOpportunity,
   getSalesOrderDetail,
@@ -508,6 +513,16 @@ export async function POST(
       > = {
         create_lead:
           createSalesLead,
+        update_lead:
+          updateSalesLead,
+        disqualify_lead:
+          disqualifySalesLead,
+        reopen_lead:
+          reopenSalesLead,
+        create_lead_activity:
+          createSalesLeadActivity,
+        update_lead_activity:
+          updateSalesLeadActivity,
         convert_lead:
           convertSalesLeadToOpportunity,
         move_opportunity:
