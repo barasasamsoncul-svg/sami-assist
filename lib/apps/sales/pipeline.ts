@@ -280,7 +280,9 @@ export async function createSalesLead(input:Record<string,unknown>) {
   if(!name) throw new SalesError('INVALID_INPUT','Lead name is required.');
   const email=normalizeSalesLeadEmail(input.email);
   const phone=nullableText(input.phone,80);
-  const salespersonUserId=await resolveActiveSalesperson(context,input.salespersonUserId);
+  const requestedSalespersonUserId = await resolveActiveSalesperson(context, input.salespersonUserId);
+  const requestedSalesTeamId = optionalUuid(input.salesTeamId);
+  const requestedTerritoryId = optionalUuid(input.territoryId);
   const duplicates=await findSalesLeadDuplicates(context,email,normalizeSalesLeadPhone(phone));
   if(duplicates.length && input.confirmDuplicates !== true) {
     throw new SalesError(
@@ -292,6 +294,95 @@ export async function createSalesLead(input:Record<string,unknown>) {
   const client=await context.pool.connect();
   try {
     await client.query('BEGIN');
+    let salespersonUserId = requestedSalespersonUserId;
+    const salesTeamId = requestedSalesTeamId;
+    let territoryId = requestedTerritoryId;
+
+    if (salesTeamId) {
+      // Lock the team row so concurrent creations are balanced serially.
+      const teamResult = await client.query(
+        `SELECT id,territory_id FROM sales_teams
+         WHERE id=$1 AND company_id=$2 AND is_active=TRUE AND deleted_at IS NULL
+         FOR UPDATE`,
+        [salesTeamId, context.companyId],
+      );
+      const team = teamResult.rows[0];
+      if (!team) throw new SalesError('INVALID_INPUT', 'Choose an active Sales team.');
+      territoryId = team.territory_id ? String(team.territory_id) : null;
+
+      if (salespersonUserId) {
+        const membership = await client.query(
+          `SELECT 1 FROM sales_team_members
+           WHERE company_id=$1 AND team_id=$2 AND user_id=$3
+             AND is_active=TRUE AND left_at IS NULL
+           LIMIT 1`,
+          [context.companyId, salesTeamId, salespersonUserId],
+        );
+        if (!membership.rows[0]) {
+          throw new SalesError('INVALID_INPUT', 'The selected salesperson must be an active member of the chosen team.');
+        }
+      } else {
+        const memberResult = await client.query(
+          `SELECT user_id FROM sales_team_members
+           WHERE company_id=$1 AND team_id=$2 AND is_active=TRUE AND left_at IS NULL
+           ORDER BY user_id`,
+          [context.companyId, salesTeamId],
+        );
+        const teamMemberIds = memberResult.rows.map(row => String(row.user_id));
+        const activeUsers = teamMemberIds.length
+          ? await queryControl(
+              `SELECT tu.user_id::text AS user_id,
+                      COALESCE(
+                        NULLIF(BTRIM(COALESCE(u.full_name,'')),''),
+                        NULLIF(BTRIM(CONCAT_WS(' ',u.first_name,u.last_name)),''),
+                        u.email
+                      ) AS name
+               FROM tenant_users tu
+               INNER JOIN users u ON u.id=tu.user_id
+               WHERE tu.tenant_id=$1 AND tu.user_id=ANY($2::uuid[])
+                 AND tu.status='active' AND tu.member_type='internal'
+                 AND tu.deleted_at IS NULL AND u.deleted_at IS NULL
+               ORDER BY LOWER(COALESCE(NULLIF(BTRIM(u.full_name),''),u.email)),u.id`,
+              [context.tenantId, teamMemberIds],
+            )
+          : { rows: [] as { user_id: string; name: string }[] };
+        const eligibleIds = activeUsers.rows.map(row => String(row.user_id));
+        if (eligibleIds.length === 0) {
+          throw new SalesError('INVALID_INPUT', 'This team has no active internal members available for automatic lead assignment.');
+        }
+
+        const workload = await client.query(
+          `SELECT member.user_id::text AS user_id,
+                  COALESCE(workload.active_lead_count,0)::int AS active_lead_count,
+                  workload.last_assigned_at
+           FROM sales_team_members member
+           LEFT JOIN LATERAL (
+             SELECT COUNT(*) FILTER (WHERE lead.status NOT IN ('converted','disqualified'))::int AS active_lead_count,
+                    MAX(lead.created_at) AS last_assigned_at
+             FROM sales_leads lead
+             WHERE lead.company_id=member.company_id AND lead.sales_team_id=member.team_id
+               AND lead.salesperson_user_id=member.user_id AND lead.deleted_at IS NULL
+           ) workload ON TRUE
+           WHERE member.company_id=$1 AND member.team_id=$2
+             AND member.is_active=TRUE AND member.left_at IS NULL
+             AND member.user_id=ANY($3::uuid[])
+           ORDER BY workload.active_lead_count ASC, workload.last_assigned_at ASC NULLS FIRST, member.user_id`,
+          [context.companyId, salesTeamId, eligibleIds],
+        );
+        const names = new Map(activeUsers.rows.map(row => [String(row.user_id), String(row.name || 'Salesperson')]));
+        const selected = chooseBalancedSalesLeadAssignee(workload.rows.map(row => ({
+          userId: String(row.user_id),
+          name: names.get(String(row.user_id)) || 'Salesperson',
+          activeLeadCount: Number(row.active_lead_count || 0),
+          lastAssignedAt: row.last_assigned_at ?? null,
+        })));
+        if (!selected) {
+          throw new SalesError('INVALID_INPUT', 'No active team member could be selected for automatic lead assignment.');
+        }
+        salespersonUserId = selected.userId;
+      }
+    }
+
     const number=await nextPipelineNumber(client,context.companyId,context.userId,'lead','LEAD-');
     const r=await client.query(
       `INSERT INTO sales_leads
@@ -301,7 +392,7 @@ export async function createSalesLead(input:Record<string,unknown>) {
        RETURNING id,lead_number,status,name`,
       [context.companyId,number,name,nullableText(input.companyName,255),nullableText(input.contactName,255),
        email,phone,nullableText(input.source,120),nullableText(input.notes,4000),salespersonUserId,
-       optionalUuid(input.salesTeamId),optionalUuid(input.territoryId),context.userId],
+       salesTeamId,territoryId,context.userId],
     );
     await client.query('COMMIT');
     return r.rows[0];
