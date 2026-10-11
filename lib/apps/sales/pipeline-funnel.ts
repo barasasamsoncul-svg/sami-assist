@@ -167,7 +167,7 @@ export async function getSalesOpportunityRiskQueue(): Promise<SalesOpportunityRi
         o.name AS opportunity_name,
         COALESCE(NULLIF(BTRIM(o.customer_name), ''), NULLIF(BTRIM(o.contact_name), ''), 'Customer not set') AS customer_name,
         s.name AS stage_name,
-        UPPER(COALESCE(NULLIF(BTRIM(o.currency), ''), 'KES')) AS currency,
+        UPPER(COALESCE(NULLIF(BTRIM(o.currency), ''), NULLIF(BTRIM($3::text), ''), 'KES')) AS currency,
         o.expected_value,
         o.probability,
         o.expected_close_date::text AS expected_close_date,
@@ -228,7 +228,7 @@ export async function getSalesOpportunityRiskQueue(): Promise<SalesOpportunityRi
         o.id ASC
       LIMIT 50
     `,
-    [context.companyId, context.tenantId],
+    [context.companyId, context.tenantId, context.company.currentCompany.currency],
   );
 
   return result.rows.map(row => ({
