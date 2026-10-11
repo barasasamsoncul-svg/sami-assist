@@ -1897,3 +1897,35 @@ test('Sales Priority 12 edits and reschedules only planned follow-up activities'
   assert.ok(route.includes('edit_lead_activity:'));
   assert.ok(route.includes('editSalesLeadActivity'));
 });
+
+
+test('Sales Priority 13 supports searchable opportunity editing, loss reasons, closure and reopening', async () => {
+  const [pipeline, ui, service, route] = await Promise.all([
+    source('lib/apps/sales/pipeline.ts'),
+    source('app/apps/sales/SalesPipelineManager.tsx'),
+    source('lib/apps/sales/service.ts'),
+    source('app/api/apps/sales/route.ts'),
+  ]);
+
+  assert.ok(pipeline.includes('export async function updateSalesOpportunity'));
+  assert.ok(pipeline.includes('Reopen a won or lost opportunity before editing its commercial details.'));
+  assert.ok(pipeline.includes('A reason is required to mark an opportunity as lost.'));
+  assert.ok(pipeline.includes('INSERT INTO sales_opportunity_stage_history'));
+  assert.ok(pipeline.includes("won_at=CASE WHEN $5='won'"));
+  assert.ok(pipeline.includes("lost_reason=CASE WHEN $5='lost' THEN $6 ELSE NULL END"));
+  assert.ok(pipeline.includes("Terminal stages must exist even when the company already has configured open stages."));
+  assert.ok(pipeline.includes('o.won_at,o.lost_at,o.lost_reason'));
+
+  assert.ok(service.includes('updateSalesOpportunity'));
+  assert.ok(route.includes('update_opportunity:'));
+  assert.ok(route.includes('updateSalesOpportunity'));
+  assert.ok(route.includes('move_opportunity:'));
+
+  for (const label of ['Search opportunities', 'Opportunity status', 'Edit opportunity', 'Reason for loss *', 'Mark won', 'Mark lost', 'Reopen opportunity']) {
+    assert.ok(ui.includes(label), 'Opportunity lifecycle UI includes ' + label);
+  }
+  assert.ok(ui.includes('filteredOpportunities'));
+  assert.ok(ui.includes("reason: opportunityLossReason.trim()"));
+  assert.ok(ui.includes("stage.stage_type === 'won'"));
+  assert.ok(ui.includes("stage.stage_type === 'lost'"));
+});
