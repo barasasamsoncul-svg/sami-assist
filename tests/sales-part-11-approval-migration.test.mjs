@@ -139,7 +139,7 @@ test('Sales Priority 7 links CRM opportunities to quotations without crossing co
   assert.match(migration, /ADD COLUMN IF NOT EXISTS opportunity_id UUID/);
   assert.match(migration, /FOREIGN KEY \(opportunity_id\)/);
   assert.match(schema, /opportunity_id UUID/);
-  assert.match(schema, /REFERENCES public\\.sales_opportunities\\(id\\) ON DELETE SET NULL/);
+  assert.match(schema, /opportunity_id UUID REFERENCES public\.sales_opportunities\(id\) ON DELETE SET NULL/);
   assert.match(registry, /SALES_3_4_4_TO_3_4_5/);
   assert.ok(registry.indexOf('SALES_3_4_3_TO_3_4_4,') < registry.indexOf('SALES_3_4_4_TO_3_4_5,'));
   assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.5'/s);
