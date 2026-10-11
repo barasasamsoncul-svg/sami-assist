@@ -129,7 +129,7 @@ async function findSalesLeadDuplicates(
 export async function getSalesPipelineData() {
   const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_VIEW);
   await ensurePipelineStages(context.pool, context.companyId, context.userId);
-  const [stages, leads, opportunities, activities, salespeople, opportunityHistory] = await Promise.all([
+  const [stages, leads, opportunities, activities, opportunityActivities, salespeople, opportunityHistory] = await Promise.all([
     context.pool.query(
       `SELECT id,name,sequence,probability,stage_type,is_active
        FROM sales_pipeline_stages
@@ -190,6 +190,18 @@ export async function getSalesPipelineData() {
       [context.tenantId],
     ),
     context.pool.query(
+      `SELECT a.id,a.opportunity_id,a.activity_type,a.subject,a.description,a.due_date,a.status,a.assigned_user_id,
+              a.completed_at,a.created_at,o.opportunity_number,o.name AS opportunity_name,
+              o.customer_name AS opportunity_customer_name,o.contact_name AS opportunity_contact_name
+       FROM sales_opportunity_activities a
+       INNER JOIN sales_opportunities o
+         ON o.id=a.opportunity_id AND o.company_id=a.company_id AND o.deleted_at IS NULL
+       WHERE a.company_id=$1 AND a.deleted_at IS NULL
+       ORDER BY CASE WHEN a.status='planned' THEN 0 ELSE 1 END,a.due_date NULLS LAST,a.created_at DESC
+       LIMIT 1000`,
+      [context.companyId],
+    ),
+    context.pool.query(
       `SELECT h.id,h.opportunity_id,h.from_stage_id,h.to_stage_id,h.probability,h.reason,h.changed_by,h.created_at,
               old_stage.name AS from_stage_name,new_stage.name AS to_stage_name
        FROM sales_opportunity_stage_history h
@@ -210,6 +222,7 @@ export async function getSalesPipelineData() {
     leads: leads.rows,
     opportunities: opportunities.rows,
     activities: activities.rows,
+    opportunityActivities: opportunityActivities.rows,
     salespeople: salespeople.rows,
     opportunityHistory: opportunityHistory.rows,
   };
@@ -471,6 +484,121 @@ export async function editSalesLeadActivity(input: Record<string, unknown>) {
     );
     if (!updated.rows[0]) {
       throw new SalesError('INVALID_INPUT', 'Only planned follow-up activities can be edited.');
+    }
+    await client.query('COMMIT');
+    return updated.rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
+
+export async function createSalesOpportunityActivity(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
+  const opportunityId = requireUuid(input.opportunityId, 'Opportunity');
+  const activityType = cleanText(input.activityType, 20).toLowerCase();
+  if (!['call', 'email', 'meeting', 'task', 'note'].includes(activityType)) {
+    throw new SalesError('INVALID_INPUT', 'Choose a valid follow-up activity type.');
+  }
+  const subject = cleanText(input.subject, 255);
+  if (!subject) throw new SalesError('INVALID_INPUT', 'Activity subject is required.');
+  const description = nullableText(input.description, 4000);
+  const dueDate = optionalPipelineDate(input.dueDate, 'Due date');
+  const assignedUserId = await resolveActiveSalesperson(context, input.assignedUserId);
+  const client = await context.pool.connect();
+  try {
+    await client.query('BEGIN');
+    const opportunity = await client.query(
+      `SELECT s.stage_type
+       FROM sales_opportunities o
+       INNER JOIN sales_pipeline_stages s ON s.id=o.stage_id AND s.company_id=o.company_id
+       WHERE o.id=$1 AND o.company_id=$2 AND o.deleted_at IS NULL
+       FOR UPDATE OF o`,
+      [opportunityId, context.companyId],
+    );
+    if (!opportunity.rows[0]) {
+      throw new SalesError('INVALID_INPUT', 'Opportunity was not found.');
+    }
+    if (opportunity.rows[0].stage_type !== 'open') {
+      throw new SalesError('INVALID_INPUT', 'Follow-up activities can only be scheduled on open opportunities.');
+    }
+    const created = await client.query(
+      `INSERT INTO sales_opportunity_activities
+         (company_id,opportunity_id,activity_type,subject,description,due_date,assigned_user_id,created_by,updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8)
+       RETURNING id,opportunity_id,activity_type,subject,description,due_date,status,assigned_user_id,created_at`,
+      [context.companyId, opportunityId, activityType, subject, description, dueDate, assignedUserId, context.userId],
+    );
+    await client.query('COMMIT');
+    return created.rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function updateSalesOpportunityActivity(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
+  const activityId = requireUuid(input.activityId, 'Activity');
+  const status = cleanText(input.status, 20).toLowerCase();
+  if (status !== 'completed' && status !== 'cancelled') {
+    throw new SalesError('INVALID_INPUT', 'Activity status must be completed or cancelled.');
+  }
+  const updated = await context.pool.query(
+    `UPDATE sales_opportunity_activities
+     SET status=$3,completed_at=CASE WHEN $3='completed' THEN COALESCE(completed_at,NOW()) ELSE NULL END,
+         updated_by=$4,updated_at=NOW()
+     WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL AND status='planned'
+     RETURNING id,opportunity_id,status,completed_at`,
+    [activityId, context.companyId, status, context.userId],
+  );
+  if (!updated.rows[0]) throw new SalesError('INVALID_INPUT', 'Planned opportunity activity was not found.');
+  return updated.rows[0];
+}
+
+export async function editSalesOpportunityActivity(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
+  const activityId = requireUuid(input.activityId, 'Activity');
+  const activityType = cleanText(input.activityType, 20).toLowerCase();
+  if (!['call', 'email', 'meeting', 'task', 'note'].includes(activityType)) {
+    throw new SalesError('INVALID_INPUT', 'Choose a valid follow-up activity type.');
+  }
+  const subject = cleanText(input.subject, 255);
+  if (!subject) throw new SalesError('INVALID_INPUT', 'Activity subject is required.');
+  const description = nullableText(input.description, 4000);
+  const dueDate = optionalPipelineDate(input.dueDate, 'Due date');
+  const assignedUserId = await resolveActiveSalesperson(context, input.assignedUserId);
+  const client = await context.pool.connect();
+  try {
+    await client.query('BEGIN');
+    const current = await client.query(
+      `SELECT status FROM sales_opportunity_activities
+       WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL
+       FOR UPDATE`,
+      [activityId, context.companyId],
+    );
+    if (!current.rows[0]) {
+      throw new SalesError('INVALID_INPUT', 'Opportunity follow-up activity was not found.');
+    }
+    if (current.rows[0].status !== 'planned') {
+      throw new SalesError('INVALID_INPUT', 'Only planned opportunity activities can be edited.');
+    }
+    const updated = await client.query(
+      `UPDATE sales_opportunity_activities
+       SET activity_type=$3,subject=$4,description=$5,due_date=$6,assigned_user_id=$7,
+           updated_by=$8,updated_at=NOW()
+       WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL AND status='planned'
+       RETURNING id,opportunity_id,activity_type,subject,description,due_date,status,assigned_user_id,updated_at`,
+      [activityId, context.companyId, activityType, subject, description, dueDate, assignedUserId, context.userId],
+    );
+    if (!updated.rows[0]) {
+      throw new SalesError('INVALID_INPUT', 'Only planned opportunity activities can be edited.');
     }
     await client.query('COMMIT');
     return updated.rows[0];
