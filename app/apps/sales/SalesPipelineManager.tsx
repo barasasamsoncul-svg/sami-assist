@@ -177,7 +177,7 @@ type SalesPipelineSavedView = {
 
 type PipelineAction =
   | { action: 'create_lead'; name: FormDataEntryValue | null; companyName: FormDataEntryValue | null; contactName: FormDataEntryValue | null; email: FormDataEntryValue | null; phone: FormDataEntryValue | null; source: FormDataEntryValue | null; salesTeamId: FormDataEntryValue | null; salespersonUserId: FormDataEntryValue | null; confirmDuplicates?: boolean }
-  | { action: 'update_lead'; leadId: string; name: string; companyName: string; contactName: string; email: string; phone: string; source: string; notes: string; salespersonUserId: string | null }
+  | { action: 'update_lead'; leadId: string; name: string; companyName: string; contactName: string; email: string; phone: string; source: string; notes: string; salespersonUserId: string | null; salesTeamId: string | null; assignmentReason: string }
   | { action: 'disqualify_lead'; leadId: string; reason: string }
   | { action: 'reopen_lead'; leadId: string }
   | { action: 'create_lead_activity'; leadId: string; activityType: string; subject: string; description: string; dueDate: string | null; assignedUserId: string | null }
@@ -219,6 +219,21 @@ type QualificationDraft = {
 type LeadDraft = {
   name: string; companyName: string; contactName: string; email: string;
   phone: string; source: string; notes: string; salespersonUserId: string;
+  salesTeamId: string; assignmentReason: string;
+};
+
+type SalesLeadAssignmentHistoryEntry = {
+  id: string;
+  lead_id: string;
+  previous_salesperson_user_id: string | null;
+  new_salesperson_user_id: string | null;
+  previous_sales_team_id: string | null;
+  new_sales_team_id: string | null;
+  previous_territory_id: string | null;
+  new_territory_id: string | null;
+  changed_by: string;
+  reason: string;
+  created_at: string;
 };
 
 type ActivityDraft = {
@@ -305,7 +320,11 @@ export default function SalesPipelineManager({
   const [error, setError] = useState('');
   const [qualifyingLeadId, setQualifyingLeadId] = useState<string | null>(null);
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
-  const [leadDraft, setLeadDraft] = useState<LeadDraft>({ name: '', companyName: '', contactName: '', email: '', phone: '', source: '', notes: '', salespersonUserId: '' });
+  const [leadDraft, setLeadDraft] = useState<LeadDraft>({ name: '', companyName: '', contactName: '', email: '', phone: '', source: '', notes: '', salespersonUserId: '', salesTeamId: '', assignmentReason: '' });
+  const [expandedLeadAssignmentHistoryId, setExpandedLeadAssignmentHistoryId] = useState<string | null>(null);
+  const [leadAssignmentHistory, setLeadAssignmentHistory] = useState<Record<string, SalesLeadAssignmentHistoryEntry[]>>({});
+  const [leadAssignmentHistoryLoadingId, setLeadAssignmentHistoryLoadingId] = useState<string | null>(null);
+  const [leadAssignmentHistoryError, setLeadAssignmentHistoryError] = useState('');
   const [captureLeadTeamId, setCaptureLeadTeamId] = useState('');
   const [disqualifyingLeadId, setDisqualifyingLeadId] = useState<string | null>(null);
   const [disqualificationReason, setDisqualificationReason] = useState('');
@@ -733,6 +752,36 @@ export default function SalesPipelineManager({
   }
 
 
+  async function toggleLeadAssignmentHistory(leadId: string) {
+    if (expandedLeadAssignmentHistoryId === leadId) {
+      setExpandedLeadAssignmentHistoryId(null);
+      setLeadAssignmentHistoryError('');
+      return;
+    }
+    setExpandedLeadAssignmentHistoryId(leadId);
+    setLeadAssignmentHistoryError('');
+    setLeadAssignmentHistoryLoadingId(leadId);
+    try {
+      const response = await fetch('/api/apps/sales?leadAssignmentHistory=1&leadId=' + encodeURIComponent(leadId), {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+      const body = await response.json().catch(() => ({})) as {
+        leadAssignmentHistory?: SalesLeadAssignmentHistoryEntry[];
+        error?: string;
+      };
+      if (!response.ok || !Array.isArray(body.leadAssignmentHistory)) {
+        throw new Error(body.error || 'Could not load lead assignment history.');
+      }
+      setLeadAssignmentHistory(current => ({ ...current, [leadId]: body.leadAssignmentHistory! }));
+    } catch (caught) {
+      setLeadAssignmentHistoryError(caught instanceof Error ? caught.message : 'Could not load lead assignment history.');
+    } finally {
+      setLeadAssignmentHistoryLoadingId(current => current === leadId ? null : current);
+    }
+  }
+
   function beginLeadEdit(lead: SalesLead) {
     setEditingLeadId(lead.id);
     setQualifyingLeadId(null);
@@ -747,6 +796,8 @@ export default function SalesPipelineManager({
       source: lead.source || '',
       notes: lead.notes || '',
       salespersonUserId: lead.salesperson_user_id || '',
+      salesTeamId: lead.sales_team_id || '',
+      assignmentReason: '',
     });
     setError('');
   }
@@ -758,6 +809,8 @@ export default function SalesPipelineManager({
       leadId: lead.id,
       ...leadDraft,
       salespersonUserId: leadDraft.salespersonUserId || null,
+      salesTeamId: leadDraft.salesTeamId || null,
+      assignmentReason: leadDraft.assignmentReason,
     });
     if (succeeded) setEditingLeadId(null);
   }
