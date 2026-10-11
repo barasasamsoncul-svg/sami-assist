@@ -30,7 +30,11 @@ async function ensurePipelineStages(pool: Awaited<ReturnType<typeof requireSales
            stage_type=EXCLUDED.stage_type,
            is_active=TRUE,
            updated_by=EXCLUDED.updated_by,
-           updated_at=NOW()`,
+           updated_at=NOW()
+       WHERE sales_pipeline_stages.sequence IS DISTINCT FROM EXCLUDED.sequence
+          OR sales_pipeline_stages.probability IS DISTINCT FROM EXCLUDED.probability
+          OR sales_pipeline_stages.stage_type IS DISTINCT FROM EXCLUDED.stage_type
+          OR sales_pipeline_stages.is_active IS DISTINCT FROM TRUE`,
     [companyId, userId],
   );
 }
