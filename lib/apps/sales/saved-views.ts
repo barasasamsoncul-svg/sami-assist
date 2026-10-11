@@ -9,6 +9,7 @@ import {
 } from '@/lib/apps/sales/context';
 
 import type {
+  SalesOrderSortBy,
   SalesOrderStatusView,
   SalesQuoteStatusView,
   SalesSavedOrderView,
@@ -184,11 +185,23 @@ const ALLOWED_ORDER_STATUS_VIEWS = new Set<SalesOrderStatusView>([
 ]);
 
 
+const ALLOWED_ORDER_SORTS = new Set<SalesOrderSortBy>([
+  'newest',
+  'oldest',
+  'value_high',
+  'value_low',
+  'delivery_first',
+  'invoice_first',
+  'customer_az',
+]);
+
+
 type SavedOrderViewRow = {
   id: string;
   name: string;
   status_view: SalesOrderStatusView;
   search_query: string;
+  sort_by: SalesOrderSortBy;
   created_at: Date | string;
 };
 
@@ -199,6 +212,7 @@ function mapSavedOrderView(row: SavedOrderViewRow): SalesSavedOrderView {
     name: String(row.name),
     statusView: row.status_view,
     searchQuery: String(row.search_query || ''),
+    sortBy: row.sort_by || 'newest',
     createdAt: new Date(row.created_at).toISOString(),
   };
 }
@@ -209,7 +223,7 @@ export async function getSalesSavedOrderViews(): Promise<SalesSavedOrderView[]> 
 
   const result = await context.pool.query<SavedOrderViewRow>(
     `
-      SELECT id, name, status_view, search_query, created_at
+      SELECT id, name, status_view, search_query, sort_by, created_at
       FROM sales_order_saved_views
       WHERE company_id = $1
         AND user_id = $2
@@ -230,6 +244,7 @@ export async function saveSalesSavedOrderView(
   const context = await requireSalesContext(SALES_PERMISSIONS.ORDER_VIEW);
   const name = cleanText(input.name, 80);
   const rawStatusView = cleanText(input.statusView, 40) || 'all';
+  const rawSortBy = cleanText(input.sortBy, 40) || 'newest';
   const searchQuery = cleanText(input.searchQuery, 120);
 
   if (!name) {
@@ -238,6 +253,10 @@ export async function saveSalesSavedOrderView(
 
   if (!ALLOWED_ORDER_STATUS_VIEWS.has(rawStatusView as SalesOrderStatusView)) {
     throw new SalesError('INVALID_INPUT', 'Choose a valid sales order work queue.');
+  }
+
+  if (!ALLOWED_ORDER_SORTS.has(rawSortBy as SalesOrderSortBy)) {
+    throw new SalesError('INVALID_INPUT', 'Choose a valid sales order sort order.');
   }
 
   const countResult = await context.pool.query<{ count: number | string }>(
@@ -267,11 +286,12 @@ export async function saveSalesSavedOrderView(
           name,
           status_view,
           search_query,
+          sort_by,
           created_by,
           updated_by
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $6)
-        RETURNING id, name, status_view, search_query, created_at
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+        RETURNING id, name, status_view, search_query, sort_by, created_at
       `,
       [
         context.companyId,
@@ -279,6 +299,7 @@ export async function saveSalesSavedOrderView(
         name,
         rawStatusView,
         searchQuery,
+        rawSortBy,
         context.userId,
       ],
     );

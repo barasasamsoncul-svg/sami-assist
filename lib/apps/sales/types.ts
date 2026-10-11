@@ -29,11 +29,22 @@ export type SalesOrderStatusView =
   | 'invoiced';
 
 
+export type SalesOrderSortBy =
+  | 'newest'
+  | 'oldest'
+  | 'value_high'
+  | 'value_low'
+  | 'delivery_first'
+  | 'invoice_first'
+  | 'customer_az';
+
+
 export type SalesSavedOrderView = {
   id: string;
   name: string;
   statusView: SalesOrderStatusView;
   searchQuery: string;
+  sortBy: SalesOrderSortBy;
   createdAt: string;
 };
 

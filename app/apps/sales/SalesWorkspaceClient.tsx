@@ -60,6 +60,7 @@ import SalesPipelineBoard from '@/app/apps/sales/SalesPipelineBoard';
 import SalesPipelineManager from '@/app/apps/sales/SalesPipelineManager';
 
 import type {
+  SalesOrderSortBy,
   SalesOrderStatusView,
   SalesQuoteStatusView,
   SalesSavedOrderView,
@@ -182,6 +183,20 @@ const ORDER_STATUS_VIEWS: {
   { key: 'not_invoiced', label: 'Not invoiced' },
   { key: 'partially_invoiced', label: 'Partially invoiced' },
   { key: 'invoiced', label: 'Fully invoiced' },
+];
+
+
+const ORDER_SORT_OPTIONS: {
+  key: SalesOrderSortBy;
+  label: string;
+}[] = [
+  { key: 'newest', label: 'Newest order' },
+  { key: 'oldest', label: 'Oldest order' },
+  { key: 'value_high', label: 'Highest value' },
+  { key: 'value_low', label: 'Lowest value' },
+  { key: 'delivery_first', label: 'Delivery progress: lowest first' },
+  { key: 'invoice_first', label: 'Invoicing progress: lowest first' },
+  { key: 'customer_az', label: 'Customer A–Z' },
 ];
 
 
@@ -735,6 +750,14 @@ export default function SalesWorkspaceClient({
     );
 
   const [
+    orderSortBy,
+    setOrderSortBy,
+  ] =
+    useState<SalesOrderSortBy>(
+      'newest',
+    );
+
+  const [
     selectedQuoteIds,
     setSelectedQuoteIds,
   ] =
@@ -1025,37 +1048,59 @@ export default function SalesWorkspaceClient({
             .trim()
             .toLowerCase();
 
-        return initialData
-          .orders
-          .filter(
-            order =>
-              matchesSalesOrderView(
-                order,
-                orderStatusView,
-              ) &&
-              (
-                !query ||
-                [
-                  order.orderNumber,
-                  order.customerName,
-                  order.status,
-                  order.fulfillmentStatus,
-                  order.invoiceStatus,
-                ]
-                  .some(
-                    value =>
-                      value
-                        .toLowerCase()
-                        .includes(
-                          query,
-                        ),
-                  )
-              ),
-          );
+        const matchingOrders = initialData.orders.filter(
+          order =>
+            matchesSalesOrderView(order, orderStatusView) &&
+            (
+              !query ||
+              [
+                order.orderNumber,
+                order.customerName,
+                order.status,
+                order.fulfillmentStatus,
+                order.invoiceStatus,
+              ].some(value =>
+                value
+                  .toLowerCase()
+                  .includes(query),
+              )
+            ),
+        );
+
+        return matchingOrders.sort((left, right) => {
+          let difference = 0;
+
+          switch (orderSortBy) {
+            case 'newest':
+              difference = right.orderDate.localeCompare(left.orderDate);
+              break;
+            case 'oldest':
+              difference = left.orderDate.localeCompare(right.orderDate);
+              break;
+            case 'value_high':
+              difference = right.baseTotalAmount - left.baseTotalAmount;
+              break;
+            case 'value_low':
+              difference = left.baseTotalAmount - right.baseTotalAmount;
+              break;
+            case 'delivery_first':
+              difference = left.deliveredPercent - right.deliveredPercent;
+              break;
+            case 'invoice_first':
+              difference = left.invoicedPercent - right.invoicedPercent;
+              break;
+            case 'customer_az':
+              difference = left.customerName.localeCompare(right.customerName);
+              break;
+          }
+
+          return difference || left.orderNumber.localeCompare(right.orderNumber);
+        });
       },
       [
         initialData.orders,
         orderStatusView,
+        orderSortBy,
         search,
       ],
     );
@@ -1133,6 +1178,7 @@ export default function SalesWorkspaceClient({
         name,
         statusView: orderStatusView,
         searchQuery: search,
+        sortBy: orderSortBy,
       });
 
       const savedView = result as unknown as SalesSavedOrderView;
@@ -1155,6 +1201,7 @@ export default function SalesWorkspaceClient({
   function applySavedOrderView(view: SalesSavedOrderView) {
     setOrderStatusView(view.statusView);
     setSearch(view.searchQuery);
+    setOrderSortBy(view.sortBy);
     setSelectedQuoteIds([]);
   }
 
@@ -2228,9 +2275,24 @@ export default function SalesWorkspaceClient({
                       </button>
                     ))}
                   </div>
+                  <label className="flex items-center gap-2 text-xs text-slate-500">
+                    Sort
+                    <select
+                      aria-label="Sort sales orders"
+                      value={orderSortBy}
+                      onChange={event => setOrderSortBy(event.target.value as SalesOrderSortBy)}
+                      className="h-9 rounded-lg border border-[var(--sami-border)] bg-transparent px-2 text-xs font-bold text-[var(--sami-text)]"
+                    >
+                      {ORDER_SORT_OPTIONS.map(option => (
+                        <option key={option.key} value={option.key}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
                 <p className="mt-2 text-[11px] text-slate-500">
-                  Focus on delivery or invoicing work. The search above continues to narrow the selected queue.
+                  Focus on delivery or invoicing work. Sort by age, value, customer or the least-complete delivery and invoice work.
                 </p>
               </div>
 
@@ -2295,7 +2357,7 @@ export default function SalesWorkspaceClient({
                           onClick={() => applySavedOrderView(view)}
                           className={[
                             'max-w-[280px] truncate rounded-lg px-2.5 py-1.5 text-left text-xs font-bold',
-                            orderStatusView === view.statusView && search === view.searchQuery
+                            orderStatusView === view.statusView && search === view.searchQuery && orderSortBy === view.sortBy
                               ? 'bg-blue-600 text-white'
                               : 'hover:bg-slate-500/10',
                           ].join(' ')}
