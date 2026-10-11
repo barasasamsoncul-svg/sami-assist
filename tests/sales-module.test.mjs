@@ -1925,3 +1925,28 @@ test('Sales Priority 13 supports opportunity editing and requires a loss reason'
   assert.ok(route.includes('update_opportunity:'));
   assert.ok(route.includes('updateSalesOpportunity'));
 });
+
+
+test('Sales Priority 14 exposes tenant-scoped opportunity stage history with actor, probability and reason', async () => {
+  const [ui, pipeline] = await Promise.all([
+    source('app/apps/sales/SalesPipelineManager.tsx'),
+    source('lib/apps/sales/pipeline.ts'),
+  ]);
+
+  assert.ok(ui.includes('type OpportunityStageHistoryEntry'));
+  assert.ok(ui.includes('Stage history'));
+  assert.ok(ui.includes('Opportunity stage history'));
+  assert.ok(ui.includes('expandedOpportunityHistoryId'));
+  assert.ok(ui.includes('entry.from_stage_name || \'Opportunity created\''));
+  assert.ok(ui.includes('Number(entry.probability).toFixed(0)'));
+  assert.ok(ui.includes('data.salespeople.find(person => person.id === entry.changed_by)'));
+  assert.ok(ui.includes('Reason: {entry.reason}'));
+  assert.ok(ui.includes('Showing the latest 10 transitions.'));
+
+  assert.ok(pipeline.includes('FROM sales_opportunity_stage_history h'));
+  assert.ok(pipeline.includes('WHERE h.company_id=$1'));
+  assert.ok(pipeline.includes('from_stage.name AS from_stage_name'));
+  assert.ok(pipeline.includes('to_stage.name AS to_stage_name'));
+  assert.ok(pipeline.includes('opportunityHistory: opportunityHistory.rows'));
+  assert.ok(pipeline.includes('LIMIT 2000'));
+});
