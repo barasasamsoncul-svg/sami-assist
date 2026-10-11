@@ -556,6 +556,9 @@ export default function SalesPipelineManager({
       if (payload.action === 'save_pipeline_view' || payload.action === 'delete_pipeline_view') {
         await loadSavedPipelineViews();
       }
+      if (payload.action === 'save_lead_assignment_rule' || payload.action === 'delete_lead_assignment_rule') {
+        await loadLeadAssignmentRules();
+      }
       if (payload.action === 'create_lead') {
         setPendingLeadPayload(null);
         setDuplicateCandidates([]);
@@ -567,6 +570,55 @@ export default function SalesPipelineManager({
     } finally {
       setBusy(false);
     }
+  }
+
+  function beginLeadAssignmentRuleEdit(rule: SalesLeadAssignmentRule) {
+    setAssignmentRuleDraft({
+      ruleId: rule.id,
+      name: rule.name,
+      sourceMatch: rule.sourceMatch || '',
+      salesTeamId: data.salesTeams.some(team => team.id === rule.salesTeamId) ? rule.salesTeamId : '',
+      priority: String(rule.priority),
+      isActive: rule.isActive,
+    });
+    setAssignmentRulesError('');
+  }
+
+  function resetLeadAssignmentRuleDraft() {
+    setAssignmentRuleDraft({
+      ruleId: null, name: '', sourceMatch: '', salesTeamId: '', priority: '100', isActive: true,
+    });
+    setAssignmentRulesError('');
+  }
+
+  async function saveLeadAssignmentRule(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAssignmentRulesError('');
+    if (!assignmentRuleDraft.name.trim()) {
+      setAssignmentRulesError('Enter a name for this routing rule.');
+      return;
+    }
+    if (!assignmentRuleDraft.salesTeamId) {
+      setAssignmentRulesError('Choose a Sales team for this routing rule.');
+      return;
+    }
+    const succeeded = await action({
+      action: 'save_lead_assignment_rule',
+      ruleId: assignmentRuleDraft.ruleId,
+      name: assignmentRuleDraft.name.trim(),
+      sourceMatch: assignmentRuleDraft.sourceMatch.trim() || null,
+      salesTeamId: assignmentRuleDraft.salesTeamId,
+      priority: Number(assignmentRuleDraft.priority),
+      isActive: assignmentRuleDraft.isActive,
+    });
+    if (succeeded) resetLeadAssignmentRuleDraft();
+  }
+
+  async function deleteLeadAssignmentRule(rule: SalesLeadAssignmentRule) {
+    if (!window.confirm('Delete routing rule "' + rule.name + '"? New leads will no longer route through it.')) return;
+    setAssignmentRulesError('');
+    await action({ action: 'delete_lead_assignment_rule', ruleId: rule.id });
+    if (assignmentRuleDraft.ruleId === rule.id) resetLeadAssignmentRuleDraft();
   }
 
   async function savePipelineView(viewType: 'leads' | 'opportunities') {
