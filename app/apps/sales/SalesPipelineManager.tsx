@@ -20,6 +20,26 @@ type SalesLead = {
   email: string | null;
   phone: string | null;
   source: string | null;
+  notes: string | null;
+  salesperson_user_id: string | null;
+  sales_team_id?: string | null;
+  territory_id?: string | null;
+  disqualification_reason: string | null;
+};
+
+type Salesperson = { id: string; name: string; email: string };
+
+type SalesLeadActivity = {
+  id: string;
+  lead_id: string;
+  activity_type: 'call' | 'email' | 'meeting' | 'task' | 'note';
+  subject: string;
+  description: string | null;
+  due_date: string | null;
+  status: 'planned' | 'completed' | 'cancelled';
+  assigned_user_id: string | null;
+  completed_at: string | null;
+  created_at: string;
 };
 
 type SalesOpportunity = {
@@ -45,36 +65,34 @@ type PipelineData = {
   stages: PipelineStage[];
   leads: SalesLead[];
   opportunities: SalesOpportunity[];
+  activities: SalesLeadActivity[];
+  salespeople: Salesperson[];
 };
 
 type PipelineAction =
-  | {
-      action: 'create_lead';
-      name: FormDataEntryValue | null;
-      companyName: FormDataEntryValue | null;
-      contactName: FormDataEntryValue | null;
-      email: FormDataEntryValue | null;
-      phone: FormDataEntryValue | null;
-      source: FormDataEntryValue | null;
-    }
-  | {
-      action: 'convert_lead';
-      leadId: string;
-      name: string;
-      expectedValue: string;
-      currency: string;
-      expectedCloseDate: string | null;
-    }
-  | {
-      action: 'move_opportunity';
-      opportunityId: string;
-      stageId: string;
-    };
+  | { action: 'create_lead'; name: FormDataEntryValue | null; companyName: FormDataEntryValue | null; contactName: FormDataEntryValue | null; email: FormDataEntryValue | null; phone: FormDataEntryValue | null; source: FormDataEntryValue | null; salespersonUserId: FormDataEntryValue | null }
+  | { action: 'update_lead'; leadId: string; name: string; companyName: string; contactName: string; email: string; phone: string; source: string; notes: string; salespersonUserId: string | null }
+  | { action: 'disqualify_lead'; leadId: string; reason: string }
+  | { action: 'reopen_lead'; leadId: string }
+  | { action: 'create_lead_activity'; leadId: string; activityType: string; subject: string; description: string; dueDate: string | null; assignedUserId: string | null }
+  | { action: 'update_lead_activity'; activityId: string; status: 'completed' | 'cancelled' }
+  | { action: 'convert_lead'; leadId: string; name: string; expectedValue: string; currency: string; expectedCloseDate: string | null }
+  | { action: 'move_opportunity'; opportunityId: string; stageId: string };
 
 type QualificationDraft = {
   expectedValue: string;
   currency: string;
   expectedCloseDate: string;
+};
+
+type LeadDraft = {
+  name: string; companyName: string; contactName: string; email: string;
+  phone: string; source: string; notes: string; salespersonUserId: string;
+};
+
+type ActivityDraft = {
+  activityType: 'call' | 'email' | 'meeting' | 'task' | 'note';
+  subject: string; description: string; dueDate: string; assignedUserId: string;
 };
 
 function formatMoney(value: number, currency: string) {
@@ -103,13 +121,19 @@ export default function SalesPipelineManager({
   defaultCurrency: string;
 }) {
   const [data, setData] = useState<PipelineData>({
-    stages: [],
-    leads: [],
-    opportunities: [],
+    stages: [], leads: [], opportunities: [], activities: [], salespeople: [],
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [qualifyingLeadId, setQualifyingLeadId] = useState<string | null>(null);
+  const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
+  const [leadDraft, setLeadDraft] = useState<LeadDraft>({ name: '', companyName: '', contactName: '', email: '', phone: '', source: '', notes: '', salespersonUserId: '' });
+  const [disqualifyingLeadId, setDisqualifyingLeadId] = useState<string | null>(null);
+  const [disqualificationReason, setDisqualificationReason] = useState('');
+  const [activityLeadId, setActivityLeadId] = useState<string | null>(null);
+  const [activityDraft, setActivityDraft] = useState<ActivityDraft>({ activityType: 'task', subject: '', description: '', dueDate: '', assignedUserId: '' });
+  const [leadSearch, setLeadSearch] = useState('');
+  const [leadStatusFilter, setLeadStatusFilter] = useState('all');
   const [qualification, setQualification] = useState<QualificationDraft>({
     expectedValue: '',
     currency: normalizedCurrency(defaultCurrency),
@@ -137,6 +161,17 @@ export default function SalesPipelineManager({
       setError(caught instanceof Error ? caught.message : 'Could not load the Sales pipeline.');
     });
   }, [load]);
+
+  const filteredLeads = data.leads.filter(lead => {
+    const search = leadSearch.trim().toLowerCase();
+    const matchesStatus = leadStatusFilter === 'all' || lead.status === leadStatusFilter;
+    const matchesSearch = !search || [
+      lead.name, lead.lead_number, lead.company_name, lead.contact_name,
+      lead.email, lead.phone, lead.source, lead.status,
+      data.salespeople.find(person => person.id === lead.salesperson_user_id)?.name,
+    ].some(value => String(value || '').toLowerCase().includes(search));
+    return matchesStatus && matchesSearch;
+  });
 
   async function action(payload: PipelineAction): Promise<boolean> {
     setBusy(true);
