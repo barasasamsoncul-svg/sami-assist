@@ -5,6 +5,8 @@ import {
 import SalesModuleShell from '@/app/apps/sales/SalesModuleShell';
 import SalesWorkspaceClient from '@/app/apps/sales/SalesWorkspaceClient';
 import SalesManagementInsights from '@/app/apps/sales/SalesManagementInsights';
+import SalesOpportunityFunnel from '@/app/apps/sales/SalesOpportunityFunnel';
+import { getSalesOpportunityFunnelData } from '@/lib/apps/sales/pipeline-funnel';
 import { getSalesManagementInsights } from '@/lib/apps/sales/management-insights';
 
 import {
@@ -184,10 +186,13 @@ export default async function SalesSectionPage({
     notFound();
   }
 
-  const managementInsights =
-    view === 'reports' && data.capabilities.canViewReports
-      ? await getSalesManagementInsights()
-      : null;
+  const reportsAvailable = view === 'reports' && data.capabilities.canViewReports;
+  const [managementInsights, opportunityFunnel] = reportsAvailable
+    ? await Promise.all([
+        getSalesManagementInsights(),
+        getSalesOpportunityFunnelData(),
+      ])
+    : [null, null];
 
   return (
     <SalesModuleShell
@@ -231,16 +236,19 @@ export default async function SalesSectionPage({
         data.company.name
       }
     >
-      {managementInsights ? (
-        <SalesManagementInsights
-          data={managementInsights}
-          currency={data.company.currency}
-          metrics={{
-            quoteCount: data.metrics.quoteCount,
-            acceptedCount: data.metrics.acceptedCount,
-            convertedCount: data.metrics.convertedCount,
-          }}
-        />
+      {managementInsights && opportunityFunnel ? (
+        <>
+          <SalesManagementInsights
+            data={managementInsights}
+            currency={data.company.currency}
+            metrics={{
+              quoteCount: data.metrics.quoteCount,
+              acceptedCount: data.metrics.acceptedCount,
+              convertedCount: data.metrics.convertedCount,
+            }}
+          />
+          <SalesOpportunityFunnel rows={opportunityFunnel} />
+        </>
       ) : (
         <SalesWorkspaceClient
           initialData={data}
