@@ -31,6 +31,7 @@ import {
   getSalesCurrencyData,
   getSalesOperationsData,
   getSalesPipelineData,
+  getSalesLeadAssignmentHistory,
   createSalesLead,
   updateSalesLead,
   disqualifySalesLead,
@@ -275,6 +276,15 @@ export async function GET(
       return json({
         success: true,
         savedOrderViews: await getSalesSavedOrderViews(),
+      });
+    }
+
+    const leadAssignmentHistory = request.nextUrl.searchParams.get('leadAssignmentHistory');
+    if (leadAssignmentHistory === '1') {
+      const leadId = request.nextUrl.searchParams.get('leadId');
+      return json({
+        success: true,
+        leadAssignmentHistory: await getSalesLeadAssignmentHistory({ leadId }),
       });
     }
 

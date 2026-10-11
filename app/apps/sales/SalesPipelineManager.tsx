@@ -177,7 +177,7 @@ type SalesPipelineSavedView = {
 
 type PipelineAction =
   | { action: 'create_lead'; name: FormDataEntryValue | null; companyName: FormDataEntryValue | null; contactName: FormDataEntryValue | null; email: FormDataEntryValue | null; phone: FormDataEntryValue | null; source: FormDataEntryValue | null; salesTeamId: FormDataEntryValue | null; salespersonUserId: FormDataEntryValue | null; confirmDuplicates?: boolean }
-  | { action: 'update_lead'; leadId: string; name: string; companyName: string; contactName: string; email: string; phone: string; source: string; notes: string; salespersonUserId: string | null }
+  | { action: 'update_lead'; leadId: string; name: string; companyName: string; contactName: string; email: string; phone: string; source: string; notes: string; salespersonUserId: string | null; salesTeamId: string | null; assignmentReason: string }
   | { action: 'disqualify_lead'; leadId: string; reason: string }
   | { action: 'reopen_lead'; leadId: string }
   | { action: 'create_lead_activity'; leadId: string; activityType: string; subject: string; description: string; dueDate: string | null; assignedUserId: string | null }
@@ -219,6 +219,21 @@ type QualificationDraft = {
 type LeadDraft = {
   name: string; companyName: string; contactName: string; email: string;
   phone: string; source: string; notes: string; salespersonUserId: string;
+  salesTeamId: string; assignmentReason: string;
+};
+
+type SalesLeadAssignmentHistoryEntry = {
+  id: string;
+  lead_id: string;
+  previous_salesperson_user_id: string | null;
+  new_salesperson_user_id: string | null;
+  previous_sales_team_id: string | null;
+  new_sales_team_id: string | null;
+  previous_territory_id: string | null;
+  new_territory_id: string | null;
+  changed_by: string;
+  reason: string;
+  created_at: string;
 };
 
 type ActivityDraft = {
@@ -305,7 +320,11 @@ export default function SalesPipelineManager({
   const [error, setError] = useState('');
   const [qualifyingLeadId, setQualifyingLeadId] = useState<string | null>(null);
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
-  const [leadDraft, setLeadDraft] = useState<LeadDraft>({ name: '', companyName: '', contactName: '', email: '', phone: '', source: '', notes: '', salespersonUserId: '' });
+  const [leadDraft, setLeadDraft] = useState<LeadDraft>({ name: '', companyName: '', contactName: '', email: '', phone: '', source: '', notes: '', salespersonUserId: '', salesTeamId: '', assignmentReason: '' });
+  const [expandedLeadAssignmentHistoryId, setExpandedLeadAssignmentHistoryId] = useState<string | null>(null);
+  const [leadAssignmentHistory, setLeadAssignmentHistory] = useState<Record<string, SalesLeadAssignmentHistoryEntry[]>>({});
+  const [leadAssignmentHistoryLoadingId, setLeadAssignmentHistoryLoadingId] = useState<string | null>(null);
+  const [leadAssignmentHistoryError, setLeadAssignmentHistoryError] = useState('');
   const [captureLeadTeamId, setCaptureLeadTeamId] = useState('');
   const [disqualifyingLeadId, setDisqualifyingLeadId] = useState<string | null>(null);
   const [disqualificationReason, setDisqualificationReason] = useState('');
@@ -733,6 +752,36 @@ export default function SalesPipelineManager({
   }
 
 
+  async function toggleLeadAssignmentHistory(leadId: string) {
+    if (expandedLeadAssignmentHistoryId === leadId) {
+      setExpandedLeadAssignmentHistoryId(null);
+      setLeadAssignmentHistoryError('');
+      return;
+    }
+    setExpandedLeadAssignmentHistoryId(leadId);
+    setLeadAssignmentHistoryError('');
+    setLeadAssignmentHistoryLoadingId(leadId);
+    try {
+      const response = await fetch('/api/apps/sales?leadAssignmentHistory=1&leadId=' + encodeURIComponent(leadId), {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+      const body = await response.json().catch(() => ({})) as {
+        leadAssignmentHistory?: SalesLeadAssignmentHistoryEntry[];
+        error?: string;
+      };
+      if (!response.ok || !Array.isArray(body.leadAssignmentHistory)) {
+        throw new Error(body.error || 'Could not load lead assignment history.');
+      }
+      setLeadAssignmentHistory(current => ({ ...current, [leadId]: body.leadAssignmentHistory! }));
+    } catch (caught) {
+      setLeadAssignmentHistoryError(caught instanceof Error ? caught.message : 'Could not load lead assignment history.');
+    } finally {
+      setLeadAssignmentHistoryLoadingId(current => current === leadId ? null : current);
+    }
+  }
+
   function beginLeadEdit(lead: SalesLead) {
     setEditingLeadId(lead.id);
     setQualifyingLeadId(null);
@@ -747,6 +796,8 @@ export default function SalesPipelineManager({
       source: lead.source || '',
       notes: lead.notes || '',
       salespersonUserId: lead.salesperson_user_id || '',
+      salesTeamId: lead.sales_team_id || '',
+      assignmentReason: '',
     });
     setError('');
   }
@@ -758,6 +809,8 @@ export default function SalesPipelineManager({
       leadId: lead.id,
       ...leadDraft,
       salespersonUserId: leadDraft.salespersonUserId || null,
+      salesTeamId: leadDraft.salesTeamId || null,
+      assignmentReason: leadDraft.assignmentReason,
     });
     if (succeeded) setEditingLeadId(null);
   }
@@ -1499,7 +1552,11 @@ export default function SalesPipelineManager({
                     ) : null}
                     <p className="mt-1 text-xs text-slate-500">
                       Owner: {data.salespeople.find(person => person.id === lead.salesperson_user_id)?.name || 'Unassigned'}
+                      {' · Team: ' + (data.salesTeams.find(team => team.id === lead.sales_team_id)?.name || (lead.sales_team_id ? 'Unavailable team' : 'No team'))}
                     </p>
+                    <button type="button" disabled={busy} onClick={() => void toggleLeadAssignmentHistory(lead.id)} className="mt-1 text-[11px] font-black text-slate-500 hover:underline disabled:opacity-60">
+                      {expandedLeadAssignmentHistoryId === lead.id ? 'Hide assignment history' : 'Assignment history'}
+                    </button>
                     <div className="mt-2 flex flex-wrap items-center gap-2" aria-label={`Lead score ${lead.lead_score} out of 100`}>
                       <span className={lead.lead_score_band === 'high' ? 'rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-[10px] font-black text-emerald-700 dark:text-emerald-300' : lead.lead_score_band === 'medium' ? 'rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[10px] font-black text-amber-700 dark:text-amber-300' : 'rounded-full border border-[var(--sami-border)] px-2 py-1 text-[10px] font-black text-slate-500'}>
                         Score {lead.lead_score}/100 · {lead.lead_score_band} priority
@@ -1540,6 +1597,7 @@ export default function SalesPipelineManager({
                       {lead.status !== 'converted' && lead.status !== 'disqualified' ? (
                         <button type="button" disabled={busy} onClick={() => beginActivity(lead)} className="text-xs font-black text-slate-600 hover:underline disabled:opacity-60">+ Follow-up</button>
                       ) : null}
+
                     </div>
                   ) : null}
                 </div>
@@ -1638,11 +1696,22 @@ export default function SalesPipelineManager({
                       <input value={leadDraft.source} onChange={event => setLeadDraft(current => ({ ...current, source: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
                     </label>
                     <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Sales team</span>
+                      <select value={leadDraft.salesTeamId} onChange={event => setLeadDraft(current => ({ ...current, salesTeamId: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100">
+                        <option value="">No team</option>
+                        {data.salesTeams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
+                      </select>
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
                       <span>Assigned salesperson</span>
                       <select value={leadDraft.salespersonUserId} onChange={event => setLeadDraft(current => ({ ...current, salespersonUserId: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100">
                         <option value="">Unassigned</option>
                         {data.salespeople.map(person => <option key={person.id} value={person.id}>{person.name} · {person.email}</option>)}
                       </select>
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2">
+                      <span>Reason for reassignment (required when changing owner or team)</span>
+                      <input maxLength={1000} value={leadDraft.assignmentReason} onChange={event => setLeadDraft(current => ({ ...current, assignmentReason: event.target.value }))} placeholder="e.g. territory change, workload balancing, handover" className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
                     </label>
                     <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2">
                       <span>Notes</span>
@@ -1653,6 +1722,44 @@ export default function SalesPipelineManager({
                       <button type="button" disabled={busy} onClick={() => setEditingLeadId(null)} className="h-10 rounded-lg border border-[var(--sami-border)] px-3.5 text-xs font-black disabled:opacity-60">Cancel</button>
                     </div>
                   </form>
+                ) : null}
+
+                {expandedLeadAssignmentHistoryId === lead.id ? (
+                  <section className="mt-4 space-y-3 rounded-xl border border-[var(--sami-border)] p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h4 className="text-sm font-black">Assignment history</h4>
+                      <span className="text-[10px] text-slate-500">Latest 50 changes</span>
+                    </div>
+                    {leadAssignmentHistoryLoadingId === lead.id ? (
+                      <p className="text-xs text-slate-500">Loading assignment history…</p>
+                    ) : leadAssignmentHistoryError ? (
+                      <p role="alert" className="text-xs text-rose-600">{leadAssignmentHistoryError}</p>
+                    ) : (leadAssignmentHistory[lead.id] || []).length === 0 ? (
+                      <p className="text-xs text-slate-500">No reassignment changes recorded yet.</p>
+                    ) : (
+                      <ol className="space-y-3">
+                        {(leadAssignmentHistory[lead.id] || []).map(entry => {
+                          const nameForUser = (id: string | null) =>
+                            id ? data.salespeople.find(person => person.id === id)?.name || 'Former or unavailable user' : 'Unassigned';
+                          const nameForTeam = (id: string | null) =>
+                            id ? data.salesTeams.find(team => team.id === id)?.name || 'Unavailable team' : 'No team';
+                          const changedBy = data.salespeople.find(person => person.id === entry.changed_by)?.name || 'Workspace user';
+                          return (
+                            <li key={entry.id} className="border-l-2 border-[var(--sami-border)] pl-3">
+                              <p className="text-[11px] text-slate-500">{formatHistoryTimestamp(entry.created_at)} · Changed by {changedBy}</p>
+                              <p className="mt-1 break-words text-xs font-bold">
+                                {nameForUser(entry.previous_salesperson_user_id)} → {nameForUser(entry.new_salesperson_user_id)}
+                              </p>
+                              <p className="mt-1 break-words text-[11px] text-slate-500">
+                                Team: {nameForTeam(entry.previous_sales_team_id)} → {nameForTeam(entry.new_sales_team_id)}
+                              </p>
+                              <p className="mt-1 break-words text-xs">{entry.reason}</p>
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    )}
+                  </section>
                 ) : null}
 
                 {disqualifyingLeadId === lead.id ? (

@@ -276,6 +276,31 @@ export async function getSalesPipelineData() {
   };
 }
 
+export async function getSalesLeadAssignmentHistory(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_VIEW);
+  const leadId = requireUuid(input.leadId, 'Lead');
+  const lead = await context.pool.query(
+    `SELECT id FROM sales_leads
+     WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL
+     LIMIT 1`,
+    [leadId, context.companyId],
+  );
+  if (!lead.rows[0]) throw new SalesError('INVALID_INPUT', 'Lead was not found.');
+
+  const history = await context.pool.query(
+    `SELECT id,lead_id,previous_salesperson_user_id,new_salesperson_user_id,
+            previous_sales_team_id,new_sales_team_id,previous_territory_id,new_territory_id,
+            changed_by,reason,created_at
+     FROM sales_lead_assignment_history
+     WHERE company_id=$1 AND lead_id=$2
+     ORDER BY created_at DESC,id DESC
+     LIMIT 50`,
+    [context.companyId, leadId],
+  );
+  return history.rows;
+}
+
+
 export async function createSalesLead(input:Record<string,unknown>) {
   const context=await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
   const name=cleanText(input.name,255);
@@ -437,6 +462,10 @@ export async function updateSalesLead(input: Record<string, unknown>) {
     throw new SalesError('INVALID_INPUT', 'Enter a valid lead email address.');
   }
   const salespersonUserId = await resolveActiveSalesperson(context, input.salespersonUserId);
+  const requestedSalesTeamId = input.salesTeamId === undefined
+    ? undefined
+    : optionalUuid(input.salesTeamId);
+  const assignmentReason = cleanText(input.assignmentReason, 1000);
   const companyName = nullableText(input.companyName, 255);
   const contactName = nullableText(input.contactName, 255);
   const phone = nullableText(input.phone, 80);
@@ -446,7 +475,7 @@ export async function updateSalesLead(input: Record<string, unknown>) {
   try {
     await client.query('BEGIN');
     const current = await client.query(
-      `SELECT status FROM sales_leads
+`SELECT status,salesperson_user_id,sales_team_id,territory_id FROM sales_leads
        WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL
        FOR UPDATE`,
       [leadId, context.companyId],
@@ -455,14 +484,81 @@ export async function updateSalesLead(input: Record<string, unknown>) {
     if (current.rows[0].status === 'converted') {
       throw new SalesError('INVALID_INPUT', 'A converted lead cannot be edited; update its opportunity instead.');
     }
+    const currentSalespersonUserId = current.rows[0].salesperson_user_id
+      ? String(current.rows[0].salesperson_user_id)
+      : null;
+    const currentSalesTeamId = current.rows[0].sales_team_id
+      ? String(current.rows[0].sales_team_id)
+      : null;
+    const currentTerritoryId = current.rows[0].territory_id
+      ? String(current.rows[0].territory_id)
+      : null;
+    const salesTeamId = requestedSalesTeamId === undefined
+      ? currentSalesTeamId
+      : requestedSalesTeamId;
+    let territoryId = currentTerritoryId;
+
+    if (requestedSalesTeamId !== undefined) {
+      if (salesTeamId) {
+        const team = await client.query(
+          `SELECT id,territory_id
+           FROM sales_teams
+           WHERE id=$1 AND company_id=$2 AND is_active=TRUE AND deleted_at IS NULL
+           LIMIT 1`,
+          [salesTeamId, context.companyId],
+        );
+        if (!team.rows[0]) throw new SalesError('INVALID_INPUT', 'Choose an active Sales team.');
+        territoryId = team.rows[0].territory_id ? String(team.rows[0].territory_id) : null;
+      } else {
+        territoryId = null;
+      }
+    }
+
+    const assignmentChanged =
+      currentSalespersonUserId !== salespersonUserId ||
+      currentSalesTeamId !== salesTeamId ||
+      currentTerritoryId !== territoryId;
+    if (assignmentChanged && !assignmentReason) {
+      throw new SalesError('INVALID_INPUT', 'Enter a reason when changing a lead owner or team.');
+    }
+
+    if (assignmentChanged && salespersonUserId && salesTeamId) {
+      const membership = await client.query(
+        `SELECT 1 FROM sales_team_members
+         WHERE company_id=$1 AND team_id=$2 AND user_id=$3
+           AND is_active=TRUE AND left_at IS NULL
+         LIMIT 1`,
+        [context.companyId, salesTeamId, salespersonUserId],
+      );
+      if (!membership.rows[0]) {
+        throw new SalesError('INVALID_INPUT', 'The selected salesperson must be an active member of the chosen team.');
+      }
+    }
+
     const updated = await client.query(
       `UPDATE sales_leads
        SET name=$3,company_name=$4,contact_name=$5,email=$6,phone=$7,source=$8,notes=$9,
-           salesperson_user_id=$10,updated_by=$11,updated_at=NOW()
+           salesperson_user_id=$10,sales_team_id=$11,territory_id=$12,updated_by=$13,updated_at=NOW()
        WHERE id=$1 AND company_id=$2
-       RETURNING id,lead_number,status,name,salesperson_user_id`,
-      [leadId, context.companyId, name, companyName, contactName, email, phone, source, notes, salespersonUserId, context.userId],
+       RETURNING id,lead_number,status,name,salesperson_user_id,sales_team_id,territory_id`,
+      [leadId, context.companyId, name, companyName, contactName, email, phone, source, notes,
+       salespersonUserId, salesTeamId, territoryId, context.userId],
     );
+
+    if (assignmentChanged) {
+      await client.query(
+        `INSERT INTO sales_lead_assignment_history
+           (company_id,lead_id,previous_salesperson_user_id,new_salesperson_user_id,
+            previous_sales_team_id,new_sales_team_id,previous_territory_id,new_territory_id,
+            changed_by,reason)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [
+          context.companyId, leadId, currentSalespersonUserId, salespersonUserId,
+          currentSalesTeamId, salesTeamId, currentTerritoryId, territoryId,
+          context.userId, assignmentReason,
+        ],
+      );
+    }
     await client.query('COMMIT');
     return updated.rows[0];
   } catch (error) {
