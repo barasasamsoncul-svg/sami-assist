@@ -32,7 +32,8 @@ test('Sales opportunity funnel reports counts and correct value by open, won and
   assert.match(service, /FILTER \(WHERE s\.stage_type = 'won'\)/);
   assert.match(service, /FILTER \(WHERE s\.stage_type = 'lost'\)/);
   assert.match(service, /weighted_pipeline_value/);
-  assert.match(service, /GROUP BY s\.id, s\.name, s\.sequence, s\.stage_type, s\.probability, currency/);
+  assert.match(service, /GROUP BY s\.id, s\.name, s\.sequence, s\.stage_type, s\.probability/);
+  assert.match(service, /GROUP BY[\s\S]*UPPER\(COALESCE\(NULLIF\(BTRIM\(o\.currency\), ''\)/);
   assert.match(service, /ORDER BY s\.sequence ASC/);
   assert.match(component, /Open pipeline value/);
   assert.match(component, /Won value/);
