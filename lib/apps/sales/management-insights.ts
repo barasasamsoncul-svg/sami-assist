@@ -31,6 +31,17 @@ export type SalesManagementInsightsData = {
   statusCounts: Array<{ status: string; count: number; amount: number }>;
   monthly: Array<{ month: string; quoteCount: number; amount: number }>;
   topCustomers: Array<{ customerName: string; quoteCount: number; amount: number }>;
+  orderSummary: {
+    bookedOrderCount: number;
+    bookedOrderValue: number;
+    ordersNeedingFulfillment: number;
+    ordersNotFullyInvoiced: number;
+    currentMonthOrderValue: number;
+    priorMonthOrderValue: number;
+  };
+  orderMonthly: Array<{ month: string; orderCount: number; amount: number }>;
+  topProducts: Array<{ productName: string; sku: string | null; quantity: number; orderCount: number; amount: number }>;
+  teamPerformance: Array<{ teamName: string; orderCount: number; amount: number }>;
 };
 
 const EMPTY_REPORT: SalesManagementInsightsData = {
@@ -49,6 +60,17 @@ const EMPTY_REPORT: SalesManagementInsightsData = {
   statusCounts: [],
   monthly: [],
   topCustomers: [],
+  orderSummary: {
+    bookedOrderCount: 0,
+    bookedOrderValue: 0,
+    ordersNeedingFulfillment: 0,
+    ordersNotFullyInvoiced: 0,
+    currentMonthOrderValue: 0,
+    priorMonthOrderValue: 0,
+  },
+  orderMonthly: [],
+  topProducts: [],
+  teamPerformance: [],
 };
 
 export async function getSalesManagementInsights(): Promise<SalesManagementInsightsData> {
@@ -62,7 +84,17 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
   if (!canViewReports) return EMPTY_REPORT;
 
   const companyId = context.companyId;
-  const [summaryResult, queueResult, statusResult, monthlyResult, customersResult] = await Promise.all([
+  const [
+    summaryResult,
+    queueResult,
+    statusResult,
+    monthlyResult,
+    customersResult,
+    orderSummaryResult,
+    orderMonthlyResult,
+    productsResult,
+    teamsResult,
+  ] = await Promise.all([
     context.pool.query(`
       SELECT
         COUNT(*)::int AS quote_count,
@@ -131,6 +163,93 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
       WHERE company_id = $1 AND deleted_at IS NULL
       GROUP BY customer_name ORDER BY amount DESC LIMIT 10
     `, [companyId]),
+    context.pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE status IN ('confirmed', 'closed'))::int AS booked_order_count,
+        COALESCE(SUM(base_total_amount) FILTER (WHERE status IN ('confirmed', 'closed')), 0) AS booked_order_value,
+        COUNT(*) FILTER (
+          WHERE status IN ('confirmed', 'closed')
+            AND fulfillment_status <> 'fulfilled'
+        )::int AS orders_needing_fulfillment,
+        COUNT(*) FILTER (
+          WHERE status IN ('confirmed', 'closed')
+            AND invoice_status <> 'invoiced'
+        )::int AS orders_not_fully_invoiced,
+        COALESCE(SUM(base_total_amount) FILTER (
+          WHERE status IN ('confirmed', 'closed')
+            AND order_date >= DATE_TRUNC('month', CURRENT_DATE)::date
+            AND order_date < (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month')::date
+        ), 0) AS current_month_order_value,
+        COALESCE(SUM(base_total_amount) FILTER (
+          WHERE status IN ('confirmed', 'closed')
+            AND order_date >= (DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '1 month')::date
+            AND order_date < DATE_TRUNC('month', CURRENT_DATE)::date
+        ), 0) AS prior_month_order_value
+      FROM sales_orders_v2
+      WHERE company_id = $1 AND deleted_at IS NULL
+    `, [companyId]),
+    context.pool.query(`
+      WITH months AS (
+        SELECT GENERATE_SERIES(
+          DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '11 months',
+          DATE_TRUNC('month', CURRENT_DATE),
+          INTERVAL '1 month'
+        )::date AS month_start
+      )
+      SELECT
+        TO_CHAR(months.month_start, 'YYYY-MM') AS month,
+        COUNT(o.id)::int AS order_count,
+        COALESCE(SUM(o.base_total_amount), 0) AS amount
+      FROM months
+      LEFT JOIN sales_orders_v2 o
+        ON o.company_id = $1
+        AND o.deleted_at IS NULL
+        AND o.status IN ('confirmed', 'closed')
+        AND o.order_date >= months.month_start
+        AND o.order_date < (months.month_start + INTERVAL '1 month')::date
+      GROUP BY months.month_start
+      ORDER BY months.month_start
+    `, [companyId]),
+    context.pool.query(`
+      SELECT
+        COALESCE(NULLIF(BTRIM(i.description), ''), NULLIF(BTRIM(i.sku_snapshot), ''), 'Uncatalogued item') AS product_name,
+        MAX(NULLIF(BTRIM(i.sku_snapshot), '')) AS sku,
+        COALESCE(SUM(i.quantity), 0) AS quantity,
+        COUNT(DISTINCT o.id)::int AS order_count,
+        COALESCE(SUM(i.line_total * COALESCE(o.exchange_rate, 1)), 0) AS amount
+      FROM sales_order_items_v2 i
+      INNER JOIN sales_orders_v2 o
+        ON o.id = i.sales_order_id
+        AND o.company_id = i.company_id
+      WHERE i.company_id = $1
+        AND o.company_id = $1
+        AND o.deleted_at IS NULL
+        AND o.status IN ('confirmed', 'closed')
+      GROUP BY
+        COALESCE(NULLIF(BTRIM(i.description), ''), NULLIF(BTRIM(i.sku_snapshot), ''), 'Uncatalogued item'),
+        COALESCE(NULLIF(BTRIM(i.sku_snapshot), ''), '')
+      ORDER BY amount DESC
+      LIMIT 10
+    `, [companyId]),
+    context.pool.query(`
+      SELECT
+        COALESCE(NULLIF(BTRIM(t.name), ''), 'Unassigned') AS team_name,
+        COUNT(*)::int AS order_count,
+        COALESCE(SUM(o.base_total_amount), 0) AS amount
+      FROM sales_orders_v2 o
+      LEFT JOIN sales_teams t
+        ON t.id = o.sales_team_id
+        AND t.company_id = o.company_id
+        AND t.deleted_at IS NULL
+      WHERE o.company_id = $1
+        AND o.deleted_at IS NULL
+        AND o.status IN ('confirmed', 'closed')
+      GROUP BY
+        COALESCE(t.id::text, 'unassigned'),
+        COALESCE(NULLIF(BTRIM(t.name), ''), 'Unassigned')
+      ORDER BY amount DESC, team_name
+      LIMIT 10
+    `, [companyId]),
   ]);
 
   const summaryRow = summaryResult.rows[0] || {};
@@ -164,6 +283,34 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
     })),
     topCustomers: customersResult.rows.map(row => ({
       customerName: String(row.customer_name), quoteCount: Number(row.quote_count || 0), amount: Number(row.amount || 0),
+    })),
+    orderSummary: (() => {
+      const row = orderSummaryResult.rows[0] || {};
+      return {
+        bookedOrderCount: Number(row.booked_order_count || 0),
+        bookedOrderValue: Number(row.booked_order_value || 0),
+        ordersNeedingFulfillment: Number(row.orders_needing_fulfillment || 0),
+        ordersNotFullyInvoiced: Number(row.orders_not_fully_invoiced || 0),
+        currentMonthOrderValue: Number(row.current_month_order_value || 0),
+        priorMonthOrderValue: Number(row.prior_month_order_value || 0),
+      };
+    })(),
+    orderMonthly: orderMonthlyResult.rows.map(row => ({
+      month: String(row.month || ''),
+      orderCount: Number(row.order_count || 0),
+      amount: Number(row.amount || 0),
+    })),
+    topProducts: productsResult.rows.map(row => ({
+      productName: String(row.product_name || 'Uncatalogued item'),
+      sku: row.sku ? String(row.sku) : null,
+      quantity: Number(row.quantity || 0),
+      orderCount: Number(row.order_count || 0),
+      amount: Number(row.amount || 0),
+    })),
+    teamPerformance: teamsResult.rows.map(row => ({
+      teamName: String(row.team_name || 'Unassigned'),
+      orderCount: Number(row.order_count || 0),
+      amount: Number(row.amount || 0),
     })),
   };
 }

@@ -77,3 +77,28 @@ test('Sales management insights are tenant-scoped, permission-gated and actionab
   assert.match(ui, /data\.followUpQueue\.map/);
   assert.match(ui, /encodeURIComponent\(item\.id\)/);
 });
+
+
+test('Sales management insights include tenant-scoped booked order, product and team analytics', async () => {
+  const [insights, ui] = await Promise.all([
+    source('lib/apps/sales/management-insights.ts'),
+    source('app/apps/sales/SalesManagementInsights.tsx'),
+  ]);
+
+  assert.match(insights, /FROM sales_orders_v2/);
+  assert.match(insights, /WHERE company_id = \$1 AND deleted_at IS NULL/);
+  assert.match(insights, /FROM sales_order_items_v2 i/);
+  assert.match(insights, /WHERE i\.company_id = \$1/);
+  assert.match(insights, /LEFT JOIN sales_teams t/);
+  assert.match(insights, /status IN \('confirmed', 'closed'\)/);
+  assert.match(insights, /GENERATE_SERIES/);
+  assert.match(insights, /GROUP BY months\.month_start/);
+  assert.match(ui, /function MonthlySalesChart/);
+  assert.match(ui, /aria-label="Monthly booked sales chart"/);
+  assert.match(ui, /Sales orders &amp; revenue/);
+  assert.match(ui, /Monthly booked sales/);
+  assert.match(ui, /Top products by sales/);
+  assert.match(ui, /Sales team performance/);
+  assert.match(ui, /min-w-0 break-words text-xs font-black capitalize/);
+  assert.match(ui, /tabular-nums/);
+});
