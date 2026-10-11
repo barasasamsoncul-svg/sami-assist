@@ -997,6 +997,87 @@ export default function SalesPipelineManager({
 
       {canManagePipeline ? (
         <>
+        <section className="sami-surface mb-4 rounded-[24px] p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="font-black">Automatic lead-routing rules</h3>
+              <p className="mt-1 max-w-3xl text-xs text-slate-500">
+                Route new leads to teams from their source. Rules run by ascending priority; a blank source match is the fallback rule.
+                Choosing a team or salesperson during lead capture overrides automatic routing.
+              </p>
+            </div>
+            <span className="rounded-full border border-[var(--sami-border)] px-2.5 py-1 text-[10px] font-black text-slate-500">
+              {leadAssignmentRules.filter(rule => rule.isActive && data.salesTeams.some(team => team.id === rule.salesTeamId)).length} active rules
+            </span>
+          </div>
+          {assignmentRulesLoading ? (
+            <p className="mt-3 text-xs text-slate-500">Loading lead-routing rules…</p>
+          ) : leadAssignmentRules.length === 0 ? (
+            <p className="mt-3 rounded-xl border border-dashed border-[var(--sami-border)] p-4 text-xs text-slate-500">
+              No routing rules yet. Add a source-specific rule or a blank-source fallback.
+            </p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {leadAssignmentRules.map(rule => {
+                const teamIsActive = data.salesTeams.some(team => team.id === rule.salesTeamId);
+                return (
+                  <article key={rule.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--sami-border)] p-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="break-words text-sm font-black">{rule.name}</p>
+                        <span className="rounded-full border border-[var(--sami-border)] px-2 py-0.5 text-[10px] font-bold text-slate-500">Priority {rule.priority}</span>
+                        <span className={rule.isActive && teamIsActive ? 'rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300' : 'rounded-full bg-slate-500/10 px-2 py-0.5 text-[10px] font-bold text-slate-500'}>
+                          {rule.isActive && teamIsActive ? 'Active' : rule.isActive ? 'Team unavailable' : 'Paused'}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Source: {rule.sourceMatch || 'Any source (fallback)'} · Team: {rule.salesTeamName || 'Unavailable team'}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 gap-3 text-xs font-black">
+                      <button type="button" disabled={busy} onClick={() => beginLeadAssignmentRuleEdit(rule)} className="text-slate-600 hover:underline disabled:opacity-50 dark:text-slate-300">Edit</button>
+                      <button type="button" disabled={busy} onClick={() => void deleteLeadAssignmentRule(rule)} className="text-rose-600 hover:underline disabled:opacity-50">Delete</button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+          {assignmentRulesError ? <p role="alert" className="mt-3 text-xs text-rose-600">{assignmentRulesError}</p> : null}
+          <form onSubmit={event => void saveLeadAssignmentRule(event)} className="mt-4 grid gap-3 rounded-xl border border-[var(--sami-border)] p-4 sm:grid-cols-2 xl:grid-cols-3">
+            <h4 className="text-sm font-black sm:col-span-2 xl:col-span-3">{assignmentRuleDraft.ruleId ? 'Edit lead-routing rule' : 'Add lead-routing rule'}</h4>
+            <label className="space-y-1 text-xs font-bold text-slate-500">
+              <span>Rule name *</span>
+              <input required maxLength={80} value={assignmentRuleDraft.name} onChange={event => setAssignmentRuleDraft(current => ({ ...current, name: event.target.value }))} placeholder="Website enquiries to retail team" className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+            </label>
+            <label className="space-y-1 text-xs font-bold text-slate-500">
+              <span>Lead source contains</span>
+              <input maxLength={120} value={assignmentRuleDraft.sourceMatch} onChange={event => setAssignmentRuleDraft(current => ({ ...current, sourceMatch: event.target.value }))} placeholder="website demo, referral, event…" className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+              <span className="block font-normal">Leave blank to catch any source.</span>
+            </label>
+            <label className="space-y-1 text-xs font-bold text-slate-500">
+              <span>Route to Sales team *</span>
+              <select required value={assignmentRuleDraft.salesTeamId} onChange={event => setAssignmentRuleDraft(current => ({ ...current, salesTeamId: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100">
+                <option value="">Choose a team</option>
+                {data.salesTeams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1 text-xs font-bold text-slate-500">
+              <span>Priority (lower runs first) *</span>
+              <input type="number" required min={1} max={10000} step={1} value={assignmentRuleDraft.priority} onChange={event => setAssignmentRuleDraft(current => ({ ...current, priority: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+            </label>
+            <label className="flex items-center gap-2 self-end pb-2 text-xs font-bold text-slate-500">
+              <input type="checkbox" checked={assignmentRuleDraft.isActive} onChange={event => setAssignmentRuleDraft(current => ({ ...current, isActive: event.target.checked }))} />
+              Rule enabled
+            </label>
+            <div className="flex flex-wrap items-end gap-2">
+              <button type="submit" disabled={busy || !assignmentRuleDraft.name.trim() || !assignmentRuleDraft.salesTeamId} className="h-10 rounded-lg border border-[var(--sami-border)] px-3 font-black disabled:opacity-50">
+                {busy ? 'Saving…' : assignmentRuleDraft.ruleId ? 'Update rule' : 'Save rule'}
+              </button>
+              {assignmentRuleDraft.ruleId ? <button type="button" disabled={busy} onClick={resetLeadAssignmentRuleDraft} className="h-10 rounded-lg border border-[var(--sami-border)] px-3 font-black disabled:opacity-50">Cancel edit</button> : null}
+            </div>
+          </form>
+        </section>
         <form
           ref={createLeadFormRef}
           className="sami-surface grid gap-3 rounded-[24px] p-5 md:grid-cols-2"
