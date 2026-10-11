@@ -44,7 +44,6 @@ function mapSavedView(row: SavedQuoteViewRow): SalesSavedQuoteView {
     name: String(row.name),
     statusView: row.status_view,
     searchQuery: String(row.search_query || ''),
-    sortBy: row.sort_by || 'newest',
     createdAt: new Date(row.created_at).toISOString(),
   };
 }
@@ -74,7 +73,6 @@ export async function saveSalesSavedQuoteView(
   const context = await requireSalesContext(SALES_PERMISSIONS.QUOTE_VIEW);
   const name = cleanText(input.name, 80);
   const rawStatusView = cleanText(input.statusView, 40) || 'all';
-  const rawSortBy = cleanText(input.sortBy, 40) || 'newest';
   const searchQuery = cleanText(input.searchQuery, 120);
 
   if (!name) {
@@ -112,12 +110,11 @@ export async function saveSalesSavedQuoteView(
           name,
           status_view,
           search_query,
-          sort_by,
           created_by,
           updated_by
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
-        RETURNING id, name, status_view, search_query, sort_by, created_at
+        VALUES ($1, $2, $3, $4, $5, $6, $6)
+        RETURNING id, name, status_view, search_query, created_at
       `,
       [
         context.companyId,
@@ -125,7 +122,6 @@ export async function saveSalesSavedQuoteView(
         name,
         rawStatusView,
         searchQuery,
-        rawSortBy,
         context.userId,
       ],
     );
@@ -216,6 +212,7 @@ function mapSavedOrderView(row: SavedOrderViewRow): SalesSavedOrderView {
     name: String(row.name),
     statusView: row.status_view,
     searchQuery: String(row.search_query || ''),
+    sortBy: row.sort_by || 'newest',
     createdAt: new Date(row.created_at).toISOString(),
   };
 }
@@ -247,6 +244,7 @@ export async function saveSalesSavedOrderView(
   const context = await requireSalesContext(SALES_PERMISSIONS.ORDER_VIEW);
   const name = cleanText(input.name, 80);
   const rawStatusView = cleanText(input.statusView, 40) || 'all';
+  const rawSortBy = cleanText(input.sortBy, 40) || 'newest';
   const searchQuery = cleanText(input.searchQuery, 120);
 
   if (!name) {
@@ -288,11 +286,12 @@ export async function saveSalesSavedOrderView(
           name,
           status_view,
           search_query,
+          sort_by,
           created_by,
           updated_by
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $6)
-        RETURNING id, name, status_view, search_query, created_at
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+        RETURNING id, name, status_view, search_query, sort_by, created_at
       `,
       [
         context.companyId,
@@ -300,6 +299,7 @@ export async function saveSalesSavedOrderView(
         name,
         rawStatusView,
         searchQuery,
+        rawSortBy,
         context.userId,
       ],
     );
