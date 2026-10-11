@@ -1598,7 +1598,7 @@ export default function SalesWorkspaceClient({
                         {selectedQuoteIds.length} quotation{selectedQuoteIds.length === 1 ? '' : 's'} selected
                       </p>
                       <p className="mt-1 text-[11px] text-slate-500">
-                        Send eligible selected drafts or export selected quotations. Sales orders are never included in this file.
+                        Send eligible selected drafts or export only selected quotations. Sales orders are not included in this file.
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
