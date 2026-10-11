@@ -24,7 +24,13 @@ async function ensurePipelineStages(pool: Awaited<ReturnType<typeof requireSales
   await pool.query(
     `INSERT INTO sales_pipeline_stages (company_id,name,sequence,probability,stage_type,created_by,updated_by)
      VALUES ($1,'Won',90,100,'won',$2,$2),($1,'Lost',100,0,'lost',$2,$2)
-     ON CONFLICT DO NOTHING`,
+     ON CONFLICT (company_id,name) DO UPDATE
+       SET sequence=EXCLUDED.sequence,
+           probability=EXCLUDED.probability,
+           stage_type=EXCLUDED.stage_type,
+           is_active=TRUE,
+           updated_by=EXCLUDED.updated_by,
+           updated_at=NOW()`,
     [companyId, userId],
   );
 }
