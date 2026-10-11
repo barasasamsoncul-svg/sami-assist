@@ -5,6 +5,7 @@ import {
   LayoutTemplate,
   Pencil,
   Plus,
+  Trash2,
   X,
 } from 'lucide-react';
 
@@ -245,6 +246,59 @@ export default function SalesTemplatesManager({
     }
   }
 
+  async function removeTemplate(
+    template:
+      (typeof data.templates)[number],
+  ) {
+    if (
+      !window.confirm(
+        'Delete the quotation template "' +
+          template.name +
+          '"? Existing quotations and their history will be kept.',
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await request({
+        action:
+          'delete_template',
+        templateId:
+          template.id,
+      });
+
+      setTemplates(
+        current =>
+          current.filter(
+            item =>
+              item.id !==
+              template.id,
+          ),
+      );
+
+      if (
+        editingTemplate?.id ===
+        template.id
+      ) {
+        setEditingTemplate(null);
+        setFormKey(value => value + 1);
+      }
+
+      showSuccess(
+        'Template deleted',
+        'The template was removed from the library. Existing quotations remain unchanged.',
+      );
+    } catch (error) {
+      showError(
+        'Template could not be deleted',
+        error instanceof Error
+          ? error.message
+          : 'SaMi could not delete this quotation template.',
+      );
+    }
+  }
+
   return (
     <section className="space-y-4">
       <div className="sami-surface rounded-[24px] p-4 sm:p-5">
@@ -442,6 +496,16 @@ export default function SalesTemplatesManager({
                             className="mt-3 inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-xs font-bold"
                           >
                             <Pencil className="h-3.5 w-3.5" /> Edit template
+                          </button>
+                        )}
+                        {data.capabilities.canManageSettings && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void removeTemplate(template)}
+                            className="ml-2 mt-3 inline-flex h-9 items-center gap-2 rounded-xl border border-red-500/30 px-3 text-xs font-bold text-red-600 disabled:opacity-60"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" /> Delete template
                           </button>
                         )}
 
