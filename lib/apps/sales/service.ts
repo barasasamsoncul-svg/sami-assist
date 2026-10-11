@@ -90,6 +90,7 @@ export {
   editSalesLeadActivity,
   convertSalesLeadToOpportunity,
   getSalesPipelineData,
+  updateSalesOpportunity,
   moveSalesOpportunity,
 } from '@/lib/apps/sales/pipeline';
 
