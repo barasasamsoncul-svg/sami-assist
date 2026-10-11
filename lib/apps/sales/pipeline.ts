@@ -143,12 +143,14 @@ export async function getSalesPipelineData() {
     context.pool.query(
       `SELECT o.id,o.opportunity_number,o.lead_id,o.billing_customer_id,o.stage_id,o.name,
               o.customer_name,o.contact_name,o.email,o.phone,o.currency,o.expected_value,o.probability,
-              o.expected_close_date,o.salesperson_user_id,o.sales_team_id,o.territory_id,o.source,
-              o.latest_quote_id,o.created_at,s.name AS stage_name,s.stage_type
+              o.expected_close_date,o.salesperson_user_id,o.sales_team_id,o.territory_id,o.source,o.notes,
+              o.won_at,o.lost_at,o.lost_reason,o.latest_quote_id,o.created_at,
+              s.name AS stage_name,s.stage_type
        FROM sales_opportunities o
-       JOIN sales_pipeline_stages s ON s.id=o.stage_id
+       JOIN sales_pipeline_stages s ON s.id=o.stage_id AND s.company_id=o.company_id
        WHERE o.company_id=$1 AND o.deleted_at IS NULL
-       ORDER BY s.sequence,o.expected_close_date NULLS LAST,o.created_at DESC
+       ORDER BY CASE WHEN s.stage_type='open' THEN 0 WHEN s.stage_type='won' THEN 1 ELSE 2 END,
+                s.sequence,o.expected_close_date NULLS LAST,o.created_at DESC
        LIMIT 500`,
       [context.companyId],
     ),
@@ -481,16 +483,115 @@ export async function convertSalesLeadToOpportunity(input:Record<string,unknown>
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
 }
 
-export async function moveSalesOpportunity(input:Record<string,unknown>) {
-  const context=await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
-  const opportunityId=requireUuid(input.opportunityId,'Opportunity'), stageId=requireUuid(input.stageId,'Stage'); const client=await context.pool.connect();
-  try{await client.query('BEGIN');
-    const current=await client.query(`SELECT * FROM sales_opportunities WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL FOR UPDATE`,[opportunityId,context.companyId]);
-    const stage=await client.query(`SELECT * FROM sales_pipeline_stages WHERE id=$1 AND company_id=$2 AND is_active=TRUE`,[stageId,context.companyId]);
-    if(!current.rows[0]||!stage.rows[0]) throw new SalesError('INVALID_INPUT','Opportunity or pipeline stage was not found.');
-    const probability=input.probability===undefined?Number(stage.rows[0].probability):numberInput(input.probability,'Probability',{min:0,max:100});
-    await client.query(`UPDATE sales_opportunities SET stage_id=$3,probability=$4,won_at=CASE WHEN $5='won' THEN COALESCE(won_at,NOW()) ELSE NULL END,lost_at=CASE WHEN $5='lost' THEN COALESCE(lost_at,NOW()) ELSE NULL END,lost_reason=CASE WHEN $5='lost' THEN $6 ELSE NULL END,updated_by=$7,updated_at=NOW() WHERE id=$1 AND company_id=$2`,[opportunityId,context.companyId,stageId,probability,stage.rows[0].stage_type,nullableText(input.reason,2000),context.userId]);
-    await client.query(`INSERT INTO sales_opportunity_stage_history (company_id,opportunity_id,from_stage_id,to_stage_id,probability,reason,changed_by) VALUES ($1,$2,$3,$4,$5,$6,$7)`,[context.companyId,opportunityId,current.rows[0].stage_id,stageId,probability,nullableText(input.reason,2000),context.userId]);
-    await client.query('COMMIT'); return {id:opportunityId,stageId,probability};
-  }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+export async function updateSalesOpportunity(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
+  const opportunityId = requireUuid(input.opportunityId, 'Opportunity');
+  const name = cleanText(input.name, 255);
+  if (!name) throw new SalesError('INVALID_INPUT', 'Opportunity name is required.');
+  const expectedValue = numberInput(input.expectedValue, 'Expected value', { min: 0 });
+  const currency = cleanText(input.currency, 3).toUpperCase();
+  if (!/^[A-Z]{3}$/.test(currency)) {
+    throw new SalesError('INVALID_INPUT', 'Currency must be a valid three-letter code.');
+  }
+  const email = normalizeSalesLeadEmail(input.email);
+  const expectedCloseDate = optionalPipelineDate(input.expectedCloseDate, 'Expected close date');
+  const salespersonUserId = await resolveActiveSalesperson(context, input.salespersonUserId);
+  const client = await context.pool.connect();
+  try {
+    await client.query('BEGIN');
+    const current = await client.query(
+      `SELECT o.id,s.stage_type
+       FROM sales_opportunities o
+       INNER JOIN sales_pipeline_stages s ON s.id=o.stage_id AND s.company_id=o.company_id
+       WHERE o.id=$1 AND o.company_id=$2 AND o.deleted_at IS NULL
+       FOR UPDATE OF o`,
+      [opportunityId, context.companyId],
+    );
+    if (!current.rows[0]) {
+      throw new SalesError('INVALID_INPUT', 'Opportunity was not found.');
+    }
+    if (current.rows[0].stage_type !== 'open') {
+      throw new SalesError('INVALID_INPUT', 'Reopen a won or lost opportunity before editing its commercial details.');
+    }
+    const updated = await client.query(
+      `UPDATE sales_opportunities
+       SET name=$3,customer_name=$4,contact_name=$5,email=$6,phone=$7,
+           expected_value=$8,currency=$9,expected_close_date=$10,source=$11,notes=$12,
+           salesperson_user_id=$13,updated_by=$14,updated_at=NOW()
+       WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL
+       RETURNING id,opportunity_number,name,customer_name,contact_name,email,phone,
+                 expected_value,currency,expected_close_date,source,notes,salesperson_user_id`,
+      [
+        opportunityId, context.companyId, name,
+        nullableText(input.customerName, 255), nullableText(input.contactName, 255),
+        email, nullableText(input.phone, 80), expectedValue, currency, expectedCloseDate,
+        nullableText(input.source, 120), nullableText(input.notes, 4000),
+        salespersonUserId, context.userId,
+      ],
+    );
+    await client.query('COMMIT');
+    return updated.rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function moveSalesOpportunity(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
+  const opportunityId = requireUuid(input.opportunityId, 'Opportunity');
+  const stageId = requireUuid(input.stageId, 'Stage');
+  const reason = nullableText(input.reason, 2000);
+  const client = await context.pool.connect();
+  try {
+    await client.query('BEGIN');
+    const current = await client.query(
+      `SELECT * FROM sales_opportunities
+       WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL
+       FOR UPDATE`,
+      [opportunityId, context.companyId],
+    );
+    const stage = await client.query(
+      `SELECT * FROM sales_pipeline_stages
+       WHERE id=$1 AND company_id=$2 AND is_active=TRUE`,
+      [stageId, context.companyId],
+    );
+    if (!current.rows[0] || !stage.rows[0]) {
+      throw new SalesError('INVALID_INPUT', 'Opportunity or pipeline stage was not found.');
+    }
+    if (current.rows[0].stage_id === stageId) {
+      throw new SalesError('INVALID_INPUT', 'Opportunity is already in that stage.');
+    }
+    if (stage.rows[0].stage_type === 'lost' && !reason) {
+      throw new SalesError('INVALID_INPUT', 'A reason is required to mark an opportunity as lost.');
+    }
+    const probability = input.probability === undefined
+      ? Number(stage.rows[0].probability)
+      : numberInput(input.probability, 'Probability', { min: 0, max: 100 });
+    await client.query(
+      `UPDATE sales_opportunities
+       SET stage_id=$3,probability=$4,
+           won_at=CASE WHEN $5='won' THEN COALESCE(won_at,NOW()) ELSE NULL END,
+           lost_at=CASE WHEN $5='lost' THEN COALESCE(lost_at,NOW()) ELSE NULL END,
+           lost_reason=CASE WHEN $5='lost' THEN $6 ELSE NULL END,
+           updated_by=$7,updated_at=NOW()
+       WHERE id=$1 AND company_id=$2`,
+      [opportunityId, context.companyId, stageId, probability, stage.rows[0].stage_type, reason, context.userId],
+    );
+    await client.query(
+      `INSERT INTO sales_opportunity_stage_history
+        (company_id,opportunity_id,from_stage_id,to_stage_id,probability,reason,changed_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [context.companyId, opportunityId, current.rows[0].stage_id, stageId, probability, reason, context.userId],
+    );
+    await client.query('COMMIT');
+    return { id: opportunityId, stageId, probability, stageType: stage.rows[0].stage_type };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
