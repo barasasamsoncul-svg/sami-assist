@@ -1990,3 +1990,57 @@ test('Sales Priority 14 exposes tenant-scoped opportunity stage history with act
   assert.ok(pipeline.includes('opportunityHistory: opportunityHistory.rows'));
   assert.ok(pipeline.includes('LIMIT 2000'));
 });
+
+
+test('Sales quotation templates can be edited without creating duplicates', async () => {
+  const manager =
+    await source(
+      'app/apps/sales/SalesTemplatesManager.tsx',
+    );
+
+  assert.match(
+    manager,
+    /editingTemplate\?\.id/,
+    'Editing sends the existing template id to the server.',
+  );
+
+  assert.match(
+    manager,
+    /setEditingTemplate\(template\)/,
+    'The template library exposes an edit action.',
+  );
+
+  assert.match(
+    manager,
+    /editingTemplate\?\.terms/,
+    'Existing commercial terms are loaded into the editor.',
+  );
+
+  assert.match(
+    manager,
+    /editingTemplate\?\.footerText/,
+    'Existing footer copy is loaded into the editor.',
+  );
+
+  assert.match(
+    manager,
+    /Update template/,
+    'The editor makes the update action explicit.',
+  );
+
+  const commands =
+    await source(
+      'lib/apps/sales/commands.ts',
+    );
+
+  assert.match(
+    commands,
+    /export async function saveSalesQuoteTemplate/,
+  );
+
+  assert.match(
+    commands,
+    /UPDATE sales_quote_templates/,
+    'The save command updates a company-scoped existing template.',
+  );
+});
