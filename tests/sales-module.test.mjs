@@ -266,6 +266,21 @@ test('Sales internal approval is separate from customer acceptance', async () =>
 });
 
 
+
+test('Sales quotation detail combines lifecycle, revision, customer request and delivery records into a chronological activity feed', async () => {
+  const ui = await source('app/apps/sales/SalesQuoteDetailClient.tsx');
+
+  assert.ok(ui.includes('const quoteActivity = useMemo(() => ['));
+  assert.ok(ui.includes("kind: 'Lifecycle'"));
+  assert.ok(ui.includes("kind: 'Revision'"));
+  assert.ok(ui.includes("kind: 'Customer request'"));
+  assert.ok(ui.includes("kind: 'Delivery'"));
+  assert.ok(ui.includes('sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())'));
+  assert.ok(ui.includes('Quote activity'));
+  assert.ok(ui.includes('quoteActivity.slice(0, 10)'));
+  assert.ok(ui.includes('dateTime={event.at}'));
+});
+
 test('Sales delivery is secure, logged and multi-channel', async () => {
   const [
     delivery,
