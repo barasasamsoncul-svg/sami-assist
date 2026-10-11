@@ -193,11 +193,11 @@ function ReportCard({ title, rows }: {
     <h2 className="text-sm font-black">{title}</h2>
     <div className="mt-3 space-y-2">
       {rows.length === 0 ? <p className="text-xs text-slate-500">No report data yet.</p> : rows.map((row, index) => (
-        <div key={`${row.label}-${index}`} className="flex items-center justify-between gap-3 border-b border-[var(--sami-border)] py-2 last:border-0">
-          <p className="text-xs font-black capitalize">{row.label}</p>
-          <div className="text-right">
-            <p className="text-xs font-black">{row.primary}</p>
-            <p className="text-[10px] text-slate-400">{row.secondary}</p>
+        <div key={`${row.label}-${index}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 border-b border-[var(--sami-border)] py-2 last:border-0">
+          <p className="min-w-0 break-words text-xs font-black capitalize">{row.label}</p>
+          <div className="min-w-0 max-w-[48%] text-right">
+            <p className="break-words text-xs font-black tabular-nums">{row.primary}</p>
+            <p className="break-words text-[10px] text-slate-400">{row.secondary}</p>
           </div>
         </div>
       ))}

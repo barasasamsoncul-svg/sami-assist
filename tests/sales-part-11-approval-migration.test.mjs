@@ -99,4 +99,6 @@ test('Sales management insights include tenant-scoped booked order, product and 
   assert.match(ui, /Monthly booked sales/);
   assert.match(ui, /Top products by sales/);
   assert.match(ui, /Sales team performance/);
+  assert.match(ui, /min-w-0 break-words text-xs font-black capitalize/);
+  assert.match(ui, /tabular-nums/);
 });
