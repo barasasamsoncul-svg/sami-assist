@@ -89,12 +89,26 @@ type OpportunityDraft = {
   salespersonUserId: string;
 };
 
+type SalesOpportunityHistory = {
+  id: string;
+  opportunity_id: string;
+  from_stage_id: string | null;
+  to_stage_id: string;
+  probability: number | string;
+  reason: string | null;
+  changed_by: string | null;
+  created_at: string;
+  from_stage_name: string | null;
+  to_stage_name: string;
+};
+
 type PipelineData = {
   stages: PipelineStage[];
   leads: SalesLead[];
   opportunities: SalesOpportunity[];
   activities: SalesLeadActivity[];
   salespeople: Salesperson[];
+  opportunityHistory: SalesOpportunityHistory[];
 };
 
 type PipelineAction =
@@ -201,7 +215,7 @@ export default function SalesPipelineManager({
   defaultCurrency: string;
 }) {
   const [data, setData] = useState<PipelineData>({
-    stages: [], leads: [], opportunities: [], activities: [], salespeople: [],
+    stages: [], leads: [], opportunities: [], activities: [], salespeople: [], opportunityHistory: [],
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -1565,6 +1579,30 @@ export default function SalesPipelineManager({
                     </div>
                   </form>
                 ) : null}
+
+                <details className="mt-4 rounded-lg border border-[var(--sami-border)] px-3 py-2">
+                  <summary className="cursor-pointer text-xs font-black text-slate-600 dark:text-slate-300">
+                    Stage history ({data.opportunityHistory.filter(item => item.opportunity_id === opportunity.id).length})
+                  </summary>
+                  <div className="mt-3 space-y-2">
+                    {data.opportunityHistory.filter(item => item.opportunity_id === opportunity.id).length === 0 ? (
+                      <p className="text-xs text-slate-500">No stage transitions recorded yet.</p>
+                    ) : data.opportunityHistory.filter(item => item.opportunity_id === opportunity.id).map(item => (
+                      <div key={item.id} className="border-l-2 border-[var(--sami-border)] pl-3">
+                        <p className="text-xs font-bold">
+                          {item.from_stage_name || 'Created'} → {item.to_stage_name || 'Stage'}
+                          {' · '}{String(item.created_at).slice(0, 10)}
+                        </p>
+                        <p className="mt-0.5 text-[10px] text-slate-500">
+                          Probability at transition: {item.probability}%
+                        </p>
+                        {item.reason ? (
+                          <p className="mt-0.5 whitespace-pre-wrap break-words text-xs text-slate-500">{item.reason}</p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </details>
               </article>
             ))}
           </div>
