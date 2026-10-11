@@ -1915,7 +1915,7 @@ test('Sales Priority 9 supports searchable lead lifecycle, reassignment, disqual
     source('app/apps/sales/SalesPipelineManager.tsx'),
   ]);
 
-  assert.ok(manifest.includes('key: "sales"') && manifest.includes("version: '3.4.13'"));
+  assert.ok(manifest.includes('key: "sales"') && manifest.includes("version: '3.4.14'"));
   assert.ok(migration.includes("sales-3.4.5-to-3.4.6"));
   assert.ok(migration.includes("CREATE TABLE IF NOT EXISTS public.sales_lead_activities"));
   assert.match(runtime, /SALES_3_4_5_TO_3_4_6/);
