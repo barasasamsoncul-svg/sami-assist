@@ -43,6 +43,27 @@ test('Sales opportunity funnel reports counts and correct value by open, won and
   assert.match(component, /CURRENCIES ARE REPORTED SEPARATELY|Currencies are reported separately/);
 });
 
+test('Sales funnel highlights overdue closes and opportunities aging in their current stage', async () => {
+  const service = await source('lib/apps/sales/pipeline-funnel.ts');
+  const component = await source('app/apps/sales/SalesOpportunityFunnel.tsx');
+
+  assert.match(service, /o\.expected_close_date < CURRENT_DATE/);
+  assert.match(service, /AS overdue_opportunity_count/);
+  assert.match(service, /AS overdue_value/);
+  assert.match(service, /sales_opportunity_stage_history h/);
+  assert.match(service, /h\.company_id = o\.company_id/);
+  assert.match(service, /h\.to_stage_id = o\.stage_id/);
+  assert.match(service, /COALESCE\(stage_age\.last_stage_at, o\.created_at\) < NOW\(\) - INTERVAL '30 days'/);
+  assert.match(service, /AS stale_opportunity_count/);
+  assert.match(service, /AS stale_value/);
+  assert.match(service, /overdueOpportunityCount: Number\(row\.overdue_opportunity_count \|\| 0\)/);
+  assert.match(service, /staleOpportunityCount: Number\(row\.stale_opportunity_count \|\| 0\)/);
+  assert.match(component, /Overdue close/);
+  assert.match(component, /30\+ days in stage/);
+  assert.match(component, /money\(row\.overdueValue, currency\)/);
+  assert.match(component, /money\(row\.staleValue, currency\)/);
+});
+
 test('Sales Reports render stage funnel data without changing other Sales route views', async () => {
   const page = await source('app/apps/sales/SalesSectionPage.tsx');
   const packageJson = await source('package.json');
