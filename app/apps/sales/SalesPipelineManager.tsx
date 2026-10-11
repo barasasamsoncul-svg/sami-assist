@@ -1593,6 +1593,9 @@ export default function SalesPipelineManager({
                       {lead.status !== 'converted' && lead.status !== 'disqualified' ? (
                         <button type="button" disabled={busy} onClick={() => beginActivity(lead)} className="text-xs font-black text-slate-600 hover:underline disabled:opacity-60">+ Follow-up</button>
                       ) : null}
+                      <button type="button" disabled={busy} onClick={() => void toggleLeadAssignmentHistory(lead.id)} className="text-xs font-black text-slate-600 hover:underline disabled:opacity-60">
+                        {expandedLeadAssignmentHistoryId === lead.id ? 'Hide assignment history' : 'Assignment history'}
+                      </button>
                     </div>
                   ) : null}
                 </div>
@@ -1691,11 +1694,22 @@ export default function SalesPipelineManager({
                       <input value={leadDraft.source} onChange={event => setLeadDraft(current => ({ ...current, source: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
                     </label>
                     <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Sales team</span>
+                      <select value={leadDraft.salesTeamId} onChange={event => setLeadDraft(current => ({ ...current, salesTeamId: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100">
+                        <option value="">No team</option>
+                        {data.salesTeams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
+                      </select>
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
                       <span>Assigned salesperson</span>
                       <select value={leadDraft.salespersonUserId} onChange={event => setLeadDraft(current => ({ ...current, salespersonUserId: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100">
                         <option value="">Unassigned</option>
                         {data.salespeople.map(person => <option key={person.id} value={person.id}>{person.name} · {person.email}</option>)}
                       </select>
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2">
+                      <span>Reason for reassignment (required when changing owner or team)</span>
+                      <input maxLength={1000} value={leadDraft.assignmentReason} onChange={event => setLeadDraft(current => ({ ...current, assignmentReason: event.target.value }))} placeholder="e.g. territory change, workload balancing, handover" className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
                     </label>
                     <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2">
                       <span>Notes</span>
@@ -1706,6 +1720,44 @@ export default function SalesPipelineManager({
                       <button type="button" disabled={busy} onClick={() => setEditingLeadId(null)} className="h-10 rounded-lg border border-[var(--sami-border)] px-3.5 text-xs font-black disabled:opacity-60">Cancel</button>
                     </div>
                   </form>
+                ) : null}
+
+                {expandedLeadAssignmentHistoryId === lead.id ? (
+                  <section className="mt-4 space-y-3 rounded-xl border border-[var(--sami-border)] p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h4 className="text-sm font-black">Assignment history</h4>
+                      <span className="text-[10px] text-slate-500">Latest 50 changes</span>
+                    </div>
+                    {leadAssignmentHistoryLoadingId === lead.id ? (
+                      <p className="text-xs text-slate-500">Loading assignment history…</p>
+                    ) : leadAssignmentHistoryError ? (
+                      <p role="alert" className="text-xs text-rose-600">{leadAssignmentHistoryError}</p>
+                    ) : (leadAssignmentHistory[lead.id] || []).length === 0 ? (
+                      <p className="text-xs text-slate-500">No reassignment changes recorded yet.</p>
+                    ) : (
+                      <ol className="space-y-3">
+                        {(leadAssignmentHistory[lead.id] || []).map(entry => {
+                          const nameForUser = (id: string | null) =>
+                            id ? data.salespeople.find(person => person.id === id)?.name || 'Former or unavailable user' : 'Unassigned';
+                          const nameForTeam = (id: string | null) =>
+                            id ? data.salesTeams.find(team => team.id === id)?.name || 'Unavailable team' : 'No team';
+                          const changedBy = data.salespeople.find(person => person.id === entry.changed_by)?.name || 'Workspace user';
+                          return (
+                            <li key={entry.id} className="border-l-2 border-[var(--sami-border)] pl-3">
+                              <p className="text-[11px] text-slate-500">{formatHistoryTimestamp(entry.created_at)} · Changed by {changedBy}</p>
+                              <p className="mt-1 break-words text-xs font-bold">
+                                {nameForUser(entry.previous_salesperson_user_id)} → {nameForUser(entry.new_salesperson_user_id)}
+                              </p>
+                              <p className="mt-1 break-words text-[11px] text-slate-500">
+                                Team: {nameForTeam(entry.previous_sales_team_id)} → {nameForTeam(entry.new_sales_team_id)}
+                              </p>
+                              <p className="mt-1 break-words text-xs">{entry.reason}</p>
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    )}
+                  </section>
                 ) : null}
 
                 {disqualifyingLeadId === lead.id ? (
