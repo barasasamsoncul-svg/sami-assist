@@ -1803,7 +1803,7 @@ test('Sales Priority 9 supports searchable lead lifecycle, reassignment, disqual
   assert.match(pipeline, /export async function reopenSalesLead/);
   assert.match(pipeline, /export async function createSalesLeadActivity/);
   assert.match(pipeline, /export async function updateSalesLeadActivity/);
-  assert.match(pipeline, /status='completed'/);
+  assert.ok(pipeline.includes("'completed',NOW()"));
 
   for (const action of ['update_lead', 'disqualify_lead', 'reopen_lead', 'create_lead_activity', 'update_lead_activity']) {
     assert.ok(route.includes(action), 'Sales API routes ' + action);
