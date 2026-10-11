@@ -1339,8 +1339,13 @@ export async function createSalesQuote(
       settingsResult.rows[0] ||
       {};
 
+    const rawOpportunityId = input.opportunityId;
     const opportunityId =
-      optionalUuid(input.opportunityId);
+      rawOpportunityId === undefined ||
+      rawOpportunityId === null ||
+      rawOpportunityId === ''
+        ? null
+        : requireUuid(rawOpportunityId, 'Opportunity');
 
     let linkedOpportunity:
       Record<string, unknown> |
