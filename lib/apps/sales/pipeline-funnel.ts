@@ -160,7 +160,7 @@ export async function getSalesOpportunityRiskQueue(): Promise<SalesOpportunityRi
   if (!canViewReports) return [];
 
   const result = await context.pool.query(
-    \`
+    `
       SELECT
         o.id AS opportunity_id,
         o.opportunity_number,
@@ -227,7 +227,7 @@ export async function getSalesOpportunityRiskQueue(): Promise<SalesOpportunityRi
         o.expected_value DESC,
         o.id ASC
       LIMIT 50
-    \`,
+    `,
     [context.companyId, context.tenantId],
   );
 
