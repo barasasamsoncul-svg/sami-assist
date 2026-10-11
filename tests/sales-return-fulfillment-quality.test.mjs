@@ -23,7 +23,7 @@ test('Sales return and fulfillment report requires report access and scopes oper
 test('Sales return report avoids item-credit join multiplication and keeps credit currencies separate', async () => {
   const service = await source('lib/apps/sales/return-fulfillment-quality.ts');
   assert.match(service, /WITH item_totals AS/);
-  assert.match(service, /WITH credit_totals AS/);
+  assert.match(service, /credit_totals AS \(/);
   assert.match(service, /sales_returns r/);
   assert.match(service, /r\.company_id = \$1/);
   assert.match(service, /r\.requested_at >= NOW\(\) - INTERVAL '90 days'/);
