@@ -1218,3 +1218,35 @@ CREATE TABLE IF NOT EXISTS public.sales_quote_approval_decisions (
 
 CREATE INDEX IF NOT EXISTS idx_sales_quote_approval_decisions_request
   ON public.sales_quote_approval_decisions(company_id, request_id, step_order, decided_at);
+
+
+CREATE TABLE IF NOT EXISTS public.sales_quote_saved_views (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL,
+  user_id UUID NOT NULL,
+  name VARCHAR(80) NOT NULL,
+  status_view VARCHAR(40) NOT NULL DEFAULT 'all'
+    CHECK (status_view IN (
+      'all',
+      'draft',
+      'needs_approval',
+      'awaiting_response',
+      'accepted',
+      'converted',
+      'closed_without_sale'
+    )),
+  search_query VARCHAR(120) NOT NULL DEFAULT '',
+  created_by UUID,
+  updated_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_quote_saved_views_owner_name
+  ON public.sales_quote_saved_views(company_id, user_id, LOWER(name))
+  WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_sales_quote_saved_views_owner
+  ON public.sales_quote_saved_views(company_id, user_id, created_at DESC)
+  WHERE deleted_at IS NULL;

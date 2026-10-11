@@ -16,6 +16,8 @@ import {
   Plus,
   RefreshCw,
   Search,
+  BookmarkPlus,
+  Trash2,
 } from 'lucide-react';
 
 import {
@@ -57,6 +59,8 @@ import SalesPipelineBoard from '@/app/apps/sales/SalesPipelineBoard';
 import SalesPipelineManager from '@/app/apps/sales/SalesPipelineManager';
 
 import type {
+  SalesQuoteStatusView,
+  SalesSavedQuoteView,
   SalesWorkspaceData,
 } from '@/lib/apps/sales/types';
 
@@ -81,14 +85,7 @@ type View =
   | 'settings';
 
 
-type QuoteStatusView =
-  | 'all'
-  | 'draft'
-  | 'needs_approval'
-  | 'awaiting_response'
-  | 'accepted'
-  | 'converted'
-  | 'closed_without_sale';
+type QuoteStatusView = SalesQuoteStatusView;
 
 
 const QUOTE_STATUS_VIEWS: {
@@ -658,6 +655,38 @@ export default function SalesWorkspaceClient({
     );
 
   const [
+    savedQuoteViews,
+    setSavedQuoteViews,
+  ] =
+    useState<SalesSavedQuoteView[]>(
+      [],
+    );
+
+  const [
+    savedViewName,
+    setSavedViewName,
+  ] =
+    useState(
+      '',
+    );
+
+  const [
+    savedViewsLoading,
+    setSavedViewsLoading,
+  ] =
+    useState(
+      true,
+    );
+
+  const [
+    savedViewsError,
+    setSavedViewsError,
+  ] =
+    useState(
+      '',
+    );
+
+  const [
     composerOpen,
     setComposerOpen,
   ] =
@@ -696,6 +725,55 @@ export default function SalesWorkspaceClient({
   const busy =
     requestBusy ||
     pending;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSavedViews() {
+      setSavedViewsLoading(true);
+      setSavedViewsError('');
+
+      try {
+        const response = await fetch(
+          '/api/apps/sales?savedViews=1',
+          {
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { Accept: 'application/json' },
+          },
+        );
+        const body = await response.json().catch(() => ({}));
+
+        if (!response.ok || body.success !== true) {
+          throw new Error(body.error || 'Could not load saved quotation views.');
+        }
+
+        if (!cancelled) {
+          setSavedQuoteViews(
+            Array.isArray(body.savedViews)
+              ? body.savedViews as SalesSavedQuoteView[]
+              : [],
+          );
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setSavedViewsError(
+            error instanceof Error
+              ? error.message
+              : 'Could not load saved quotation views.',
+          );
+        }
+      } finally {
+        if (!cancelled) setSavedViewsLoading(false);
+      }
+    }
+
+    void loadSavedViews();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialData.company.id]);
 
   const visibleQuotes =
     useMemo(
@@ -791,6 +869,64 @@ export default function SalesWorkspaceClient({
         search,
       ],
     );
+
+  async function saveCurrentQuoteView() {
+    const name = savedViewName.trim();
+
+    if (!name) {
+      showWarning('Name required', 'Enter a name for this saved quotation view.');
+      return;
+    }
+
+    try {
+      const result = await request({
+        action: 'save_quote_view',
+        name,
+        statusView: quoteStatusView,
+        searchQuery: search,
+      });
+
+      const savedView = result as unknown as SalesSavedQuoteView;
+      setSavedQuoteViews(current => [
+        savedView,
+        ...current.filter(view => view.id !== savedView.id),
+      ]);
+      setSavedViewName('');
+      setSavedViewsError('');
+      showSuccess('View saved', 'Your quotation filters are saved to your Sales workspace.');
+    } catch (error) {
+      showError(
+        'View could not be saved',
+        error instanceof Error ? error.message : 'SaMi could not save this quotation view.',
+      );
+    }
+  }
+
+  function applySavedQuoteView(view: SalesSavedQuoteView) {
+    setQuoteStatusView(view.statusView);
+    setSearch(view.searchQuery);
+    setSelectedQuoteIds([]);
+  }
+
+  async function removeSavedQuoteView(view: SalesSavedQuoteView) {
+    if (!window.confirm('Delete the saved quotation view "' + view.name + '"?')) {
+      return;
+    }
+
+    try {
+      await request({
+        action: 'delete_quote_view',
+        viewId: view.id,
+      });
+      setSavedQuoteViews(current => current.filter(item => item.id !== view.id));
+      showSuccess('Saved view deleted', 'The saved quotation view was removed.');
+    } catch (error) {
+      showError(
+        'View could not be deleted',
+        error instanceof Error ? error.message : 'SaMi could not delete this saved view.',
+      );
+    }
+  }
 
   async function request(
     payload:
@@ -1241,6 +1377,84 @@ export default function SalesWorkspaceClient({
                   Choose a queue to focus on a stage of the quotation process. The search above continues to narrow the selected queue.
                 </p>
               </div>
+
+              <section className="sami-surface rounded-[22px] p-3" aria-label="Saved quotation views">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-xs font-black uppercase tracking-[0.08em] text-slate-500">
+                      Saved quotation views
+                    </h3>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Save the current queue and search together so you can reopen the same working list later.
+                    </p>
+                  </div>
+                  <form
+                    className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto"
+                    onSubmit={event => {
+                      event.preventDefault();
+                      void saveCurrentQuoteView();
+                    }}
+                  >
+                    <label className="sr-only" htmlFor="sales-saved-view-name">Saved view name</label>
+                    <input
+                      id="sales-saved-view-name"
+                      value={savedViewName}
+                      onChange={event => setSavedViewName(event.target.value)}
+                      maxLength={80}
+                      placeholder="e.g. Large quotes awaiting reply"
+                      className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-xs sm:w-64"
+                    />
+                    <button
+                      type="submit"
+                      disabled={busy || !savedViewName.trim()}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-3.5 text-xs font-black text-white disabled:opacity-60"
+                    >
+                      <BookmarkPlus className="h-4 w-4" />
+                      Save view
+                    </button>
+                  </form>
+                </div>
+
+                {savedViewsError && (
+                  <p role="alert" className="mt-3 rounded-xl border border-red-500/30 px-3 py-2 text-xs text-red-600">
+                    {savedViewsError}
+                  </p>
+                )}
+
+                {savedViewsLoading ? (
+                  <p className="mt-3 text-xs text-slate-500">Loading your saved views…</p>
+                ) : savedQuoteViews.length === 0 ? (
+                  <p className="mt-3 rounded-xl border border-dashed border-[var(--sami-border)] px-3 py-3 text-xs text-slate-500">
+                    No saved views yet. Save this queue and search to create your first one.
+                  </p>
+                ) : (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {savedQuoteViews.map(savedView => (
+                      <div key={savedView.id} className="inline-flex max-w-full items-center rounded-xl border border-[var(--sami-border)]">
+                        <button
+                          type="button"
+                          title={'Apply saved view: ' + savedView.name}
+                          onClick={() => applySavedQuoteView(savedView)}
+                          className="max-w-[260px] truncate px-3 py-2 text-left text-xs font-bold hover:text-blue-600"
+                        >
+                          {savedView.name}
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={'Delete saved view ' + savedView.name}
+                          title={'Delete saved view ' + savedView.name}
+                          disabled={busy}
+                          onClick={() => void removeSavedQuoteView(savedView)}
+                          className="mr-1 inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-red-500/10 hover:text-red-600 disabled:opacity-60"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="mt-2 text-[10px] text-slate-400">Saved views are private to your account within this company. Up to 25 views per user.</p>
+              </section>
 
               {selectedQuoteIds.length > 0 && (
                 <div

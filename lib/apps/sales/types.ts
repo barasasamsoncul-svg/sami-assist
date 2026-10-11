@@ -1,3 +1,22 @@
+export type SalesQuoteStatusView =
+  | 'all'
+  | 'draft'
+  | 'needs_approval'
+  | 'awaiting_response'
+  | 'accepted'
+  | 'converted'
+  | 'closed_without_sale';
+
+
+export type SalesSavedQuoteView = {
+  id: string;
+  name: string;
+  statusView: SalesQuoteStatusView;
+  searchQuery: string;
+  createdAt: string;
+};
+
+
 export type SalesQuoteStatus =
   | 'draft'
   | 'sent'
