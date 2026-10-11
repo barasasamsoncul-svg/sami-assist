@@ -2953,6 +2953,7 @@ export async function sendSalesQuote(
         context.userId,
       quoteId,
       channels,
+      requireDraft: input.requireDraft === true,
     });
 
   await emitSalesAutomationEvent(
