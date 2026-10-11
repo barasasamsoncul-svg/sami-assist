@@ -72,7 +72,8 @@ export async function getSalesOpportunityFunnelData(): Promise<SalesOpportunityF
         AND o.deleted_at IS NULL
       WHERE s.company_id = $1
         AND s.deleted_at IS NULL
-      GROUP BY s.id, s.name, s.sequence, s.stage_type, s.probability, currency
+      GROUP BY s.id, s.name, s.sequence, s.stage_type, s.probability,
+        UPPER(COALESCE(NULLIF(BTRIM(o.currency), ''), NULLIF(BTRIM($2::text), ''), 'KES'))
       ORDER BY s.sequence ASC, s.name ASC, currency ASC
     `,
     [context.companyId, context.company.currentCompany.currency],
