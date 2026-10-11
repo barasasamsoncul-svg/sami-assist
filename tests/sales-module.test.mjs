@@ -1821,3 +1821,29 @@ test('Sales Priority 9 supports searchable lead lifecycle, reassignment, disqual
   assert.match(ui, /Schedule follow-up/);
   assert.match(ui, /updateActivity\(activity\.id, 'completed'\)/);
 });
+
+
+test('Sales Priority 10 warns on likely duplicate leads and requires explicit confirmation', async () => {
+  const [pipeline, context, ui, route] = await Promise.all([
+    source('lib/apps/sales/pipeline.ts'),
+    source('lib/apps/sales/context.ts'),
+    source('app/apps/sales/SalesPipelineManager.tsx'),
+    source('app/api/apps/sales/route.ts'),
+  ]);
+
+  assert.ok(pipeline.includes('LEAD_DUPLICATE_CONFIRMATION_REQUIRED'));
+  assert.ok(pipeline.includes('input.confirmDuplicates !== true'));
+  assert.ok(pipeline.includes('REGEXP_REPLACE'));
+  assert.ok(pipeline.includes('LOWER(BTRIM(COALESCE(email,\'\')))'));
+  assert.ok(pipeline.includes('LIMIT 10'));
+  assert.ok(context.includes('LEAD_DUPLICATE_CONFIRMATION_REQUIRED'));
+
+  assert.ok(ui.includes('Possible duplicate leads'));
+  assert.ok(ui.includes('Create anyway'));
+  assert.ok(ui.includes('confirmDuplicates: true'));
+  assert.ok(ui.includes('body.code === \'LEAD_DUPLICATE_CONFIRMATION_REQUIRED\''));
+  assert.ok(ui.includes('candidate.match_reason'));
+  assert.ok(ui.includes('Edit lead details'));
+
+  assert.ok(route.includes('...error.details'));
+});
