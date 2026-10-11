@@ -2011,6 +2011,23 @@ test('Sales quotation workspace provides status-based work queues alongside quot
   assert.ok(workspace.includes('quoteStatusView,'));
 });
 
+test('Sales quotation workspace supports selecting visible rows and exporting only selected quotations', async () => {
+  const workspace = await source('app/apps/sales/SalesWorkspaceClient.tsx');
+
+  assert.ok(workspace.includes('selectedQuoteIds'));
+  assert.ok(workspace.includes('aria-label="Select all visible quotations"'));
+  assert.ok(workspace.includes('aria-label={`Select quotation ${quote.quoteNumber}`}'));
+  assert.ok(workspace.includes('allVisibleQuotesSelected'));
+  assert.ok(workspace.includes('Export selected CSV'));
+  assert.ok(workspace.includes('Clear selection'));
+  assert.ok(workspace.includes('exportSales(initialData, selectedQuotes)'));
+  assert.ok(workspace.includes("selectedQuotes?:"));
+  assert.ok(workspace.includes('const quotesToExport ='));
+  assert.ok(workspace.includes('if (!selectedQuotes)'));
+  assert.ok(workspace.includes('sales-quotations-selected-'));
+  assert.ok(workspace.includes('Sales orders are not included in this file.'));
+});
+
 test('Sales quotation templates can be edited without creating duplicates', async () => {
   const manager =
     await source(

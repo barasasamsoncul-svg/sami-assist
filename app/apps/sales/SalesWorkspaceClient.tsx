@@ -387,8 +387,15 @@ function Status({
 function exportSales(
   data:
     SalesWorkspaceData,
+  selectedQuotes?:
+    SalesWorkspaceData['quotes'],
 ) {
-  const rows = [
+  const rows: (
+    string |
+    number |
+    null |
+    undefined
+  )[][] = [
     [
       'Type',
       'Number',
@@ -398,7 +405,14 @@ function exportSales(
       'Currency',
       'Amount',
     ],
-    ...data.quotes.map(
+  ];
+
+  const quotesToExport =
+    selectedQuotes ??
+    data.quotes;
+
+  rows.push(
+    ...quotesToExport.map(
       quote => [
         'Quotation',
         quote.quoteNumber,
@@ -409,18 +423,23 @@ function exportSales(
         quote.totalAmount,
       ],
     ),
-    ...data.orders.map(
-      order => [
-        'Sales order',
-        order.orderNumber,
-        order.customerName,
-        order.status,
-        order.orderDate,
-        order.currency,
-        order.totalAmount,
-      ],
-    ),
-  ];
+  );
+
+  if (!selectedQuotes) {
+    rows.push(
+      ...data.orders.map(
+        order => [
+          'Sales order',
+          order.orderNumber,
+          order.customerName,
+          order.status,
+          order.orderDate,
+          order.currency,
+          order.totalAmount,
+        ],
+      ),
+    );
+  }
 
   const csv =
     rows
@@ -470,7 +489,11 @@ function exportSales(
     url;
 
   anchor.download =
-    'sales-register-' +
+    (
+      selectedQuotes
+        ? 'sales-quotations-selected-'
+        : 'sales-register-'
+    ) +
     new Date()
       .toISOString()
       .slice(
@@ -627,6 +650,14 @@ export default function SalesWorkspaceClient({
     );
 
   const [
+    selectedQuoteIds,
+    setSelectedQuoteIds,
+  ] =
+    useState<string[]>(
+      [],
+    );
+
+  const [
     composerOpen,
     setComposerOpen,
   ] =
@@ -708,6 +739,15 @@ export default function SalesWorkspaceClient({
         search,
         quoteStatusView,
       ],
+    );
+
+  const allVisibleQuotesSelected =
+    visibleQuotes.length > 0 &&
+    visibleQuotes.every(
+      quote =>
+        selectedQuoteIds.includes(
+          quote.id,
+        ),
     );
 
   const visibleOrders =
@@ -1150,7 +1190,10 @@ export default function SalesWorkspaceClient({
                   search
                 }
                 setSearch={
-                  setSearch
+                  value => {
+                    setSearch(value);
+                    setSelectedQuoteIds([]);
+                  }
                 }
                 onExport={
                   () =>
@@ -1175,7 +1218,10 @@ export default function SalesWorkspaceClient({
                         key={option.key}
                         type="button"
                         aria-pressed={quoteStatusView === option.key}
-                        onClick={() => setQuoteStatusView(option.key)}
+                        onClick={() => {
+                          setQuoteStatusView(option.key);
+                          setSelectedQuoteIds([]);
+                        }}
                         className={[
                           'inline-flex min-h-9 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition-colors',
                           quoteStatusView === option.key
@@ -1196,11 +1242,72 @@ export default function SalesWorkspaceClient({
                 </p>
               </div>
 
+              {selectedQuoteIds.length > 0 && (
+                <div
+                  className="sami-surface rounded-[22px] p-3"
+                  aria-live="polite"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black">
+                        {selectedQuoteIds.length} quotation{selectedQuoteIds.length === 1 ? '' : 's'} selected
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Export only the selected quotations. Sales orders are not included in this file.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const selectedQuotes = initialData.quotes.filter(
+                            quote => selectedQuoteIds.includes(quote.id),
+                          );
+                          if (selectedQuotes.length > 0) {
+                            exportSales(initialData, selectedQuotes);
+                          }
+                        }}
+                        className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-3.5 text-xs font-black text-white"
+                      >
+                        <Download className="h-4 w-4" />
+                        Export selected CSV
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedQuoteIds([])}
+                        className="inline-flex h-10 items-center rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black"
+                      >
+                        Clear selection
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="sami-surface overflow-hidden rounded-[24px]">
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[900px] text-left text-sm">
                     <thead className="border-b border-[var(--sami-border)] bg-slate-500/[0.04] text-[10px] font-black uppercase tracking-[0.09em] text-slate-400">
                       <tr>
+                        <th className="w-12 px-4 py-3">
+                          <input
+                            type="checkbox"
+                            aria-label="Select all visible quotations"
+                            checked={allVisibleQuotesSelected}
+                            onChange={event => {
+                              if (event.target.checked) {
+                                setSelectedQuoteIds(current => Array.from(new Set([
+                                  ...current,
+                                  ...visibleQuotes.map(quote => quote.id),
+                                ])));
+                              } else {
+                                const visibleIds = new Set(visibleQuotes.map(quote => quote.id));
+                                setSelectedQuoteIds(current => current.filter(id => !visibleIds.has(id)));
+                              }
+                            }}
+                            className="h-4 w-4 rounded accent-blue-600"
+                          />
+                        </th>
                         <th className="px-4 py-3">
                           Quotation
                         </th>
@@ -1233,7 +1340,7 @@ export default function SalesWorkspaceClient({
                               <tr>
                                 <td
                                   colSpan={
-                                    7
+                                    8
                                   }
                                   className="px-4 py-10 text-center text-sm text-slate-500"
                                 >
@@ -1249,6 +1356,27 @@ export default function SalesWorkspaceClient({
                                   }
                                   className="hover:bg-slate-500/[0.03]"
                                 >
+                                  <td className="px-4 py-3">
+                                    <input
+                                      type="checkbox"
+                                      aria-label={`Select quotation ${quote.quoteNumber}`}
+                                      checked={selectedQuoteIds.includes(quote.id)}
+                                      onChange={event => {
+                                        if (event.target.checked) {
+                                          setSelectedQuoteIds(current =>
+                                            current.includes(quote.id)
+                                              ? current
+                                              : [...current, quote.id],
+                                          );
+                                        } else {
+                                          setSelectedQuoteIds(current =>
+                                            current.filter(id => id !== quote.id),
+                                          );
+                                        }
+                                      }}
+                                      className="h-4 w-4 rounded accent-blue-600"
+                                    />
+                                  </td>
                                   <td className="px-4 py-3">
                                     <Link
                                       href={
