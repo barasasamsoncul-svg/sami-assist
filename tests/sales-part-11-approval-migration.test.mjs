@@ -91,7 +91,10 @@ test('Sales management insights include tenant-scoped booked order, product and 
   assert.match(insights, /WHERE i\.company_id = \$1/);
   assert.match(insights, /LEFT JOIN sales_teams t/);
   assert.match(insights, /status IN \('confirmed', 'closed'\)/);
-  assert.match(insights, /DATE_TRUNC\('month', order_date\)/);
+  assert.match(insights, /GENERATE_SERIES/);
+  assert.match(insights, /GROUP BY months\.month_start/);
+  assert.match(ui, /function MonthlySalesChart/);
+  assert.match(ui, /aria-label="Monthly booked sales chart"/);
   assert.match(ui, /Sales orders &amp; revenue/);
   assert.match(ui, /Monthly booked sales/);
   assert.match(ui, /Top products by sales/);

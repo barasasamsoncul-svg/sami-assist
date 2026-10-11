@@ -65,9 +65,7 @@ export default function SalesManagementInsights({ data, currency, metrics }: Pro
         </section>
 
         <section className="grid gap-4 xl:grid-cols-3">
-          <ReportCard title="Monthly booked sales" rows={data.orderMonthly.map(item => ({
-            label: item.month, primary: item.orderCount.toLocaleString() + ' orders', secondary: formatMoney(item.amount, currency),
-          }))} />
+          <MonthlySalesChart rows={data.orderMonthly} currency={currency} />
           <ReportCard title="Top products by sales" rows={data.topProducts.map(item => ({
             label: item.productName, primary: item.quantity.toLocaleString() + ' units · ' + item.orderCount.toLocaleString() + ' orders', secondary: formatMoney(item.amount, currency),
           }))} />
@@ -145,6 +143,45 @@ function Count({ label, count }: { label: string; count: number }) {
   return <div className="rounded-xl border border-[var(--sami-border)] p-3">
     <p className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">{label}</p>
     <p className="mt-1 text-xl font-black">{count.toLocaleString()}</p>
+  </div>;
+}
+
+function MonthlySalesChart({ rows, currency }: {
+  rows: Array<{ month: string; orderCount: number; amount: number }>;
+  currency: string;
+}) {
+  const maxAmount = Math.max(1, ...rows.map(row => row.amount));
+
+  return <div className="sami-surface rounded-[24px] p-4">
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <h2 className="text-sm font-black">Monthly booked sales</h2>
+        <p className="mt-1 text-[11px] text-slate-500">Last 12 months · confirmed and closed orders</p>
+      </div>
+      <span className="rounded-full border border-[var(--sami-border)] px-2 py-1 text-[10px] font-black text-slate-500">12 months</span>
+    </div>
+    {rows.length === 0 ? <p className="mt-4 text-xs text-slate-500">No report data yet.</p> : (
+      <ol className="mt-4 space-y-3" aria-label="Monthly booked sales chart">
+        {rows.map(row => {
+          const width = row.amount > 0 ? Math.max(2, row.amount / maxAmount * 100) : 0;
+          return <li key={row.month} className="grid grid-cols-[4.25rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5">
+            <span className="text-[11px] font-bold text-slate-500">{row.month}</span>
+            <div className="min-w-0">
+              <div className="h-2.5 overflow-hidden rounded-full bg-slate-500/10"
+                role="img"
+                aria-label={row.month + ': ' + formatMoney(row.amount, currency) + ', ' + row.orderCount.toLocaleString() + ' orders'}
+                title={row.month + ' · ' + formatMoney(row.amount, currency)}>
+                <div className="h-full rounded-full bg-blue-600 transition-[width]" style={{ width: width + '%' }} />
+              </div>
+              <div className="mt-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
+                <span className="text-[10px] text-slate-500">{row.orderCount.toLocaleString()} orders</span>
+                <span className="text-[11px] font-black tabular-nums">{formatMoney(row.amount, currency)}</span>
+              </div>
+            </div>
+          </li>;
+        })}
+      </ol>
+    )}
   </div>;
 }
 

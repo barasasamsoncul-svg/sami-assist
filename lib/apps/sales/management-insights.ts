@@ -189,17 +189,26 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
       WHERE company_id = $1 AND deleted_at IS NULL
     `, [companyId]),
     context.pool.query(`
+      WITH months AS (
+        SELECT GENERATE_SERIES(
+          DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '11 months',
+          DATE_TRUNC('month', CURRENT_DATE),
+          INTERVAL '1 month'
+        )::date AS month_start
+      )
       SELECT
-        TO_CHAR(DATE_TRUNC('month', order_date), 'YYYY-MM') AS month,
-        COUNT(*)::int AS order_count,
-        COALESCE(SUM(base_total_amount), 0) AS amount
-      FROM sales_orders_v2
-      WHERE company_id = $1
-        AND deleted_at IS NULL
-        AND status IN ('confirmed', 'closed')
-        AND order_date >= DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '11 months'
-      GROUP BY 1
-      ORDER BY 1
+        TO_CHAR(months.month_start, 'YYYY-MM') AS month,
+        COUNT(o.id)::int AS order_count,
+        COALESCE(SUM(o.base_total_amount), 0) AS amount
+      FROM months
+      LEFT JOIN sales_orders_v2 o
+        ON o.company_id = $1
+        AND o.deleted_at IS NULL
+        AND o.status IN ('confirmed', 'closed')
+        AND o.order_date >= months.month_start
+        AND o.order_date < (months.month_start + INTERVAL '1 month')::date
+      GROUP BY months.month_start
+      ORDER BY months.month_start
     `, [companyId]),
     context.pool.query(`
       SELECT
