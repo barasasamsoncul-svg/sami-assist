@@ -107,6 +107,7 @@ export {
 export {
   createSalesLead,
   bulkReassignSalesLeads,
+  bulkCreateSalesLeadActivities,
   bulkUpdateSalesLeadStatus,
   updateSalesLead,
   disqualifySalesLead,
