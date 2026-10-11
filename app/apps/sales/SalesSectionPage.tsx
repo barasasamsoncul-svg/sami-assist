@@ -187,12 +187,14 @@ export default async function SalesSectionPage({
   }
 
   const reportsAvailable = view === 'reports' && data.capabilities.canViewReports;
-  const [managementInsights, opportunityFunnel] = reportsAvailable
+  const reportData = reportsAvailable
     ? await Promise.all([
         getSalesManagementInsights(),
         getSalesOpportunityFunnelData(),
       ])
-    : [null, null];
+    : null;
+  const managementInsights = reportData?.[0] ?? null;
+  const opportunityFunnel = reportData?.[1] ?? null;
 
   return (
     <SalesModuleShell
