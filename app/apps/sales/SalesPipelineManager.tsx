@@ -24,6 +24,8 @@ type SalesLead = {
   salesperson_user_id: string | null;
   sales_team_id?: string | null;
   territory_id?: string | null;
+  assignment_rule_id: string | null;
+  assignment_rule_name: string | null;
   disqualification_reason: string | null;
   lead_score: number;
   lead_score_band: 'high' | 'medium' | 'low';
@@ -1107,10 +1109,10 @@ export default function SalesPipelineManager({
               onChange={event => setCaptureLeadTeamId(event.target.value)}
               className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
             >
-              <option value="">No team · manual assignment</option>
+              <option value="">Use routing rules (no team override)</option>
               {data.salesTeams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
             </select>
-            {captureLeadTeamId ? <p className="text-[11px] font-normal">Leave the salesperson blank to auto-assign the new lead to the team member with the lightest open-lead workload.</p> : <p className="text-[11px] font-normal">Choose a team to enable balanced automatic assignment.</p>}
+            {captureLeadTeamId ? <p className="text-[11px] font-normal">This team overrides routing rules. Leave the salesperson blank to assign to the least-loaded active team member.</p> : <p className="text-[11px] font-normal">Active source rules can choose a team automatically; if none match, the lead remains unassigned.</p>}
           </label>
           <label className="space-y-1 text-xs font-bold text-slate-500">
             <span>Assigned salesperson (optional)</span>
@@ -1120,7 +1122,7 @@ export default function SalesPipelineManager({
               defaultValue=""
               className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
             >
-              <option value="">{captureLeadTeamId ? 'Auto-assign using team workload' : 'Unassigned'}</option>
+              <option value="">{captureLeadTeamId ? 'Auto-assign using team workload' : 'Auto-assign if a rule matches'}</option>
               {data.salespeople
                 .filter(person => !captureLeadTeamId || Boolean(data.salesTeams.find(team => team.id === captureLeadTeamId)?.member_user_ids.includes(person.id)))
                 .map(person => <option key={person.id} value={person.id}>{person.name} · {person.email}</option>)}
@@ -1508,6 +1510,7 @@ export default function SalesPipelineManager({
                         </span>
                       ))}
                     </div>
+                    {lead.assignment_rule_name ? <p className="mt-2 text-[11px] font-bold text-blue-700 dark:text-blue-300">Routed by rule: {lead.assignment_rule_name}</p> : null}
                     {lead.disqualification_reason ? (
                       <p className="mt-1 break-words text-xs text-rose-600 dark:text-rose-300">
                         Reason: {lead.disqualification_reason}
