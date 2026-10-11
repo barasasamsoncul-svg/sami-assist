@@ -337,8 +337,8 @@ export async function postSalesFulfillmentToInventory(
     orderId: string;
     lineId: string;
     orderedQuantity: number;
-    previousDeliveredQuantity: number;
-    nextDeliveredQuantity: number;
+    quantityDelta: number;
+    nextFulfilledQuantity: number;
     externalProductId:
       string |
       null;
@@ -347,26 +347,24 @@ export async function postSalesFulfillmentToInventory(
       null;
   },
 ) {
-  const delta =
-    input.nextDeliveredQuantity -
-    input.previousDeliveredQuantity;
+  const delta = input.quantityDelta;
 
   if (
-    Math.abs(
-      delta,
-    ) <
-    0.0000001 ||
-    !input
-      .externalProductId ||
-    !await inventoryRuntimeReady(
-      client,
-    )
+    Math.abs(delta) < 0.0000001 ||
+    !input.externalProductId
   ) {
     return {
-      integrated:
-        false,
-      delta:
-        0,
+      integrated: true,
+      delta: 0,
+      skipped: true,
+    };
+  }
+
+  if (!await inventoryRuntimeReady(client)) {
+    return {
+      integrated: false,
+      delta: 0,
+      reason: 'inventory_runtime_unavailable',
     };
   }
 
@@ -414,14 +412,31 @@ export async function postSalesFulfillmentToInventory(
         : null;
   }
 
-  if (
-    !reservationId
-  ) {
+  if (!reservationId) {
+    const product = await client.query(
+      `
+        SELECT product_type
+        FROM products
+        WHERE id = $1
+          AND company_id = $2
+          AND deleted_at IS NULL
+        LIMIT 1
+      `,
+      [input.externalProductId, input.companyId],
+    );
+
+    if (product.rows.length === 1 && String(product.rows[0].product_type || 'stockable') !== 'stockable') {
+      return {
+        integrated: true,
+        delta: 0,
+        skipped: true,
+      };
+    }
+
     return {
-      integrated:
-        false,
-      delta:
-        0,
+      integrated: false,
+      delta: 0,
+      reason: 'stock_reservation_missing',
     };
   }
 
@@ -446,15 +461,11 @@ export async function postSalesFulfillmentToInventory(
       ],
     );
 
-  if (
-    reservation.rows.length !==
-      1
-  ) {
+  if (reservation.rows.length !== 1) {
     return {
-      integrated:
-        false,
-      delta:
-        0,
+      integrated: false,
+      delta: 0,
+      reason: 'stock_reservation_not_found',
     };
   }
 
@@ -795,26 +806,26 @@ export async function postSalesFulfillmentToInventory(
     `
       UPDATE stock_reservations
       SET
-        status =
-          $3,
-        updated_by =
-          $4,
-        updated_at =
-          NOW()
+        quantity = CASE
+          WHEN $3 = 'consumed' THEN quantity
+          ELSE GREATEST($5::numeric, 0)
+        END,
+        status = $3,
+        updated_by = $4,
+        updated_at = NOW()
       WHERE id = $1
         AND company_id = $2
     `,
     [
       reservationId,
       input.companyId,
-      input.nextDeliveredQuantity >=
-        input.orderedQuantity
+      input.nextFulfilledQuantity >= input.orderedQuantity - 0.000001
         ? 'consumed'
-        : input.nextDeliveredQuantity >
-            0
+        : input.nextFulfilledQuantity > 0
           ? 'allocated'
           : 'active',
       input.userId,
+      Math.max(0, input.orderedQuantity - input.nextFulfilledQuantity),
     ],
   );
 

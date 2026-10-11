@@ -28,7 +28,6 @@ import {
   nextSalesNumber,
   nullableText,
   numberInput,
-  optionalUuid,
   requireSalesContext,
   requireUuid,
   SALES_PERMISSIONS,
@@ -1718,6 +1717,13 @@ export async function createSalesShipment(
           'Sales order line',
         );
 
+      if (prepared.some(line => line.lineId === lineId)) {
+        throw new SalesError(
+          'INVALID_INPUT',
+          'A sales-order line may appear only once in a shipment. Combine its quantity into one line.',
+        );
+      }
+
       const quantity =
         numberInput(
           item.quantity,
@@ -1735,7 +1741,7 @@ export async function createSalesShipment(
           `
             SELECT
               line.quantity,
-              line.delivered_quantity,
+              line.shipped_quantity,
               COALESCE(
                 (
                   SELECT SUM(
@@ -1751,10 +1757,11 @@ export async function createSalesShipment(
                         line.id
                     AND shipment_item.company_id =
                         line.company_id
-                    AND shipment.status <>
-                        'cancelled'
-                    AND shipment.inventory_posted_at
-                        IS NULL
+                    AND shipment.status NOT IN (
+                      'cancelled',
+                      'failed'
+                    )
+                    AND shipment.inventory_posted_at IS NULL
                 ),
                 0
               ) AS planned_quantity
@@ -1782,20 +1789,9 @@ export async function createSalesShipment(
       }
 
       const remaining =
-        Number(
-          line.rows[0]
-            .quantity,
-        ) -
-        Number(
-          line.rows[0]
-            .delivered_quantity ||
-          0,
-        ) -
-        Number(
-          line.rows[0]
-            .planned_quantity ||
-          0,
-        );
+        Number(line.rows[0].quantity) -
+        Number(line.rows[0].shipped_quantity || 0) -
+        Number(line.rows[0].planned_quantity || 0);
 
       if (
         quantity >
@@ -2056,6 +2052,13 @@ export async function updateSalesShipmentStatus(
       );
     }
 
+    if (row.inventory_posted_at && nextStatus === 'ready') {
+      throw new SalesError(
+        'QUOTE_STATE_INVALID',
+        'A dispatched shipment cannot return to ready status. Use a Sales return to reverse stock if the goods came back.',
+      );
+    }
+
     if (
       nextStatus ===
         'cancelled' &&
@@ -2072,140 +2075,136 @@ export async function updateSalesShipmentStatus(
         'shipped',
         'in_transit',
         'delivered',
-      ].includes(
-        nextStatus,
-      ) &&
+      ].includes(nextStatus) &&
       !row.inventory_posted_at;
 
-    if (
-      shouldPost
-    ) {
-      const items =
-        await client.query(
-          `
+    const shouldRecordDelivery =
+      nextStatus === 'delivered' &&
+      String(row.status) !== 'delivered';
+
+    if (shouldPost || shouldRecordDelivery) {
+      const items = await client.query(
+        `
+          SELECT
+            line.id AS sales_order_line_id,
+            shipment_totals.quantity,
+            line.quantity AS ordered_quantity,
+            line.shipped_quantity,
+            line.delivered_quantity,
+            line.external_product_id,
+            line.stock_reservation_id
+          FROM (
             SELECT
-              shipment_item.id,
-              shipment_item.sales_order_line_id,
-              shipment_item.quantity,
-              line.quantity
-                AS ordered_quantity,
-              line.delivered_quantity,
-              line.external_product_id,
-              line.stock_reservation_id
-            FROM sales_shipment_items shipment_item
-            INNER JOIN sales_order_items_v2 line
-              ON line.id =
-                 shipment_item.sales_order_line_id
-             AND line.company_id =
-                 shipment_item.company_id
-            WHERE shipment_item.shipment_id = $1
-              AND shipment_item.company_id = $2
-            ORDER BY
-              shipment_item.id
-            FOR UPDATE OF line
-          `,
-          [
-            shipmentId,
-            context.companyId,
-          ],
+              sales_order_line_id,
+              company_id,
+              SUM(quantity) AS quantity
+            FROM sales_shipment_items
+            WHERE shipment_id = $1
+              AND company_id = $2
+            GROUP BY sales_order_line_id, company_id
+          ) shipment_totals
+          INNER JOIN sales_order_items_v2 line
+            ON line.id = shipment_totals.sales_order_line_id
+           AND line.company_id = shipment_totals.company_id
+          ORDER BY line.id
+          FOR UPDATE OF line
+        `,
+        [shipmentId, context.companyId],
+      );
+
+      if (items.rows.length === 0) {
+        throw new SalesError(
+          'QUOTE_STATE_INVALID',
+          'This shipment has no valid sales-order lines to fulfill.',
         );
+      }
 
-      for (
-        const item
-        of items.rows
-      ) {
-        const previous =
-          Number(
-            item.delivered_quantity ||
-            0,
+      for (const item of items.rows) {
+        const quantity = Number(item.quantity || 0);
+        const orderedQuantity = Number(item.ordered_quantity || 0);
+        const previousShippedQuantity = Number(item.shipped_quantity || 0);
+        const previousDeliveredQuantity = Number(item.delivered_quantity || 0);
+        let nextShippedQuantity = previousShippedQuantity;
+
+        if (shouldPost) {
+          nextShippedQuantity = previousShippedQuantity + quantity;
+          if (nextShippedQuantity > orderedQuantity + 0.000001) {
+            throw new SalesError(
+              'INVALID_INPUT',
+              'Shipment would exceed the ordered quantity for a sales-order line.',
+            );
+          }
+
+          const inventoryResult = await postSalesFulfillmentToInventory(
+            client,
+            {
+              companyId: context.companyId,
+              userId: context.userId,
+              orderId: String(row.sales_order_id),
+              lineId: String(item.sales_order_line_id),
+              orderedQuantity,
+              quantityDelta: quantity,
+              nextFulfilledQuantity: nextShippedQuantity,
+              externalProductId: item.external_product_id
+                ? String(item.external_product_id)
+                : null,
+              reservationId: item.stock_reservation_id
+                ? String(item.stock_reservation_id)
+                : null,
+            },
           );
 
-        const next =
-          previous +
-          Number(
-            item.quantity,
-          );
+          if (!inventoryResult.integrated) {
+            throw new SalesError(
+              'INVENTORY_INTEGRATION_UNAVAILABLE',
+              'Inventory could not record this dispatch. Check the product mapping, warehouse, reservation and Inventory availability, then retry the shipment.',
+              inventoryResult,
+            );
+          }
 
-        if (
-          next >
-            Number(
-              item.ordered_quantity,
-            ) +
-              0.000001
-        ) {
-          throw new SalesError(
-            'INVALID_INPUT',
-            'Shipment would exceed the ordered quantity for a sales-order line.',
+          await client.query(
+            `
+              UPDATE sales_order_items_v2
+              SET shipped_quantity = $4
+              WHERE id = $1
+                AND sales_order_id = $2
+                AND company_id = $3
+            `,
+            [item.sales_order_line_id, row.sales_order_id, context.companyId, nextShippedQuantity],
           );
         }
 
-        await postSalesFulfillmentToInventory(
-          client,
-          {
-            companyId:
-              context.companyId,
-            userId:
-              context.userId,
-            orderId:
-              String(
-                row.sales_order_id,
-              ),
-            lineId:
-              String(
-                item.sales_order_line_id,
-              ),
-            orderedQuantity:
-              Number(
-                item.ordered_quantity,
-              ),
-            previousDeliveredQuantity:
-              previous,
-            nextDeliveredQuantity:
-              next,
-            externalProductId:
-              item.external_product_id
-                ? String(
-                    item.external_product_id,
-                  )
-                : null,
-            reservationId:
-              item.stock_reservation_id
-                ? String(
-                    item.stock_reservation_id,
-                  )
-                : null,
-          },
-        );
+        if (shouldRecordDelivery) {
+          const nextDeliveredQuantity = previousDeliveredQuantity + quantity;
+          if (
+            nextDeliveredQuantity > orderedQuantity + 0.000001 ||
+            nextDeliveredQuantity > nextShippedQuantity + 0.000001
+          ) {
+            throw new SalesError(
+              'INVALID_INPUT',
+              'A shipment cannot be recorded as delivered before it has been dispatched, or for more than the ordered quantity.',
+            );
+          }
 
-        await client.query(
-          `
-            UPDATE sales_order_items_v2
-            SET
-              delivered_quantity = $4
-            WHERE id = $1
-              AND sales_order_id = $2
-              AND company_id = $3
-          `,
-          [
-            item.sales_order_line_id,
-            row.sales_order_id,
-            context.companyId,
-            next,
-          ],
-        );
+          await client.query(
+            `
+              UPDATE sales_order_items_v2
+              SET delivered_quantity = $4
+              WHERE id = $1
+                AND sales_order_id = $2
+                AND company_id = $3
+            `,
+            [item.sales_order_line_id, row.sales_order_id, context.companyId, nextDeliveredQuantity],
+          );
+        }
       }
 
       await recalculateOrderFulfillment(
         client,
         {
-          companyId:
-            context.companyId,
-          orderId:
-            String(
-              row.sales_order_id,
-            ),
-          userId:
-            context.userId,
+          companyId: context.companyId,
+          orderId: String(row.sales_order_id),
+          userId: context.userId,
         },
       );
     }
@@ -2879,6 +2878,7 @@ export async function receiveSalesReturn(
             return_item.quantity,
             line.quantity
               AS ordered_quantity,
+            line.shipped_quantity,
             line.delivered_quantity,
             line.returned_quantity,
             line.external_product_id,
@@ -2934,44 +2934,28 @@ export async function receiveSalesReturn(
           quantity,
         );
 
-      await postSalesFulfillmentToInventory(
+      const inventoryResult = await postSalesFulfillmentToInventory(
         client,
         {
-          companyId:
-            context.companyId,
-          userId:
-            context.userId,
-          orderId:
-            String(
-              returnRow
-                .sales_order_id,
-            ),
-          lineId:
-            String(
-              item.sales_order_line_id,
-            ),
-          orderedQuantity:
-            Number(
-              item.ordered_quantity,
-            ),
-          previousDeliveredQuantity:
-            previous,
-          nextDeliveredQuantity:
-            next,
-          externalProductId:
-            item.external_product_id
-              ? String(
-                  item.external_product_id,
-                )
-              : null,
-          reservationId:
-            item.stock_reservation_id
-              ? String(
-                  item.stock_reservation_id,
-                )
-              : null,
+          companyId: context.companyId,
+          userId: context.userId,
+          orderId: String(returnRow.sales_order_id),
+          lineId: String(item.sales_order_line_id),
+          orderedQuantity: Number(item.ordered_quantity),
+          quantityDelta: -quantity,
+          nextFulfilledQuantity: Number(item.shipped_quantity || 0),
+          externalProductId: item.external_product_id ? String(item.external_product_id) : null,
+          reservationId: item.stock_reservation_id ? String(item.stock_reservation_id) : null,
         },
       );
+
+      if (!inventoryResult.integrated) {
+        throw new SalesError(
+          'INVENTORY_INTEGRATION_UNAVAILABLE',
+          'Inventory could not record the returned goods. Check the product mapping, warehouse, reservation and Inventory availability, then retry the return.',
+          inventoryResult,
+        );
+      }
 
       await client.query(
         `

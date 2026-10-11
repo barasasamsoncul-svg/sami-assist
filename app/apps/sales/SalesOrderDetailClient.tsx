@@ -346,7 +346,7 @@ export default function SalesOrderDetailClient({
                     Order fulfillment
                   </h2>
                   <p className="mt-1 text-xs text-slate-500">
-                    Ordered, delivered, invoiced and invoiceable quantities remain independently traceable.
+                    Ordered, shipped, delivered and invoiceable quantities remain independently traceable.
                   </p>
                 </div>
 
@@ -374,7 +374,7 @@ export default function SalesOrderDetailClient({
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[900px] text-sm">
+                <table className="w-full min-w-[1000px] text-sm">
                   <thead className="border-b border-[var(--sami-border)] text-left text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
                     <tr>
                       <th className="px-4 py-3">
@@ -382,6 +382,9 @@ export default function SalesOrderDetailClient({
                       </th>
                       <th className="px-4 py-3 text-right">
                         Ordered
+                      </th>
+                      <th className="px-4 py-3 text-right">
+                        Shipped
                       </th>
                       <th className="px-4 py-3 text-right">
                         Delivered
@@ -438,6 +441,9 @@ export default function SalesOrderDetailClient({
                               {
                                 line.quantity
                               }
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              {line.shippedQuantity}
                             </td>
                             <td className="px-4 py-3 text-right">
                               {
