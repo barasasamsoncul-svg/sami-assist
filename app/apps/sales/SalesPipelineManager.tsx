@@ -194,7 +194,8 @@ type PipelineAction =
   | { action: 'save_lead_assignment_rule'; ruleId: string | null; name: string; sourceMatch: string | null; salesTeamId: string; priority: number; isActive: boolean }
   | { action: 'delete_lead_assignment_rule'; ruleId: string }
   | { action: 'bulk_reassign_leads'; leadIds: string[]; salesTeamId: string; salespersonUserId: string | null; reason: string }
-  | { action: 'bulk_update_lead_status'; leadIds: string[]; mode: 'disqualify' | 'reopen'; reason: string };
+  | { action: 'bulk_update_lead_status'; leadIds: string[]; mode: 'disqualify' | 'reopen'; reason: string }
+  | { action: 'bulk_create_lead_activities'; leadIds: string[]; activityType: ActivityDraft['activityType']; subject: string; description: string; dueDate: string | null; assignedUserId: string | null };
 
 type CreateLeadPayload = Extract<PipelineAction, { action: 'create_lead' }>;
 
@@ -344,6 +345,11 @@ export default function SalesPipelineManager({
   const [bulkLeadSalespersonUserId, setBulkLeadSalespersonUserId] = useState('');
   const [bulkLeadReason, setBulkLeadReason] = useState('');
   const [bulkLeadActionReason, setBulkLeadActionReason] = useState('');
+  const [bulkFollowUpType, setBulkFollowUpType] = useState<ActivityDraft['activityType']>('task');
+  const [bulkFollowUpSubject, setBulkFollowUpSubject] = useState('');
+  const [bulkFollowUpDescription, setBulkFollowUpDescription] = useState('');
+  const [bulkFollowUpDueDate, setBulkFollowUpDueDate] = useState('');
+  const [bulkFollowUpAssignedUserId, setBulkFollowUpAssignedUserId] = useState('');
   const [bulkLeadMessage, setBulkLeadMessage] = useState('');
   const [leadStatusFilter, setLeadStatusFilter] = useState('all');
   const [leadScoreFilter, setLeadScoreFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all');
@@ -580,7 +586,7 @@ export default function SalesPipelineManager({
         error?: string;
         code?: string;
         duplicates?: LeadDuplicateMatch[];
-        result?: { updatedCount?: number; skippedCount?: number; mode?: string };
+        result?: { updatedCount?: number; createdCount?: number; skippedCount?: number; mode?: string };
       };
       if (
         !response.ok &&
@@ -623,6 +629,17 @@ export default function SalesPipelineManager({
         setBulkLeadMessage(`${verb} ${count} lead${count === 1 ? '' : 's'} and recorded the reason in the activity history.${skipped ? ` ${skipped} lead${skipped === 1 ? '' : 's'} did not need that action and were skipped.` : ''}`);
         setSelectedLeadIds([]);
         setBulkLeadActionReason('');
+      }
+      if (payload.action === 'bulk_create_lead_activities') {
+        const count = body.result?.createdCount ?? payload.leadIds.length;
+        const skipped = body.result?.skippedCount ?? 0;
+        setBulkLeadMessage(`Scheduled ${count} follow-up activit${count === 1 ? 'y' : 'ies'} across ${count} lead${count === 1 ? '' : 's'}.${skipped ? ` ${skipped} inactive lead${skipped === 1 ? '' : 's'} were skipped.` : ''}`);
+        setSelectedLeadIds([]);
+        setBulkFollowUpType('task');
+        setBulkFollowUpSubject('');
+        setBulkFollowUpDescription('');
+        setBulkFollowUpDueDate('');
+        setBulkFollowUpAssignedUserId('');
       }
       return true;
     } catch (caught) {
@@ -1651,6 +1668,67 @@ export default function SalesPipelineManager({
                     </button>
                   </div>
                 </>
+              )}
+            </section>
+          ) : null}
+          {canManagePipeline ? (
+            <section className="mt-3 space-y-3 rounded-xl border border-[var(--sami-border)] p-3">
+              <div>
+                <h4 className="text-sm font-black">Bulk follow-up scheduling</h4>
+                <p className="mt-1 text-[11px] text-slate-500">Create the same call, email, meeting, task or note for up to 100 selected leads. Converted and disqualified leads are skipped.</p>
+              </div>
+              {selectedLeadIds.length === 0 ? (
+                <p className="text-xs text-slate-500">Select active leads below to schedule follow-ups in one operation.</p>
+              ) : (
+                <form onSubmit={event => {
+                  event.preventDefault();
+                  setBulkLeadMessage('');
+                  void action({
+                    action: 'bulk_create_lead_activities',
+                    leadIds: selectedLeadIds,
+                    activityType: bulkFollowUpType,
+                    subject: bulkFollowUpSubject.trim(),
+                    description: bulkFollowUpDescription.trim(),
+                    dueDate: bulkFollowUpDueDate || null,
+                    assignedUserId: bulkFollowUpAssignedUserId || null,
+                  });
+                }} className="grid gap-3 rounded-xl bg-slate-500/[0.04] p-3 sm:grid-cols-2">
+                  <label className="space-y-1 text-xs font-bold text-slate-500">
+                    <span>Activity type *</span>
+                    <select value={bulkFollowUpType} onChange={event => setBulkFollowUpType(event.target.value as ActivityDraft['activityType'])} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100">
+                      <option value="task">Task</option>
+                      <option value="call">Call</option>
+                      <option value="email">Email</option>
+                      <option value="meeting">Meeting</option>
+                      <option value="note">Note</option>
+                    </select>
+                  </label>
+                  <label className="space-y-1 text-xs font-bold text-slate-500">
+                    <span>Assign to</span>
+                    <select value={bulkFollowUpAssignedUserId} onChange={event => setBulkFollowUpAssignedUserId(event.target.value)} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100">
+                      <option value="">Unassigned</option>
+                      {data.salespeople.map(person => <option key={person.id} value={person.id}>{person.name} · {person.email}</option>)}
+                    </select>
+                  </label>
+                  <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2">
+                    <span>Subject *</span>
+                    <input required maxLength={255} value={bulkFollowUpSubject} onChange={event => setBulkFollowUpSubject(event.target.value)} placeholder="e.g. Follow up on quotation" className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                  </label>
+                  <label className="space-y-1 text-xs font-bold text-slate-500">
+                    <span>Due date (optional)</span>
+                    <input type="date" value={bulkFollowUpDueDate} onChange={event => setBulkFollowUpDueDate(event.target.value)} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                  </label>
+                  <label className="space-y-1 text-xs font-bold text-slate-500">
+                    <span>Description (optional)</span>
+                    <input maxLength={4000} value={bulkFollowUpDescription} onChange={event => setBulkFollowUpDescription(event.target.value)} placeholder="Shared next step or context" className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+                    <button type="submit" disabled={busy || !bulkFollowUpSubject.trim()} className="h-10 rounded-lg bg-blue-600 px-3.5 text-xs font-black text-white disabled:opacity-50">
+                      {busy ? 'Scheduling…' : 'Schedule for selected leads'}
+                    </button>
+                    <span className="text-[11px] text-slate-500">Each eligible lead receives its own planned activity.</span>
+                  </div>
+                </form>
               )}
             </section>
           ) : null}

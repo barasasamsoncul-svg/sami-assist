@@ -34,6 +34,7 @@ import {
   getSalesLeadAssignmentHistory,
   createSalesLead,
   bulkReassignSalesLeads,
+  bulkCreateSalesLeadActivities,
   bulkUpdateSalesLeadStatus,
   updateSalesLead,
   disqualifySalesLead,
@@ -578,6 +579,8 @@ export async function POST(
           createSalesLead,
         bulk_reassign_leads:
           bulkReassignSalesLeads,
+        bulk_create_lead_activities:
+          bulkCreateSalesLeadActivities,
         bulk_update_lead_status:
           bulkUpdateSalesLeadStatus,
         update_lead:

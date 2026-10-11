@@ -852,6 +852,81 @@ export async function reopenSalesLead(input: Record<string, unknown>) {
   }
 }
 
+export async function bulkCreateSalesLeadActivities(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
+  if (!Array.isArray(input.leadIds)) {
+    throw new SalesError('INVALID_INPUT', 'Select leads for bulk follow-up scheduling.');
+  }
+  const leadIds = [...new Set(input.leadIds.map(value => requireUuid(value, 'Lead')))];
+  if (leadIds.length === 0) throw new SalesError('INVALID_INPUT', 'Select at least one lead.');
+  if (leadIds.length > 100) throw new SalesError('INVALID_INPUT', 'Schedule follow-ups for at most 100 leads at a time.');
+
+  const activityType = cleanText(input.activityType, 20).toLowerCase();
+  if (!['call', 'email', 'meeting', 'task', 'note'].includes(activityType)) {
+    throw new SalesError('INVALID_INPUT', 'Choose a valid follow-up activity type.');
+  }
+  const subject = cleanText(input.subject, 255);
+  if (!subject) throw new SalesError('INVALID_INPUT', 'Activity subject is required.');
+  const description = nullableText(input.description, 4000);
+  const dueDate = optionalPipelineDate(input.dueDate, 'Due date');
+  const assignedUserId = await resolveActiveSalesperson(context, input.assignedUserId);
+
+  const client = await context.pool.connect();
+  try {
+    await client.query('BEGIN');
+    const leads = await client.query(
+      `SELECT id,status
+       FROM sales_leads
+       WHERE company_id=$1 AND id=ANY($2::uuid[]) AND deleted_at IS NULL
+       FOR UPDATE`,
+      [context.companyId, leadIds],
+    );
+    if (leads.rows.length !== leadIds.length) {
+      throw new SalesError('INVALID_INPUT', 'One or more selected leads were not found in this workspace.');
+    }
+
+    const eligible = leads.rows.filter(row => row.status !== 'converted' && row.status !== 'disqualified');
+    if (eligible.length === 0) {
+      throw new SalesError('INVALID_INPUT', 'No selected leads are active and eligible for follow-up scheduling.');
+    }
+
+    const createdIds: string[] = [];
+    for (const lead of eligible) {
+      const created = await client.query(
+        `INSERT INTO sales_lead_activities
+           (company_id,lead_id,activity_type,subject,description,due_date,assigned_user_id,created_by,updated_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8)
+         RETURNING id`,
+        [
+          context.companyId,
+          String(lead.id),
+          activityType,
+          subject,
+          description,
+          dueDate,
+          assignedUserId,
+          context.userId,
+        ],
+      );
+      createdIds.push(String(created.rows[0].id));
+    }
+
+    await client.query('COMMIT');
+    return {
+      createdCount: createdIds.length,
+      skippedCount: leadIds.length - eligible.length,
+      activityIds: createdIds,
+      leadIds: eligible.map(row => String(row.id)),
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
 export async function createSalesLeadActivity(input: Record<string, unknown>) {
   const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
   const leadId = requireUuid(input.leadId, 'Lead');
