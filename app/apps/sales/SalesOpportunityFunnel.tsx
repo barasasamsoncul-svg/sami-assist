@@ -12,7 +12,7 @@ function money(value: number, currency: string) {
       maximumFractionDigits: 2,
     }).format(value);
   } catch {
-    return \`\${currency} \${value.toLocaleString()}\`;
+    return `${currency} ${value.toLocaleString()}`;
   }
 }
 
