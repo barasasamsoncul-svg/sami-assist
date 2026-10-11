@@ -528,6 +528,65 @@ export default function SalesPipelineManager({
                     </div>
                   </form>
                 ) : null}
+
+                {editingLeadId === lead.id ? (
+                  <form onSubmit={event => void updateLead(event, lead)} className="mt-4 grid gap-3 rounded-xl bg-slate-500/[0.04] p-3 sm:grid-cols-2">
+                    <h4 className="text-sm font-black sm:col-span-2">Edit lead details</h4>
+                    <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2">
+                      <span>Lead name *</span>
+                      <input required value={leadDraft.name} onChange={event => setLeadDraft(current => ({ ...current, name: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Company</span>
+                      <input value={leadDraft.companyName} onChange={event => setLeadDraft(current => ({ ...current, companyName: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Contact name</span>
+                      <input value={leadDraft.contactName} onChange={event => setLeadDraft(current => ({ ...current, contactName: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Email</span>
+                      <input type="email" value={leadDraft.email} onChange={event => setLeadDraft(current => ({ ...current, email: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Phone</span>
+                      <input type="tel" value={leadDraft.phone} onChange={event => setLeadDraft(current => ({ ...current, phone: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Source</span>
+                      <input value={leadDraft.source} onChange={event => setLeadDraft(current => ({ ...current, source: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Assigned salesperson</span>
+                      <select value={leadDraft.salespersonUserId} onChange={event => setLeadDraft(current => ({ ...current, salespersonUserId: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100">
+                        <option value="">Unassigned</option>
+                        {data.salespeople.map(person => <option key={person.id} value={person.id}>{person.name} · {person.email}</option>)}
+                      </select>
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2">
+                      <span>Notes</span>
+                      <textarea rows={3} value={leadDraft.notes} onChange={event => setLeadDraft(current => ({ ...current, notes: event.target.value }))} className="w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 py-2 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                    </label>
+                    <div className="flex flex-wrap gap-2 sm:col-span-2">
+                      <button type="submit" disabled={busy || !leadDraft.name.trim()} className="h-10 rounded-lg bg-blue-600 px-3.5 text-xs font-black text-white disabled:opacity-60">{busy ? 'Saving…' : 'Save lead'}</button>
+                      <button type="button" disabled={busy} onClick={() => setEditingLeadId(null)} className="h-10 rounded-lg border border-[var(--sami-border)] px-3.5 text-xs font-black disabled:opacity-60">Cancel</button>
+                    </div>
+                  </form>
+                ) : null}
+
+                {disqualifyingLeadId === lead.id ? (
+                  <form onSubmit={event => void disqualifyLead(event, lead)} className="mt-4 space-y-3 rounded-xl bg-rose-500/[0.04] p-3">
+                    <h4 className="text-sm font-black">Disqualify lead</h4>
+                    <label className="block space-y-1 text-xs font-bold text-slate-500">
+                      <span>Reason for disqualification *</span>
+                      <textarea required rows={3} value={disqualificationReason} onChange={event => setDisqualificationReason(event.target.value)} className="w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 py-2 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="submit" disabled={busy || !disqualificationReason.trim()} className="h-10 rounded-lg bg-rose-600 px-3.5 text-xs font-black text-white disabled:opacity-60">{busy ? 'Saving…' : 'Confirm disqualification'}</button>
+                      <button type="button" disabled={busy} onClick={() => setDisqualifyingLeadId(null)} className="h-10 rounded-lg border border-[var(--sami-border)] px-3.5 text-xs font-black disabled:opacity-60">Cancel</button>
+                    </div>
+                  </form>
+                ) : null}
               </article>
             ))}
           </div>
