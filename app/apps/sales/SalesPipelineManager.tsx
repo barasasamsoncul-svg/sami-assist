@@ -192,7 +192,8 @@ type PipelineAction =
   | { action: 'save_pipeline_view'; name: string; viewType: 'leads' | 'opportunities'; statusView: string; scoreView: 'all' | 'high' | 'medium' | 'low'; searchQuery: string }
   | { action: 'delete_pipeline_view'; viewId: string }
   | { action: 'save_lead_assignment_rule'; ruleId: string | null; name: string; sourceMatch: string | null; salesTeamId: string; priority: number; isActive: boolean }
-  | { action: 'delete_lead_assignment_rule'; ruleId: string };
+  | { action: 'delete_lead_assignment_rule'; ruleId: string }
+  | { action: 'bulk_reassign_leads'; leadIds: string[]; salesTeamId: string; salespersonUserId: string | null; reason: string };
 
 type CreateLeadPayload = Extract<PipelineAction, { action: 'create_lead' }>;
 
@@ -337,6 +338,11 @@ export default function SalesPipelineManager({
     activityType: 'task', subject: '', description: '', dueDate: '', assignedUserId: '',
   });
   const [leadSearch, setLeadSearch] = useState('');
+  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
+  const [bulkLeadTeamId, setBulkLeadTeamId] = useState('');
+  const [bulkLeadSalespersonUserId, setBulkLeadSalespersonUserId] = useState('');
+  const [bulkLeadReason, setBulkLeadReason] = useState('');
+  const [bulkLeadMessage, setBulkLeadMessage] = useState('');
   const [leadStatusFilter, setLeadStatusFilter] = useState('all');
   const [leadScoreFilter, setLeadScoreFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all');
   const [opportunitySearch, setOpportunitySearch] = useState('');
@@ -467,6 +473,20 @@ export default function SalesPipelineManager({
     return matchesStatus && matchesScore && matchesSearch;
   });
 
+  function selectFilteredLeads() {
+    setSelectedLeadIds(filteredLeads.filter(lead => lead.status !== 'converted').slice(0, 100).map(lead => lead.id));
+    setBulkLeadMessage('');
+  }
+
+  function toggleLeadSelection(leadId: string, checked: boolean) {
+    setSelectedLeadIds(current => {
+      if (!checked) return current.filter(id => id !== leadId);
+      if (current.includes(leadId) || current.length >= 100) return current;
+      return [...current, leadId];
+    });
+    setBulkLeadMessage('');
+  }
+
   const filteredOpportunities = data.opportunities.filter(opportunity => {
     const status = ['open', 'won', 'lost'].includes(opportunity.stage_type) ? opportunity.stage_type : 'open';
     const filter = opportunityStatusFilter === 'all' || status === opportunityStatusFilter;
@@ -558,6 +578,7 @@ export default function SalesPipelineManager({
         error?: string;
         code?: string;
         duplicates?: LeadDuplicateMatch[];
+        result?: { updatedCount?: number };
       };
       if (
         !response.ok &&
@@ -583,6 +604,14 @@ export default function SalesPipelineManager({
       if (payload.action === 'create_lead') {
         setPendingLeadPayload(null);
         setDuplicateCandidates([]);
+      }
+      if (payload.action === 'bulk_reassign_leads') {
+        const count = body.result?.updatedCount ?? payload.leadIds.length;
+        setBulkLeadMessage(`Reassigned ${count} lead${count === 1 ? '' : 's'} and recorded the handover reason in assignment history.`);
+        setSelectedLeadIds([]);
+        setBulkLeadTeamId('');
+        setBulkLeadSalespersonUserId('');
+        setBulkLeadReason('');
       }
       return true;
     } catch (caught) {
