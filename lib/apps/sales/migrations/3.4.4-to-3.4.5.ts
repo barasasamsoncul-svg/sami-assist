@@ -30,7 +30,7 @@ const SQL = `
   $sales_opportunity_quote_link$;
 
   CREATE INDEX IF NOT EXISTS idx_sales_quotes_opportunity
-    ON public.sales_quotes(company_id, opportunity_id, created_at DESC)
+    ON public.sales_quotes(company_id, opportunity_id)
     WHERE opportunity_id IS NOT NULL
       AND deleted_at IS NULL;
 `;
