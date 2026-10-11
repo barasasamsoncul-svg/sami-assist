@@ -18,6 +18,10 @@ export type SalesOpportunityFunnelRow = {
   weightedPipelineValue: number;
   wonValue: number;
   lostValue: number;
+  overdueOpportunityCount: number;
+  overdueValue: number;
+  staleOpportunityCount: number;
+  staleValue: number;
 };
 
 export async function getSalesOpportunityFunnelData(): Promise<SalesOpportunityFunnelRow[]> {
@@ -63,13 +67,42 @@ export async function getSalesOpportunityFunnelData(): Promise<SalesOpportunityF
         COALESCE(
           SUM(o.expected_value) FILTER (WHERE s.stage_type = 'lost'),
           0
-        ) AS lost_value
+        ) AS lost_value,
+        COUNT(o.id) FILTER (
+          WHERE s.stage_type = 'open'
+            AND o.expected_close_date < CURRENT_DATE
+        )::int AS overdue_opportunity_count,
+        COALESCE(
+          SUM(o.expected_value) FILTER (
+            WHERE s.stage_type = 'open'
+              AND o.expected_close_date < CURRENT_DATE
+          ),
+          0
+        ) AS overdue_value,
+        COUNT(o.id) FILTER (
+          WHERE s.stage_type = 'open'
+            AND COALESCE(stage_age.last_stage_at, o.created_at) < NOW() - INTERVAL '30 days'
+        )::int AS stale_opportunity_count,
+        COALESCE(
+          SUM(o.expected_value) FILTER (
+            WHERE s.stage_type = 'open'
+              AND COALESCE(stage_age.last_stage_at, o.created_at) < NOW() - INTERVAL '30 days'
+          ),
+          0
+        ) AS stale_value
       FROM sales_pipeline_stages s
       INNER JOIN sales_opportunities o
         ON o.stage_id = s.id
         AND o.company_id = s.company_id
         AND o.company_id = $1
         AND o.deleted_at IS NULL
+      LEFT JOIN LATERAL (
+        SELECT MAX(h.created_at) AS last_stage_at
+        FROM sales_opportunity_stage_history h
+        WHERE h.company_id = o.company_id
+          AND h.opportunity_id = o.id
+          AND h.to_stage_id = o.stage_id
+      ) stage_age ON TRUE
       WHERE s.company_id = $1
         AND s.deleted_at IS NULL
       GROUP BY s.id, s.name, s.sequence, s.stage_type, s.probability,
@@ -91,5 +124,9 @@ export async function getSalesOpportunityFunnelData(): Promise<SalesOpportunityF
     weightedPipelineValue: Number(row.weighted_pipeline_value || 0),
     wonValue: Number(row.won_value || 0),
     lostValue: Number(row.lost_value || 0),
+    overdueOpportunityCount: Number(row.overdue_opportunity_count || 0),
+    overdueValue: Number(row.overdue_value || 0),
+    staleOpportunityCount: Number(row.stale_opportunity_count || 0),
+    staleValue: Number(row.stale_value || 0),
   }));
 }
