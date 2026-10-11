@@ -46,4 +46,3 @@ export const SALES_3_4_4_TO_3_4_5:
       await executeSafeSamiModuleMigrationSql(client, SQL);
     },
   };
-};
