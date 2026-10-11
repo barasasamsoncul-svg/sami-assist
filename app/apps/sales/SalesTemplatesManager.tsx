@@ -3,7 +3,9 @@
 import {
   FileText,
   LayoutTemplate,
+  Pencil,
   Plus,
+  X,
 } from 'lucide-react';
 
 import {
@@ -73,6 +75,12 @@ export default function SalesTemplatesManager({
       0,
     );
 
+  const [
+    editingTemplate,
+    setEditingTemplate,
+  ] =
+    useState<(typeof data.templates)[number] | null>(null);
+
   async function save(
     form:
       HTMLFormElement,
@@ -87,6 +95,8 @@ export default function SalesTemplatesManager({
         await request({
           action:
             'save_template',
+          templateId:
+            editingTemplate?.id,
           name:
             values.get(
               'name',
@@ -211,6 +221,7 @@ export default function SalesTemplatesManager({
       }
 
       form.reset();
+      setEditingTemplate(null);
       setFormKey(
         value =>
           value +
@@ -273,14 +284,16 @@ export default function SalesTemplatesManager({
                   className="h-4 w-4"
                 />
                 <h3 className="text-sm font-black">
-                  New template
+                  {editingTemplate ? 'Edit template' : 'New template'}
                 </h3>
               </div>
 
               <div className="mt-4 space-y-3">
+                {editingTemplate && <input type="hidden" name="templateId" value={editingTemplate.id} />}
                 <Field
                   name="name"
                   label="Template name"
+                  defaultValue={editingTemplate?.name || ''}
                   required
                 />
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -288,36 +301,38 @@ export default function SalesTemplatesManager({
                     name="primaryColor"
                     label="Primary color"
                     defaultValue={
-                      data.settings
-                        .primaryColor
+                      editingTemplate?.primaryColor || data.settings.primaryColor
                     }
                   />
                   <Field
                     name="secondaryColor"
                     label="Secondary color"
                     defaultValue={
-                      data.settings
-                        .secondaryColor
+                      editingTemplate?.secondaryColor || data.settings.secondaryColor
                     }
                   />
                 </div>
                 <Area
                   name="notes"
                   label="Default notes"
+                  defaultValue={editingTemplate?.notes || ''}
                 />
                 <Area
                   name="terms"
                   label="Default terms"
+                  defaultValue={editingTemplate?.terms || ''}
                 />
                 <Area
                   name="footerText"
                   label="Document footer"
+                  defaultValue={editingTemplate?.footerText || ''}
                 />
 
                 <label className="flex items-center gap-2 rounded-xl border border-[var(--sami-border)] p-3 text-xs font-bold">
                   <input
                     type="checkbox"
                     name="isDefault"
+                    defaultChecked={editingTemplate?.isDefault || false}
                     className="h-4 w-4"
                   />
                   Make this the default quotation template
@@ -330,8 +345,21 @@ export default function SalesTemplatesManager({
                   }
                   className="h-11 w-full rounded-xl bg-blue-600 px-4 text-sm font-black text-white disabled:opacity-60"
                 >
-                  Save template
+                  {editingTemplate ? 'Update template' : 'Save template'}
                 </button>
+                {editingTemplate && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setEditingTemplate(null);
+                      setFormKey(value => value + 1);
+                    }}
+                    className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-[var(--sami-border)] px-4 text-sm font-bold disabled:opacity-60"
+                  >
+                    <X className="h-4 w-4" /> Cancel editing
+                  </button>
+                )}
               </div>
             </form>
           )
@@ -403,6 +431,19 @@ export default function SalesTemplatesManager({
                             )
                           }
                         </div>
+
+                        {data.capabilities.canManageSettings && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingTemplate(template);
+                              setFormKey(value => value + 1);
+                            }}
+                            className="mt-3 inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-xs font-bold"
+                          >
+                            <Pencil className="h-3.5 w-3.5" /> Edit template
+                          </button>
+                        )}
 
                         <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.08em] text-slate-500">
                           <span className="rounded-full border border-[var(--sami-border)] px-2 py-1">
@@ -485,10 +526,13 @@ function Field({
 function Area({
   name,
   label,
+  defaultValue,
 }: {
   name:
     string;
   label:
+    string;
+  defaultValue?:
     string;
 }) {
   return (
@@ -505,6 +549,7 @@ function Area({
         rows={
           4
         }
+        defaultValue={defaultValue}
         className="mt-1 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 py-2 text-sm"
       />
     </label>
