@@ -9,7 +9,9 @@ import {
 } from '@/lib/apps/sales/context';
 
 import type {
+  SalesOrderStatusView,
   SalesQuoteStatusView,
+  SalesSavedOrderView,
   SalesSavedQuoteView,
 } from '@/lib/apps/sales/types';
 
@@ -165,6 +167,165 @@ export async function deleteSalesSavedQuoteView(
 
   if (result.rows.length !== 1) {
     throw new SalesError('INVALID_INPUT', 'The saved quotation view was not found.');
+  }
+
+  return { id: String(result.rows[0].id) };
+}
+
+
+const ALLOWED_ORDER_STATUS_VIEWS = new Set<SalesOrderStatusView>([
+  'all',
+  'awaiting_fulfillment',
+  'partially_fulfilled',
+  'fulfilled',
+  'not_invoiced',
+  'partially_invoiced',
+  'invoiced',
+]);
+
+
+type SavedOrderViewRow = {
+  id: string;
+  name: string;
+  status_view: SalesOrderStatusView;
+  search_query: string;
+  created_at: Date | string;
+};
+
+
+function mapSavedOrderView(row: SavedOrderViewRow): SalesSavedOrderView {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    statusView: row.status_view,
+    searchQuery: String(row.search_query || ''),
+    createdAt: new Date(row.created_at).toISOString(),
+  };
+}
+
+
+export async function getSalesSavedOrderViews(): Promise<SalesSavedOrderView[]> {
+  const context = await requireSalesContext(SALES_PERMISSIONS.ORDER_VIEW);
+
+  const result = await context.pool.query<SavedOrderViewRow>(
+    `
+      SELECT id, name, status_view, search_query, created_at
+      FROM sales_order_saved_views
+      WHERE company_id = $1
+        AND user_id = $2
+        AND deleted_at IS NULL
+      ORDER BY LOWER(name), created_at DESC
+      LIMIT $3
+    `,
+    [context.companyId, context.userId, MAX_SAVED_VIEWS],
+  );
+
+  return result.rows.map(mapSavedOrderView);
+}
+
+
+export async function saveSalesSavedOrderView(
+  input: Record<string, unknown>,
+): Promise<SalesSavedOrderView> {
+  const context = await requireSalesContext(SALES_PERMISSIONS.ORDER_VIEW);
+  const name = cleanText(input.name, 80);
+  const rawStatusView = cleanText(input.statusView, 40) || 'all';
+  const searchQuery = cleanText(input.searchQuery, 120);
+
+  if (!name) {
+    throw new SalesError('INVALID_INPUT', 'Enter a name for this saved sales order view.');
+  }
+
+  if (!ALLOWED_ORDER_STATUS_VIEWS.has(rawStatusView as SalesOrderStatusView)) {
+    throw new SalesError('INVALID_INPUT', 'Choose a valid sales order work queue.');
+  }
+
+  const countResult = await context.pool.query<{ count: number | string }>(
+    `
+      SELECT COUNT(*)::int AS count
+      FROM sales_order_saved_views
+      WHERE company_id = $1
+        AND user_id = $2
+        AND deleted_at IS NULL
+    `,
+    [context.companyId, context.userId],
+  );
+
+  if (Number(countResult.rows[0]?.count || 0) >= MAX_SAVED_VIEWS) {
+    throw new SalesError(
+      'INVALID_INPUT',
+      'You can save up to 25 sales order views. Delete an unused view before saving another.',
+    );
+  }
+
+  try {
+    const result = await context.pool.query<SavedOrderViewRow>(
+      `
+        INSERT INTO sales_order_saved_views (
+          company_id,
+          user_id,
+          name,
+          status_view,
+          search_query,
+          created_by,
+          updated_by
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $6)
+        RETURNING id, name, status_view, search_query, created_at
+      `,
+      [
+        context.companyId,
+        context.userId,
+        name,
+        rawStatusView,
+        searchQuery,
+        context.userId,
+      ],
+    );
+
+    return mapSavedOrderView(result.rows[0]);
+  } catch (error) {
+    if (
+      error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      error.code === '23505'
+    ) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'A saved sales order view with that name already exists.',
+      );
+    }
+
+    throw error;
+  }
+}
+
+
+export async function deleteSalesSavedOrderView(
+  input: Record<string, unknown>,
+) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.ORDER_VIEW);
+  const viewId = requireUuid(input.viewId, 'Saved sales order view');
+
+  const result = await context.pool.query<{ id: string }>(
+    `
+      UPDATE sales_order_saved_views
+      SET
+        deleted_at = NOW(),
+        updated_by = $4,
+        updated_at = NOW()
+      WHERE id = $1
+        AND company_id = $2
+        AND user_id = $3
+        AND deleted_at IS NULL
+      RETURNING id
+    `,
+    [viewId, context.companyId, context.userId, context.userId],
+  );
+
+  if (result.rows.length !== 1) {
+    throw new SalesError('INVALID_INPUT', 'The saved sales order view was not found.');
   }
 
   return { id: String(result.rows[0].id) };

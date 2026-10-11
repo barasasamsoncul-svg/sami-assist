@@ -19,6 +19,25 @@ export type SalesSavedQuoteView = {
 };
 
 
+export type SalesOrderStatusView =
+  | 'all'
+  | 'awaiting_fulfillment'
+  | 'partially_fulfilled'
+  | 'fulfilled'
+  | 'not_invoiced'
+  | 'partially_invoiced'
+  | 'invoiced';
+
+
+export type SalesSavedOrderView = {
+  id: string;
+  name: string;
+  statusView: SalesOrderStatusView;
+  searchQuery: string;
+  createdAt: string;
+};
+
+
 export type SalesQuoteStatus =
   | 'draft'
   | 'sent'

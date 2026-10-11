@@ -60,7 +60,9 @@ import SalesPipelineBoard from '@/app/apps/sales/SalesPipelineBoard';
 import SalesPipelineManager from '@/app/apps/sales/SalesPipelineManager';
 
 import type {
+  SalesOrderStatusView,
   SalesQuoteStatusView,
+  SalesSavedOrderView,
   SalesSavedQuoteView,
   SalesWorkspaceData,
 } from '@/lib/apps/sales/types';
@@ -167,16 +169,6 @@ function matchesQuoteStatusView(
         quote.status === 'cancelled';
   }
 }
-
-
-type SalesOrderStatusView =
-  | 'all'
-  | 'awaiting_fulfillment'
-  | 'partially_fulfilled'
-  | 'fulfilled'
-  | 'not_invoiced'
-  | 'partially_invoiced'
-  | 'invoiced';
 
 
 const ORDER_STATUS_VIEWS: {
@@ -751,6 +743,38 @@ export default function SalesWorkspaceClient({
     );
 
   const [
+    savedOrderViews,
+    setSavedOrderViews,
+  ] =
+    useState<SalesSavedOrderView[]>(
+      [],
+    );
+
+  const [
+    savedOrderViewName,
+    setSavedOrderViewName,
+  ] =
+    useState(
+      '',
+    );
+
+  const [
+    savedOrderViewsLoading,
+    setSavedOrderViewsLoading,
+  ] =
+    useState(
+      true,
+    );
+
+  const [
+    savedOrderViewsError,
+    setSavedOrderViewsError,
+  ] =
+    useState(
+      '',
+    );
+
+  const [
     savedQuoteViews,
     setSavedQuoteViews,
   ] =
@@ -865,6 +889,55 @@ export default function SalesWorkspaceClient({
     }
 
     void loadSavedViews();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialData.company.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSavedOrderViews() {
+      setSavedOrderViewsLoading(true);
+      setSavedOrderViewsError('');
+
+      try {
+        const response = await fetch(
+          '/api/apps/sales?savedOrderViews=1',
+          {
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { Accept: 'application/json' },
+          },
+        );
+        const body = await response.json().catch(() => ({}));
+
+        if (!response.ok || body.success !== true) {
+          throw new Error(body.error || 'Could not load saved sales order views.');
+        }
+
+        if (!cancelled) {
+          setSavedOrderViews(
+            Array.isArray(body.savedOrderViews)
+              ? body.savedOrderViews as SalesSavedOrderView[]
+              : [],
+          );
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setSavedOrderViewsError(
+            error instanceof Error
+              ? error.message
+              : 'Could not load saved sales order views.',
+          );
+        }
+      } finally {
+        if (!cancelled) setSavedOrderViewsLoading(false);
+      }
+    }
+
+    void loadSavedOrderViews();
 
     return () => {
       cancelled = true;
@@ -1041,6 +1114,67 @@ export default function SalesWorkspaceClient({
       showError(
         'View could not be deleted',
         error instanceof Error ? error.message : 'SaMi could not delete this saved view.',
+      );
+    }
+  }
+
+
+  async function saveCurrentOrderView() {
+    const name = savedOrderViewName.trim();
+
+    if (!name) {
+      showWarning('Name required', 'Enter a name for this saved sales order view.');
+      return;
+    }
+
+    try {
+      const result = await request({
+        action: 'save_order_view',
+        name,
+        statusView: orderStatusView,
+        searchQuery: search,
+      });
+
+      const savedView = result as unknown as SalesSavedOrderView;
+      setSavedOrderViews(current => [
+        savedView,
+        ...current.filter(view => view.id !== savedView.id),
+      ]);
+      setSavedOrderViewName('');
+      setSavedOrderViewsError('');
+      showSuccess('View saved', 'Your sales order queue and search are saved to your workspace.');
+    } catch (error) {
+      showError(
+        'View could not be saved',
+        error instanceof Error ? error.message : 'SaMi could not save this sales order view.',
+      );
+    }
+  }
+
+
+  function applySavedOrderView(view: SalesSavedOrderView) {
+    setOrderStatusView(view.statusView);
+    setSearch(view.searchQuery);
+    setSelectedQuoteIds([]);
+  }
+
+
+  async function removeSavedOrderView(view: SalesSavedOrderView) {
+    if (!window.confirm('Delete the saved sales order view "' + view.name + '"?')) {
+      return;
+    }
+
+    try {
+      await request({
+        action: 'delete_order_view',
+        viewId: view.id,
+      });
+      setSavedOrderViews(current => current.filter(item => item.id !== view.id));
+      showSuccess('Saved view deleted', 'The saved sales order view was removed.');
+    } catch (error) {
+      showError(
+        'View could not be deleted',
+        error instanceof Error ? error.message : 'SaMi could not delete this saved sales order view.',
       );
     }
   }
@@ -2099,6 +2233,89 @@ export default function SalesWorkspaceClient({
                   Focus on delivery or invoicing work. The search above continues to narrow the selected queue.
                 </p>
               </div>
+
+              <section className="sami-surface rounded-[22px] p-3" aria-label="Saved sales order views">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-xs font-black uppercase tracking-[0.08em] text-slate-500">
+                      Saved order views
+                    </h3>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Save the current fulfillment or invoicing queue and search so you can reopen the same work list later.
+                    </p>
+                  </div>
+                  <form
+                    className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto"
+                    onSubmit={event => {
+                      event.preventDefault();
+                      void saveCurrentOrderView();
+                    }}
+                  >
+                    <label className="sr-only" htmlFor="sales-saved-order-view-name">Saved order view name</label>
+                    <input
+                      id="sales-saved-order-view-name"
+                      value={savedOrderViewName}
+                      onChange={event => setSavedOrderViewName(event.target.value)}
+                      maxLength={80}
+                      placeholder="e.g. Orders to invoice"
+                      className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-xs sm:w-64"
+                    />
+                    <button
+                      type="submit"
+                      disabled={busy || !savedOrderViewName.trim()}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-3.5 text-xs font-black text-white disabled:opacity-60"
+                    >
+                      <BookmarkPlus className="h-4 w-4" />
+                      Save order view
+                    </button>
+                  </form>
+                </div>
+
+                {savedOrderViewsError && (
+                  <p role="alert" className="mt-3 rounded-xl border border-red-500/30 px-3 py-2 text-xs text-red-600">
+                    {savedOrderViewsError}
+                  </p>
+                )}
+
+                {savedOrderViewsLoading ? (
+                  <p className="mt-3 text-xs text-slate-500">Loading your saved order views…</p>
+                ) : savedOrderViews.length === 0 ? (
+                  <p className="mt-3 rounded-xl border border-dashed border-[var(--sami-border)] px-3 py-3 text-xs text-slate-500">
+                    No saved order views yet. Save this queue and search to create your first one.
+                  </p>
+                ) : (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {savedOrderViews.map(view => (
+                      <div
+                        key={view.id}
+                        className="flex min-w-0 items-center gap-1 rounded-xl border border-[var(--sami-border)] p-1"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => applySavedOrderView(view)}
+                          className={[
+                            'max-w-[280px] truncate rounded-lg px-2.5 py-1.5 text-left text-xs font-bold',
+                            orderStatusView === view.statusView && search === view.searchQuery
+                              ? 'bg-blue-600 text-white'
+                              : 'hover:bg-slate-500/10',
+                          ].join(' ')}
+                          title={view.name}
+                        >
+                          {view.name}
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={'Delete saved order view ' + view.name}
+                          onClick={() => void removeSavedOrderView(view)}
+                          className="rounded-lg p-1.5 text-slate-500 hover:text-red-600"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
 
               <div className="grid gap-3">
                 {

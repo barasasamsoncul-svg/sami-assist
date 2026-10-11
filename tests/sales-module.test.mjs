@@ -723,7 +723,7 @@ test('Sales v3 is registered into manifests, migrations, Search and SaMi AI', as
 
   assert.match(
     manifest,
-    /key: "sales",[\s\S]*version: '3\.4\.8'/s,
+    /key: "sales",[\s\S]*version: '3\.4\.9'/s,
   );
 
   assert.match(
@@ -1189,7 +1189,7 @@ test('Sales 3.2 runs deposits, shipments, returns and forecasting through author
   ]);
 
   assert.match(runtimeMigrations, /SALES_3_1_0_TO_3_2_0/);
-  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.8'/s);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.9'/s);
 
   for (const table of [
     'sales_shipments',
@@ -1575,7 +1575,7 @@ test('Sales roadmap Part 10 locks multi-currency values and exposes Currency & F
   assert.match(migration, /exchange_rate NUMERIC\(19,8\)/);
   assert.match(migration, /base_total_amount/);
   assert.match(runtimeMigrations, /SALES_3_2_0_TO_3_3_0/);
-  assert.match(modules, /key: "sales"[\s\S]*version: '3\.4\.8'/);
+  assert.match(modules, /key: "sales"[\s\S]*version: '3\.4\.9'/);
 
   assert.match(commands, /resolveSalesExchangeRate/);
   assert.match(commands, /salesBaseAmount/);
@@ -1652,7 +1652,7 @@ test('Sales roadmap Part 11 owns tenant-scoped leads and opportunity pipeline', 
     source('app/apps/sales/SalesPipelineManager.tsx'),
   ]);
   assert.match(runtime,/SALES_3_3_0_TO_3_4_0/);
-  assert.match(manifest,/key: "sales"[\s\S]*version: '3\.4\.8'/);
+  assert.match(manifest,/key: "sales"[\s\S]*version: '3\.4\.9'/);
   for (const table of ['sales_pipeline_stages','sales_leads','sales_opportunities','sales_opportunity_stage_history']) {
     assert.match(migration,new RegExp('public\\.'+table));
     assert.match(schema,new RegExp('public\\.'+table));
@@ -1703,7 +1703,7 @@ test('Sales 3.4.1 migration is active and approval cannot be bypassed by accepta
     source('lib/apps/sales/delivery.ts'),
   ]);
 
-  assert.match(manifest, /key: "sales"[\s\S]*version: '3\.4\.8'/s);
+  assert.match(manifest, /key: "sales"[\s\S]*version: '3\.4\.9'/s);
   assert.match(migration, /fromVersion:[\s\S]*'3\.4\.0'/);
   assert.match(migration, /toVersion:[\s\S]*'3\.4\.1'/);
   assert.match(migration, /ADD COLUMN IF NOT EXISTS stage_id/);
@@ -1790,7 +1790,7 @@ test('Sales Priority 4 keeps dispatch, delivery, Inventory posting and invoice e
   assert.match(schema, /shipped_quantity NUMERIC\(18,4\)/);
   assert.match(schema, /CHECK \(delivered_quantity <= shipped_quantity\)/);
   assert.match(runtime, /SALES_3_4_3_TO_3_4_4/);
-  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.8'/s);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.9'/s);
 
   assert.match(operations, /const shouldRecordDelivery =[\s\S]*String\(row\.status\) !== 'delivered'/);
   assert.match(operations, /SET shipped_quantity = \$4/);
@@ -1820,7 +1820,7 @@ test('Sales Priority 9 supports searchable lead lifecycle, reassignment, disqual
     source('app/apps/sales/SalesPipelineManager.tsx'),
   ]);
 
-  assert.ok(manifest.includes('key: "sales"') && manifest.includes("version: '3.4.8'"));
+  assert.ok(manifest.includes('key: "sales"') && manifest.includes("version: '3.4.9'"));
   assert.ok(migration.includes("sales-3.4.5-to-3.4.6"));
   assert.ok(migration.includes("CREATE TABLE IF NOT EXISTS public.sales_lead_activities"));
   assert.match(runtime, /SALES_3_4_5_TO_3_4_6/);
@@ -2029,9 +2029,12 @@ test('Sales quotation workspace supports selecting visible rows and exporting on
 });
 
 test('Sales order workspace offers fulfillment and invoicing work queues alongside search', async () => {
-  const workspace = await source('app/apps/sales/SalesWorkspaceClient.tsx');
+  const [workspace, types] = await Promise.all([
+    source('app/apps/sales/SalesWorkspaceClient.tsx'),
+    source('lib/apps/sales/types.ts'),
+  ]);
 
-  assert.ok(workspace.includes('type SalesOrderStatusView'));
+  assert.ok(types.includes('export type SalesOrderStatusView'));
   assert.ok(workspace.includes('function matchesSalesOrderView'));
   assert.ok(workspace.includes('orderStatusView'));
   assert.ok(workspace.includes('setOrderStatusView'));
@@ -2087,6 +2090,47 @@ test('Sales bulk quotation sending is permission-gated, capped, sequential and r
   assert.ok(ui.includes('Some quotations were not sent'));
 });
 
+test('Sales order saved views persist per-company and per-user queue filters through an additive migration', async () => {
+  const [migration, schema, registry, manifest, types, savedViews, service, route, ui] = await Promise.all([
+    source('lib/apps/sales/migrations/3.4.8-to-3.4.9.ts'),
+    source('lib/apps/sales/schema.sql'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/sales/types.ts'),
+    source('lib/apps/sales/saved-views.ts'),
+    source('lib/apps/sales/service.ts'),
+    source('app/api/apps/sales/route.ts'),
+    source('app/apps/sales/SalesWorkspaceClient.tsx'),
+  ]);
+
+  assert.ok(migration.includes("sales-3.4.8-to-3.4.9"));
+  assert.ok(migration.includes("CREATE TABLE IF NOT EXISTS public.sales_order_saved_views"));
+  assert.ok(migration.includes("uq_sales_order_saved_views_owner_name"));
+  assert.ok(migration.includes("idx_sales_order_saved_views_owner"));
+  assert.match(registry, /SALES_3_4_8_TO_3_4_9/);
+  assert.ok(registry.indexOf('SALES_3_4_7_TO_3_4_8,') < registry.indexOf('SALES_3_4_8_TO_3_4_9,'));
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.9'/s);
+  assert.match(types, /export type SalesOrderStatusView[\s\S]*'awaiting_fulfillment'[\s\S]*'invoiced'/);
+  assert.match(types, /export type SalesSavedOrderView/);
+  assert.match(schema, /sales_order_saved_views[\s\S]*'awaiting_fulfillment'[\s\S]*'invoiced'/);
+  assert.match(savedViews, /requireSalesContext\(SALES_PERMISSIONS\.ORDER_VIEW\)/);
+  assert.match(savedViews, /WHERE company_id = \$1[\s\S]*AND user_id = \$2/);
+  assert.match(savedViews, /UPDATE sales_order_saved_views[\s\S]*deleted_at = NOW\(\)/);
+  assert.ok(savedViews.includes('getSalesSavedOrderViews'));
+  assert.ok(savedViews.includes('saveSalesSavedOrderView'));
+  assert.ok(savedViews.includes('deleteSalesSavedOrderView'));
+  assert.ok(service.includes('getSalesSavedOrderViews'));
+  assert.ok(route.includes("get('savedOrderViews')"));
+  assert.ok(route.includes('save_order_view:'));
+  assert.ok(route.includes('delete_order_view:'));
+  assert.ok(ui.includes('/api/apps/sales?savedOrderViews=1'));
+  assert.ok(ui.includes('save_order_view'));
+  assert.ok(ui.includes('delete_order_view'));
+  assert.ok(ui.includes('Saved sales order views'));
+  assert.ok(ui.includes('applySavedOrderView'));
+  assert.ok(ui.includes('ORDER_STATUS_VIEWS.map'));
+});
+
 test('Sales expiry-aware quotation queues are saved-view compatible and migrate tenant schemas safely', async () => {
   const [migration, schema, registry, manifest, types, savedViews, ui] = await Promise.all([
     source('lib/apps/sales/migrations/3.4.7-to-3.4.8.ts'),
@@ -2105,7 +2149,7 @@ test('Sales expiry-aware quotation queues are saved-view compatible and migrate 
   assert.ok(migration.includes("'expiring_soon'"));
   assert.match(registry, /SALES_3_4_7_TO_3_4_8/);
   assert.ok(registry.indexOf('SALES_3_4_6_TO_3_4_7,') < registry.indexOf('SALES_3_4_7_TO_3_4_8,'));
-  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.8'/s);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.9'/s);
   assert.match(types, /SalesQuoteStatusView[\s\S]*'expired'[\s\S]*'expiring_soon'/);
   assert.match(schema, /sales_quote_saved_views[\s\S]*'expired'[\s\S]*'expiring_soon'/);
   assert.match(savedViews, /'expired'[\s\S]*'expiring_soon'/);
@@ -2135,7 +2179,7 @@ test('Sales saved quotation views persist company- and user-scoped filters throu
   assert.ok(migration.includes("idx_sales_quote_saved_views_owner"));
   assert.match(registry, /SALES_3_4_6_TO_3_4_7/);
   assert.ok(registry.indexOf('SALES_3_4_5_TO_3_4_6,') < registry.indexOf('SALES_3_4_6_TO_3_4_7,'));
-  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.8'/s);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.9'/s);
   assert.ok(schema.includes("CREATE TABLE IF NOT EXISTS public.sales_quote_saved_views"));
   assert.ok(schema.includes("uq_sales_quote_saved_views_owner_name"));
 

@@ -10,6 +10,12 @@ export {
 } from '@/lib/apps/sales/saved-views';
 
 export {
+  getSalesSavedOrderViews,
+  saveSalesSavedOrderView,
+  deleteSalesSavedOrderView,
+} from '@/lib/apps/sales/saved-views';
+
+export {
   bulkSendSalesQuotes,
 } from '@/lib/apps/sales/bulk-send';
 
