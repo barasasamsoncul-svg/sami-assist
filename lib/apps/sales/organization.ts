@@ -422,14 +422,20 @@ export async function getSalesOrganizationData() {
                 WHEN target.metric = 'margin'
                 THEN COALESCE(
                   SUM(
-                    sales_order.margin_amount
+                    ROUND(
+                      sales_order.margin_amount * COALESCE(sales_order.exchange_rate, 1),
+                      2
+                    )
                   ),
                   0
                 )
                 ELSE COALESCE(
                   SUM(
-                    sales_order.subtotal -
-                    sales_order.discount_total
+                    ROUND(
+                      (sales_order.subtotal - sales_order.discount_total)
+                      * COALESCE(sales_order.exchange_rate, 1),
+                      2
+                    )
                   ),
                   0
                 )
@@ -564,6 +570,7 @@ export async function getSalesOrganizationData() {
     ]);
 
   return {
+    companyCurrency: String(context.company.currentCompany.currency || 'KES').toUpperCase(),
     capabilities: {
       canViewTeams:
         permissionAny(

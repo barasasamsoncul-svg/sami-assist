@@ -98,6 +98,7 @@ type CommissionEntry = {
 };
 
 type OrganizationData = {
+  companyCurrency: string;
   capabilities: {
     canViewTeams: boolean;
     canManageTeams: boolean;
@@ -1171,6 +1172,10 @@ export default function SalesOrganizationManager({
                       type="number"
                       required
                     />
+
+                    <p className="text-xs text-slate-500">
+                      Revenue and margin targets use company currency ({data.companyCurrency}). Orders targets are counts.
+                    </p>
                     <Field
                       name="targetNotes"
                       label="Notes"
@@ -1257,11 +1262,19 @@ export default function SalesOrganizationManager({
                               <div className="min-w-32 text-right">
                                 <p className="text-sm font-black">
                                   {
-                                    target.actualValue
-                                      .toLocaleString()
+                                    target.metric === 'orders'
+                                      ? target.actualValue.toLocaleString()
+                                      : money(
+                                          target.actualValue,
+                                          data.companyCurrency,
+                                        )
                                   } / {
-                                    target.targetValue
-                                      .toLocaleString()
+                                    target.metric === 'orders'
+                                      ? target.targetValue.toLocaleString()
+                                      : money(
+                                          target.targetValue,
+                                          data.companyCurrency,
+                                        )
                                   }
                                 </p>
                                 <p className="mt-1 text-[10px] font-black text-blue-700 dark:text-blue-300">
