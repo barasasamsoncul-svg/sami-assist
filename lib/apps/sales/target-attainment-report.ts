@@ -111,6 +111,7 @@ export async function getSalesTargetAttainmentReport(): Promise<SalesTargetAttai
         target.metric,
         target.period_start,
         target.period_end,
+        CURRENT_DATE AS today,
         target.target_value,
         target.notes,
         COALESCE(actuals.order_count, 0)::numeric AS order_count,
@@ -191,8 +192,6 @@ export async function getSalesTargetAttainmentReport(): Promise<SalesTargetAttai
     }));
   }
   const names = new Map(activeUsers.map(user => [user.user_id, user.name]));
-  const today = new Date().toISOString().slice(0, 10);
-
   return {
     companyCurrency,
     canViewTargets: true,
@@ -207,6 +206,7 @@ export async function getSalesTargetAttainmentReport(): Promise<SalesTargetAttai
           : metric === 'margin' ? row.margin_actual
             : row.revenue_actual,
       );
+      const today = dateOnly(row.today);
       const progress = attainmentStatus(actualValue, targetValue, periodStart, periodEnd, today);
       const userId = row.user_id == null ? null : String(row.user_id);
 
