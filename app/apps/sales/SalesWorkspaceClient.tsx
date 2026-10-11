@@ -54,6 +54,8 @@ import SalesOperationsManager from '@/app/apps/sales/SalesOperationsManager';
 
 import SalesPipelineBoard from '@/app/apps/sales/SalesPipelineBoard';
 
+import SalesPipelineManager from '@/app/apps/sales/SalesPipelineManager';
+
 import type {
   SalesWorkspaceData,
 } from '@/lib/apps/sales/types';
@@ -62,6 +64,7 @@ import type {
 type View =
   | 'overview'
   | 'pipeline'
+  | 'opportunities'
   | 'customers'
   | 'quotes'
   | 'newQuote'
@@ -76,6 +79,22 @@ type View =
   | 'operations'
   | 'reports'
   | 'settings';
+
+
+type LinkedOpportunity = {
+  id: string;
+  opportunity_number: string;
+  name: string;
+  billing_customer_id: string | null;
+  customer_name: string | null;
+  contact_name: string | null;
+  email: string | null;
+  phone: string | null;
+  currency: string;
+  expected_value: number | string;
+  latest_quote_id: string | null;
+  stage_type: string;
+};
 
 
 const TUTORIAL:
@@ -448,6 +467,26 @@ export default function SalesWorkspaceClient({
       initialView,
     );
 
+  const [
+    linkedOpportunityId,
+    setLinkedOpportunityId,
+  ] = useState('');
+
+  const [
+    linkedOpportunity,
+    setLinkedOpportunity,
+  ] = useState<LinkedOpportunity | null>(null);
+
+  const [
+    opportunityLaunchResolved,
+    setOpportunityLaunchResolved,
+  ] = useState(initialView !== 'newQuote');
+
+  const [
+    opportunityLaunchError,
+    setOpportunityLaunchError,
+  ] = useState('');
+
   useEffect(
     () => {
       setView(
@@ -458,6 +497,68 @@ export default function SalesWorkspaceClient({
       initialView,
     ],
   );
+
+  useEffect(() => {
+    if (initialView !== 'newQuote') {
+      setLinkedOpportunityId('');
+      setLinkedOpportunity(null);
+      setOpportunityLaunchError('');
+      setOpportunityLaunchResolved(true);
+      return;
+    }
+
+    const requestedId = new URLSearchParams(window.location.search)
+      .get('opportunityId')
+      ?.trim();
+
+    if (!requestedId) {
+      setLinkedOpportunityId('');
+      setLinkedOpportunity(null);
+      setOpportunityLaunchError('');
+      setOpportunityLaunchResolved(true);
+      return;
+    }
+
+    let cancelled = false;
+    setLinkedOpportunityId(requestedId);
+    setLinkedOpportunity(null);
+    setOpportunityLaunchError('');
+    setOpportunityLaunchResolved(false);
+
+    void fetch('/api/apps/sales?pipeline=1', { cache: 'no-store' })
+      .then(async response => {
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(body.error || 'Could not load the selected opportunity.');
+        }
+        return body;
+      })
+      .then(body => {
+        const opportunities = body?.pipeline?.opportunities;
+        const opportunity = Array.isArray(opportunities)
+          ? opportunities.find((item: LinkedOpportunity) => String(item.id) === requestedId)
+          : null;
+        if (!opportunity) {
+          throw new Error('The opportunity is unavailable. Return to Leads & Opportunities and try again.');
+        }
+        if (!cancelled) setLinkedOpportunity(opportunity as LinkedOpportunity);
+      })
+      .catch(error => {
+        if (cancelled) return;
+        setOpportunityLaunchError(
+          error instanceof Error
+            ? error.message
+            : 'Could not load the selected opportunity.',
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setOpportunityLaunchResolved(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialView]);
 
   const [
     search,
@@ -692,7 +793,7 @@ export default function SalesWorkspaceClient({
       >,
   ) {
     try {
-      await request(
+      const result = await request(
         payload,
       );
 
@@ -702,8 +803,14 @@ export default function SalesWorkspaceClient({
 
       showSuccess(
         'Quotation saved',
-        'The commercial document was saved successfully.',
+        linkedOpportunityId
+          ? 'The quotation is linked to its opportunity.'
+          : 'The commercial document was saved successfully.',
       );
+
+      if (linkedOpportunityId && result.id) {
+        router.push('/apps/sales/quotes/' + encodeURIComponent(String(result.id)));
+      }
 
       return true;
     } catch (
@@ -895,6 +1002,18 @@ export default function SalesWorkspaceClient({
               showError={
                 showError
               }
+            />
+          )
+        }
+
+        {
+          view ===
+            'opportunities' &&
+          initialData.capabilities.canViewPipeline &&
+          (
+            <SalesPipelineManager
+              canCreateQuote={initialData.capabilities.canCreate}
+              canManagePipeline={initialData.capabilities.canManagePipeline}
             />
           )
         }
@@ -1484,31 +1603,40 @@ export default function SalesWorkspaceClient({
             <section className="sami-surface rounded-[26px] p-4 sm:p-5">
               <div className="mb-4">
                 <h2 className="text-lg font-black">
-                  New quotation
+                  {linkedOpportunity ? 'New quotation · ' + linkedOpportunity.name : 'New quotation'}
                 </h2>
                 <p className="mt-1 text-xs text-slate-500">
-                  Build the complete commercial offer once; SaMi preserves it through approval, acceptance, order and invoice conversion.
+                  Build the commercial offer from the selected opportunity. The link remains attached through the quotation lifecycle.
                 </p>
               </div>
 
-              <SalesQuoteComposer
-                data={
-                  initialData
-                }
-                busy={
-                  busy
-                }
-                onSave={
-                  saveQuote
-                }
-                onCancel={
-                  () => {
+              {!opportunityLaunchResolved ? (
+                <p className="rounded-xl border border-[var(--sami-border)] p-4 text-sm text-slate-500">
+                  Loading opportunity details…
+                </p>
+              ) : opportunityLaunchError ? (
+                <div className="space-y-3 rounded-xl border border-amber-300/60 p-4 text-sm">
+                  <p className="text-amber-700">{opportunityLaunchError}</p>
+                  <Link href="/apps/sales/opportunities" className="font-black text-blue-600 hover:underline">
+                    Return to Leads & Opportunities
+                  </Link>
+                </div>
+              ) : (
+                <SalesQuoteComposer
+                  key={linkedOpportunity?.id || 'standalone-new-quote'}
+                  data={initialData}
+                  linkedOpportunity={linkedOpportunity}
+                  busy={busy}
+                  onSave={saveQuote}
+                  onCancel={() => {
                     router.push(
-                      '/apps/sales/quotes',
+                      linkedOpportunityId
+                        ? '/apps/sales/opportunities'
+                        : '/apps/sales/quotes',
                     );
-                  }
-                }
-              />
+                  }}
+                />
+              )}
             </section>
           )
         }

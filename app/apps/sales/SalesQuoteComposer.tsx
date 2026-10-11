@@ -111,6 +111,7 @@ export default function SalesQuoteComposer({
   data,
   initialQuote =
     null,
+  linkedOpportunity = null,
   busy,
   onSave,
   onCancel,
@@ -120,6 +121,18 @@ export default function SalesQuoteComposer({
   initialQuote?:
     SalesQuoteDetail |
     null;
+  linkedOpportunity?: {
+    id: string;
+    opportunity_number: string;
+    name: string;
+    billing_customer_id: string | null;
+    customer_name: string | null;
+    contact_name: string | null;
+    email: string | null;
+    phone: string | null;
+    currency: string;
+    expected_value: number | string;
+  } | null;
   busy:
     boolean;
   onSave:
@@ -141,6 +154,11 @@ export default function SalesQuoteComposer({
     useState(
       initialQuote
         ?.billingCustomerId ||
+      (
+        data.capabilities.canUseBillingCustomers
+          ? linkedOpportunity?.billing_customer_id
+          : null
+      ) ||
       '',
     );
 
@@ -151,6 +169,9 @@ export default function SalesQuoteComposer({
     useState(
       initialQuote
         ?.customerName ||
+      linkedOpportunity?.customer_name ||
+      linkedOpportunity?.name ||
+      linkedOpportunity?.contact_name ||
       '',
     );
 
@@ -161,6 +182,7 @@ export default function SalesQuoteComposer({
     useState(
       initialQuote
         ?.customerEmail ||
+      linkedOpportunity?.email ||
       '',
     );
 
@@ -171,6 +193,7 @@ export default function SalesQuoteComposer({
     useState(
       initialQuote
         ?.customerPhone ||
+      linkedOpportunity?.phone ||
       '',
     );
 
@@ -201,6 +224,7 @@ export default function SalesQuoteComposer({
     useState(
       initialQuote
         ?.reference ||
+      linkedOpportunity?.opportunity_number ||
       '',
     );
 
@@ -211,6 +235,7 @@ export default function SalesQuoteComposer({
     useState(
       initialQuote
         ?.currency ||
+      linkedOpportunity?.currency ||
       data.settings
         .defaultCurrency ||
       data.company
@@ -635,6 +660,10 @@ export default function SalesQuoteComposer({
       quoteId:
         initialQuote
           ?.id,
+      opportunityId:
+        initialQuote
+          ? undefined
+          : linkedOpportunity?.id,
       billingCustomerId:
         customerId ||
         undefined,
@@ -737,6 +766,16 @@ export default function SalesQuoteComposer({
       }
       className="space-y-5"
     >
+      {linkedOpportunity ? (
+        <div className="rounded-xl border border-blue-200/70 bg-blue-50/60 p-3 text-sm dark:border-blue-900/60 dark:bg-blue-950/20">
+          <p className="font-black text-blue-800 dark:text-blue-200">
+            Opportunity {linkedOpportunity.opportunity_number}
+          </p>
+          <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+            Expected value: {formatMoney(Number(linkedOpportunity.expected_value || 0), linkedOpportunity.currency)}. The quote will be linked to this opportunity; review the line items and final quote total before saving.
+          </p>
+        </div>
+      ) : null}
       <div className="grid gap-4 xl:grid-cols-2">
         <section className="rounded-[22px] border border-[var(--sami-border)] p-4">
           <p className="text-sm font-black">

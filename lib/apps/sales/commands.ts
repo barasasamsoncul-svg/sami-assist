@@ -1339,18 +1339,121 @@ export async function createSalesQuote(
       settingsResult.rows[0] ||
       {};
 
+    const rawOpportunityId = input.opportunityId;
+    const opportunityId =
+      rawOpportunityId === undefined ||
+      rawOpportunityId === null ||
+      rawOpportunityId === ''
+        ? null
+        : requireUuid(rawOpportunityId, 'Opportunity');
+
+    let linkedOpportunity:
+      Record<string, unknown> |
+      null = null;
+
+    if (opportunityId) {
+      if (
+        !crossPermission(
+          context,
+          SALES_PERMISSIONS.PIPELINE_VIEW,
+          SALES_PERMISSIONS.PIPELINE_MANAGE,
+        )
+      ) {
+        throw new SalesError(
+          'SALES_PERMISSION_REQUIRED',
+          'Pipeline access is required to create a quotation from an opportunity.',
+        );
+      }
+
+      const opportunityResult = await client.query(
+        `
+          SELECT
+            opportunity.id,
+            opportunity.opportunity_number,
+            opportunity.billing_customer_id,
+            opportunity.name,
+            opportunity.customer_name,
+            opportunity.contact_name,
+            opportunity.email,
+            opportunity.phone,
+            opportunity.currency,
+            opportunity.salesperson_user_id,
+            opportunity.sales_team_id,
+            opportunity.territory_id,
+            stage.stage_type
+          FROM sales_opportunities opportunity
+          INNER JOIN sales_pipeline_stages stage
+            ON stage.id = opportunity.stage_id
+           AND stage.company_id = opportunity.company_id
+          WHERE opportunity.id = $1
+            AND opportunity.company_id = $2
+            AND opportunity.deleted_at IS NULL
+          LIMIT 1
+          FOR UPDATE OF opportunity
+        `,
+        [opportunityId, context.companyId],
+      );
+
+      linkedOpportunity = opportunityResult.rows[0] || null;
+
+      if (!linkedOpportunity) {
+        throw new SalesError(
+          'OPPORTUNITY_NOT_FOUND',
+          'The linked opportunity was not found in this company.',
+        );
+      }
+
+      if (linkedOpportunity.stage_type === 'lost') {
+        throw new SalesError(
+          'INVALID_OPPORTUNITY_STAGE',
+          'A lost opportunity cannot be converted into a new quotation.',
+        );
+      }
+    }
+
+    const quoteInput: CreateSalesQuoteInput = linkedOpportunity
+      ? {
+          ...input,
+          billingCustomerId:
+            input.billingCustomerId ??
+            (crossPermission(
+              context,
+              'invoicing.customer.view',
+              'invoicing.customer.manage',
+            )
+              ? linkedOpportunity.billing_customer_id
+              : undefined),
+          currency:
+            input.currency ||
+            linkedOpportunity.currency,
+          reference:
+            input.reference ||
+            linkedOpportunity.opportunity_number,
+          customerName:
+            input.customerName ||
+            linkedOpportunity.customer_name ||
+            linkedOpportunity.name,
+          customerEmail:
+            input.customerEmail ||
+            linkedOpportunity.email,
+          customerPhone:
+            input.customerPhone ||
+            linkedOpportunity.phone,
+        }
+      : input;
+
     const template =
       await resolveTemplate(
         client,
         context.companyId,
-        input.templateId,
+        quoteInput.templateId,
       );
 
     const customer =
       await resolveCustomerSnapshot(
         client,
         context,
-        input,
+        quoteInput,
       );
 
     const quoteDate =
@@ -1383,7 +1486,7 @@ export async function createSalesQuote(
 
     const currency =
       cleanText(
-        input.currency ||
+        quoteInput.currency ||
         customer.currency ||
         settings.default_currency ||
         context.company
@@ -1555,7 +1658,7 @@ export async function createSalesQuote(
           validUntil,
           currency,
           nullableText(
-            input.reference,
+            quoteInput.reference,
             255,
           ),
           approvalStatus,
@@ -1636,6 +1739,48 @@ export async function createSalesQuote(
       ],
     );
 
+    if (linkedOpportunity && opportunityId) {
+      await client.query(
+        `
+          UPDATE sales_quotes
+          SET
+            opportunity_id = $3,
+            salesperson_user_id = COALESCE($4::uuid, salesperson_user_id),
+            sales_team_id = COALESCE($5::uuid, sales_team_id),
+            territory_id = COALESCE($6::uuid, territory_id)
+          WHERE id = $1
+            AND company_id = $2
+        `,
+        [
+          quoteId,
+          context.companyId,
+          opportunityId,
+          linkedOpportunity.salesperson_user_id,
+          linkedOpportunity.sales_team_id,
+          linkedOpportunity.territory_id,
+        ],
+      );
+
+      await client.query(
+        `
+          UPDATE sales_opportunities
+          SET
+            latest_quote_id = $3,
+            updated_by = $4,
+            updated_at = NOW()
+          WHERE id = $1
+            AND company_id = $2
+            AND deleted_at IS NULL
+        `,
+        [
+          opportunityId,
+          context.companyId,
+          quoteId,
+          context.userId,
+        ],
+      );
+    }
+
     await insertQuoteLines(
       client,
       context.companyId,
@@ -1685,6 +1830,7 @@ export async function createSalesQuote(
           totalAmount:
             calculated.totalAmount,
           currency,
+          opportunityId: opportunityId || null,
         },
       },
     );
@@ -1710,6 +1856,7 @@ export async function createSalesQuote(
           totalAmount:
             calculated.totalAmount,
           currency,
+          opportunityId: opportunityId || null,
         },
       },
     );
@@ -2320,6 +2467,14 @@ export async function duplicateSalesQuote(
     quote.rows[0];
 
   return createSalesQuote({
+    opportunityId:
+      crossPermission(
+        context,
+        SALES_PERMISSIONS.PIPELINE_VIEW,
+        SALES_PERMISSIONS.PIPELINE_MANAGE,
+      )
+        ? row.opportunity_id || undefined
+        : undefined,
     billingCustomerId:
       row.billing_customer_id,
     templateId:

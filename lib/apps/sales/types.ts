@@ -481,6 +481,7 @@ export type SalesWorkspaceData = {
 
 
 export type CreateSalesQuoteInput = {
+  opportunityId?: unknown;
   billingCustomerId?: unknown;
   templateId?: unknown;
   pricelistId?: unknown;
