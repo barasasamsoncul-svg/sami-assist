@@ -8,9 +8,11 @@ import SalesManagementInsights from '@/app/apps/sales/SalesManagementInsights';
 import SalesOpportunityFunnel from '@/app/apps/sales/SalesOpportunityFunnel';
 import SalesPipelineOutcomes from '@/app/apps/sales/SalesPipelineOutcomes';
 import SalesPipelineVelocity from '@/app/apps/sales/SalesPipelineVelocity';
+import SalesActivityExecution from '@/app/apps/sales/SalesActivityExecution';
 import { getSalesOpportunityFunnelData, getSalesOpportunityRiskQueue } from '@/lib/apps/sales/pipeline-funnel';
 import { getSalesPipelineOutcomeReport } from '@/lib/apps/sales/pipeline-outcomes';
 import { getSalesPipelineVelocityReport } from '@/lib/apps/sales/pipeline-velocity';
+import { getSalesActivityExecutionReport } from '@/lib/apps/sales/activity-execution';
 import { getSalesManagementInsights } from '@/lib/apps/sales/management-insights';
 
 import {
@@ -198,6 +200,7 @@ export default async function SalesSectionPage({
         getSalesOpportunityRiskQueue(),
         getSalesPipelineOutcomeReport(),
         getSalesPipelineVelocityReport(),
+        getSalesActivityExecutionReport(),
       ])
     : null;
   const managementInsights = reportData?.[0] ?? null;
@@ -205,6 +208,7 @@ export default async function SalesSectionPage({
   const opportunityRiskQueue = reportData?.[2] ?? null;
   const pipelineOutcomeReport = reportData?.[3] ?? null;
   const pipelineVelocityReport = reportData?.[4] ?? null;
+  const activityExecutionReport = reportData?.[5] ?? null;
 
   return (
     <SalesModuleShell
@@ -248,7 +252,7 @@ export default async function SalesSectionPage({
         data.company.name
       }
     >
-      {managementInsights && opportunityFunnel && opportunityRiskQueue && pipelineOutcomeReport && pipelineVelocityReport ? (
+      {managementInsights && opportunityFunnel && opportunityRiskQueue && pipelineOutcomeReport && pipelineVelocityReport && activityExecutionReport ? (
         <>
           <SalesManagementInsights
             data={managementInsights}
@@ -265,6 +269,7 @@ export default async function SalesSectionPage({
             lossReasons={pipelineOutcomeReport.lossReasons}
           />
           <SalesPipelineVelocity transitions={pipelineVelocityReport.transitions} />
+          <SalesActivityExecution report={activityExecutionReport} />
         </>
       ) : (
         <SalesWorkspaceClient
