@@ -2597,3 +2597,31 @@ test('Sales lead-routing rules are tenant-scoped, priority ordered and migration
   assert.ok(manager.includes('Rule enabled'));
   assert.ok(manager.includes('Routed by rule:'));
 });
+
+test('Sales management insights report target attainment by company, team and salesperson', async () => {
+  const [report, ui, organization, schema] = await Promise.all([
+    source('lib/apps/sales/management-insights.ts'),
+    source('app/apps/sales/SalesManagementInsights.tsx'),
+    source('lib/apps/sales/organization.ts'),
+    source('lib/apps/sales/schema.sql'),
+  ]);
+
+  assert.match(report, /targetAttainment: Array/);
+  assert.match(report, /FROM sales_targets target/);
+  assert.match(report, /target\.is_active = TRUE/);
+  assert.match(report, /target\.company_id = \$1/);
+  assert.match(report, /tu\.tenant_id = \$2/);
+  assert.match(report, /target\.target_scope = 'company'/);
+  assert.match(report, /sales_order\.sales_team_id = target\.team_id/);
+  assert.match(report, /sales_order\.salesperson_user_id = target\.user_id/);
+  assert.match(report, /WHEN target\.metric = 'orders' THEN COUNT\(\)::numeric/);
+  assert.match(report, /WHEN target\.metric = 'margin' THEN COALESCE\(SUM\(sales_order\.margin_amount\), 0\)/);
+  assert.match(report, /targetAttainmentResult\.rows\.map/);
+  assert.match(organization, /target\.target_scope/);
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS public\.sales_targets/);
+  assert.match(ui, /Target attainment/);
+  assert.match(ui, /data\.targetAttainment\.map/);
+  assert.match(ui, /aria-valuenow=\{Math\.round\(cappedPercentage\)\}/);
+  assert.match(ui, /No active sales targets yet/);
+  assert.match(ui, /Period ended below target/);
+});
