@@ -2120,6 +2120,8 @@ test('Sales order register sorts by date, value, customer, and progress and pers
   assert.ok(ui.includes("case 'oldest':"));
   assert.ok(ui.includes("case 'value_high':"));
   assert.ok(ui.includes("case 'value_low':"));
+  assert.ok(ui.includes('right.baseTotalAmount - left.baseTotalAmount'));
+  assert.ok(ui.includes('left.baseTotalAmount - right.baseTotalAmount'));
   assert.ok(ui.includes("case 'delivery_first':"));
   assert.ok(ui.includes("case 'invoice_first':"));
   assert.ok(ui.includes("case 'customer_az':"));
