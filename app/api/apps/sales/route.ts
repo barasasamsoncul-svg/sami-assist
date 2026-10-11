@@ -57,6 +57,9 @@ import {
   getSalesSavedPipelineViews,
   saveSalesSavedPipelineView,
   deleteSalesSavedPipelineView,
+  getSalesLeadAssignmentRules,
+  saveSalesLeadAssignmentRule,
+  deleteSalesLeadAssignmentRule,
   bulkSendSalesQuotes,
   getSalesWorkspaceData,
   issueSalesReturnCredit,
@@ -272,6 +275,14 @@ export async function GET(
       return json({
         success: true,
         savedOrderViews: await getSalesSavedOrderViews(),
+      });
+    }
+
+    const leadAssignmentRules = request.nextUrl.searchParams.get('leadAssignmentRules');
+    if (leadAssignmentRules === '1') {
+      return json({
+        success: true,
+        leadAssignmentRules: await getSalesLeadAssignmentRules(),
       });
     }
 
@@ -671,6 +682,10 @@ export async function POST(
           saveSalesSavedPipelineView,
         delete_pipeline_view:
           deleteSalesSavedPipelineView,
+        save_lead_assignment_rule:
+          saveSalesLeadAssignmentRule,
+        delete_lead_assignment_rule:
+          deleteSalesLeadAssignmentRule,
         save_approval_policy:
           saveSalesQuoteApprovalPolicy,
       };
