@@ -46,6 +46,25 @@ type SalesLeadActivity = {
   created_at: string;
 };
 
+type SalesOpportunityActivity = {
+  id: string;
+  opportunity_id: string;
+  opportunity_number: string;
+  opportunity_name: string;
+  opportunity_customer_name: string | null;
+  opportunity_contact_name: string | null;
+  activity_type: 'call' | 'email' | 'meeting' | 'task' | 'note';
+  subject: string;
+  description: string | null;
+  due_date: string | null;
+  status: 'planned' | 'completed' | 'cancelled';
+  assigned_user_id: string | null;
+  completed_at: string | null;
+  created_at: string;
+};
+
+type ActivityRecord = SalesLeadActivity | SalesOpportunityActivity;
+
 type SalesOpportunity = {
   id: string;
   opportunity_number: string;
@@ -107,6 +126,7 @@ type PipelineData = {
   leads: SalesLead[];
   opportunities: SalesOpportunity[];
   activities: SalesLeadActivity[];
+  opportunityActivities: SalesOpportunityActivity[];
   salespeople: Salesperson[];
   opportunityHistory: OpportunityStageHistoryEntry[];
 };
@@ -128,6 +148,9 @@ type PipelineAction =
   | { action: 'create_lead_activity'; leadId: string; activityType: string; subject: string; description: string; dueDate: string | null; assignedUserId: string | null }
   | { action: 'update_lead_activity'; activityId: string; status: 'completed' | 'cancelled' }
   | { action: 'edit_lead_activity'; activityId: string; activityType: ActivityDraft['activityType']; subject: string; description: string; dueDate: string | null; assignedUserId: string | null }
+  | { action: 'create_opportunity_activity'; opportunityId: string; activityType: string; subject: string; description: string; dueDate: string | null; assignedUserId: string | null }
+  | { action: 'update_opportunity_activity'; activityId: string; status: 'completed' | 'cancelled' }
+  | { action: 'edit_opportunity_activity'; activityId: string; activityType: ActivityDraft['activityType']; subject: string; description: string; dueDate: string | null; assignedUserId: string | null }
   | { action: 'convert_lead'; leadId: string; name: string; expectedValue: string; currency: string; expectedCloseDate: string | null }
   | { action: 'update_opportunity'; opportunityId: string; name: string; customerName: string; contactName: string; email: string; phone: string; expectedValue: string; currency: string; expectedCloseDate: string | null; source: string; notes: string; salespersonUserId: string | null }
   | { action: 'move_opportunity'; opportunityId: string; stageId: string; reason?: string }
@@ -239,7 +262,7 @@ export default function SalesPipelineManager({
   defaultCurrency: string;
 }) {
   const [data, setData] = useState<PipelineData>({
-    stages: [], leads: [], opportunities: [], activities: [], salespeople: [], opportunityHistory: [],
+    stages: [], leads: [], opportunities: [], activities: [], opportunityActivities: [], salespeople: [], opportunityHistory: [],
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -249,8 +272,10 @@ export default function SalesPipelineManager({
   const [disqualifyingLeadId, setDisqualifyingLeadId] = useState<string | null>(null);
   const [disqualificationReason, setDisqualificationReason] = useState('');
   const [activityLeadId, setActivityLeadId] = useState<string | null>(null);
-  const [activityDraft, setActivityDraft] = useState<ActivityDraft>({ activityType: 'task', subject: '', description: '', dueDate: '', assignedUserId: '' });
+  const [activityOpportunityId, setActivityOpportunityId] = useState<string | null>(null);
+  const [activityDraft] = useState<ActivityDraft>({ activityType: 'task', subject: '', description: '', dueDate: '', assignedUserId: '' });
   const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
+  const [editingActivityRecordType, setEditingActivityRecordType] = useState<'lead' | 'opportunity' | null>(null);
   const [activityEditDraft, setActivityEditDraft] = useState<ActivityDraft>({
     activityType: 'task', subject: '', description: '', dueDate: '', assignedUserId: '',
   });
@@ -364,13 +389,34 @@ export default function SalesPipelineManager({
   nextWeekDate.setDate(nextWeekDate.getDate() + 7);
   const nextWeekKey = localDateKey(nextWeekDate);
 
-  const plannedActivities = data.activities
-    .filter(activity => activity.status === 'planned')
-    .map(activity => ({
-      activity,
-      dueBucket: activityDueBucket(activity.due_date, todayKey, nextWeekKey),
-      ownerName: data.salespeople.find(person => person.id === activity.assigned_user_id)?.name || 'Unassigned',
-    }));
+  const plannedActivities = [
+    ...data.activities
+      .filter(activity => activity.status === 'planned')
+      .map(activity => ({
+        activity,
+        recordType: 'lead' as const,
+        recordId: activity.lead_id,
+        recordNumber: activity.lead_number,
+        recordName: activity.lead_name,
+        recordCompanyName: activity.lead_company_name,
+        recordContactName: activity.lead_contact_name,
+        dueBucket: activityDueBucket(activity.due_date, todayKey, nextWeekKey),
+        ownerName: data.salespeople.find(person => person.id === activity.assigned_user_id)?.name || 'Unassigned',
+      })),
+    ...data.opportunityActivities
+      .filter(activity => activity.status === 'planned')
+      .map(activity => ({
+        activity,
+        recordType: 'opportunity' as const,
+        recordId: activity.opportunity_id,
+        recordNumber: activity.opportunity_number,
+        recordName: activity.opportunity_name,
+        recordCompanyName: activity.opportunity_customer_name,
+        recordContactName: activity.opportunity_contact_name,
+        dueBucket: activityDueBucket(activity.due_date, todayKey, nextWeekKey),
+        ownerName: data.salespeople.find(person => person.id === activity.assigned_user_id)?.name || 'Unassigned',
+      })),
+  ];
 
   const agendaFilterOptions: { key: ActivityAgendaFilter; label: string; count: number }[] = [
     { key: 'all', label: 'All planned', count: plannedActivities.length },
@@ -382,16 +428,16 @@ export default function SalesPipelineManager({
 
   const filteredAgendaActivities = plannedActivities
     .filter(item => agendaFilter === 'all' || item.dueBucket === agendaFilter)
-    .filter(({ activity, ownerName }) => {
+    .filter(({ activity, ownerName, recordName, recordNumber, recordCompanyName, recordContactName }) => {
       const search = agendaSearch.trim().toLowerCase();
       return !search || [
         activity.subject,
         activity.description,
         activity.activity_type,
-        activity.lead_name,
-        activity.lead_number,
-        activity.lead_company_name,
-        activity.lead_contact_name,
+        recordName,
+        recordNumber,
+        recordCompanyName,
+        recordContactName,
         ownerName,
       ].some(value => String(value || '').toLowerCase().includes(search));
     })
@@ -593,6 +639,7 @@ export default function SalesPipelineManager({
   }
 
   function beginActivity(lead: SalesLead) {
+    setActivityOpportunityId(null);
     setActivityLeadId(lead.id);
     setEditingLeadId(null);
     setQualifyingLeadId(null);
@@ -605,6 +652,28 @@ export default function SalesPipelineManager({
       assignedUserId: lead.salesperson_user_id || '',
     });
     setError('');
+  }
+
+  function beginOpportunityActivity(opportunity: SalesOpportunity) {
+    setActivityLeadId(null);
+    setActivityOpportunityId(opportunity.id);
+    setEditingOpportunityId(null);
+    setActivityDraft({ activityType: 'task', subject: '', description: '', dueDate: '', assignedUserId: opportunity.salesperson_user_id || '' });
+    setError('');
+  }
+
+  async function createOpportunityActivity(event: FormEvent<HTMLFormElement>, opportunity: SalesOpportunity) {
+    event.preventDefault();
+    const succeeded = await action({
+      action: 'create_opportunity_activity', opportunityId: opportunity.id,
+      activityType: activityDraft.activityType, subject: activityDraft.subject,
+      description: activityDraft.description, dueDate: activityDraft.dueDate || null,
+      assignedUserId: activityDraft.assignedUserId || null,
+    });
+    if (succeeded) {
+      setActivityOpportunityId(null);
+      setActivityDraft({ activityType: 'task', subject: '', description: '', dueDate: '', assignedUserId: '' });
+    }
   }
 
   async function createActivity(event: FormEvent<HTMLFormElement>, lead: SalesLead) {
@@ -624,8 +693,9 @@ export default function SalesPipelineManager({
     }
   }
 
-  function beginActivityEdit(activity: SalesLeadActivity) {
+  function beginActivityEdit(activity: ActivityRecord) {
     setEditingActivityId(activity.id);
+    setEditingActivityRecordType('opportunity_id' in activity ? 'opportunity' : 'lead');
     setActivityEditDraft({
       activityType: activity.activity_type,
       subject: activity.subject || '',
@@ -636,22 +706,23 @@ export default function SalesPipelineManager({
     setError('');
   }
 
-  async function saveActivityEdit(event: FormEvent<HTMLFormElement>, activity: SalesLeadActivity) {
+  async function saveActivityEdit(event: FormEvent<HTMLFormElement>, activity: ActivityRecord) {
     event.preventDefault();
-    const succeeded = await action({
-      action: 'edit_lead_activity',
-      activityId: activity.id,
-      activityType: activityEditDraft.activityType,
-      subject: activityEditDraft.subject,
-      description: activityEditDraft.description,
-      dueDate: activityEditDraft.dueDate || null,
-      assignedUserId: activityEditDraft.assignedUserId || null,
-    });
-    if (succeeded) setEditingActivityId(null);
+    const fields = {
+      activityId: activity.id, activityType: activityEditDraft.activityType,
+      subject: activityEditDraft.subject, description: activityEditDraft.description,
+      dueDate: activityEditDraft.dueDate || null, assignedUserId: activityEditDraft.assignedUserId || null,
+    };
+    const succeeded = 'opportunity_id' in activity
+      ? await action({ action: 'edit_opportunity_activity', ...fields })
+      : await action({ action: 'edit_lead_activity', ...fields });
+    if (succeeded) { setEditingActivityId(null); setEditingActivityRecordType(null); }
   }
 
-  async function updateActivity(activityId: string, status: 'completed' | 'cancelled') {
-    await action({ action: 'update_lead_activity', activityId, status });
+  async function updateActivity(activity: string | ActivityRecord, status: 'completed' | 'cancelled') {
+    if (typeof activity === 'string') await action({ action: 'update_lead_activity', activityId: activity, status });
+    else if ('opportunity_id' in activity) await action({ action: 'update_opportunity_activity', activityId: activity.id, status });
+    else await action({ action: 'update_lead_activity', activityId: activity.id, status });
   }
 
   function beginOpportunityEdit(opportunity: SalesOpportunity) {
@@ -934,10 +1005,10 @@ export default function SalesPipelineManager({
           {filteredAgendaActivities.length === 0 ? (
             <p className="rounded-xl border border-dashed border-[var(--sami-border)] p-5 text-sm text-slate-500">
               {plannedActivities.length === 0
-                ? 'No planned follow-ups yet. Add a call, email, meeting or task from a lead.'
+                ? 'No planned follow-ups yet. Add a call, email, meeting or task from a lead or opportunity.'
                 : 'No follow-ups match this filter and search.'}
             </p>
-          ) : filteredAgendaActivities.map(({ activity, dueBucket, ownerName }) => (
+          ) : filteredAgendaActivities.map(({ activity, dueBucket, ownerName, recordType, recordNumber, recordName, recordCompanyName, recordContactName }) => (
             <article key={activity.id} className="rounded-xl border border-[var(--sami-border)] p-3">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
@@ -963,12 +1034,13 @@ export default function SalesPipelineManager({
                   </div>
                   <p className="mt-1 text-xs text-slate-500">
                     {activity.activity_type.charAt(0).toUpperCase() + activity.activity_type.slice(1)}
-                    {' · '}{activity.lead_number}
-                    {' · '}{activity.lead_name}
+                    {' · '}{recordType === 'lead' ? 'Lead' : 'Opportunity'}
+                    {' · '}{recordNumber}
+                    {' · '}{recordName}
                   </p>
-                  {activity.lead_company_name || activity.lead_contact_name ? (
+                  {recordCompanyName || recordContactName ? (
                     <p className="mt-1 break-words text-xs text-slate-500">
-                      {[activity.lead_company_name, activity.lead_contact_name].filter(Boolean).join(' · ')}
+                      {[recordCompanyName, recordContactName].filter(Boolean).join(' · ')}
                     </p>
                   ) : null}
                   {activity.description ? (
@@ -991,7 +1063,7 @@ export default function SalesPipelineManager({
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => void updateActivity(activity.id, 'completed')}
+                      onClick={() => void updateActivity(activity, 'completed')}
                       className="h-9 rounded-lg border border-emerald-600/40 px-3 text-xs font-black text-emerald-700 hover:bg-emerald-500/[0.06] disabled:opacity-60 dark:text-emerald-300"
                     >
                       Complete
@@ -999,7 +1071,7 @@ export default function SalesPipelineManager({
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => void updateActivity(activity.id, 'cancelled')}
+                      onClick={() => void updateActivity(activity, 'cancelled')}
                       className="h-9 rounded-lg border border-[var(--sami-border)] px-3 text-xs font-black text-slate-500 hover:bg-slate-500/[0.06] disabled:opacity-60"
                     >
                       Cancel
@@ -1007,7 +1079,7 @@ export default function SalesPipelineManager({
                   </div>
                 ) : null}
               </div>
-              {editingActivityId === activity.id ? (
+              {editingActivityId === activity.id && editingActivityRecordType === recordType ? (
                 <form
                   onSubmit={event => void saveActivityEdit(event, activity)}
                   className="mt-4 grid gap-3 rounded-xl bg-slate-500/[0.04] p-3 sm:grid-cols-2"
@@ -1078,7 +1150,7 @@ export default function SalesPipelineManager({
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => setEditingActivityId(null)}
+                      onClick={() => { setEditingActivityId(null); setEditingActivityRecordType(null); }}
                       className="h-10 rounded-lg border border-[var(--sami-border)] px-3.5 text-xs font-black disabled:opacity-60"
                     >
                       Cancel
@@ -1775,6 +1847,40 @@ export default function SalesPipelineManager({
                     <span className="text-slate-400">No quotation yet</span>
                   )}
                 </div>
+                <section className="mt-3 rounded-xl border border-[var(--sami-border)] bg-slate-500/[0.02] p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h4 className="text-xs font-black">Opportunity activities · {data.opportunityActivities.filter(activity => activity.opportunity_id === opportunity.id).length}</h4>
+                    {canManagePipeline && opportunity.stage_type === 'open' ? <button type="button" disabled={busy} onClick={() => beginOpportunityActivity(opportunity)} className="h-9 rounded-lg border border-[var(--sami-border)] px-3 text-xs font-black disabled:opacity-60">Schedule follow-up</button> : null}
+                  </div>
+                  {data.opportunityActivities.filter(activity => activity.opportunity_id === opportunity.id).length === 0 ? (
+                    <p className="mt-2 text-xs text-slate-500">No opportunity activities recorded yet.</p>
+                  ) : (
+                    <div className="mt-2 space-y-2">
+                      {data.opportunityActivities.filter(activity => activity.opportunity_id === opportunity.id).slice(0, 5).map(activity => (
+                        <article key={activity.id} className="rounded-lg border border-[var(--sami-border)] p-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2"><p className="break-words text-xs font-black">{activity.subject}</p><span className={activity.status === 'planned' ? 'text-xs font-bold text-blue-600' : activity.status === 'completed' ? 'text-xs font-bold text-emerald-700' : 'text-xs font-bold text-slate-400'}>{activity.status}</span></div>
+                          <p className="mt-1 text-[11px] text-slate-500">{activity.activity_type} · {formatActivityDate(activity.due_date)} · {data.salespeople.find(person => person.id === activity.assigned_user_id)?.name || 'Unassigned'}</p>
+                          {activity.description ? <p className="mt-1 whitespace-pre-wrap break-words text-xs text-slate-500">{activity.description}</p> : null}
+                          {canManagePipeline && activity.status === 'planned' ? <div className="mt-2 flex flex-wrap gap-3 text-[11px] font-black">
+                            <button type="button" disabled={busy} onClick={() => beginActivityEdit(activity)} className="text-slate-600 hover:underline disabled:opacity-60 dark:text-slate-300">Edit / reschedule</button>
+                            <button type="button" disabled={busy} onClick={() => void updateActivity(activity, 'completed')} className="text-emerald-700 hover:underline disabled:opacity-60">Complete</button>
+                            <button type="button" disabled={busy} onClick={() => void updateActivity(activity, 'cancelled')} className="text-slate-500 hover:underline disabled:opacity-60">Cancel</button>
+                          </div> : null}
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                  {activityOpportunityId === opportunity.id ? <form onSubmit={event => void createOpportunityActivity(event, opportunity)} className="mt-3 grid gap-3 rounded-xl bg-slate-500/[0.04] p-3 sm:grid-cols-2">
+                    <h5 className="text-xs font-black sm:col-span-2">Schedule opportunity follow-up</h5>
+                    <label className="space-y-1 text-xs font-bold text-slate-500"><span>Activity type</span><select value={activityDraft.activityType} onChange={event => setActivityDraft(current => ({ ...current, activityType: event.target.value as ActivityDraft['activityType'] }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"><option value="task">Task</option><option value="call">Call</option><option value="email">Email</option><option value="meeting">Meeting</option><option value="note">Note</option></select></label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500"><span>Due date</span><input type="date" value={activityDraft.dueDate} onChange={event => setActivityDraft(current => ({ ...current, dueDate: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" /></label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2"><span>Subject *</span><input required value={activityDraft.subject} onChange={event => setActivityDraft(current => ({ ...current, subject: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" /></label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2"><span>Assigned to</span><select value={activityDraft.assignedUserId} onChange={event => setActivityDraft(current => ({ ...current, assignedUserId: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"><option value="">Unassigned</option>{data.salespeople.map(person => <option key={person.id} value={person.id}>{person.name} · {person.email}</option>)}</select></label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2"><span>Details</span><textarea rows={2} value={activityDraft.description} onChange={event => setActivityDraft(current => ({ ...current, description: event.target.value }))} className="w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 py-2 text-sm font-normal text-slate-900 dark:text-slate-100" /></label>
+                    <div className="flex flex-wrap gap-2 sm:col-span-2"><button type="submit" disabled={busy || !activityDraft.subject.trim()} className="h-10 rounded-lg bg-blue-600 px-3.5 text-xs font-black text-white disabled:opacity-60">{busy ? 'Saving…' : 'Schedule follow-up'}</button><button type="button" disabled={busy} onClick={() => setActivityOpportunityId(null)} className="h-10 rounded-lg border border-[var(--sami-border)] px-3.5 text-xs font-black disabled:opacity-60">Cancel</button></div>
+                  </form> : null}
+                </section>
+
                 <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-black">
                   <button
                     type="button"
