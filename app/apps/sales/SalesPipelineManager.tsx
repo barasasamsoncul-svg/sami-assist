@@ -234,8 +234,88 @@ export default function SalesPipelineManager({
       email: formData.get('email'),
       phone: formData.get('phone'),
       source: formData.get('source'),
+      salespersonUserId: formData.get('salespersonUserId'),
     });
     if (succeeded) form.reset();
+  }
+
+
+  function beginLeadEdit(lead: SalesLead) {
+    setEditingLeadId(lead.id);
+    setQualifyingLeadId(null);
+    setDisqualifyingLeadId(null);
+    setActivityLeadId(null);
+    setLeadDraft({
+      name: lead.name || '',
+      companyName: lead.company_name || '',
+      contactName: lead.contact_name || '',
+      email: lead.email || '',
+      phone: lead.phone || '',
+      source: lead.source || '',
+      notes: lead.notes || '',
+      salespersonUserId: lead.salesperson_user_id || '',
+    });
+    setError('');
+  }
+
+  async function updateLead(event: FormEvent<HTMLFormElement>, lead: SalesLead) {
+    event.preventDefault();
+    const succeeded = await action({
+      action: 'update_lead',
+      leadId: lead.id,
+      ...leadDraft,
+      salespersonUserId: leadDraft.salespersonUserId || null,
+    });
+    if (succeeded) setEditingLeadId(null);
+  }
+
+  async function disqualifyLead(event: FormEvent<HTMLFormElement>, lead: SalesLead) {
+    event.preventDefault();
+    const succeeded = await action({
+      action: 'disqualify_lead',
+      leadId: lead.id,
+      reason: disqualificationReason,
+    });
+    if (succeeded) {
+      setDisqualifyingLeadId(null);
+      setDisqualificationReason('');
+    }
+  }
+
+  function beginActivity(lead: SalesLead) {
+    setActivityLeadId(lead.id);
+    setEditingLeadId(null);
+    setQualifyingLeadId(null);
+    setDisqualifyingLeadId(null);
+    setActivityDraft({
+      activityType: 'task',
+      subject: '',
+      description: '',
+      dueDate: '',
+      assignedUserId: lead.salesperson_user_id || '',
+    });
+    setError('');
+  }
+
+  async function createActivity(event: FormEvent<HTMLFormElement>, lead: SalesLead) {
+    event.preventDefault();
+    const succeeded = await action({
+      action: 'create_lead_activity',
+      leadId: lead.id,
+      activityType: activityDraft.activityType,
+      subject: activityDraft.subject,
+      description: activityDraft.description,
+      dueDate: activityDraft.dueDate || null,
+      assignedUserId: activityDraft.assignedUserId || null,
+    });
+    if (succeeded) {
+      setActivityLeadId(null);
+      setActivityDraft({ activityType: 'task', subject: '', description: '', dueDate: '', assignedUserId: '' });
+    }
+  }
+
+  async function updateActivity(activityId: string, status: 'completed' | 'cancelled') {
+    await action({ action: 'update_lead_activity', activityId, status });
   }
 
   return (
