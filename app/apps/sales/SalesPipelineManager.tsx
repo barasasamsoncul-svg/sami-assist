@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 
 type PipelineStage={id:string;name:string};
 type SalesLead={id:string;lead_number:string;status:string;name:string;source:string|null};
-type SalesOpportunity={id:string;opportunity_number:string;stage_id:string;name:string;currency:string;expected_value:number|string;probability:number|string};
+type SalesOpportunity={id:string;opportunity_number:string;stage_id:string;stage_type:string;name:string;billing_customer_id:string|null;customer_name:string|null;contact_name:string|null;email:string|null;phone:string|null;currency:string;expected_value:number|string;probability:number|string;latest_quote_id:string|null};
 type PipelineData={stages:PipelineStage[];leads:SalesLead[];opportunities:SalesOpportunity[]};
 type PipelineAction={action:'create_lead';name:FormDataEntryValue|null;companyName:FormDataEntryValue|null;contactName:FormDataEntryValue|null;email:FormDataEntryValue|null;phone:FormDataEntryValue|null;source:FormDataEntryValue|null}|{action:'convert_lead';leadId:string;name:string}|{action:'move_opportunity';opportunityId:string;stageId:string};
 
@@ -24,7 +25,7 @@ export default function SalesPipelineManager(){
   </form>
   <div className="grid gap-4 lg:grid-cols-2">
    <section className="sami-surface rounded-[24px] p-5"><h3 className="font-black">Leads</h3><div className="mt-3 space-y-2">{data.leads.map(l=><div key={l.id} className="rounded-xl border border-[var(--sami-border)] p-3"><div className="flex justify-between gap-3"><div><p className="font-black">{l.name}</p><p className="text-xs text-slate-500">{l.lead_number} · {l.status} · {l.source||'Direct'}</p></div>{l.status!=='converted'?<button disabled={busy} onClick={()=>action({action:'convert_lead',leadId:l.id,name:l.name})} className="text-xs font-black">Qualify →</button>:null}</div></div>)}</div></section>
-   <section className="sami-surface rounded-[24px] p-5"><h3 className="font-black">Opportunity pipeline</h3><div className="mt-3 space-y-3">{data.opportunities.map(o=><div key={o.id} className="rounded-xl border border-[var(--sami-border)] p-3"><div className="flex items-start justify-between gap-3"><div><p className="font-black">{o.name}</p><p className="text-xs text-slate-500">{o.opportunity_number} · {o.currency} {Number(o.expected_value).toLocaleString()} · {o.probability}%</p></div><select value={o.stage_id} disabled={busy} onChange={e=>action({action:'move_opportunity',opportunityId:o.id,stageId:e.target.value})} className="rounded-lg border border-[var(--sami-border)] bg-transparent p-2 text-xs">{data.stages.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div></div>)}</div></section>
+   <section className="sami-surface rounded-[24px] p-5"><h3 className="font-black">Opportunity pipeline</h3><div className="mt-3 space-y-3">{data.opportunities.map(o=><div key={o.id} className="rounded-xl border border-[var(--sami-border)] p-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="break-words font-black">{o.name}</p><p className="text-xs text-slate-500">{o.opportunity_number} · {o.currency} {Number(o.expected_value).toLocaleString()} · {o.probability}%</p>{o.customer_name||o.contact_name?<p className="mt-1 text-xs text-slate-500">{o.customer_name||o.contact_name}{o.email?' · '+o.email:''}</p>:null}</div><select aria-label={'Stage for '+o.name} value={o.stage_id} disabled={busy} onChange={e=>action({action:'move_opportunity',opportunityId:o.id,stageId:e.target.value})} className="rounded-lg border border-[var(--sami-border)] bg-transparent p-2 text-xs">{data.stages.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div><div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-black">{o.stage_type!=='lost'?<Link href={'/apps/sales/quotes/new?opportunityId='+encodeURIComponent(o.id)} className="text-blue-600 hover:underline">Create quotation →</Link>:<span className="text-slate-400">Lost opportunity</span>}{o.latest_quote_id?<Link href={'/apps/sales/quotes/'+encodeURIComponent(o.latest_quote_id)} className="text-slate-600 hover:underline">Open latest quotation</Link>:<span className="text-slate-400">No quotation yet</span>}</div></div>)}</div></section>
   </div>
  </div>;
 }
