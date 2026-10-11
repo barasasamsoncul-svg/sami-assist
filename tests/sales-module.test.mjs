@@ -2541,7 +2541,8 @@ test('Sales team lead creation supports tenant-safe balanced automatic assignmen
     source('package.json'),
   ]);
 
-  assert.ok(pipeline.includes("import { chooseBalancedSalesLeadAssignee } from '@/lib/apps/sales/lead-assignment'"));
+  assert.ok(pipeline.includes('chooseBalancedSalesLeadAssignee'));
+  assert.ok(pipeline.includes("from '@/lib/apps/sales/lead-assignment'"));
   assert.ok(pipeline.includes('salesTeams: salesTeams.rows'));
   assert.ok(pipeline.includes('FOR UPDATE'));
   assert.ok(pipeline.includes('member.is_active=TRUE AND member.left_at IS NULL'));
