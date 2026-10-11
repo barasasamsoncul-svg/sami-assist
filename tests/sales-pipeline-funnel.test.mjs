@@ -96,6 +96,8 @@ test('Sales opportunity risk queue is company and tenant scoped and prioritizes 
   assert.match(riskService, /SALES_PERMISSIONS\.REPORT_VIEW/);
   assert.match(riskService, /if \(!canViewReports\) return \[\]/);
   assert.match(riskService, /WHERE o\.company_id = \$1/);
+  assert.match(riskService, /NULLIF\(BTRIM\(\$3::text\), ''\)/);
+  assert.match(riskService, /context\.company\.currentCompany\.currency/);
   assert.match(riskService, /tu\.tenant_id = \$2/);
   assert.match(riskService, /o\.deleted_at IS NULL/);
   assert.match(riskService, /s\.deleted_at IS NULL/);
