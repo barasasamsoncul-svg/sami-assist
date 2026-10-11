@@ -20,6 +20,9 @@ function formatMoney(value: number, currency: string) {
 export default function SalesManagementInsights({ data, currency, metrics }: Props) {
   const { summary } = data;
   const conversionRate = metrics.quoteCount > 0 ? metrics.convertedCount / metrics.quoteCount * 100 : 0;
+  const orderMonthChange = data.orderSummary.priorMonthOrderValue > 0
+    ? Math.round((data.orderSummary.currentMonthOrderValue / data.orderSummary.priorMonthOrderValue - 1) * 100) + '% vs last month'
+    : data.orderSummary.currentMonthOrderValue > 0 ? 'New booked sales this month' : 'No booked sales this month';
   const acceptanceRate = metrics.quoteCount > 0
     ? (metrics.acceptedCount + metrics.convertedCount) / metrics.quoteCount * 100
     : 0;
@@ -42,6 +45,36 @@ export default function SalesManagementInsights({ data, currency, metrics }: Pro
         <Metric label="Open quote value" value={formatMoney(summary.openQuoteValue, currency)}
           detail={`${summary.openQuoteCount.toLocaleString()} sent or viewed quotes awaiting outcome`} />
         <Metric label="This month’s quote value" value={formatMoney(summary.currentMonthQuoteValue, currency)} detail={monthChange} />
+      </section>
+
+      <section className="space-y-4">
+        <header>
+          <h2 className="text-base font-black">Sales orders &amp; revenue</h2>
+          <p className="mt-1 text-sm text-slate-500">Booked sales in your company currency, with fulfillment, invoicing and product/team breakdowns.</p>
+        </header>
+
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Metric label="Booked order value" value={formatMoney(data.orderSummary.bookedOrderValue, currency)}
+            detail={data.orderSummary.bookedOrderCount.toLocaleString() + ' confirmed or closed orders'} />
+          <Metric label="This month’s booked sales" value={formatMoney(data.orderSummary.currentMonthOrderValue, currency)}
+            detail={orderMonthChange} />
+          <Metric label="Orders needing fulfillment" value={data.orderSummary.ordersNeedingFulfillment.toLocaleString()}
+            detail="Confirmed orders not fully delivered" />
+          <Metric label="Orders not fully invoiced" value={data.orderSummary.ordersNotFullyInvoiced.toLocaleString()}
+            detail="Confirmed orders still awaiting full invoicing" />
+        </section>
+
+        <section className="grid gap-4 xl:grid-cols-3">
+          <ReportCard title="Monthly booked sales" rows={data.orderMonthly.map(item => ({
+            label: item.month, primary: item.orderCount.toLocaleString() + ' orders', secondary: formatMoney(item.amount, currency),
+          }))} />
+          <ReportCard title="Top products by sales" rows={data.topProducts.map(item => ({
+            label: item.productName, primary: item.quantity.toLocaleString() + ' units · ' + item.orderCount.toLocaleString() + ' orders', secondary: formatMoney(item.amount, currency),
+          }))} />
+          <ReportCard title="Sales team performance" rows={data.teamPerformance.map(item => ({
+            label: item.teamName, primary: item.orderCount.toLocaleString() + ' orders', secondary: formatMoney(item.amount, currency),
+          }))} />
+        </section>
       </section>
 
       <section className="sami-surface rounded-[24px] p-4 sm:p-5">
