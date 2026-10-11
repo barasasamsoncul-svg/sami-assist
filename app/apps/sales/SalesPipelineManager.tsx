@@ -1262,15 +1262,42 @@ export default function SalesPipelineManager({
           <div className="flex items-center justify-between gap-3">
             <h3 className="font-black">Opportunity pipeline</h3>
             <span className="rounded-full border border-[var(--sami-border)] px-2.5 py-1 text-[10px] font-black text-slate-500">
-              {data.opportunities.length}
+              {filteredOpportunities.length} / {data.opportunities.length}
             </span>
           </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_11rem]">
+            <label className="space-y-1 text-xs font-bold text-slate-500">
+              <span>Search opportunities</span>
+              <input
+                type="search"
+                value={opportunitySearch}
+                onChange={event => setOpportunitySearch(event.target.value)}
+                placeholder="Deal, customer, owner or stage…"
+                className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+              />
+            </label>
+            <label className="space-y-1 text-xs font-bold text-slate-500">
+              <span>Opportunity status</span>
+              <select
+                value={opportunityStatusFilter}
+                onChange={event => setOpportunityStatusFilter(event.target.value as typeof opportunityStatusFilter)}
+                className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+              >
+                <option value="all">All statuses</option>
+                <option value="open">Open</option>
+                <option value="won">Won</option>
+                <option value="lost">Lost</option>
+              </select>
+            </label>
+          </div>
           <div className="mt-3 space-y-3">
-            {data.opportunities.length === 0 ? (
+            {filteredOpportunities.length === 0 ? (
               <p className="rounded-xl border border-dashed border-[var(--sami-border)] p-4 text-sm text-slate-500">
-                No opportunities yet. Qualify a lead to create the first pipeline opportunity.
+                {data.opportunities.length === 0
+                  ? 'No opportunities yet. Qualify a lead to create the first pipeline opportunity.'
+                  : 'No opportunities match the current search and status filter.'}
               </p>
-            ) : data.opportunities.map(opportunity => (
+            ) : filteredOpportunities.map(opportunity => (
               <article key={opportunity.id} className="rounded-xl border border-[var(--sami-border)] p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -1301,11 +1328,7 @@ export default function SalesPipelineManager({
                     aria-label={'Stage for ' + opportunity.name}
                     value={opportunity.stage_id}
                     disabled={busy || !canManagePipeline}
-                    onChange={event => void action({
-                      action: 'move_opportunity',
-                      opportunityId: opportunity.id,
-                      stageId: event.target.value,
-                    })}
+                    onChange={event => changeOpportunityStage(opportunity.id, event.target.value)}
                     className="max-w-[8rem] rounded-lg border border-[var(--sami-border)] bg-transparent p-2 text-xs"
                   >
                     {data.stages.map(stage => (
