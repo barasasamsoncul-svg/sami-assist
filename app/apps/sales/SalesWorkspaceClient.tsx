@@ -81,6 +81,56 @@ type View =
   | 'settings';
 
 
+type QuoteStatusView =
+  | 'all'
+  | 'draft'
+  | 'needs_approval'
+  | 'awaiting_response'
+  | 'accepted'
+  | 'converted'
+  | 'closed_without_sale';
+
+
+const QUOTE_STATUS_VIEWS: {
+  key: QuoteStatusView;
+  label: string;
+}[] = [
+  { key: 'all', label: 'All quotations' },
+  { key: 'draft', label: 'Drafts' },
+  { key: 'needs_approval', label: 'Awaiting approval' },
+  { key: 'awaiting_response', label: 'Awaiting customer' },
+  { key: 'accepted', label: 'Accepted' },
+  { key: 'converted', label: 'Converted to order' },
+  { key: 'closed_without_sale', label: 'Closed without sale' },
+];
+
+
+function matchesQuoteStatusView(
+  quote: SalesWorkspaceData['quotes'][number],
+  view: QuoteStatusView,
+) {
+  switch (view) {
+    case 'all':
+      return true;
+    case 'draft':
+      return quote.status === 'draft';
+    case 'needs_approval':
+      return quote.approvalStatus === 'pending';
+    case 'awaiting_response':
+      return quote.status === 'sent' ||
+        quote.status === 'viewed';
+    case 'accepted':
+      return quote.status === 'accepted';
+    case 'converted':
+      return quote.status === 'converted';
+    case 'closed_without_sale':
+      return quote.status === 'rejected' ||
+        quote.status === 'expired' ||
+        quote.status === 'cancelled';
+  }
+}
+
+
 type LinkedOpportunity = {
   id: string;
   opportunity_number: string;
@@ -569,6 +619,14 @@ export default function SalesWorkspaceClient({
     );
 
   const [
+    quoteStatusView,
+    setQuoteStatusView,
+  ] =
+    useState<QuoteStatusView>(
+      'all',
+    );
+
+  const [
     composerOpen,
     setComposerOpen,
   ] =
@@ -616,38 +674,39 @@ export default function SalesWorkspaceClient({
             .trim()
             .toLowerCase();
 
-        if (
-          !query
-        ) {
-          return initialData
-            .quotes;
-        }
-
         return initialData
           .quotes
           .filter(
             quote =>
-              [
-                quote.quoteNumber,
-                quote.customerName,
-                quote.status,
-                quote.approvalStatus,
-                quote.reference ||
-                '',
-              ]
-                .some(
-                  value =>
-                    value
-                      .toLowerCase()
-                      .includes(
-                        query,
-                      ),
-                ),
+              matchesQuoteStatusView(
+                quote,
+                quoteStatusView,
+              ) &&
+              (
+                !query ||
+                [
+                  quote.quoteNumber,
+                  quote.customerName,
+                  quote.status,
+                  quote.approvalStatus,
+                  quote.reference ||
+                  '',
+                ]
+                  .some(
+                    value =>
+                      value
+                        .toLowerCase()
+                        .includes(
+                          query,
+                        ),
+                  )
+              ),
           );
       },
       [
         initialData.quotes,
         search,
+        quoteStatusView,
       ],
     );
 
@@ -1100,6 +1159,42 @@ export default function SalesWorkspaceClient({
                     )
                 }
               />
+
+              <div className="sami-surface rounded-[22px] p-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs font-black uppercase tracking-[0.08em] text-slate-500">
+                    Quotation work queues
+                  </p>
+                  <div
+                    role="group"
+                    aria-label="Quotation work queues"
+                    className="flex flex-wrap gap-2"
+                  >
+                    {QUOTE_STATUS_VIEWS.map(option => (
+                      <button
+                        key={option.key}
+                        type="button"
+                        aria-pressed={quoteStatusView === option.key}
+                        onClick={() => setQuoteStatusView(option.key)}
+                        className={[
+                          'inline-flex min-h-9 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition-colors',
+                          quoteStatusView === option.key
+                            ? 'border-blue-600 bg-blue-600 text-white'
+                            : 'border-[var(--sami-border)] hover:border-blue-500/60',
+                        ].join(' ')}
+                      >
+                        {option.label}
+                        <span className="rounded-full bg-black/5 px-1.5 py-0.5 text-[10px] dark:bg-white/10">
+                          {initialData.quotes.filter(quote => matchesQuoteStatusView(quote, option.key)).length}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <p className="mt-2 text-[11px] text-slate-500">
+                  Choose a queue to focus on a stage of the quotation process. The search above continues to narrow the selected queue.
+                </p>
+              </div>
 
               <div className="sami-surface overflow-hidden rounded-[24px]">
                 <div className="overflow-x-auto">
