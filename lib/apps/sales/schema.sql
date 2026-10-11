@@ -1062,6 +1062,28 @@ CREATE INDEX IF NOT EXISTS idx_sales_lead_activities_due
   CREATE INDEX IF NOT EXISTS idx_sales_opportunity_stage_history
     ON public.sales_opportunity_stage_history(opportunity_id, created_at DESC);
 
+  CREATE TABLE IF NOT EXISTS public.sales_opportunity_activities (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL,
+    opportunity_id UUID NOT NULL REFERENCES public.sales_opportunities(id) ON DELETE CASCADE,
+    activity_type VARCHAR(20) NOT NULL CHECK (activity_type IN ('call','email','meeting','task','note')),
+    subject VARCHAR(255) NOT NULL,
+    description TEXT,
+    due_date DATE,
+    status VARCHAR(20) NOT NULL DEFAULT 'planned' CHECK (status IN ('planned','completed','cancelled')),
+    assigned_user_id UUID,
+    completed_at TIMESTAMPTZ,
+    created_by UUID,
+    updated_by UUID,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_sales_opportunity_activities_due
+    ON public.sales_opportunity_activities(company_id, opportunity_id, status, due_date)
+    WHERE deleted_at IS NULL;
+
   ALTER TABLE public.sales_sequences DROP CONSTRAINT IF EXISTS sales_sequences_document_type_check;
   ALTER TABLE public.sales_sequences ADD CONSTRAINT sales_sequences_document_type_check
     CHECK (document_type IN ('quote','order','shipment','return','lead','opportunity'));
