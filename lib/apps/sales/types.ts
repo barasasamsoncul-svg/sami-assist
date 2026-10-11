@@ -49,6 +49,21 @@ export type SalesSavedOrderView = {
 };
 
 
+export type SalesPipelineViewType = 'leads' | 'opportunities';
+
+export type SalesPipelineStatusView =
+  | 'all' | 'new' | 'contacted' | 'qualified' | 'disqualified' | 'converted'
+  | 'open' | 'won' | 'lost';
+
+export type SalesSavedPipelineView = {
+  id: string;
+  name: string;
+  viewType: SalesPipelineViewType;
+  statusView: SalesPipelineStatusView;
+  searchQuery: string;
+  createdAt: string;
+};
+
 export type SalesQuoteStatus =
   | 'draft'
   | 'sent'
