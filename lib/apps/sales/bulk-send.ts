@@ -54,6 +54,7 @@ export async function bulkSendSalesQuotes(
       await sendSalesQuote({
         quoteId,
         channels: input.channels,
+        requireDraft: true,
       });
 
       results.push({
