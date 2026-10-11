@@ -117,6 +117,8 @@ test('Sales Priority 7 links CRM opportunities to quotations without crossing co
     commands,
     pipeline,
     route,
+    salesRoute,
+    salesContext,
   ] = await Promise.all([
     source('lib/apps/sales/migrations/3.4.4-to-3.4.5.ts'),
     source('lib/apps/sales/schema.sql'),
@@ -129,6 +131,8 @@ test('Sales Priority 7 links CRM opportunities to quotations without crossing co
     source('lib/apps/sales/commands.ts'),
     source('lib/apps/sales/pipeline.ts'),
     source('app/apps/sales/opportunities/page.tsx'),
+    source('app/api/apps/sales/route.ts'),
+    source('lib/apps/sales/context.ts'),
   ]);
 
   assert.match(migration, /sales-3\.4\.4-to-3\.4\.5/);
@@ -152,8 +156,15 @@ test('Sales Priority 7 links CRM opportunities to quotations without crossing co
 
   assert.match(pipeline, /o\.billing_customer_id/);
   assert.match(commands, /OPPORTUNITY_NOT_FOUND/);
+  assert.match(commands, /requireUuid\\(rawOpportunityId, 'Opportunity'\\)/);
   assert.match(commands, /stage_type === 'lost'/);
   assert.match(commands, /opportunity_id = \$3/);
   assert.match(commands, /latest_quote_id = \$3/);
   assert.match(commands, /opportunity\.company_id = \$2/);
+  assert.match(opportunityUi, /canManagePipeline/);
+  assert.match(workspaceUi, /canManagePipeline=\\{initialData\\.capabilities\\.canManagePipeline\\}/);
+  assert.match(salesContext, /'OPPORTUNITY_NOT_FOUND'/);
+  assert.match(salesContext, /'INVALID_OPPORTUNITY_STAGE'/);
+  assert.match(salesRoute, /'OPPORTUNITY_NOT_FOUND'[\\s\\S]*?404/);
+  assert.match(salesRoute, /'INVALID_OPPORTUNITY_STAGE'[\\s\\S]*?409);
 });
