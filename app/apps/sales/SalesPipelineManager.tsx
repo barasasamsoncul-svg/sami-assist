@@ -467,12 +467,6 @@ export default function SalesPipelineManager({
                         {data.salespeople.find(person => person.id === candidate.salesperson_user_id)?.name || 'Unassigned'}
                       </p>
                     </div>
-                    <Link
-                      href="/apps/sales"
-                      className="text-xs font-black text-blue-600 hover:underline"
-                    >
-                      Open Sales
-                    </Link>
                   </div>
                 </article>
               ))}
