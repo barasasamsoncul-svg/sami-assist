@@ -1481,7 +1481,7 @@ export async function createSalesQuote(
 
     const currency =
       cleanText(
-        input.currency ||
+        quoteInput.currency ||
         customer.currency ||
         settings.default_currency ||
         context.company
@@ -1653,7 +1653,7 @@ export async function createSalesQuote(
           validUntil,
           currency,
           nullableText(
-            input.reference,
+            quoteInput.reference,
             255,
           ),
           approvalStatus,
