@@ -57,3 +57,23 @@ test('Sales 3.4.3 migration preserves typed-signature consent evidence and is re
   assert.ok(registry.indexOf('SALES_3_4_1_TO_3_4_2,') < registry.indexOf('SALES_3_4_2_TO_3_4_3,'));
   assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.4'/s);
 });
+
+test('Sales management insights are tenant-scoped, permission-gated and actionable', async () => {
+  const [insights, page, ui] = await Promise.all([
+    source('lib/apps/sales/management-insights.ts'),
+    source('app/apps/sales/SalesSectionPage.tsx'),
+    source('app/apps/sales/SalesManagementInsights.tsx'),
+  ]);
+
+  assert.match(insights, /hasSalesPermission/);
+  assert.match(insights, /SALES_PERMISSIONS\.REPORT_VIEW/);
+  assert.match(insights, /WHERE company_id = \$1 AND deleted_at IS NULL/);
+  assert.match(insights, /CURRENT_DATE - 7/);
+  assert.match(insights, /LIMIT 10/);
+  assert.match(page, /view === 'reports' && data\.capabilities\.canViewReports/);
+  assert.match(page, /<SalesManagementInsights/);
+  assert.match(ui, /Quote-to-order conversion/);
+  assert.match(ui, /Quotes needing attention/);
+  assert.match(ui, /data\.followUpQueue\.map/);
+  assert.match(ui, /encodeURIComponent\(item\.id\)/);
+});
