@@ -46,6 +46,19 @@ type SalesLeadActivity = {
   created_at: string;
 };
 
+type OpportunityStageHistoryEntry = {
+  id: string;
+  opportunity_id: string;
+  from_stage_id: string | null;
+  to_stage_id: string;
+  from_stage_name: string | null;
+  to_stage_name: string;
+  probability: number | string;
+  reason: string | null;
+  changed_by: string | null;
+  created_at: string;
+};
+
 type SalesOpportunity = {
   id: string;
   opportunity_number: string;
@@ -72,6 +85,7 @@ type PipelineData = {
   leads: SalesLead[];
   opportunities: SalesOpportunity[];
   activities: SalesLeadActivity[];
+  opportunityHistory: OpportunityStageHistoryEntry[];
   salespeople: Salesperson[];
 };
 
@@ -183,6 +197,19 @@ function formatActivityDate(value: string | null) {
     : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+function formatHistoryTimestamp(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleString(undefined, {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
+}
+
 
 export default function SalesPipelineManager({
   canCreateQuote,
@@ -194,7 +221,7 @@ export default function SalesPipelineManager({
   defaultCurrency: string;
 }) {
   const [data, setData] = useState<PipelineData>({
-    stages: [], leads: [], opportunities: [], activities: [], salespeople: [],
+    stages: [], leads: [], opportunities: [], activities: [], opportunityHistory: [], salespeople: [],
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -215,6 +242,7 @@ export default function SalesPipelineManager({
     expectedCloseDate: '', salespersonUserId: '', notes: '',
   });
   const [pendingOpportunityStageChange, setPendingOpportunityStageChange] = useState<PendingOpportunityStageChange | null>(null);
+  const [expandedOpportunityHistoryId, setExpandedOpportunityHistoryId] = useState<string | null>(null);
   const [opportunityLostReason, setOpportunityLostReason] = useState('');
   const [leadSearch, setLeadSearch] = useState('');
   const [leadStatusFilter, setLeadStatusFilter] = useState('all');
@@ -1391,6 +1419,58 @@ export default function SalesPipelineManager({
                     <span className="text-slate-400">No quotation yet</span>
                   )}
                 </div>
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-black">
+                  <button
+                    type="button"
+                    aria-expanded={expandedOpportunityHistoryId === opportunity.id}
+                    onClick={() => setExpandedOpportunityHistoryId(current => current === opportunity.id ? null : opportunity.id)}
+                    className="text-slate-600 hover:underline dark:text-slate-300"
+                  >
+                    {expandedOpportunityHistoryId === opportunity.id ? 'Hide stage history' : 'Stage history'}
+                    {' · '}
+                    {data.opportunityHistory.filter(entry => entry.opportunity_id === opportunity.id).length}
+                  </button>
+                </div>
+                {expandedOpportunityHistoryId === opportunity.id ? (
+                  <section className="mt-3 rounded-xl border border-[var(--sami-border)] bg-slate-500/[0.03] p-3">
+                    <h4 className="text-xs font-black">Opportunity stage history</h4>
+                    {data.opportunityHistory.filter(entry => entry.opportunity_id === opportunity.id).length === 0 ? (
+                      <p className="mt-2 text-xs text-slate-500">No stage transitions have been recorded yet.</p>
+                    ) : (
+                      <>
+                        <div className="mt-3 space-y-3">
+                          {data.opportunityHistory
+                            .filter(entry => entry.opportunity_id === opportunity.id)
+                            .slice(0, 10)
+                            .map(entry => (
+                              <article key={entry.id} className="relative border-l-2 border-[var(--sami-border)] pl-3">
+                                <p className="text-xs font-black">
+                                  {entry.from_stage_name || 'Opportunity created'}
+                                  {' → '}
+                                  {entry.to_stage_name}
+                                </p>
+                                <p className="mt-1 text-[10px] text-slate-500">
+                                  {formatHistoryTimestamp(entry.created_at)}
+                                  {' · Probability '}
+                                  {Number(entry.probability).toFixed(0)}%
+                                  {' · '}
+                                  {data.salespeople.find(person => person.id === entry.changed_by)?.name || 'Former or unavailable user'}
+                                </p>
+                                {entry.reason ? (
+                                  <p className="mt-1 whitespace-pre-wrap break-words text-xs text-slate-600 dark:text-slate-300">
+                                    Reason: {entry.reason}
+                                  </p>
+                                ) : null}
+                              </article>
+                            ))}
+                        </div>
+                        {data.opportunityHistory.filter(entry => entry.opportunity_id === opportunity.id).length > 10 ? (
+                          <p className="mt-3 text-[10px] text-slate-500">Showing the latest 10 transitions.</p>
+                        ) : null}
+                      </>
+                    )}
+                  </section>
+                ) : null}
               </article>
             ))}
           </div>
