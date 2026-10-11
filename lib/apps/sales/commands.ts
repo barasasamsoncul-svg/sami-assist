@@ -2468,7 +2468,13 @@ export async function duplicateSalesQuote(
 
   return createSalesQuote({
     opportunityId:
-      row.opportunity_id || undefined,
+      crossPermission(
+        context,
+        SALES_PERMISSIONS.PIPELINE_VIEW,
+        SALES_PERMISSIONS.PIPELINE_MANAGE,
+      )
+        ? row.opportunity_id || undefined
+        : undefined,
     billingCustomerId:
       row.billing_customer_id,
     templateId:
