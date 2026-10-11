@@ -76,6 +76,79 @@ export default function SalesManagementInsights({ data, currency, metrics }: Pro
       </section>
 
       <section className="sami-surface rounded-[24px] p-4 sm:p-5">
+        <header>
+          <h2 className="text-base font-black">Target attainment</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Actual order activity against active company, team and salesperson targets for each target period.
+          </p>
+        </header>
+        {data.targetAttainment.length === 0 ? (
+          <p className="mt-4 rounded-xl border border-dashed border-[var(--sami-border)] p-5 text-center text-sm text-slate-500">
+            No active sales targets yet. Configure targets in Sales Organization to track attainment here.
+          </p>
+        ) : (
+          <div className="mt-3 divide-y divide-[var(--sami-border)]">
+            {data.targetAttainment.map(target => {
+              const metricLabel = target.metric === 'orders' ? 'Orders' : target.metric === 'margin' ? 'Margin' : 'Revenue';
+              const percentage = target.targetValue > 0 ? target.actualValue / target.targetValue * 100 : null;
+              const cappedPercentage = percentage === null ? 0 : Math.max(0, Math.min(100, percentage));
+              const ended = new Date(target.periodEnd + 'T23:59:59').getTime() < Date.now();
+              const stateLabel = percentage === null
+                ? 'Zero target'
+                : percentage >= 100
+                  ? 'Target achieved'
+                  : ended ? 'Period ended below target' : 'In progress';
+              const formatTargetValue = (value: number) => target.metric === 'orders'
+                ? value.toLocaleString()
+                : formatMoney(value, currency);
+              return (
+                <article key={target.id} className="py-4 first:pt-3 last:pb-1">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-sm font-black">{target.scopeName} · {metricLabel}</h3>
+                        <span className={percentage !== null && percentage >= 100
+                          ? 'rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300'
+                          : ended && percentage !== null
+                            ? 'rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300'
+                            : 'rounded-full border border-[var(--sami-border)] px-2 py-0.5 text-[10px] font-bold text-slate-500'}>
+                          {stateLabel}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {target.scope === 'company' ? 'Company target' : target.scope === 'team' ? 'Team target' : 'Individual target'}
+                        {' · '}{target.periodStart} – {target.periodEnd}
+                      </p>
+                      {target.notes ? <p className="mt-1 break-words text-xs text-slate-500">{target.notes}</p> : null}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-black tabular-nums">
+                        {percentage === null ? 'No target value' : Math.round(percentage) + '% of target'}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500 tabular-nums">
+                        {formatTargetValue(target.actualValue)} actual / {formatTargetValue(target.targetValue)} target
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-500/10"
+                    role="progressbar"
+                    aria-label={target.scopeName + ' ' + metricLabel + ' target attainment'}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(cappedPercentage)}>
+                    <div className={percentage !== null && percentage >= 100
+                      ? 'h-full rounded-full bg-emerald-600 transition-[width]'
+                      : 'h-full rounded-full bg-blue-600 transition-[width]'}
+                      style={{ width: cappedPercentage + '%' }} />
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <section className="sami-surface rounded-[24px] p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-sm font-black">Quotes needing attention</h2>
