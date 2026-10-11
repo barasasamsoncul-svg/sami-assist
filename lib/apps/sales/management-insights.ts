@@ -42,6 +42,17 @@ export type SalesManagementInsightsData = {
   orderMonthly: Array<{ month: string; orderCount: number; amount: number }>;
   topProducts: Array<{ productName: string; sku: string | null; quantity: number; orderCount: number; amount: number }>;
   teamPerformance: Array<{ teamName: string; orderCount: number; amount: number }>;
+  targetAttainment: Array<{
+    id: string;
+    scope: 'company' | 'team' | 'user';
+    scopeName: string;
+    metric: 'revenue' | 'margin' | 'orders';
+    periodStart: string;
+    periodEnd: string;
+    targetValue: number;
+    actualValue: number;
+    notes: string | null;
+  }>;
 };
 
 const EMPTY_REPORT: SalesManagementInsightsData = {
@@ -71,6 +82,7 @@ const EMPTY_REPORT: SalesManagementInsightsData = {
   orderMonthly: [],
   topProducts: [],
   teamPerformance: [],
+  targetAttainment: [],
 };
 
 export async function getSalesManagementInsights(): Promise<SalesManagementInsightsData> {
@@ -94,6 +106,7 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
     orderMonthlyResult,
     productsResult,
     teamsResult,
+    targetAttainmentResult,
   ] = await Promise.all([
     context.pool.query(`
       SELECT
@@ -250,6 +263,63 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
       ORDER BY amount DESC, team_name
       LIMIT 10
     `, [companyId]),
+    context.pool.query(`
+      SELECT
+        target.id,
+        target.target_scope,
+        target.metric,
+        target.period_start,
+        target.period_end,
+        target.target_value,
+        target.notes,
+        CASE
+          WHEN target.target_scope = 'company' THEN 'Company'
+          WHEN target.target_scope = 'team' THEN COALESCE(NULLIF(BTRIM(team.name), ''), 'Unavailable team')
+          ELSE COALESCE(
+            NULLIF(BTRIM(COALESCE(u.full_name, '')), ''),
+            NULLIF(BTRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''),
+            u.email,
+            'Unavailable salesperson'
+          )
+        END AS scope_name,
+        COALESCE(achievement.actual_value, 0) AS actual_value
+      FROM sales_targets target
+      LEFT JOIN sales_teams team
+        ON team.id = target.team_id
+        AND team.company_id = target.company_id
+      LEFT JOIN tenant_users tu
+        ON tu.user_id = target.user_id
+        AND tu.tenant_id = $2
+        AND tu.deleted_at IS NULL
+      LEFT JOIN users u
+        ON u.id = tu.user_id
+        AND u.deleted_at IS NULL
+      LEFT JOIN LATERAL (
+        SELECT
+          CASE
+            WHEN target.metric = 'orders' THEN COUNT(*)::numeric
+            WHEN target.metric = 'margin' THEN COALESCE(SUM(sales_order.margin_amount), 0)
+            ELSE COALESCE(SUM(sales_order.subtotal - sales_order.discount_total), 0)
+          END AS actual_value
+        FROM sales_orders_v2 sales_order
+        WHERE sales_order.company_id = target.company_id
+          AND sales_order.deleted_at IS NULL
+          AND sales_order.status <> 'cancelled'
+          AND sales_order.order_date BETWEEN target.period_start AND target.period_end
+          AND (
+            target.target_scope = 'company'
+            OR (target.target_scope = 'team' AND sales_order.sales_team_id = target.team_id)
+            OR (target.target_scope = 'user' AND sales_order.salesperson_user_id = target.user_id)
+          )
+      ) achievement ON TRUE
+      WHERE target.company_id = $1
+        AND target.deleted_at IS NULL
+        AND target.is_active = TRUE
+      ORDER BY target.period_start DESC, target.period_end DESC,
+               CASE target.target_scope WHEN 'company' THEN 0 WHEN 'team' THEN 1 ELSE 2 END,
+               LOWER(target.metric), target.id
+      LIMIT 100
+    `, [companyId, context.tenantId]),
   ]);
 
   const summaryRow = summaryResult.rows[0] || {};
@@ -311,6 +381,17 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
       teamName: String(row.team_name || 'Unassigned'),
       orderCount: Number(row.order_count || 0),
       amount: Number(row.amount || 0),
+    })),
+    targetAttainment: targetAttainmentResult.rows.map(row => ({
+      id: String(row.id),
+      scope: String(row.target_scope) as 'company' | 'team' | 'user',
+      scopeName: String(row.scope_name || 'Unavailable target scope'),
+      metric: String(row.metric) as 'revenue' | 'margin' | 'orders',
+      periodStart: String(row.period_start).slice(0, 10),
+      periodEnd: String(row.period_end).slice(0, 10),
+      targetValue: Number(row.target_value || 0),
+      actualValue: Number(row.actual_value || 0),
+      notes: row.notes ? String(row.notes) : null,
     })),
   };
 }
