@@ -9,10 +9,12 @@ import SalesOpportunityFunnel from '@/app/apps/sales/SalesOpportunityFunnel';
 import SalesPipelineOutcomes from '@/app/apps/sales/SalesPipelineOutcomes';
 import SalesPipelineVelocity from '@/app/apps/sales/SalesPipelineVelocity';
 import SalesActivityExecution from '@/app/apps/sales/SalesActivityExecution';
+import SalesRepresentativePerformance from '@/app/apps/sales/SalesRepresentativePerformance';
 import { getSalesOpportunityFunnelData, getSalesOpportunityRiskQueue } from '@/lib/apps/sales/pipeline-funnel';
 import { getSalesPipelineOutcomeReport } from '@/lib/apps/sales/pipeline-outcomes';
 import { getSalesPipelineVelocityReport } from '@/lib/apps/sales/pipeline-velocity';
 import { getSalesActivityExecutionReport } from '@/lib/apps/sales/activity-execution';
+import { getSalesRepresentativePerformance } from '@/lib/apps/sales/representative-performance';
 import { getSalesManagementInsights } from '@/lib/apps/sales/management-insights';
 
 import {
@@ -201,6 +203,7 @@ export default async function SalesSectionPage({
         getSalesPipelineOutcomeReport(),
         getSalesPipelineVelocityReport(),
         getSalesActivityExecutionReport(),
+        getSalesRepresentativePerformance(),
       ])
     : null;
   const managementInsights = reportData?.[0] ?? null;
@@ -209,6 +212,7 @@ export default async function SalesSectionPage({
   const pipelineOutcomeReport = reportData?.[3] ?? null;
   const pipelineVelocityReport = reportData?.[4] ?? null;
   const activityExecutionReport = reportData?.[5] ?? null;
+  const representativePerformance = reportData?.[6] ?? null;
 
   return (
     <SalesModuleShell
@@ -252,7 +256,7 @@ export default async function SalesSectionPage({
         data.company.name
       }
     >
-      {managementInsights && opportunityFunnel && opportunityRiskQueue && pipelineOutcomeReport && pipelineVelocityReport && activityExecutionReport ? (
+      {managementInsights && opportunityFunnel && opportunityRiskQueue && pipelineOutcomeReport && pipelineVelocityReport && activityExecutionReport && representativePerformance ? (
         <>
           <SalesManagementInsights
             data={managementInsights}
@@ -270,6 +274,7 @@ export default async function SalesSectionPage({
           />
           <SalesPipelineVelocity transitions={pipelineVelocityReport.transitions} />
           <SalesActivityExecution report={activityExecutionReport} />
+          <SalesRepresentativePerformance rows={representativePerformance.rows} />
         </>
       ) : (
         <SalesWorkspaceClient
