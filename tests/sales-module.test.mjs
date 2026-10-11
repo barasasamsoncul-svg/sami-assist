@@ -2700,3 +2700,32 @@ test('Sales bulk lead status actions are bounded, transactional and create activ
   assert.ok(manager.includes('Reopen selected'));
   assert.ok(manager.includes('recorded the reason in the activity history'));
 });
+
+test('Sales bulk follow-up scheduling is bounded, tenant-scoped and transactional', async () => {
+  const [pipeline, manager, route, service] = await Promise.all([
+    source('lib/apps/sales/pipeline.ts'),
+    source('app/apps/sales/SalesPipelineManager.tsx'),
+    source('app/api/apps/sales/route.ts'),
+    source('lib/apps/sales/service.ts'),
+  ]);
+
+  assert.ok(pipeline.includes('export async function bulkCreateSalesLeadActivities'));
+  assert.ok(pipeline.includes('leadIds.length > 100'));
+  assert.ok(pipeline.includes('Choose a valid follow-up activity type.'));
+  assert.ok(pipeline.includes('Activity subject is required.'));
+  assert.ok(pipeline.includes('One or more selected leads were not found in this workspace.'));
+  assert.ok(pipeline.includes('No selected leads are active and eligible for follow-up scheduling.'));
+  assert.ok(pipeline.includes('INSERT INTO sales_lead_activities'));
+  assert.ok(pipeline.includes("await client.query('BEGIN')"));
+  assert.ok(pipeline.includes("await client.query('COMMIT')"));
+  assert.ok(pipeline.includes("await client.query('ROLLBACK')"));
+  assert.ok(pipeline.includes('createdCount: createdIds.length'));
+  assert.ok(pipeline.includes('skippedCount: leadIds.length - eligible.length'));
+
+  assert.ok(service.includes('bulkCreateSalesLeadActivities'));
+  assert.ok(route.includes('bulk_create_lead_activities'));
+  assert.ok(manager.includes("action: 'bulk_create_lead_activities'"));
+  assert.ok(manager.includes('Bulk follow-up scheduling'));
+  assert.ok(manager.includes('Schedule for selected leads'));
+  assert.ok(manager.includes('Converted and disqualified leads are skipped.'));
+});
