@@ -153,11 +153,13 @@ export async function getSalesPipelineData() {
       [context.companyId],
     ),
     context.pool.query(
-      `SELECT id,lead_id,activity_type,subject,description,due_date,status,assigned_user_id,
-              completed_at,created_at
-       FROM sales_lead_activities
-       WHERE company_id=$1 AND deleted_at IS NULL
-       ORDER BY due_date NULLS LAST,created_at DESC
+      `SELECT a.id,a.lead_id,a.activity_type,a.subject,a.description,a.due_date,a.status,a.assigned_user_id,
+              a.completed_at,a.created_at,
+              l.name AS lead_name,l.lead_number,l.company_name AS lead_company_name,l.contact_name AS lead_contact_name
+       FROM sales_lead_activities a
+       INNER JOIN sales_leads l ON l.id=a.lead_id AND l.company_id=a.company_id AND l.deleted_at IS NULL
+       WHERE a.company_id=$1 AND a.deleted_at IS NULL
+       ORDER BY CASE WHEN a.status='planned' THEN 0 ELSE 1 END,a.due_date NULLS LAST,a.created_at DESC
        LIMIT 1000`,
       [context.companyId],
     ),
