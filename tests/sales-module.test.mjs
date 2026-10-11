@@ -2107,12 +2107,12 @@ test('Sales order saved views persist per-company and per-user queue filters thr
   assert.match(registry, /SALES_3_4_8_TO_3_4_9/);
   assert.ok(registry.indexOf('SALES_3_4_7_TO_3_4_8,') < registry.indexOf('SALES_3_4_8_TO_3_4_9,'));
   assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.9'/s);
-  assert.match(types, /export type SalesOrderStatusView[\\s\\S]*'awaiting_fulfillment'[\\s\\S]*'invoiced'/);
+  assert.match(types, /export type SalesOrderStatusView[\s\S]*'awaiting_fulfillment'[\s\S]*'invoiced'/);
   assert.match(types, /export type SalesSavedOrderView/);
-  assert.match(schema, /sales_order_saved_views[\\s\\S]*'awaiting_fulfillment'[\\s\\S]*'invoiced'/);
-  assert.match(savedViews, /requireSalesContext\\(SALES_PERMISSIONS\\.ORDER_VIEW\\)/);
-  assert.match(savedViews, /WHERE company_id = \\$1[\\s\\S]*AND user_id = \\$2/);
-  assert.match(savedViews, /UPDATE sales_order_saved_views[\\s\\S]*deleted_at = NOW\\(\\)/);
+  assert.match(schema, /sales_order_saved_views[\s\S]*'awaiting_fulfillment'[\s\S]*'invoiced'/);
+  assert.match(savedViews, /requireSalesContext\(SALES_PERMISSIONS\.ORDER_VIEW\)/);
+  assert.match(savedViews, /WHERE company_id = \$1[\s\S]*AND user_id = \$2/);
+  assert.match(savedViews, /UPDATE sales_order_saved_views[\s\S]*deleted_at = NOW\(\)/);
   assert.ok(savedViews.includes('getSalesSavedOrderViews'));
   assert.ok(savedViews.includes('saveSalesSavedOrderView'));
   assert.ok(savedViews.includes('deleteSalesSavedOrderView'));
