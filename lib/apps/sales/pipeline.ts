@@ -12,13 +12,19 @@ const stageSeed = [
 ] as const;
 
 async function ensurePipelineStages(pool: Awaited<ReturnType<typeof requireSalesContext>>['pool'], companyId: string, userId: string) {
-  const existing = await pool.query(`SELECT COUNT(*)::int AS count FROM sales_pipeline_stages WHERE company_id = $1`, [companyId]);
+  const existing = await pool.query(\`SELECT COUNT(*)::int AS count FROM sales_pipeline_stages WHERE company_id = $1\`, [companyId]);
   if (Number(existing.rows[0]?.count || 0) === 0) {
     for (const [name, sequence, probability] of stageSeed) {
-      await pool.query(`INSERT INTO sales_pipeline_stages (company_id,name,sequence,probability,stage_type,created_by,updated_by) VALUES ($1,$2,$3,$4,'open',$5,$5) ON CONFLICT DO NOTHING`, [companyId,name,sequence,probability,userId]);
+      await pool.query(\`INSERT INTO sales_pipeline_stages (company_id,name,sequence,probability,stage_type,created_by,updated_by) VALUES ($1,$2,$3,$4,'open',$5,$5) ON CONFLICT DO NOTHING\`, [companyId,name,sequence,probability,userId]);
     }
-    await pool.query(`INSERT INTO sales_pipeline_stages (company_id,name,sequence,probability,stage_type,created_by,updated_by) VALUES ($1,'Won',90,100,'won',$2,$2),($1,'Lost',100,0,'lost',$2,$2) ON CONFLICT DO NOTHING`, [companyId,userId]);
   }
+  // Terminal stages must exist even when the company already has configured open stages.
+  await pool.query(
+    \`INSERT INTO sales_pipeline_stages (company_id,name,sequence,probability,stage_type,created_by,updated_by)
+     VALUES ($1,'Won',90,100,'won',$2,$2),($1,'Lost',100,0,'lost',$2,$2)
+     ON CONFLICT DO NOTHING\`,
+    [companyId, userId],
+  );
 }
 
 async function nextPipelineNumber(client: PoolClient, companyId:string, userId:string, type:'lead'|'opportunity', prefix:string) {
