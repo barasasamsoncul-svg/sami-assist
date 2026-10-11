@@ -397,6 +397,7 @@ export default function SalesPipelineManager({
       ) : null}
 
       {canManagePipeline ? (
+        <>
         <form
           ref={createLeadFormRef}
           className="sami-surface grid gap-3 rounded-[24px] p-5 md:grid-cols-2"
@@ -491,6 +492,7 @@ export default function SalesPipelineManager({
             </div>
           </section>
         ) : null}
+        </>
       ) : (
         <p className="rounded-xl border border-[var(--sami-border)] p-4 text-sm text-slate-500">
           You have read-only access to leads and opportunities. Pipeline changes require management permission.
