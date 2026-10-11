@@ -4,6 +4,8 @@ import {
 
 import SalesModuleShell from '@/app/apps/sales/SalesModuleShell';
 import SalesWorkspaceClient from '@/app/apps/sales/SalesWorkspaceClient';
+import SalesManagementInsights from '@/app/apps/sales/SalesManagementInsights';
+import { getSalesManagementInsights } from '@/lib/apps/sales/management-insights';
 
 import {
   getAccountContextForUser,
@@ -182,6 +184,11 @@ export default async function SalesSectionPage({
     notFound();
   }
 
+  const managementInsights =
+    view === 'reports' && data.capabilities.canViewReports
+      ? await getSalesManagementInsights()
+      : null;
+
   return (
     <SalesModuleShell
       user={
@@ -224,17 +231,23 @@ export default async function SalesSectionPage({
         data.company.name
       }
     >
-      <SalesWorkspaceClient
-        initialData={
-          data
-        }
-        initialView={
-          view
-        }
-        userId={
-          session.user.id
-        }
-      />
+      {managementInsights ? (
+        <SalesManagementInsights
+          data={managementInsights}
+          currency={data.company.currency}
+          metrics={{
+            quoteCount: data.metrics.quoteCount,
+            acceptedCount: data.metrics.acceptedCount,
+            convertedCount: data.metrics.convertedCount,
+          }}
+        />
+      ) : (
+        <SalesWorkspaceClient
+          initialData={data}
+          initialView={view}
+          userId={session.user.id}
+        />
+      )}
     </SalesModuleShell>
   );
 }
