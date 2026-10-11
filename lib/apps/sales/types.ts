@@ -55,11 +55,14 @@ export type SalesPipelineStatusView =
   | 'all' | 'new' | 'contacted' | 'qualified' | 'disqualified' | 'converted'
   | 'open' | 'won' | 'lost';
 
+export type SalesLeadScoreView = 'all' | 'high' | 'medium' | 'low';
+
 export type SalesSavedPipelineView = {
   id: string;
   name: string;
   viewType: SalesPipelineViewType;
   statusView: SalesPipelineStatusView;
+  scoreView: SalesLeadScoreView;
   searchQuery: string;
   createdAt: string;
 };
