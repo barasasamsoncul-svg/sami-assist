@@ -1555,6 +1555,62 @@ export default function SalesPipelineManager({
               <p className="mt-3 text-xs text-slate-500">No saved lead views yet.</p>
             )}
           </div>
+          {canManagePipeline ? (
+            <section className="mt-3 space-y-3 rounded-xl border border-[var(--sami-border)] p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-sm font-black">Bulk lead reassignment</h4>
+                  <p className="mt-1 text-[11px] text-slate-500">Select up to 100 unconverted leads, choose a team and salesperson, and record one handover reason for every changed lead.</p>
+                </div>
+                <span className="rounded-full border border-[var(--sami-border)] px-2.5 py-1 text-[10px] font-black text-slate-500">{selectedLeadIds.length} / 100 selected</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" disabled={busy || filteredLeads.every(lead => lead.status === 'converted')} onClick={selectFilteredLeads} className="h-9 rounded-lg border border-[var(--sami-border)] px-3 text-xs font-black disabled:opacity-50">Select up to 100 filtered</button>
+                <button type="button" disabled={busy || selectedLeadIds.length === 0} onClick={() => { setSelectedLeadIds([]); setBulkLeadMessage(''); }} className="h-9 rounded-lg border border-[var(--sami-border)] px-3 text-xs font-black disabled:opacity-50">Clear selection</button>
+              </div>
+              {selectedLeadIds.length > 0 ? (
+                <form onSubmit={event => {
+                  event.preventDefault();
+                  setBulkLeadMessage('');
+                  void action({
+                    action: 'bulk_reassign_leads',
+                    leadIds: selectedLeadIds,
+                    salesTeamId: bulkLeadTeamId,
+                    salespersonUserId: bulkLeadSalespersonUserId || null,
+                    reason: bulkLeadReason.trim(),
+                  });
+                }} className="grid gap-3 rounded-xl bg-slate-500/[0.04] p-3 sm:grid-cols-2">
+                  <label className="space-y-1 text-xs font-bold text-slate-500">
+                    <span>Sales team *</span>
+                    <select required value={bulkLeadTeamId} onChange={event => setBulkLeadTeamId(event.target.value)} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100">
+                      <option value="">Choose a team</option>
+                      {data.salesTeams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="space-y-1 text-xs font-bold text-slate-500">
+                    <span>Assigned salesperson</span>
+                    <select value={bulkLeadSalespersonUserId} onChange={event => setBulkLeadSalespersonUserId(event.target.value)} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100">
+                      <option value="">Leave all selected leads unassigned</option>
+                      {data.salespeople.map(person => <option key={person.id} value={person.id}>{person.name} · {person.email}</option>)}
+                    </select>
+                  </label>
+                  <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2">
+                    <span>Handover reason *</span>
+                    <input required maxLength={1000} value={bulkLeadReason} onChange={event => setBulkLeadReason(event.target.value)} placeholder="e.g. team realignment, workload balancing, territory handover" className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+                    <button type="submit" disabled={busy || !bulkLeadTeamId || !bulkLeadReason.trim()} className="h-10 rounded-lg bg-blue-600 px-3.5 text-xs font-black text-white disabled:opacity-50">
+                      {busy ? 'Reassigning…' : 'Reassign selected leads'}
+                    </button>
+                    <p className="text-[11px] text-slate-500">Each changed lead gets its own audit entry.</p>
+                  </div>
+                </form>
+              ) : (
+                <p className="text-xs text-slate-500">Choose leads below or select the current filtered set to begin.</p>
+              )}
+              {bulkLeadMessage ? <p role="status" className="text-xs font-bold text-emerald-700 dark:text-emerald-300">{bulkLeadMessage}</p> : null}
+            </section>
+          ) : null}
           <div className="mt-3 space-y-2">
             {filteredLeads.length === 0 ? (
               <p className="rounded-xl border border-dashed border-[var(--sami-border)] p-4 text-sm text-slate-500">
@@ -1564,7 +1620,19 @@ export default function SalesPipelineManager({
               <article key={lead.id} className="rounded-xl border border-[var(--sami-border)] p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="break-words font-black">{lead.name}</p>
+                    <div className="flex items-center gap-2">
+                      {canManagePipeline && lead.status !== 'converted' ? (
+                        <input
+                          type="checkbox"
+                          checked={selectedLeadIds.includes(lead.id)}
+                          disabled={busy || (selectedLeadIds.length >= 100 && !selectedLeadIds.includes(lead.id))}
+                          onChange={event => toggleLeadSelection(lead.id, event.target.checked)}
+                          aria-label={'Select lead ' + lead.name}
+                          className="h-4 w-4 shrink-0 accent-blue-600"
+                        />
+                      ) : null}
+                      <p className="break-words font-black">{lead.name}</p>
+                    </div>
                     <p className="mt-1 text-xs text-slate-500">
                       {lead.lead_number} · {lead.status} · {lead.source || 'Direct'}
                     </p>
