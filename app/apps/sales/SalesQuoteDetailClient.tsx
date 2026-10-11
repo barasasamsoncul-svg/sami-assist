@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  useMemo,
   useRef,
   useState,
   useTransition,
@@ -141,7 +142,42 @@ export default function SalesQuoteDetailClient({
     busy ||
     pending;
 
-  async function request(
+  const quoteActivity = useMemo(() => [
+    ...quote.history.map(item => ({
+      id: 'status-' + item.id,
+      kind: 'Lifecycle',
+      title: (item.fromStatus ? item.fromStatus.replaceAll('_', ' ') + ' → ' : '') + item.toStatus.replaceAll('_', ' '),
+      detail: item.reason,
+      at: item.createdAt,
+    })),
+    ...quote.revisions.map(item => ({
+      id: 'revision-' + item.id,
+      kind: 'Revision',
+      title: 'Revision ' + item.revisionNumber + ' created',
+      detail: item.reason,
+      at: item.createdAt,
+    })),
+    ...quote.customerRevisionRequests.map(item => ({
+      id: 'change-' + item.id,
+      kind: 'Customer request',
+      title: (item.requesterName || 'Customer') + ' requested a change',
+      detail: item.reason,
+      at: item.createdAt,
+    })),
+    ...quote.deliveries.map(item => ({
+      id: 'delivery-' + item.id,
+      kind: 'Delivery',
+      title: item.channel + ' delivery ' + item.status.replaceAll('_', ' '),
+      detail: [item.provider, item.errorCode ? 'Error: ' + item.errorCode : null].filter(Boolean).join(' · ') || null,
+      at: item.createdAt,
+    })),
+  ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()), [
+    quote.history,
+    quote.revisions,
+    quote.customerRevisionRequests,
+    quote.deliveries,
+  ]);
+    async function request(
     payload:
       Record<
         string,
@@ -1024,6 +1060,34 @@ export default function SalesQuoteDetailClient({
                 </div>
               )
             }
+
+            <section className="sami-surface rounded-[24px] p-4" aria-labelledby="quote-activity-heading">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h2 id="quote-activity-heading" className="text-sm font-black">Quote activity</h2>
+                  <p className="mt-1 text-xs text-slate-500">A single chronological view of lifecycle changes, revisions, customer requests and delivery attempts.</p>
+                </div>
+                <span className="rounded-full border border-[var(--sami-border)] px-2.5 py-1 text-[10px] font-bold">{quoteActivity.length} events</span>
+              </div>
+              <ol className="mt-4 space-y-3">
+                {quoteActivity.slice(0, 10).map((event, index) => (
+                  <li key={event.id} className="relative pl-5">
+                    {index < Math.min(quoteActivity.length, 10) - 1 && <span aria-hidden="true" className="absolute left-[5px] top-3 h-[calc(100%+8px)] w-px bg-[var(--sami-border)]" />}
+                    <span aria-hidden="true" className="absolute left-0 top-1.5 h-2.5 w-2.5 rounded-full bg-blue-600 ring-4 ring-blue-500/10" />
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">{event.kind}</p>
+                        <p className="mt-0.5 text-xs font-bold">{event.title}</p>
+                        {event.detail && <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 text-slate-500">{event.detail}</p>}
+                      </div>
+                      <time dateTime={event.at} className="shrink-0 text-[10px] text-slate-500">{new Date(event.at).toLocaleString()}</time>
+                    </div>
+                  </li>
+                ))}
+                {quoteActivity.length === 0 && <li className="text-xs text-slate-500">No quotation activity has been recorded yet.</li>}
+              </ol>
+              {quoteActivity.length > 10 && <p className="mt-3 border-t border-[var(--sami-border)] pt-3 text-[10px] text-slate-500">Showing the 10 most recent events. Detailed records remain available in the sections above.</p>}
+            </section>
 
             <div className="sami-surface rounded-[24px] p-4">
               <h2 className="text-sm font-black">
