@@ -13,6 +13,8 @@ import Link from 'next/link';
 import {
   BarChart3,
   Download,
+  LayoutGrid,
+  List,
   Plus,
   RefreshCw,
   Search,
@@ -198,6 +200,34 @@ const ORDER_SORT_OPTIONS: {
   { key: 'invoice_first', label: 'Invoicing progress: lowest first' },
   { key: 'customer_az', label: 'Customer A–Z' },
 ];
+
+
+function salesOrderFulfillmentLabel(status: string) {
+  switch (status) {
+    case 'not_started':
+      return 'Awaiting fulfillment';
+    case 'partial':
+      return 'Partially fulfilled';
+    case 'fulfilled':
+      return 'Fulfilled';
+    default:
+      return status.replaceAll('_', ' ');
+  }
+}
+
+
+function salesOrderInvoiceLabel(status: string) {
+  switch (status) {
+    case 'not_invoiced':
+      return 'Not invoiced';
+    case 'partial':
+      return 'Partially invoiced';
+    case 'invoiced':
+      return 'Fully invoiced';
+    default:
+      return status.replaceAll('_', ' ');
+  }
+}
 
 
 function matchesSalesOrderView(
@@ -755,6 +785,14 @@ export default function SalesWorkspaceClient({
   ] =
     useState<SalesOrderSortBy>(
       'newest',
+    );
+
+  const [
+    orderDisplayMode,
+    setOrderDisplayMode,
+  ] =
+    useState<'register' | 'cards'>(
+      'register',
     );
 
   const [
@@ -2379,87 +2417,157 @@ export default function SalesWorkspaceClient({
                 )}
               </section>
 
-              <div className="grid gap-3">
-                {
-                  visibleOrders.length ===
-                    0
-                    ? (
-                        <div className="sami-surface rounded-[22px] p-8 text-center text-sm text-slate-500">
-                          No sales orders match this view.
-                        </div>
-                      )
-                    : visibleOrders.map(
-                        order => (
-                          <Link
-                            key={
-                              order.id
-                            }
-                            href={
-                              '/apps/sales/orders/' +
-                              order.id
-                            }
-                            className="sami-surface rounded-[22px] p-4 transition hover:-translate-y-0.5 hover:shadow-md"
-                          >
-                            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                              <div>
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <p className="font-black">
-                                    {
-                                      order.orderNumber
-                                    }
-                                  </p>
-                                  <Status
-                                    value={
-                                      order.status
-                                    }
-                                  />
-                                </div>
-                                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                                  {
-                                    order.customerName
-                                  }
-                                </p>
-                              </div>
+              <div className="space-y-3">
+                <div className="flex justify-end">
+                  <div
+                    role="group"
+                    aria-label="Sales order display mode"
+                    className="inline-flex items-center gap-1 rounded-xl border border-[var(--sami-border)] p-1"
+                  >
+                    <button
+                      type="button"
+                      aria-pressed={orderDisplayMode === 'register'}
+                      onClick={() => setOrderDisplayMode('register')}
+                      className={[
+                        'inline-flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-bold',
+                        orderDisplayMode === 'register'
+                          ? 'bg-blue-600 text-white'
+                          : 'hover:bg-slate-500/10',
+                      ].join(' ')}
+                    >
+                      <List className="h-4 w-4" />
+                      Register
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={orderDisplayMode === 'cards'}
+                      onClick={() => setOrderDisplayMode('cards')}
+                      className={[
+                        'inline-flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-bold',
+                        orderDisplayMode === 'cards'
+                          ? 'bg-blue-600 text-white'
+                          : 'hover:bg-slate-500/10',
+                      ].join(' ')}
+                    >
+                      <LayoutGrid className="h-4 w-4" />
+                      Cards
+                    </button>
+                  </div>
+                </div>
 
-                              <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[460px]">
-                                <Progress
-                                  label="Delivered"
-                                  value={
-                                    order.deliveredPercent
-                                  }
-                                  state={
-                                    order.fulfillmentStatus
-                                  }
-                                />
-                                <Progress
-                                  label="Invoiced"
-                                  value={
-                                    order.invoicedPercent
-                                  }
-                                  state={
-                                    order.invoiceStatus
-                                  }
-                                />
-                                <div className="sm:text-right">
-                                  <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
-                                    Order value
+                {visibleOrders.length === 0 ? (
+                  <div className="sami-surface rounded-[22px] p-8 text-center text-sm text-slate-500">
+                    No sales orders match this view.
+                  </div>
+                ) : orderDisplayMode === 'register' ? (
+                  <div className="sami-surface overflow-hidden rounded-[24px]" aria-label="Sales order register">
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[1120px] text-left text-sm" aria-label="Sales order register">
+                        <thead className="border-b border-[var(--sami-border)] bg-slate-500/[0.04] text-[10px] font-black uppercase tracking-[0.09em] text-slate-400">
+                          <tr>
+                            <th scope="col" className="px-4 py-3">Order</th>
+                            <th scope="col" className="px-4 py-3">Customer</th>
+                            <th scope="col" className="px-4 py-3">Order date</th>
+                            <th scope="col" className="px-4 py-3">Status</th>
+                            <th scope="col" className="px-4 py-3">Fulfillment</th>
+                            <th scope="col" className="px-4 py-3">Invoicing</th>
+                            <th scope="col" className="px-4 py-3">Delivered</th>
+                            <th scope="col" className="px-4 py-3">Invoiced</th>
+                            <th scope="col" className="px-4 py-3 text-right">Order value</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[var(--sami-border)]">
+                          {visibleOrders.map(order => (
+                            <tr key={order.id} className="hover:bg-slate-500/[0.03]">
+                              <td className="px-4 py-3">
+                                <Link
+                                  href={'/apps/sales/orders/' + order.id}
+                                  className="font-black text-blue-600 hover:underline"
+                                >
+                                  {order.orderNumber}
+                                </Link>
+                                {order.quoteNumber && (
+                                  <p className="mt-1 text-[10px] text-slate-500">
+                                    From {order.quoteNumber}
                                   </p>
-                                  <p className="mt-1 font-black">
-                                    {
-                                      money(
-                                        order.totalAmount,
-                                        order.currency,
-                                      )
-                                    }
-                                  </p>
-                                </div>
-                              </div>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 font-medium">{order.customerName}</td>
+                              <td className="px-4 py-3 text-xs text-slate-500">{order.orderDate}</td>
+                              <td className="px-4 py-3">
+                                <Status value={order.status} />
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className="whitespace-nowrap text-xs font-semibold">
+                                  {salesOrderFulfillmentLabel(order.fulfillmentStatus)}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className="whitespace-nowrap text-xs font-semibold">
+                                  {salesOrderInvoiceLabel(order.invoiceStatus)}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className="font-bold tabular-nums">{Math.round(order.deliveredPercent)}%</span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className="font-bold tabular-nums">{Math.round(order.invoicedPercent)}%</span>
+                              </td>
+                              <td className="px-4 py-3 text-right font-black whitespace-nowrap">
+                                {money(order.totalAmount, order.currency)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid gap-3">
+                    {visibleOrders.map(order => (
+                      <Link
+                        key={order.id}
+                        href={'/apps/sales/orders/' + order.id}
+                        className="sami-surface rounded-[22px] p-4 transition hover:-translate-y-0.5 hover:shadow-md"
+                      >
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-black">{order.orderNumber}</p>
+                              <Status value={order.status} />
                             </div>
-                          </Link>
-                        ),
-                      )
-                }
+                            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                              {order.customerName}
+                            </p>
+                          </div>
+
+                          <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[460px]">
+                            <Progress
+                              label="Delivered"
+                              value={order.deliveredPercent}
+                              state={order.fulfillmentStatus}
+                            />
+                            <Progress
+                              label="Invoiced"
+                              value={order.invoicedPercent}
+                              state={order.invoiceStatus}
+                            />
+                            <div className="sm:text-right">
+                              <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+                                Order value
+                              </p>
+                              <p className="mt-1 font-black">
+                                {money(order.totalAmount, order.currency)}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
               </div>
+
             </section>
           )
         }
