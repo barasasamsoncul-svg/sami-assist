@@ -712,7 +712,7 @@ export default function SalesPipelineManager({
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => void updateActivity(activity.id, 'completed')
+                      onClick={() => void updateActivity(activity.id, 'completed')}
                       className="h-9 rounded-lg border border-emerald-600/40 px-3 text-xs font-black text-emerald-700 hover:bg-emerald-500/[0.06] disabled:opacity-60 dark:text-emerald-300"
                     >
                       Complete
