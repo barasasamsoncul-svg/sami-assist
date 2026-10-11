@@ -4,6 +4,7 @@ import type { PoolClient } from 'pg';
 import { queryControl } from '@/lib/db/control';
 
 import { cleanText, isoDate, nullableText, numberInput, optionalUuid, requireSalesContext, requireUuid, SALES_PERMISSIONS, SalesError } from '@/lib/apps/sales/context';
+import { scoreSalesLead } from '@/lib/apps/sales/lead-scoring';
 
 const stageSeed = [
   ['Qualification', 10, 20],
@@ -138,11 +139,25 @@ export async function getSalesPipelineData() {
       [context.companyId],
     ),
     context.pool.query(
-      `SELECT id,lead_number,status,name,company_name,contact_name,email,phone,source,notes,
-              salesperson_user_id,sales_team_id,territory_id,disqualification_reason,created_at
-       FROM sales_leads
-       WHERE company_id=$1 AND deleted_at IS NULL
-       ORDER BY created_at DESC
+      `SELECT l.id,l.lead_number,l.status,l.name,l.company_name,l.contact_name,l.email,l.phone,l.source,l.notes,
+              l.salesperson_user_id,l.sales_team_id,l.territory_id,l.disqualification_reason,l.created_at,
+              COALESCE(engagement.completed_engagement_count,0)::int AS completed_engagement_count,
+              engagement.last_completed_engagement_at
+       FROM sales_leads l
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*) FILTER (
+                  WHERE a.status='completed' AND a.activity_type IN ('call','email','meeting')
+                )::int AS completed_engagement_count,
+                MAX(a.completed_at) FILTER (
+                  WHERE a.status='completed' AND a.activity_type IN ('call','email','meeting')
+                ) AS last_completed_engagement_at
+         FROM sales_lead_activities a
+         WHERE a.company_id=l.company_id
+           AND a.lead_id=l.id
+           AND a.deleted_at IS NULL
+       ) engagement ON TRUE
+       WHERE l.company_id=$1 AND l.deleted_at IS NULL
+       ORDER BY l.created_at DESC
        LIMIT 250`,
       [context.companyId],
     ),
@@ -219,7 +234,15 @@ export async function getSalesPipelineData() {
   ]);
   return {
     stages: stages.rows,
-    leads: leads.rows,
+    leads: leads.rows.map(lead => {
+      const score = scoreSalesLead(lead);
+      return {
+        ...lead,
+        lead_score: score.score,
+        lead_score_band: score.band,
+        lead_score_factors: score.factors,
+      };
+    }),
     opportunities: opportunities.rows,
     activities: activities.rows,
     opportunityActivities: opportunityActivities.rows,
