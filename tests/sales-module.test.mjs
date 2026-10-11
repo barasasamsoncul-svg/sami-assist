@@ -2533,3 +2533,27 @@ test('Sales lead scoring explains profile and engagement signals and persists sc
   assert.match(ui, /setLeadScoreFilter\(view\.scoreView \|\| 'all'\)/);
 });
 
+test('Sales team lead creation supports tenant-safe balanced automatic assignment', async () => {
+  const [pipeline, manager, assignment, packageJson] = await Promise.all([
+    source('lib/apps/sales/pipeline.ts'),
+    source('app/apps/sales/SalesPipelineManager.tsx'),
+    source('lib/apps/sales/lead-assignment.ts'),
+    source('package.json'),
+  ]);
+
+  assert.ok(pipeline.includes("import { chooseBalancedSalesLeadAssignee } from '@/lib/apps/sales/lead-assignment'"));
+  assert.ok(pipeline.includes('salesTeams: salesTeams.rows'));
+  assert.ok(pipeline.includes('FOR UPDATE'));
+  assert.ok(pipeline.includes('member.is_active=TRUE AND member.left_at IS NULL'));
+  assert.ok(pipeline.includes("lead.status NOT IN ('converted','disqualified')"));
+  assert.ok(pipeline.includes('tu.tenant_id=$1 AND tu.user_id=ANY($2::uuid[])'));
+  assert.ok(pipeline.includes('The selected salesperson must be an active member of the chosen team.'));
+  assert.ok(pipeline.includes('This team has no active internal members available for automatic lead assignment.'));
+  assert.ok(assignment.includes('a.activeLeadCount - b.activeLeadCount'));
+  assert.ok(assignment.includes('timestamp(a.lastAssignedAt) - timestamp(b.lastAssignedAt)'));
+  assert.ok(manager.includes('name="salesTeamId"'));
+  assert.ok(manager.includes('Auto-assign using team workload'));
+  assert.ok(manager.includes('Leave the salesperson blank to auto-assign'));
+  assert.ok(manager.includes('member_user_ids.includes(person.id)'));
+  assert.ok(packageJson.includes('tests/sales-lead-assignment.test.ts'));
+});
