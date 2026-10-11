@@ -487,8 +487,16 @@ export async function updateSalesOpportunity(input: Record<string, unknown>) {
   const name = cleanText(input.name, 255);
   if (!name) throw new SalesError('INVALID_INPUT', 'Opportunity name is required.');
 
-  const expectedValue = numberInput(input.expectedValue, 'Expected value', { min: 0 });
-  const currency = cleanText(input.currency, 3).toUpperCase();
+  const expectedValueInput = input.expectedValue;
+  if (
+    expectedValueInput === null ||
+    expectedValueInput === undefined ||
+    (typeof expectedValueInput === 'string' && !expectedValueInput.trim())
+  ) {
+    throw new SalesError('INVALID_INPUT', 'Expected value is required.');
+  }
+  const expectedValue = numberInput(expectedValueInput, 'Expected value', { min: 0 });
+  const currency = cleanText(input.currency, 16).toUpperCase();
   if (!/^[A-Z]{3}$/.test(currency)) {
     throw new SalesError('INVALID_INPUT', 'Currency must be a three-letter currency code.');
   }
