@@ -679,6 +679,103 @@ export async function bulkReassignSalesLeads(input: Record<string, unknown>) {
 }
 
 
+export async function bulkUpdateSalesLeadStatus(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
+  if (!Array.isArray(input.leadIds)) {
+    throw new SalesError('INVALID_INPUT', 'Select leads for the bulk action.');
+  }
+  const leadIds = [...new Set(input.leadIds.map(value => requireUuid(value, 'Lead')))];
+  if (leadIds.length === 0) throw new SalesError('INVALID_INPUT', 'Select at least one lead.');
+  if (leadIds.length > 100) throw new SalesError('INVALID_INPUT', 'Process at most 100 leads at a time.');
+
+  const mode = cleanText(input.mode, 20);
+  if (mode !== 'disqualify' && mode !== 'reopen') {
+    throw new SalesError('INVALID_INPUT', 'Choose whether to disqualify or reopen the selected leads.');
+  }
+  const reason = cleanText(input.reason, 2000);
+  if (!reason) {
+    throw new SalesError('INVALID_INPUT', 'A reason is required for this bulk lead action.');
+  }
+
+  const client = await context.pool.connect();
+  try {
+    await client.query('BEGIN');
+    const current = await client.query(
+      `SELECT id,status
+       FROM sales_leads
+       WHERE company_id=$1 AND id=ANY($2::uuid[]) AND deleted_at IS NULL
+       FOR UPDATE`,
+      [context.companyId, leadIds],
+    );
+    if (current.rows.length !== leadIds.length) {
+      throw new SalesError('INVALID_INPUT', 'One or more selected leads were not found in this workspace.');
+    }
+
+    if (mode === 'disqualify' && current.rows.some(row => row.status === 'converted')) {
+      throw new SalesError('INVALID_INPUT', 'Converted leads cannot be disqualified. Remove them from the selection and try again.');
+    }
+
+    const eligible = mode === 'disqualify'
+      ? current.rows.filter(row => row.status !== 'disqualified')
+      : current.rows.filter(row => row.status === 'disqualified');
+    if (eligible.length === 0) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        mode === 'disqualify'
+          ? 'All selected leads are already disqualified.'
+          : 'No selected leads are disqualified and ready to reopen.',
+      );
+    }
+
+    const eligibleIds = eligible.map(row => String(row.id));
+    if (mode === 'disqualify') {
+      await client.query(
+        `UPDATE sales_leads
+         SET status='disqualified',disqualification_reason=$3,updated_by=$4,updated_at=NOW()
+         WHERE company_id=$1 AND id=ANY($2::uuid[]) AND deleted_at IS NULL`,
+        [context.companyId, eligibleIds, reason, context.userId],
+      );
+    } else {
+      await client.query(
+        `UPDATE sales_leads
+         SET status='new',disqualification_reason=NULL,updated_by=$3,updated_at=NOW()
+         WHERE company_id=$1 AND id=ANY($2::uuid[]) AND deleted_at IS NULL AND status='disqualified'`,
+        [context.companyId, eligibleIds, context.userId],
+      );
+    }
+
+    for (const lead of eligible) {
+      const isDisqualification = mode === 'disqualify';
+      await client.query(
+        `INSERT INTO sales_lead_activities
+           (company_id,lead_id,activity_type,subject,description,status,completed_at,created_by,updated_by)
+         VALUES ($1,$2,'note',$3,$4,'completed',NOW(),$5,$5)`,
+        [
+          context.companyId,
+          String(lead.id),
+          isDisqualification ? 'Lead disqualified in bulk action' : 'Lead reopened in bulk action',
+          reason,
+          context.userId,
+        ],
+      );
+    }
+
+    await client.query('COMMIT');
+    return {
+      mode,
+      updatedCount: eligible.length,
+      skippedCount: leadIds.length - eligible.length,
+      leadIds: eligibleIds,
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
 export async function disqualifySalesLead(input: Record<string, unknown>) {
   const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
   const leadId = requireUuid(input.leadId, 'Lead');
