@@ -2028,6 +2028,28 @@ test('Sales quotation workspace supports selecting visible rows and exporting on
   assert.ok(workspace.includes('Sales orders are not included in this file.'));
 });
 
+test('Sales order workspace offers fulfillment and invoicing work queues alongside search', async () => {
+  const workspace = await source('app/apps/sales/SalesWorkspaceClient.tsx');
+
+  assert.ok(workspace.includes('type SalesOrderStatusView'));
+  assert.ok(workspace.includes('function matchesSalesOrderView'));
+  assert.ok(workspace.includes('orderStatusView'));
+  assert.ok(workspace.includes('setOrderStatusView'));
+  assert.ok(workspace.includes('aria-label="Sales order work queues"'));
+  assert.ok(workspace.includes('aria-pressed={orderStatusView === option.key}'));
+  assert.ok(workspace.includes('initialData.orders.filter(order => matchesSalesOrderView(order, option.key)).length'));
+  for (const label of ['All orders', 'Awaiting fulfillment', 'Partially fulfilled', 'Fulfilled', 'Not invoiced', 'Partially invoiced', 'Fully invoiced']) {
+    assert.ok(workspace.includes(label), 'Order work queues include ' + label);
+  }
+  assert.ok(workspace.includes("order.fulfillmentStatus === 'not_started'"));
+  assert.ok(workspace.includes("order.fulfillmentStatus === 'partial'"));
+  assert.ok(workspace.includes("order.fulfillmentStatus === 'fulfilled'"));
+  assert.ok(workspace.includes("order.invoiceStatus === 'not_invoiced'"));
+  assert.ok(workspace.includes("order.invoiceStatus === 'partial'"));
+  assert.ok(workspace.includes("order.invoiceStatus === 'invoiced'"));
+  assert.match(workspace, /matchesSalesOrderView\([\s\S]*orderStatusView/);
+});
+
 test('Sales bulk quotation sending is permission-gated, capped, sequential and reports per-quotation outcomes', async () => {
   const [bulk, commands, delivery, service, route, ui] = await Promise.all([
     source('lib/apps/sales/bulk-send.ts'),
