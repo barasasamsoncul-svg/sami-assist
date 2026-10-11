@@ -60,6 +60,7 @@ import {
   saveSalesPricelist,
   saveSalesQuoteOptionalItems,
   saveSalesQuoteTemplate,
+  deleteSalesQuoteTemplate,
   saveSalesQuoteApprovalPolicy,
   saveSalesTarget,
   saveSalesTeam,
@@ -611,6 +612,8 @@ export async function POST(
           updateSalesSettings,
         save_template:
           saveSalesQuoteTemplate,
+        delete_template:
+          deleteSalesQuoteTemplate,
         save_approval_policy:
           saveSalesQuoteApprovalPolicy,
       };
