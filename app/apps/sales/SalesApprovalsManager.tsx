@@ -32,6 +32,8 @@ export default function SalesApprovalsManager() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [reviewingRequestId, setReviewingRequestId] = useState<string | null>(null);
+  const [reviewReason, setReviewReason] = useState('');
 
   const refresh = useCallback(async () => {
     const response = await fetch('/api/apps/sales?approvals=1', { cache: 'no-store', credentials: 'same-origin' });
@@ -70,6 +72,33 @@ export default function SalesApprovalsManager() {
       await refresh();
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not save policy.'); }
     finally { setBusy(false); }
+  }
+
+  async function reviewRequest(event: FormEvent<HTMLFormElement>, request: ApprovalRequest, decision: 'approve' | 'reject') {
+    event.preventDefault();
+    if (decision === 'reject' && !reviewReason.trim()) {
+      setError('A rejection reason is required.');
+      return;
+    }
+    setBusy(true); setError(''); setNotice('');
+    try {
+      const response = await fetch('/api/apps/sales', {
+        method: 'POST', cache: 'no-store', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'review_quote_approval', quoteId: request.quote_id, decision, reason: decision === 'reject' ? reviewReason.trim() : null }),
+      });
+      const body = await response.json();
+      if (!response.ok || body.success !== true) throw new Error(body.error || 'Could not record the approval decision.');
+      setReviewingRequestId(null); setReviewReason('');
+      setNotice(decision === 'approve'
+        ? (body.result?.approvalStatus === 'approved' ? 'Quotation fully approved.' : 'Approval recorded. The next approval step is now active.')
+        : 'Quotation rejected. The reason has been recorded.');
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not record the approval decision.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -139,6 +168,26 @@ export default function SalesApprovalsManager() {
               <div className="flex flex-wrap items-center justify-between gap-2"><Link href={'/apps/sales/quotes/' + request.quote_id} className="text-sm font-black underline">{request.quote_number} · {request.customer_name}</Link><span className="text-xs font-black uppercase">{request.status}</span></div>
               <p className="mt-1 text-xs text-slate-500">{request.policy_name || 'Legacy approval'} · {request.currency} {Number(request.total_amount).toLocaleString()} · current step {request.current_step_order} · {new Date(request.requested_at).toLocaleString()}</p>
               {request.decisions?.length > 0 && <div className="mt-2 space-y-1">{request.decisions.map((decision, i) => <p key={i} className="text-xs text-slate-500">Step {String(decision.stepOrder)} · {String(decision.decision)} · {String(decision.reviewerUserId)}{decision.reason ? ' · ' + String(decision.reason) : ''}</p>)}</div>}
+              {request.status === 'pending' && (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <form onSubmit={event => void reviewRequest(event, request, 'approve')}>
+                    <button type="submit" disabled={busy} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-black text-white disabled:opacity-50">{busy ? 'Saving…' : 'Approve step'}</button>
+                  </form>
+                  {reviewingRequestId === request.request_id ? (
+                    <form onSubmit={event => void reviewRequest(event, request, 'reject')} className="w-full space-y-2 rounded-xl border border-rose-500/30 p-3">
+                      <label className="block text-xs font-bold">Rejection reason *
+                        <textarea required maxLength={2000} rows={2} value={reviewReason} onChange={event => setReviewReason(event.target.value)} className="mt-1 block w-full rounded-lg border border-[var(--sami-border)] bg-transparent p-2 text-sm font-normal" placeholder="Explain why this quotation is rejected." />
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        <button type="submit" disabled={busy || !reviewReason.trim()} className="rounded-lg bg-rose-700 px-3 py-2 text-xs font-black text-white disabled:opacity-50">{busy ? 'Saving…' : 'Confirm rejection'}</button>
+                        <button type="button" disabled={busy} onClick={() => { setReviewingRequestId(null); setReviewReason(''); }} className="rounded-lg border border-[var(--sami-border)] px-3 py-2 text-xs font-bold disabled:opacity-50">Cancel</button>
+                      </div>
+                    </form>
+                  ) : (
+                    <button type="button" disabled={busy} onClick={() => { setReviewingRequestId(request.request_id); setReviewReason(''); setError(''); }} className="rounded-lg border border-rose-500/40 px-3 py-2 text-xs font-black text-rose-700 disabled:opacity-50 dark:text-rose-300">Reject</button>
+                  )}
+                </div>
+              )}
             </article>
           ))}
         </div>
