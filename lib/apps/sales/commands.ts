@@ -3120,6 +3120,13 @@ export async function createSalesOrderFromQuote(
         row.status,
       );
 
+    if (currentStatus === 'converted' && !row.sales_order_id) {
+      throw new SalesError(
+        'QUOTE_STATE_INVALID',
+        'This quotation is marked converted but has no linked sales order. Resolve the record before retrying conversion.',
+      );
+    }
+
     if (
       ![
         'accepted',
