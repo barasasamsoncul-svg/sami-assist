@@ -2572,7 +2572,7 @@ test('Sales lead-routing rules are tenant-scoped, priority ordered and migration
     source('lib/modules/first-party.ts'),
   ]);
 
-  assert.ok(manifest.includes('version: \'3.4.14\''));
+  assert.ok(manifest.includes('version: \'3.4.15\''));
   assert.ok(rules.includes('requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE)'));
   assert.ok(rules.includes('WHERE company_id=$1 AND deleted_at IS NULL'));
   assert.ok(rules.includes('A routing rule with that name or source match already exists.'));
@@ -2596,4 +2596,46 @@ test('Sales lead-routing rules are tenant-scoped, priority ordered and migration
   assert.ok(manager.includes('Automatic lead-routing rules'));
   assert.ok(manager.includes('Rule enabled'));
   assert.ok(manager.includes('Routed by rule:'));
+});
+
+
+test('Sales lead reassignment validates team membership and records reasoned history atomically', async () => {
+  const [pipeline, manager, route, service, schema, migration, registry, manifest] = await Promise.all([
+    source('lib/apps/sales/pipeline.ts'),
+    source('app/apps/sales/SalesPipelineManager.tsx'),
+    source('app/api/apps/sales/route.ts'),
+    source('lib/apps/sales/service.ts'),
+    source('lib/apps/sales/schema.sql'),
+    source('lib/apps/sales/migrations/3.4.14-to-3.4.15.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+  ]);
+
+  assert.ok(manifest.includes("version: '3.4.15'"));
+  assert.ok(schema.includes('CREATE TABLE IF NOT EXISTS public.sales_lead_assignment_history'));
+  assert.ok(schema.includes('idx_sales_lead_assignment_history_timeline'));
+  assert.ok(migration.includes('sales-3.4.14-to-3.4.15'));
+  assert.ok(migration.includes('reason VARCHAR(1000) NOT NULL'));
+  assert.ok(migration.includes('previous_salesperson_user_id UUID'));
+  assert.ok(migration.includes('new_sales_team_id UUID'));
+  assert.ok(registry.includes('SALES_3_4_14_TO_3_4_15'));
+  assert.ok(registry.indexOf('SALES_3_4_13_TO_3_4_14,') < registry.indexOf('SALES_3_4_14_TO_3_4_15,'));
+
+  assert.ok(pipeline.includes('getSalesLeadAssignmentHistory'));
+  assert.ok(pipeline.includes('requireSalesContext(SALES_PERMISSIONS.PIPELINE_VIEW)'));
+  assert.ok(pipeline.includes('WHERE company_id=$1 AND lead_id=$2'));
+  assert.ok(pipeline.includes('Enter a reason when changing a lead owner or team.'));
+  assert.ok(pipeline.includes('The selected salesperson must be an active member of the chosen team.'));
+  assert.ok(pipeline.includes('INSERT INTO sales_lead_assignment_history'));
+  assert.ok(pipeline.includes('await client.query(\'BEGIN\')'));
+  assert.ok(pipeline.includes('await client.query(\'COMMIT\')'));
+
+  assert.ok(service.includes('getSalesLeadAssignmentHistory'));
+  assert.ok(route.includes('leadAssignmentHistory === \'1\''));
+  assert.ok(route.includes('getSalesLeadAssignmentHistory({ leadId })'));
+  assert.ok(manager.includes('Reason for reassignment (required when changing owner or team)'));
+  assert.ok(manager.includes('Assignment history'));
+  assert.ok(manager.includes('Changed by'));
+  assert.ok(manager.includes('name="salesTeamId"'));
+  assert.ok(manager.includes('leadAssignmentHistory=1&leadId='));
 });
