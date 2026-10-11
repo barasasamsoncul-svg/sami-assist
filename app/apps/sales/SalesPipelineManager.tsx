@@ -46,24 +46,12 @@ type SalesLeadActivity = {
   created_at: string;
 };
 
-type OpportunityStageHistoryEntry = {
-  id: string;
-  opportunity_id: string;
-  from_stage_id: string | null;
-  to_stage_id: string;
-  from_stage_name: string | null;
-  to_stage_name: string;
-  probability: number | string;
-  reason: string | null;
-  changed_by: string | null;
-  created_at: string;
-};
-
 type SalesOpportunity = {
   id: string;
   opportunity_number: string;
+  lead_id: string | null;
   stage_id: string;
-  stage_type: string;
+  stage_type: 'open' | 'won' | 'lost' | string;
   stage_name: string;
   name: string;
   billing_customer_id: string | null;
@@ -76,8 +64,42 @@ type SalesOpportunity = {
   probability: number | string;
   expected_close_date: string | null;
   salesperson_user_id: string | null;
+  sales_team_id: string | null;
+  territory_id: string | null;
+  source: string | null;
   notes: string | null;
+  won_at: string | null;
+  lost_at: string | null;
+  lost_reason: string | null;
   latest_quote_id: string | null;
+  created_at: string;
+};
+
+type OpportunityDraft = {
+  name: string;
+  customerName: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  expectedValue: string;
+  currency: string;
+  expectedCloseDate: string;
+  source: string;
+  notes: string;
+  salespersonUserId: string;
+};
+
+type SalesOpportunityHistory = {
+  id: string;
+  opportunity_id: string;
+  from_stage_id: string | null;
+  to_stage_id: string;
+  probability: number | string;
+  reason: string | null;
+  changed_by: string | null;
+  created_at: string;
+  from_stage_name: string | null;
+  to_stage_name: string;
 };
 
 type PipelineData = {
@@ -85,8 +107,8 @@ type PipelineData = {
   leads: SalesLead[];
   opportunities: SalesOpportunity[];
   activities: SalesLeadActivity[];
-  opportunityHistory: OpportunityStageHistoryEntry[];
   salespeople: Salesperson[];
+  opportunityHistory: SalesOpportunityHistory[];
 };
 
 type PipelineAction =
@@ -98,8 +120,8 @@ type PipelineAction =
   | { action: 'update_lead_activity'; activityId: string; status: 'completed' | 'cancelled' }
   | { action: 'edit_lead_activity'; activityId: string; activityType: ActivityDraft['activityType']; subject: string; description: string; dueDate: string | null; assignedUserId: string | null }
   | { action: 'convert_lead'; leadId: string; name: string; expectedValue: string; currency: string; expectedCloseDate: string | null }
-  | { action: 'update_opportunity'; opportunityId: string; name: string; expectedValue: string; currency: string; expectedCloseDate: string | null; salespersonUserId: string | null; notes: string }
-  | { action: 'move_opportunity'; opportunityId: string; stageId: string; reason?: string | null };
+  | { action: 'update_opportunity'; opportunityId: string; name: string; customerName: string; contactName: string; email: string; phone: string; expectedValue: string; currency: string; expectedCloseDate: string | null; source: string; notes: string; salespersonUserId: string | null }
+  | { action: 'move_opportunity'; opportunityId: string; stageId: string; reason?: string };
 
 type CreateLeadPayload = Extract<PipelineAction, { action: 'create_lead' }>;
 
@@ -131,21 +153,6 @@ type LeadDraft = {
 type ActivityDraft = {
   activityType: 'call' | 'email' | 'meeting' | 'task' | 'note';
   subject: string; description: string; dueDate: string; assignedUserId: string;
-};
-
-type OpportunityDraft = {
-  name: string;
-  expectedValue: string;
-  currency: string;
-  expectedCloseDate: string;
-  salespersonUserId: string;
-  notes: string;
-};
-
-type PendingOpportunityStageChange = {
-  opportunityId: string;
-  stageId: string;
-  opportunityName: string;
 };
 
 function formatMoney(value: number, currency: string) {
@@ -197,6 +204,7 @@ function formatActivityDate(value: string | null) {
     : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+
 function formatHistoryTimestamp(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
@@ -210,7 +218,6 @@ function formatHistoryTimestamp(value: string) {
       });
 }
 
-
 export default function SalesPipelineManager({
   canCreateQuote,
   canManagePipeline,
@@ -221,7 +228,7 @@ export default function SalesPipelineManager({
   defaultCurrency: string;
 }) {
   const [data, setData] = useState<PipelineData>({
-    stages: [], leads: [], opportunities: [], activities: [], opportunityHistory: [], salespeople: [],
+    stages: [], leads: [], opportunities: [], activities: [], salespeople: [], opportunityHistory: [],
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -236,16 +243,20 @@ export default function SalesPipelineManager({
   const [activityEditDraft, setActivityEditDraft] = useState<ActivityDraft>({
     activityType: 'task', subject: '', description: '', dueDate: '', assignedUserId: '',
   });
-  const [editingOpportunityId, setEditingOpportunityId] = useState<string | null>(null);
-  const [opportunityDraft, setOpportunityDraft] = useState<OpportunityDraft>({
-    name: '', expectedValue: '0', currency: normalizedCurrency(defaultCurrency),
-    expectedCloseDate: '', salespersonUserId: '', notes: '',
-  });
-  const [pendingOpportunityStageChange, setPendingOpportunityStageChange] = useState<PendingOpportunityStageChange | null>(null);
-  const [expandedOpportunityHistoryId, setExpandedOpportunityHistoryId] = useState<string | null>(null);
-  const [opportunityLostReason, setOpportunityLostReason] = useState('');
   const [leadSearch, setLeadSearch] = useState('');
   const [leadStatusFilter, setLeadStatusFilter] = useState('all');
+  const [opportunitySearch, setOpportunitySearch] = useState('');
+  const [opportunityStatusFilter, setOpportunityStatusFilter] = useState<'all' | 'open' | 'won' | 'lost'>('all');
+  const [editingOpportunityId, setEditingOpportunityId] = useState<string | null>(null);
+  const [opportunityDraft, setOpportunityDraft] = useState<OpportunityDraft>({
+    name: '', customerName: '', contactName: '', email: '', phone: '',
+    expectedValue: '', currency: normalizedCurrency(defaultCurrency),
+    expectedCloseDate: '', source: '', notes: '', salespersonUserId: '',
+  });
+  const [closingOpportunityId, setClosingOpportunityId] = useState<string | null>(null);
+  const [closingOpportunityStageId, setClosingOpportunityStageId] = useState<string | null>(null);
+  const [opportunityLossReason, setOpportunityLossReason] = useState('');
+  const [expandedOpportunityHistoryId, setExpandedOpportunityHistoryId] = useState<string | null>(null);
   const [agendaSearch, setAgendaSearch] = useState('');
   const [agendaFilter, setAgendaFilter] = useState<ActivityAgendaFilter>('all');
   const [duplicateCandidates, setDuplicateCandidates] = useState<LeadDuplicateMatch[]>([]);
@@ -288,6 +299,19 @@ export default function SalesPipelineManager({
       data.salespeople.find(person => person.id === lead.salesperson_user_id)?.name,
     ].some(value => String(value || '').toLowerCase().includes(search));
     return matchesStatus && matchesSearch;
+  });
+
+  const filteredOpportunities = data.opportunities.filter(opportunity => {
+    const status = ['open', 'won', 'lost'].includes(opportunity.stage_type) ? opportunity.stage_type : 'open';
+    const filter = opportunityStatusFilter === 'all' || status === opportunityStatusFilter;
+    const search = opportunitySearch.trim().toLowerCase();
+    const matchesSearch = !search || [
+      opportunity.name, opportunity.opportunity_number, opportunity.customer_name,
+      opportunity.contact_name, opportunity.email, opportunity.phone, opportunity.stage_name,
+      opportunity.source, opportunity.notes,
+      data.salespeople.find(person => person.id === opportunity.salesperson_user_id)?.name,
+    ].some(value => String(value || '').toLowerCase().includes(search));
+    return filter && matchesSearch;
   });
 
   const today = new Date();
@@ -547,14 +571,20 @@ export default function SalesPipelineManager({
 
   function beginOpportunityEdit(opportunity: SalesOpportunity) {
     setEditingOpportunityId(opportunity.id);
-    setPendingOpportunityStageChange(null);
+    setClosingOpportunityId(null);
+    setClosingOpportunityStageId(null);
     setOpportunityDraft({
       name: opportunity.name || '',
+      customerName: opportunity.customer_name || '',
+      contactName: opportunity.contact_name || '',
+      email: opportunity.email || '',
+      phone: opportunity.phone || '',
       expectedValue: String(opportunity.expected_value ?? 0),
       currency: normalizedCurrency(opportunity.currency || defaultCurrency),
       expectedCloseDate: opportunity.expected_close_date ? String(opportunity.expected_close_date).slice(0, 10) : '',
-      salespersonUserId: opportunity.salesperson_user_id || '',
+      source: opportunity.source || '',
       notes: opportunity.notes || '',
+      salespersonUserId: opportunity.salesperson_user_id || '',
     });
     setError('');
   }
@@ -565,46 +595,95 @@ export default function SalesPipelineManager({
       action: 'update_opportunity',
       opportunityId: opportunity.id,
       name: opportunityDraft.name,
+      customerName: opportunityDraft.customerName,
+      contactName: opportunityDraft.contactName,
+      email: opportunityDraft.email,
+      phone: opportunityDraft.phone,
       expectedValue: opportunityDraft.expectedValue,
       currency: normalizedCurrency(opportunityDraft.currency),
       expectedCloseDate: opportunityDraft.expectedCloseDate || null,
-      salespersonUserId: opportunityDraft.salespersonUserId || null,
+      source: opportunityDraft.source,
       notes: opportunityDraft.notes,
+      salespersonUserId: opportunityDraft.salespersonUserId || null,
     });
     if (succeeded) setEditingOpportunityId(null);
   }
 
-  function handleOpportunityStageChange(opportunity: SalesOpportunity, stageId: string) {
+  function changeOpportunityStage(opportunityId: string, stageId: string) {
     const stage = data.stages.find(item => item.id === stageId);
     if (!stage) return;
-    setEditingOpportunityId(null);
     if (stage.stage_type === 'lost') {
-      setPendingOpportunityStageChange({
-        opportunityId: opportunity.id,
-        stageId,
-        opportunityName: opportunity.name,
-      });
-      setOpportunityLostReason('');
+      setClosingOpportunityId(opportunityId);
+      setClosingOpportunityStageId(stageId);
+      setOpportunityLossReason('');
+      setEditingOpportunityId(null);
       setError('');
       return;
     }
-    setPendingOpportunityStageChange(null);
-    void action({ action: 'move_opportunity', opportunityId: opportunity.id, stageId });
+    void action({ action: 'move_opportunity', opportunityId, stageId });
+    setClosingOpportunityId(null);
+    setClosingOpportunityStageId(null);
+    setOpportunityLossReason('');
   }
 
-  async function confirmOpportunityLost(event: FormEvent<HTMLFormElement>) {
+  function beginOpportunityLoss(opportunity: SalesOpportunity) {
+    const lostStage = data.stages.find(stage => stage.stage_type === 'lost');
+    if (!lostStage) {
+      setError('A Lost pipeline stage is not configured. Refresh the Sales workspace and try again.');
+      return;
+    }
+    setClosingOpportunityId(opportunity.id);
+    setClosingOpportunityStageId(lostStage.id);
+    setOpportunityLossReason('');
+    setEditingOpportunityId(null);
+    setError('');
+  }
+
+  async function confirmOpportunityLost(event: FormEvent<HTMLFormElement>, opportunity: SalesOpportunity) {
     event.preventDefault();
-    if (!pendingOpportunityStageChange) return;
+    if (!closingOpportunityStageId || !opportunityLossReason.trim()) return;
     const succeeded = await action({
       action: 'move_opportunity',
-      opportunityId: pendingOpportunityStageChange.opportunityId,
-      stageId: pendingOpportunityStageChange.stageId,
-      reason: opportunityLostReason,
+      opportunityId: opportunity.id,
+      stageId: closingOpportunityStageId,
+      reason: opportunityLossReason.trim(),
     });
     if (succeeded) {
-      setPendingOpportunityStageChange(null);
-      setOpportunityLostReason('');
+      setClosingOpportunityId(null);
+      setClosingOpportunityStageId(null);
+      setOpportunityLossReason('');
     }
+  }
+
+  async function markOpportunityWon(opportunity: SalesOpportunity) {
+    const wonStage = data.stages.find(stage => stage.stage_type === 'won');
+    if (!wonStage) {
+      setError('A Won pipeline stage is not configured. Refresh the Sales workspace and try again.');
+      return;
+    }
+    await action({
+      action: 'move_opportunity',
+      opportunityId: opportunity.id,
+      stageId: wonStage.id,
+      reason: 'Marked won',
+    });
+    setClosingOpportunityId(null);
+    setClosingOpportunityStageId(null);
+    setOpportunityLossReason('');
+  }
+
+  async function reopenOpportunity(opportunity: SalesOpportunity) {
+    const openStage = data.stages.find(stage => stage.stage_type === 'open');
+    if (!openStage) {
+      setError('An active pipeline stage is not configured. Refresh the Sales workspace and try again.');
+      return;
+    }
+    await action({
+      action: 'move_opportunity',
+      opportunityId: opportunity.id,
+      stageId: openStage.id,
+      reason: 'Reopened opportunity',
+    });
   }
 
   return (
@@ -1211,15 +1290,42 @@ export default function SalesPipelineManager({
           <div className="flex items-center justify-between gap-3">
             <h3 className="font-black">Opportunity pipeline</h3>
             <span className="rounded-full border border-[var(--sami-border)] px-2.5 py-1 text-[10px] font-black text-slate-500">
-              {data.opportunities.length}
+              {filteredOpportunities.length} / {data.opportunities.length}
             </span>
           </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_11rem]">
+            <label className="space-y-1 text-xs font-bold text-slate-500">
+              <span>Search opportunities</span>
+              <input
+                type="search"
+                value={opportunitySearch}
+                onChange={event => setOpportunitySearch(event.target.value)}
+                placeholder="Deal, customer, owner or stage…"
+                className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+              />
+            </label>
+            <label className="space-y-1 text-xs font-bold text-slate-500">
+              <span>Opportunity status</span>
+              <select
+                value={opportunityStatusFilter}
+                onChange={event => setOpportunityStatusFilter(event.target.value as typeof opportunityStatusFilter)}
+                className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+              >
+                <option value="all">All statuses</option>
+                <option value="open">Open</option>
+                <option value="won">Won</option>
+                <option value="lost">Lost</option>
+              </select>
+            </label>
+          </div>
           <div className="mt-3 space-y-3">
-            {data.opportunities.length === 0 ? (
+            {filteredOpportunities.length === 0 ? (
               <p className="rounded-xl border border-dashed border-[var(--sami-border)] p-4 text-sm text-slate-500">
-                No opportunities yet. Qualify a lead to create the first pipeline opportunity.
+                {data.opportunities.length === 0
+                  ? 'No opportunities yet. Qualify a lead to create the first pipeline opportunity.'
+                  : 'No opportunities match the current search and status filter.'}
               </p>
-            ) : data.opportunities.map(opportunity => (
+            ) : filteredOpportunities.map(opportunity => (
               <article key={opportunity.id} className="rounded-xl border border-[var(--sami-border)] p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -1239,37 +1345,106 @@ export default function SalesPipelineManager({
                         Expected close date not set
                       </p>
                     )}
-                    {opportunity.customer_name || opportunity.contact_name ? (
+                    {opportunity.customer_name || opportunity.contact_name || opportunity.email || opportunity.phone ? (
                       <p className="mt-1 break-words text-xs text-slate-500">
-                        {opportunity.customer_name || opportunity.contact_name}
-                        {opportunity.email ? ' · ' + opportunity.email : ''}
+                        {[opportunity.customer_name, opportunity.contact_name, opportunity.email, opportunity.phone].filter(Boolean).join(' · ')}
+                      </p>
+                    ) : null}
+                    <p className="mt-1 text-xs text-slate-500">
+                      Owner: {data.salespeople.find(person => person.id === opportunity.salesperson_user_id)?.name || 'Unassigned'}
+                      {opportunity.source ? ' · Source: ' + opportunity.source : ''}
+                    </p>
+                    {opportunity.stage_type === 'lost' && opportunity.lost_reason ? (
+                      <p className="mt-1 whitespace-pre-wrap break-words text-xs text-rose-600 dark:text-rose-300">
+                        Loss reason: {opportunity.lost_reason}
+                      </p>
+                    ) : null}
+                    {opportunity.stage_type === 'won' && opportunity.won_at ? (
+                      <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
+                        Won on {String(opportunity.won_at).slice(0, 10)}
+                      </p>
+                    ) : null}
+                    {opportunity.stage_type === 'lost' && opportunity.lost_at ? (
+                      <p className="mt-1 text-xs text-slate-500">
+                        Lost on {String(opportunity.lost_at).slice(0, 10)}
                       </p>
                     ) : null}
                   </div>
-                  <div className="flex shrink-0 flex-col items-end gap-2">
-                    {canManagePipeline ? (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => beginOpportunityEdit(opportunity)}
-                        className="rounded-lg border border-[var(--sami-border)] px-3 py-2 text-xs font-black text-slate-600 hover:bg-slate-500/[0.06] disabled:opacity-60 dark:text-slate-300"
-                      >
-                        Edit
-                      </button>
-                    ) : null}
-                    <select
-                      aria-label={'Stage for ' + opportunity.name}
-                      value={opportunity.stage_id}
-                      disabled={busy || !canManagePipeline}
-                      onChange={event => handleOpportunityStageChange(opportunity, event.target.value)}
-                      className="max-w-[8rem] rounded-lg border border-[var(--sami-border)] bg-transparent p-2 text-xs"
-                    >
-                      {data.stages.map(stage => (
-                        <option key={stage.id} value={stage.id}>{stage.name}</option>
-                      ))}
-                    </select>
-                  </div>
+                  <select
+                    aria-label={'Stage for ' + opportunity.name}
+                    value={opportunity.stage_id}
+                    disabled={busy || !canManagePipeline}
+                    onChange={event => changeOpportunityStage(opportunity.id, event.target.value)}
+                    className="max-w-[8rem] rounded-lg border border-[var(--sami-border)] bg-transparent p-2 text-xs"
+                  >
+                    {data.stages.map(stage => (
+                      <option key={stage.id} value={stage.id}>{stage.name}</option>
+                    ))}
+                  </select>
                 </div>
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-black">
+                  {opportunity.stage_type === 'lost' ? (
+                    <span className="text-slate-400">Lost opportunity</span>
+                  ) : canCreateQuote ? (
+                    <Link
+                      href={'/apps/sales/quotes/new?opportunityId=' + encodeURIComponent(opportunity.id)}
+                      className="text-blue-600 hover:underline"
+                    >
+                      Create quotation →
+                    </Link>
+                  ) : null}
+                  {opportunity.latest_quote_id ? (
+                    <Link
+                      href={'/apps/sales/quotes/' + encodeURIComponent(opportunity.latest_quote_id)}
+                      className="text-slate-600 hover:underline"
+                    >
+                      Open latest quotation
+                    </Link>
+                  ) : (
+                    <span className="text-slate-400">No quotation yet</span>
+                  )}
+                  {canManagePipeline && opportunity.stage_type === 'open' ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => beginOpportunityEdit(opportunity)}
+                      className="text-slate-600 hover:underline disabled:opacity-60 dark:text-slate-300"
+                    >
+                      Edit opportunity
+                    </button>
+                  ) : null}
+                  {canManagePipeline && opportunity.stage_type === 'open' && data.stages.some(stage => stage.stage_type === 'won') ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void markOpportunityWon(opportunity)}
+                      className="text-emerald-700 hover:underline disabled:opacity-60 dark:text-emerald-300"
+                    >
+                      Mark won
+                    </button>
+                  ) : null}
+                  {canManagePipeline && opportunity.stage_type === 'open' && data.stages.some(stage => stage.stage_type === 'lost') ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => beginOpportunityLoss(opportunity)}
+                      className="text-rose-600 hover:underline disabled:opacity-60 dark:text-rose-300"
+                    >
+                      Mark lost
+                    </button>
+                  ) : null}
+                  {canManagePipeline && opportunity.stage_type !== 'open' ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void reopenOpportunity(opportunity)}
+                      className="text-blue-600 hover:underline disabled:opacity-60"
+                    >
+                      Reopen opportunity
+                    </button>
+                  ) : null}
+                </div>
+
                 {editingOpportunityId === opportunity.id ? (
                   <form
                     onSubmit={event => void saveOpportunityEdit(event, opportunity)}
@@ -1286,27 +1461,60 @@ export default function SalesPipelineManager({
                       />
                     </label>
                     <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Customer / company</span>
+                      <input
+                        value={opportunityDraft.customerName}
+                        onChange={event => setOpportunityDraft(current => ({ ...current, customerName: event.target.value }))}
+                        className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                      />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Contact name</span>
+                      <input
+                        value={opportunityDraft.contactName}
+                        onChange={event => setOpportunityDraft(current => ({ ...current, contactName: event.target.value }))}
+                        className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                      />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Email</span>
+                      <input
+                        type="email"
+                        value={opportunityDraft.email}
+                        onChange={event => setOpportunityDraft(current => ({ ...current, email: event.target.value }))}
+                        className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                      />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Phone</span>
+                      <input
+                        type="tel"
+                        value={opportunityDraft.phone}
+                        onChange={event => setOpportunityDraft(current => ({ ...current, phone: event.target.value }))}
+                        className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                      />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
                       <span>Expected deal value *</span>
                       <input
-                        required
                         type="number"
                         min="0"
                         step="0.01"
+                        required
                         value={opportunityDraft.expectedValue}
                         onChange={event => setOpportunityDraft(current => ({ ...current, expectedValue: event.target.value }))}
                         className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
                       />
                     </label>
                     <label className="space-y-1 text-xs font-bold text-slate-500">
-                      <span>Currency</span>
+                      <span>Currency *</span>
                       <input
                         required
                         minLength={3}
                         maxLength={3}
-                        pattern="[A-Za-z]{3}"
                         value={opportunityDraft.currency}
                         onChange={event => setOpportunityDraft(current => ({ ...current, currency: event.target.value.toUpperCase() }))}
-                        className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal uppercase text-slate-900 dark:text-slate-100"
+                        className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
                       />
                     </label>
                     <label className="space-y-1 text-xs font-bold text-slate-500">
@@ -1331,6 +1539,14 @@ export default function SalesPipelineManager({
                         ))}
                       </select>
                     </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Source</span>
+                      <input
+                        value={opportunityDraft.source}
+                        onChange={event => setOpportunityDraft(current => ({ ...current, source: event.target.value }))}
+                        className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                      />
+                    </label>
                     <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2">
                       <span>Notes</span>
                       <textarea
@@ -1341,62 +1557,43 @@ export default function SalesPipelineManager({
                       />
                     </label>
                     <div className="flex flex-wrap gap-2 sm:col-span-2">
-                      <button
-                        type="submit"
-                        disabled={busy || !opportunityDraft.name.trim() || !/^\d+(\.\d{1,2})?$/.test(opportunityDraft.expectedValue) || !/^[A-Z]{3}$/.test(opportunityDraft.currency)}
-                        className="h-10 rounded-lg bg-blue-600 px-3.5 text-xs font-black text-white disabled:opacity-60"
-                      >
-                        {busy ? 'Saving…' : 'Save changes'}
+                      <button type="submit" disabled={busy || !opportunityDraft.name.trim() || !opportunityDraft.expectedValue.trim() || opportunityDraft.currency.trim().length !== 3} className="h-10 rounded-lg bg-blue-600 px-3.5 text-xs font-black text-white disabled:opacity-60">
+                        {busy ? 'Saving…' : 'Save opportunity'}
                       </button>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => setEditingOpportunityId(null)}
-                        className="h-10 rounded-lg border border-[var(--sami-border)] px-3.5 text-xs font-black disabled:opacity-60"
-                      >
+                      <button type="button" disabled={busy} onClick={() => setEditingOpportunityId(null)} className="h-10 rounded-lg border border-[var(--sami-border)] px-3.5 text-xs font-black disabled:opacity-60">
                         Cancel
                       </button>
                     </div>
                   </form>
                 ) : null}
-                {pendingOpportunityStageChange?.opportunityId === opportunity.id ? (
+
+                {closingOpportunityId === opportunity.id && closingOpportunityStageId ? (
                   <form
-                    onSubmit={event => void confirmOpportunityLost(event)}
+                    onSubmit={event => void confirmOpportunityLost(event, opportunity)}
                     className="mt-4 space-y-3 rounded-xl border border-rose-500/30 bg-rose-500/[0.04] p-3"
                   >
-                    <h4 className="text-sm font-black">Mark opportunity as lost</h4>
-                    <p className="text-xs text-slate-500">
-                      Confirm the loss and record the reason for the sales history.
-                    </p>
+                    <h4 className="text-sm font-black">Mark opportunity lost</h4>
                     <label className="block space-y-1 text-xs font-bold text-slate-500">
                       <span>Reason for loss *</span>
                       <textarea
                         required
                         rows={3}
-                        value={opportunityLostReason}
-                        onChange={event => setOpportunityLostReason(event.target.value)}
+                        value={opportunityLossReason}
+                        onChange={event => setOpportunityLossReason(event.target.value)}
                         className="w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 py-2 text-sm font-normal text-slate-900 dark:text-slate-100"
                       />
                     </label>
                     <div className="flex flex-wrap gap-2">
-                      <button
-                        type="submit"
-                        disabled={busy || !opportunityLostReason.trim()}
-                        className="h-10 rounded-lg bg-rose-600 px-3.5 text-xs font-black text-white disabled:opacity-60"
-                      >
-                        {busy ? 'Saving…' : 'Confirm lost'}
+                      <button type="submit" disabled={busy || !opportunityLossReason.trim()} className="h-10 rounded-lg bg-rose-600 px-3.5 text-xs font-black text-white disabled:opacity-60">
+                        {busy ? 'Saving…' : 'Confirm loss'}
                       </button>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => setPendingOpportunityStageChange(null)}
-                        className="h-10 rounded-lg border border-[var(--sami-border)] px-3.5 text-xs font-black disabled:opacity-60"
-                      >
+                      <button type="button" disabled={busy} onClick={() => { setClosingOpportunityId(null); setClosingOpportunityStageId(null); setOpportunityLossReason(''); }} className="h-10 rounded-lg border border-[var(--sami-border)] px-3.5 text-xs font-black disabled:opacity-60">
                         Cancel
                       </button>
                     </div>
                   </form>
                 ) : null}
+
                 <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-black">
                   {opportunity.stage_type === 'lost' ? (
                     <span className="text-slate-400">Lost opportunity</span>
