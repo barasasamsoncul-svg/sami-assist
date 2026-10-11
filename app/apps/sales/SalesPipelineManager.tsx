@@ -420,18 +420,46 @@ export default function SalesPipelineManager({
                       <p className="mt-1 break-words text-xs text-slate-500">
                         {lead.company_name || lead.contact_name}
                         {lead.email ? ' · ' + lead.email : ''}
+                        {lead.phone ? ' · ' + lead.phone : ''}
+                      </p>
+                    ) : lead.email || lead.phone ? (
+                      <p className="mt-1 break-words text-xs text-slate-500">
+                        {[lead.email, lead.phone].filter(Boolean).join(' · ')}
+                      </p>
+                    ) : null}
+                    <p className="mt-1 text-xs text-slate-500">
+                      Owner: {data.salespeople.find(person => person.id === lead.salesperson_user_id)?.name || 'Unassigned'}
+                    </p>
+                    {lead.disqualification_reason ? (
+                      <p className="mt-1 break-words text-xs text-rose-600 dark:text-rose-300">
+                        Reason: {lead.disqualification_reason}
                       </p>
                     ) : null}
                   </div>
-                  {canManagePipeline && lead.status !== 'converted' && lead.status !== 'disqualified' ? (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => beginQualification(lead.id)}
-                      className="shrink-0 text-xs font-black text-blue-600 hover:underline disabled:opacity-60"
-                    >
-                      Qualify →
-                    </button>
+                  {canManagePipeline ? (
+                    <div className="flex max-w-[12rem] shrink-0 flex-wrap justify-end gap-x-3 gap-y-2">
+                      {lead.status !== 'converted' && editingLeadId !== lead.id ? (
+                        <button type="button" disabled={busy} onClick={() => beginLeadEdit(lead)} className="text-xs font-black text-slate-600 hover:underline disabled:opacity-60">Edit</button>
+                      ) : null}
+                      {lead.status !== 'converted' && lead.status !== 'disqualified' ? (
+                        <button type="button" disabled={busy} onClick={() => beginQualification(lead.id)} className="text-xs font-black text-blue-600 hover:underline disabled:opacity-60">Qualify →</button>
+                      ) : null}
+                      {lead.status !== 'converted' && lead.status !== 'disqualified' ? (
+                        <button type="button" disabled={busy} onClick={() => {
+                          setDisqualifyingLeadId(lead.id);
+                          setDisqualificationReason('');
+                          setEditingLeadId(null);
+                          setQualifyingLeadId(null);
+                          setActivityLeadId(null);
+                        }} className="text-xs font-black text-rose-600 hover:underline disabled:opacity-60">Disqualify</button>
+                      ) : null}
+                      {lead.status === 'disqualified' ? (
+                        <button type="button" disabled={busy} onClick={() => void action({ action: 'reopen_lead', leadId: lead.id })} className="text-xs font-black text-emerald-700 hover:underline disabled:opacity-60">Reopen</button>
+                      ) : null}
+                      {lead.status !== 'converted' && lead.status !== 'disqualified' ? (
+                        <button type="button" disabled={busy} onClick={() => beginActivity(lead)} className="text-xs font-black text-slate-600 hover:underline disabled:opacity-60">+ Follow-up</button>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
 
