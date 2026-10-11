@@ -25,6 +25,9 @@ type SalesLead = {
   sales_team_id?: string | null;
   territory_id?: string | null;
   disqualification_reason: string | null;
+  lead_score: number;
+  lead_score_band: 'high' | 'medium' | 'low';
+  lead_score_factors: { key: string; label: string; points: number }[];
 };
 
 type Salesperson = { id: string; name: string; email: string };
@@ -136,6 +139,7 @@ type SalesPipelineSavedView = {
   name: string;
   viewType: 'leads' | 'opportunities';
   statusView: string;
+  scoreView: 'all' | 'high' | 'medium' | 'low';
   searchQuery: string;
   createdAt: string;
 };
@@ -154,7 +158,7 @@ type PipelineAction =
   | { action: 'convert_lead'; leadId: string; name: string; expectedValue: string; currency: string; expectedCloseDate: string | null }
   | { action: 'update_opportunity'; opportunityId: string; name: string; customerName: string; contactName: string; email: string; phone: string; expectedValue: string; currency: string; expectedCloseDate: string | null; source: string; notes: string; salespersonUserId: string | null }
   | { action: 'move_opportunity'; opportunityId: string; stageId: string; reason?: string }
-  | { action: 'save_pipeline_view'; name: string; viewType: 'leads' | 'opportunities'; statusView: string; searchQuery: string }
+  | { action: 'save_pipeline_view'; name: string; viewType: 'leads' | 'opportunities'; statusView: string; scoreView: 'all' | 'high' | 'medium' | 'low'; searchQuery: string }
   | { action: 'delete_pipeline_view'; viewId: string };
 
 type CreateLeadPayload = Extract<PipelineAction, { action: 'create_lead' }>;
@@ -281,6 +285,7 @@ export default function SalesPipelineManager({
   });
   const [leadSearch, setLeadSearch] = useState('');
   const [leadStatusFilter, setLeadStatusFilter] = useState('all');
+  const [leadScoreFilter, setLeadScoreFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all');
   const [opportunitySearch, setOpportunitySearch] = useState('');
   const [opportunityStatusFilter, setOpportunityStatusFilter] = useState<'all' | 'open' | 'won' | 'lost'>('all');
   const [savedPipelineViews, setSavedPipelineViews] = useState<SalesPipelineSavedView[]>([]);
@@ -362,12 +367,13 @@ export default function SalesPipelineManager({
   const filteredLeads = data.leads.filter(lead => {
     const search = leadSearch.trim().toLowerCase();
     const matchesStatus = leadStatusFilter === 'all' || lead.status === leadStatusFilter;
+    const matchesScore = leadScoreFilter === 'all' || lead.lead_score_band === leadScoreFilter;
     const matchesSearch = !search || [
       lead.name, lead.lead_number, lead.company_name, lead.contact_name,
-      lead.email, lead.phone, lead.source, lead.status,
+      lead.email, lead.phone, lead.source, lead.status, lead.lead_score, lead.lead_score_band,
       data.salespeople.find(person => person.id === lead.salesperson_user_id)?.name,
     ].some(value => String(value || '').toLowerCase().includes(search));
-    return matchesStatus && matchesSearch;
+    return matchesStatus && matchesScore && matchesSearch;
   });
 
   const filteredOpportunities = data.opportunities.filter(opportunity => {
@@ -505,6 +511,7 @@ export default function SalesPipelineManager({
       name,
       viewType,
       statusView: isLeads ? leadStatusFilter : opportunityStatusFilter,
+      scoreView: isLeads ? leadScoreFilter : 'all',
       searchQuery: isLeads ? leadSearch : opportunitySearch,
     });
     if (succeeded) {
@@ -518,6 +525,7 @@ export default function SalesPipelineManager({
     if (view.viewType === 'leads') {
       setLeadSearch(view.searchQuery);
       setLeadStatusFilter(view.statusView);
+      setLeadScoreFilter(view.scoreView || 'all');
     } else {
       setOpportunitySearch(view.searchQuery);
       setOpportunityStatusFilter(view.statusView as typeof opportunityStatusFilter);
@@ -1171,7 +1179,7 @@ export default function SalesPipelineManager({
               {filteredLeads.length} / {data.leads.length}
             </span>
           </div>
-          <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_11rem]">
+          <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_10rem_10rem]">
             <label className="space-y-1 text-xs font-bold text-slate-500">
               <span>Search leads</span>
               <input type="search" value={leadSearch} onChange={event => setLeadSearch(event.target.value)} placeholder="Name, company, email, owner…" className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
@@ -1185,6 +1193,15 @@ export default function SalesPipelineManager({
                 <option value="qualified">Qualified</option>
                 <option value="disqualified">Disqualified</option>
                 <option value="converted">Converted</option>
+              </select>
+            </label>
+            <label className="space-y-1 text-xs font-bold text-slate-500">
+              <span>Lead score</span>
+              <select value={leadScoreFilter} onChange={event => setLeadScoreFilter(event.target.value as typeof leadScoreFilter)} className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100">
+                <option value="all">All scores</option>
+                <option value="high">High priority (75+)</option>
+                <option value="medium">Medium priority (45–74)</option>
+                <option value="low">Low priority (0–44)</option>
               </select>
             </label>
           </div>
@@ -1252,6 +1269,16 @@ export default function SalesPipelineManager({
                     <p className="mt-1 text-xs text-slate-500">
                       Owner: {data.salespeople.find(person => person.id === lead.salesperson_user_id)?.name || 'Unassigned'}
                     </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2" aria-label={`Lead score ${lead.lead_score} out of 100`}>
+                      <span className={lead.lead_score_band === 'high' ? 'rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-[10px] font-black text-emerald-700 dark:text-emerald-300' : lead.lead_score_band === 'medium' ? 'rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[10px] font-black text-amber-700 dark:text-amber-300' : 'rounded-full border border-[var(--sami-border)] px-2 py-1 text-[10px] font-black text-slate-500'}>
+                        Score {lead.lead_score}/100 · {lead.lead_score_band} priority
+                      </span>
+                      {lead.lead_score_factors.slice(0, 3).map(factor => (
+                        <span key={factor.key} title={`+${factor.points} points`} className="rounded-full border border-[var(--sami-border)] px-2 py-1 text-[10px] text-slate-500">
+                          {factor.label}
+                        </span>
+                      ))}
+                    </div>
                     {lead.disqualification_reason ? (
                       <p className="mt-1 break-words text-xs text-rose-600 dark:text-rose-300">
                         Reason: {lead.disqualification_reason}

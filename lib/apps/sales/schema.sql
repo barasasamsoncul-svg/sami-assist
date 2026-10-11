@@ -1259,6 +1259,8 @@ CREATE TABLE IF NOT EXISTS public.sales_quote_saved_views (
       'expired',
       'expiring_soon'
     )),
+  score_view VARCHAR(20) NOT NULL DEFAULT 'all'
+    CHECK (score_view IN ('all','high','medium','low')),
   search_query VARCHAR(120) NOT NULL DEFAULT '',
   created_by UUID,
   updated_by UUID,
@@ -1326,6 +1328,8 @@ CREATE TABLE IF NOT EXISTS public.sales_pipeline_saved_views (
     CHECK (status_view IN (
       'all','new','contacted','qualified','disqualified','converted','open','won','lost'
     )),
+  score_view VARCHAR(20) NOT NULL DEFAULT 'all'
+    CHECK (score_view IN ('all','high','medium','low')),
   search_query VARCHAR(120) NOT NULL DEFAULT '',
   created_by UUID,
   updated_by UUID,
