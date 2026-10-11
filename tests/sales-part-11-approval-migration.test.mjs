@@ -55,7 +55,7 @@ test('Sales 3.4.3 migration preserves typed-signature consent evidence and is re
   assert.match(schema, /acceptance_signature_consent_text TEXT/);
   assert.match(registry, /SALES_3_4_2_TO_3_4_3/);
   assert.ok(registry.indexOf('SALES_3_4_1_TO_3_4_2,') < registry.indexOf('SALES_3_4_2_TO_3_4_3,'));
-  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.14'/s);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.15'/s);
 });
 
 test('Sales management insights are tenant-scoped, permission-gated and actionable', async () => {
@@ -142,7 +142,7 @@ test('Sales Priority 7 links CRM opportunities to quotations without crossing co
   assert.match(schema, /opportunity_id UUID REFERENCES public\.sales_opportunities\(id\) ON DELETE SET NULL/);
   assert.match(registry, /SALES_3_4_4_TO_3_4_5/);
   assert.ok(registry.indexOf('SALES_3_4_3_TO_3_4_4,') < registry.indexOf('SALES_3_4_4_TO_3_4_5,'));
-  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.14'/s);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.15'/s);
 
   assert.match(navigation, /'opportunities'/);
   assert.match(navigation, /\/apps\/sales\/opportunities/);
