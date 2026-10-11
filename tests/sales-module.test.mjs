@@ -1604,7 +1604,7 @@ test('Sales roadmap Part 10 locks multi-currency values and exposes Currency & F
 
 
 test('Sales roadmap Part 11 owns tenant-scoped leads and opportunity pipeline', async () => {
-  const [migration,runtime,manifest,context,pipeline,route,page,navigation,workspace,ui,schema] = await Promise.all([
+  const [migration,runtime,manifest,context,pipeline,route,page,navigation,workspace,ui,schema,crmUi] = await Promise.all([
     source('lib/apps/sales/migrations/3.3.0-to-3.4.0.ts'),
     source('lib/apps/runtime-migrations.ts'),
     source('lib/modules/first-party.ts'),
@@ -1616,6 +1616,7 @@ test('Sales roadmap Part 11 owns tenant-scoped leads and opportunity pipeline', 
     source('app/apps/sales/SalesWorkspaceClient.tsx'),
     source('app/apps/sales/SalesPipelineBoard.tsx'),
     source('lib/apps/sales/schema.sql'),
+    source('app/apps/sales/SalesPipelineManager.tsx'),
   ]);
   assert.match(runtime,/SALES_3_3_0_TO_3_4_0/);
   assert.match(manifest,/key: "sales"[\s\S]*version: '3\.4\.5'/);
@@ -1631,6 +1632,14 @@ test('Sales roadmap Part 11 owns tenant-scoped leads and opportunity pipeline', 
   assert.match(pipeline,/convertSalesLeadToOpportunity/);
   assert.match(pipeline,/moveSalesOpportunity/);
   assert.match(pipeline,/sales_opportunity_stage_history/);
+  assert.match(pipeline,/numberInput\\(input\\.expectedValue/);
+  assert.match(pipeline,/input\\.expectedCloseDate/);
+  assert.match(pipeline,/context\\.company\\.currentCompany\\.currency/);
+  assert.match(pipeline,/lead\\.rows\\[0\\]\\.status==='disqualified'/);
+  assert.match(crmUi,/Expected deal value/);
+  assert.match(crmUi,/Expected close date/);
+  assert.match(crmUi,/Qualify lead/);
+  assert.match(workspace,/defaultCurrency=\\{initialData\\.company\\.currency\\}/);
   assert.match(route,/pipeline === '1'/);
   assert.match(route,/create_lead/);
   assert.match(route,/convert_lead/);
