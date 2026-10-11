@@ -24,6 +24,7 @@ export {
   requestSalesQuoteApproval,
   reviewSalesQuoteApproval,
   saveSalesQuoteTemplate,
+  deleteSalesQuoteTemplate,
   sendSalesQuote,
   updateSalesCatalogItem,
   updateSalesCustomer,

@@ -2044,3 +2044,71 @@ test('Sales quotation templates can be edited without creating duplicates', asyn
     'The save command updates a company-scoped existing template.',
   );
 });
+
+
+test('Sales quotation template deletion is company-scoped and preserves historical references', async () => {
+  const commands =
+    await source(
+      'lib/apps/sales/commands.ts',
+    );
+
+  const deletion =
+    commands.slice(
+      commands.indexOf('export async function deleteSalesQuoteTemplate'),
+    );
+
+  assert.ok(
+    deletion.includes('SALES_PERMISSIONS'),
+    'Template deletion uses the Sales settings permission gate.',
+  );
+  assert.match(
+    deletion,
+    /UPDATE sales_quote_templates/,
+  );
+  assert.match(
+    deletion,
+    /company_id = \$2/,
+    'Deletion is scoped to the current company.',
+  );
+  assert.match(
+    deletion,
+    /deleted_at = NOW\(\)/,
+    'Templates are soft-deleted so historical quotations remain intact.',
+  );
+  assert.match(
+    deletion,
+    /deleted_at IS NULL/,
+    'Already deleted templates cannot be deleted again.',
+  );
+
+  const route =
+    await source(
+      'app/api/apps/sales/route.ts',
+    );
+
+  assert.match(
+    route,
+    /delete_template:\s*deleteSalesQuoteTemplate/,
+    'The Sales API exposes the deletion action.',
+  );
+
+  const manager =
+    await source(
+      'app/apps/sales/SalesTemplatesManager.tsx',
+    );
+
+  assert.match(
+    manager,
+    /action:\s*'delete_template'/,
+  );
+  assert.match(
+    manager,
+    /window\.confirm/,
+    'Users must confirm template deletion.',
+  );
+  assert.match(
+    manager,
+    /Existing quotations remain unchanged/,
+    'The UI explains historical quotation preservation.',
+  );
+});
