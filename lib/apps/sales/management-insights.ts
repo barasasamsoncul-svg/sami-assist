@@ -42,6 +42,13 @@ export type SalesManagementInsightsData = {
   orderMonthly: Array<{ month: string; orderCount: number; amount: number }>;
   topProducts: Array<{ productName: string; sku: string | null; quantity: number; orderCount: number; amount: number }>;
   teamPerformance: Array<{ teamName: string; orderCount: number; amount: number }>;
+  forecast: Array<{
+    horizonDays: number;
+    currency: string;
+    opportunityCount: number;
+    openPipelineValue: number;
+    weightedPipelineValue: number;
+  }>;
 };
 
 const EMPTY_REPORT: SalesManagementInsightsData = {
@@ -71,6 +78,7 @@ const EMPTY_REPORT: SalesManagementInsightsData = {
   orderMonthly: [],
   topProducts: [],
   teamPerformance: [],
+  forecast: [],
 };
 
 export async function getSalesManagementInsights(): Promise<SalesManagementInsightsData> {
@@ -94,6 +102,7 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
     orderMonthlyResult,
     productsResult,
     teamsResult,
+    forecastResult,
   ] = await Promise.all([
     context.pool.query(`
       SELECT
@@ -250,6 +259,32 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
       ORDER BY amount DESC, team_name
       LIMIT 10
     `, [companyId]),
+    context.pool.query(`
+      SELECT
+        h.horizon_days,
+        UPPER(COALESCE(NULLIF(BTRIM(o.currency), ''), 'KES')) AS currency,
+        COUNT(o.id)::int AS opportunity_count,
+        COALESCE(SUM(o.expected_value), 0) AS open_pipeline_value,
+        COALESCE(SUM(
+          o.expected_value
+          * LEAST(100, GREATEST(0, COALESCE(o.probability, s.probability, 0)))
+          / 100.0
+        ), 0) AS weighted_pipeline_value
+      FROM (VALUES (30), (60), (90)) AS h(horizon_days)
+      INNER JOIN sales_opportunities o
+        ON o.company_id = $1
+        AND o.deleted_at IS NULL
+        AND o.expected_close_date >= CURRENT_DATE
+        AND o.expected_close_date <= CURRENT_DATE + h.horizon_days
+      INNER JOIN sales_pipeline_stages s
+        ON s.id = o.stage_id
+        AND s.company_id = o.company_id
+        AND s.stage_type = 'open'
+        AND s.deleted_at IS NULL
+      WHERE o.company_id = $1
+      GROUP BY h.horizon_days, UPPER(COALESCE(NULLIF(BTRIM(o.currency), ''), 'KES'))
+      ORDER BY h.horizon_days ASC, currency ASC
+    `, [companyId]),
   ]);
 
   const summaryRow = summaryResult.rows[0] || {};
@@ -311,6 +346,13 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
       teamName: String(row.team_name || 'Unassigned'),
       orderCount: Number(row.order_count || 0),
       amount: Number(row.amount || 0),
+    })),
+    forecast: forecastResult.rows.map(row => ({
+      horizonDays: Number(row.horizon_days || 0),
+      currency: String(row.currency || 'KES').toUpperCase(),
+      opportunityCount: Number(row.opportunity_count || 0),
+      openPipelineValue: Number(row.open_pipeline_value || 0),
+      weightedPipelineValue: Number(row.weighted_pipeline_value || 0),
     })),
   };
 }
