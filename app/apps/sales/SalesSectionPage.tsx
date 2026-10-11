@@ -6,7 +6,9 @@ import SalesModuleShell from '@/app/apps/sales/SalesModuleShell';
 import SalesWorkspaceClient from '@/app/apps/sales/SalesWorkspaceClient';
 import SalesManagementInsights from '@/app/apps/sales/SalesManagementInsights';
 import SalesOpportunityFunnel from '@/app/apps/sales/SalesOpportunityFunnel';
+import SalesPipelineOutcomes from '@/app/apps/sales/SalesPipelineOutcomes';
 import { getSalesOpportunityFunnelData, getSalesOpportunityRiskQueue } from '@/lib/apps/sales/pipeline-funnel';
+import { getSalesPipelineOutcomeReport } from '@/lib/apps/sales/pipeline-outcomes';
 import { getSalesManagementInsights } from '@/lib/apps/sales/management-insights';
 
 import {
@@ -192,11 +194,13 @@ export default async function SalesSectionPage({
         getSalesManagementInsights(),
         getSalesOpportunityFunnelData(),
         getSalesOpportunityRiskQueue(),
+        getSalesPipelineOutcomeReport(),
       ])
     : null;
   const managementInsights = reportData?.[0] ?? null;
   const opportunityFunnel = reportData?.[1] ?? null;
   const opportunityRiskQueue = reportData?.[2] ?? null;
+  const pipelineOutcomeReport = reportData?.[3] ?? null;
 
   return (
     <SalesModuleShell
@@ -240,7 +244,7 @@ export default async function SalesSectionPage({
         data.company.name
       }
     >
-      {managementInsights && opportunityFunnel && opportunityRiskQueue ? (
+      {managementInsights && opportunityFunnel && opportunityRiskQueue && pipelineOutcomeReport ? (
         <>
           <SalesManagementInsights
             data={managementInsights}
@@ -252,6 +256,10 @@ export default async function SalesSectionPage({
             }}
           />
           <SalesOpportunityFunnel rows={opportunityFunnel} riskRows={opportunityRiskQueue} />
+          <SalesPipelineOutcomes
+            summaries={pipelineOutcomeReport.summaries}
+            lossReasons={pipelineOutcomeReport.lossReasons}
+          />
         </>
       ) : (
         <SalesWorkspaceClient
