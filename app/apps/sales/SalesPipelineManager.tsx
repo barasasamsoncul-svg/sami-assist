@@ -62,6 +62,8 @@ type SalesOpportunity = {
   expected_value: number | string;
   probability: number | string;
   expected_close_date: string | null;
+  salesperson_user_id: string | null;
+  notes: string | null;
   latest_quote_id: string | null;
 };
 
@@ -82,7 +84,8 @@ type PipelineAction =
   | { action: 'update_lead_activity'; activityId: string; status: 'completed' | 'cancelled' }
   | { action: 'edit_lead_activity'; activityId: string; activityType: ActivityDraft['activityType']; subject: string; description: string; dueDate: string | null; assignedUserId: string | null }
   | { action: 'convert_lead'; leadId: string; name: string; expectedValue: string; currency: string; expectedCloseDate: string | null }
-  | { action: 'move_opportunity'; opportunityId: string; stageId: string };
+  | { action: 'update_opportunity'; opportunityId: string; name: string; expectedValue: string; currency: string; expectedCloseDate: string | null; salespersonUserId: string | null; notes: string }
+  | { action: 'move_opportunity'; opportunityId: string; stageId: string; reason?: string | null };
 
 type CreateLeadPayload = Extract<PipelineAction, { action: 'create_lead' }>;
 
@@ -114,6 +117,21 @@ type LeadDraft = {
 type ActivityDraft = {
   activityType: 'call' | 'email' | 'meeting' | 'task' | 'note';
   subject: string; description: string; dueDate: string; assignedUserId: string;
+};
+
+type OpportunityDraft = {
+  name: string;
+  expectedValue: string;
+  currency: string;
+  expectedCloseDate: string;
+  salespersonUserId: string;
+  notes: string;
+};
+
+type PendingOpportunityStageChange = {
+  opportunityId: string;
+  stageId: string;
+  opportunityName: string;
 };
 
 function formatMoney(value: number, currency: string) {
@@ -191,6 +209,13 @@ export default function SalesPipelineManager({
   const [activityEditDraft, setActivityEditDraft] = useState<ActivityDraft>({
     activityType: 'task', subject: '', description: '', dueDate: '', assignedUserId: '',
   });
+  const [editingOpportunityId, setEditingOpportunityId] = useState<string | null>(null);
+  const [opportunityDraft, setOpportunityDraft] = useState<OpportunityDraft>({
+    name: '', expectedValue: '0', currency: normalizedCurrency(defaultCurrency),
+    expectedCloseDate: '', salespersonUserId: '', notes: '',
+  });
+  const [pendingOpportunityStageChange, setPendingOpportunityStageChange] = useState<PendingOpportunityStageChange | null>(null);
+  const [opportunityLostReason, setOpportunityLostReason] = useState('');
   const [leadSearch, setLeadSearch] = useState('');
   const [leadStatusFilter, setLeadStatusFilter] = useState('all');
   const [agendaSearch, setAgendaSearch] = useState('');
@@ -490,6 +515,68 @@ export default function SalesPipelineManager({
 
   async function updateActivity(activityId: string, status: 'completed' | 'cancelled') {
     await action({ action: 'update_lead_activity', activityId, status });
+  }
+
+  function beginOpportunityEdit(opportunity: SalesOpportunity) {
+    setEditingOpportunityId(opportunity.id);
+    setPendingOpportunityStageChange(null);
+    setOpportunityDraft({
+      name: opportunity.name || '',
+      expectedValue: String(opportunity.expected_value ?? 0),
+      currency: normalizedCurrency(opportunity.currency || defaultCurrency),
+      expectedCloseDate: opportunity.expected_close_date ? String(opportunity.expected_close_date).slice(0, 10) : '',
+      salespersonUserId: opportunity.salesperson_user_id || '',
+      notes: opportunity.notes || '',
+    });
+    setError('');
+  }
+
+  async function saveOpportunityEdit(event: FormEvent<HTMLFormElement>, opportunity: SalesOpportunity) {
+    event.preventDefault();
+    const succeeded = await action({
+      action: 'update_opportunity',
+      opportunityId: opportunity.id,
+      name: opportunityDraft.name,
+      expectedValue: opportunityDraft.expectedValue,
+      currency: normalizedCurrency(opportunityDraft.currency),
+      expectedCloseDate: opportunityDraft.expectedCloseDate || null,
+      salespersonUserId: opportunityDraft.salespersonUserId || null,
+      notes: opportunityDraft.notes,
+    });
+    if (succeeded) setEditingOpportunityId(null);
+  }
+
+  function handleOpportunityStageChange(opportunity: SalesOpportunity, stageId: string) {
+    const stage = data.stages.find(item => item.id === stageId);
+    if (!stage) return;
+    setEditingOpportunityId(null);
+    if (stage.stage_type === 'lost') {
+      setPendingOpportunityStageChange({
+        opportunityId: opportunity.id,
+        stageId,
+        opportunityName: opportunity.name,
+      });
+      setOpportunityLostReason('');
+      setError('');
+      return;
+    }
+    setPendingOpportunityStageChange(null);
+    void action({ action: 'move_opportunity', opportunityId: opportunity.id, stageId });
+  }
+
+  async function confirmOpportunityLost(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!pendingOpportunityStageChange) return;
+    const succeeded = await action({
+      action: 'move_opportunity',
+      opportunityId: pendingOpportunityStageChange.opportunityId,
+      stageId: pendingOpportunityStageChange.stageId,
+      reason: opportunityLostReason,
+    });
+    if (succeeded) {
+      setPendingOpportunityStageChange(null);
+      setOpportunityLostReason('');
+    }
   }
 
   return (
@@ -1131,22 +1218,157 @@ export default function SalesPipelineManager({
                       </p>
                     ) : null}
                   </div>
-                  <select
-                    aria-label={'Stage for ' + opportunity.name}
-                    value={opportunity.stage_id}
-                    disabled={busy || !canManagePipeline}
-                    onChange={event => void action({
-                      action: 'move_opportunity',
-                      opportunityId: opportunity.id,
-                      stageId: event.target.value,
-                    })}
-                    className="max-w-[8rem] rounded-lg border border-[var(--sami-border)] bg-transparent p-2 text-xs"
-                  >
-                    {data.stages.map(stage => (
-                      <option key={stage.id} value={stage.id}>{stage.name}</option>
-                    ))}
-                  </select>
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    {canManagePipeline ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => beginOpportunityEdit(opportunity)}
+                        className="rounded-lg border border-[var(--sami-border)] px-3 py-2 text-xs font-black text-slate-600 hover:bg-slate-500/[0.06] disabled:opacity-60 dark:text-slate-300"
+                      >
+                        Edit
+                      </button>
+                    ) : null}
+                    <select
+                      aria-label={'Stage for ' + opportunity.name}
+                      value={opportunity.stage_id}
+                      disabled={busy || !canManagePipeline}
+                      onChange={event => handleOpportunityStageChange(opportunity, event.target.value)}
+                      className="max-w-[8rem] rounded-lg border border-[var(--sami-border)] bg-transparent p-2 text-xs"
+                    >
+                      {data.stages.map(stage => (
+                        <option key={stage.id} value={stage.id}>{stage.name}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
+                {editingOpportunityId === opportunity.id ? (
+                  <form
+                    onSubmit={event => void saveOpportunityEdit(event, opportunity)}
+                    className="mt-4 grid gap-3 rounded-xl bg-slate-500/[0.04] p-3 sm:grid-cols-2"
+                  >
+                    <h4 className="text-sm font-black sm:col-span-2">Edit opportunity</h4>
+                    <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2">
+                      <span>Opportunity name *</span>
+                      <input
+                        required
+                        value={opportunityDraft.name}
+                        onChange={event => setOpportunityDraft(current => ({ ...current, name: event.target.value }))}
+                        className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                      />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Expected deal value *</span>
+                      <input
+                        required
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={opportunityDraft.expectedValue}
+                        onChange={event => setOpportunityDraft(current => ({ ...current, expectedValue: event.target.value }))}
+                        className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                      />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Currency</span>
+                      <input
+                        required
+                        minLength={3}
+                        maxLength={3}
+                        pattern="[A-Za-z]{3}"
+                        value={opportunityDraft.currency}
+                        onChange={event => setOpportunityDraft(current => ({ ...current, currency: event.target.value.toUpperCase() }))}
+                        className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal uppercase text-slate-900 dark:text-slate-100"
+                      />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Expected close date</span>
+                      <input
+                        type="date"
+                        value={opportunityDraft.expectedCloseDate}
+                        onChange={event => setOpportunityDraft(current => ({ ...current, expectedCloseDate: event.target.value }))}
+                        className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                      />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Assigned salesperson</span>
+                      <select
+                        value={opportunityDraft.salespersonUserId}
+                        onChange={event => setOpportunityDraft(current => ({ ...current, salespersonUserId: event.target.value }))}
+                        className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                      >
+                        <option value="">Unassigned</option>
+                        {data.salespeople.map(person => (
+                          <option key={person.id} value={person.id}>{person.name} · {person.email}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2">
+                      <span>Notes</span>
+                      <textarea
+                        rows={3}
+                        value={opportunityDraft.notes}
+                        onChange={event => setOpportunityDraft(current => ({ ...current, notes: event.target.value }))}
+                        className="w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 py-2 text-sm font-normal text-slate-900 dark:text-slate-100"
+                      />
+                    </label>
+                    <div className="flex flex-wrap gap-2 sm:col-span-2">
+                      <button
+                        type="submit"
+                        disabled={busy || !opportunityDraft.name.trim() || !/^\d+(\.\d{1,2})?$/.test(opportunityDraft.expectedValue) || !/^[A-Z]{3}$/.test(opportunityDraft.currency)}
+                        className="h-10 rounded-lg bg-blue-600 px-3.5 text-xs font-black text-white disabled:opacity-60"
+                      >
+                        {busy ? 'Saving…' : 'Save changes'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setEditingOpportunityId(null)}
+                        className="h-10 rounded-lg border border-[var(--sami-border)] px-3.5 text-xs font-black disabled:opacity-60"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                ) : null}
+                {pendingOpportunityStageChange?.opportunityId === opportunity.id ? (
+                  <form
+                    onSubmit={event => void confirmOpportunityLost(event)}
+                    className="mt-4 space-y-3 rounded-xl border border-rose-500/30 bg-rose-500/[0.04] p-3"
+                  >
+                    <h4 className="text-sm font-black">Mark opportunity as lost</h4>
+                    <p className="text-xs text-slate-500">
+                      Confirm the loss and record the reason for the sales history.
+                    </p>
+                    <label className="block space-y-1 text-xs font-bold text-slate-500">
+                      <span>Reason for loss *</span>
+                      <textarea
+                        required
+                        rows={3}
+                        value={opportunityLostReason}
+                        onChange={event => setOpportunityLostReason(event.target.value)}
+                        className="w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 py-2 text-sm font-normal text-slate-900 dark:text-slate-100"
+                      />
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="submit"
+                        disabled={busy || !opportunityLostReason.trim()}
+                        className="h-10 rounded-lg bg-rose-600 px-3.5 text-xs font-black text-white disabled:opacity-60"
+                      >
+                        {busy ? 'Saving…' : 'Confirm lost'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setPendingOpportunityStageChange(null)}
+                        className="h-10 rounded-lg border border-[var(--sami-border)] px-3.5 text-xs font-black disabled:opacity-60"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                ) : null}
                 <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-black">
                   {opportunity.stage_type === 'lost' ? (
                     <span className="text-slate-400">Lost opportunity</span>
