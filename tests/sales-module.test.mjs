@@ -1787,15 +1787,15 @@ test('Sales Priority 9 supports searchable lead lifecycle, reassignment, disqual
     source('app/apps/sales/SalesPipelineManager.tsx'),
   ]);
 
-  assert.match(manifest, /key: "sales"[\\s\\S]*version: '3\\.4\\.6'/);
-  assert.match(migration, /sales-3\\.4\\.5-to-3\\.4\\.6/);
-  assert.match(migration, /CREATE TABLE IF NOT EXISTS public\\.sales_lead_activities/);
+  assert.ok(manifest.includes('key: "sales"') && manifest.includes("version: '3.4.6'"));
+  assert.ok(migration.includes("sales-3.4.5-to-3.4.6"));
+  assert.ok(migration.includes("CREATE TABLE IF NOT EXISTS public.sales_lead_activities"));
   assert.match(runtime, /SALES_3_4_5_TO_3_4_6/);
   assert.match(schema, /idx_sales_lead_activities_due/);
 
   assert.match(pipeline, /resolveActiveSalesperson/);
   assert.match(pipeline, /FROM tenant_users tu/);
-  assert.match(pipeline, /tu\\.member_type = 'internal'/);
+  assert.ok(pipeline.includes("tu.member_type = 'internal'"));
   assert.match(pipeline, /export async function updateSalesLead/);
   assert.match(pipeline, /A converted lead cannot be edited/);
   assert.match(pipeline, /export async function disqualifySalesLead/);
