@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS public.sales_quotes (
   company_id UUID NOT NULL,
   billing_customer_id UUID,
   template_id UUID REFERENCES public.sales_quote_templates(id) ON DELETE SET NULL,
+  opportunity_id UUID,
   quote_number VARCHAR(100) NOT NULL,
   status VARCHAR(30) NOT NULL DEFAULT 'draft'
     CHECK (status IN ('draft','sent','viewed','accepted','rejected','expired','cancelled','converted')),
@@ -1016,6 +1017,29 @@ ALTER TABLE public.sales_sequences
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at TIMESTAMPTZ
   );
+
+  ALTER TABLE public.sales_quotes
+    ADD COLUMN IF NOT EXISTS opportunity_id UUID;
+
+  DO $sales_opportunity_quote_link$
+  BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint
+      WHERE conrelid = 'public.sales_quotes'::regclass
+        AND conname = 'sales_quotes_opportunity_id_fkey'
+    ) THEN
+      ALTER TABLE public.sales_quotes
+        ADD CONSTRAINT sales_quotes_opportunity_id_fkey
+        FOREIGN KEY (opportunity_id)
+        REFERENCES public.sales_opportunities(id)
+        ON DELETE SET NULL;
+    END IF;
+  END
+  $sales_opportunity_quote_link$;
+
+  CREATE INDEX IF NOT EXISTS idx_sales_quotes_opportunity
+    ON public.sales_quotes(company_id, opportunity_id, created_at DESC)
+    WHERE opportunity_id IS NOT NULL AND deleted_at IS NULL;
 
   CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_opportunities_number
     ON public.sales_opportunities(company_id, opportunity_number) WHERE deleted_at IS NULL;
