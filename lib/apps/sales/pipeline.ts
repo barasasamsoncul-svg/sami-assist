@@ -581,9 +581,7 @@ export async function bulkReassignSalesLeads(input: Record<string, unknown>) {
   const salespersonUserId = await resolveActiveSalesperson(context, input.salespersonUserId);
   const salesTeamId = optionalUuid(input.salesTeamId);
   const reason = cleanText(input.reason, 1000);
-  if (!salespersonUserId && !salesTeamId) {
-    throw new SalesError('INVALID_INPUT', 'Choose a Sales team or salesperson for the selected leads.');
-  }
+  if (!salesTeamId) throw new SalesError('INVALID_INPUT', 'Choose a Sales team for bulk lead reassignment.');
   if (!reason) throw new SalesError('INVALID_INPUT', 'A reason is required for bulk lead reassignment.');
 
   const client = await context.pool.connect();
