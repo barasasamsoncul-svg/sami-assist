@@ -402,6 +402,38 @@ export default function SalesPipelineManager({
     void loadSavedPipelineViews();
   }, [loadSavedPipelineViews]);
 
+  const loadLeadAssignmentRules = useCallback(async () => {
+    if (!canManagePipeline) {
+      setLeadAssignmentRules([]);
+      return;
+    }
+    setAssignmentRulesLoading(true);
+    try {
+      const response = await fetch('/api/apps/sales?leadAssignmentRules=1', {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+      const body = await response.json().catch(() => ({})) as {
+        leadAssignmentRules?: SalesLeadAssignmentRule[];
+        error?: string;
+      };
+      if (!response.ok || !Array.isArray(body.leadAssignmentRules)) {
+        throw new Error(body.error || 'Could not load lead-routing rules.');
+      }
+      setLeadAssignmentRules(body.leadAssignmentRules);
+      setAssignmentRulesError('');
+    } catch (caught) {
+      setAssignmentRulesError(caught instanceof Error ? caught.message : 'Could not load lead-routing rules.');
+    } finally {
+      setAssignmentRulesLoading(false);
+    }
+  }, [canManagePipeline]);
+
+  useEffect(() => {
+    void loadLeadAssignmentRules();
+  }, [loadLeadAssignmentRules]);
+
   const filteredLeads = data.leads.filter(lead => {
     const search = leadSearch.trim().toLowerCase();
     const matchesStatus = leadStatusFilter === 'all' || lead.status === leadStatusFilter;
