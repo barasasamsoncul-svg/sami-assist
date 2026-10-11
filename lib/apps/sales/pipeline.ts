@@ -56,6 +56,7 @@ export async function convertSalesLeadToOpportunity(input:Record<string,unknown>
     const lead=await client.query(`SELECT * FROM sales_leads WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL FOR UPDATE`,[leadId,context.companyId]);
     if(!lead.rows[0]) throw new SalesError('INVALID_INPUT','Lead was not found.');
     if(lead.rows[0].status==='converted') throw new SalesError('INVALID_INPUT','Lead is already converted.');
+    if(lead.rows[0].status==='disqualified') throw new SalesError('INVALID_INPUT','A disqualified lead cannot be qualified.');
     const stage=await client.query(`SELECT * FROM sales_pipeline_stages WHERE company_id=$1 AND stage_type='open' AND is_active=TRUE ORDER BY sequence LIMIT 1`,[context.companyId]);
     if(!stage.rows[0]) throw new SalesError('INVALID_INPUT','Configure an open pipeline stage first.');
     const number=await nextPipelineNumber(client,context.companyId,context.userId,'opportunity','OPP-');
