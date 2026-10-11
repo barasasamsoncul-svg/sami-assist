@@ -1034,7 +1034,7 @@ ALTER TABLE public.sales_sequences
         REFERENCES public.sales_opportunities(id)
         ON DELETE SET NULL;
     END IF;
-  END
+  END;
   $sales_opportunity_quote_link$;
 
   CREATE INDEX IF NOT EXISTS idx_sales_quotes_opportunity
