@@ -1252,3 +1252,34 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_quote_saved_views_owner_name
 CREATE INDEX IF NOT EXISTS idx_sales_quote_saved_views_owner
   ON public.sales_quote_saved_views(company_id, user_id, created_at DESC)
   WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS public.sales_order_saved_views (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL,
+  user_id UUID NOT NULL,
+  name VARCHAR(80) NOT NULL,
+  status_view VARCHAR(40) NOT NULL DEFAULT 'all'
+    CHECK (status_view IN (
+      'all',
+      'awaiting_fulfillment',
+      'partially_fulfilled',
+      'fulfilled',
+      'not_invoiced',
+      'partially_invoiced',
+      'invoiced'
+    )),
+  search_query VARCHAR(120) NOT NULL DEFAULT '',
+  created_by UUID,
+  updated_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_order_saved_views_owner_name
+  ON public.sales_order_saved_views(company_id, user_id, LOWER(name))
+  WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_sales_order_saved_views_owner
+  ON public.sales_order_saved_views(company_id, user_id, created_at DESC)
+  WHERE deleted_at IS NULL;
