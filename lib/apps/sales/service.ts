@@ -4,6 +4,13 @@ export {
 } from '@/lib/apps/sales/context';
 
 export {
+  getSalesSavedQuoteViews,
+  saveSalesSavedQuoteView,
+  deleteSalesSavedQuoteView,
+} from '@/lib/apps/sales/saved-views';
+
+
+export {
   getSalesOrderDetail,
   getSalesQuoteDetail,
   getSalesWorkspaceData,
