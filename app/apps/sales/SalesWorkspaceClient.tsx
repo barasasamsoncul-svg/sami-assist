@@ -169,6 +169,53 @@ function matchesQuoteStatusView(
 }
 
 
+type SalesOrderStatusView =
+  | 'all'
+  | 'awaiting_fulfillment'
+  | 'partially_fulfilled'
+  | 'fulfilled'
+  | 'not_invoiced'
+  | 'partially_invoiced'
+  | 'invoiced';
+
+
+const ORDER_STATUS_VIEWS: {
+  key: SalesOrderStatusView;
+  label: string;
+}[] = [
+  { key: 'all', label: 'All orders' },
+  { key: 'awaiting_fulfillment', label: 'Awaiting fulfillment' },
+  { key: 'partially_fulfilled', label: 'Partially fulfilled' },
+  { key: 'fulfilled', label: 'Fulfilled' },
+  { key: 'not_invoiced', label: 'Not invoiced' },
+  { key: 'partially_invoiced', label: 'Partially invoiced' },
+  { key: 'invoiced', label: 'Fully invoiced' },
+];
+
+
+function matchesSalesOrderView(
+  order: SalesWorkspaceData['orders'][number],
+  view: SalesOrderStatusView,
+) {
+  switch (view) {
+    case 'all':
+      return true;
+    case 'awaiting_fulfillment':
+      return order.fulfillmentStatus === 'not_started';
+    case 'partially_fulfilled':
+      return order.fulfillmentStatus === 'partial';
+    case 'fulfilled':
+      return order.fulfillmentStatus === 'fulfilled';
+    case 'not_invoiced':
+      return order.invoiceStatus === 'not_invoiced';
+    case 'partially_invoiced':
+      return order.invoiceStatus === 'partial';
+    case 'invoiced':
+      return order.invoiceStatus === 'invoiced';
+  }
+}
+
+
 type LinkedOpportunity = {
   id: string;
   opportunity_number: string;
@@ -688,6 +735,14 @@ export default function SalesWorkspaceClient({
     );
 
   const [
+    orderStatusView,
+    setOrderStatusView,
+  ] =
+    useState<SalesOrderStatusView>(
+      'all',
+    );
+
+  const [
     selectedQuoteIds,
     setSelectedQuoteIds,
   ] =
@@ -897,36 +952,37 @@ export default function SalesWorkspaceClient({
             .trim()
             .toLowerCase();
 
-        if (
-          !query
-        ) {
-          return initialData
-            .orders;
-        }
-
         return initialData
           .orders
           .filter(
             order =>
-              [
-                order.orderNumber,
-                order.customerName,
-                order.status,
-                order.fulfillmentStatus,
-                order.invoiceStatus,
-              ]
-                .some(
-                  value =>
-                    value
-                      .toLowerCase()
-                      .includes(
-                        query,
-                      ),
-                ),
+              matchesSalesOrderView(
+                order,
+                orderStatusView,
+              ) &&
+              (
+                !query ||
+                [
+                  order.orderNumber,
+                  order.customerName,
+                  order.status,
+                  order.fulfillmentStatus,
+                  order.invoiceStatus,
+                ]
+                  .some(
+                    value =>
+                      value
+                        .toLowerCase()
+                        .includes(
+                          query,
+                        ),
+                  )
+              ),
           );
       },
       [
         initialData.orders,
+        orderStatusView,
         search,
       ],
     );
@@ -2007,6 +2063,42 @@ export default function SalesWorkspaceClient({
                     )
                 }
               />
+
+              <div className="sami-surface rounded-[22px] p-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs font-black uppercase tracking-[0.08em] text-slate-500">
+                    Order work queues
+                  </p>
+                  <div
+                    role="group"
+                    aria-label="Sales order work queues"
+                    className="flex flex-wrap gap-2"
+                  >
+                    {ORDER_STATUS_VIEWS.map(option => (
+                      <button
+                        key={option.key}
+                        type="button"
+                        aria-pressed={orderStatusView === option.key}
+                        onClick={() => setOrderStatusView(option.key)}
+                        className={[
+                          'inline-flex min-h-9 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition-colors',
+                          orderStatusView === option.key
+                            ? 'border-blue-600 bg-blue-600 text-white'
+                            : 'border-[var(--sami-border)] hover:border-blue-500/60',
+                        ].join(' ')}
+                      >
+                        {option.label}
+                        <span className="rounded-full bg-black/5 px-1.5 py-0.5 text-[10px] dark:bg-white/10">
+                          {initialData.orders.filter(order => matchesSalesOrderView(order, option.key)).length}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <p className="mt-2 text-[11px] text-slate-500">
+                  Focus on delivery or invoicing work. The search above continues to narrow the selected queue.
+                </p>
+              </div>
 
               <div className="grid gap-3">
                 {
