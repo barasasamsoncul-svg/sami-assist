@@ -5702,3 +5702,63 @@ export async function saveSalesQuoteTemplate(
     client.release();
   }
 }
+
+
+export async function deleteSalesQuoteTemplate(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireSalesContext(
+      SALES_PERMISSIONS
+        .SETTINGS_MANAGE,
+    );
+
+  const templateId =
+    requireUuid(
+      input.templateId,
+      'Quotation template',
+    );
+
+  const result =
+    await context.pool.query(
+      `
+        UPDATE sales_quote_templates
+        SET
+          deleted_at = NOW(),
+          updated_by = $3,
+          updated_at = NOW(),
+          is_default = FALSE
+        WHERE id = $1
+          AND company_id = $2
+          AND deleted_at IS NULL
+        RETURNING id, name
+      `,
+      [
+        templateId,
+        context.companyId,
+        context.userId,
+      ],
+    );
+
+  if (
+    result.rows.length !==
+      1
+  ) {
+    throw new SalesError(
+      'INVALID_INPUT',
+      'Quotation template was not found or has already been deleted.',
+    );
+  }
+
+  return {
+    id:
+      String(
+        result.rows[0].id,
+      ),
+    name:
+      String(
+        result.rows[0].name,
+      ),
+  };
+}
