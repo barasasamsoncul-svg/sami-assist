@@ -1,0 +1,57 @@
+name: Sales Module Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'app/apps/sales/**'
+      - 'app/api/apps/sales/**'
+      - 'lib/apps/sales/**'
+      - 'tests/sales-*.test.*'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/sales-module.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'app/apps/sales/**'
+      - 'app/api/apps/sales/**'
+      - 'lib/apps/sales/**'
+      - 'tests/sales-*.test.*'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/sales-module.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sales-module-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sales:
+    name: Validate Sales module
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Sales regression suite
+        run: npm run test:sales
+
+      - name: TypeScript
+        run: npx tsc --noEmit
