@@ -1011,7 +1011,9 @@ export default function SalesWorkspaceClient({
             'opportunities' &&
           initialData.capabilities.canViewPipeline &&
           (
-            <SalesPipelineManager />
+            <SalesPipelineManager
+              canCreateQuote={initialData.capabilities.canCreate}
+            />
           )
         }
 
