@@ -8,7 +8,7 @@ import {
   executeSafeSamiModuleMigrationSql,
 } from '@/lib/modules/migration-safety';
 
-const SQL = \`
+const SQL = `
   CREATE TABLE IF NOT EXISTS public.sales_pipeline_saved_views (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL,
@@ -35,7 +35,7 @@ const SQL = \`
   CREATE INDEX IF NOT EXISTS idx_sales_pipeline_saved_views_owner
     ON public.sales_pipeline_saved_views(company_id, user_id, view_type, created_at DESC)
     WHERE deleted_at IS NULL;
-\`;
+`;
 
 export const SALES_3_4_10_TO_3_4_11:
   SamiModuleMigrationDefinition = {
