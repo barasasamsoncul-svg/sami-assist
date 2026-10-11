@@ -32,6 +32,10 @@ type Salesperson = { id: string; name: string; email: string };
 type SalesLeadActivity = {
   id: string;
   lead_id: string;
+  lead_name: string;
+  lead_number: string;
+  lead_company_name: string | null;
+  lead_contact_name: string | null;
   activity_type: 'call' | 'email' | 'meeting' | 'task' | 'note';
   subject: string;
   description: string | null;
@@ -127,6 +131,40 @@ function normalizedCurrency(value: string) {
   return value.trim().toUpperCase().slice(0, 3) || 'KES';
 }
 
+type ActivityDueBucket = 'overdue' | 'today' | 'upcoming' | 'unscheduled' | 'later';
+type ActivityAgendaFilter = 'all' | 'overdue' | 'today' | 'upcoming' | 'unscheduled';
+
+function localDateKey(date: Date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function activityDueBucket(
+  dueDate: string | null,
+  todayKey: string,
+  nextWeekKey: string,
+): ActivityDueBucket {
+  if (!dueDate) return 'unscheduled';
+  const dateKey = String(dueDate).slice(0, 10);
+  if (dateKey < todayKey) return 'overdue';
+  if (dateKey === todayKey) return 'today';
+  if (dateKey <= nextWeekKey) return 'upcoming';
+  return 'later';
+}
+
+function formatActivityDate(value: string | null) {
+  if (!value) return 'No due date';
+  const dateKey = String(value).slice(0, 10);
+  const date = new Date(dateKey + 'T00:00:00');
+  return Number.isNaN(date.getTime())
+    ? dateKey
+    : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+
 export default function SalesPipelineManager({
   canCreateQuote,
   canManagePipeline,
@@ -150,6 +188,8 @@ export default function SalesPipelineManager({
   const [activityDraft, setActivityDraft] = useState<ActivityDraft>({ activityType: 'task', subject: '', description: '', dueDate: '', assignedUserId: '' });
   const [leadSearch, setLeadSearch] = useState('');
   const [leadStatusFilter, setLeadStatusFilter] = useState('all');
+  const [agendaSearch, setAgendaSearch] = useState('');
+  const [agendaFilter, setAgendaFilter] = useState<ActivityAgendaFilter>('all');
   const [duplicateCandidates, setDuplicateCandidates] = useState<LeadDuplicateMatch[]>([]);
   const [pendingLeadPayload, setPendingLeadPayload] = useState<CreateLeadPayload | null>(null);
   const createLeadFormRef = useRef<HTMLFormElement | null>(null);
@@ -191,6 +231,49 @@ export default function SalesPipelineManager({
     ].some(value => String(value || '').toLowerCase().includes(search));
     return matchesStatus && matchesSearch;
   });
+
+  const today = new Date();
+  const todayKey = localDateKey(today);
+  const nextWeekDate = new Date(today);
+  nextWeekDate.setDate(nextWeekDate.getDate() + 7);
+  const nextWeekKey = localDateKey(nextWeekDate);
+
+  const plannedActivities = data.activities
+    .filter(activity => activity.status === 'planned')
+    .map(activity => ({
+      activity,
+      dueBucket: activityDueBucket(activity.due_date, todayKey, nextWeekKey),
+      ownerName: data.salespeople.find(person => person.id === activity.assigned_user_id)?.name || 'Unassigned',
+    }));
+
+  const agendaFilterOptions: { key: ActivityAgendaFilter; label: string; count: number }[] = [
+    { key: 'all', label: 'All planned', count: plannedActivities.length },
+    { key: 'overdue', label: 'Overdue', count: plannedActivities.filter(item => item.dueBucket === 'overdue').length },
+    { key: 'today', label: 'Due today', count: plannedActivities.filter(item => item.dueBucket === 'today').length },
+    { key: 'upcoming', label: 'Next 7 days', count: plannedActivities.filter(item => item.dueBucket === 'upcoming').length },
+    { key: 'unscheduled', label: 'No due date', count: plannedActivities.filter(item => item.dueBucket === 'unscheduled').length },
+  ];
+
+  const filteredAgendaActivities = plannedActivities
+    .filter(item => agendaFilter === 'all' || item.dueBucket === agendaFilter)
+    .filter(({ activity, ownerName }) => {
+      const search = agendaSearch.trim().toLowerCase();
+      return !search || [
+        activity.subject,
+        activity.description,
+        activity.activity_type,
+        activity.lead_name,
+        activity.lead_number,
+        activity.lead_company_name,
+        activity.lead_contact_name,
+        ownerName,
+      ].some(value => String(value || '').toLowerCase().includes(search));
+    })
+    .sort((a, b) => {
+      const aDate = a.activity.due_date ? String(a.activity.due_date).slice(0, 10) : '9999-12-31';
+      const bDate = b.activity.due_date ? String(b.activity.due_date).slice(0, 10) : '9999-12-31';
+      return aDate.localeCompare(bDate) || b.activity.created_at.localeCompare(a.activity.created_at);
+    });
 
   async function action(payload: PipelineAction): Promise<boolean> {
     setBusy(true);
@@ -498,6 +581,118 @@ export default function SalesPipelineManager({
           You have read-only access to leads and opportunities. Pipeline changes require management permission.
         </p>
       )}
+
+      <section className="sami-surface rounded-[24px] p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="font-black">Follow-up agenda</h3>
+            <p className="mt-1 text-sm text-slate-500">Keep calls, emails, meetings and tasks moving before opportunities go cold.</p>
+          </div>
+          <span className="rounded-full border border-[var(--sami-border)] px-2.5 py-1 text-[10px] font-black text-slate-500">
+            {plannedActivities.length} planned
+          </span>
+        </div>
+
+        <label className="mt-4 block space-y-1 text-xs font-bold text-slate-500">
+          <span>Search follow-ups</span>
+          <input
+            type="search"
+            value={agendaSearch}
+            onChange={event => setAgendaSearch(event.target.value)}
+            placeholder="Activity, lead, company or assignee…"
+            className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+          />
+        </label>
+
+        <div className="mt-3 flex flex-wrap gap-2" aria-label="Filter follow-up agenda">
+          {agendaFilterOptions.map(option => (
+            <button
+              key={option.key}
+              type="button"
+              aria-pressed={agendaFilter === option.key}
+              onClick={() => setAgendaFilter(option.key)}
+              className={agendaFilter === option.key
+                ? 'rounded-full border border-blue-600 bg-blue-600 px-3 py-2 text-xs font-black text-white'
+                : 'rounded-full border border-[var(--sami-border)] bg-transparent px-3 py-2 text-xs font-black text-slate-600 hover:bg-slate-500/[0.06] dark:text-slate-300'}
+            >
+              {option.label} <span className="ml-1 tabular-nums">{option.count}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-4 space-y-2">
+          {filteredAgendaActivities.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-[var(--sami-border)] p-5 text-sm text-slate-500">
+              {plannedActivities.length === 0
+                ? 'No planned follow-ups yet. Add a call, email, meeting or task from a lead.'
+                : 'No follow-ups match this filter and search.'}
+            </p>
+          ) : filteredAgendaActivities.map(({ activity, dueBucket, ownerName }) => (
+            <article key={activity.id} className="rounded-xl border border-[var(--sami-border)] p-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="break-words text-sm font-black">{activity.subject}</p>
+                    <span className={
+                      dueBucket === 'overdue'
+                        ? 'rounded-full border border-rose-500/40 px-2 py-0.5 text-[10px] font-black text-rose-600 dark:text-rose-300'
+                        : dueBucket === 'today'
+                          ? 'rounded-full border border-amber-500/40 px-2 py-0.5 text-[10px] font-black text-amber-700 dark:text-amber-300'
+                          : 'rounded-full border border-[var(--sami-border)] px-2 py-0.5 text-[10px] font-black text-slate-500'
+                    }>
+                      {dueBucket === 'overdue'
+                        ? 'Overdue'
+                        : dueBucket === 'today'
+                          ? 'Due today'
+                          : dueBucket === 'upcoming'
+                            ? 'Upcoming'
+                            : dueBucket === 'unscheduled'
+                              ? 'No due date'
+                              : 'Scheduled'}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {activity.activity_type.charAt(0).toUpperCase() + activity.activity_type.slice(1)}
+                    {' · '}{activity.lead_number}
+                    {' · '}{activity.lead_name}
+                  </p>
+                  {activity.lead_company_name || activity.lead_contact_name ? (
+                    <p className="mt-1 break-words text-xs text-slate-500">
+                      {[activity.lead_company_name, activity.lead_contact_name].filter(Boolean).join(' · ')}
+                    </p>
+                  ) : null}
+                  {activity.description ? (
+                    <p className="mt-1 whitespace-pre-wrap break-words text-xs text-slate-500">{activity.description}</p>
+                  ) : null}
+                  <p className="mt-1 text-xs text-slate-500">
+                    {formatActivityDate(activity.due_date)} · Assigned to {ownerName}
+                  </p>
+                </div>
+                {canManagePipeline ? (
+                  <div className="flex shrink-0 gap-2 sm:justify-end">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void updateActivity(activity.id, 'completed')}
+                      className="h-9 rounded-lg border border-emerald-600/40 px-3 text-xs font-black text-emerald-700 hover:bg-emerald-500/[0.06] disabled:opacity-60 dark:text-emerald-300"
+                    >
+                      Complete
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void updateActivity(activity.id, 'cancelled')}
+                      className="h-9 rounded-lg border border-[var(--sami-border)] px-3 text-xs font-black text-slate-500 hover:bg-slate-500/[0.06] disabled:opacity-60"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="sami-surface min-w-0 rounded-[24px] p-5">
