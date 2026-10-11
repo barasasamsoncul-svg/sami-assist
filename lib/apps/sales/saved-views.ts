@@ -21,6 +21,8 @@ const ALLOWED_STATUS_VIEWS = new Set<SalesQuoteStatusView>([
   'accepted',
   'converted',
   'closed_without_sale',
+  'expired',
+  'expiring_soon',
 ]);
 
 const MAX_SAVED_VIEWS = 25;
