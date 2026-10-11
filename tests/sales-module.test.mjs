@@ -2497,7 +2497,7 @@ test('Sales lead scoring explains profile and engagement signals and persists sc
     source('lib/apps/sales/types.ts'),
   ]);
 
-  assert.match(manifest, /key: "sales",[\\s\\S]*version: '3\\.4\\.13'/s);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.13'/s);
   assert.match(scoring, /export function scoreSalesLead/);
   assert.match(scoring, /Company identified/);
   assert.match(scoring, /High-intent source identified/);
@@ -2507,29 +2507,29 @@ test('Sales lead scoring explains profile and engagement signals and persists sc
   assert.match(scoring, /score >= 45/);
   assert.match(pipeline, /LEFT JOIN LATERAL/);
   assert.match(pipeline, /completed_engagement_count/);
-  assert.match(pipeline, /scoreSalesLead\\(lead\\)/);
-  assert.match(pipeline, /lead_score_factors: score\\.factors/);
+  assert.match(pipeline, /scoreSalesLead\(lead\)/);
+  assert.match(pipeline, /lead_score_factors: score\.factors/);
 
-  assert.match(migration, /sales-3\\.4\\.12-to-3\\.4\\.13/);
+  assert.match(migration, /sales-3\.4\.12-to-3\.4\.13/);
   assert.match(migration, /ADD COLUMN IF NOT EXISTS score_view/);
-  assert.match(migration, /CHECK \\(score_view IN \\('all','high','medium','low'\\)\\)/);
+  assert.match(migration, /CHECK \(score_view IN \('all','high','medium','low'\)\)/);
   assert.match(registry, /SALES_3_4_12_TO_3_4_13/);
   assert.ok(registry.indexOf('SALES_3_4_11_TO_3_4_12,') < registry.indexOf('SALES_3_4_12_TO_3_4_13,'));
-  assert.match(schema, /score_view VARCHAR\\(20\\) NOT NULL DEFAULT 'all'/);
-  assert.match(schema, /CHECK \\(score_view IN \\('all','high','medium','low'\\)\\)/);
-  assert.match(types, /export type SalesLeadScoreView = 'all' \\| 'high' \\| 'medium' \\| 'low'/);
+  assert.match(schema, /score_view VARCHAR\(20\) NOT NULL DEFAULT 'all'/);
+  assert.match(schema, /CHECK \(score_view IN \('all','high','medium','low'\)\)/);
+  assert.match(types, /export type SalesLeadScoreView = 'all' \| 'high' \| 'medium' \| 'low'/);
   assert.match(types, /scoreView: SalesLeadScoreView/);
 
   assert.match(savedViews, /const ALLOWED_LEAD_SCORE_VIEWS/);
-  assert.match(savedViews, /scoreView: row\\.score_view \\|\\| 'all'/);
+  assert.match(savedViews, /scoreView: row\.score_view \|\| 'all'/);
   assert.match(savedViews, /SELECT id, name, view_type, status_view, score_view, search_query, created_at/);
   assert.match(savedViews, /rawScoreView/);
   assert.match(savedViews, /Lead score filters can only be saved for lead views/);
   assert.match(ui, /leadScoreFilter/);
-  assert.match(ui, /High priority \\(75\\+\\)/);
-  assert.match(ui, /Score \\{lead\\.lead_score\\}\\/100/);
-  assert.match(ui, /lead\\.lead_score_factors\\.slice\\(0, 3\\)/);
-  assert.match(ui, /scoreView: isLeads \\? leadScoreFilter : 'all'/);
-  assert.match(ui, /setLeadScoreFilter\\(view\\.scoreView \\|\\| 'all'\\)/);
+  assert.match(ui, /High priority \(75\+\)/);
+  assert.match(ui, /Score \{lead\.lead_score\}\/100/);
+  assert.match(ui, /lead\.lead_score_factors\.slice\(0, 3\)/);
+  assert.match(ui, /scoreView: isLeads \? leadScoreFilter : 'all'/);
+  assert.match(ui, /setLeadScoreFilter\(view\.scoreView \|\| 'all'\)/);
 });
 
