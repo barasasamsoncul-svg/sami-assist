@@ -87,6 +87,7 @@ export {
   reopenSalesLead,
   createSalesLeadActivity,
   updateSalesLeadActivity,
+  editSalesLeadActivity,
   convertSalesLeadToOpportunity,
   getSalesPipelineData,
   moveSalesOpportunity,
