@@ -36,6 +36,12 @@ export default function SalesReturnFulfillmentQuality({ report }: { report: Sale
         </p>
       </header>
 
+      {!report.canViewShipping && !report.canViewReturns && (
+        <p className="sami-surface rounded-[24px] p-4 text-sm text-slate-500">
+          Your Sales Reports access does not include shipment or return reporting permissions.
+        </p>
+      )}
+
       {report.canViewShipping && (
         <section className="sami-surface rounded-[24px] p-4 sm:p-6">
           <h3 className="text-sm font-black">Shipment execution</h3>
@@ -75,7 +81,7 @@ export default function SalesReturnFulfillmentQuality({ report }: { report: Sale
         <>
           <section className="sami-surface rounded-[24px] p-4 sm:p-6">
             <h3 className="text-sm font-black">Return lifecycle by status</h3>
-            <p className="mt-1 text-xs text-slate-500">Cancelled sales orders and cancelled returns are excluded. Credit, available credit, and refunds are kept separate by currency.</p>
+            <p className="mt-1 text-xs text-slate-500">Cancelled sales orders are excluded; status counts retain cancelled returns. Credit, available credit, and refunds are kept separate by currency.</p>
             {report.returnsByStatus.length === 0 ? (
               <p className="mt-4 text-sm text-slate-500">No returns were requested in the last 90 days.</p>
             ) : (
