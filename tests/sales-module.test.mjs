@@ -2029,9 +2029,12 @@ test('Sales quotation workspace supports selecting visible rows and exporting on
 });
 
 test('Sales order workspace offers fulfillment and invoicing work queues alongside search', async () => {
-  const workspace = await source('app/apps/sales/SalesWorkspaceClient.tsx');
+  const [workspace, types] = await Promise.all([
+    source('app/apps/sales/SalesWorkspaceClient.tsx'),
+    source('lib/apps/sales/types.ts'),
+  ]);
 
-  assert.ok(workspace.includes('type SalesOrderStatusView'));
+  assert.ok(types.includes('export type SalesOrderStatusView'));
   assert.ok(workspace.includes('function matchesSalesOrderView'));
   assert.ok(workspace.includes('orderStatusView'));
   assert.ok(workspace.includes('setOrderStatusView'));
