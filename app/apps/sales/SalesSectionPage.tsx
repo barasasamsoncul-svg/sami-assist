@@ -6,7 +6,7 @@ import SalesModuleShell from '@/app/apps/sales/SalesModuleShell';
 import SalesWorkspaceClient from '@/app/apps/sales/SalesWorkspaceClient';
 import SalesManagementInsights from '@/app/apps/sales/SalesManagementInsights';
 import SalesOpportunityFunnel from '@/app/apps/sales/SalesOpportunityFunnel';
-import { getSalesOpportunityFunnelData } from '@/lib/apps/sales/pipeline-funnel';
+import { getSalesOpportunityFunnelData, getSalesOpportunityRiskQueue } from '@/lib/apps/sales/pipeline-funnel';
 import { getSalesManagementInsights } from '@/lib/apps/sales/management-insights';
 
 import {
@@ -191,10 +191,12 @@ export default async function SalesSectionPage({
     ? await Promise.all([
         getSalesManagementInsights(),
         getSalesOpportunityFunnelData(),
+        getSalesOpportunityRiskQueue(),
       ])
     : null;
   const managementInsights = reportData?.[0] ?? null;
   const opportunityFunnel = reportData?.[1] ?? null;
+  const opportunityRiskQueue = reportData?.[2] ?? null;
 
   return (
     <SalesModuleShell
@@ -238,7 +240,7 @@ export default async function SalesSectionPage({
         data.company.name
       }
     >
-      {managementInsights && opportunityFunnel ? (
+      {managementInsights && opportunityFunnel && opportunityRiskQueue ? (
         <>
           <SalesManagementInsights
             data={managementInsights}
@@ -249,7 +251,7 @@ export default async function SalesSectionPage({
               convertedCount: data.metrics.convertedCount,
             }}
           />
-          <SalesOpportunityFunnel rows={opportunityFunnel} />
+          <SalesOpportunityFunnel rows={opportunityFunnel} riskRows={opportunityRiskQueue} />
         </>
       ) : (
         <SalesWorkspaceClient
