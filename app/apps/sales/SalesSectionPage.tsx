@@ -14,6 +14,7 @@ import SalesLeadSourceEffectiveness from '@/app/apps/sales/SalesLeadSourceEffect
 import SalesCommissionPerformance from '@/app/apps/sales/SalesCommissionPerformance';
 import SalesProductPerformance from '@/app/apps/sales/SalesProductPerformance';
 import SalesReturnFulfillmentQuality from '@/app/apps/sales/SalesReturnFulfillmentQuality';
+import SalesTargetAttainmentReport from '@/app/apps/sales/SalesTargetAttainmentReport';
 import { getSalesOpportunityFunnelData, getSalesOpportunityRiskQueue } from '@/lib/apps/sales/pipeline-funnel';
 import { getSalesPipelineOutcomeReport } from '@/lib/apps/sales/pipeline-outcomes';
 import { getSalesPipelineVelocityReport } from '@/lib/apps/sales/pipeline-velocity';
@@ -23,6 +24,7 @@ import { getSalesLeadSourceEffectiveness } from '@/lib/apps/sales/lead-source-ef
 import { getSalesCommissionPerformance } from '@/lib/apps/sales/commission-performance';
 import { getSalesProductPerformance } from '@/lib/apps/sales/product-performance';
 import { getSalesReturnFulfillmentQualityReport } from '@/lib/apps/sales/return-fulfillment-quality';
+import { getSalesTargetAttainmentReport } from '@/lib/apps/sales/target-attainment-report';
 import { getSalesManagementInsights } from '@/lib/apps/sales/management-insights';
 
 import {
@@ -216,6 +218,7 @@ export default async function SalesSectionPage({
         getSalesCommissionPerformance(),
         getSalesProductPerformance(),
         getSalesReturnFulfillmentQualityReport(),
+        getSalesTargetAttainmentReport(),
       ])
     : null;
   const managementInsights = reportData?.[0] ?? null;
@@ -229,6 +232,7 @@ export default async function SalesSectionPage({
   const commissionPerformance = reportData?.[8] ?? null;
   const productPerformance = reportData?.[9] ?? null;
   const returnFulfillmentQuality = reportData?.[10] ?? null;
+  const targetAttainmentReport = reportData?.[11] ?? null;
 
   return (
     <SalesModuleShell
@@ -272,7 +276,7 @@ export default async function SalesSectionPage({
         data.company.name
       }
     >
-      {managementInsights && opportunityFunnel && opportunityRiskQueue && pipelineOutcomeReport && pipelineVelocityReport && activityExecutionReport && representativePerformance && leadSourceEffectiveness && commissionPerformance && productPerformance && returnFulfillmentQuality ? (
+      {managementInsights && opportunityFunnel && opportunityRiskQueue && pipelineOutcomeReport && pipelineVelocityReport && activityExecutionReport && representativePerformance && leadSourceEffectiveness && commissionPerformance && productPerformance && returnFulfillmentQuality && targetAttainmentReport ? (
         <>
           <SalesManagementInsights
             data={managementInsights}
@@ -295,6 +299,7 @@ export default async function SalesSectionPage({
           <SalesCommissionPerformance rows={commissionPerformance.rows} />
           <SalesProductPerformance rows={productPerformance.rows} />
           <SalesReturnFulfillmentQuality report={returnFulfillmentQuality} />
+          <SalesTargetAttainmentReport report={targetAttainmentReport} />
         </>
       ) : (
         <SalesWorkspaceClient
