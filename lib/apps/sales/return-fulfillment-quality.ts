@@ -194,10 +194,10 @@ export async function getSalesReturnFulfillmentQualityReport(): Promise<SalesRet
           COUNT(*)::int AS shipment_count,
           COUNT(DISTINCT s.sales_order_id)::int AS order_count,
           COALESCE(SUM(i.item_quantity), 0) AS item_quantity,
-          ROUND(AVG(EXTRACT(EPOCH FROM (s.shipped_at - s.created_at)) / 3600.0)
-            FILTER (WHERE s.shipped_at IS NOT NULL AND s.shipped_at >= s.created_at)::numeric, 1) AS average_hours_to_ship,
-          ROUND(AVG(EXTRACT(EPOCH FROM (s.delivered_at - s.shipped_at)) / 3600.0)
-            FILTER (WHERE s.delivered_at IS NOT NULL AND s.shipped_at IS NOT NULL AND s.delivered_at >= s.shipped_at)::numeric, 1) AS average_hours_to_deliver
+          ROUND((AVG(EXTRACT(EPOCH FROM (s.shipped_at - s.created_at)) / 3600.0)
+            FILTER (WHERE s.shipped_at IS NOT NULL AND s.shipped_at >= s.created_at))::numeric, 1) AS average_hours_to_ship,
+          ROUND((AVG(EXTRACT(EPOCH FROM (s.delivered_at - s.shipped_at)) / 3600.0)
+            FILTER (WHERE s.delivered_at IS NOT NULL AND s.shipped_at IS NOT NULL AND s.delivered_at >= s.shipped_at))::numeric, 1) AS average_hours_to_deliver
         FROM sales_shipments s
         INNER JOIN sales_orders_v2 o
           ON o.id = s.sales_order_id
