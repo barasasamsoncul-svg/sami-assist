@@ -121,4 +121,6 @@ export {
   moveSalesOpportunity,
 } from '@/lib/apps/sales/pipeline';
 
+export { getSalesLeadAssignmentRules, saveSalesLeadAssignmentRule, deleteSalesLeadAssignmentRule } from '@/lib/apps/sales/lead-assignment-rules';
+
 export { getSalesQuoteApprovalData, saveSalesQuoteApprovalPolicy } from '@/lib/apps/sales/approvals';

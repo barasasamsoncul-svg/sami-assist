@@ -5,7 +5,7 @@ import { queryControl } from '@/lib/db/control';
 
 import { cleanText, isoDate, nullableText, numberInput, optionalUuid, requireSalesContext, requireUuid, SALES_PERMISSIONS, SalesError } from '@/lib/apps/sales/context';
 import { scoreSalesLead } from '@/lib/apps/sales/lead-scoring';
-import { chooseBalancedSalesLeadAssignee } from '@/lib/apps/sales/lead-assignment';
+import { chooseBalancedSalesLeadAssignee, selectSalesLeadAssignmentRule } from '@/lib/apps/sales/lead-assignment';
 
 const stageSeed = [
   ['Qualification', 10, 20],
@@ -141,7 +141,7 @@ export async function getSalesPipelineData() {
     ),
     context.pool.query(
       `SELECT l.id,l.lead_number,l.status,l.name,l.company_name,l.contact_name,l.email,l.phone,l.source,l.notes,
-              l.salesperson_user_id,l.sales_team_id,l.territory_id,l.disqualification_reason,l.created_at,
+              l.salesperson_user_id,l.sales_team_id,l.territory_id,l.assignment_rule_id,assignment_rule.name AS assignment_rule_name,l.disqualification_reason,l.created_at,
               COALESCE(engagement.completed_engagement_count,0)::int AS completed_engagement_count,
               engagement.last_completed_engagement_at
        FROM sales_leads l
@@ -157,6 +157,8 @@ export async function getSalesPipelineData() {
            AND a.lead_id=l.id
            AND a.deleted_at IS NULL
        ) engagement ON TRUE
+       LEFT JOIN sales_lead_assignment_rules assignment_rule
+         ON assignment_rule.id=l.assignment_rule_id AND assignment_rule.company_id=l.company_id
        WHERE l.company_id=$1 AND l.deleted_at IS NULL
        ORDER BY l.created_at DESC
        LIMIT 250`,
@@ -295,8 +297,33 @@ export async function createSalesLead(input:Record<string,unknown>) {
   try {
     await client.query('BEGIN');
     let salespersonUserId = requestedSalespersonUserId;
-    const salesTeamId = requestedSalesTeamId;
+    let salesTeamId = requestedSalesTeamId;
+    let assignmentRuleId: string | null = null;
     let territoryId = requestedTerritoryId;
+
+    if (!salesTeamId && !salespersonUserId) {
+      const ruleResult = await client.query(
+        `SELECT rule.id,rule.sales_team_id,rule.source_match,rule.priority,rule.created_at
+         FROM sales_lead_assignment_rules rule
+         INNER JOIN sales_teams team
+           ON team.id=rule.sales_team_id AND team.company_id=rule.company_id
+          AND team.is_active=TRUE AND team.deleted_at IS NULL
+         WHERE rule.company_id=$1 AND rule.is_active=TRUE AND rule.deleted_at IS NULL
+         ORDER BY rule.priority ASC,LENGTH(BTRIM(COALESCE(rule.source_match,''))) DESC,rule.created_at,rule.id`,
+        [context.companyId],
+      );
+      const matchingRule = selectSalesLeadAssignmentRule(ruleResult.rows.map(row => ({
+        id: String(row.id),
+        salesTeamId: String(row.sales_team_id),
+        sourceMatch: row.source_match ? String(row.source_match) : null,
+        priority: Number(row.priority),
+        createdAt: row.created_at,
+      })), input.source);
+      if (matchingRule) {
+        salesTeamId = matchingRule.salesTeamId;
+        assignmentRuleId = matchingRule.id;
+      }
+    }
 
     if (salesTeamId) {
       // Lock the team row so concurrent creations are balanced serially.
@@ -387,12 +414,12 @@ export async function createSalesLead(input:Record<string,unknown>) {
     const r=await client.query(
       `INSERT INTO sales_leads
         (company_id,lead_number,name,company_name,contact_name,email,phone,source,notes,
-         salesperson_user_id,sales_team_id,territory_id,created_by,updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13)
-       RETURNING id,lead_number,status,name`,
+         salesperson_user_id,sales_team_id,territory_id,assignment_rule_id,created_by,updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$14)
+       RETURNING id,lead_number,status,name,salesperson_user_id,sales_team_id,territory_id,assignment_rule_id`,
       [context.companyId,number,name,nullableText(input.companyName,255),nullableText(input.contactName,255),
        email,phone,nullableText(input.source,120),nullableText(input.notes,4000),salespersonUserId,
-       salesTeamId,territoryId,context.userId],
+       salesTeamId,territoryId,assignmentRuleId,context.userId],
     );
     await client.query('COMMIT');
     return r.rows[0];

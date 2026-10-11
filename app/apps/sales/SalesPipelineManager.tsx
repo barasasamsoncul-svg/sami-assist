@@ -24,6 +24,8 @@ type SalesLead = {
   salesperson_user_id: string | null;
   sales_team_id?: string | null;
   territory_id?: string | null;
+  assignment_rule_id: string | null;
+  assignment_rule_name: string | null;
   disqualification_reason: string | null;
   lead_score: number;
   lead_score_band: 'high' | 'medium' | 'low';
@@ -37,6 +39,27 @@ type SalesTeamOption = {
   name: string;
   territory_id: string | null;
   member_user_ids: string[];
+};
+
+type SalesLeadAssignmentRule = {
+  id: string;
+  name: string;
+  sourceMatch: string | null;
+  salesTeamId: string;
+  salesTeamName: string | null;
+  priority: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type LeadAssignmentRuleDraft = {
+  ruleId: string | null;
+  name: string;
+  sourceMatch: string;
+  salesTeamId: string;
+  priority: string;
+  isActive: boolean;
 };
 
 type SalesLeadActivity = {
@@ -167,7 +190,9 @@ type PipelineAction =
   | { action: 'update_opportunity'; opportunityId: string; name: string; customerName: string; contactName: string; email: string; phone: string; expectedValue: string; currency: string; expectedCloseDate: string | null; source: string; notes: string; salespersonUserId: string | null }
   | { action: 'move_opportunity'; opportunityId: string; stageId: string; reason?: string }
   | { action: 'save_pipeline_view'; name: string; viewType: 'leads' | 'opportunities'; statusView: string; scoreView: 'all' | 'high' | 'medium' | 'low'; searchQuery: string }
-  | { action: 'delete_pipeline_view'; viewId: string };
+  | { action: 'delete_pipeline_view'; viewId: string }
+  | { action: 'save_lead_assignment_rule'; ruleId: string | null; name: string; sourceMatch: string | null; salesTeamId: string; priority: number; isActive: boolean }
+  | { action: 'delete_lead_assignment_rule'; ruleId: string };
 
 type CreateLeadPayload = Extract<PipelineAction, { action: 'create_lead' }>;
 
@@ -302,6 +327,12 @@ export default function SalesPipelineManager({
   const [opportunitySavedViewName, setOpportunitySavedViewName] = useState('');
   const [pipelineViewsLoading, setPipelineViewsLoading] = useState(false);
   const [pipelineViewsError, setPipelineViewsError] = useState('');
+  const [leadAssignmentRules, setLeadAssignmentRules] = useState<SalesLeadAssignmentRule[]>([]);
+  const [assignmentRulesLoading, setAssignmentRulesLoading] = useState(false);
+  const [assignmentRulesError, setAssignmentRulesError] = useState('');
+  const [assignmentRuleDraft, setAssignmentRuleDraft] = useState<LeadAssignmentRuleDraft>({
+    ruleId: null, name: '', sourceMatch: '', salesTeamId: '', priority: '100', isActive: true,
+  });
   const [editingOpportunityId, setEditingOpportunityId] = useState<string | null>(null);
   const [opportunityDraft, setOpportunityDraft] = useState<OpportunityDraft>({
     name: '', customerName: '', contactName: '', email: '', phone: '',
@@ -372,6 +403,38 @@ export default function SalesPipelineManager({
   useEffect(() => {
     void loadSavedPipelineViews();
   }, [loadSavedPipelineViews]);
+
+  const loadLeadAssignmentRules = useCallback(async () => {
+    if (!canManagePipeline) {
+      setLeadAssignmentRules([]);
+      return;
+    }
+    setAssignmentRulesLoading(true);
+    try {
+      const response = await fetch('/api/apps/sales?leadAssignmentRules=1', {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+      const body = await response.json().catch(() => ({})) as {
+        leadAssignmentRules?: SalesLeadAssignmentRule[];
+        error?: string;
+      };
+      if (!response.ok || !Array.isArray(body.leadAssignmentRules)) {
+        throw new Error(body.error || 'Could not load lead-routing rules.');
+      }
+      setLeadAssignmentRules(body.leadAssignmentRules);
+      setAssignmentRulesError('');
+    } catch (caught) {
+      setAssignmentRulesError(caught instanceof Error ? caught.message : 'Could not load lead-routing rules.');
+    } finally {
+      setAssignmentRulesLoading(false);
+    }
+  }, [canManagePipeline]);
+
+  useEffect(() => {
+    void loadLeadAssignmentRules();
+  }, [loadLeadAssignmentRules]);
 
   const filteredLeads = data.leads.filter(lead => {
     const search = leadSearch.trim().toLowerCase();
@@ -495,6 +558,9 @@ export default function SalesPipelineManager({
       if (payload.action === 'save_pipeline_view' || payload.action === 'delete_pipeline_view') {
         await loadSavedPipelineViews();
       }
+      if (payload.action === 'save_lead_assignment_rule' || payload.action === 'delete_lead_assignment_rule') {
+        await loadLeadAssignmentRules();
+      }
       if (payload.action === 'create_lead') {
         setPendingLeadPayload(null);
         setDuplicateCandidates([]);
@@ -506,6 +572,55 @@ export default function SalesPipelineManager({
     } finally {
       setBusy(false);
     }
+  }
+
+  function beginLeadAssignmentRuleEdit(rule: SalesLeadAssignmentRule) {
+    setAssignmentRuleDraft({
+      ruleId: rule.id,
+      name: rule.name,
+      sourceMatch: rule.sourceMatch || '',
+      salesTeamId: data.salesTeams.some(team => team.id === rule.salesTeamId) ? rule.salesTeamId : '',
+      priority: String(rule.priority),
+      isActive: rule.isActive,
+    });
+    setAssignmentRulesError('');
+  }
+
+  function resetLeadAssignmentRuleDraft() {
+    setAssignmentRuleDraft({
+      ruleId: null, name: '', sourceMatch: '', salesTeamId: '', priority: '100', isActive: true,
+    });
+    setAssignmentRulesError('');
+  }
+
+  async function saveLeadAssignmentRule(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAssignmentRulesError('');
+    if (!assignmentRuleDraft.name.trim()) {
+      setAssignmentRulesError('Enter a name for this routing rule.');
+      return;
+    }
+    if (!assignmentRuleDraft.salesTeamId) {
+      setAssignmentRulesError('Choose a Sales team for this routing rule.');
+      return;
+    }
+    const succeeded = await action({
+      action: 'save_lead_assignment_rule',
+      ruleId: assignmentRuleDraft.ruleId,
+      name: assignmentRuleDraft.name.trim(),
+      sourceMatch: assignmentRuleDraft.sourceMatch.trim() || null,
+      salesTeamId: assignmentRuleDraft.salesTeamId,
+      priority: Number(assignmentRuleDraft.priority),
+      isActive: assignmentRuleDraft.isActive,
+    });
+    if (succeeded) resetLeadAssignmentRuleDraft();
+  }
+
+  async function deleteLeadAssignmentRule(rule: SalesLeadAssignmentRule) {
+    if (!window.confirm('Delete routing rule "' + rule.name + '"? New leads will no longer route through it.')) return;
+    setAssignmentRulesError('');
+    await action({ action: 'delete_lead_assignment_rule', ruleId: rule.id });
+    if (assignmentRuleDraft.ruleId === rule.id) resetLeadAssignmentRuleDraft();
   }
 
   async function savePipelineView(viewType: 'leads' | 'opportunities') {
@@ -884,6 +999,87 @@ export default function SalesPipelineManager({
 
       {canManagePipeline ? (
         <>
+        <section className="sami-surface mb-4 rounded-[24px] p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="font-black">Automatic lead-routing rules</h3>
+              <p className="mt-1 max-w-3xl text-xs text-slate-500">
+                Route new leads to teams from their source. Rules run by ascending priority; a blank source match is the fallback rule.
+                Choosing a team or salesperson during lead capture overrides automatic routing.
+              </p>
+            </div>
+            <span className="rounded-full border border-[var(--sami-border)] px-2.5 py-1 text-[10px] font-black text-slate-500">
+              {leadAssignmentRules.filter(rule => rule.isActive && data.salesTeams.some(team => team.id === rule.salesTeamId)).length} active rules
+            </span>
+          </div>
+          {assignmentRulesLoading ? (
+            <p className="mt-3 text-xs text-slate-500">Loading lead-routing rules…</p>
+          ) : leadAssignmentRules.length === 0 ? (
+            <p className="mt-3 rounded-xl border border-dashed border-[var(--sami-border)] p-4 text-xs text-slate-500">
+              No routing rules yet. Add a source-specific rule or a blank-source fallback.
+            </p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {leadAssignmentRules.map(rule => {
+                const teamIsActive = data.salesTeams.some(team => team.id === rule.salesTeamId);
+                return (
+                  <article key={rule.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--sami-border)] p-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="break-words text-sm font-black">{rule.name}</p>
+                        <span className="rounded-full border border-[var(--sami-border)] px-2 py-0.5 text-[10px] font-bold text-slate-500">Priority {rule.priority}</span>
+                        <span className={rule.isActive && teamIsActive ? 'rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300' : 'rounded-full bg-slate-500/10 px-2 py-0.5 text-[10px] font-bold text-slate-500'}>
+                          {rule.isActive && teamIsActive ? 'Active' : rule.isActive ? 'Team unavailable' : 'Paused'}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Source: {rule.sourceMatch || 'Any source (fallback)'} · Team: {rule.salesTeamName || 'Unavailable team'}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 gap-3 text-xs font-black">
+                      <button type="button" disabled={busy} onClick={() => beginLeadAssignmentRuleEdit(rule)} className="text-slate-600 hover:underline disabled:opacity-50 dark:text-slate-300">Edit</button>
+                      <button type="button" disabled={busy} onClick={() => void deleteLeadAssignmentRule(rule)} className="text-rose-600 hover:underline disabled:opacity-50">Delete</button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+          {assignmentRulesError ? <p role="alert" className="mt-3 text-xs text-rose-600">{assignmentRulesError}</p> : null}
+          <form onSubmit={event => void saveLeadAssignmentRule(event)} className="mt-4 grid gap-3 rounded-xl border border-[var(--sami-border)] p-4 sm:grid-cols-2 xl:grid-cols-3">
+            <h4 className="text-sm font-black sm:col-span-2 xl:col-span-3">{assignmentRuleDraft.ruleId ? 'Edit lead-routing rule' : 'Add lead-routing rule'}</h4>
+            <label className="space-y-1 text-xs font-bold text-slate-500">
+              <span>Rule name *</span>
+              <input required maxLength={80} value={assignmentRuleDraft.name} onChange={event => setAssignmentRuleDraft(current => ({ ...current, name: event.target.value }))} placeholder="Website enquiries to retail team" className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+            </label>
+            <label className="space-y-1 text-xs font-bold text-slate-500">
+              <span>Lead source contains</span>
+              <input maxLength={120} value={assignmentRuleDraft.sourceMatch} onChange={event => setAssignmentRuleDraft(current => ({ ...current, sourceMatch: event.target.value }))} placeholder="website demo, referral, event…" className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+              <span className="block font-normal">Leave blank to catch any source.</span>
+            </label>
+            <label className="space-y-1 text-xs font-bold text-slate-500">
+              <span>Route to Sales team *</span>
+              <select required value={assignmentRuleDraft.salesTeamId} onChange={event => setAssignmentRuleDraft(current => ({ ...current, salesTeamId: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100">
+                <option value="">Choose a team</option>
+                {data.salesTeams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1 text-xs font-bold text-slate-500">
+              <span>Priority (lower runs first) *</span>
+              <input type="number" required min={1} max={10000} step={1} value={assignmentRuleDraft.priority} onChange={event => setAssignmentRuleDraft(current => ({ ...current, priority: event.target.value }))} className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+            </label>
+            <label className="flex items-center gap-2 self-end pb-2 text-xs font-bold text-slate-500">
+              <input type="checkbox" checked={assignmentRuleDraft.isActive} onChange={event => setAssignmentRuleDraft(current => ({ ...current, isActive: event.target.checked }))} />
+              Rule enabled
+            </label>
+            <div className="flex flex-wrap items-end gap-2">
+              <button type="submit" disabled={busy || !assignmentRuleDraft.name.trim() || !assignmentRuleDraft.salesTeamId} className="h-10 rounded-lg border border-[var(--sami-border)] px-3 font-black disabled:opacity-50">
+                {busy ? 'Saving…' : assignmentRuleDraft.ruleId ? 'Update rule' : 'Save rule'}
+              </button>
+              {assignmentRuleDraft.ruleId ? <button type="button" disabled={busy} onClick={resetLeadAssignmentRuleDraft} className="h-10 rounded-lg border border-[var(--sami-border)] px-3 font-black disabled:opacity-50">Cancel edit</button> : null}
+            </div>
+          </form>
+        </section>
         <form
           ref={createLeadFormRef}
           className="sami-surface grid gap-3 rounded-[24px] p-5 md:grid-cols-2"
@@ -913,10 +1109,10 @@ export default function SalesPipelineManager({
               onChange={event => setCaptureLeadTeamId(event.target.value)}
               className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
             >
-              <option value="">No team · manual assignment</option>
+              <option value="">Use routing rules (no team override)</option>
               {data.salesTeams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
             </select>
-            {captureLeadTeamId ? <p className="text-[11px] font-normal">Leave the salesperson blank to auto-assign the new lead to the team member with the lightest open-lead workload.</p> : <p className="text-[11px] font-normal">Choose a team to enable balanced automatic assignment.</p>}
+            {captureLeadTeamId ? <p className="text-[11px] font-normal">This team overrides routing rules. Leave the salesperson blank to assign to the least-loaded active team member.</p> : <p className="text-[11px] font-normal">Active source rules can choose a team automatically; if none match, the lead remains unassigned.</p>}
           </label>
           <label className="space-y-1 text-xs font-bold text-slate-500">
             <span>Assigned salesperson (optional)</span>
@@ -926,7 +1122,7 @@ export default function SalesPipelineManager({
               defaultValue=""
               className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
             >
-              <option value="">{captureLeadTeamId ? 'Auto-assign using team workload' : 'Unassigned'}</option>
+              <option value="">{captureLeadTeamId ? 'Auto-assign using team workload' : 'Auto-assign if a rule matches'}</option>
               {data.salespeople
                 .filter(person => !captureLeadTeamId || Boolean(data.salesTeams.find(team => team.id === captureLeadTeamId)?.member_user_ids.includes(person.id)))
                 .map(person => <option key={person.id} value={person.id}>{person.name} · {person.email}</option>)}
@@ -1314,6 +1510,7 @@ export default function SalesPipelineManager({
                         </span>
                       ))}
                     </div>
+                    {lead.assignment_rule_name ? <p className="mt-2 text-[11px] font-bold text-blue-700 dark:text-blue-300">Routed by rule: {lead.assignment_rule_name}</p> : null}
                     {lead.disqualification_reason ? (
                       <p className="mt-1 break-words text-xs text-rose-600 dark:text-rose-300">
                         Reason: {lead.disqualification_reason}
