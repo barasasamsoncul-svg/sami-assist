@@ -1820,7 +1820,7 @@ test('Sales Priority 9 supports searchable lead lifecycle, reassignment, disqual
     source('app/apps/sales/SalesPipelineManager.tsx'),
   ]);
 
-  assert.ok(manifest.includes('key: "sales"') && manifest.includes("version: '3.4.6'"));
+  assert.ok(manifest.includes('key: "sales"') && manifest.includes("version: '3.4.7'"));
   assert.ok(migration.includes("sales-3.4.5-to-3.4.6"));
   assert.ok(migration.includes("CREATE TABLE IF NOT EXISTS public.sales_lead_activities"));
   assert.match(runtime, /SALES_3_4_5_TO_3_4_6/);
@@ -2026,6 +2026,52 @@ test('Sales quotation workspace supports selecting visible rows and exporting on
   assert.ok(workspace.includes('if (!selectedQuotes)'));
   assert.ok(workspace.includes('sales-quotations-selected-'));
   assert.ok(workspace.includes('Sales orders are not included in this file.'));
+});
+
+test('Sales saved quotation views persist company- and user-scoped filters through an additive migration', async () => {
+  const [migration, schema, registry, manifest, savedViews, service, route, ui] = await Promise.all([
+    source('lib/apps/sales/migrations/3.4.6-to-3.4.7.ts'),
+    source('lib/apps/sales/schema.sql'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/sales/saved-views.ts'),
+    source('lib/apps/sales/service.ts'),
+    source('app/api/apps/sales/route.ts'),
+    source('app/apps/sales/SalesWorkspaceClient.tsx'),
+  ]);
+
+  assert.ok(migration.includes("sales-3.4.6-to-3.4.7"));
+  assert.ok(migration.includes("CREATE TABLE IF NOT EXISTS public.sales_quote_saved_views"));
+  assert.ok(migration.includes("uq_sales_quote_saved_views_owner_name"));
+  assert.ok(migration.includes("idx_sales_quote_saved_views_owner"));
+  assert.match(registry, /SALES_3_4_6_TO_3_4_7/);
+  assert.ok(registry.indexOf('SALES_3_4_5_TO_3_4_6,') < registry.indexOf('SALES_3_4_6_TO_3_4_7,'));
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.7'/s);
+  assert.ok(schema.includes("CREATE TABLE IF NOT EXISTS public.sales_quote_saved_views"));
+  assert.ok(schema.includes("uq_sales_quote_saved_views_owner_name"));
+
+  assert.match(savedViews, /requireSalesContext\(SALES_PERMISSIONS\.QUOTE_VIEW\)/);
+  assert.match(savedViews, /WHERE company_id = \$1[\s\S]*AND user_id = \$2/);
+  assert.match(savedViews, /AND deleted_at IS NULL/);
+  assert.match(savedViews, /MAX_SAVED_VIEWS = 25/);
+  assert.match(savedViews, /A saved quotation view with that name already exists/);
+  assert.match(savedViews, /export async function getSalesSavedQuoteViews/);
+  assert.match(savedViews, /export async function saveSalesSavedQuoteView/);
+  assert.match(savedViews, /export async function deleteSalesSavedQuoteView/);
+  assert.match(savedViews, /status_view/);
+
+  assert.ok(service.includes("getSalesSavedQuoteViews"));
+  assert.ok(service.includes("saveSalesSavedQuoteView"));
+  assert.ok(service.includes("deleteSalesSavedQuoteView"));
+  assert.ok(route.includes("savedViews === '1'"));
+  assert.ok(route.includes("save_quote_view:"));
+  assert.ok(route.includes("delete_quote_view:"));
+  assert.ok(ui.includes("Saved quotation views"));
+  assert.ok(ui.includes("Save view"));
+  assert.ok(ui.includes("Apply saved view"));
+  assert.ok(ui.includes("Delete saved view"));
+  assert.ok(ui.includes("/api/apps/sales?savedViews=1"));
+  assert.ok(ui.includes("setSelectedQuoteIds([])"));
 });
 
 test('Sales quotation templates can be edited without creating duplicates', async () => {
