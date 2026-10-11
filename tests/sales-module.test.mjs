@@ -1761,6 +1761,59 @@ test('Sales pipeline saved views persist user-scoped lead and opportunity filter
 });
 
 
+test('Sales opportunities support tenant-scoped activity planning, editing, rescheduling and completion', async () => {
+  const [migration, schema, registry, manifest, pipeline, service, route, ui] = await Promise.all([
+    source('lib/apps/sales/migrations/3.4.11-to-3.4.12.ts'),
+    source('lib/apps/sales/schema.sql'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/sales/pipeline.ts'),
+    source('lib/apps/sales/service.ts'),
+    source('app/api/apps/sales/route.ts'),
+    source('app/apps/sales/SalesPipelineManager.tsx'),
+  ]);
+
+  assert.match(manifest, /key: "sales",[\\s\\S]*version: '3\\.4\\.12'/s);
+  assert.match(migration, /sales-3\\.4\\.11-to-3\\.4\\.12/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS public\\.sales_opportunity_activities/);
+  assert.match(migration, /idx_sales_opportunity_activities_due/);
+  assert.match(registry, /SALES_3_4_11_TO_3_4_12/);
+  assert.ok(registry.indexOf('SALES_3_4_10_TO_3_4_11,') < registry.indexOf('SALES_3_4_11_TO_3_4_12,'));
+  assert.match(schema, /sales_opportunity_activities[\\s\\S]*opportunity_id UUID NOT NULL REFERENCES public\\.sales_opportunities\\(id\\) ON DELETE CASCADE/);
+  assert.match(schema, /idx_sales_opportunity_activities_due/);
+
+  assert.match(pipeline, /export async function createSalesOpportunityActivity/);
+  assert.match(pipeline, /export async function updateSalesOpportunityActivity/);
+  assert.match(pipeline, /export async function editSalesOpportunityActivity/);
+  assert.match(pipeline, /WHERE o\\.id=\\$1 AND o\\.company_id=\\$2 AND o\\.deleted_at IS NULL/);
+  assert.match(pipeline, /Follow-up activities can only be scheduled on open opportunities/);
+  assert.match(pipeline, /UPDATE sales_opportunity_activities[\\s\\S]*status='planned'/);
+  for (const exported of [
+    'createSalesOpportunityActivity',
+    'updateSalesOpportunityActivity',
+    'editSalesOpportunityActivity',
+  ]) {
+    assert.ok(service.includes(exported), 'Sales service exports ' + exported);
+  }
+  for (const action of [
+    'create_opportunity_activity',
+    'update_opportunity_activity',
+    'edit_opportunity_activity',
+  ]) {
+    assert.ok(route.includes(action), 'Sales API routes ' + action);
+  }
+
+  assert.match(ui, /opportunityActivities: SalesOpportunityActivity\\[\\]/);
+  assert.match(ui, /recordType: 'opportunity'/);
+  assert.match(ui, /Opportunity activities/);
+  assert.match(ui, /Schedule opportunity follow-up/);
+  assert.match(ui, /Edit \/ reschedule/);
+  assert.match(ui, /updateActivity\\(activity, 'completed'\\)/);
+  assert.match(ui, /recordType === 'lead' \\? 'Lead' : 'Opportunity'/);
+});
+
+
+
 test('Sales API returns correct HTTP statuses for missing or invalid authentication context', async () => {
   const route = await source('app/api/apps/sales/route.ts');
   const handleErrorStart = route.indexOf('function handleError(');
