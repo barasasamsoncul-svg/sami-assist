@@ -393,6 +393,8 @@ test('Sales quote-to-order is transaction-safe, idempotent, and invoice permissi
   assert.match(quoteToOrder, /pg_advisory_xact_lock/);
   assert.match(quoteToOrder, /FOR UPDATE/);
   assert.match(quoteToOrder, /row\.sales_order_id/);
+  assert.match(quoteToOrder, /This quote references a sales order that is unavailable/);
+  assert.match(quoteToOrder, /Resolve the existing order link before retrying conversion/);
   assert.match(quoteToOrder, /INSERT INTO sales_order_items_v2/);
   assert.match(quoteToOrder, /sales_order_id = \$3/);
   assert.match(quoteToOrder, /Complete internal quotation approval before creating a sales order/);
