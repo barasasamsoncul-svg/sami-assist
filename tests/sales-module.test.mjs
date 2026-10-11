@@ -2029,8 +2029,10 @@ test('Sales quotation workspace supports selecting visible rows and exporting on
 });
 
 test('Sales bulk quotation sending is permission-gated, capped, sequential and reports per-quotation outcomes', async () => {
-  const [bulk, service, route, ui] = await Promise.all([
+  const [bulk, commands, delivery, service, route, ui] = await Promise.all([
     source('lib/apps/sales/bulk-send.ts'),
+    source('lib/apps/sales/commands.ts'),
+    source('lib/apps/sales/delivery.ts'),
     source('lib/apps/sales/service.ts'),
     source('app/api/apps/sales/route.ts'),
     source('app/apps/sales/SalesWorkspaceClient.tsx'),
@@ -2042,6 +2044,10 @@ test('Sales bulk quotation sending is permission-gated, capped, sequential and r
   assert.match(bulk, /new Set/);
   assert.match(bulk, /for \(const quoteId of quoteIds\)/);
   assert.match(bulk, /await sendSalesQuote/);
+  assert.match(bulk, /requireDraft: true/);
+  assert.match(commands, /requireDraft: input\.requireDraft === true/);
+  assert.match(delivery, /input\.requireDraft &&[\s\S]*quote\.status\) !== 'draft'/);
+  assert.match(delivery, /Bulk sending is limited to draft quotations/);
   assert.match(bulk, /success: false/);
   assert.match(bulk, /sentCount/);
   assert.match(bulk, /failedCount/);
