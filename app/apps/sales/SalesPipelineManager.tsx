@@ -541,6 +541,123 @@ export default function SalesPipelineManager({
     await action({ action: 'update_lead_activity', activityId, status });
   }
 
+  function beginOpportunityEdit(opportunity: SalesOpportunity) {
+    setEditingOpportunityId(opportunity.id);
+    setClosingOpportunityId(null);
+    setClosingOpportunityStageId(null);
+    setOpportunityDraft({
+      name: opportunity.name || '',
+      customerName: opportunity.customer_name || '',
+      contactName: opportunity.contact_name || '',
+      email: opportunity.email || '',
+      phone: opportunity.phone || '',
+      expectedValue: String(opportunity.expected_value ?? 0),
+      currency: normalizedCurrency(opportunity.currency || defaultCurrency),
+      expectedCloseDate: opportunity.expected_close_date ? String(opportunity.expected_close_date).slice(0, 10) : '',
+      source: opportunity.source || '',
+      notes: opportunity.notes || '',
+      salespersonUserId: opportunity.salesperson_user_id || '',
+    });
+    setError('');
+  }
+
+  async function saveOpportunityEdit(event: FormEvent<HTMLFormElement>, opportunity: SalesOpportunity) {
+    event.preventDefault();
+    const succeeded = await action({
+      action: 'update_opportunity',
+      opportunityId: opportunity.id,
+      name: opportunityDraft.name,
+      customerName: opportunityDraft.customerName,
+      contactName: opportunityDraft.contactName,
+      email: opportunityDraft.email,
+      phone: opportunityDraft.phone,
+      expectedValue: opportunityDraft.expectedValue,
+      currency: normalizedCurrency(opportunityDraft.currency),
+      expectedCloseDate: opportunityDraft.expectedCloseDate || null,
+      source: opportunityDraft.source,
+      notes: opportunityDraft.notes,
+      salespersonUserId: opportunityDraft.salespersonUserId || null,
+    });
+    if (succeeded) setEditingOpportunityId(null);
+  }
+
+  function changeOpportunityStage(opportunityId: string, stageId: string) {
+    const stage = data.stages.find(item => item.id === stageId);
+    if (!stage) return;
+    if (stage.stage_type === 'lost') {
+      setClosingOpportunityId(opportunityId);
+      setClosingOpportunityStageId(stageId);
+      setOpportunityLossReason('');
+      setEditingOpportunityId(null);
+      setError('');
+      return;
+    }
+    void action({ action: 'move_opportunity', opportunityId, stageId });
+    setClosingOpportunityId(null);
+    setClosingOpportunityStageId(null);
+    setOpportunityLossReason('');
+  }
+
+  function beginOpportunityLoss(opportunity: SalesOpportunity) {
+    const lostStage = data.stages.find(stage => stage.stage_type === 'lost');
+    if (!lostStage) {
+      setError('A Lost pipeline stage is not configured. Refresh the Sales workspace and try again.');
+      return;
+    }
+    setClosingOpportunityId(opportunity.id);
+    setClosingOpportunityStageId(lostStage.id);
+    setOpportunityLossReason('');
+    setEditingOpportunityId(null);
+    setError('');
+  }
+
+  async function confirmOpportunityLost(event: FormEvent<HTMLFormElement>, opportunity: SalesOpportunity) {
+    event.preventDefault();
+    if (!closingOpportunityStageId || !opportunityLossReason.trim()) return;
+    const succeeded = await action({
+      action: 'move_opportunity',
+      opportunityId: opportunity.id,
+      stageId: closingOpportunityStageId,
+      reason: opportunityLossReason.trim(),
+    });
+    if (succeeded) {
+      setClosingOpportunityId(null);
+      setClosingOpportunityStageId(null);
+      setOpportunityLossReason('');
+    }
+  }
+
+  async function markOpportunityWon(opportunity: SalesOpportunity) {
+    const wonStage = data.stages.find(stage => stage.stage_type === 'won');
+    if (!wonStage) {
+      setError('A Won pipeline stage is not configured. Refresh the Sales workspace and try again.');
+      return;
+    }
+    await action({
+      action: 'move_opportunity',
+      opportunityId: opportunity.id,
+      stageId: wonStage.id,
+      reason: 'Marked won',
+    });
+    setClosingOpportunityId(null);
+    setClosingOpportunityStageId(null);
+    setOpportunityLossReason('');
+  }
+
+  async function reopenOpportunity(opportunity: SalesOpportunity) {
+    const openStage = data.stages.find(stage => stage.stage_type === 'open');
+    if (!openStage) {
+      setError('An active pipeline stage is not configured. Refresh the Sales workspace and try again.');
+      return;
+    }
+    await action({
+      action: 'move_opportunity',
+      opportunityId: opportunity.id,
+      stageId: openStage.id,
+      reason: 'Reopened opportunity',
+    });
+  }
+
   return (
     <div className="space-y-5">
       <header className="sami-surface rounded-[24px] p-5">
