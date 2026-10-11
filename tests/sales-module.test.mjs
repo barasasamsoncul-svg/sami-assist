@@ -1820,7 +1820,7 @@ test('Sales Priority 9 supports searchable lead lifecycle, reassignment, disqual
     source('app/apps/sales/SalesPipelineManager.tsx'),
   ]);
 
-  assert.ok(manifest.includes('key: "sales"') && manifest.includes("version: '3.4.7'"));
+  assert.ok(manifest.includes('key: "sales"') && manifest.includes("version: '3.4.8'"));
   assert.ok(migration.includes("sales-3.4.5-to-3.4.6"));
   assert.ok(migration.includes("CREATE TABLE IF NOT EXISTS public.sales_lead_activities"));
   assert.match(runtime, /SALES_3_4_5_TO_3_4_6/);
@@ -2026,6 +2026,36 @@ test('Sales quotation workspace supports selecting visible rows and exporting on
   assert.ok(workspace.includes('if (!selectedQuotes)'));
   assert.ok(workspace.includes('sales-quotations-selected-'));
   assert.ok(workspace.includes('Sales orders are not included in this file.'));
+});
+
+test('Sales expiry-aware quotation queues are saved-view compatible and migrate tenant schemas safely', async () => {
+  const [migration, schema, registry, manifest, types, savedViews, ui] = await Promise.all([
+    source('lib/apps/sales/migrations/3.4.7-to-3.4.8.ts'),
+    source('lib/apps/sales/schema.sql'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/sales/types.ts'),
+    source('lib/apps/sales/saved-views.ts'),
+    source('app/apps/sales/SalesWorkspaceClient.tsx'),
+  ]);
+
+  assert.ok(migration.includes("sales-3.4.7-to-3.4.8"));
+  assert.ok(migration.includes("DROP CONSTRAINT IF EXISTS sales_quote_saved_views_status_view_check"));
+  assert.ok(migration.includes("ADD CONSTRAINT sales_quote_saved_views_status_view_check"));
+  assert.ok(migration.includes("'expired'"));
+  assert.ok(migration.includes("'expiring_soon'"));
+  assert.match(registry, /SALES_3_4_7_TO_3_4_8/);
+  assert.ok(registry.indexOf('SALES_3_4_6_TO_3_4_7,') < registry.indexOf('SALES_3_4_7_TO_3_4_8,'));
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.8'/s);
+  assert.match(types, /SalesQuoteStatusView[\s\S]*'expired'[\s\S]*'expiring_soon'/);
+  assert.match(schema, /sales_quote_saved_views[\s\S]*'expired'[\s\S]*'expiring_soon'/);
+  assert.match(savedViews, /'expired'[\s\S]*'expiring_soon'/);
+  assert.ok(ui.includes("label: 'Expired'"));
+  assert.ok(ui.includes("label: 'Expiring in 7 days'"));
+  assert.match(ui, /case 'expired':[\s\S]*quote\.status === 'expired'/);
+  assert.match(ui, /case 'expiring_soon':[\s\S]*isQuoteExpiringWithinSevenDays\(quote\)/);
+  assert.match(ui, /function isQuoteExpiringWithinSevenDays/);
+  assert.match(ui, /daysUntilExpiry >= 0 && daysUntilExpiry <= 7/);
 });
 
 test('Sales saved quotation views persist company- and user-scoped filters through an additive migration', async () => {
