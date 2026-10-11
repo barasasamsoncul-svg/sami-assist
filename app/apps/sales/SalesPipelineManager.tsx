@@ -32,6 +32,13 @@ type SalesLead = {
 
 type Salesperson = { id: string; name: string; email: string };
 
+type SalesTeamOption = {
+  id: string;
+  name: string;
+  territory_id: string | null;
+  member_user_ids: string[];
+};
+
 type SalesLeadActivity = {
   id: string;
   lead_id: string;
@@ -131,6 +138,7 @@ type PipelineData = {
   activities: SalesLeadActivity[];
   opportunityActivities: SalesOpportunityActivity[];
   salespeople: Salesperson[];
+  salesTeams: SalesTeamOption[];
   opportunityHistory: OpportunityStageHistoryEntry[];
 };
 
@@ -145,7 +153,7 @@ type SalesPipelineSavedView = {
 };
 
 type PipelineAction =
-  | { action: 'create_lead'; name: FormDataEntryValue | null; companyName: FormDataEntryValue | null; contactName: FormDataEntryValue | null; email: FormDataEntryValue | null; phone: FormDataEntryValue | null; source: FormDataEntryValue | null; salespersonUserId: FormDataEntryValue | null; confirmDuplicates?: boolean }
+  | { action: 'create_lead'; name: FormDataEntryValue | null; companyName: FormDataEntryValue | null; contactName: FormDataEntryValue | null; email: FormDataEntryValue | null; phone: FormDataEntryValue | null; source: FormDataEntryValue | null; salesTeamId: FormDataEntryValue | null; salespersonUserId: FormDataEntryValue | null; confirmDuplicates?: boolean }
   | { action: 'update_lead'; leadId: string; name: string; companyName: string; contactName: string; email: string; phone: string; source: string; notes: string; salespersonUserId: string | null }
   | { action: 'disqualify_lead'; leadId: string; reason: string }
   | { action: 'reopen_lead'; leadId: string }
@@ -266,13 +274,14 @@ export default function SalesPipelineManager({
   defaultCurrency: string;
 }) {
   const [data, setData] = useState<PipelineData>({
-    stages: [], leads: [], opportunities: [], activities: [], opportunityActivities: [], salespeople: [], opportunityHistory: [],
+    stages: [], leads: [], opportunities: [], activities: [], opportunityActivities: [], salespeople: [], salesTeams: [], opportunityHistory: [],
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [qualifyingLeadId, setQualifyingLeadId] = useState<string | null>(null);
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
   const [leadDraft, setLeadDraft] = useState<LeadDraft>({ name: '', companyName: '', contactName: '', email: '', phone: '', source: '', notes: '', salespersonUserId: '' });
+  const [captureLeadTeamId, setCaptureLeadTeamId] = useState('');
   const [disqualifyingLeadId, setDisqualifyingLeadId] = useState<string | null>(null);
   const [disqualificationReason, setDisqualificationReason] = useState('');
   const [activityLeadId, setActivityLeadId] = useState<string | null>(null);
@@ -578,10 +587,14 @@ export default function SalesPipelineManager({
       email: formData.get('email'),
       phone: formData.get('phone'),
       source: formData.get('source'),
+      salesTeamId: formData.get('salesTeamId'),
       salespersonUserId: formData.get('salespersonUserId'),
     };
     const succeeded = await action(payload);
-    if (succeeded) form.reset();
+    if (succeeded) {
+      form.reset();
+      setCaptureLeadTeamId('');
+    }
   }
 
   async function confirmCreateLeadWithDuplicates() {
@@ -592,6 +605,7 @@ export default function SalesPipelineManager({
     });
     if (succeeded) {
       createLeadFormRef.current?.reset();
+      setCaptureLeadTeamId('');
       setDuplicateCandidates([]);
       setPendingLeadPayload(null);
     }
@@ -892,11 +906,32 @@ export default function SalesPipelineManager({
             </label>
           ))}
           <label className="space-y-1 text-xs font-bold text-slate-500">
-            <span>Assigned salesperson</span>
-            <select name="salespersonUserId" defaultValue="" className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100">
-              <option value="">Unassigned</option>
-              {data.salespeople.map(person => <option key={person.id} value={person.id}>{person.name} · {person.email}</option>)}
+            <span>Route to Sales team</span>
+            <select
+              name="salesTeamId"
+              value={captureLeadTeamId}
+              onChange={event => setCaptureLeadTeamId(event.target.value)}
+              className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+            >
+              <option value="">No team · manual assignment</option>
+              {data.salesTeams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
             </select>
+            {captureLeadTeamId ? <p className="text-[11px] font-normal">Leave the salesperson blank to auto-assign the new lead to the team member with the lightest open-lead workload.</p> : <p className="text-[11px] font-normal">Choose a team to enable balanced automatic assignment.</p>}
+          </label>
+          <label className="space-y-1 text-xs font-bold text-slate-500">
+            <span>Assigned salesperson (optional)</span>
+            <select
+              key={captureLeadTeamId}
+              name="salespersonUserId"
+              defaultValue=""
+              className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+            >
+              <option value="">{captureLeadTeamId ? 'Auto-assign using team workload' : 'Unassigned'}</option>
+              {data.salespeople
+                .filter(person => !captureLeadTeamId || Boolean(data.salesTeams.find(team => team.id === captureLeadTeamId)?.member_user_ids.includes(person.id)))
+                .map(person => <option key={person.id} value={person.id}>{person.name} · {person.email}</option>)}
+            </select>
+            {captureLeadTeamId && !data.salespeople.some(person => data.salesTeams.find(team => team.id === captureLeadTeamId)?.member_user_ids.includes(person.id)) ? <p role="alert" className="text-[11px] font-normal text-rose-600">This team has no active eligible members. Add an active member before routing leads.</p> : null}
           </label>
           <button
             type="submit"
