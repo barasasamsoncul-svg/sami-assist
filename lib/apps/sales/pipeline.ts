@@ -201,7 +201,7 @@ export async function getSalesPipelineData() {
          ON new_stage.id=h.to_stage_id AND new_stage.company_id=h.company_id
        WHERE h.company_id=$1
        ORDER BY h.created_at DESC
-       LIMIT 1500`,
+       LIMIT 2000`,
       [context.companyId],
     ),
   ]);
