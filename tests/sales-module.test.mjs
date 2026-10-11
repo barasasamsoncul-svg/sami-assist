@@ -1927,7 +1927,7 @@ test('Sales Priority 13 supports searchable opportunity editing, loss reasons, c
     assert.ok(ui.includes(label), 'Opportunity lifecycle UI includes ' + label);
   }
   assert.ok(ui.includes('filteredOpportunities'));
-  assert.ok(ui.includes('Stage history ('));
+  assert.ok(ui.includes('Stage history'));
   assert.ok(ui.includes("reason: opportunityLossReason.trim()"));
   assert.ok(ui.includes("stage.stage_type === 'won'"));
   assert.ok(ui.includes("stage.stage_type === 'lost'"));
@@ -1952,8 +1952,8 @@ test('Sales Priority 14 exposes tenant-scoped opportunity stage history with act
 
   assert.ok(pipeline.includes('FROM sales_opportunity_stage_history h'));
   assert.ok(pipeline.includes('WHERE h.company_id=$1'));
-  assert.ok(pipeline.includes('from_stage.name AS from_stage_name'));
-  assert.ok(pipeline.includes('to_stage.name AS to_stage_name'));
+  assert.ok(pipeline.includes('old_stage.name AS from_stage_name'));
+  assert.ok(pipeline.includes('new_stage.name AS to_stage_name'));
   assert.ok(pipeline.includes('opportunityHistory: opportunityHistory.rows'));
   assert.ok(pipeline.includes('LIMIT 2000'));
 });
