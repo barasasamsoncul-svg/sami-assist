@@ -5,6 +5,7 @@ import { queryControl } from '@/lib/db/control';
 
 import { cleanText, isoDate, nullableText, numberInput, optionalUuid, requireSalesContext, requireUuid, SALES_PERMISSIONS, SalesError } from '@/lib/apps/sales/context';
 import { scoreSalesLead } from '@/lib/apps/sales/lead-scoring';
+import { chooseBalancedSalesLeadAssignee } from '@/lib/apps/sales/lead-assignment';
 
 const stageSeed = [
   ['Qualification', 10, 20],
@@ -130,7 +131,7 @@ async function findSalesLeadDuplicates(
 export async function getSalesPipelineData() {
   const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_VIEW);
   await ensurePipelineStages(context.pool, context.companyId, context.userId);
-  const [stages, leads, opportunities, activities, salespeople, opportunityActivities, opportunityHistory] = await Promise.all([
+  const [stages, leads, opportunities, activities, salespeople, salesTeams, opportunityActivities, opportunityHistory] = await Promise.all([
     context.pool.query(
       `SELECT id,name,sequence,probability,stage_type,is_active
        FROM sales_pipeline_stages
@@ -205,6 +206,27 @@ export async function getSalesPipelineData() {
       [context.tenantId],
     ),
     context.pool.query(
+      `SELECT team.id,team.name,team.territory_id,
+              COALESCE(
+                ARRAY_AGG(member.user_id::text) FILTER (
+                  WHERE member.user_id IS NOT NULL
+                    AND member.is_active=TRUE
+                    AND member.left_at IS NULL
+                ),
+                ARRAY[]::text[]
+              ) AS member_user_ids
+       FROM sales_teams team
+       LEFT JOIN sales_team_members member
+         ON member.company_id=team.company_id
+        AND member.team_id=team.id
+       WHERE team.company_id=$1
+         AND team.is_active=TRUE
+         AND team.deleted_at IS NULL
+       GROUP BY team.id,team.name,team.territory_id
+       ORDER BY LOWER(team.name),team.id`,
+      [context.companyId],
+    ),
+    context.pool.query(
       `SELECT a.id,a.opportunity_id,a.activity_type,a.subject,a.description,a.due_date,a.status,a.assigned_user_id,
               a.completed_at,a.created_at,o.opportunity_number,o.name AS opportunity_name,
               o.customer_name AS opportunity_customer_name,o.contact_name AS opportunity_contact_name
@@ -247,6 +269,7 @@ export async function getSalesPipelineData() {
     activities: activities.rows,
     opportunityActivities: opportunityActivities.rows,
     salespeople: salespeople.rows,
+    salesTeams: salesTeams.rows,
     opportunityHistory: opportunityHistory.rows,
   };
 }
