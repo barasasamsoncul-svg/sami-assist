@@ -127,6 +127,8 @@ export async function deliverSalesQuote(
       string;
     channels:
       SalesQuoteDeliveryChannel[];
+    requireDraft?:
+      boolean;
   },
 ) {
   const result =
@@ -182,6 +184,16 @@ export async function deliverSalesQuote(
     throw new SalesError(
       'QUOTE_STATE_INVALID',
       'This quotation cannot be sent in its current state.',
+    );
+  }
+
+  if (
+    input.requireDraft &&
+    String(quote.status) !== 'draft'
+  ) {
+    throw new SalesError(
+      'QUOTE_STATE_INVALID',
+      'Bulk sending is limited to draft quotations.',
     );
   }
 

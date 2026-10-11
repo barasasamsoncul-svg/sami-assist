@@ -2028,6 +2028,43 @@ test('Sales quotation workspace supports selecting visible rows and exporting on
   assert.ok(workspace.includes('Sales orders are not included in this file.'));
 });
 
+test('Sales bulk quotation sending is permission-gated, capped, sequential and reports per-quotation outcomes', async () => {
+  const [bulk, commands, delivery, service, route, ui] = await Promise.all([
+    source('lib/apps/sales/bulk-send.ts'),
+    source('lib/apps/sales/commands.ts'),
+    source('lib/apps/sales/delivery.ts'),
+    source('lib/apps/sales/service.ts'),
+    source('app/api/apps/sales/route.ts'),
+    source('app/apps/sales/SalesWorkspaceClient.tsx'),
+  ]);
+
+  assert.match(bulk, /requireSalesContext\(SALES_PERMISSIONS\.QUOTE_SEND\)/);
+  assert.match(bulk, /MAX_BULK_QUOTE_SEND = 50/);
+  assert.match(bulk, /requireUuid\(value, 'Quotation'\)/);
+  assert.match(bulk, /new Set/);
+  assert.match(bulk, /for \(const quoteId of quoteIds\)/);
+  assert.match(bulk, /await sendSalesQuote/);
+  assert.match(bulk, /requireDraft: true/);
+  assert.match(commands, /requireDraft: input\.requireDraft === true/);
+  assert.match(delivery, /input\.requireDraft &&[\s\S]*quote\.status\) !== 'draft'/);
+  assert.match(delivery, /Bulk sending is limited to draft quotations/);
+  assert.match(bulk, /success: false/);
+  assert.match(bulk, /sentCount/);
+  assert.match(bulk, /failedCount/);
+
+  assert.ok(service.includes('bulkSendSalesQuotes'));
+  assert.ok(route.includes('bulk_send_quotes:'));
+  assert.ok(ui.includes("action: 'bulk_send_quotes'"));
+  assert.ok(ui.includes('initialData.capabilities.canSend'));
+  assert.ok(ui.includes('sendableSelectedQuoteIds'));
+  assert.ok(ui.includes("quote.status === 'draft'"));
+  assert.ok(ui.includes("quote.approvalStatus === 'approved'"));
+  assert.ok(ui.includes("quote.approvalStatus === 'not_required'"));
+  assert.ok(ui.includes('Send selected drafts'));
+  assert.ok(ui.includes('window.confirm'));
+  assert.ok(ui.includes('Some quotations were not sent'));
+});
+
 test('Sales expiry-aware quotation queues are saved-view compatible and migrate tenant schemas safely', async () => {
   const [migration, schema, registry, manifest, types, savedViews, ui] = await Promise.all([
     source('lib/apps/sales/migrations/3.4.7-to-3.4.8.ts'),

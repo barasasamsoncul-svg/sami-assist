@@ -48,6 +48,7 @@ import {
   getSalesSavedQuoteViews,
   saveSalesSavedQuoteView,
   deleteSalesSavedQuoteView,
+  bulkSendSalesQuotes,
   getSalesWorkspaceData,
   issueSalesReturnCredit,
   markSalesCommissionPaid,
@@ -601,6 +602,8 @@ export async function POST(
           issueSalesReturnCredit,
         refund_return_credit:
           refundSalesReturnCredit,
+        bulk_send_quotes:
+          bulkSendSalesQuotes,
         send_quote:
           sendSalesQuote,
         change_quote_status:

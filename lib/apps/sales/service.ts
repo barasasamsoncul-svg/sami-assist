@@ -9,6 +9,10 @@ export {
   deleteSalesSavedQuoteView,
 } from '@/lib/apps/sales/saved-views';
 
+export {
+  bulkSendSalesQuotes,
+} from '@/lib/apps/sales/bulk-send';
+
 
 export {
   getSalesOrderDetail,
