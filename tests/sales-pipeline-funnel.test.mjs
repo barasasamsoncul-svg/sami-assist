@@ -77,3 +77,53 @@ test('Sales Reports render stage funnel data without changing other Sales route 
   assert.match(page, /view === 'reports' && data\.capabilities\.canViewReports/);
   assert.match(packageJson, /tests\/sales-pipeline-funnel\.test\.mjs/);
 });
+
+test('Sales funnel retains configured stages with no current opportunities', async () => {
+  const service = await source('lib/apps/sales/pipeline-funnel.ts');
+
+  assert.match(service, /LEFT JOIN sales_opportunities o/);
+  assert.match(service, /COUNT\(o\.id\)::int AS opportunity_count/);
+  assert.match(service, /NULLIF\(BTRIM\(o\.currency\), ''\),[\s\S]*NULLIF\(BTRIM\(\$2::text\), ''\)/);
+});
+
+test('Sales opportunity risk queue is company and tenant scoped and prioritizes actionable risks', async () => {
+  const service = await source('lib/apps/sales/pipeline-funnel.ts');
+  const start = service.indexOf('export async function getSalesOpportunityRiskQueue');
+  assert.notEqual(start, -1, 'risk queue query is exported');
+  const riskService = service.slice(start);
+
+  assert.match(riskService, /requireSalesContext\(SALES_PERMISSIONS\.QUOTE_VIEW\)/);
+  assert.match(riskService, /SALES_PERMISSIONS\.REPORT_VIEW/);
+  assert.match(riskService, /if \(!canViewReports\) return \[\]/);
+  assert.match(riskService, /WHERE o\.company_id = \$1/);
+  assert.match(riskService, /tu\.tenant_id = \$2/);
+  assert.match(riskService, /o\.deleted_at IS NULL/);
+  assert.match(riskService, /s\.deleted_at IS NULL/);
+  assert.match(riskService, /s\.stage_type = 'open'/);
+  assert.match(riskService, /o\.expected_close_date < CURRENT_DATE/);
+  assert.match(riskService, /o\.expected_close_date IS NULL/);
+  assert.match(riskService, /h\.company_id = o\.company_id/);
+  assert.match(riskService, /h\.to_stage_id = o\.stage_id/);
+  assert.match(riskService, /AS overdue/);
+  assert.match(riskService, /AS missing_close_date/);
+  assert.match(riskService, /AS stale/);
+  assert.match(riskService, /LIMIT 50/);
+  assert.match(riskService, /ORDER BY[\s\S]*CASE[\s\S]*expected_close_date < CURRENT_DATE/);
+});
+
+test('Sales Reports render actionable risk records with reasons, owner, close date and currency', async () => {
+  const page = await source('app/apps/sales/SalesSectionPage.tsx');
+  const component = await source('app/apps/sales/SalesOpportunityFunnel.tsx');
+
+  assert.match(page, /getSalesOpportunityRiskQueue/);
+  assert.match(page, /opportunityRiskQueue/);
+  assert.match(page, /<SalesOpportunityFunnel rows=\{opportunityFunnel\} riskRows=\{opportunityRiskQueue\} \/>/);
+  assert.match(component, /Opportunities needing attention/);
+  assert.match(component, /Overdue close/);
+  assert.match(component, /No close date/);
+  assert.match(component, /30\+ days in stage/);
+  assert.match(component, /salespersonName/);
+  assert.match(component, /expectedCloseDate/);
+  assert.match(component, /money\(row\.expectedValue, row\.currency\)/);
+  assert.match(component, /Open opportunities/);
+});
