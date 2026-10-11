@@ -1916,6 +1916,8 @@ test('Sales Priority 13 supports opportunity editing and requires a loss reason'
 
   assert.match(pipeline, /export async function updateSalesOpportunity/);
   assert.ok(pipeline.includes("numberInput(input.expectedValue, 'Expected value', { min: 0 })"));
+  assert.ok(pipeline.includes("Expected value is required."));
+  assert.ok(pipeline.includes("const currency = cleanText(input.currency, 16).toUpperCase();"));
   assert.ok(pipeline.includes("Currency must be a three-letter currency code."));
   assert.ok(pipeline.includes("A reason is required when marking an opportunity as lost."));
   assert.ok(pipeline.includes('INSERT INTO sales_opportunity_stage_history'));
