@@ -1871,3 +1871,29 @@ test('Sales Priority 11 provides a searchable follow-up agenda with due-date buc
   assert.ok(pipeline.includes('l.lead_number'));
   assert.ok(pipeline.includes("ORDER BY CASE WHEN a.status='planned' THEN 0 ELSE 1 END"));
 });
+
+
+test('Sales Priority 12 edits and reschedules only planned follow-up activities', async () => {
+  const [ui, pipeline, service, route] = await Promise.all([
+    source('app/apps/sales/SalesPipelineManager.tsx'),
+    source('lib/apps/sales/pipeline.ts'),
+    source('lib/apps/sales/service.ts'),
+    source('app/api/apps/sales/route.ts'),
+  ]);
+
+  assert.ok(ui.includes('Edit follow-up'));
+  assert.ok(ui.includes("action: 'edit_lead_activity'"));
+  assert.ok(ui.includes('function beginActivityEdit'));
+  assert.ok(ui.includes('function saveActivityEdit'));
+  assert.ok(ui.includes('value={activityEditDraft.dueDate}'));
+  assert.ok(ui.includes('value={activityEditDraft.assignedUserId}'));
+  assert.ok(ui.includes('Save changes'));
+
+  assert.match(pipeline, /export async function editSalesLeadActivity/);
+  assert.ok(pipeline.includes("Only planned follow-up activities can be edited."));
+  assert.ok(pipeline.includes("optionalPipelineDate(input.dueDate, 'Due date')"));
+  assert.ok(pipeline.includes("SET activity_type=$3,subject=$4,description=$5,due_date=$6,assigned_user_id=$7"));
+  assert.ok(service.includes('editSalesLeadActivity'));
+  assert.ok(route.includes('edit_lead_activity:'));
+  assert.ok(route.includes('editSalesLeadActivity'));
+});
