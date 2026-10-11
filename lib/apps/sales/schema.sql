@@ -1268,6 +1268,16 @@ CREATE TABLE IF NOT EXISTS public.sales_order_saved_views (
       'partially_invoiced',
       'invoiced'
     )),
+  sort_by VARCHAR(40) NOT NULL DEFAULT 'newest'
+    CHECK (sort_by IN (
+      'newest',
+      'oldest',
+      'value_high',
+      'value_low',
+      'delivery_first',
+      'invoice_first',
+      'customer_az'
+    )),
   search_query VARCHAR(120) NOT NULL DEFAULT '',
   created_by UUID,
   updated_by UUID,
