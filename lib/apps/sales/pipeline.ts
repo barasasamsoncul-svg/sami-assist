@@ -129,7 +129,7 @@ async function findSalesLeadDuplicates(
 export async function getSalesPipelineData() {
   const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_VIEW);
   await ensurePipelineStages(context.pool, context.companyId, context.userId);
-  const [stages, leads, opportunities, activities, opportunityActivities, salespeople, opportunityHistory] = await Promise.all([
+  const [stages, leads, opportunities, activities, salespeople, opportunityActivities, opportunityHistory] = await Promise.all([
     context.pool.query(
       `SELECT id,name,sequence,probability,stage_type,is_active
        FROM sales_pipeline_stages
