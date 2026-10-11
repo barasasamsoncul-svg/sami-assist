@@ -16,6 +16,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Send,
   BookmarkPlus,
   Trash2,
 } from 'lucide-react';
@@ -868,6 +869,26 @@ export default function SalesWorkspaceClient({
         ),
     );
 
+  const sendableSelectedQuoteIds =
+    useMemo(
+      () =>
+        initialData.quotes
+          .filter(
+            quote =>
+              selectedQuoteIds.includes(quote.id) &&
+              quote.status === 'draft' &&
+              (
+                quote.approvalStatus === 'approved' ||
+                quote.approvalStatus === 'not_required'
+              ),
+          )
+          .map(quote => quote.id),
+      [
+        initialData.quotes,
+        selectedQuoteIds,
+      ],
+    );
+
   const visibleOrders =
     useMemo(
       () => {
@@ -964,6 +985,76 @@ export default function SalesWorkspaceClient({
       showError(
         'View could not be deleted',
         error instanceof Error ? error.message : 'SaMi could not delete this saved view.',
+      );
+    }
+  }
+
+  async function bulkSendSelectedQuotes() {
+    const quoteIds = sendableSelectedQuoteIds;
+
+    if (quoteIds.length === 0) {
+      return;
+    }
+
+    if (!window.confirm(
+      'Send ' + quoteIds.length +
+      ' eligible draft quotation(s) to customers now? Each quotation is sent using the configured Sales delivery channel.',
+    )) {
+      return;
+    }
+
+    try {
+      const result = await request({
+        action: 'bulk_send_quotes',
+        quoteIds,
+      });
+
+      const sentCount = Number(result.sentCount || 0);
+      const failedCount = Number(result.failedCount || 0);
+      const outcomes = Array.isArray(result.results)
+        ? result.results as Array<{
+            quoteId: string;
+            success: boolean;
+            error?: string;
+          }>
+        : [];
+      const failures = outcomes.filter(outcome => !outcome.success);
+
+      if (failedCount > 0) {
+        setSelectedQuoteIds(
+          failures
+            .map(outcome => outcome.quoteId)
+            .filter(Boolean),
+        );
+        const failureSummary = failures
+          .slice(0, 3)
+          .map(outcome => {
+            const quote = initialData.quotes.find(
+              item => item.id === outcome.quoteId,
+            );
+            return (quote?.quoteNumber || 'Quotation') +
+              ': ' + (outcome.error || 'Delivery failed');
+          })
+          .join(' · ');
+
+        showWarning(
+          'Some quotations were not sent',
+          sentCount + ' sent; ' + failedCount + ' failed.' +
+            (failureSummary ? ' ' + failureSummary : ''),
+        );
+      } else {
+        setSelectedQuoteIds([]);
+        showSuccess(
+          'Quotations sent',
+          sentCount + ' draft quotation(s) were sent to customers.',
+        );
+      }
+    } catch (error) {
+      showError(
+        'Quotations could not be sent',
+        error instanceof Error
+          ? error.message
+          : 'SaMi could not send the selected quotations.',
       );
     }
   }
@@ -1507,10 +1598,22 @@ export default function SalesWorkspaceClient({
                         {selectedQuoteIds.length} quotation{selectedQuoteIds.length === 1 ? '' : 's'} selected
                       </p>
                       <p className="mt-1 text-[11px] text-slate-500">
-                        Export only the selected quotations. Sales orders are not included in this file.
+                        Send eligible selected drafts or export selected quotations. Sales orders are never included in this file.
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
+                      {initialData.capabilities.canSend &&
+                        sendableSelectedQuoteIds.length > 0 && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void bulkSendSelectedQuotes()}
+                            className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-3.5 text-xs font-black text-white disabled:opacity-60"
+                          >
+                            <Send className="h-4 w-4" />
+                            Send selected drafts ({sendableSelectedQuoteIds.length})
+                          </button>
+                        )}
                       <button
                         type="button"
                         onClick={() => {
