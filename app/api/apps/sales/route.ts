@@ -51,6 +51,9 @@ import {
   getSalesSavedOrderViews,
   saveSalesSavedOrderView,
   deleteSalesSavedOrderView,
+  getSalesSavedPipelineViews,
+  saveSalesSavedPipelineView,
+  deleteSalesSavedPipelineView,
   bulkSendSalesQuotes,
   getSalesWorkspaceData,
   issueSalesReturnCredit,
@@ -266,6 +269,14 @@ export async function GET(
       return json({
         success: true,
         savedOrderViews: await getSalesSavedOrderViews(),
+      });
+    }
+
+    const pipelineViews = request.nextUrl.searchParams.get('pipelineViews');
+    if (pipelineViews === '1') {
+      return json({
+        success: true,
+        savedPipelineViews: await getSalesSavedPipelineViews(),
       });
     }
 
@@ -647,6 +658,10 @@ export async function POST(
           saveSalesSavedOrderView,
         delete_order_view:
           deleteSalesSavedOrderView,
+        save_pipeline_view:
+          saveSalesSavedPipelineView,
+        delete_pipeline_view:
+          deleteSalesSavedPipelineView,
         save_approval_policy:
           saveSalesQuoteApprovalPolicy,
       };

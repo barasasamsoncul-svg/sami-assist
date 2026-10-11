@@ -16,6 +16,12 @@ export {
 } from '@/lib/apps/sales/saved-views';
 
 export {
+  getSalesSavedPipelineViews,
+  saveSalesSavedPipelineView,
+  deleteSalesSavedPipelineView,
+} from '@/lib/apps/sales/saved-views';
+
+export {
   bulkSendSalesQuotes,
 } from '@/lib/apps/sales/bulk-send';
 

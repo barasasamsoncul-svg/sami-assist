@@ -111,6 +111,15 @@ type PipelineData = {
   opportunityHistory: OpportunityStageHistoryEntry[];
 };
 
+type SalesPipelineSavedView = {
+  id: string;
+  name: string;
+  viewType: 'leads' | 'opportunities';
+  statusView: string;
+  searchQuery: string;
+  createdAt: string;
+};
+
 type PipelineAction =
   | { action: 'create_lead'; name: FormDataEntryValue | null; companyName: FormDataEntryValue | null; contactName: FormDataEntryValue | null; email: FormDataEntryValue | null; phone: FormDataEntryValue | null; source: FormDataEntryValue | null; salespersonUserId: FormDataEntryValue | null; confirmDuplicates?: boolean }
   | { action: 'update_lead'; leadId: string; name: string; companyName: string; contactName: string; email: string; phone: string; source: string; notes: string; salespersonUserId: string | null }
@@ -121,7 +130,9 @@ type PipelineAction =
   | { action: 'edit_lead_activity'; activityId: string; activityType: ActivityDraft['activityType']; subject: string; description: string; dueDate: string | null; assignedUserId: string | null }
   | { action: 'convert_lead'; leadId: string; name: string; expectedValue: string; currency: string; expectedCloseDate: string | null }
   | { action: 'update_opportunity'; opportunityId: string; name: string; customerName: string; contactName: string; email: string; phone: string; expectedValue: string; currency: string; expectedCloseDate: string | null; source: string; notes: string; salespersonUserId: string | null }
-  | { action: 'move_opportunity'; opportunityId: string; stageId: string; reason?: string };
+  | { action: 'move_opportunity'; opportunityId: string; stageId: string; reason?: string }
+  | { action: 'save_pipeline_view'; name: string; viewType: 'leads' | 'opportunities'; statusView: string; searchQuery: string }
+  | { action: 'delete_pipeline_view'; viewId: string };
 
 type CreateLeadPayload = Extract<PipelineAction, { action: 'create_lead' }>;
 
@@ -247,6 +258,11 @@ export default function SalesPipelineManager({
   const [leadStatusFilter, setLeadStatusFilter] = useState('all');
   const [opportunitySearch, setOpportunitySearch] = useState('');
   const [opportunityStatusFilter, setOpportunityStatusFilter] = useState<'all' | 'open' | 'won' | 'lost'>('all');
+  const [savedPipelineViews, setSavedPipelineViews] = useState<SalesPipelineSavedView[]>([]);
+  const [leadSavedViewName, setLeadSavedViewName] = useState('');
+  const [opportunitySavedViewName, setOpportunitySavedViewName] = useState('');
+  const [pipelineViewsLoading, setPipelineViewsLoading] = useState(false);
+  const [pipelineViewsError, setPipelineViewsError] = useState('');
   const [editingOpportunityId, setEditingOpportunityId] = useState<string | null>(null);
   const [opportunityDraft, setOpportunityDraft] = useState<OpportunityDraft>({
     name: '', customerName: '', contactName: '', email: '', phone: '',
@@ -289,6 +305,34 @@ export default function SalesPipelineManager({
       setError(caught instanceof Error ? caught.message : 'Could not load the Sales pipeline.');
     });
   }, [load]);
+
+  const loadSavedPipelineViews = useCallback(async () => {
+    setPipelineViewsLoading(true);
+    try {
+      const response = await fetch('/api/apps/sales?pipelineViews=1', {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+      const body = await response.json().catch(() => ({})) as {
+        savedPipelineViews?: SalesPipelineSavedView[];
+        error?: string;
+      };
+      if (!response.ok || !Array.isArray(body.savedPipelineViews)) {
+        throw new Error(body.error || 'Could not load saved pipeline views.');
+      }
+      setSavedPipelineViews(body.savedPipelineViews);
+      setPipelineViewsError('');
+    } catch (caught) {
+      setPipelineViewsError(caught instanceof Error ? caught.message : 'Could not load saved pipeline views.');
+    } finally {
+      setPipelineViewsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSavedPipelineViews();
+  }, [loadSavedPipelineViews]);
 
   const filteredLeads = data.leads.filter(lead => {
     const search = leadSearch.trim().toLowerCase();
@@ -387,6 +431,9 @@ export default function SalesPipelineManager({
         throw new Error(body.error || 'Sales action failed.');
       }
       await load();
+      if (payload.action === 'save_pipeline_view' || payload.action === 'delete_pipeline_view') {
+        await loadSavedPipelineViews();
+      }
       if (payload.action === 'create_lead') {
         setPendingLeadPayload(null);
         setDuplicateCandidates([]);
@@ -398,6 +445,44 @@ export default function SalesPipelineManager({
     } finally {
       setBusy(false);
     }
+  }
+
+  async function savePipelineView(viewType: 'leads' | 'opportunities') {
+    const isLeads = viewType === 'leads';
+    const name = (isLeads ? leadSavedViewName : opportunitySavedViewName).trim();
+    if (!name) {
+      setPipelineViewsError('Enter a name before saving this view.');
+      return;
+    }
+    const succeeded = await action({
+      action: 'save_pipeline_view',
+      name,
+      viewType,
+      statusView: isLeads ? leadStatusFilter : opportunityStatusFilter,
+      searchQuery: isLeads ? leadSearch : opportunitySearch,
+    });
+    if (succeeded) {
+      if (isLeads) setLeadSavedViewName('');
+      else setOpportunitySavedViewName('');
+      setPipelineViewsError('');
+    }
+  }
+
+  function applySavedPipelineView(view: SalesPipelineSavedView) {
+    if (view.viewType === 'leads') {
+      setLeadSearch(view.searchQuery);
+      setLeadStatusFilter(view.statusView);
+    } else {
+      setOpportunitySearch(view.searchQuery);
+      setOpportunityStatusFilter(view.statusView as typeof opportunityStatusFilter);
+    }
+    setPipelineViewsError('');
+  }
+
+  async function deleteSavedPipelineView(view: SalesPipelineSavedView) {
+    if (!window.confirm('Delete saved pipeline view "' + view.name + '"?')) return;
+    const succeeded = await action({ action: 'delete_pipeline_view', viewId: view.id });
+    if (succeeded) setPipelineViewsError('');
   }
 
   function beginQualification(leadId: string) {
@@ -1031,6 +1116,43 @@ export default function SalesPipelineManager({
               </select>
             </label>
           </div>
+          <div className="mt-3 rounded-xl border border-[var(--sami-border)] p-3">
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <label className="min-w-0 flex-1 space-y-1 text-xs font-bold text-slate-500">
+                <span>Save current lead view</span>
+                <input
+                  type="text"
+                  maxLength={80}
+                  value={leadSavedViewName}
+                  onChange={event => setLeadSavedViewName(event.target.value)}
+                  placeholder="e.g. New retail leads"
+                  className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                />
+              </label>
+              <button type="button" disabled={busy || !leadSavedViewName.trim()} onClick={() => void savePipelineView('leads')} className="mt-5 h-10 shrink-0 rounded-lg border border-[var(--sami-border)] px-3 text-xs font-black disabled:opacity-50">
+                Save view
+              </button>
+            </div>
+            {pipelineViewsError ? <p role="alert" className="mt-2 text-xs text-rose-600">{pipelineViewsError}</p> : null}
+            {pipelineViewsLoading ? (
+              <p className="mt-3 text-xs text-slate-500">Loading saved pipeline views…</p>
+            ) : savedPipelineViews.filter(view => view.viewType === 'leads').length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2" aria-label="Saved lead views">
+                {savedPipelineViews.filter(view => view.viewType === 'leads').map(view => (
+                  <div key={view.id} className="inline-flex max-w-full items-center rounded-lg border border-[var(--sami-border)]">
+                    <button type="button" disabled={busy} aria-label={'Apply saved lead view ' + view.name} onClick={() => applySavedPipelineView(view)} className="max-w-[15rem] truncate px-3 py-2 text-xs font-bold hover:bg-slate-500/[0.05] disabled:opacity-50">
+                      {view.name}
+                    </button>
+                    <button type="button" disabled={busy} aria-label={'Delete saved lead view ' + view.name} onClick={() => void deleteSavedPipelineView(view)} className="border-l border-[var(--sami-border)] px-2 py-2 text-xs text-slate-500 hover:text-rose-600 disabled:opacity-50">
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-slate-500">No saved lead views yet.</p>
+            )}
+          </div>
           <div className="mt-3 space-y-2">
             {filteredLeads.length === 0 ? (
               <p className="rounded-xl border border-dashed border-[var(--sami-border)] p-4 text-sm text-slate-500">
@@ -1317,6 +1439,43 @@ export default function SalesPipelineManager({
                 <option value="lost">Lost</option>
               </select>
             </label>
+          </div>
+          <div className="mt-3 rounded-xl border border-[var(--sami-border)] p-3">
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <label className="min-w-0 flex-1 space-y-1 text-xs font-bold text-slate-500">
+                <span>Save current opportunity view</span>
+                <input
+                  type="text"
+                  maxLength={80}
+                  value={opportunitySavedViewName}
+                  onChange={event => setOpportunitySavedViewName(event.target.value)}
+                  placeholder="e.g. Open deals this month"
+                  className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                />
+              </label>
+              <button type="button" disabled={busy || !opportunitySavedViewName.trim()} onClick={() => void savePipelineView('opportunities')} className="mt-5 h-10 shrink-0 rounded-lg border border-[var(--sami-border)] px-3 text-xs font-black disabled:opacity-50">
+                Save view
+              </button>
+            </div>
+            {pipelineViewsError ? <p role="alert" className="mt-2 text-xs text-rose-600">{pipelineViewsError}</p> : null}
+            {pipelineViewsLoading ? (
+              <p className="mt-3 text-xs text-slate-500">Loading saved pipeline views…</p>
+            ) : savedPipelineViews.filter(view => view.viewType === 'opportunities').length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2" aria-label="Saved opportunity views">
+                {savedPipelineViews.filter(view => view.viewType === 'opportunities').map(view => (
+                  <div key={view.id} className="inline-flex max-w-full items-center rounded-lg border border-[var(--sami-border)]">
+                    <button type="button" disabled={busy} aria-label={'Apply saved opportunity view ' + view.name} onClick={() => applySavedPipelineView(view)} className="max-w-[15rem] truncate px-3 py-2 text-xs font-bold hover:bg-slate-500/[0.05] disabled:opacity-50">
+                      {view.name}
+                    </button>
+                    <button type="button" disabled={busy} aria-label={'Delete saved opportunity view ' + view.name} onClick={() => void deleteSavedPipelineView(view)} className="border-l border-[var(--sami-border)] px-2 py-2 text-xs text-slate-500 hover:text-rose-600 disabled:opacity-50">
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-slate-500">No saved opportunity views yet.</p>
+            )}
           </div>
           <div className="mt-3 space-y-3">
             {filteredOpportunities.length === 0 ? (
