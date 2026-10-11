@@ -38,6 +38,9 @@ import {
   createSalesLeadActivity,
   updateSalesLeadActivity,
   editSalesLeadActivity,
+  createSalesOpportunityActivity,
+  updateSalesOpportunityActivity,
+  editSalesOpportunityActivity,
   convertSalesLeadToOpportunity,
   updateSalesOpportunity,
   moveSalesOpportunity,
@@ -562,6 +565,12 @@ export async function POST(
           updateSalesLeadActivity,
         edit_lead_activity:
           editSalesLeadActivity,
+        create_opportunity_activity:
+          createSalesOpportunityActivity,
+        update_opportunity_activity:
+          updateSalesOpportunityActivity,
+        edit_opportunity_activity:
+          editSalesOpportunityActivity,
         convert_lead:
           convertSalesLeadToOpportunity,
         update_opportunity:
