@@ -3106,6 +3106,13 @@ export async function createSalesOrderFromQuote(
               : null,
         };
       }
+
+      // Do not silently create a second order when a quote still points to a
+      // missing or soft-deleted order. Preserve the link for diagnosis/recovery.
+      throw new SalesError(
+        'QUOTE_STATE_INVALID',
+        'This quote references a sales order that is unavailable. Resolve the existing order link before retrying conversion.',
+      );
     }
 
     const currentStatus =
