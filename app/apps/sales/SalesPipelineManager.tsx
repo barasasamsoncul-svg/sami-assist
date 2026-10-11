@@ -1552,7 +1552,11 @@ export default function SalesPipelineManager({
                     ) : null}
                     <p className="mt-1 text-xs text-slate-500">
                       Owner: {data.salespeople.find(person => person.id === lead.salesperson_user_id)?.name || 'Unassigned'}
+                      {' · Team: ' + (data.salesTeams.find(team => team.id === lead.sales_team_id)?.name || (lead.sales_team_id ? 'Unavailable team' : 'No team'))}
                     </p>
+                    <button type="button" disabled={busy} onClick={() => void toggleLeadAssignmentHistory(lead.id)} className="mt-1 text-[11px] font-black text-slate-500 hover:underline disabled:opacity-60">
+                      {expandedLeadAssignmentHistoryId === lead.id ? 'Hide assignment history' : 'Assignment history'}
+                    </button>
                     <div className="mt-2 flex flex-wrap items-center gap-2" aria-label={`Lead score ${lead.lead_score} out of 100`}>
                       <span className={lead.lead_score_band === 'high' ? 'rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-[10px] font-black text-emerald-700 dark:text-emerald-300' : lead.lead_score_band === 'medium' ? 'rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[10px] font-black text-amber-700 dark:text-amber-300' : 'rounded-full border border-[var(--sami-border)] px-2 py-1 text-[10px] font-black text-slate-500'}>
                         Score {lead.lead_score}/100 · {lead.lead_score_band} priority
@@ -1593,9 +1597,7 @@ export default function SalesPipelineManager({
                       {lead.status !== 'converted' && lead.status !== 'disqualified' ? (
                         <button type="button" disabled={busy} onClick={() => beginActivity(lead)} className="text-xs font-black text-slate-600 hover:underline disabled:opacity-60">+ Follow-up</button>
                       ) : null}
-                      <button type="button" disabled={busy} onClick={() => void toggleLeadAssignmentHistory(lead.id)} className="text-xs font-black text-slate-600 hover:underline disabled:opacity-60">
-                        {expandedLeadAssignmentHistoryId === lead.id ? 'Hide assignment history' : 'Assignment history'}
-                      </button>
+
                     </div>
                   ) : null}
                 </div>
