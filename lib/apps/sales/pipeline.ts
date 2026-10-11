@@ -129,7 +129,7 @@ async function findSalesLeadDuplicates(
 export async function getSalesPipelineData() {
   const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_VIEW);
   await ensurePipelineStages(context.pool, context.companyId, context.userId);
-  const [stages, leads, opportunities, activities, salespeople] = await Promise.all([
+  const [stages, leads, opportunities, activities, salespeople, opportunityHistory] = await Promise.all([
     context.pool.query(
       `SELECT id,name,sequence,probability,stage_type,is_active
        FROM sales_pipeline_stages
@@ -189,6 +189,21 @@ export async function getSalesPipelineData() {
        ORDER BY LOWER(COALESCE(NULLIF(BTRIM(u.full_name),''),u.email)),u.id`,
       [context.tenantId],
     ),
+    context.pool.query(
+      `SELECT h.id,h.opportunity_id,h.from_stage_id,h.to_stage_id,h.probability,h.reason,h.changed_by,h.created_at,
+              old_stage.name AS from_stage_name,new_stage.name AS to_stage_name
+       FROM sales_opportunity_stage_history h
+       INNER JOIN sales_opportunities o
+         ON o.id=h.opportunity_id AND o.company_id=h.company_id AND o.deleted_at IS NULL
+       LEFT JOIN sales_pipeline_stages old_stage
+         ON old_stage.id=h.from_stage_id AND old_stage.company_id=h.company_id
+       INNER JOIN sales_pipeline_stages new_stage
+         ON new_stage.id=h.to_stage_id AND new_stage.company_id=h.company_id
+       WHERE h.company_id=$1
+       ORDER BY h.created_at DESC
+       LIMIT 1500`,
+      [context.companyId],
+    ),
   ]);
   return {
     stages: stages.rows,
@@ -196,6 +211,7 @@ export async function getSalesPipelineData() {
     opportunities: opportunities.rows,
     activities: activities.rows,
     salespeople: salespeople.rows,
+    opportunityHistory: opportunityHistory.rows,
   };
 }
 
