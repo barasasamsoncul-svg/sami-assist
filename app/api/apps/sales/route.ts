@@ -189,10 +189,14 @@ function handleError(
             error.code ===
               'QUOTE_NOT_FOUND' ||
             error.code ===
+              'OPPORTUNITY_NOT_FOUND' ||
+            error.code ===
               'ORDER_NOT_FOUND'
             ? 404
             : error.code ===
-                'QUOTE_STATE_INVALID'
+                'QUOTE_STATE_INVALID' ||
+            error.code ===
+              'INVALID_OPPORTUNITY_STAGE'
               ? 409
               : 400;
 
