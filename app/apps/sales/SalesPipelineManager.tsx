@@ -89,7 +89,7 @@ type OpportunityDraft = {
   salespersonUserId: string;
 };
 
-type SalesOpportunityHistory = {
+type OpportunityStageHistoryEntry = {
   id: string;
   opportunity_id: string;
   from_stage_id: string | null;
@@ -108,7 +108,7 @@ type PipelineData = {
   opportunities: SalesOpportunity[];
   activities: SalesLeadActivity[];
   salespeople: Salesperson[];
-  opportunityHistory: SalesOpportunityHistory[];
+  opportunityHistory: OpportunityStageHistoryEntry[];
 };
 
 type PipelineAction =
