@@ -383,15 +383,32 @@ export default function SalesPipelineManager({
           <div className="flex items-center justify-between gap-3">
             <h3 className="font-black">Leads</h3>
             <span className="rounded-full border border-[var(--sami-border)] px-2.5 py-1 text-[10px] font-black text-slate-500">
-              {data.leads.length}
+              {filteredLeads.length} / {data.leads.length}
             </span>
           </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_11rem]">
+            <label className="space-y-1 text-xs font-bold text-slate-500">
+              <span>Search leads</span>
+              <input type="search" value={leadSearch} onChange={event => setLeadSearch(event.target.value)} placeholder="Name, company, email, owner…" className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+            </label>
+            <label className="space-y-1 text-xs font-bold text-slate-500">
+              <span>Lead status</span>
+              <select value={leadStatusFilter} onChange={event => setLeadStatusFilter(event.target.value)} className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100">
+                <option value="all">All statuses</option>
+                <option value="new">New</option>
+                <option value="contacted">Contacted</option>
+                <option value="qualified">Qualified</option>
+                <option value="disqualified">Disqualified</option>
+                <option value="converted">Converted</option>
+              </select>
+            </label>
+          </div>
           <div className="mt-3 space-y-2">
-            {data.leads.length === 0 ? (
+            {filteredLeads.length === 0 ? (
               <p className="rounded-xl border border-dashed border-[var(--sami-border)] p-4 text-sm text-slate-500">
-                No leads yet. Capture a prospect above to start the qualification process.
+                {data.leads.length === 0 ? 'No leads yet. Capture a prospect above to start the qualification process.' : 'No leads match the current search and status filter.'}
               </p>
-            ) : data.leads.map(lead => (
+            ) : filteredLeads.map(lead => (
               <article key={lead.id} className="rounded-xl border border-[var(--sami-border)] p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
