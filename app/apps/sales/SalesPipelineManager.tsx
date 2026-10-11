@@ -1317,10 +1317,28 @@ export default function SalesPipelineManager({
                         Expected close date not set
                       </p>
                     )}
-                    {opportunity.customer_name || opportunity.contact_name ? (
+                    {opportunity.customer_name || opportunity.contact_name || opportunity.email || opportunity.phone ? (
                       <p className="mt-1 break-words text-xs text-slate-500">
-                        {opportunity.customer_name || opportunity.contact_name}
-                        {opportunity.email ? ' · ' + opportunity.email : ''}
+                        {[opportunity.customer_name, opportunity.contact_name, opportunity.email, opportunity.phone].filter(Boolean).join(' · ')}
+                      </p>
+                    ) : null}
+                    <p className="mt-1 text-xs text-slate-500">
+                      Owner: {data.salespeople.find(person => person.id === opportunity.salesperson_user_id)?.name || 'Unassigned'}
+                      {opportunity.source ? ' · Source: ' + opportunity.source : ''}
+                    </p>
+                    {opportunity.stage_type === 'lost' && opportunity.lost_reason ? (
+                      <p className="mt-1 whitespace-pre-wrap break-words text-xs text-rose-600 dark:text-rose-300">
+                        Loss reason: {opportunity.lost_reason}
+                      </p>
+                    ) : null}
+                    {opportunity.stage_type === 'won' && opportunity.won_at ? (
+                      <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
+                        Won on {String(opportunity.won_at).slice(0, 10)}
+                      </p>
+                    ) : null}
+                    {opportunity.stage_type === 'lost' && opportunity.lost_at ? (
+                      <p className="mt-1 text-xs text-slate-500">
+                        Lost on {String(opportunity.lost_at).slice(0, 10)}
                       </p>
                     ) : null}
                   </div>
@@ -1357,7 +1375,196 @@ export default function SalesPipelineManager({
                   ) : (
                     <span className="text-slate-400">No quotation yet</span>
                   )}
+                  {canManagePipeline && opportunity.stage_type === 'open' ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => beginOpportunityEdit(opportunity)}
+                      className="text-slate-600 hover:underline disabled:opacity-60 dark:text-slate-300"
+                    >
+                      Edit opportunity
+                    </button>
+                  ) : null}
+                  {canManagePipeline && opportunity.stage_type === 'open' && data.stages.some(stage => stage.stage_type === 'won') ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void markOpportunityWon(opportunity)}
+                      className="text-emerald-700 hover:underline disabled:opacity-60 dark:text-emerald-300"
+                    >
+                      Mark won
+                    </button>
+                  ) : null}
+                  {canManagePipeline && opportunity.stage_type === 'open' && data.stages.some(stage => stage.stage_type === 'lost') ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => beginOpportunityLoss(opportunity)}
+                      className="text-rose-600 hover:underline disabled:opacity-60 dark:text-rose-300"
+                    >
+                      Mark lost
+                    </button>
+                  ) : null}
+                  {canManagePipeline && opportunity.stage_type !== 'open' ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void reopenOpportunity(opportunity)}
+                      className="text-blue-600 hover:underline disabled:opacity-60"
+                    >
+                      Reopen opportunity
+                    </button>
+                  ) : null}
                 </div>
+
+                {editingOpportunityId === opportunity.id ? (
+                  <form
+                    onSubmit={event => void saveOpportunityEdit(event, opportunity)}
+                    className="mt-4 grid gap-3 rounded-xl bg-slate-500/[0.04] p-3 sm:grid-cols-2"
+                  >
+                    <h4 className="text-sm font-black sm:col-span-2">Edit opportunity</h4>
+                    <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2">
+                      <span>Opportunity name *</span>
+                      <input
+                        required
+                        value={opportunityDraft.name}
+                        onChange={event => setOpportunityDraft(current => ({ ...current, name: event.target.value }))}
+                        className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                      />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Customer / company</span>
+                      <input
+                        value={opportunityDraft.customerName}
+                        onChange={event => setOpportunityDraft(current => ({ ...current, customerName: event.target.value }))}
+                        className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                      />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Contact name</span>
+                      <input
+                        value={opportunityDraft.contactName}
+                        onChange={event => setOpportunityDraft(current => ({ ...current, contactName: event.target.value }))}
+                        className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                      />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Email</span>
+                      <input
+                        type="email"
+                        value={opportunityDraft.email}
+                        onChange={event => setOpportunityDraft(current => ({ ...current, email: event.target.value }))}
+                        className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                      />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Phone</span>
+                      <input
+                        type="tel"
+                        value={opportunityDraft.phone}
+                        onChange={event => setOpportunityDraft(current => ({ ...current, phone: event.target.value }))}
+                        className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                      />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Expected deal value *</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        required
+                        value={opportunityDraft.expectedValue}
+                        onChange={event => setOpportunityDraft(current => ({ ...current, expectedValue: event.target.value }))}
+                        className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                      />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Currency *</span>
+                      <input
+                        required
+                        minLength={3}
+                        maxLength={3}
+                        value={opportunityDraft.currency}
+                        onChange={event => setOpportunityDraft(current => ({ ...current, currency: event.target.value.toUpperCase() }))}
+                        className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                      />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Expected close date</span>
+                      <input
+                        type="date"
+                        value={opportunityDraft.expectedCloseDate}
+                        onChange={event => setOpportunityDraft(current => ({ ...current, expectedCloseDate: event.target.value }))}
+                        className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                      />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Assigned salesperson</span>
+                      <select
+                        value={opportunityDraft.salespersonUserId}
+                        onChange={event => setOpportunityDraft(current => ({ ...current, salespersonUserId: event.target.value }))}
+                        className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                      >
+                        <option value="">Unassigned</option>
+                        {data.salespeople.map(person => (
+                          <option key={person.id} value={person.id}>{person.name} · {person.email}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500">
+                      <span>Source</span>
+                      <input
+                        value={opportunityDraft.source}
+                        onChange={event => setOpportunityDraft(current => ({ ...current, source: event.target.value }))}
+                        className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                      />
+                    </label>
+                    <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2">
+                      <span>Notes</span>
+                      <textarea
+                        rows={3}
+                        value={opportunityDraft.notes}
+                        onChange={event => setOpportunityDraft(current => ({ ...current, notes: event.target.value }))}
+                        className="w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 py-2 text-sm font-normal text-slate-900 dark:text-slate-100"
+                      />
+                    </label>
+                    <div className="flex flex-wrap gap-2 sm:col-span-2">
+                      <button type="submit" disabled={busy || !opportunityDraft.name.trim() || !opportunityDraft.expectedValue.trim() || opportunityDraft.currency.trim().length !== 3} className="h-10 rounded-lg bg-blue-600 px-3.5 text-xs font-black text-white disabled:opacity-60">
+                        {busy ? 'Saving…' : 'Save opportunity'}
+                      </button>
+                      <button type="button" disabled={busy} onClick={() => setEditingOpportunityId(null)} className="h-10 rounded-lg border border-[var(--sami-border)] px-3.5 text-xs font-black disabled:opacity-60">
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                ) : null}
+
+                {closingOpportunityId === opportunity.id && closingOpportunityStageId ? (
+                  <form
+                    onSubmit={event => void confirmOpportunityLost(event, opportunity)}
+                    className="mt-4 space-y-3 rounded-xl border border-rose-500/30 bg-rose-500/[0.04] p-3"
+                  >
+                    <h4 className="text-sm font-black">Mark opportunity lost</h4>
+                    <label className="block space-y-1 text-xs font-bold text-slate-500">
+                      <span>Reason for loss *</span>
+                      <textarea
+                        required
+                        rows={3}
+                        value={opportunityLossReason}
+                        onChange={event => setOpportunityLossReason(event.target.value)}
+                        className="w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 py-2 text-sm font-normal text-slate-900 dark:text-slate-100"
+                      />
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="submit" disabled={busy || !opportunityLossReason.trim()} className="h-10 rounded-lg bg-rose-600 px-3.5 text-xs font-black text-white disabled:opacity-60">
+                        {busy ? 'Saving…' : 'Confirm loss'}
+                      </button>
+                      <button type="button" disabled={busy} onClick={() => { setClosingOpportunityId(null); setClosingOpportunityStageId(null); setOpportunityLossReason(''); }} className="h-10 rounded-lg border border-[var(--sami-border)] px-3.5 text-xs font-black disabled:opacity-60">
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                ) : null}
               </article>
             ))}
           </div>
