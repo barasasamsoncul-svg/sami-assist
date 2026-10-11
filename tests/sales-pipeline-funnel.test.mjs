@@ -22,8 +22,8 @@ test('Sales opportunity funnel is report-permission gated and scoped to the acti
   assert.match(service, /o\.deleted_at IS NULL/);
   assert.match(service, /s\.deleted_at IS NULL/);
   assert.match(service, /LEFT JOIN sales_opportunities o/);
-  assert.match(service, /LEFT JOIN sales_opportunities o[\\s\\S]*ON o\\.stage_id = s\\.id[\\s\\S]*AND o\\.company_id = \\$1[\\s\\S]*AND o\\.deleted_at IS NULL[\\s\\S]*LEFT JOIN LATERAL/);
-  assert.match(service, /NULLIF\(BTRIM\(o\.currency\), ''\)[\\s\\S]*NULLIF\(BTRIM\(\$2::text\), ''\)/);
+  assert.match(service, /LEFT JOIN sales_opportunities o[\s\S]*ON o\.stage_id = s\.id[\s\S]*AND o\.company_id = \$1[\s\S]*AND o\.deleted_at IS NULL[\s\S]*LEFT JOIN LATERAL/);
+  assert.match(service, /NULLIF\(BTRIM\(o\.currency\), ''\)[\s\S]*NULLIF\(BTRIM\(\$2::text\), ''\)/);
 });
 
 test('Sales opportunity funnel reports counts and correct value by open, won and lost stages', async () => {
