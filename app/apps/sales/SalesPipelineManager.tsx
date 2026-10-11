@@ -39,6 +39,27 @@ type SalesTeamOption = {
   member_user_ids: string[];
 };
 
+type SalesLeadAssignmentRule = {
+  id: string;
+  name: string;
+  sourceMatch: string | null;
+  salesTeamId: string;
+  salesTeamName: string | null;
+  priority: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type LeadAssignmentRuleDraft = {
+  ruleId: string | null;
+  name: string;
+  sourceMatch: string;
+  salesTeamId: string;
+  priority: string;
+  isActive: boolean;
+};
+
 type SalesLeadActivity = {
   id: string;
   lead_id: string;
@@ -167,7 +188,9 @@ type PipelineAction =
   | { action: 'update_opportunity'; opportunityId: string; name: string; customerName: string; contactName: string; email: string; phone: string; expectedValue: string; currency: string; expectedCloseDate: string | null; source: string; notes: string; salespersonUserId: string | null }
   | { action: 'move_opportunity'; opportunityId: string; stageId: string; reason?: string }
   | { action: 'save_pipeline_view'; name: string; viewType: 'leads' | 'opportunities'; statusView: string; scoreView: 'all' | 'high' | 'medium' | 'low'; searchQuery: string }
-  | { action: 'delete_pipeline_view'; viewId: string };
+  | { action: 'delete_pipeline_view'; viewId: string }
+  | { action: 'save_lead_assignment_rule'; ruleId: string | null; name: string; sourceMatch: string | null; salesTeamId: string; priority: number; isActive: boolean }
+  | { action: 'delete_lead_assignment_rule'; ruleId: string };
 
 type CreateLeadPayload = Extract<PipelineAction, { action: 'create_lead' }>;
 
@@ -302,6 +325,12 @@ export default function SalesPipelineManager({
   const [opportunitySavedViewName, setOpportunitySavedViewName] = useState('');
   const [pipelineViewsLoading, setPipelineViewsLoading] = useState(false);
   const [pipelineViewsError, setPipelineViewsError] = useState('');
+  const [leadAssignmentRules, setLeadAssignmentRules] = useState<SalesLeadAssignmentRule[]>([]);
+  const [assignmentRulesLoading, setAssignmentRulesLoading] = useState(false);
+  const [assignmentRulesError, setAssignmentRulesError] = useState('');
+  const [assignmentRuleDraft, setAssignmentRuleDraft] = useState<LeadAssignmentRuleDraft>({
+    ruleId: null, name: '', sourceMatch: '', salesTeamId: '', priority: '100', isActive: true,
+  });
   const [editingOpportunityId, setEditingOpportunityId] = useState<string | null>(null);
   const [opportunityDraft, setOpportunityDraft] = useState<OpportunityDraft>({
     name: '', customerName: '', contactName: '', email: '', phone: '',
