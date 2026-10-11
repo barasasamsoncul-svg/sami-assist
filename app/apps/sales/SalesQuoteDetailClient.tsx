@@ -177,7 +177,6 @@ export default function SalesQuoteDetailClient({
     quote.customerRevisionRequests,
     quote.deliveries,
   ]);
-
   async function request(
     payload:
       Record<
