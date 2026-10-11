@@ -43,7 +43,7 @@ export async function getSalesPipelineOutcomeReport(): Promise<SalesPipelineOutc
 
   const [summaryResult, lossReasonResult] = await Promise.all([
     context.pool.query(
-      \`
+      `
         SELECT
           UPPER(COALESCE(
             NULLIF(BTRIM(o.currency), ''),
@@ -95,11 +95,11 @@ export async function getSalesPipelineOutcomeReport(): Promise<SalesPipelineOutc
           )
         GROUP BY 1
         ORDER BY currency
-      \`,
+      `,
       [context.companyId, context.company.currentCompany.currency],
     ),
     context.pool.query(
-      \`
+      `
         WITH lost_opportunities AS (
           SELECT
             UPPER(COALESCE(
@@ -136,7 +136,7 @@ export async function getSalesPipelineOutcomeReport(): Promise<SalesPipelineOutc
         FROM ranked_reasons
         WHERE reason_rank <= 5
         ORDER BY currency, opportunity_count DESC, lost_value DESC, reason ASC
-      \`,
+      `,
       [context.companyId, context.company.currentCompany.currency],
     ),
   ]);
