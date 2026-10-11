@@ -5,7 +5,9 @@ export type SalesQuoteStatusView =
   | 'awaiting_response'
   | 'accepted'
   | 'converted'
-  | 'closed_without_sale';
+  | 'closed_without_sale'
+  | 'expired'
+  | 'expiring_soon';
 
 
 export type SalesSavedQuoteView = {
