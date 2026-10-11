@@ -49,8 +49,9 @@ type SalesLeadActivity = {
 type SalesOpportunity = {
   id: string;
   opportunity_number: string;
+  lead_id: string | null;
   stage_id: string;
-  stage_type: string;
+  stage_type: 'open' | 'won' | 'lost' | string;
   stage_name: string;
   name: string;
   billing_customer_id: string | null;
@@ -62,7 +63,30 @@ type SalesOpportunity = {
   expected_value: number | string;
   probability: number | string;
   expected_close_date: string | null;
+  salesperson_user_id: string | null;
+  sales_team_id: string | null;
+  territory_id: string | null;
+  source: string | null;
+  notes: string | null;
+  won_at: string | null;
+  lost_at: string | null;
+  lost_reason: string | null;
   latest_quote_id: string | null;
+  created_at: string;
+};
+
+type OpportunityDraft = {
+  name: string;
+  customerName: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  expectedValue: string;
+  currency: string;
+  expectedCloseDate: string;
+  source: string;
+  notes: string;
+  salespersonUserId: string;
 };
 
 type PipelineData = {
@@ -82,7 +106,8 @@ type PipelineAction =
   | { action: 'update_lead_activity'; activityId: string; status: 'completed' | 'cancelled' }
   | { action: 'edit_lead_activity'; activityId: string; activityType: ActivityDraft['activityType']; subject: string; description: string; dueDate: string | null; assignedUserId: string | null }
   | { action: 'convert_lead'; leadId: string; name: string; expectedValue: string; currency: string; expectedCloseDate: string | null }
-  | { action: 'move_opportunity'; opportunityId: string; stageId: string };
+  | { action: 'update_opportunity'; opportunityId: string; name: string; customerName: string; contactName: string; email: string; phone: string; expectedValue: string; currency: string; expectedCloseDate: string | null; source: string; notes: string; salespersonUserId: string | null }
+  | { action: 'move_opportunity'; opportunityId: string; stageId: string; reason?: string };
 
 type CreateLeadPayload = Extract<PipelineAction, { action: 'create_lead' }>;
 
@@ -193,6 +218,17 @@ export default function SalesPipelineManager({
   });
   const [leadSearch, setLeadSearch] = useState('');
   const [leadStatusFilter, setLeadStatusFilter] = useState('all');
+  const [opportunitySearch, setOpportunitySearch] = useState('');
+  const [opportunityStatusFilter, setOpportunityStatusFilter] = useState<'all' | 'open' | 'won' | 'lost'>('all');
+  const [editingOpportunityId, setEditingOpportunityId] = useState<string | null>(null);
+  const [opportunityDraft, setOpportunityDraft] = useState<OpportunityDraft>({
+    name: '', customerName: '', contactName: '', email: '', phone: '',
+    expectedValue: '', currency: normalizedCurrency(defaultCurrency),
+    expectedCloseDate: '', source: '', notes: '', salespersonUserId: '',
+  });
+  const [closingOpportunityId, setClosingOpportunityId] = useState<string | null>(null);
+  const [closingOpportunityStageId, setClosingOpportunityStageId] = useState<string | null>(null);
+  const [opportunityLossReason, setOpportunityLossReason] = useState('');
   const [agendaSearch, setAgendaSearch] = useState('');
   const [agendaFilter, setAgendaFilter] = useState<ActivityAgendaFilter>('all');
   const [duplicateCandidates, setDuplicateCandidates] = useState<LeadDuplicateMatch[]>([]);
@@ -235,6 +271,19 @@ export default function SalesPipelineManager({
       data.salespeople.find(person => person.id === lead.salesperson_user_id)?.name,
     ].some(value => String(value || '').toLowerCase().includes(search));
     return matchesStatus && matchesSearch;
+  });
+
+  const filteredOpportunities = data.opportunities.filter(opportunity => {
+    const status = ['open', 'won', 'lost'].includes(opportunity.stage_type) ? opportunity.stage_type : 'open';
+    const filter = opportunityStatusFilter === 'all' || status === opportunityStatusFilter;
+    const search = opportunitySearch.trim().toLowerCase();
+    const matchesSearch = !search || [
+      opportunity.name, opportunity.opportunity_number, opportunity.customer_name,
+      opportunity.contact_name, opportunity.email, opportunity.phone, opportunity.stage_name,
+      opportunity.source, opportunity.notes,
+      data.salespeople.find(person => person.id === opportunity.salesperson_user_id)?.name,
+    ].some(value => String(value || '').toLowerCase().includes(search));
+    return filter && matchesSearch;
   });
 
   const today = new Date();
