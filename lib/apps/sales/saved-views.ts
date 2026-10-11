@@ -401,7 +401,7 @@ function mapSavedPipelineView(row: SavedPipelineViewRow): SalesSavedPipelineView
 export async function getSalesSavedPipelineViews(): Promise<SalesSavedPipelineView[]> {
   const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_VIEW);
   const result = await context.pool.query<SavedPipelineViewRow>(
-    \`
+    `
       SELECT id, name, view_type, status_view, search_query, created_at
       FROM sales_pipeline_saved_views
       WHERE company_id = $1
@@ -409,7 +409,7 @@ export async function getSalesSavedPipelineViews(): Promise<SalesSavedPipelineVi
         AND deleted_at IS NULL
       ORDER BY view_type, LOWER(name), created_at DESC
       LIMIT $3
-    \`,
+    `,
     [context.companyId, context.userId, MAX_SAVED_VIEWS],
   );
   return result.rows.map(mapSavedPipelineView);
@@ -439,13 +439,13 @@ export async function saveSalesSavedPipelineView(
   }
 
   const countResult = await context.pool.query<{ count: number | string }>(
-    \`
+    `
       SELECT COUNT(*)::int AS count
       FROM sales_pipeline_saved_views
       WHERE company_id = $1
         AND user_id = $2
         AND deleted_at IS NULL
-    \`,
+    `,
     [context.companyId, context.userId],
   );
   if (Number(countResult.rows[0]?.count || 0) >= MAX_SAVED_VIEWS) {
@@ -457,14 +457,14 @@ export async function saveSalesSavedPipelineView(
 
   try {
     const result = await context.pool.query<SavedPipelineViewRow>(
-      \`
+      `
         INSERT INTO sales_pipeline_saved_views (
           company_id, user_id, view_type, name, status_view,
           search_query, created_by, updated_by
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
         RETURNING id, name, view_type, status_view, search_query, created_at
-      \`,
+      `,
       [
         context.companyId,
         context.userId,
@@ -493,7 +493,7 @@ export async function deleteSalesSavedPipelineView(
   const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_VIEW);
   const viewId = requireUuid(input.viewId, 'Saved pipeline view');
   const result = await context.pool.query<{ id: string }>(
-    \`
+    `
       UPDATE sales_pipeline_saved_views
       SET deleted_at = NOW(), updated_by = $4, updated_at = NOW()
       WHERE id = $1
@@ -501,7 +501,7 @@ export async function deleteSalesSavedPipelineView(
         AND user_id = $3
         AND deleted_at IS NULL
       RETURNING id
-    \`,
+    `,
     [viewId, context.companyId, context.userId, context.userId],
   );
   if (result.rows.length !== 1) {
