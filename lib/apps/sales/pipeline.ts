@@ -569,6 +569,116 @@ export async function updateSalesLead(input: Record<string, unknown>) {
   }
 }
 
+export async function bulkReassignSalesLeads(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
+  if (!Array.isArray(input.leadIds)) {
+    throw new SalesError('INVALID_INPUT', 'Select leads to reassign.');
+  }
+  const leadIds = [...new Set(input.leadIds.map(value => requireUuid(value, 'Lead')))];
+  if (leadIds.length === 0) throw new SalesError('INVALID_INPUT', 'Select at least one lead.');
+  if (leadIds.length > 100) throw new SalesError('INVALID_INPUT', 'Reassign at most 100 leads at a time.');
+
+  const salespersonUserId = await resolveActiveSalesperson(context, input.salespersonUserId);
+  const salesTeamId = optionalUuid(input.salesTeamId);
+  const reason = cleanText(input.reason, 1000);
+  if (!salesTeamId) throw new SalesError('INVALID_INPUT', 'Choose a Sales team for bulk lead reassignment.');
+  if (!reason) throw new SalesError('INVALID_INPUT', 'A reason is required for bulk lead reassignment.');
+
+  const client = await context.pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    let territoryId: string | null = null;
+    if (salesTeamId) {
+      const team = await client.query(
+        `SELECT id,territory_id
+         FROM sales_teams
+         WHERE id=$1 AND company_id=$2 AND is_active=TRUE AND deleted_at IS NULL
+         FOR UPDATE`,
+        [salesTeamId, context.companyId],
+      );
+      if (!team.rows[0]) throw new SalesError('INVALID_INPUT', 'Choose an active Sales team.');
+      territoryId = team.rows[0].territory_id ? String(team.rows[0].territory_id) : null;
+
+      if (salespersonUserId) {
+        const membership = await client.query(
+          `SELECT 1 FROM sales_team_members
+           WHERE company_id=$1 AND team_id=$2 AND user_id=$3
+             AND is_active=TRUE AND left_at IS NULL
+           LIMIT 1`,
+          [context.companyId, salesTeamId, salespersonUserId],
+        );
+        if (!membership.rows[0]) {
+          throw new SalesError('INVALID_INPUT', 'The selected salesperson must be an active member of the chosen team.');
+        }
+      }
+    }
+
+    const current = await client.query(
+      `SELECT id,status,salesperson_user_id,sales_team_id,territory_id
+       FROM sales_leads
+       WHERE company_id=$1 AND id=ANY($2::uuid[]) AND deleted_at IS NULL
+       FOR UPDATE`,
+      [context.companyId, leadIds],
+    );
+    if (current.rows.length !== leadIds.length) {
+      throw new SalesError('INVALID_INPUT', 'One or more selected leads were not found in this workspace.');
+    }
+    if (current.rows.some(row => row.status === 'converted')) {
+      throw new SalesError('INVALID_INPUT', 'Converted leads cannot be reassigned. Remove them from the selection and try again.');
+    }
+
+    const changed = current.rows.filter(row =>
+      String(row.salesperson_user_id || '') !== String(salespersonUserId || '') ||
+      String(row.sales_team_id || '') !== String(salesTeamId || '') ||
+      String(row.territory_id || '') !== String(territoryId || '')
+    );
+    if (changed.length === 0) {
+      throw new SalesError('INVALID_INPUT', 'The selected leads already have this team and salesperson.');
+    }
+
+    const changedIds = changed.map(row => String(row.id));
+    await client.query(
+      `UPDATE sales_leads
+       SET salesperson_user_id=$3,sales_team_id=$4,territory_id=$5,
+           updated_by=$6,updated_at=NOW()
+       WHERE company_id=$1 AND id=ANY($2::uuid[]) AND deleted_at IS NULL`,
+      [context.companyId, changedIds, salespersonUserId, salesTeamId, territoryId, context.userId],
+    );
+
+    for (const row of changed) {
+      await client.query(
+        `INSERT INTO sales_lead_assignment_history
+           (company_id,lead_id,previous_salesperson_user_id,new_salesperson_user_id,
+            previous_sales_team_id,new_sales_team_id,previous_territory_id,new_territory_id,
+            changed_by,reason)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [
+          context.companyId,
+          String(row.id),
+          row.salesperson_user_id ? String(row.salesperson_user_id) : null,
+          salespersonUserId,
+          row.sales_team_id ? String(row.sales_team_id) : null,
+          salesTeamId,
+          row.territory_id ? String(row.territory_id) : null,
+          territoryId,
+          context.userId,
+          reason,
+        ],
+      );
+    }
+
+    await client.query('COMMIT');
+    return { updatedCount: changed.length, leadIds: changedIds };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
 export async function disqualifySalesLead(input: Record<string, unknown>) {
   const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
   const leadId = requireUuid(input.leadId, 'Lead');

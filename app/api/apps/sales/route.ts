@@ -33,6 +33,7 @@ import {
   getSalesPipelineData,
   getSalesLeadAssignmentHistory,
   createSalesLead,
+  bulkReassignSalesLeads,
   updateSalesLead,
   disqualifySalesLead,
   reopenSalesLead,
@@ -574,6 +575,8 @@ export async function POST(
       > = {
         create_lead:
           createSalesLead,
+        bulk_reassign_leads:
+          bulkReassignSalesLeads,
         update_lead:
           updateSalesLead,
         disqualify_lead:

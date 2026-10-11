@@ -2639,3 +2639,33 @@ test('Sales lead reassignment validates team membership and records reasoned his
   assert.ok(manager.includes('name="salesTeamId"'));
   assert.ok(manager.includes('leadAssignmentHistory=1&leadId='));
 });
+
+test('Sales bulk lead reassignment is bounded, transactional and audited per changed lead', async () => {
+  const [pipeline, manager, route, service, assignmentHistory] = await Promise.all([
+    source('lib/apps/sales/pipeline.ts'),
+    source('app/apps/sales/SalesPipelineManager.tsx'),
+    source('app/api/apps/sales/route.ts'),
+    source('lib/apps/sales/service.ts'),
+    source('lib/apps/sales/schema.sql'),
+  ]);
+
+  assert.ok(pipeline.includes('export async function bulkReassignSalesLeads'));
+  assert.ok(pipeline.includes('requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE)'));
+  assert.ok(pipeline.includes('leadIds.length > 100'));
+  assert.ok(pipeline.includes('Converted leads cannot be reassigned.'));
+  assert.ok(pipeline.includes('A reason is required for bulk lead reassignment.'));
+  assert.ok(pipeline.includes('The selected salesperson must be an active member of the chosen team.'));
+  assert.ok(pipeline.includes('INSERT INTO sales_lead_assignment_history'));
+  assert.ok(pipeline.includes("await client.query('BEGIN')"));
+  assert.ok(pipeline.includes("await client.query('COMMIT')"));
+  assert.ok(pipeline.includes('return { updatedCount: changed.length, leadIds: changedIds }'));
+
+  assert.ok(service.includes('bulkReassignSalesLeads'));
+  assert.ok(route.includes('bulk_reassign_leads'));
+  assert.ok(manager.includes("action: 'bulk_reassign_leads'"));
+  assert.ok(manager.includes('Select up to 100 filtered'));
+  assert.ok(manager.includes('Reassign selected leads'));
+  assert.ok(manager.includes('Each changed lead gets its own audit entry.'));
+  assert.ok(manager.includes("lead.status !== 'converted'"));
+  assert.ok(assignmentHistory.includes('CREATE TABLE IF NOT EXISTS public.sales_lead_assignment_history'));
+});
