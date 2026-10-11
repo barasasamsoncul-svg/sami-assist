@@ -1992,6 +1992,25 @@ test('Sales Priority 14 exposes tenant-scoped opportunity stage history with act
 });
 
 
+test('Sales quotation workspace provides status-based work queues alongside quotation search', async () => {
+  const workspace = await source('app/apps/sales/SalesWorkspaceClient.tsx');
+
+  assert.ok(workspace.includes('type QuoteStatusView'));
+  assert.ok(workspace.includes('function matchesQuoteStatusView'));
+  assert.ok(workspace.includes('quoteStatusView'));
+  assert.ok(workspace.includes('setQuoteStatusView'));
+  assert.ok(workspace.includes('aria-label="Quotation work queues"'));
+  assert.ok(workspace.includes('aria-pressed={quoteStatusView === option.key}'));
+  assert.ok(workspace.includes('initialData.quotes.filter(quote => matchesQuoteStatusView(quote, option.key)).length'));
+  for (const label of ['All quotations', 'Drafts', 'Awaiting approval', 'Awaiting customer', 'Accepted', 'Converted to order', 'Closed without sale']) {
+    assert.ok(workspace.includes(label), 'Quotation work queues include ' + label);
+  }
+  assert.ok(workspace.includes('quote.status === \'sent\''));
+  assert.ok(workspace.includes('quote.status === \'viewed\''));
+  assert.ok(workspace.includes('quote.approvalStatus === \'pending\''));
+  assert.ok(workspace.includes('quoteStatusView,'));
+});
+
 test('Sales quotation templates can be edited without creating duplicates', async () => {
   const manager =
     await source(
