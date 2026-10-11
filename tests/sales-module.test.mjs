@@ -1773,3 +1773,51 @@ test('Sales Priority 4 keeps dispatch, delivery, Inventory posting and invoice e
   assert.match(commands, /quantityDelta: shippedDelta/);
   assert.match(orderUi, /Shipped/);
 });
+
+
+test('Sales Priority 9 supports searchable lead lifecycle, reassignment, disqualification and follow-up activities', async () => {
+  const [manifest, migration, runtime, schema, pipeline, service, route, ui] = await Promise.all([
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/sales/migrations/3.4.5-to-3.4.6.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/apps/sales/schema.sql'),
+    source('lib/apps/sales/pipeline.ts'),
+    source('lib/apps/sales/service.ts'),
+    source('app/api/apps/sales/route.ts'),
+    source('app/apps/sales/SalesPipelineManager.tsx'),
+  ]);
+
+  assert.match(manifest, /key: "sales"[\\s\\S]*version: '3\\.4\\.6'/);
+  assert.match(migration, /sales-3\\.4\\.5-to-3\\.4\\.6/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS public\\.sales_lead_activities/);
+  assert.match(runtime, /SALES_3_4_5_TO_3_4_6/);
+  assert.match(schema, /idx_sales_lead_activities_due/);
+
+  assert.match(pipeline, /resolveActiveSalesperson/);
+  assert.match(pipeline, /FROM tenant_users tu/);
+  assert.match(pipeline, /tu\\.member_type = 'internal'/);
+  assert.match(pipeline, /export async function updateSalesLead/);
+  assert.match(pipeline, /A converted lead cannot be edited/);
+  assert.match(pipeline, /export async function disqualifySalesLead/);
+  assert.match(pipeline, /A reason is required to disqualify a lead/);
+  assert.match(pipeline, /export async function reopenSalesLead/);
+  assert.match(pipeline, /export async function createSalesLeadActivity/);
+  assert.match(pipeline, /export async function updateSalesLeadActivity/);
+  assert.match(pipeline, /status='completed'/);
+
+  for (const action of ['update_lead', 'disqualify_lead', 'reopen_lead', 'create_lead_activity', 'update_lead_activity']) {
+    assert.ok(route.includes(action), 'Sales API routes ' + action);
+  }
+  for (const exported of ['updateSalesLead', 'disqualifySalesLead', 'reopenSalesLead', 'createSalesLeadActivity', 'updateSalesLeadActivity']) {
+    assert.ok(service.includes(exported), 'Sales service exports ' + exported);
+  }
+
+  assert.match(ui, /Search leads/);
+  assert.match(ui, /Lead status/);
+  assert.match(ui, /filteredLeads/);
+  assert.match(ui, /Edit lead details/);
+  assert.match(ui, /Assigned salesperson/);
+  assert.match(ui, /Confirm disqualification/);
+  assert.match(ui, /Schedule follow-up/);
+  assert.match(ui, /updateActivity\(activity\.id, 'completed'\)/);
+});
