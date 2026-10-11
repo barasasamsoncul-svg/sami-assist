@@ -1233,7 +1233,9 @@ CREATE TABLE IF NOT EXISTS public.sales_quote_saved_views (
       'awaiting_response',
       'accepted',
       'converted',
-      'closed_without_sale'
+      'closed_without_sale',
+      'expired',
+      'expiring_soon'
     )),
   search_query VARCHAR(120) NOT NULL DEFAULT '',
   created_by UUID,
