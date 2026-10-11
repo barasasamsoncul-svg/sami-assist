@@ -73,7 +73,7 @@ test('Sales Reports render stage funnel data without changing other Sales route 
 
   assert.match(page, /getSalesOpportunityFunnelData/);
   assert.match(page, /reportsAvailable/);
-  assert.match(page, /<SalesOpportunityFunnel rows=\{opportunityFunnel\} \/>/);
+  assert.match(page, /<SalesOpportunityFunnel rows=\{opportunityFunnel\} riskRows=\{opportunityRiskQueue\} \/>/);
   assert.match(page, /view === 'reports' && data\.capabilities\.canViewReports/);
   assert.match(packageJson, /tests\/sales-pipeline-funnel\.test\.mjs/);
 });
