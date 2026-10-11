@@ -91,7 +91,7 @@ export async function getSalesOpportunityFunnelData(): Promise<SalesOpportunityF
           0
         ) AS stale_value
       FROM sales_pipeline_stages s
-      INNER JOIN sales_opportunities o
+      LEFT JOIN sales_opportunities o
         ON o.stage_id = s.id
         AND o.company_id = s.company_id
         AND o.company_id = $1
