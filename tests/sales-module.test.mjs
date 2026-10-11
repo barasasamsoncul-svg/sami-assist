@@ -2557,3 +2557,42 @@ test('Sales team lead creation supports tenant-safe balanced automatic assignmen
   assert.ok(manager.includes('member_user_ids.includes(person.id)'));
   assert.ok(packageJson.includes('tests/sales-lead-assignment.test.ts'));
 });
+
+test('Sales lead-routing rules are tenant-scoped, priority ordered and migration-backed', async () => {
+  const [rules, pipeline, manager, route, service, schema, migration, registry, manifest] = await Promise.all([
+    source('lib/apps/sales/lead-assignment-rules.ts'),
+    source('lib/apps/sales/pipeline.ts'),
+    source('app/apps/sales/SalesPipelineManager.tsx'),
+    source('app/api/apps/sales/route.ts'),
+    source('lib/apps/sales/service.ts'),
+    source('lib/apps/sales/schema.sql'),
+    source('lib/apps/sales/migrations/3.4.13-to-3.4.14.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+  ]);
+
+  assert.ok(manifest.includes('version: \'3.4.14\''));
+  assert.ok(rules.includes('requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE)'));
+  assert.ok(rules.includes('WHERE company_id=$1 AND deleted_at IS NULL'));
+  assert.ok(rules.includes('A routing rule with that name or source match already exists.'));
+  assert.ok(rules.includes('Choose an active Sales team for this rule.'));
+  assert.ok(schema.includes('CREATE TABLE IF NOT EXISTS public.sales_lead_assignment_rules'));
+  assert.ok(schema.includes('uq_sales_lead_assignment_rules_name'));
+  assert.ok(schema.includes('uq_sales_lead_assignment_rules_source'));
+  assert.ok(schema.includes('assignment_rule_id UUID'));
+  assert.ok(migration.includes('sales-3.4.13-to-3.4.14'));
+  assert.ok(migration.includes('ADD COLUMN IF NOT EXISTS assignment_rule_id'));
+  assert.ok(registry.includes('SALES_3_4_13_TO_3_4_14'));
+  assert.ok(registry.indexOf('SALES_3_4_12_TO_3_4_13,') < registry.indexOf('SALES_3_4_13_TO_3_4_14,'));
+  assert.ok(service.includes('getSalesLeadAssignmentRules'));
+  assert.ok(service.includes('saveSalesLeadAssignmentRule'));
+  assert.ok(route.includes('leadAssignmentRules === \'1\''));
+  assert.ok(route.includes('save_lead_assignment_rule'));
+  assert.ok(route.includes('delete_lead_assignment_rule'));
+  assert.ok(pipeline.includes('selectSalesLeadAssignmentRule'));
+  assert.ok(pipeline.includes('ORDER BY rule.priority ASC'));
+  assert.ok(pipeline.includes('assignment_rule.name AS assignment_rule_name'));
+  assert.ok(manager.includes('Automatic lead-routing rules'));
+  assert.ok(manager.includes('Rule enabled'));
+  assert.ok(manager.includes('Routed by rule:'));
+});
