@@ -1897,3 +1897,31 @@ test('Sales Priority 12 edits and reschedules only planned follow-up activities'
   assert.ok(route.includes('edit_lead_activity:'));
   assert.ok(route.includes('editSalesLeadActivity'));
 });
+
+
+test('Sales Priority 13 supports opportunity editing and requires a loss reason', async () => {
+  const [ui, pipeline, service, route] = await Promise.all([
+    source('app/apps/sales/SalesPipelineManager.tsx'),
+    source('lib/apps/sales/pipeline.ts'),
+    source('lib/apps/sales/service.ts'),
+    source('app/api/apps/sales/route.ts'),
+  ]);
+
+  assert.ok(ui.includes('Edit opportunity'));
+  assert.ok(ui.includes("action: 'update_opportunity'"));
+  assert.ok(ui.includes('function beginOpportunityEdit'));
+  assert.ok(ui.includes('function saveOpportunityEdit'));
+  assert.ok(ui.includes('Reason for loss *'));
+  assert.ok(ui.includes("stage.stage_type === 'lost'"));
+
+  assert.match(pipeline, /export async function updateSalesOpportunity/);
+  assert.ok(pipeline.includes("numberInput(expectedValueInput, 'Expected value', { min: 0 })"));
+  assert.ok(pipeline.includes("Expected value is required."));
+  assert.ok(pipeline.includes("const currency = cleanText(input.currency, 16).toUpperCase();"));
+  assert.ok(pipeline.includes("Currency must be a three-letter currency code."));
+  assert.ok(pipeline.includes("A reason is required when marking an opportunity as lost."));
+  assert.ok(pipeline.includes('INSERT INTO sales_opportunity_stage_history'));
+  assert.ok(service.includes('updateSalesOpportunity'));
+  assert.ok(route.includes('update_opportunity:'));
+  assert.ok(route.includes('updateSalesOpportunity'));
+});
