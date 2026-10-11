@@ -217,7 +217,7 @@ export async function getSalesCommercialMarginQualityReport(): Promise<SalesComm
         r.risk_reason
       FROM risks r
       WHERE r.margin_percent < $3 OR r.discount_percent >= $4
-      ORDER BY row_type ASC, currency ASC, margin_percent ASC NULLS LAST, discount_percent DESC NULLS LAST, document_date ASC NULLS LAST
+      ORDER BY row_type DESC, currency ASC, margin_percent ASC NULLS LAST, discount_percent DESC NULLS LAST, document_date ASC NULLS LAST
       LIMIT 350
     `,
     [context.companyId, context.company.currentCompany.currency, MARGIN_THRESHOLD_PERCENT, DISCOUNT_THRESHOLD_PERCENT],
