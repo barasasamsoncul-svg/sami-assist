@@ -82,6 +82,11 @@ export {
 
 export {
   createSalesLead,
+  updateSalesLead,
+  disqualifySalesLead,
+  reopenSalesLead,
+  createSalesLeadActivity,
+  updateSalesLeadActivity,
   convertSalesLeadToOpportunity,
   getSalesPipelineData,
   moveSalesOpportunity,
