@@ -28,6 +28,7 @@ export default function SalesOpportunityFunnel({ rows }: { rows: SalesOpportunit
         <p className="mt-1 text-sm text-slate-500">
           Current opportunity volume and value across your configured sales stages.
           Open-stage value is weighted by each opportunity’s probability. Currencies are reported separately.
+          Open stages also flag past-due close dates and opportunities that have remained in a stage for 30 days or more.
         </p>
       </header>
 
@@ -88,6 +89,25 @@ export default function SalesOpportunityFunnel({ rows }: { rows: SalesOpportunit
                             <span className="break-words text-right text-sm font-bold tabular-nums">
                               {money(row.weightedPipelineValue, currency)}
                             </span>
+                          </div>
+                        )}
+
+                        {row.stageType === 'open' && (
+                          <div className="mt-3 grid grid-cols-2 gap-3 border-t border-[var(--sami-border)] pt-3">
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">Overdue close</p>
+                              <p className="mt-1 break-words text-sm font-black tabular-nums">
+                                {row.overdueOpportunityCount.toLocaleString()} deals
+                              </p>
+                              <p className="mt-1 break-words text-xs text-slate-500">{money(row.overdueValue, currency)}</p>
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">30+ days in stage</p>
+                              <p className="mt-1 break-words text-sm font-black tabular-nums">
+                                {row.staleOpportunityCount.toLocaleString()} deals
+                              </p>
+                              <p className="mt-1 break-words text-xs text-slate-500">{money(row.staleValue, currency)}</p>
+                            </div>
                           </div>
                         )}
 
