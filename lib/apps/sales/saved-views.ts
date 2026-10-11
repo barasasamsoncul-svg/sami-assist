@@ -405,6 +405,7 @@ function mapSavedPipelineView(row: SavedPipelineViewRow): SalesSavedPipelineView
     name: String(row.name),
     viewType: row.view_type,
     statusView: row.status_view,
+    scoreView: row.score_view || 'all',
     searchQuery: String(row.search_query || ''),
     createdAt: new Date(row.created_at).toISOString(),
   };
