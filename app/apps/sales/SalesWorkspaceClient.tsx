@@ -1078,10 +1078,10 @@ export default function SalesWorkspaceClient({
               difference = left.orderDate.localeCompare(right.orderDate);
               break;
             case 'value_high':
-              difference = right.totalAmount - left.totalAmount;
+              difference = right.baseTotalAmount - left.baseTotalAmount;
               break;
             case 'value_low':
-              difference = left.totalAmount - right.totalAmount;
+              difference = left.baseTotalAmount - right.baseTotalAmount;
               break;
             case 'delivery_first':
               difference = left.deliveredPercent - right.deliveredPercent;
