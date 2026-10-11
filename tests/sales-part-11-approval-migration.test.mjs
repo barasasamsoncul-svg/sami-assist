@@ -55,7 +55,7 @@ test('Sales 3.4.3 migration preserves typed-signature consent evidence and is re
   assert.match(schema, /acceptance_signature_consent_text TEXT/);
   assert.match(registry, /SALES_3_4_2_TO_3_4_3/);
   assert.ok(registry.indexOf('SALES_3_4_1_TO_3_4_2,') < registry.indexOf('SALES_3_4_2_TO_3_4_3,'));
-  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.4'/s);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.5'/s);
 });
 
 test('Sales management insights are tenant-scoped, permission-gated and actionable', async () => {
@@ -101,4 +101,59 @@ test('Sales management insights include tenant-scoped booked order, product and 
   assert.match(ui, /Sales team performance/);
   assert.match(ui, /min-w-0 break-words text-xs font-black capitalize/);
   assert.match(ui, /tabular-nums/);
+});
+
+
+test('Sales Priority 7 links CRM opportunities to quotations without crossing company boundaries', async () => {
+  const [
+    migration,
+    schema,
+    registry,
+    manifest,
+    navigation,
+    opportunityUi,
+    workspaceUi,
+    quoteComposer,
+    commands,
+    pipeline,
+    route,
+  ] = await Promise.all([
+    source('lib/apps/sales/migrations/3.4.4-to-3.4.5.ts'),
+    source('lib/apps/sales/schema.sql'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+    source('lib/apps/sales/navigation.ts'),
+    source('app/apps/sales/SalesPipelineManager.tsx'),
+    source('app/apps/sales/SalesWorkspaceClient.tsx'),
+    source('app/apps/sales/SalesQuoteComposer.tsx'),
+    source('lib/apps/sales/commands.ts'),
+    source('lib/apps/sales/pipeline.ts'),
+    source('app/apps/sales/opportunities/page.tsx'),
+  ]);
+
+  assert.match(migration, /sales-3\.4\.4-to-3\.4\.5/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS opportunity_id UUID/);
+  assert.match(migration, /FOREIGN KEY \(opportunity_id\)/);
+  assert.match(schema, /opportunity_id UUID/);
+  assert.match(schema, /sales_quotes_opportunity_id_fkey/);
+  assert.match(registry, /SALES_3_4_4_TO_3_4_5/);
+  assert.ok(registry.indexOf('SALES_3_4_3_TO_3_4_4,') < registry.indexOf('SALES_3_4_4_TO_3_4_5,'));
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.5'/s);
+
+  assert.match(navigation, /'opportunities'/);
+  assert.match(navigation, /\/apps\/sales\/opportunities/);
+  assert.match(route, /SalesSectionPage view="opportunities"/);
+  assert.match(workspaceUi, /SalesPipelineManager/);
+  assert.match(workspaceUi, /opportunityId/);
+  assert.match(opportunityUi, /Create quotation/);
+  assert.match(opportunityUi, /latest_quote_id/);
+  assert.match(quoteComposer, /opportunityId:/);
+  assert.match(quoteComposer, /linkedOpportunity\?\.id/);
+
+  assert.match(pipeline, /o\.billing_customer_id/);
+  assert.match(commands, /OPPORTUNITY_NOT_FOUND/);
+  assert.match(commands, /stage_type === 'lost'/);
+  assert.match(commands, /opportunity_id = \$3/);
+  assert.match(commands, /latest_quote_id = \$3/);
+  assert.match(commands, /opportunity\.company_id = \$2/);
 });
