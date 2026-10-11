@@ -1915,7 +1915,7 @@ test('Sales Priority 13 supports opportunity editing and requires a loss reason'
   assert.ok(ui.includes("stage.stage_type === 'lost'"));
 
   assert.match(pipeline, /export async function updateSalesOpportunity/);
-  assert.ok(pipeline.includes("numberInput(input.expectedValue, 'Expected value', { min: 0 })"));
+  assert.ok(pipeline.includes("numberInput(expectedValueInput, 'Expected value', { min: 0 })"));
   assert.ok(pipeline.includes("Expected value is required."));
   assert.ok(pipeline.includes("const currency = cleanText(input.currency, 16).toUpperCase();"));
   assert.ok(pipeline.includes("Currency must be a three-letter currency code."));
