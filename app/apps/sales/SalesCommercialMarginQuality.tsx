@@ -76,7 +76,7 @@ export default function SalesCommercialMarginQuality({ report }: { report: Sales
       <header>
         <h2 className="text-base font-black">Margin and discount quality</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Quotations and confirmed orders from the last 90 days. The review queue flags documents below {report.marginThresholdPercent}% margin or at/above {report.discountThresholdPercent}% discount. Values stay in their original currency; returns and later credit notes are not netted into order margin.
+          Quotations and confirmed or closed orders from the last 90 days. The review queue flags documents below {report.marginThresholdPercent}% margin or at/above {report.discountThresholdPercent}% discount. Values stay in their original currency; returns and later credit notes are not netted into order margin.
         </p>
       </header>
 
