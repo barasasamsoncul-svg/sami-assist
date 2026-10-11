@@ -17,8 +17,14 @@ async function ensurePipelineStages(pool: Awaited<ReturnType<typeof requireSales
     for (const [name, sequence, probability] of stageSeed) {
       await pool.query(`INSERT INTO sales_pipeline_stages (company_id,name,sequence,probability,stage_type,created_by,updated_by) VALUES ($1,$2,$3,$4,'open',$5,$5) ON CONFLICT DO NOTHING`, [companyId,name,sequence,probability,userId]);
     }
-    await pool.query(`INSERT INTO sales_pipeline_stages (company_id,name,sequence,probability,stage_type,created_by,updated_by) VALUES ($1,'Won',90,100,'won',$2,$2),($1,'Lost',100,0,'lost',$2,$2) ON CONFLICT DO NOTHING`, [companyId,userId]);
   }
+  // Terminal stages must exist even when the company already has configured open stages.
+  await pool.query(
+    `INSERT INTO sales_pipeline_stages (company_id,name,sequence,probability,stage_type,created_by,updated_by)
+     VALUES ($1,'Won',90,100,'won',$2,$2),($1,'Lost',100,0,'lost',$2,$2)
+     ON CONFLICT DO NOTHING`,
+    [companyId, userId],
+  );
 }
 
 async function nextPipelineNumber(client: PoolClient, companyId:string, userId:string, type:'lead'|'opportunity', prefix:string) {
@@ -123,7 +129,7 @@ async function findSalesLeadDuplicates(
 export async function getSalesPipelineData() {
   const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_VIEW);
   await ensurePipelineStages(context.pool, context.companyId, context.userId);
-  const [stages, leads, opportunities, activities, opportunityHistory, salespeople] = await Promise.all([
+  const [stages, leads, opportunities, activities, salespeople, opportunityHistory] = await Promise.all([
     context.pool.query(
       `SELECT id,name,sequence,probability,stage_type,is_active
        FROM sales_pipeline_stages
@@ -144,11 +150,13 @@ export async function getSalesPipelineData() {
       `SELECT o.id,o.opportunity_number,o.lead_id,o.billing_customer_id,o.stage_id,o.name,
               o.customer_name,o.contact_name,o.email,o.phone,o.currency,o.expected_value,o.probability,
               o.expected_close_date,o.salesperson_user_id,o.sales_team_id,o.territory_id,o.source,o.notes,
-              o.latest_quote_id,o.created_at,s.name AS stage_name,s.stage_type
+              o.won_at,o.lost_at,o.lost_reason,o.latest_quote_id,o.created_at,
+              s.name AS stage_name,s.stage_type
        FROM sales_opportunities o
-       JOIN sales_pipeline_stages s ON s.id=o.stage_id
+       JOIN sales_pipeline_stages s ON s.id=o.stage_id AND s.company_id=o.company_id
        WHERE o.company_id=$1 AND o.deleted_at IS NULL
-       ORDER BY s.sequence,o.expected_close_date NULLS LAST,o.created_at DESC
+       ORDER BY CASE WHEN s.stage_type='open' THEN 0 WHEN s.stage_type='won' THEN 1 ELSE 2 END,
+                s.sequence,o.expected_close_date NULLS LAST,o.created_at DESC
        LIMIT 500`,
       [context.companyId],
     ),
@@ -161,21 +169,6 @@ export async function getSalesPipelineData() {
        WHERE a.company_id=$1 AND a.deleted_at IS NULL
        ORDER BY CASE WHEN a.status='planned' THEN 0 ELSE 1 END,a.due_date NULLS LAST,a.created_at DESC
        LIMIT 1000`,
-      [context.companyId],
-    ),
-    context.pool.query(
-      `SELECT h.id,h.opportunity_id,h.from_stage_id,h.to_stage_id,h.probability,h.reason,h.changed_by,h.created_at,
-              from_stage.name AS from_stage_name,to_stage.name AS to_stage_name
-       FROM sales_opportunity_stage_history h
-       INNER JOIN sales_opportunities o
-         ON o.id=h.opportunity_id AND o.company_id=h.company_id AND o.deleted_at IS NULL
-       LEFT JOIN sales_pipeline_stages from_stage
-         ON from_stage.id=h.from_stage_id AND from_stage.company_id=h.company_id
-       INNER JOIN sales_pipeline_stages to_stage
-         ON to_stage.id=h.to_stage_id AND to_stage.company_id=h.company_id
-       WHERE h.company_id=$1
-       ORDER BY h.created_at DESC,h.id DESC
-       LIMIT 2000`,
       [context.companyId],
     ),
     queryControl(
@@ -196,14 +189,29 @@ export async function getSalesPipelineData() {
        ORDER BY LOWER(COALESCE(NULLIF(BTRIM(u.full_name),''),u.email)),u.id`,
       [context.tenantId],
     ),
+    context.pool.query(
+      `SELECT h.id,h.opportunity_id,h.from_stage_id,h.to_stage_id,h.probability,h.reason,h.changed_by,h.created_at,
+              old_stage.name AS from_stage_name,new_stage.name AS to_stage_name
+       FROM sales_opportunity_stage_history h
+       INNER JOIN sales_opportunities o
+         ON o.id=h.opportunity_id AND o.company_id=h.company_id AND o.deleted_at IS NULL
+       LEFT JOIN sales_pipeline_stages old_stage
+         ON old_stage.id=h.from_stage_id AND old_stage.company_id=h.company_id
+       INNER JOIN sales_pipeline_stages new_stage
+         ON new_stage.id=h.to_stage_id AND new_stage.company_id=h.company_id
+       WHERE h.company_id=$1
+       ORDER BY h.created_at DESC
+       LIMIT 2000`,
+      [context.companyId],
+    ),
   ]);
   return {
     stages: stages.rows,
     leads: leads.rows,
     opportunities: opportunities.rows,
     activities: activities.rows,
-    opportunityHistory: opportunityHistory.rows,
     salespeople: salespeople.rows,
+    opportunityHistory: opportunityHistory.rows,
   };
 }
 
@@ -502,54 +510,47 @@ export async function updateSalesOpportunity(input: Record<string, unknown>) {
   const opportunityId = requireUuid(input.opportunityId, 'Opportunity');
   const name = cleanText(input.name, 255);
   if (!name) throw new SalesError('INVALID_INPUT', 'Opportunity name is required.');
-
-  const expectedValueInput = input.expectedValue;
-  if (
-    expectedValueInput === null ||
-    expectedValueInput === undefined ||
-    (typeof expectedValueInput === 'string' && !expectedValueInput.trim())
-  ) {
-    throw new SalesError('INVALID_INPUT', 'Expected value is required.');
-  }
-  const expectedValue = numberInput(expectedValueInput, 'Expected value', { min: 0 });
-  const currency = cleanText(input.currency, 16).toUpperCase();
+  const expectedValue = numberInput(input.expectedValue, 'Expected value', { min: 0 });
+  const currency = cleanText(input.currency, 3).toUpperCase();
   if (!/^[A-Z]{3}$/.test(currency)) {
-    throw new SalesError('INVALID_INPUT', 'Currency must be a three-letter currency code.');
+    throw new SalesError('INVALID_INPUT', 'Currency must be a valid three-letter code.');
   }
+  const email = normalizeSalesLeadEmail(input.email);
   const expectedCloseDate = optionalPipelineDate(input.expectedCloseDate, 'Expected close date');
   const salespersonUserId = await resolveActiveSalesperson(context, input.salespersonUserId);
-  const notes = nullableText(input.notes, 4000);
-
   const client = await context.pool.connect();
   try {
     await client.query('BEGIN');
     const current = await client.query(
-      `SELECT id
-       FROM sales_opportunities
-       WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL
-       FOR UPDATE`,
+      `SELECT o.id,s.stage_type
+       FROM sales_opportunities o
+       INNER JOIN sales_pipeline_stages s ON s.id=o.stage_id AND s.company_id=o.company_id
+       WHERE o.id=$1 AND o.company_id=$2 AND o.deleted_at IS NULL
+       FOR UPDATE OF o`,
       [opportunityId, context.companyId],
     );
     if (!current.rows[0]) {
       throw new SalesError('INVALID_INPUT', 'Opportunity was not found.');
     }
-
+    if (current.rows[0].stage_type !== 'open') {
+      throw new SalesError('INVALID_INPUT', 'Reopen a won or lost opportunity before editing its commercial details.');
+    }
     const updated = await client.query(
       `UPDATE sales_opportunities
-       SET name=$3,expected_value=$4,currency=$5,expected_close_date=$6,
-           salesperson_user_id=$7,notes=$8,updated_by=$9,updated_at=NOW()
+       SET name=$3,customer_name=$4,contact_name=$5,email=$6,phone=$7,
+           expected_value=$8,currency=$9,expected_close_date=$10,source=$11,notes=$12,
+           salesperson_user_id=$13,updated_by=$14,updated_at=NOW()
        WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL
-       RETURNING id,opportunity_number,name,expected_value,currency,expected_close_date,
-                 salesperson_user_id,notes,stage_id,probability,updated_at`,
+       RETURNING id,opportunity_number,name,customer_name,contact_name,email,phone,
+                 expected_value,currency,expected_close_date,source,notes,salesperson_user_id`,
       [
-        opportunityId, context.companyId, name, expectedValue, currency,
-        expectedCloseDate, salespersonUserId, notes, context.userId,
+        opportunityId, context.companyId, name,
+        nullableText(input.customerName, 255), nullableText(input.contactName, 255),
+        email, nullableText(input.phone, 80), expectedValue, currency, expectedCloseDate,
+        nullableText(input.source, 120), nullableText(input.notes, 4000),
+        salespersonUserId, context.userId,
       ],
     );
-    if (!updated.rows[0]) {
-      throw new SalesError('INVALID_INPUT', 'Opportunity was not found.');
-    }
-
     await client.query('COMMIT');
     return updated.rows[0];
   } catch (error) {
@@ -560,45 +561,37 @@ export async function updateSalesOpportunity(input: Record<string, unknown>) {
   }
 }
 
-
 export async function moveSalesOpportunity(input: Record<string, unknown>) {
   const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
   const opportunityId = requireUuid(input.opportunityId, 'Opportunity');
   const stageId = requireUuid(input.stageId, 'Stage');
+  const reason = nullableText(input.reason, 2000);
   const client = await context.pool.connect();
-
   try {
     await client.query('BEGIN');
     const current = await client.query(
-      `SELECT *
-       FROM sales_opportunities
+      `SELECT * FROM sales_opportunities
        WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL
        FOR UPDATE`,
       [opportunityId, context.companyId],
     );
     const stage = await client.query(
-      `SELECT *
-       FROM sales_pipeline_stages
+      `SELECT * FROM sales_pipeline_stages
        WHERE id=$1 AND company_id=$2 AND is_active=TRUE`,
       [stageId, context.companyId],
     );
     if (!current.rows[0] || !stage.rows[0]) {
       throw new SalesError('INVALID_INPUT', 'Opportunity or pipeline stage was not found.');
     }
-
-    const stageType = String(stage.rows[0].stage_type);
-    const reason = nullableText(input.reason, 2000);
-    if (stageType === 'lost' && !reason) {
-      throw new SalesError(
-        'INVALID_INPUT',
-        'A reason is required when marking an opportunity as lost.',
-      );
+    if (current.rows[0].stage_id === stageId) {
+      throw new SalesError('INVALID_INPUT', 'Opportunity is already in that stage.');
     }
-
+    if (stage.rows[0].stage_type === 'lost' && !reason) {
+      throw new SalesError('INVALID_INPUT', 'A reason is required to mark an opportunity as lost.');
+    }
     const probability = input.probability === undefined
       ? Number(stage.rows[0].probability)
       : numberInput(input.probability, 'Probability', { min: 0, max: 100 });
-
     await client.query(
       `UPDATE sales_opportunities
        SET stage_id=$3,probability=$4,
@@ -606,23 +599,17 @@ export async function moveSalesOpportunity(input: Record<string, unknown>) {
            lost_at=CASE WHEN $5='lost' THEN COALESCE(lost_at,NOW()) ELSE NULL END,
            lost_reason=CASE WHEN $5='lost' THEN $6 ELSE NULL END,
            updated_by=$7,updated_at=NOW()
-       WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL`,
-      [
-        opportunityId, context.companyId, stageId, probability, stageType,
-        reason, context.userId,
-      ],
+       WHERE id=$1 AND company_id=$2`,
+      [opportunityId, context.companyId, stageId, probability, stage.rows[0].stage_type, reason, context.userId],
     );
     await client.query(
       `INSERT INTO sales_opportunity_stage_history
-         (company_id,opportunity_id,from_stage_id,to_stage_id,probability,reason,changed_by)
+        (company_id,opportunity_id,from_stage_id,to_stage_id,probability,reason,changed_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [
-        context.companyId, opportunityId, current.rows[0].stage_id, stageId,
-        probability, reason, context.userId,
-      ],
+      [context.companyId, opportunityId, current.rows[0].stage_id, stageId, probability, reason, context.userId],
     );
     await client.query('COMMIT');
-    return { id: opportunityId, stageId, probability, stageType, reason };
+    return { id: opportunityId, stageId, probability, stageType: stage.rows[0].stage_type };
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
