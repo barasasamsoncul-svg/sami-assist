@@ -409,6 +409,56 @@ export async function updateSalesLeadActivity(input: Record<string, unknown>) {
   return updated.rows[0];
 }
 
+
+export async function editSalesLeadActivity(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
+  const activityId = requireUuid(input.activityId, 'Activity');
+  const activityType = cleanText(input.activityType, 20).toLowerCase();
+  if (!['call', 'email', 'meeting', 'task', 'note'].includes(activityType)) {
+    throw new SalesError('INVALID_INPUT', 'Choose a valid follow-up activity type.');
+  }
+  const subject = cleanText(input.subject, 255);
+  if (!subject) throw new SalesError('INVALID_INPUT', 'Activity subject is required.');
+  const description = nullableText(input.description, 4000);
+  const dueDate = optionalPipelineDate(input.dueDate, 'Due date');
+  const assignedUserId = await resolveActiveSalesperson(context, input.assignedUserId);
+  const client = await context.pool.connect();
+  try {
+    await client.query('BEGIN');
+    const current = await client.query(
+      `SELECT status FROM sales_lead_activities
+       WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL
+       FOR UPDATE`,
+      [activityId, context.companyId],
+    );
+    if (!current.rows[0]) {
+      throw new SalesError('INVALID_INPUT', 'Follow-up activity was not found.');
+    }
+    if (current.rows[0].status !== 'planned') {
+      throw new SalesError('INVALID_INPUT', 'Only planned follow-up activities can be edited.');
+    }
+    const updated = await client.query(
+      `UPDATE sales_lead_activities
+       SET activity_type=$3,subject=$4,description=$5,due_date=$6,assigned_user_id=$7,
+           updated_by=$8,updated_at=NOW()
+       WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL AND status='planned'
+       RETURNING id,lead_id,activity_type,subject,description,due_date,status,assigned_user_id,updated_at`,
+      [activityId, context.companyId, activityType, subject, description, dueDate, assignedUserId, context.userId],
+    );
+    if (!updated.rows[0]) {
+      throw new SalesError('INVALID_INPUT', 'Only planned follow-up activities can be edited.');
+    }
+    await client.query('COMMIT');
+    return updated.rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
 export async function convertSalesLeadToOpportunity(input:Record<string,unknown>) {
   const context=await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE); await ensurePipelineStages(context.pool,context.companyId,context.userId);
   const leadId=requireUuid(input.leadId,'Lead'); const client=await context.pool.connect();

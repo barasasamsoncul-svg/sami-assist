@@ -80,6 +80,7 @@ type PipelineAction =
   | { action: 'reopen_lead'; leadId: string }
   | { action: 'create_lead_activity'; leadId: string; activityType: string; subject: string; description: string; dueDate: string | null; assignedUserId: string | null }
   | { action: 'update_lead_activity'; activityId: string; status: 'completed' | 'cancelled' }
+  | { action: 'edit_lead_activity'; activityId: string; activityType: ActivityDraft['activityType']; subject: string; description: string; dueDate: string | null; assignedUserId: string | null }
   | { action: 'convert_lead'; leadId: string; name: string; expectedValue: string; currency: string; expectedCloseDate: string | null }
   | { action: 'move_opportunity'; opportunityId: string; stageId: string };
 
@@ -186,6 +187,10 @@ export default function SalesPipelineManager({
   const [disqualificationReason, setDisqualificationReason] = useState('');
   const [activityLeadId, setActivityLeadId] = useState<string | null>(null);
   const [activityDraft, setActivityDraft] = useState<ActivityDraft>({ activityType: 'task', subject: '', description: '', dueDate: '', assignedUserId: '' });
+  const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
+  const [activityEditDraft, setActivityEditDraft] = useState<ActivityDraft>({
+    activityType: 'task', subject: '', description: '', dueDate: '', assignedUserId: '',
+  });
   const [leadSearch, setLeadSearch] = useState('');
   const [leadStatusFilter, setLeadStatusFilter] = useState('all');
   const [agendaSearch, setAgendaSearch] = useState('');
@@ -457,6 +462,32 @@ export default function SalesPipelineManager({
     }
   }
 
+  function beginActivityEdit(activity: SalesLeadActivity) {
+    setEditingActivityId(activity.id);
+    setActivityEditDraft({
+      activityType: activity.activity_type,
+      subject: activity.subject || '',
+      description: activity.description || '',
+      dueDate: activity.due_date ? String(activity.due_date).slice(0, 10) : '',
+      assignedUserId: activity.assigned_user_id || '',
+    });
+    setError('');
+  }
+
+  async function saveActivityEdit(event: FormEvent<HTMLFormElement>, activity: SalesLeadActivity) {
+    event.preventDefault();
+    const succeeded = await action({
+      action: 'edit_lead_activity',
+      activityId: activity.id,
+      activityType: activityEditDraft.activityType,
+      subject: activityEditDraft.subject,
+      description: activityEditDraft.description,
+      dueDate: activityEditDraft.dueDate || null,
+      assignedUserId: activityEditDraft.assignedUserId || null,
+    });
+    if (succeeded) setEditingActivityId(null);
+  }
+
   async function updateActivity(activityId: string, status: 'completed' | 'cancelled') {
     await action({ action: 'update_lead_activity', activityId, status });
   }
@@ -669,7 +700,15 @@ export default function SalesPipelineManager({
                   </p>
                 </div>
                 {canManagePipeline ? (
-                  <div className="flex shrink-0 gap-2 sm:justify-end">
+                  <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => beginActivityEdit(activity)}
+                      className="h-9 rounded-lg border border-[var(--sami-border)] px-3 text-xs font-black text-slate-600 hover:bg-slate-500/[0.06] disabled:opacity-60 dark:text-slate-300"
+                    >
+                      Edit
+                    </button>
                     <button
                       type="button"
                       disabled={busy}
@@ -689,6 +728,85 @@ export default function SalesPipelineManager({
                   </div>
                 ) : null}
               </div>
+              {editingActivityId === activity.id ? (
+                <form
+                  onSubmit={event => void saveActivityEdit(event, activity)}
+                  className="mt-4 grid gap-3 rounded-xl bg-slate-500/[0.04] p-3 sm:grid-cols-2"
+                >
+                  <h4 className="text-sm font-black sm:col-span-2">Edit follow-up</h4>
+                  <label className="space-y-1 text-xs font-bold text-slate-500">
+                    <span>Activity type</span>
+                    <select
+                      value={activityEditDraft.activityType}
+                      onChange={event => setActivityEditDraft(current => ({ ...current, activityType: event.target.value as ActivityDraft['activityType'] }))}
+                      className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                    >
+                      <option value="task">Task</option>
+                      <option value="call">Call</option>
+                      <option value="email">Email</option>
+                      <option value="meeting">Meeting</option>
+                      <option value="note">Note</option>
+                    </select>
+                  </label>
+                  <label className="space-y-1 text-xs font-bold text-slate-500">
+                    <span>Due date</span>
+                    <input
+                      type="date"
+                      value={activityEditDraft.dueDate}
+                      onChange={event => setActivityEditDraft(current => ({ ...current, dueDate: event.target.value }))}
+                      className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                    />
+                  </label>
+                  <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2">
+                    <span>Subject *</span>
+                    <input
+                      required
+                      value={activityEditDraft.subject}
+                      onChange={event => setActivityEditDraft(current => ({ ...current, subject: event.target.value }))}
+                      className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                    />
+                  </label>
+                  <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2">
+                    <span>Assigned to</span>
+                    <select
+                      value={activityEditDraft.assignedUserId}
+                      onChange={event => setActivityEditDraft(current => ({ ...current, assignedUserId: event.target.value }))}
+                      className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                    >
+                      <option value="">Unassigned</option>
+                      {data.salespeople.map(person => (
+                        <option key={person.id} value={person.id}>{person.name} · {person.email}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="space-y-1 text-xs font-bold text-slate-500 sm:col-span-2">
+                    <span>Details</span>
+                    <textarea
+                      rows={2}
+                      value={activityEditDraft.description}
+                      onChange={event => setActivityEditDraft(current => ({ ...current, description: event.target.value }))}
+                      className="w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 py-2 text-sm font-normal text-slate-900 dark:text-slate-100"
+                    />
+                  </label>
+                  <div className="flex flex-wrap gap-2 sm:col-span-2">
+                    <button
+                      type="submit"
+                      disabled={busy || !activityEditDraft.subject.trim()}
+                      className="h-10 rounded-lg bg-blue-600 px-3.5 text-xs font-black text-white disabled:opacity-60"
+                    >
+                      {busy ? 'Saving…' : 'Save changes'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => setEditingActivityId(null)}
+                      className="h-10 rounded-lg border border-[var(--sami-border)] px-3.5 text-xs font-black disabled:opacity-60"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : null}
             </article>
           ))}
         </div>
