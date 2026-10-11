@@ -193,7 +193,8 @@ type PipelineAction =
   | { action: 'delete_pipeline_view'; viewId: string }
   | { action: 'save_lead_assignment_rule'; ruleId: string | null; name: string; sourceMatch: string | null; salesTeamId: string; priority: number; isActive: boolean }
   | { action: 'delete_lead_assignment_rule'; ruleId: string }
-  | { action: 'bulk_reassign_leads'; leadIds: string[]; salesTeamId: string; salespersonUserId: string | null; reason: string };
+  | { action: 'bulk_reassign_leads'; leadIds: string[]; salesTeamId: string; salespersonUserId: string | null; reason: string }
+  | { action: 'bulk_update_lead_status'; leadIds: string[]; mode: 'disqualify' | 'reopen'; reason: string };
 
 type CreateLeadPayload = Extract<PipelineAction, { action: 'create_lead' }>;
 
@@ -342,6 +343,7 @@ export default function SalesPipelineManager({
   const [bulkLeadTeamId, setBulkLeadTeamId] = useState('');
   const [bulkLeadSalespersonUserId, setBulkLeadSalespersonUserId] = useState('');
   const [bulkLeadReason, setBulkLeadReason] = useState('');
+  const [bulkLeadActionReason, setBulkLeadActionReason] = useState('');
   const [bulkLeadMessage, setBulkLeadMessage] = useState('');
   const [leadStatusFilter, setLeadStatusFilter] = useState('all');
   const [leadScoreFilter, setLeadScoreFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all');
@@ -578,7 +580,7 @@ export default function SalesPipelineManager({
         error?: string;
         code?: string;
         duplicates?: LeadDuplicateMatch[];
-        result?: { updatedCount?: number };
+        result?: { updatedCount?: number; skippedCount?: number; mode?: string };
       };
       if (
         !response.ok &&
@@ -607,11 +609,20 @@ export default function SalesPipelineManager({
       }
       if (payload.action === 'bulk_reassign_leads') {
         const count = body.result?.updatedCount ?? payload.leadIds.length;
-        setBulkLeadMessage(`Reassigned ${count} lead${count === 1 ? '' : 's'} and recorded the handover reason in assignment history.`);
+        const skipped = body.result?.skippedCount ?? 0;
+        setBulkLeadMessage(`Reassigned ${count} lead${count === 1 ? '' : 's'} and recorded the handover reason in assignment history.${skipped ? ` ${skipped} unchanged lead${skipped === 1 ? '' : 's'} were skipped.` : ''}`);
         setSelectedLeadIds([]);
         setBulkLeadTeamId('');
         setBulkLeadSalespersonUserId('');
         setBulkLeadReason('');
+      }
+      if (payload.action === 'bulk_update_lead_status') {
+        const count = body.result?.updatedCount ?? 0;
+        const skipped = body.result?.skippedCount ?? 0;
+        const verb = payload.mode === 'disqualify' ? 'Disqualified' : 'Reopened';
+        setBulkLeadMessage(`${verb} ${count} lead${count === 1 ? '' : 's'} and recorded the reason in the activity history.${skipped ? ` ${skipped} lead${skipped === 1 ? '' : 's'} did not need that action and were skipped.` : ''}`);
+        setSelectedLeadIds([]);
+        setBulkLeadActionReason('');
       }
       return true;
     } catch (caught) {
@@ -1611,6 +1622,38 @@ export default function SalesPipelineManager({
               {bulkLeadMessage ? <p role="status" className="text-xs font-bold text-emerald-700 dark:text-emerald-300">{bulkLeadMessage}</p> : null}
             </section>
           ) : null}
+          {canManagePipeline ? (
+            <section className="mt-3 space-y-3 rounded-xl border border-[var(--sami-border)] p-3">
+              <div>
+                <h4 className="text-sm font-black">Bulk lead actions</h4>
+                <p className="mt-1 text-[11px] text-slate-500">Disqualify selected leads or reopen previously disqualified leads. A reason is recorded on every affected lead’s activity timeline.</p>
+              </div>
+              {selectedLeadIds.length === 0 ? (
+                <p className="text-xs text-slate-500">Select one or more leads below to enable bulk actions.</p>
+              ) : (
+                <>
+                  <label className="block space-y-1 text-xs font-bold text-slate-500">
+                    <span>Reason for the status action *</span>
+                    <input required maxLength={2000} value={bulkLeadActionReason} onChange={event => setBulkLeadActionReason(event.target.value)} placeholder="e.g. not a fit, duplicate prospect, customer re-engaged" className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100" />
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" disabled={busy || !bulkLeadActionReason.trim()} onClick={() => {
+                      if (!window.confirm(`Disqualify eligible leads from the ${selectedLeadIds.length} selected records? Converted leads are rejected, and already-disqualified leads are skipped.`)) return;
+                      void action({ action: 'bulk_update_lead_status', leadIds: selectedLeadIds, mode: 'disqualify', reason: bulkLeadActionReason.trim() });
+                    }} className="h-10 rounded-lg border border-rose-500/40 px-3 text-xs font-black text-rose-600 disabled:opacity-50">
+                      {busy ? 'Processing…' : 'Disqualify selected'}
+                    </button>
+                    <button type="button" disabled={busy || !bulkLeadActionReason.trim()} onClick={() => {
+                      if (!window.confirm(`Reopen selected leads that are currently disqualified? Other statuses will be skipped.`)) return;
+                      void action({ action: 'bulk_update_lead_status', leadIds: selectedLeadIds, mode: 'reopen', reason: bulkLeadActionReason.trim() });
+                    }} className="h-10 rounded-lg border border-emerald-500/40 px-3 text-xs font-black text-emerald-700 disabled:opacity-50">
+                      {busy ? 'Processing…' : 'Reopen selected'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </section>
+          ) : null}
           <div className="mt-3 space-y-2">
             {filteredLeads.length === 0 ? (
               <p className="rounded-xl border border-dashed border-[var(--sami-border)] p-4 text-sm text-slate-500">
@@ -1631,19 +1674,7 @@ export default function SalesPipelineManager({
                           className="h-4 w-4 shrink-0 accent-blue-600"
                         />
                       ) : null}
-                      <div className="flex items-center gap-2">
-                      {canManagePipeline && lead.status !== 'converted' ? (
-                        <input
-                          type="checkbox"
-                          checked={selectedLeadIds.includes(lead.id)}
-                          disabled={busy || (selectedLeadIds.length >= 100 && !selectedLeadIds.includes(lead.id))}
-                          onChange={event => toggleLeadSelection(lead.id, event.target.checked)}
-                          aria-label={'Select lead ' + lead.name}
-                          className="h-4 w-4 shrink-0 accent-blue-600"
-                        />
-                      ) : null}
                       <p className="break-words font-black">{lead.name}</p>
-                    </div>
                     </div>
                     <p className="mt-1 text-xs text-slate-500">
                       {lead.lead_number} · {lead.status} · {lead.source || 'Direct'}
