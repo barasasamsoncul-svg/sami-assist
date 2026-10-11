@@ -267,6 +267,23 @@ test('Sales internal approval is separate from customer acceptance', async () =>
 
 
 
+test('Sales advanced approval queue supports approve and reason-required reject actions', async () => {
+  const ui = await source('app/apps/sales/SalesApprovalsManager.tsx');
+  const route = await source('app/api/apps/sales/route.ts');
+  const approvals = await source('lib/apps/sales/approvals.ts');
+
+  assert.ok(ui.includes("action: 'review_quote_approval'"));
+  assert.ok(ui.includes("request.status === 'pending'"));
+  assert.ok(ui.includes('Approve step'));
+  assert.ok(ui.includes('Rejection reason *'));
+  assert.ok(ui.includes('Confirm rejection'));
+  assert.ok(ui.includes("decision === 'reject' && !reviewReason.trim()"));
+  assert.ok(route.includes('review_quote_approval:'));
+  assert.ok(approvals.includes('A reason is required when rejecting an approval request.'));
+  assert.ok(approvals.includes('You are not an assigned approver for the current approval step.'));
+});
+
+
 test('Sales quotation detail combines lifecycle, revision, customer request and delivery records into a chronological activity feed', async () => {
   const ui = await source('app/apps/sales/SalesQuoteDetailClient.tsx');
 
@@ -280,6 +297,7 @@ test('Sales quotation detail combines lifecycle, revision, customer request and 
   assert.ok(ui.includes('quoteActivity.slice(0, 10)'));
   assert.ok(ui.includes('dateTime={event.at}'));
 });
+
 
 test('Sales delivery is secure, logged and multi-channel', async () => {
   const [
