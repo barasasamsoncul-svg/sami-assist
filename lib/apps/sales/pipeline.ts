@@ -69,6 +69,57 @@ function optionalPipelineDate(value: unknown, field: string) {
   return date;
 }
 
+
+function normalizeSalesLeadEmail(value: unknown) {
+  const email = cleanText(value, 320).toLowerCase();
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new SalesError('INVALID_INPUT', 'Enter a valid lead email address.');
+  }
+  return email || null;
+}
+
+function normalizeSalesLeadPhone(value: unknown) {
+  const digits = cleanText(value, 80).replace(/\D/g, '');
+  return digits.length >= 7 ? digits : null;
+}
+
+async function findSalesLeadDuplicates(
+  context: Awaited<ReturnType<typeof requireSalesContext>>,
+  email: string | null,
+  phoneDigits: string | null,
+) {
+  if (!email && !phoneDigits) return [];
+  const result = await context.pool.query(
+    `SELECT id,lead_number,status,name,company_name,contact_name,email,phone,
+            salesperson_user_id,created_at,
+            CASE
+              WHEN $2::text IS NOT NULL
+                   AND $3::text IS NOT NULL
+                   AND LOWER(BTRIM(COALESCE(email,'')))=$2
+                   AND REGEXP_REPLACE(COALESCE(phone,''),'[^0-9]','','g')=$3
+                THEN 'email_and_phone'
+              WHEN $2::text IS NOT NULL
+                   AND LOWER(BTRIM(COALESCE(email,'')))=$2
+                THEN 'email'
+              ELSE 'phone'
+            END AS match_reason
+     FROM sales_leads
+     WHERE company_id=$1
+       AND deleted_at IS NULL
+       AND (
+         ($2::text IS NOT NULL AND LOWER(BTRIM(COALESCE(email,'')))=$2)
+         OR (
+           $3::text IS NOT NULL
+           AND REGEXP_REPLACE(COALESCE(phone,''),'[^0-9]','','g')=$3
+         )
+       )
+     ORDER BY created_at DESC
+     LIMIT 10`,
+    [context.companyId, email, phoneDigits],
+  );
+  return result.rows;
+}
+
 export async function getSalesPipelineData() {
   const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_VIEW);
   await ensurePipelineStages(context.pool, context.companyId, context.userId);
@@ -140,11 +191,35 @@ export async function getSalesPipelineData() {
 
 export async function createSalesLead(input:Record<string,unknown>) {
   const context=await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
-  const name=cleanText(input.name,255); if(!name) throw new SalesError('INVALID_INPUT','Lead name is required.');
-  const salespersonUserId = await resolveActiveSalesperson(context, input.salespersonUserId); const client=await context.pool.connect();
-  try { await client.query('BEGIN'); const number=await nextPipelineNumber(client,context.companyId,context.userId,'lead','LEAD-');
-    const r=await client.query(`INSERT INTO sales_leads (company_id,lead_number,name,company_name,contact_name,email,phone,source,notes,salesperson_user_id,sales_team_id,territory_id,created_by,updated_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13) RETURNING id,lead_number,status,name`,[context.companyId,number,name,nullableText(input.companyName,255),nullableText(input.contactName,255),nullableText(input.email,320),nullableText(input.phone,80),nullableText(input.source,120),nullableText(input.notes,4000),salespersonUserId,optionalUuid(input.salesTeamId),optionalUuid(input.territoryId),context.userId]);
-    await client.query('COMMIT'); return r.rows[0];
+  const name=cleanText(input.name,255);
+  if(!name) throw new SalesError('INVALID_INPUT','Lead name is required.');
+  const email=normalizeSalesLeadEmail(input.email);
+  const phone=nullableText(input.phone,80);
+  const salespersonUserId=await resolveActiveSalesperson(context,input.salespersonUserId);
+  const duplicates=await findSalesLeadDuplicates(context,email,normalizeSalesLeadPhone(phone));
+  if(duplicates.length && input.confirmDuplicates !== true) {
+    throw new SalesError(
+      'LEAD_DUPLICATE_CONFIRMATION_REQUIRED',
+      'Possible duplicate leads were found. Review the matches before creating this lead.',
+      {duplicates},
+    );
+  }
+  const client=await context.pool.connect();
+  try {
+    await client.query('BEGIN');
+    const number=await nextPipelineNumber(client,context.companyId,context.userId,'lead','LEAD-');
+    const r=await client.query(
+      `INSERT INTO sales_leads
+        (company_id,lead_number,name,company_name,contact_name,email,phone,source,notes,
+         salesperson_user_id,sales_team_id,territory_id,created_by,updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13)
+       RETURNING id,lead_number,status,name`,
+      [context.companyId,number,name,nullableText(input.companyName,255),nullableText(input.contactName,255),
+       email,phone,nullableText(input.source,120),nullableText(input.notes,4000),salespersonUserId,
+       optionalUuid(input.salesTeamId),optionalUuid(input.territoryId),context.userId],
+    );
+    await client.query('COMMIT');
+    return r.rows[0];
   } catch(e){await client.query('ROLLBACK');throw e;} finally{client.release();}
 }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import Link from 'next/link';
 
@@ -70,7 +70,7 @@ type PipelineData = {
 };
 
 type PipelineAction =
-  | { action: 'create_lead'; name: FormDataEntryValue | null; companyName: FormDataEntryValue | null; contactName: FormDataEntryValue | null; email: FormDataEntryValue | null; phone: FormDataEntryValue | null; source: FormDataEntryValue | null; salespersonUserId: FormDataEntryValue | null }
+  | { action: 'create_lead'; name: FormDataEntryValue | null; companyName: FormDataEntryValue | null; contactName: FormDataEntryValue | null; email: FormDataEntryValue | null; phone: FormDataEntryValue | null; source: FormDataEntryValue | null; salespersonUserId: FormDataEntryValue | null; confirmDuplicates?: boolean }
   | { action: 'update_lead'; leadId: string; name: string; companyName: string; contactName: string; email: string; phone: string; source: string; notes: string; salespersonUserId: string | null }
   | { action: 'disqualify_lead'; leadId: string; reason: string }
   | { action: 'reopen_lead'; leadId: string }
@@ -78,6 +78,22 @@ type PipelineAction =
   | { action: 'update_lead_activity'; activityId: string; status: 'completed' | 'cancelled' }
   | { action: 'convert_lead'; leadId: string; name: string; expectedValue: string; currency: string; expectedCloseDate: string | null }
   | { action: 'move_opportunity'; opportunityId: string; stageId: string };
+
+type CreateLeadPayload = Extract<PipelineAction, { action: 'create_lead' }>;
+
+type LeadDuplicateMatch = {
+  id: string;
+  lead_number: string;
+  status: string;
+  name: string;
+  company_name: string | null;
+  contact_name: string | null;
+  email: string | null;
+  phone: string | null;
+  salesperson_user_id: string | null;
+  created_at: string;
+  match_reason: 'email' | 'phone' | 'email_and_phone' | string;
+};
 
 type QualificationDraft = {
   expectedValue: string;
@@ -134,6 +150,9 @@ export default function SalesPipelineManager({
   const [activityDraft, setActivityDraft] = useState<ActivityDraft>({ activityType: 'task', subject: '', description: '', dueDate: '', assignedUserId: '' });
   const [leadSearch, setLeadSearch] = useState('');
   const [leadStatusFilter, setLeadStatusFilter] = useState('all');
+  const [duplicateCandidates, setDuplicateCandidates] = useState<LeadDuplicateMatch[]>([]);
+  const [pendingLeadPayload, setPendingLeadPayload] = useState<CreateLeadPayload | null>(null);
+  const createLeadFormRef = useRef<HTMLFormElement | null>(null);
   const [qualification, setQualification] = useState<QualificationDraft>({
     expectedValue: '',
     currency: normalizedCurrency(defaultCurrency),
@@ -183,11 +202,30 @@ export default function SalesPipelineManager({
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify(payload),
       });
-      const body = await response.json().catch(() => ({})) as { error?: string };
+      const body = await response.json().catch(() => ({})) as {
+        error?: string;
+        code?: string;
+        duplicates?: LeadDuplicateMatch[];
+      };
+      if (
+        !response.ok &&
+        payload.action === 'create_lead' &&
+        body.code === 'LEAD_DUPLICATE_CONFIRMATION_REQUIRED' &&
+        Array.isArray(body.duplicates)
+      ) {
+        setPendingLeadPayload(payload);
+        setDuplicateCandidates(body.duplicates);
+        setError('');
+        return false;
+      }
       if (!response.ok) {
         throw new Error(body.error || 'Sales action failed.');
       }
       await load();
+      if (payload.action === 'create_lead') {
+        setPendingLeadPayload(null);
+        setDuplicateCandidates([]);
+      }
       return true;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Sales action failed.');
@@ -226,7 +264,9 @@ export default function SalesPipelineManager({
     event.preventDefault();
     const form = event.currentTarget;
     const formData = new FormData(form);
-    const succeeded = await action({
+    setDuplicateCandidates([]);
+    setPendingLeadPayload(null);
+    const payload: CreateLeadPayload = {
       action: 'create_lead',
       name: formData.get('name'),
       companyName: formData.get('companyName'),
@@ -235,8 +275,28 @@ export default function SalesPipelineManager({
       phone: formData.get('phone'),
       source: formData.get('source'),
       salespersonUserId: formData.get('salespersonUserId'),
-    });
+    };
+    const succeeded = await action(payload);
     if (succeeded) form.reset();
+  }
+
+  async function confirmCreateLeadWithDuplicates() {
+    if (!pendingLeadPayload) return;
+    const succeeded = await action({
+      ...pendingLeadPayload,
+      confirmDuplicates: true,
+    });
+    if (succeeded) {
+      createLeadFormRef.current?.reset();
+      setDuplicateCandidates([]);
+      setPendingLeadPayload(null);
+    }
+  }
+
+  function dismissDuplicateWarning() {
+    setDuplicateCandidates([]);
+    setPendingLeadPayload(null);
+    setError('');
   }
 
 
@@ -337,7 +397,9 @@ export default function SalesPipelineManager({
       ) : null}
 
       {canManagePipeline ? (
+        <>
         <form
+          ref={createLeadFormRef}
           className="sami-surface grid gap-3 rounded-[24px] p-5 md:grid-cols-2"
           onSubmit={createLead}
         >
@@ -372,6 +434,65 @@ export default function SalesPipelineManager({
             {busy ? 'Saving…' : 'Create lead'}
           </button>
         </form>
+        {pendingLeadPayload && duplicateCandidates.length > 0 ? (
+          <section
+            aria-live="polite"
+            className="mt-4 rounded-[24px] border border-amber-500/40 bg-amber-500/[0.06] p-5"
+          >
+            <h4 className="font-black">Possible duplicate leads</h4>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+              These existing leads share the submitted email or phone. Review them before continuing.
+              Creating anyway will keep a separate lead record.
+            </p>
+            <div className="mt-4 space-y-2">
+              {duplicateCandidates.map(candidate => (
+                <article key={candidate.id} className="rounded-xl border border-[var(--sami-border)] bg-white/60 p-3 dark:bg-slate-950/30">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="break-words text-sm font-black">{candidate.name}</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {candidate.lead_number} · {candidate.status}
+                      </p>
+                      <p className="mt-1 break-words text-xs text-slate-600 dark:text-slate-300">
+                        {[candidate.company_name, candidate.contact_name, candidate.email, candidate.phone]
+                          .filter(Boolean)
+                          .join(' · ') || 'No additional contact details'}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Match: {candidate.match_reason === 'email_and_phone'
+                          ? 'Email and phone'
+                          : candidate.match_reason === 'email'
+                            ? 'Email'
+                            : 'Phone'}
+                        {' · Owner: '}
+                        {data.salespeople.find(person => person.id === candidate.salesperson_user_id)?.name || 'Unassigned'}
+                      </p>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void confirmCreateLeadWithDuplicates()}
+                className="h-10 rounded-xl bg-amber-600 px-4 text-xs font-black text-white disabled:opacity-60"
+              >
+                {busy ? 'Creating…' : 'Create anyway'}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={dismissDuplicateWarning}
+                className="h-10 rounded-xl border border-[var(--sami-border)] px-4 text-xs font-black disabled:opacity-60"
+              >
+                Edit lead details
+              </button>
+            </div>
+          </section>
+        ) : null}
+        </>
       ) : (
         <p className="rounded-xl border border-[var(--sami-border)] p-4 text-sm text-slate-500">
           You have read-only access to leads and opportunities. Pipeline changes require management permission.
