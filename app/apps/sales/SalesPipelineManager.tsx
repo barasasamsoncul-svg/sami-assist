@@ -273,7 +273,7 @@ export default function SalesPipelineManager({
   const [disqualificationReason, setDisqualificationReason] = useState('');
   const [activityLeadId, setActivityLeadId] = useState<string | null>(null);
   const [activityOpportunityId, setActivityOpportunityId] = useState<string | null>(null);
-  const [activityDraft] = useState<ActivityDraft>({ activityType: 'task', subject: '', description: '', dueDate: '', assignedUserId: '' });
+  const [activityDraft, setActivityDraft] = useState<ActivityDraft>({ activityType: 'task', subject: '', description: '', dueDate: '', assignedUserId: '' });
   const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
   const [editingActivityRecordType, setEditingActivityRecordType] = useState<'lead' | 'opportunity' | null>(null);
   const [activityEditDraft, setActivityEditDraft] = useState<ActivityDraft>({
