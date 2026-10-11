@@ -302,30 +302,20 @@ export default function SalesOrganizationManager({
       ],
     );
 
-  const activeAccrued =
+  const activeAccruedByCurrency =
     useMemo(
-      () =>
-        (
-          data?.commissionEntries ||
-          []
-        )
-          .filter(
-            entry =>
-              entry.status ===
-              'accrued',
-          )
-          .reduce(
-            (
-              sum,
-              entry,
-            ) =>
-              sum +
-              entry.commissionAmount,
-            0,
-          ),
-      [
-        data?.commissionEntries,
-      ],
+      () => {
+        const totals = new Map<string, number>();
+        for (const entry of data?.commissionEntries || []) {
+          if (entry.status !== 'accrued') continue;
+          const currency = String(entry.currency || 'KES').toUpperCase();
+          totals.set(currency, (totals.get(currency) || 0) + entry.commissionAmount);
+        }
+        return Array.from(totals.entries())
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([currency, amount]) => ({ currency, amount }));
+      },
+      [data?.commissionEntries],
     );
 
   if (
@@ -393,14 +383,10 @@ export default function SalesOrganizationManager({
         <Metric
           label="Accrued commission"
           value={
-            data.commissionEntries.length >
-              0
-              ? money(
-                  activeAccrued,
-                  data.commissionEntries[0]
-                    ?.currency ||
-                  'KES',
-                )
+            activeAccruedByCurrency.length > 0
+              ? activeAccruedByCurrency.map(
+                  item => money(item.amount, item.currency),
+                ).join(' · ')
               : '—'
           }
           icon={
