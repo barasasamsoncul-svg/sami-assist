@@ -66,7 +66,9 @@ export function scoreSalesLead(
   add('completed_engagement', 'Completed call, email or meeting', engagementPoints);
 
   if (lead.last_completed_engagement_at) {
-    const lastEngagement = new Date(lead.last_completed_engagement_at);
+    const lastEngagement = lead.last_completed_engagement_at instanceof Date
+      ? lead.last_completed_engagement_at
+      : new Date(String(lead.last_completed_engagement_at));
     const elapsed = now.getTime() - lastEngagement.getTime();
     const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
     if (Number.isFinite(lastEngagement.getTime()) && elapsed >= 0 && elapsed <= thirtyDaysMs) {
