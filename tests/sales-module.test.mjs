@@ -1915,6 +1915,8 @@ test('Sales Priority 13 supports searchable opportunity editing, loss reasons, c
   assert.ok(pipeline.includes("lost_reason=CASE WHEN $5='lost' THEN $6 ELSE NULL END"));
   assert.ok(pipeline.includes("Terminal stages must exist even when the company already has configured open stages."));
   assert.ok(pipeline.includes('o.won_at,o.lost_at,o.lost_reason'));
+  assert.ok(pipeline.includes('FROM sales_opportunity_stage_history h'));
+  assert.ok(pipeline.includes('opportunityHistory: opportunityHistory.rows'));
 
   assert.ok(service.includes('updateSalesOpportunity'));
   assert.ok(route.includes('update_opportunity:'));
@@ -1925,6 +1927,7 @@ test('Sales Priority 13 supports searchable opportunity editing, loss reasons, c
     assert.ok(ui.includes(label), 'Opportunity lifecycle UI includes ' + label);
   }
   assert.ok(ui.includes('filteredOpportunities'));
+  assert.ok(ui.includes('Stage history ('));
   assert.ok(ui.includes("reason: opportunityLossReason.trim()"));
   assert.ok(ui.includes("stage.stage_type === 'won'"));
   assert.ok(ui.includes("stage.stage_type === 'lost'"));
