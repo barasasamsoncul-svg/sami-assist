@@ -1014,6 +1014,7 @@ export default function SalesWorkspaceClient({
             <SalesPipelineManager
               canCreateQuote={initialData.capabilities.canCreate}
               canManagePipeline={initialData.capabilities.canManagePipeline}
+              defaultCurrency={initialData.company.currency}
             />
           )
         }
