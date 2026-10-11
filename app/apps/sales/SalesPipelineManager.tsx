@@ -1631,7 +1631,19 @@ export default function SalesPipelineManager({
                           className="h-4 w-4 shrink-0 accent-blue-600"
                         />
                       ) : null}
+                      <div className="flex items-center gap-2">
+                      {canManagePipeline && lead.status !== 'converted' ? (
+                        <input
+                          type="checkbox"
+                          checked={selectedLeadIds.includes(lead.id)}
+                          disabled={busy || (selectedLeadIds.length >= 100 && !selectedLeadIds.includes(lead.id))}
+                          onChange={event => toggleLeadSelection(lead.id, event.target.checked)}
+                          aria-label={'Select lead ' + lead.name}
+                          className="h-4 w-4 shrink-0 accent-blue-600"
+                        />
+                      ) : null}
                       <p className="break-words font-black">{lead.name}</p>
+                    </div>
                     </div>
                     <p className="mt-1 text-xs text-slate-500">
                       {lead.lead_number} · {lead.status} · {lead.source || 'Direct'}
