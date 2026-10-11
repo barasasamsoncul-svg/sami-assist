@@ -13,6 +13,7 @@ import type {
   SalesOrderStatusView,
   SalesPipelineStatusView,
   SalesPipelineViewType,
+  SalesLeadScoreView,
   SalesSavedPipelineView,
   SalesQuoteStatusView,
   SalesSavedOrderView,
@@ -46,6 +47,7 @@ function mapSavedView(row: SavedQuoteViewRow): SalesSavedQuoteView {
     id: String(row.id),
     name: String(row.name),
     statusView: row.status_view,
+    scoreView: row.score_view || 'all',
     searchQuery: String(row.search_query || ''),
     createdAt: new Date(row.created_at).toISOString(),
   };
@@ -124,6 +126,7 @@ export async function saveSalesSavedQuoteView(
         context.userId,
         name,
         rawStatusView,
+        rawScoreView,
         searchQuery,
         context.userId,
       ],
@@ -378,11 +381,19 @@ const ALLOWED_OPPORTUNITY_PIPELINE_STATUSES = new Set<SalesPipelineStatusView>([
   'lost',
 ]);
 
+const ALLOWED_LEAD_SCORE_VIEWS = new Set<SalesLeadScoreView>([
+  'all',
+  'high',
+  'medium',
+  'low',
+]);
+
 type SavedPipelineViewRow = {
   id: string;
   name: string;
   view_type: SalesPipelineViewType;
   status_view: SalesPipelineStatusView;
+  score_view: SalesLeadScoreView;
   search_query: string;
   created_at: Date | string;
 };
@@ -402,7 +413,7 @@ export async function getSalesSavedPipelineViews(): Promise<SalesSavedPipelineVi
   const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_VIEW);
   const result = await context.pool.query<SavedPipelineViewRow>(
     `
-      SELECT id, name, view_type, status_view, search_query, created_at
+      SELECT id, name, view_type, status_view, score_view, search_query, created_at
       FROM sales_pipeline_saved_views
       WHERE company_id = $1
         AND user_id = $2
@@ -422,6 +433,7 @@ export async function saveSalesSavedPipelineView(
   const name = cleanText(input.name, 80);
   const rawViewType = cleanText(input.viewType, 30);
   const rawStatusView = cleanText(input.statusView, 30) || 'all';
+  const rawScoreView = cleanText(input.scoreView, 20) || 'all';
   const searchQuery = cleanText(input.searchQuery, 120);
 
   if (!name) {
@@ -436,6 +448,12 @@ export async function saveSalesSavedPipelineView(
     : ALLOWED_OPPORTUNITY_PIPELINE_STATUSES;
   if (!allowedStatuses.has(rawStatusView as SalesPipelineStatusView)) {
     throw new SalesError('INVALID_INPUT', 'Choose a valid status filter for this pipeline view.');
+  }
+  if (!ALLOWED_LEAD_SCORE_VIEWS.has(rawScoreView as SalesLeadScoreView)) {
+    throw new SalesError('INVALID_INPUT', 'Choose a valid lead score filter.');
+  }
+  if (viewType === 'opportunities' && rawScoreView !== 'all') {
+    throw new SalesError('INVALID_INPUT', 'Lead score filters can only be saved for lead views.');
   }
 
   const countResult = await context.pool.query<{ count: number | string }>(
@@ -459,11 +477,11 @@ export async function saveSalesSavedPipelineView(
     const result = await context.pool.query<SavedPipelineViewRow>(
       `
         INSERT INTO sales_pipeline_saved_views (
-          company_id, user_id, view_type, name, status_view,
+          company_id, user_id, view_type, name, status_view, score_view,
           search_query, created_by, updated_by
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
-        RETURNING id, name, view_type, status_view, search_query, created_at
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+        RETURNING id, name, view_type, status_view, score_view, search_query, created_at
       `,
       [
         context.companyId,
