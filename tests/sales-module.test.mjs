@@ -1847,3 +1847,27 @@ test('Sales Priority 10 warns on likely duplicate leads and requires explicit co
 
   assert.ok(route.includes('...error.details'));
 });
+
+
+test('Sales Priority 11 provides a searchable follow-up agenda with due-date buckets and quick actions', async () => {
+  const [ui, pipeline] = await Promise.all([
+    source('app/apps/sales/SalesPipelineManager.tsx'),
+    source('lib/apps/sales/pipeline.ts'),
+  ]);
+
+  assert.ok(ui.includes('Follow-up agenda'));
+  for (const label of ['All planned', 'Overdue', 'Due today', 'Next 7 days', 'No due date']) {
+    assert.ok(ui.includes(label), 'Follow-up agenda includes ' + label);
+  }
+  assert.ok(ui.includes('Search follow-ups'));
+  assert.ok(ui.includes('filteredAgendaActivities'));
+  assert.ok(ui.includes('aria-pressed={agendaFilter === option.key}'));
+  assert.ok(ui.includes("updateActivity(activity.id, 'completed')"));
+  assert.ok(ui.includes("updateActivity(activity.id, 'cancelled')"));
+  assert.ok(ui.includes('activity.lead_name'));
+  assert.ok(ui.includes('activity.lead_number'));
+
+  assert.ok(pipeline.includes('l.name AS lead_name'));
+  assert.ok(pipeline.includes('l.lead_number'));
+  assert.ok(pipeline.includes("ORDER BY CASE WHEN a.status='planned' THEN 0 ELSE 1 END"));
+});
