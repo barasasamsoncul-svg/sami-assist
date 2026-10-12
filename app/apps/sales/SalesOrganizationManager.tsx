@@ -98,6 +98,7 @@ type CommissionEntry = {
 };
 
 type OrganizationData = {
+  companyCurrency: string;
   capabilities: {
     canViewTeams: boolean;
     canManageTeams: boolean;
@@ -301,30 +302,20 @@ export default function SalesOrganizationManager({
       ],
     );
 
-  const activeAccrued =
+  const activeAccruedByCurrency =
     useMemo(
-      () =>
-        (
-          data?.commissionEntries ||
-          []
-        )
-          .filter(
-            entry =>
-              entry.status ===
-              'accrued',
-          )
-          .reduce(
-            (
-              sum,
-              entry,
-            ) =>
-              sum +
-              entry.commissionAmount,
-            0,
-          ),
-      [
-        data?.commissionEntries,
-      ],
+      () => {
+        const totals = new Map<string, number>();
+        for (const entry of data?.commissionEntries || []) {
+          if (entry.status !== 'accrued') continue;
+          const currency = String(entry.currency || 'KES').toUpperCase();
+          totals.set(currency, (totals.get(currency) || 0) + entry.commissionAmount);
+        }
+        return Array.from(totals.entries())
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([currency, amount]) => ({ currency, amount }));
+      },
+      [data?.commissionEntries],
     );
 
   if (
@@ -392,14 +383,10 @@ export default function SalesOrganizationManager({
         <Metric
           label="Accrued commission"
           value={
-            data.commissionEntries.length >
-              0
-              ? money(
-                  activeAccrued,
-                  data.commissionEntries[0]
-                    ?.currency ||
-                  'KES',
-                )
+            activeAccruedByCurrency.length > 0
+              ? activeAccruedByCurrency.map(
+                  item => money(item.amount, item.currency),
+                ).join(' · ')
               : '—'
           }
           icon={
@@ -1171,6 +1158,10 @@ export default function SalesOrganizationManager({
                       type="number"
                       required
                     />
+
+                    <p className="text-xs text-slate-500">
+                      Revenue and margin targets use company currency ({data.companyCurrency}). Orders targets are counts.
+                    </p>
                     <Field
                       name="targetNotes"
                       label="Notes"
@@ -1257,11 +1248,19 @@ export default function SalesOrganizationManager({
                               <div className="min-w-32 text-right">
                                 <p className="text-sm font-black">
                                   {
-                                    target.actualValue
-                                      .toLocaleString()
+                                    target.metric === 'orders'
+                                      ? target.actualValue.toLocaleString()
+                                      : money(
+                                          target.actualValue,
+                                          data.companyCurrency,
+                                        )
                                   } / {
-                                    target.targetValue
-                                      .toLocaleString()
+                                    target.metric === 'orders'
+                                      ? target.targetValue.toLocaleString()
+                                      : money(
+                                          target.targetValue,
+                                          data.companyCurrency,
+                                        )
                                   }
                                 </p>
                                 <p className="mt-1 text-[10px] font-black text-blue-700 dark:text-blue-300">
