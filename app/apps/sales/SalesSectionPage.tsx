@@ -5,6 +5,8 @@ import {
 import SalesModuleShell from '@/app/apps/sales/SalesModuleShell';
 import SalesWorkspaceClient from '@/app/apps/sales/SalesWorkspaceClient';
 import SalesManagementInsights from '@/app/apps/sales/SalesManagementInsights';
+import SalesOpportunityFunnel from '@/app/apps/sales/SalesOpportunityFunnel';
+import { getSalesOpportunityFunnelData, getSalesOpportunityRiskQueue } from '@/lib/apps/sales/pipeline-funnel';
 import { getSalesManagementInsights } from '@/lib/apps/sales/management-insights';
 
 import {
@@ -184,10 +186,17 @@ export default async function SalesSectionPage({
     notFound();
   }
 
-  const managementInsights =
-    view === 'reports' && data.capabilities.canViewReports
-      ? await getSalesManagementInsights()
-      : null;
+  const reportsAvailable = view === 'reports' && data.capabilities.canViewReports;
+  const reportData = reportsAvailable
+    ? await Promise.all([
+        getSalesManagementInsights(),
+        getSalesOpportunityFunnelData(),
+        getSalesOpportunityRiskQueue(),
+      ])
+    : null;
+  const managementInsights = reportData?.[0] ?? null;
+  const opportunityFunnel = reportData?.[1] ?? null;
+  const opportunityRiskQueue = reportData?.[2] ?? null;
 
   return (
     <SalesModuleShell
@@ -231,16 +240,19 @@ export default async function SalesSectionPage({
         data.company.name
       }
     >
-      {managementInsights ? (
-        <SalesManagementInsights
-          data={managementInsights}
-          currency={data.company.currency}
-          metrics={{
-            quoteCount: data.metrics.quoteCount,
-            acceptedCount: data.metrics.acceptedCount,
-            convertedCount: data.metrics.convertedCount,
-          }}
-        />
+      {managementInsights && opportunityFunnel && opportunityRiskQueue ? (
+        <>
+          <SalesManagementInsights
+            data={managementInsights}
+            currency={data.company.currency}
+            metrics={{
+              quoteCount: data.metrics.quoteCount,
+              acceptedCount: data.metrics.acceptedCount,
+              convertedCount: data.metrics.convertedCount,
+            }}
+          />
+          <SalesOpportunityFunnel rows={opportunityFunnel} riskRows={opportunityRiskQueue} />
+        </>
       ) : (
         <SalesWorkspaceClient
           initialData={data}
