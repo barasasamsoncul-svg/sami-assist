@@ -3065,12 +3065,14 @@ export async function createSalesOrderFromQuote(
             FROM sales_orders_v2
             WHERE id = $1
               AND company_id = $2
+              AND quote_id = $3
               AND deleted_at IS NULL
             LIMIT 1
           `,
           [
             row.sales_order_id,
             context.companyId,
+            quoteId,
           ],
         );
 
@@ -3106,12 +3108,46 @@ export async function createSalesOrderFromQuote(
               : null,
         };
       }
+
+      // Do not silently create a second order when a quote still points to a
+      // missing or soft-deleted order. Preserve the link for diagnosis/recovery.
+      throw new SalesError(
+        'QUOTE_STATE_INVALID',
+        'This quote references a missing, deleted, or mismatched sales order. Resolve the existing order link before retrying conversion.',
+      );
+    } else {
+      const existingByQuote = await client.query(
+        `
+          SELECT id
+          FROM sales_orders_v2
+          WHERE quote_id = $1
+            AND company_id = $2
+            AND deleted_at IS NULL
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [quoteId, context.companyId],
+      );
+
+      if (existingByQuote.rows.length > 0) {
+        throw new SalesError(
+          'QUOTE_STATE_INVALID',
+          'A sales order already references this quotation but the quotation link is missing. Resolve the existing order link before retrying conversion.',
+        );
+      }
     }
 
     const currentStatus =
       String(
         row.status,
       );
+
+    if (currentStatus === 'converted' && !row.sales_order_id) {
+      throw new SalesError(
+        'QUOTE_STATE_INVALID',
+        'This quotation is marked converted but has no linked sales order. Resolve the record before retrying conversion.',
+      );
+    }
 
     if (
       ![
