@@ -2729,3 +2729,28 @@ test('Sales bulk follow-up scheduling is bounded, tenant-scoped and transactiona
   assert.ok(manager.includes('Schedule for selected leads'));
   assert.ok(manager.includes('Converted and disqualified leads are skipped.'));
 });
+
+
+test('Sales reports provide 30/60/90-day weighted opportunity forecasts without mixing currencies', async () => {
+  const [insights, reportUi, forecastUi] = await Promise.all([
+    source('lib/apps/sales/management-insights.ts'),
+    source('app/apps/sales/SalesManagementInsights.tsx'),
+    source('app/apps/sales/SalesWeightedForecast.tsx'),
+  ]);
+
+  assert.match(insights, /forecastResult/);
+  assert.match(insights, /VALUES \(30\), \(60\), \(90\)/);
+  assert.match(insights, /o\.expected_close_date >= CURRENT_DATE/);
+  assert.match(insights, /o\.expected_close_date <= CURRENT_DATE \+ h\.horizon_days/);
+  assert.match(insights, /s\.company_id = o\.company_id/);
+  assert.match(insights, /s\.stage_type = 'open'/);
+  assert.match(insights, /o\.company_id = \$1/);
+  assert.match(insights, /GROUP BY h\.horizon_days, UPPER\(COALESCE\(NULLIF\(BTRIM\(o\.currency\), ''\), 'KES'\)\)/);
+  assert.match(insights, /weightedPipelineValue: Number\(row\.weighted_pipeline_value/);
+  assert.match(reportUi, /<SalesWeightedForecast rows=\{data\.forecast\} \/>/);
+  assert.match(forecastUi, /Next 30 days/);
+  assert.match(forecastUi, /Next 60 days/);
+  assert.match(forecastUi, /Next 90 days/);
+  assert.match(forecastUi, /Values stay grouped by currency/);
+  assert.match(forecastUi, /Probability-weighted/);
+});
