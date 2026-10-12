@@ -2038,6 +2038,12 @@ test('Sales Priority 13 supports searchable opportunity editing, loss reasons, c
   assert.ok(pipeline.includes('export async function updateSalesOpportunity'));
   assert.ok(pipeline.includes('Reopen a won or lost opportunity before editing its commercial details.'));
   assert.ok(pipeline.includes('A reason is required to mark an opportunity as lost.'));
+  assert.ok(pipeline.includes('current_stage.stage_type AS current_stage_type'));
+  assert.ok(pipeline.includes("currentStageType !== 'open' && targetStageType !== 'open'"));
+  assert.ok(pipeline.includes('Reopen a won or lost opportunity before recording a different terminal outcome.'));
+  assert.ok(pipeline.includes('ON CONFLICT (company_id,name) DO UPDATE'));
+  assert.ok(pipeline.includes('is_active=TRUE'));
+  assert.ok(pipeline.includes('sales_pipeline_stages.is_active IS DISTINCT FROM TRUE'));
   assert.ok(pipeline.includes('INSERT INTO sales_opportunity_stage_history'));
   assert.ok(pipeline.includes("won_at=CASE WHEN $5='won'"));
   assert.ok(pipeline.includes("lost_reason=CASE WHEN $5='lost' THEN $6 ELSE NULL END"));

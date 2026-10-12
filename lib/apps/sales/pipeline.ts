@@ -24,7 +24,17 @@ async function ensurePipelineStages(pool: Awaited<ReturnType<typeof requireSales
   await pool.query(
     `INSERT INTO sales_pipeline_stages (company_id,name,sequence,probability,stage_type,created_by,updated_by)
      VALUES ($1,'Won',90,100,'won',$2,$2),($1,'Lost',100,0,'lost',$2,$2)
-     ON CONFLICT DO NOTHING`,
+     ON CONFLICT (company_id,name) DO UPDATE
+       SET sequence=EXCLUDED.sequence,
+           probability=EXCLUDED.probability,
+           stage_type=EXCLUDED.stage_type,
+           is_active=TRUE,
+           updated_by=EXCLUDED.updated_by,
+           updated_at=NOW()
+       WHERE sales_pipeline_stages.sequence IS DISTINCT FROM EXCLUDED.sequence
+          OR sales_pipeline_stages.probability IS DISTINCT FROM EXCLUDED.probability
+          OR sales_pipeline_stages.stage_type IS DISTINCT FROM EXCLUDED.stage_type
+          OR sales_pipeline_stages.is_active IS DISTINCT FROM TRUE`,
     [companyId, userId],
   );
 }
@@ -1240,9 +1250,12 @@ export async function moveSalesOpportunity(input: Record<string, unknown>) {
   try {
     await client.query('BEGIN');
     const current = await client.query(
-      `SELECT * FROM sales_opportunities
-       WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL
-       FOR UPDATE`,
+      `SELECT o.*, current_stage.stage_type AS current_stage_type
+       FROM sales_opportunities o
+       INNER JOIN sales_pipeline_stages current_stage
+         ON current_stage.id=o.stage_id AND current_stage.company_id=o.company_id
+       WHERE o.id=$1 AND o.company_id=$2 AND o.deleted_at IS NULL
+       FOR UPDATE OF o`,
       [opportunityId, context.companyId],
     );
     const stage = await client.query(
@@ -1256,7 +1269,15 @@ export async function moveSalesOpportunity(input: Record<string, unknown>) {
     if (current.rows[0].stage_id === stageId) {
       throw new SalesError('INVALID_INPUT', 'Opportunity is already in that stage.');
     }
-    if (stage.rows[0].stage_type === 'lost' && !reason) {
+    const currentStageType = String(current.rows[0].current_stage_type || 'open');
+    const targetStageType = String(stage.rows[0].stage_type || 'open');
+    if (currentStageType !== 'open' && targetStageType !== 'open') {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'Reopen a won or lost opportunity before recording a different terminal outcome.',
+      );
+    }
+    if (targetStageType === 'lost' && !reason) {
       throw new SalesError('INVALID_INPUT', 'A reason is required to mark an opportunity as lost.');
     }
     const probability = input.probability === undefined
