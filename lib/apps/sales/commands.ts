@@ -4279,6 +4279,33 @@ export async function cancelSalesOrder(
       );
     }
 
+    const pendingShipments =
+      await client.query(
+        `
+          SELECT COUNT(*)::int AS count
+          FROM sales_shipments
+          WHERE company_id = $1
+            AND sales_order_id = $2
+            AND status NOT IN (
+              'cancelled',
+              'failed',
+              'delivered'
+            )
+            AND inventory_posted_at IS NULL
+        `,
+        [
+          context.companyId,
+          orderId,
+        ],
+      );
+
+    if (Number(pendingShipments.rows[0]?.count || 0) > 0) {
+      throw new SalesError(
+        'QUOTE_STATE_INVALID',
+        'Cancel all unshipped shipment plans before cancelling this order so shipment quantities and stock reservations remain consistent.',
+      );
+    }
+
     await releaseSalesOrderReservations(
       client,
       {
