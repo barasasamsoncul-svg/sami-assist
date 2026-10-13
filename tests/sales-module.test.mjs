@@ -2864,6 +2864,21 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   assert.ok(issueCreditStart > receiveStart);
   assert.match(receiveReturn, /pg_advisory_xact_lock/);
   assert.match(receiveReturn, /sales-order-invoice:/);
+
+  const issueReturnCreditStart = operations.indexOf('export async function issueSalesReturnCredit(');
+  const refundReturnCreditStart = operations.indexOf('export async function refundSalesReturnCredit(', issueReturnCreditStart);
+  const issueReturnCredit = operations.slice(issueReturnCreditStart, refundReturnCreditStart);
+  const returnCreditInvoiceQueryStart = issueReturnCredit.indexOf('const invoiceItems =');
+  const returnCreditInvoiceQueryEnd = issueReturnCredit.indexOf('for (\n      const invoiceItem', returnCreditInvoiceQueryStart);
+  const returnCreditInvoiceQuery = issueReturnCredit.slice(returnCreditInvoiceQueryStart, returnCreditInvoiceQueryEnd);
+  assert.ok(issueReturnCreditStart >= 0);
+  assert.ok(refundReturnCreditStart > issueReturnCreditStart);
+  assert.ok(returnCreditInvoiceQueryStart >= 0);
+  assert.ok(returnCreditInvoiceQueryEnd > returnCreditInvoiceQueryStart);
+  assert.ok(returnCreditInvoiceQuery.includes("'sales-return:' ||"));
+  assert.ok(returnCreditInvoiceQuery.includes("$4::text"));
+  assert.ok(returnCreditInvoiceQuery.includes("invoice_item.invoice_id::text"));
+  assert.match(returnCreditInvoiceQuery, /returnId,/);
   assert.match(createReturn, /'Sales order line',[\s\S]*\)\.toLowerCase\(\)/);
 
   const shipmentStart = operations.indexOf('export async function createSalesShipment(');
