@@ -1373,26 +1373,101 @@ export async function editSalesOpportunityActivity(input: Record<string, unknown
 }
 
 
-export async function convertSalesLeadToOpportunity(input:Record<string,unknown>) {
-  const context=await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE); await ensurePipelineStages(context.pool,context.companyId,context.userId);
-  const leadId=requireUuid(input.leadId,'Lead'); const client=await context.pool.connect();
-  try {await client.query('BEGIN');
-    const lead=await client.query(`SELECT * FROM sales_leads WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL FOR UPDATE`,[leadId,context.companyId]);
-    if(!lead.rows[0]) throw new SalesError('INVALID_INPUT','Lead was not found.');
-    if(lead.rows[0].status==='converted') throw new SalesError('INVALID_INPUT','Lead is already converted.');
-    if(lead.rows[0].status==='disqualified') throw new SalesError('INVALID_INPUT','A disqualified lead cannot be qualified.');
-    const stage=await client.query(`SELECT * FROM sales_pipeline_stages WHERE company_id=$1 AND stage_type='open' AND is_active=TRUE ORDER BY sequence LIMIT 1`,[context.companyId]);
-    if(!stage.rows[0]) throw new SalesError('INVALID_INPUT','Configure an open pipeline stage first.');
-    const number=await nextPipelineNumber(client,context.companyId,context.userId,'opportunity','OPP-');
-    const value=numberInput(input.expectedValue ?? 0,'Expected value',{min:0});
-    const currency=cleanText(input.currency,3).toUpperCase() || cleanText(context.company.currentCompany.currency,3).toUpperCase() || 'KES';
-    if (!/^[A-Z]{3}$/.test(currency)) throw new SalesError('INVALID_INPUT','Currency must be a three-letter code.');
-    const probability=input.probability===undefined?Number(stage.rows[0].probability):numberInput(input.probability,'Probability',{min:0,max:100});
-    const r=await client.query(`INSERT INTO sales_opportunities (company_id,opportunity_number,lead_id,stage_id,name,customer_name,contact_name,email,phone,currency,expected_value,probability,expected_close_date,salesperson_user_id,sales_team_id,territory_id,source,notes,created_by,updated_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$19) RETURNING id,opportunity_number,name`,[context.companyId,number,leadId,stage.rows[0].id,cleanText(input.name,255)||lead.rows[0].name,lead.rows[0].company_name||lead.rows[0].name,lead.rows[0].contact_name,lead.rows[0].email,lead.rows[0].phone,currency,value,probability,input.expectedCloseDate?isoDate(input.expectedCloseDate):null,lead.rows[0].salesperson_user_id,lead.rows[0].sales_team_id,lead.rows[0].territory_id,lead.rows[0].source,lead.rows[0].notes,context.userId]);
-    await client.query(`UPDATE sales_leads SET status='converted',converted_opportunity_id=$3,updated_by=$4,updated_at=NOW() WHERE id=$1 AND company_id=$2`,[leadId,context.companyId,r.rows[0].id,context.userId]);
-    await client.query(`INSERT INTO sales_opportunity_stage_history (company_id,opportunity_id,to_stage_id,probability,reason,changed_by) VALUES ($1,$2,$3,$4,'Lead converted',$5)`,[context.companyId,r.rows[0].id,stage.rows[0].id,probability,context.userId]);
-    await client.query('COMMIT'); return r.rows[0];
-  }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+export async function convertSalesLeadToOpportunity(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
+  const { defaultPipelineId } = await ensurePipelineStages(context.pool, context.companyId, context.userId);
+  const requestedPipelineId = cleanText(input.pipelineId, 64);
+  const pipelineId = requestedPipelineId
+    ? requireUuid(requestedPipelineId, 'Sales pipeline')
+    : defaultPipelineId;
+  const leadId = requireUuid(input.leadId, 'Lead');
+  const client = await context.pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    const pipeline = await client.query(
+      `SELECT id
+       FROM sales_pipelines
+       WHERE id=$1 AND company_id=$2 AND is_active=TRUE AND deleted_at IS NULL
+       LIMIT 1
+       FOR SHARE`,
+      [pipelineId, context.companyId],
+    );
+    if (!pipeline.rows[0]) {
+      throw new SalesError('INVALID_INPUT', 'The selected sales pipeline is not available in this company.');
+    }
+
+    const lead = await client.query(
+      `SELECT * FROM sales_leads
+       WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL
+       FOR UPDATE`,
+      [leadId, context.companyId],
+    );
+    if (!lead.rows[0]) throw new SalesError('INVALID_INPUT', 'Lead was not found.');
+    if (lead.rows[0].status === 'converted') throw new SalesError('INVALID_INPUT', 'Lead is already converted.');
+    if (lead.rows[0].status === 'disqualified') {
+      throw new SalesError('INVALID_INPUT', 'A disqualified lead cannot be qualified.');
+    }
+
+    const stage = await client.query(
+      `SELECT * FROM sales_pipeline_stages
+       WHERE company_id=$1 AND pipeline_id=$2 AND stage_type='open' AND is_active=TRUE
+       ORDER BY sequence,name
+       LIMIT 1`,
+      [context.companyId, pipelineId],
+    );
+    if (!stage.rows[0]) throw new SalesError('INVALID_INPUT', 'Configure an open stage in the selected pipeline first.');
+
+    const number = await nextPipelineNumber(client, context.companyId, context.userId, 'opportunity', 'OPP-');
+    const value = numberInput(input.expectedValue ?? 0, 'Expected value', { min: 0 });
+    const currency = cleanText(input.currency, 3).toUpperCase()
+      || cleanText(context.company.currentCompany.currency, 3).toUpperCase()
+      || 'KES';
+    if (!/^[A-Z]{3}$/.test(currency)) {
+      throw new SalesError('INVALID_INPUT', 'Currency must be a three-letter code.');
+    }
+    const probability = input.probability === undefined
+      ? Number(stage.rows[0].probability)
+      : numberInput(input.probability, 'Probability', { min: 0, max: 100 });
+    const created = await client.query(
+      `INSERT INTO sales_opportunities
+        (company_id,opportunity_number,lead_id,stage_id,name,customer_name,contact_name,email,phone,
+         currency,expected_value,probability,expected_close_date,salesperson_user_id,sales_team_id,
+         territory_id,source,notes,created_by,updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$19)
+       RETURNING id,opportunity_number,name`,
+      [
+        context.companyId, number, leadId, stage.rows[0].id,
+        cleanText(input.name, 255) || lead.rows[0].name,
+        lead.rows[0].company_name || lead.rows[0].name,
+        lead.rows[0].contact_name, lead.rows[0].email, lead.rows[0].phone,
+        currency, value, probability,
+        input.expectedCloseDate ? isoDate(input.expectedCloseDate) : null,
+        lead.rows[0].salesperson_user_id, lead.rows[0].sales_team_id,
+        lead.rows[0].territory_id, lead.rows[0].source, lead.rows[0].notes,
+        context.userId,
+      ],
+    );
+    await client.query(
+      `UPDATE sales_leads
+       SET status='converted',converted_opportunity_id=$3,updated_by=$4,updated_at=NOW()
+       WHERE id=$1 AND company_id=$2`,
+      [leadId, context.companyId, created.rows[0].id, context.userId],
+    );
+    await client.query(
+      `INSERT INTO sales_opportunity_stage_history
+        (company_id,opportunity_id,to_stage_id,probability,reason,changed_by)
+       VALUES ($1,$2,$3,$4,'Lead converted',$5)`,
+      [context.companyId, created.rows[0].id, stage.rows[0].id, probability, context.userId],
+    );
+    await client.query('COMMIT');
+    return created.rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function updateSalesOpportunity(input: Record<string, unknown>) {
@@ -1460,7 +1535,8 @@ export async function moveSalesOpportunity(input: Record<string, unknown>) {
   try {
     await client.query('BEGIN');
     const current = await client.query(
-      `SELECT o.*, current_stage.stage_type AS current_stage_type
+      `SELECT o.*, current_stage.stage_type AS current_stage_type,
+              current_stage.pipeline_id AS current_pipeline_id
        FROM sales_opportunities o
        INNER JOIN sales_pipeline_stages current_stage
          ON current_stage.id=o.stage_id AND current_stage.company_id=o.company_id
@@ -1475,6 +1551,9 @@ export async function moveSalesOpportunity(input: Record<string, unknown>) {
     );
     if (!current.rows[0] || !stage.rows[0]) {
       throw new SalesError('INVALID_INPUT', 'Opportunity or pipeline stage was not found.');
+    }
+    if (String(current.rows[0].current_pipeline_id) !== String(stage.rows[0].pipeline_id)) {
+      throw new SalesError('INVALID_INPUT', 'An opportunity cannot be moved to a stage in a different sales pipeline.');
     }
     if (current.rows[0].stage_id === stageId) {
       throw new SalesError('INVALID_INPUT', 'Opportunity is already in that stage.');
