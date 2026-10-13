@@ -3736,6 +3736,17 @@ export async function updateSalesOrderFulfillment(
       'BEGIN',
     );
 
+    await client.query(
+      `
+        SELECT pg_advisory_xact_lock(
+          hashtext($1)
+        )
+      `,
+      [
+        'sales-order-invoice:' + orderId,
+      ],
+    );
+
     const order =
       await client.query(
         `
@@ -4143,6 +4154,17 @@ export async function cancelSalesOrder(
   try {
     await client.query(
       'BEGIN',
+    );
+
+    await client.query(
+      `
+        SELECT pg_advisory_xact_lock(
+          hashtext($1)
+        )
+      `,
+      [
+        'sales-order-invoice:' + orderId,
+      ],
     );
 
     const order =
