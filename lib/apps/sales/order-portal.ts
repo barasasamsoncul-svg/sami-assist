@@ -183,7 +183,8 @@ export async function getPublicSalesOrderPortal(tenantId: string, token: string)
   const [lineResult, shipmentResult] = await Promise.all([
     pool.query(
       `SELECT description, sku_snapshot, unit, quantity,
-              shipped_quantity, delivered_quantity
+              shipped_quantity, delivered_quantity, unit_price,
+              discount_amount, tax_name_snapshot, tax_amount, subtotal, line_total
        FROM sales_order_items_v2
        WHERE sales_order_id = $1 AND company_id = $2
        ORDER BY sort_order ASC, id ASC`,
@@ -243,6 +244,12 @@ export async function getPublicSalesOrderPortal(tenantId: string, token: string)
       quantity: Number(row.quantity || 0),
       shippedQuantity: Number(row.shipped_quantity || 0),
       deliveredQuantity: Number(row.delivered_quantity || 0),
+      unitPrice: Number(row.unit_price || 0),
+      discountAmount: Number(row.discount_amount || 0),
+      taxName: row.tax_name_snapshot ? String(row.tax_name_snapshot) : null,
+      taxAmount: Number(row.tax_amount || 0),
+      subtotal: Number(row.subtotal || 0),
+      lineTotal: Number(row.line_total || 0),
     })),
     shipments,
   };
