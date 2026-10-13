@@ -343,6 +343,15 @@ export async function issueInvoiceCreditNote(
             ),
           );
 
+        if (
+          duplicateCreditState.status === 'cancelled'
+        ) {
+          throw new InvoicingError(
+            'CREDIT_NOTE_STATE_INVALID',
+            'The existing credit note balance could not be verified. Reconcile Invoicing before retrying this operation.',
+          );
+        }
+
         await client.query(
           'COMMIT',
         );
