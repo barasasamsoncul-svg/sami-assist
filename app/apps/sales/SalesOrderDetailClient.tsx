@@ -10,6 +10,8 @@ import Link from 'next/link';
 
 import {
   BadgeDollarSign,
+  Copy,
+  Link2,
   PackageCheck,
   Receipt,
   RotateCcw,
@@ -104,6 +106,8 @@ export default function SalesOrderDetailClient({
 
   // Retain the shipment request key until a successful response so a retry
   // after a lost network response does not create a second shipment.
+  const [customerPortalUrl, setCustomerPortalUrl] = useState<string | null>(null);
+
   const shipmentIdempotencyKey =
     useRef<{
       orderId: string;
@@ -236,6 +240,41 @@ export default function SalesOrderDetailClient({
     }
   }
 
+  async function createCustomerPortalLink() {
+    const result = await run(
+      { action: 'create_order_portal_link', orderId: order.id },
+      'Customer tracking link created. Any previous link has been invalidated.',
+    );
+    if (!result) return;
+    const tenantId = typeof result.tenantId === 'string' ? result.tenantId : '';
+    const token = typeof result.token === 'string' ? result.token : '';
+    if (!tenantId || !token) {
+      showError('Link unavailable', 'SaMi did not return a valid customer portal link. Please try again.');
+      return;
+    }
+    setCustomerPortalUrl(
+      new URL('/order/' + encodeURIComponent(tenantId) + '/' + encodeURIComponent(token), window.location.origin).toString(),
+    );
+  }
+
+  async function copyCustomerPortalLink() {
+    if (!customerPortalUrl) return;
+    try {
+      await navigator.clipboard.writeText(customerPortalUrl);
+      showSuccess('Link copied', 'The customer order tracking link is ready to share.');
+    } catch {
+      showWarning('Copy unavailable', 'Select the link field and copy it manually.');
+    }
+  }
+
+  async function revokeCustomerPortalLink() {
+    const result = await run(
+      { action: 'revoke_order_portal_link', orderId: order.id },
+      'Customer order tracking link revoked.',
+    );
+    if (result) setCustomerPortalUrl(null);
+  }
+
   return (
     <>
       <SaMiOverlay
@@ -246,6 +285,39 @@ export default function SalesOrderDetailClient({
       />
 
       <div className="space-y-4">
+        {workspace.capabilities.canManageOrders && (
+          <section className="sami-surface rounded-[22px] p-4 sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Link2 className="h-4 w-4 text-blue-600" />
+                  <h2 className="text-sm font-black">Customer tracking portal</h2>
+                </div>
+                <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
+                  Share a read-only order and shipment status page with the customer. Links expire after 90 days; rotating a link invalidates the previous one.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" disabled={isBusy} onClick={() => void createCustomerPortalLink()} className="inline-flex h-9 items-center gap-2 rounded-xl bg-blue-600 px-3 text-xs font-black text-white disabled:opacity-60">
+                  <Link2 className="h-4 w-4" />
+                  {customerPortalUrl ? 'Rotate link' : 'Generate link'}
+                </button>
+                <button type="button" disabled={isBusy} onClick={() => void revokeCustomerPortalLink()} className="inline-flex h-9 items-center rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black disabled:opacity-60">
+                  Revoke link
+                </button>
+              </div>
+            </div>
+            {customerPortalUrl && (
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <input aria-label="Customer order tracking link" readOnly value={customerPortalUrl} onFocus={event => event.currentTarget.select()} className="h-10 min-w-0 flex-1 rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-xs" />
+                <button type="button" onClick={() => void copyCustomerPortalLink()} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black">
+                  <Copy className="h-4 w-4" />
+                  Copy customer link
+                </button>
+              </div>
+            )}
+          </section>
+        )}
         <section className="sami-surface rounded-[26px] p-4 sm:p-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
