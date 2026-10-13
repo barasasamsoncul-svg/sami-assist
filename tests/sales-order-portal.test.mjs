@@ -9,13 +9,15 @@ async function source(file) {
 }
 
 test('Sales customer order portal uses hashed expiring tokens with explicit rotation and revocation', async () => {
-  const [schema, migration, portal, service, route, ui] = await Promise.all([
+  const [schema, migration, portal, service, route, ui, runtime, manifest] = await Promise.all([
     source('lib/apps/sales/schema.sql'),
     source('lib/apps/sales/migrations/3.4.15-to-3.4.16.ts'),
     source('lib/apps/sales/order-portal.ts'),
     source('lib/apps/sales/service.ts'),
     source('app/api/apps/sales/route.ts'),
     source('app/apps/sales/SalesOrderDetailClient.tsx'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
   ]);
 
   for (const field of [
@@ -27,6 +29,12 @@ test('Sales customer order portal uses hashed expiring tokens with explicit rota
     assert.match(schema, new RegExp(field));
     assert.match(migration, new RegExp(field));
   }
+
+  assert.match(migration, /fromVersion: '3.4.15'/);
+  assert.match(migration, /toVersion: '3.4.16'/);
+  assert.match(runtime, /SALES_3_4_15_TO_3_4_16/);
+  assert.match(manifest, /version: '3.4.16'/);
+  assert.match(schema, /uq_sales_orders_v2_public_portal_token/);
 
   assert.match(portal, /randomBytes\(32\)/);
   assert.match(portal, /createHash\('sha256'\)/);
