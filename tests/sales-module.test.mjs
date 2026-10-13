@@ -2840,6 +2840,8 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   assert.match(cancellation, /SUM\([\s\S]*oi\.delivered_quantity[\s\S]*AS delivered_quantity/);
   assert.match(cancellation, /This order has shipped or delivered quantities/);
   assert.match(cancellation, /Process a Sales return to reverse stock/);
+  assert.match(cancellation, /pendingShipments/);
+  assert.match(cancellation, /Cancel all unshipped shipment plans before cancelling this order/);
 
   const operations = await source('lib/apps/sales/operations.ts');
   const returnStart = operations.indexOf('export async function createSalesReturn(');
@@ -2861,6 +2863,23 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   assert.match(receiveReturn, /pg_advisory_xact_lock/);
   assert.match(receiveReturn, /sales-order-invoice:/);
   assert.match(createReturn, /'Sales order line',[\s\S]*\)\.toLowerCase\(\)/);
+
+  const shipmentStart = operations.indexOf('export async function createSalesShipment(');
+  const updateShipmentStart = operations.indexOf('export async function updateSalesShipmentStatus(', shipmentStart);
+  const shipmentReturnStart = operations.indexOf('export async function createSalesReturn(', updateShipmentStart);
+  const createShipment = operations.slice(shipmentStart, updateShipmentStart);
+  const updateShipment = operations.slice(updateShipmentStart, shipmentReturnStart);
+  assert.ok(shipmentStart >= 0);
+  assert.ok(updateShipmentStart > shipmentStart);
+  assert.ok(shipmentReturnStart > updateShipmentStart);
+  assert.match(createShipment, /pg_advisory_xact_lock/);
+  assert.ok(createShipment.includes("'sales-order-invoice:' + orderId"));
+  assert.match(createShipment, /\['cancelled', 'closed'\]/);
+  assert.match(updateShipment, /SELECT sales_order_id[\s\S]*LIMIT 1/);
+  assert.match(updateShipment, /pg_advisory_xact_lock/);
+  assert.ok(updateShipment.includes("'sales-order-invoice:' + orderId"));
+  assert.match(updateShipment, /parentOrderStatus/);
+  assert.match(updateShipment, /A shipment for a cancelled or closed sales order cannot be dispatched or delivered/);
 });
 
 
