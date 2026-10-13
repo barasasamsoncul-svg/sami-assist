@@ -2801,6 +2801,13 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   assert.match(invoice, /normalizeSelection/);
   assert.match(invoice, /JSON\.stringify\(priorSelection\) !== JSON\.stringify\(currentSelection\)/);
   assert.match(invoice, /This invoice batch was started with a different line selection/);
+  assert.match(invoice, /normalizeIdempotentSelection/);
+  assert.match(invoice, /idempotency key already belongs to an invoice with a different line selection/);
+  assert.ok(
+    invoice.indexOf('normalizeIdempotentSelection') <
+      invoice.indexOf("existingBatch.rows[0]\n        .invoice_id"),
+    'A completed batch must validate any explicitly supplied retry selection before returning the existing invoice.',
+  );
 
   const fulfillmentStart =
     commands.indexOf(
