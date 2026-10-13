@@ -329,7 +329,7 @@ export async function issueInvoiceCreditNote(
           ) === 'cancelled'
         ) {
           throw new InvoicingError(
-            'CREDIT_NOTE_STATE_INVALID',
+            'INVOICE_STATE_INVALID',
             'The credit note tied to this idempotency key has been cancelled. Resolve the previous note before retrying the operation.',
           );
         }
@@ -347,7 +347,7 @@ export async function issueInvoiceCreditNote(
           duplicateCreditState.status === 'cancelled'
         ) {
           throw new InvoicingError(
-            'CREDIT_NOTE_STATE_INVALID',
+            'INVOICE_STATE_INVALID',
             'The existing credit note balance could not be verified. Reconcile Invoicing before retrying this operation.',
           );
         }
