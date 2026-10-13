@@ -2840,6 +2840,17 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   assert.match(cancellation, /SUM\([\s\S]*oi\.delivered_quantity[\s\S]*AS delivered_quantity/);
   assert.match(cancellation, /This order has shipped or delivered quantities/);
   assert.match(cancellation, /Process a Sales return to reverse stock/);
+
+  const operations = await source('lib/apps/sales/operations.ts');
+  const returnStart = operations.indexOf('export async function createSalesReturn(');
+  const approveStart = operations.indexOf('export async function approveSalesReturn(', returnStart);
+  const createReturn = operations.slice(returnStart, approveStart);
+  assert.ok(returnStart >= 0);
+  assert.ok(approveStart > returnStart);
+  assert.match(createReturn, /const preparedLineIds =\s*new Set<string>\(\)/);
+  assert.match(createReturn, /preparedLineIds\.has\(lineId\)/);
+  assert.match(createReturn, /A sales-order line can only be selected once for a return/);
+  assert.match(createReturn, /'Sales order line',[\s\S]*\)\.toLowerCase\(\)/);
 });
 
 
