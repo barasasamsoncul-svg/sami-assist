@@ -13,30 +13,209 @@ const stageSeed = [
   ['Negotiation', 30, 75],
 ] as const;
 
-async function ensurePipelineStages(pool: Awaited<ReturnType<typeof requireSalesContext>>['pool'], companyId: string, userId: string) {
-  const existing = await pool.query(`SELECT COUNT(*)::int AS count FROM sales_pipeline_stages WHERE company_id = $1`, [companyId]);
-  if (Number(existing.rows[0]?.count || 0) === 0) {
-    for (const [name, sequence, probability] of stageSeed) {
-      await pool.query(`INSERT INTO sales_pipeline_stages (company_id,name,sequence,probability,stage_type,created_by,updated_by) VALUES ($1,$2,$3,$4,'open',$5,$5) ON CONFLICT DO NOTHING`, [companyId,name,sequence,probability,userId]);
-    }
-  }
-  // Terminal stages must exist even when the company already has configured open stages.
-  await pool.query(
-    `INSERT INTO sales_pipeline_stages (company_id,name,sequence,probability,stage_type,created_by,updated_by)
-     VALUES ($1,'Won',90,100,'won',$2,$2),($1,'Lost',100,0,'lost',$2,$2)
-     ON CONFLICT (company_id,name) DO UPDATE
-       SET sequence=EXCLUDED.sequence,
-           probability=EXCLUDED.probability,
-           stage_type=EXCLUDED.stage_type,
-           is_active=TRUE,
-           updated_by=EXCLUDED.updated_by,
-           updated_at=NOW()
-       WHERE sales_pipeline_stages.sequence IS DISTINCT FROM EXCLUDED.sequence
-          OR sales_pipeline_stages.probability IS DISTINCT FROM EXCLUDED.probability
-          OR sales_pipeline_stages.stage_type IS DISTINCT FROM EXCLUDED.stage_type
-          OR sales_pipeline_stages.is_active IS DISTINCT FROM TRUE`,
-    [companyId, userId],
+async function ensurePipelineStages(
+  pool: Awaited<ReturnType<typeof requireSalesContext>>['pool'],
+  companyId: string,
+  userId: string,
+) {
+  let defaultPipeline = await pool.query(
+    `SELECT id
+     FROM sales_pipelines
+     WHERE company_id=$1 AND is_default=TRUE AND is_active=TRUE AND deleted_at IS NULL
+     ORDER BY created_at, id
+     LIMIT 1`,
+    [companyId],
   );
+
+  if (!defaultPipeline.rows[0]) {
+    await pool.query(
+      `INSERT INTO sales_pipelines (company_id,name,sequence,is_default,is_active,created_by,updated_by)
+       VALUES ($1,'Sales Pipeline',10,TRUE,TRUE,$2,$2)
+       ON CONFLICT DO NOTHING`,
+      [companyId, userId],
+    );
+    defaultPipeline = await pool.query(
+      `SELECT id
+       FROM sales_pipelines
+       WHERE company_id=$1 AND is_default=TRUE AND is_active=TRUE AND deleted_at IS NULL
+       ORDER BY created_at, id
+       LIMIT 1`,
+      [companyId],
+    );
+  }
+
+  if (!defaultPipeline.rows[0]) {
+    throw new SalesError('INVALID_INPUT', 'A default Sales pipeline could not be initialized.');
+  }
+
+  const pipelines = await pool.query(
+    `SELECT id,is_default
+     FROM sales_pipelines
+     WHERE company_id=$1 AND is_active=TRUE AND deleted_at IS NULL
+     ORDER BY is_default DESC,sequence,name,id`,
+    [companyId],
+  );
+
+  for (const pipeline of pipelines.rows) {
+    const pipelineId = String(pipeline.id);
+    const existing = await pool.query(
+      `SELECT COUNT(*)::int AS count
+       FROM sales_pipeline_stages
+       WHERE company_id=$1 AND pipeline_id=$2`,
+      [companyId, pipelineId],
+    );
+
+    if (Number(existing.rows[0]?.count || 0) === 0) {
+      await pool.query(
+        `INSERT INTO sales_pipeline_stages
+          (company_id,pipeline_id,name,sequence,probability,stage_type,is_active,created_by,updated_by)
+         VALUES
+          ($1,$2,'Qualification',10,20,'open',TRUE,$3,$3),
+          ($1,$2,'Proposal',20,50,'open',TRUE,$3,$3),
+          ($1,$2,'Negotiation',30,75,'open',TRUE,$3,$3),
+          ($1,$2,'Won',90,100,'won',TRUE,$3,$3),
+          ($1,$2,'Lost',100,0,'lost',TRUE,$3,$3)
+         ON CONFLICT DO NOTHING`,
+        [companyId, pipelineId, userId],
+      );
+    }
+
+    // Terminal outcomes remain available on every active pipeline, including
+    // older custom pipelines created before the multi-pipeline capability.
+    await pool.query(
+      `INSERT INTO sales_pipeline_stages
+        (company_id,pipeline_id,name,sequence,probability,stage_type,is_active,created_by,updated_by)
+       SELECT $1,$2,'Won',90,100,'won',TRUE,$3,$3
+       WHERE NOT EXISTS (
+         SELECT 1 FROM sales_pipeline_stages
+         WHERE company_id=$1 AND pipeline_id=$2 AND LOWER(BTRIM(name))='won'
+       )
+       ON CONFLICT DO NOTHING`,
+      [companyId, pipelineId, userId],
+    );
+    await pool.query(
+      `INSERT INTO sales_pipeline_stages
+        (company_id,pipeline_id,name,sequence,probability,stage_type,is_active,created_by,updated_by)
+       SELECT $1,$2,'Lost',100,0,'lost',TRUE,$3,$3
+       WHERE NOT EXISTS (
+         SELECT 1 FROM sales_pipeline_stages
+         WHERE company_id=$1 AND pipeline_id=$2 AND LOWER(BTRIM(name))='lost'
+       )
+       ON CONFLICT DO NOTHING`,
+      [companyId, pipelineId, userId],
+    );
+    await pool.query(
+      `UPDATE sales_pipeline_stages
+       SET stage_type='won',probability=100,sequence=90,updated_by=$3,updated_at=NOW()
+       WHERE company_id=$1 AND pipeline_id=$2 AND LOWER(BTRIM(name))='won'
+         AND (stage_type IS DISTINCT FROM 'won' OR probability IS DISTINCT FROM 100 OR sequence IS DISTINCT FROM 90)`,
+      [companyId, pipelineId, userId],
+    );
+    await pool.query(
+      `UPDATE sales_pipeline_stages
+       SET stage_type='lost',probability=0,sequence=100,updated_by=$3,updated_at=NOW()
+       WHERE company_id=$1 AND pipeline_id=$2 AND LOWER(BTRIM(name))='lost'
+         AND (stage_type IS DISTINCT FROM 'lost' OR probability IS DISTINCT FROM 0 OR sequence IS DISTINCT FROM 100)`,
+      [companyId, pipelineId, userId],
+    );
+  }
+
+  return { defaultPipelineId: String(defaultPipeline.rows[0].id) };
+}
+
+export async function createSalesPipeline(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
+  const name = cleanText(input.name, 120);
+  if (!name) {
+    throw new SalesError('INVALID_INPUT', 'Enter a name for the new sales pipeline.');
+  }
+
+  const { defaultPipelineId } = await ensurePipelineStages(
+    context.pool,
+    context.companyId,
+    context.userId,
+  );
+  const client = await context.pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      'SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))',
+      ['sales-pipeline-name:' + context.companyId, name.trim().toLocaleLowerCase('en')],
+    );
+
+    const duplicate = await client.query(
+      `SELECT id
+       FROM sales_pipelines
+       WHERE company_id=$1 AND LOWER(BTRIM(name))=LOWER(BTRIM($2))
+         AND deleted_at IS NULL
+       LIMIT 1
+       FOR UPDATE`,
+      [context.companyId, name],
+    );
+    if (duplicate.rows[0]) {
+      throw new SalesError('INVALID_INPUT', 'A sales pipeline with that name already exists.');
+    }
+
+    const sequence = await client.query(
+      `SELECT COALESCE(MAX(sequence),0)+10 AS next_sequence
+       FROM sales_pipelines
+       WHERE company_id=$1 AND deleted_at IS NULL`,
+      [context.companyId],
+    );
+    const inserted = await client.query(
+      `INSERT INTO sales_pipelines
+        (company_id,name,sequence,is_default,is_active,created_by,updated_by)
+       VALUES ($1,$2,$3,FALSE,TRUE,$4,$4)
+       RETURNING id,name,sequence,is_default,is_active`,
+      [context.companyId, name, Number(sequence.rows[0]?.next_sequence || 10), context.userId],
+    );
+    const created = inserted.rows[0];
+    if (!created) {
+      throw new SalesError('INVALID_INPUT', 'The sales pipeline could not be created.');
+    }
+
+    const copied = await client.query(
+      `INSERT INTO sales_pipeline_stages
+        (company_id,pipeline_id,name,sequence,probability,stage_type,is_active,created_by,updated_by)
+       SELECT stage.company_id,$2,stage.name,stage.sequence,stage.probability,stage.stage_type,
+              stage.is_active,$4,$4
+       FROM sales_pipeline_stages stage
+       WHERE stage.company_id=$1 AND stage.pipeline_id=$3
+       ORDER BY stage.sequence,stage.name,stage.id
+       RETURNING id`,
+      [context.companyId, created.id, defaultPipelineId, context.userId],
+    );
+    if (!copied.rows.length) {
+      throw new SalesError('INVALID_INPUT', 'The default pipeline has no stages to copy.');
+    }
+
+    await client.query(
+      `INSERT INTO activities
+        (company_id,user_id,model,record_id,type,content,metadata)
+       VALUES ($1,$2,'sales.pipeline',$3,'sales.pipeline.created',$4,$5::jsonb)`,
+      [
+        context.companyId,
+        context.userId,
+        created.id,
+        'Created sales pipeline ' + String(created.name) + ' with copied stages.',
+        JSON.stringify({ pipelineId: created.id, stageCount: copied.rows.length }),
+      ],
+    );
+
+    await client.query('COMMIT');
+    return {
+      pipelineId: String(created.id),
+      id: String(created.id),
+      name: String(created.name),
+      stageCount: copied.rows.length,
+    };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function nextPipelineNumber(client: PoolClient, companyId:string, userId:string, type:'lead'|'opportunity', prefix:string) {
