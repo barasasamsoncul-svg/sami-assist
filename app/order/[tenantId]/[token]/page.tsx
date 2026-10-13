@@ -60,11 +60,9 @@ export default async function PublicSalesOrderPage({
           <p className="mt-2 text-sm text-slate-300">Prepared for {order.customerName} · {date(order.orderDate)}</p>
           <p className="mt-5 text-3xl font-black">{money(order.totalAmount, order.currency)}</p>
           <div className="mt-5 flex flex-wrap gap-2">
-            {[['Order', order.status], ['Fulfillment', order.fulfillmentStatus], ['Invoicing', order.invoiceStatus]].map(([name, value]) => (
-              <span key={name} className="rounded-full border border-white/20 px-3 py-1.5 text-xs font-bold">
-                {name}: {label(value)}
-              </span>
-            ))}
+            <span className="rounded-full border border-white/20 px-3 py-1.5 text-xs font-bold">Order: {label(order.status)}</span>
+            <span className="rounded-full border border-white/20 px-3 py-1.5 text-xs font-bold">Fulfillment: {label(order.fulfillmentStatus)}</span>
+            <span className="rounded-full border border-white/20 px-3 py-1.5 text-xs font-bold">Invoicing: {label(order.invoiceStatus)}</span>
           </div>
         </header>
 
