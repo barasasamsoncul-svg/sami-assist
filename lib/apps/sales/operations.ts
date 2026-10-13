@@ -3364,6 +3364,15 @@ export async function issueSalesReturnCredit(
                       'cancelled'
                   AND credit.deleted_at
                       IS NULL
+                  AND COALESCE(
+                    credit.idempotency_key,
+                    ''
+                  ) <> (
+                    'sales-return:' ||
+                    $4::text ||
+                    ':invoice:' ||
+                    invoice_item.invoice_id::text
+                  )
               ),
               0
             ) AS credited_quantity,
@@ -3408,6 +3417,7 @@ export async function issueSalesReturnCredit(
             returnItem
               .sales_order_line_id,
           ),
+          returnId,
         ],
       );
 
