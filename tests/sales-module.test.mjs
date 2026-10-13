@@ -2796,4 +2796,8 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   assert.match(invoice, /new Set\([\s\S]*lineRows\.map\([\s\S]*String\(line\.id\)/);
   assert.match(invoice, /orderLineIds\.has\(requestedLineId\)/);
   assert.match(invoice, /An invoice line does not belong to this sales order/);
+  assert.match(invoice, /existingBatch\.rows\[0\]\.requested_lines/);
+  assert.match(invoice, /normalizeSelection/);
+  assert.match(invoice, /JSON\.stringify\(priorSelection\) !== JSON\.stringify\(currentSelection\)/);
+  assert.match(invoice, /This invoice batch was started with a different line selection/);
 });
