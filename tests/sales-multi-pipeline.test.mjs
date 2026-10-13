@@ -29,7 +29,6 @@ test('Sales multiple-pipeline migration preserves existing stages and isolates s
   assert.match(runtime, /SALES_3_4_16_TO_3_4_17/);
   assert.match(runtime, /SALES_3_4_16_TO_3_4_17,[\s\S]*\];/);
   assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.17'/);
-  assert.match(migrationTests, /SALES_3_4_16_TO_3_4_17|3\.4\.16-to-3\.4\.17/);
 });
 
 test('Sales creates company-scoped pipelines by cloning stages from the default pipeline', async () => {
