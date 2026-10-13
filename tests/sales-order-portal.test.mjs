@@ -44,6 +44,10 @@ test('Sales customer order portal uses hashed expiring tokens with explicit rota
   assert.match(portal, /SALES_PERMISSIONS\.ORDER_MANAGE/);
   assert.match(portal, /sales\.order\.portal_link_created/);
   assert.match(portal, /sales\.order\.portal_link_revoked/);
+  assert.match(portal, /unit_price/);
+  assert.match(portal, /discount_amount/);
+  assert.match(portal, /tax_amount/);
+  assert.match(portal, /line_total/);
   assert.match(portal, /status <> 'cancelled'/);
   assert.match(portal, /parsed\.protocol === 'https:' \|\| parsed\.protocol === 'http:'/);
   assert.match(portal, /invoice IDs, margin\/cost values and user identifiers/);
@@ -69,6 +73,9 @@ test('Sales customer order portal is read-only, no-store, and does not expose an
   assert.match(page, /getPublicSalesOrderPortal/);
   assert.match(page, /notFound\(\)/);
   assert.match(page, /Shipment tracking/);
+  assert.match(page, /Unit price/);
+  assert.match(page, /Discount/);
+  assert.match(page, /Line total/);
   assert.match(page, /Delivered/);
   assert.match(page, /index: false/);
   assert.match(api, /X-Robots-Tag/);
