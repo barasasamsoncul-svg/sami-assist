@@ -134,8 +134,8 @@ export async function createSalesPipeline(input: Record<string, unknown>) {
   try {
     await client.query('BEGIN');
     await client.query(
-      'SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))',
-      ['sales-pipeline-name:' + context.companyId, name.trim().toLocaleLowerCase('en')],
+      'SELECT pg_advisory_xact_lock(hashtext($1), hashtext(LOWER(BTRIM($2))))',
+      ['sales-pipeline-name:' + context.companyId, name],
     );
 
     const duplicate = await client.query(
