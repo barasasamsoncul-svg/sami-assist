@@ -1636,6 +1636,17 @@ export async function createSalesShipment(
       'BEGIN',
     );
 
+    await client.query(
+      `
+        SELECT pg_advisory_xact_lock(
+          hashtext($1)
+        )
+      `,
+      [
+        'sales-order-invoice:' + orderId,
+      ],
+    );
+
     const order =
       await client.query(
         `
@@ -1665,15 +1676,13 @@ export async function createSalesShipment(
     }
 
     if (
-      String(
-        order.rows[0]
-          .status,
-      ) ===
-        'cancelled'
+      ['cancelled', 'closed'].includes(
+        String(order.rows[0].status),
+      )
     ) {
       throw new SalesError(
         'QUOTE_STATE_INVALID',
-        'A cancelled sales order cannot be shipped.',
+        'A cancelled or closed sales order cannot receive a new shipment.',
       );
     }
 
@@ -1685,6 +1694,8 @@ export async function createSalesShipment(
           number;
       }> =
         [];
+    const preparedLineIds =
+      new Set<string>();
 
     for (
       const raw
@@ -1715,7 +1726,7 @@ export async function createSalesShipment(
         requireUuid(
           item.lineId,
           'Sales order line',
-        );
+        ).toLowerCase();
 
       if (prepared.some(line => line.lineId === lineId)) {
         throw new SalesError(
@@ -2007,6 +2018,42 @@ export async function updateSalesShipmentStatus(
       'BEGIN',
     );
 
+    const shipmentOwner =
+      await client.query(
+        `
+          SELECT sales_order_id
+          FROM sales_shipments
+          WHERE id = $1
+            AND company_id = $2
+          LIMIT 1
+        `,
+        [
+          shipmentId,
+          context.companyId,
+        ],
+      );
+
+    if (shipmentOwner.rows.length !== 1) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'Shipment was not found.',
+      );
+    }
+
+    const orderId =
+      String(shipmentOwner.rows[0].sales_order_id);
+
+    await client.query(
+      `
+        SELECT pg_advisory_xact_lock(
+          hashtext($1)
+        )
+      `,
+      [
+        'sales-order-invoice:' + orderId,
+      ],
+    );
+
     const shipment =
       await client.query(
         `
@@ -2023,10 +2070,7 @@ export async function updateSalesShipmentStatus(
         ],
       );
 
-    if (
-      shipment.rows.length !==
-        1
-    ) {
+    if (shipment.rows.length !== 1) {
       throw new SalesError(
         'INVALID_INPUT',
         'Shipment was not found.',
@@ -2035,6 +2079,49 @@ export async function updateSalesShipmentStatus(
 
     const row =
       shipment.rows[0];
+
+    if (String(row.sales_order_id) !== orderId) {
+      throw new SalesError(
+        'QUOTE_STATE_INVALID',
+        'Shipment order linkage changed while the action was being prepared. Reload and retry.',
+      );
+    }
+
+    const parentOrder =
+      await client.query(
+        `
+          SELECT status
+          FROM sales_orders_v2
+          WHERE id = $1
+            AND company_id = $2
+            AND deleted_at IS NULL
+          FOR UPDATE
+        `,
+        [
+          orderId,
+          context.companyId,
+        ],
+      );
+
+    if (parentOrder.rows.length !== 1) {
+      throw new SalesError(
+        'ORDER_NOT_FOUND',
+        'The sales order for this shipment was not found.',
+      );
+    }
+
+    const parentOrderStatus =
+      String(parentOrder.rows[0].status);
+
+    if (
+      ['cancelled', 'closed'].includes(parentOrderStatus) &&
+      !['cancelled', 'failed'].includes(nextStatus)
+    ) {
+      throw new SalesError(
+        'QUOTE_STATE_INVALID',
+        'A shipment for a cancelled or closed sales order cannot be dispatched or delivered. Cancel the unshipped shipment instead.',
+      );
+    }
 
     if (
       String(
@@ -2067,6 +2154,16 @@ export async function updateSalesShipmentStatus(
       throw new SalesError(
         'QUOTE_STATE_INVALID',
         'A posted shipment cannot be cancelled. Use a Sales return to reverse delivered stock.',
+      );
+    }
+
+    if (
+      nextStatus === 'failed' &&
+      row.inventory_posted_at
+    ) {
+      throw new SalesError(
+        'QUOTE_STATE_INVALID',
+        'A shipment with posted stock movement cannot be marked failed. Reconcile the Inventory movement first; use the Sales return process when goods have been received back.',
       );
     }
 
@@ -2446,6 +2543,17 @@ export async function createSalesReturn(
       'BEGIN',
     );
 
+    await client.query(
+      `
+        SELECT pg_advisory_xact_lock(
+          hashtext($1)
+        )
+      `,
+      [
+        'sales-order-invoice:' + orderId,
+      ],
+    );
+
     const order =
       await client.query(
         `
@@ -2495,6 +2603,8 @@ export async function createSalesReturn(
           number;
       }> =
         [];
+    const preparedLineIds =
+      new Set<string>();
 
     for (
       const raw
@@ -2525,7 +2635,15 @@ export async function createSalesReturn(
         requireUuid(
           item.lineId,
           'Sales order line',
+        ).toLowerCase();
+
+      if (preparedLineIds.has(lineId)) {
+        throw new SalesError(
+          'INVALID_INPUT',
+          'A sales-order line can only be selected once for a return.',
         );
+      }
+      preparedLineIds.add(lineId);
 
       const quantity =
         numberInput(
@@ -2868,6 +2986,18 @@ export async function receiveSalesReturn(
         'Approve the Sales return before receiving returned goods.',
       );
     }
+
+    await client.query(
+      `
+        SELECT pg_advisory_xact_lock(
+          hashtext($1)
+        )
+      `,
+      [
+        'sales-order-invoice:' +
+        String(returnRow.sales_order_id),
+      ],
+    );
 
     const items =
       await client.query(
@@ -3234,6 +3364,15 @@ export async function issueSalesReturnCredit(
                       'cancelled'
                   AND credit.deleted_at
                       IS NULL
+                  AND COALESCE(
+                    credit.idempotency_key,
+                    ''
+                  ) <> (
+                    'sales-return:' ||
+                    $4::text ||
+                    ':invoice:' ||
+                    invoice_item.invoice_id::text
+                  )
               ),
               0
             ) AS credited_quantity,
@@ -3278,6 +3417,7 @@ export async function issueSalesReturnCredit(
             returnItem
               .sales_order_line_id,
           ),
+          returnId,
         ],
       );
 

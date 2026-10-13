@@ -3736,6 +3736,17 @@ export async function updateSalesOrderFulfillment(
       'BEGIN',
     );
 
+    await client.query(
+      `
+        SELECT pg_advisory_xact_lock(
+          hashtext($1)
+        )
+      `,
+      [
+        'sales-order-invoice:' + orderId,
+      ],
+    );
+
     const order =
       await client.query(
         `
@@ -4145,6 +4156,17 @@ export async function cancelSalesOrder(
       'BEGIN',
     );
 
+    await client.query(
+      `
+        SELECT pg_advisory_xact_lock(
+          hashtext($1)
+        )
+      `,
+      [
+        'sales-order-invoice:' + orderId,
+      ],
+    );
+
     const order =
       await client.query(
         `
@@ -4163,7 +4185,33 @@ export async function cancelSalesOrder(
                       o.company_id
               ),
               0
-            ) AS invoiced_quantity
+            ) AS invoiced_quantity,
+            COALESCE(
+              (
+                SELECT SUM(
+                  oi.shipped_quantity
+                )
+                FROM sales_order_items_v2 oi
+                WHERE oi.sales_order_id =
+                      o.id
+                  AND oi.company_id =
+                      o.company_id
+              ),
+              0
+            ) AS shipped_quantity,
+            COALESCE(
+              (
+                SELECT SUM(
+                  oi.delivered_quantity
+                )
+                FROM sales_order_items_v2 oi
+                WHERE oi.sales_order_id =
+                      o.id
+                  AND oi.company_id =
+                      o.company_id
+              ),
+              0
+            ) AS delivered_quantity
           FROM sales_orders_v2 o
           WHERE o.id = $1
             AND o.company_id = $2
@@ -4218,6 +4266,43 @@ export async function cancelSalesOrder(
       throw new SalesError(
         'QUOTE_STATE_INVALID',
         'This order already has invoiced quantities. Correct the related invoice before cancelling the order.',
+      );
+    }
+
+    if (
+      Number(order.rows[0].shipped_quantity || 0) > 0 ||
+      Number(order.rows[0].delivered_quantity || 0) > 0
+    ) {
+      throw new SalesError(
+        'QUOTE_STATE_INVALID',
+        'This order has shipped or delivered quantities. Process a Sales return to reverse stock and handle related credits before cancelling the order.',
+      );
+    }
+
+    const pendingShipments =
+      await client.query(
+        `
+          SELECT COUNT(*)::int AS count
+          FROM sales_shipments
+          WHERE company_id = $1
+            AND sales_order_id = $2
+            AND status NOT IN (
+              'cancelled',
+              'failed',
+              'delivered'
+            )
+            AND inventory_posted_at IS NULL
+        `,
+        [
+          context.companyId,
+          orderId,
+        ],
+      );
+
+    if (Number(pendingShipments.rows[0]?.count || 0) > 0) {
+      throw new SalesError(
+        'QUOTE_STATE_INVALID',
+        'Cancel all unshipped shipment plans before cancelling this order so shipment quantities and stock reservations remain consistent.',
       );
     }
 
@@ -4376,6 +4461,86 @@ export async function createSalesOrderInvoice(
           idempotencyKey,
         ],
       );
+
+    if (
+      existingBatch.rows.length > 0 &&
+      existingBatch.rows[0].invoice_id &&
+      Array.isArray(input.lines) &&
+      input.lines.length > 0
+    ) {
+      const storedValue =
+        existingBatch.rows[0].requested_lines;
+      let storedLines: unknown = storedValue;
+
+      if (typeof storedValue === 'string') {
+        try {
+          storedLines = JSON.parse(storedValue);
+        } catch {
+          storedLines = null;
+        }
+      }
+
+      if (!Array.isArray(storedLines)) {
+        throw new SalesError(
+          'QUOTE_STATE_INVALID',
+          'The existing invoice batch has invalid line-selection evidence. Resolve the batch before retrying.',
+        );
+      }
+
+      const normalizeIdempotentSelection = (items: unknown[]) => {
+        const seen = new Set<string>();
+        return items.map(rawLine => {
+          if (
+            !rawLine ||
+            typeof rawLine !== 'object' ||
+            Array.isArray(rawLine)
+          ) {
+            throw new SalesError(
+              'INVALID_INPUT',
+              'An invoice line selection is invalid.',
+            );
+          }
+
+          const line = rawLine as Record<string, unknown>;
+          const lineId = requireUuid(
+            line.lineId,
+            'Sales order line',
+          ).toLowerCase();
+
+          if (seen.has(lineId)) {
+            throw new SalesError(
+              'INVALID_INPUT',
+              'An invoice line can only be selected once.',
+            );
+          }
+          seen.add(lineId);
+
+          return {
+            lineId,
+            quantity: numberInput(
+              line.quantity,
+              'Invoice quantity',
+              { min: 0.0001, max: 1_000_000 },
+            ),
+          };
+        }).sort((a, b) => a.lineId.localeCompare(b.lineId));
+      };
+
+      const originalSelection =
+        normalizeIdempotentSelection(storedLines);
+      const retrySelection =
+        normalizeIdempotentSelection(input.lines);
+
+      if (
+        JSON.stringify(originalSelection) !==
+        JSON.stringify(retrySelection)
+      ) {
+        throw new SalesError(
+          'INVALID_INPUT',
+          'This idempotency key already belongs to an invoice with a different line selection. Reuse the original selection or use a new key for a new invoice.',
+        );
+      }
+    }
 
     if (
       existingBatch.rows.length >
@@ -4595,11 +4760,12 @@ export async function createSalesOrderInvoice(
         )
       ).rows;
 
+    const hasExplicitLineSelection =
+      Array.isArray(input.lines);
+
     const requested =
-      Array.isArray(
-        input.lines,
-      )
-        ? input.lines
+      hasExplicitLineSelection
+        ? input.lines as unknown[]
         : [];
 
     const requestedMap =
@@ -4633,11 +4799,21 @@ export async function createSalesOrderInvoice(
             unknown
           >;
 
-      requestedMap.set(
+      const lineId =
         requireUuid(
           item.lineId,
           'Sales order line',
-        ),
+        ).toLowerCase();
+
+      if (requestedMap.has(lineId)) {
+        throw new SalesError(
+          'INVALID_INPUT',
+          'An invoice line can only be selected once.',
+        );
+      }
+
+      requestedMap.set(
+        lineId,
         numberInput(
           item.quantity,
           'Invoice quantity',
@@ -4648,6 +4824,32 @@ export async function createSalesOrderInvoice(
               1_000_000,
           },
         ),
+      );
+    }
+
+    const orderLineIds =
+      new Set(
+        lineRows.map(
+          line => String(line.id),
+        ),
+      );
+
+    for (const requestedLineId of requestedMap.keys()) {
+      if (!orderLineIds.has(requestedLineId)) {
+        throw new SalesError(
+          'INVALID_INPUT',
+          'An invoice line does not belong to this sales order.',
+        );
+      }
+    }
+
+    if (
+      hasExplicitLineSelection &&
+      requestedMap.size === 0
+    ) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'Choose at least one invoiceable line with a quantity greater than zero.',
       );
     }
 
@@ -4744,15 +4946,105 @@ export async function createSalesOrderInvoice(
     }
 
     if (
+      existingBatch.rows.length > 0 &&
+      !existingBatch.rows[0].invoice_id
+    ) {
+      const storedValue =
+        existingBatch.rows[0].requested_lines;
+      let storedLines: unknown =
+        storedValue;
+
+      if (typeof storedValue === 'string') {
+        try {
+          storedLines = JSON.parse(storedValue);
+        } catch {
+          storedLines = null;
+        }
+      }
+
+      const normalizeSelection = (items: unknown[]) =>
+        items.map((rawLine: unknown) => {
+          if (
+            !rawLine ||
+            typeof rawLine !== 'object' ||
+            Array.isArray(rawLine)
+          ) {
+            return null;
+          }
+
+          const line = rawLine as Record<string, unknown>;
+          const lineId =
+            typeof line.lineId === 'string'
+              ? line.lineId
+              : '';
+          const quantity = Number(line.quantity);
+
+          if (
+            !lineId ||
+            !Number.isFinite(quantity) ||
+            quantity <= 0
+          ) {
+            return null;
+          }
+
+          return { lineId, quantity };
+        }).sort((a, b) => {
+          if (a === null) return b === null ? 0 : 1;
+          if (b === null) return -1;
+          return a.lineId.localeCompare(b.lineId);
+        });
+
+      const priorSelection =
+        Array.isArray(storedLines)
+          ? normalizeSelection(storedLines)
+          : null;
+      const currentSelection =
+        normalizeSelection(
+          selected.map(item => ({
+            lineId: String(item.line.id),
+            quantity: item.quantity,
+          })),
+        );
+
+      if (
+        !priorSelection ||
+        priorSelection.some(line => line === null) ||
+        priorSelection.length !== currentSelection.length ||
+        JSON.stringify(priorSelection) !== JSON.stringify(currentSelection)
+      ) {
+        throw new SalesError(
+          'QUOTE_STATE_INVALID',
+          'This invoice batch was started with a different line selection. Retry with the original selection or resolve the existing batch before creating another invoice.',
+        );
+      }
+    }
+
+    const invoiceableLineCount =
+      lineRows.filter(line => {
+        const ordered = Number(line.quantity || 0);
+        const delivered = Number(line.delivered_quantity || 0);
+        const already = Number(line.invoiced_quantity || 0);
+        const eligible =
+          invoicePolicy === 'delivered'
+            ? delivered
+            : ordered;
+
+        return eligible - already > 0.000001;
+      }).length;
+
+    if (
       settings.allow_partial_invoicing ===
         false &&
-      selected.some(
-        item =>
-          Math.abs(
-            item.quantity -
-            item.remaining,
-          ) >
-            0.000001,
+      (
+        selected.length !== invoiceableLineCount ||
+        selected.some(
+          item =>
+            Math.abs(
+              item.quantity -
+              item.remaining,
+            ) >
+              0.000001,
+        )
       )
     ) {
       throw new SalesError(

@@ -95,6 +95,13 @@ export default function SalesOrderDetailClient({
       false,
     );
 
+  // Retain the invoice idempotency key across failed attempts. A fresh key on
+  // every click would let a network retry accidentally create another invoice.
+  const invoiceIdempotencyKey =
+    useRef<string | null>(
+      null,
+    );
+
   const {
     overlay,
     closeOverlay,
@@ -1720,16 +1727,28 @@ export default function SalesOrderDetailClient({
                               0,
                           );
 
-                      await run(
+                      const idempotencyKey =
+                        invoiceIdempotencyKey.current ||
+                        globalThis.crypto?.randomUUID?.() ||
+                        (
+                          'sales-invoice-' +
+                          order.id +
+                          '-' +
+                          Date.now().toString(36) +
+                          '-' +
+                          Math.random().toString(36).slice(2)
+                        );
+
+                      invoiceIdempotencyKey.current =
+                        idempotencyKey;
+
+                      const result = await run(
                         {
                           action:
                             'create_order_invoice',
                           orderId:
                             order.id,
-                          idempotencyKey:
-                            globalThis
-                              .crypto
-                              ?.randomUUID?.(),
+                          idempotencyKey,
                           exchangeRate:
                             order.currency ===
                               workspace.company.currency
@@ -1744,6 +1763,10 @@ export default function SalesOrderDetailClient({
                         },
                         'Draft invoice created from the sales order.',
                       );
+
+                      if (result) {
+                        invoiceIdempotencyKey.current = null;
+                      }
                     }
                   }
                 >

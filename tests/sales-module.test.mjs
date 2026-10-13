@@ -2766,3 +2766,191 @@ test('Sales reports provide 30/60/90-day weighted opportunity forecasts without 
   assert.match(forecastUi, /Values stay grouped by currency/);
   assert.match(forecastUi, /Probability-weighted/);
 });
+
+
+test('Sales invoice selection rejects duplicate and non-order line IDs', async () => {
+  const commands =
+    await source(
+      'lib/apps/sales/commands.ts',
+    );
+
+  const invoiceStart =
+    commands.indexOf(
+      'export async function createSalesOrderInvoice(',
+    );
+  const invoiceEnd =
+    commands.indexOf(
+      'export async function updateSalesSettings(',
+      invoiceStart,
+    );
+  const invoice =
+    commands.slice(
+      invoiceStart,
+      invoiceEnd,
+    );
+
+  assert.ok(invoiceStart >= 0);
+  assert.ok(invoiceEnd > invoiceStart);
+  assert.match(invoice, /requestedMap\.has\(lineId\)/);
+  assert.match(invoice, /'Sales order line',[\s\S]*\)\.toLowerCase\(\)/);
+  assert.match(invoice, /An invoice line can only be selected once/);
+  assert.match(invoice, /new Set\([\s\S]*lineRows\.map\([\s\S]*String\(line\.id\)/);
+  assert.match(invoice, /orderLineIds\.has\(requestedLineId\)/);
+  assert.match(invoice, /An invoice line does not belong to this sales order/);
+  assert.match(invoice, /existingBatch\.rows\[0\]\.requested_lines/);
+  assert.match(invoice, /normalizeSelection/);
+  assert.match(invoice, /JSON\.stringify\(priorSelection\) !== JSON\.stringify\(currentSelection\)/);
+  assert.match(invoice, /This invoice batch was started with a different line selection/);
+  assert.match(invoice, /hasExplicitLineSelection/);
+  assert.match(invoice, /hasExplicitLineSelection &&\s*requestedMap\.size === 0/);
+  assert.match(invoice, /Choose at least one invoiceable line with a quantity greater than zero/);
+  assert.match(invoice, /const invoiceableLineCount =\s*lineRows\.filter/);
+  assert.match(invoice, /selected\.length !== invoiceableLineCount/);
+  assert.match(invoice, /normalizeIdempotentSelection/);
+  assert.match(invoice, /idempotency key already belongs to an invoice with a different line selection/);
+  assert.ok(
+    invoice.indexOf('normalizeIdempotentSelection(storedLines)') <
+      invoice.indexOf('return {\n        orderId,\n        invoiceId:'),
+    'A completed batch must validate any explicitly supplied retry selection before returning the existing invoice.',
+  );
+
+  const fulfillmentStart =
+    commands.indexOf(
+      'export async function updateSalesOrderFulfillment(',
+    );
+  const cancelStart =
+    commands.indexOf(
+      'export async function cancelSalesOrder(',
+    );
+  const createInvoiceStart =
+    commands.indexOf(
+      'export async function createSalesOrderInvoice(',
+    );
+  const fulfillment =
+    commands.slice(
+      fulfillmentStart,
+      cancelStart,
+    );
+  const cancellation =
+    commands.slice(
+      cancelStart,
+      createInvoiceStart,
+    );
+
+  assert.match(fulfillment, /pg_advisory_xact_lock/);
+  assert.match(cancellation, /pg_advisory_xact_lock/);
+  assert.match(fulfillment, /sales-order-invoice:' \+ orderId/);
+  assert.match(cancellation, /sales-order-invoice:' \+ orderId/);
+  assert.match(cancellation, /SUM\([\s\S]*oi\.shipped_quantity[\s\S]*AS shipped_quantity/);
+  assert.match(cancellation, /SUM\([\s\S]*oi\.delivered_quantity[\s\S]*AS delivered_quantity/);
+  assert.match(cancellation, /This order has shipped or delivered quantities/);
+  assert.match(cancellation, /Process a Sales return to reverse stock/);
+  assert.match(cancellation, /pendingShipments/);
+  assert.match(cancellation, /Cancel all unshipped shipment plans before cancelling this order/);
+
+  const operations = await source('lib/apps/sales/operations.ts');
+  const returnStart = operations.indexOf('export async function createSalesReturn(');
+  const approveStart = operations.indexOf('export async function approveSalesReturn(', returnStart);
+  const createReturn = operations.slice(returnStart, approveStart);
+  assert.ok(returnStart >= 0);
+  assert.ok(approveStart > returnStart);
+  assert.match(createReturn, /const preparedLineIds =\s*new Set<string>\(\)/);
+  assert.match(createReturn, /preparedLineIds\.has\(lineId\)/);
+  assert.match(createReturn, /A sales-order line can only be selected once for a return/);
+  assert.match(createReturn, /return_row\.status IN \(\s*'requested',\s*'approved'\s*\)/);
+  assert.doesNotMatch(createReturn, /return_row\.status <> 'cancelled'/,
+    'Received returns already reduce delivered_quantity and must not be subtracted twice.');
+  assert.match(createReturn, /pg_advisory_xact_lock/);
+  assert.ok(createReturn.includes("'sales-order-invoice:' + orderId"));
+
+  const receiveStart = operations.indexOf('export async function receiveSalesReturn(');
+  const issueCreditStart = operations.indexOf('export async function issueSalesReturnCredit(', receiveStart);
+  const receiveReturn = operations.slice(receiveStart, issueCreditStart);
+  assert.ok(receiveStart >= 0);
+  assert.ok(issueCreditStart > receiveStart);
+  assert.match(receiveReturn, /pg_advisory_xact_lock/);
+  assert.match(receiveReturn, /sales-order-invoice:/);
+
+  const issueReturnCreditStart = operations.indexOf('export async function issueSalesReturnCredit(');
+  const refundReturnCreditStart = operations.indexOf('export async function refundSalesReturnCredit(', issueReturnCreditStart);
+  const issueReturnCredit = operations.slice(issueReturnCreditStart, refundReturnCreditStart);
+  const returnCreditInvoiceQueryStart = issueReturnCredit.indexOf('const invoiceItems =');
+  const returnCreditInvoiceQueryEnd = issueReturnCredit.indexOf('for (\n      const invoiceItem', returnCreditInvoiceQueryStart);
+  const returnCreditInvoiceQuery = issueReturnCredit.slice(returnCreditInvoiceQueryStart, returnCreditInvoiceQueryEnd);
+  assert.ok(issueReturnCreditStart >= 0);
+  assert.ok(refundReturnCreditStart > issueReturnCreditStart);
+  assert.ok(returnCreditInvoiceQueryStart >= 0);
+  assert.ok(returnCreditInvoiceQueryEnd > returnCreditInvoiceQueryStart);
+  assert.ok(returnCreditInvoiceQuery.includes("'sales-return:' ||"));
+  assert.ok(returnCreditInvoiceQuery.includes("$4::text"));
+  assert.ok(returnCreditInvoiceQuery.includes("invoice_item.invoice_id::text"));
+
+  const invoicingCreditNotes = await source('lib/apps/invoicing/credit-notes.ts');
+  const issueInvoicingCreditStart = invoicingCreditNotes.indexOf('export async function issueInvoiceCreditNote(');
+  const cancelInvoicingCreditStart = invoicingCreditNotes.indexOf('export async function cancelInvoiceCreditNote(', issueInvoicingCreditStart);
+  const issueInvoicingCredit = invoicingCreditNotes.slice(issueInvoicingCreditStart, cancelInvoicingCreditStart);
+  assert.ok(issueInvoicingCreditStart >= 0);
+  assert.ok(cancelInvoicingCreditStart > issueInvoicingCreditStart);
+  assert.ok(issueInvoicingCredit.includes('const duplicateCreditState'));
+  assert.ok(issueInvoicingCredit.includes('availableCredit:'));
+  assert.ok(issueInvoicingCredit.includes('duplicateCreditState.availableAmount'));
+  assert.match(issueInvoicingCredit, /INVOICE_STATE_INVALID/);
+  assert.ok(issueInvoicingCredit.includes('The existing credit note balance could not be verified'));
+  assert.match(returnCreditInvoiceQuery, /returnId,/);
+  assert.match(createReturn, /'Sales order line',[\s\S]*\)\.toLowerCase\(\)/);
+
+  const shipmentStart = operations.indexOf('export async function createSalesShipment(');
+  const updateShipmentStart = operations.indexOf('export async function updateSalesShipmentStatus(', shipmentStart);
+  const shipmentReturnStart = operations.indexOf('export async function createSalesReturn(', updateShipmentStart);
+  const createShipment = operations.slice(shipmentStart, updateShipmentStart);
+  const updateShipment = operations.slice(updateShipmentStart, shipmentReturnStart);
+  assert.ok(shipmentStart >= 0);
+  assert.ok(updateShipmentStart > shipmentStart);
+  assert.ok(shipmentReturnStart > updateShipmentStart);
+  assert.match(createShipment, /pg_advisory_xact_lock/);
+  assert.ok(createShipment.includes("'sales-order-invoice:' + orderId"));
+  assert.match(createShipment, /requireUuid\([\s\S]*?\)\.toLowerCase\(\);/);
+  assert.match(createShipment, /\['cancelled', 'closed'\]/);
+  assert.match(updateShipment, /SELECT sales_order_id[\s\S]*LIMIT 1/);
+  assert.match(updateShipment, /pg_advisory_xact_lock/);
+  assert.ok(updateShipment.includes("'sales-order-invoice:' + orderId"));
+  assert.match(updateShipment, /parentOrderStatus/);
+  assert.match(updateShipment, /A shipment for a cancelled or closed sales order cannot be dispatched or delivered/);
+  assert.match(updateShipment, /nextStatus === 'failed'[\s\S]*row\.inventory_posted_at/);
+  assert.match(updateShipment, /A shipment with posted stock movement cannot be marked failed/);
+});
+
+
+test('Sales order invoice retries retain their idempotency key until a successful response', async () => {
+  const client = await source('app/apps/sales/SalesOrderDetailClient.tsx');
+
+  assert.match(client, /invoiceIdempotencyKey[\s\S]*useRef<string \| null>/);
+  assert.match(client, /const idempotencyKey =[\s\S]*invoiceIdempotencyKey\.current \|\|/);
+  assert.match(client, /invoiceIdempotencyKey\.current =\s*idempotencyKey/);
+  assert.match(client, /if \(result\)\s*\{\s*invoiceIdempotencyKey\.current = null;/);
+
+  const invoiceActionStart = client.indexOf("'create_order_invoice'");
+  const invoiceActionEnd = client.indexOf("'Draft invoice created from the sales order.'", invoiceActionStart);
+  assert.ok(invoiceActionStart >= 0);
+  assert.ok(invoiceActionEnd > invoiceActionStart);
+  const invoiceAction = client.slice(invoiceActionStart, invoiceActionEnd);
+  assert.match(invoiceAction, /idempotencyKey/);
+  assert.doesNotMatch(invoiceAction, /crypto\s*\.randomUUID/);
+});
+
+
+test('Sales online acceptance refreshes base-currency quote total when optional products change', async () => {
+  const publicSales = await source('lib/apps/sales/public.ts');
+  const acceptStart = publicSales.indexOf('export async function respondToPublicSalesQuote(');
+  const finalStatusUpdate = publicSales.indexOf(
+    '          status = $3::varchar(30),',
+    acceptStart,
+  );
+  const acceptance = publicSales.slice(acceptStart, finalStatusUpdate);
+
+  assert.ok(acceptStart >= 0);
+  assert.ok(finalStatusUpdate > acceptStart);
+  assert.match(acceptance, /base_total_amount =\s*ROUND\(/);
+  assert.match(acceptance, /totals\.subtotal[\s\S]*q\.shipping_total/);
+  assert.match(acceptance, /COALESCE\(NULLIF\(q\.exchange_rate, 0\), 1\)/);
+});
