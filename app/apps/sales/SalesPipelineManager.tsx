@@ -4,8 +4,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import Link from 'next/link';
 
+type SalesPipelineOption = {
+  id: string;
+  name: string;
+  sequence: number;
+  is_default: boolean;
+  is_active: boolean;
+};
+
 type PipelineStage = {
   id: string;
+  pipeline_id?: string;
   name: string;
   stage_type: string;
 };
@@ -155,6 +164,8 @@ type OpportunityStageHistoryEntry = {
 };
 
 type PipelineData = {
+  pipelines: SalesPipelineOption[];
+  activePipelineId: string;
   stages: PipelineStage[];
   leads: SalesLead[];
   opportunities: SalesOpportunity[];
@@ -176,6 +187,7 @@ type SalesPipelineSavedView = {
 };
 
 type PipelineAction =
+  | { action: 'create_pipeline'; name: string }
   | { action: 'create_lead'; name: FormDataEntryValue | null; companyName: FormDataEntryValue | null; contactName: FormDataEntryValue | null; email: FormDataEntryValue | null; phone: FormDataEntryValue | null; source: FormDataEntryValue | null; salesTeamId: FormDataEntryValue | null; salespersonUserId: FormDataEntryValue | null; confirmDuplicates?: boolean }
   | { action: 'update_lead'; leadId: string; name: string; companyName: string; contactName: string; email: string; phone: string; source: string; notes: string; salespersonUserId: string | null; salesTeamId: string | null; assignmentReason: string }
   | { action: 'disqualify_lead'; leadId: string; reason: string }
@@ -186,7 +198,7 @@ type PipelineAction =
   | { action: 'create_opportunity_activity'; opportunityId: string; activityType: string; subject: string; description: string; dueDate: string | null; assignedUserId: string | null }
   | { action: 'update_opportunity_activity'; activityId: string; status: 'completed' | 'cancelled' }
   | { action: 'edit_opportunity_activity'; activityId: string; activityType: ActivityDraft['activityType']; subject: string; description: string; dueDate: string | null; assignedUserId: string | null }
-  | { action: 'convert_lead'; leadId: string; name: string; expectedValue: string; currency: string; expectedCloseDate: string | null }
+  | { action: 'convert_lead'; leadId: string; pipelineId: string; name: string; expectedValue: string; currency: string; expectedCloseDate: string | null }
   | { action: 'update_opportunity'; opportunityId: string; name: string; customerName: string; contactName: string; email: string; phone: string; expectedValue: string; currency: string; expectedCloseDate: string | null; source: string; notes: string; salespersonUserId: string | null }
   | { action: 'move_opportunity'; opportunityId: string; stageId: string; reason?: string }
   | { action: 'save_pipeline_view'; name: string; viewType: 'leads' | 'opportunities'; statusView: string; scoreView: 'all' | 'high' | 'medium' | 'low'; searchQuery: string }
@@ -317,8 +329,10 @@ export default function SalesPipelineManager({
   defaultCurrency: string;
 }) {
   const [data, setData] = useState<PipelineData>({
-    stages: [], leads: [], opportunities: [], activities: [], opportunityActivities: [], salespeople: [], salesTeams: [], opportunityHistory: [],
+    pipelines: [], activePipelineId: '', stages: [], leads: [], opportunities: [], activities: [], opportunityActivities: [], salespeople: [], salesTeams: [], opportunityHistory: [],
   });
+  const [selectedPipelineId, setSelectedPipelineId] = useState('');
+  const [newPipelineName, setNewPipelineName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [qualifyingLeadId, setQualifyingLeadId] = useState<string | null>(null);
@@ -388,7 +402,10 @@ export default function SalesPipelineManager({
   });
 
   const load = useCallback(async () => {
-    const response = await fetch('/api/apps/sales?pipeline=1', {
+    const query = selectedPipelineId
+      ? '/api/apps/sales?pipeline=1&pipelineId=' + encodeURIComponent(selectedPipelineId)
+      : '/api/apps/sales?pipeline=1';
+    const response = await fetch(query, {
       credentials: 'same-origin',
       cache: 'no-store',
       headers: { Accept: 'application/json' },
@@ -401,7 +418,10 @@ export default function SalesPipelineManager({
       throw new Error(body.error || 'Could not load the Sales pipeline.');
     }
     setData(body.pipeline);
-  }, []);
+    if (!selectedPipelineId && body.pipeline.activePipelineId) {
+      setSelectedPipelineId(body.pipeline.activePipelineId);
+    }
+  }, [selectedPipelineId]);
 
   useEffect(() => {
     void load().catch(caught => {
@@ -586,7 +606,7 @@ export default function SalesPipelineManager({
         error?: string;
         code?: string;
         duplicates?: LeadDuplicateMatch[];
-        result?: { updatedCount?: number; createdCount?: number; skippedCount?: number; mode?: string };
+        result?: { updatedCount?: number; createdCount?: number; skippedCount?: number; mode?: string; pipelineId?: string; name?: string; stageCount?: number };
       };
       if (
         !response.ok &&
@@ -602,7 +622,16 @@ export default function SalesPipelineManager({
       if (!response.ok) {
         throw new Error(body.error || 'Sales action failed.');
       }
-      await load();
+      if (payload.action === 'create_pipeline') {
+        const createdPipelineId = body.result?.pipelineId;
+        if (!createdPipelineId) {
+          throw new Error('The pipeline was created but SaMi did not return its identifier. Refresh the workspace.');
+        }
+        setNewPipelineName('');
+        setSelectedPipelineId(createdPipelineId);
+      } else {
+        await load();
+      }
       if (payload.action === 'save_pipeline_view' || payload.action === 'delete_pipeline_view') {
         await loadSavedPipelineViews();
       }
@@ -754,6 +783,7 @@ export default function SalesPipelineManager({
     const succeeded = await action({
       action: 'convert_lead',
       leadId: lead.id,
+      pipelineId: selectedPipelineId || data.activePipelineId,
       name: lead.name,
       expectedValue: qualification.expectedValue,
       currency: normalizedCurrency(qualification.currency),
@@ -1098,7 +1128,58 @@ export default function SalesPipelineManager({
         <h2 className="mt-1 text-xl font-black">Leads &amp; Opportunities</h2>
         <p className="mt-1 text-sm text-slate-500">
           Qualify prospects with realistic deal value and expected close dates, then create a quotation without losing customer context.
+          Leads are shared; opportunities, stages and outcomes are scoped to the selected pipeline.
         </p>
+        <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
+          <label className="space-y-1 text-xs font-bold text-slate-500">
+            <span>Opportunity pipeline</span>
+            <select
+              aria-label="Opportunity pipeline"
+              value={selectedPipelineId || data.activePipelineId}
+              onChange={event => {
+                setError('');
+                setSelectedPipelineId(event.target.value);
+              }}
+              disabled={busy || data.pipelines.length === 0}
+              className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100 disabled:opacity-60"
+            >
+              {data.pipelines.map(pipeline => (
+                <option key={pipeline.id} value={pipeline.id}>
+                  {pipeline.name}{pipeline.is_default ? ' · Default' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          {canManagePipeline ? (
+            <form
+              onSubmit={event => {
+                event.preventDefault();
+                if (!newPipelineName.trim() || busy) return;
+                void action({ action: 'create_pipeline', name: newPipelineName.trim() });
+              }}
+              className="flex flex-col gap-2 sm:flex-row sm:items-end"
+            >
+              <label className="min-w-0 flex-1 space-y-1 text-xs font-bold text-slate-500">
+                <span>Create a separate pipeline</span>
+                <input
+                  value={newPipelineName}
+                  onChange={event => setNewPipelineName(event.target.value)}
+                  maxLength={120}
+                  placeholder="e.g. Enterprise Sales"
+                  aria-label="New sales pipeline name"
+                  className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm font-normal text-slate-900 dark:text-slate-100"
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={busy || !newPipelineName.trim()}
+                className="h-10 shrink-0 rounded-xl bg-blue-600 px-4 text-xs font-black text-white disabled:opacity-50"
+              >
+                Create pipeline
+              </button>
+            </form>
+          ) : null}
+        </div>
       </header>
 
       {error ? (
