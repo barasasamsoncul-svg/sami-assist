@@ -1282,6 +1282,16 @@ export async function respondToPublicSalesQuote(
                 q.shipping_total,
                 2
               ),
+            base_total_amount =
+              ROUND(
+                (
+                  totals.subtotal -
+                  totals.discount_total +
+                  totals.tax_total +
+                  q.shipping_total
+                ) * COALESCE(NULLIF(q.exchange_rate, 0), 1),
+                2
+              ),
             cost_total =
               ROUND(
                 totals.cost_total,
