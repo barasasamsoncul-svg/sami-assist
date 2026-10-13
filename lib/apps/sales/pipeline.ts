@@ -7,12 +7,6 @@ import { cleanText, isoDate, nullableText, numberInput, optionalUuid, requireSal
 import { scoreSalesLead } from '@/lib/apps/sales/lead-scoring';
 import { chooseBalancedSalesLeadAssignee, selectSalesLeadAssignmentRule } from '@/lib/apps/sales/lead-assignment';
 
-const stageSeed = [
-  ['Qualification', 10, 20],
-  ['Proposal', 20, 50],
-  ['Negotiation', 30, 75],
-] as const;
-
 async function ensurePipelineStages(
   pool: Awaited<ReturnType<typeof requireSalesContext>>['pool'],
   companyId: string,
