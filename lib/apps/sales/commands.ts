@@ -4637,7 +4637,7 @@ export async function createSalesOrderInvoice(
         requireUuid(
           item.lineId,
           'Sales order line',
-        );
+        ).toLowerCase();
 
       if (requestedMap.has(lineId)) {
         throw new SalesError(
