@@ -5008,16 +5008,32 @@ export async function createSalesOrderInvoice(
       }
     }
 
+    const invoiceableLineCount =
+      lineRows.filter(line => {
+        const ordered = Number(line.quantity || 0);
+        const delivered = Number(line.delivered_quantity || 0);
+        const already = Number(line.invoiced_quantity || 0);
+        const eligible =
+          invoicePolicy === 'delivered'
+            ? delivered
+            : ordered;
+
+        return eligible - already > 0.000001;
+      }).length;
+
     if (
       settings.allow_partial_invoicing ===
         false &&
-      selected.some(
-        item =>
-          Math.abs(
-            item.quantity -
-            item.remaining,
-          ) >
-            0.000001,
+      (
+        selected.length !== invoiceableLineCount ||
+        selected.some(
+          item =>
+            Math.abs(
+              item.quantity -
+              item.remaining,
+            ) >
+              0.000001,
+        )
       )
     ) {
       throw new SalesError(
