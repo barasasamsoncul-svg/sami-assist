@@ -2881,6 +2881,8 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   assert.ok(updateShipment.includes("'sales-order-invoice:' + orderId"));
   assert.match(updateShipment, /parentOrderStatus/);
   assert.match(updateShipment, /A shipment for a cancelled or closed sales order cannot be dispatched or delivered/);
+  assert.match(updateShipment, /nextStatus === 'failed'[\s\S]*row\.inventory_posted_at/);
+  assert.match(updateShipment, /A shipment with posted stock movement cannot be marked failed/);
 });
 
 
