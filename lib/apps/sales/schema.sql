@@ -209,6 +209,10 @@ CREATE TABLE IF NOT EXISTS public.sales_orders_v2 (
   total_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
   notes TEXT,
   terms TEXT,
+  public_portal_token_hash VARCHAR(64),
+  public_portal_token_created_at TIMESTAMPTZ,
+  public_portal_token_expires_at TIMESTAMPTZ,
+  public_portal_token_revoked_at TIMESTAMPTZ,
   created_by UUID,
   updated_by UUID,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -223,6 +227,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_orders_v2_number
 CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_orders_v2_quote
   ON public.sales_orders_v2(company_id, quote_id)
   WHERE quote_id IS NOT NULL AND deleted_at IS NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_orders_v2_public_portal_token
+  ON public.sales_orders_v2(public_portal_token_hash)
+  WHERE public_portal_token_hash IS NOT NULL
+    AND public_portal_token_revoked_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_sales_orders_v2_company_status
   ON public.sales_orders_v2(company_id, status, order_date DESC)

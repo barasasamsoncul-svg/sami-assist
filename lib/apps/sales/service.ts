@@ -83,6 +83,12 @@ export {
 
 
 export {
+  createSalesOrderPortalLink,
+  revokeSalesOrderPortalLink,
+} from '@/lib/apps/sales/order-portal';
+
+
+export {
   applySalesOrderDeposit,
   approveSalesReturn,
   createSalesReturn,

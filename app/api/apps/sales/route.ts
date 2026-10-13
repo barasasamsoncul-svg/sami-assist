@@ -26,6 +26,8 @@ import {
   createSalesQuoteRevision,
   createSalesReturn,
   createSalesShipment,
+  createSalesOrderPortalLink,
+  revokeSalesOrderPortalLink,
   duplicateSalesQuote,
   getSalesCommercialData,
   getSalesCurrencyData,
@@ -651,6 +653,10 @@ export async function POST(
           applySalesOrderDeposit,
         create_shipment:
           createSalesShipment,
+        create_order_portal_link:
+          createSalesOrderPortalLink,
+        revoke_order_portal_link:
+          revokeSalesOrderPortalLink,
         update_shipment_status:
           updateSalesShipmentStatus,
         create_return:
