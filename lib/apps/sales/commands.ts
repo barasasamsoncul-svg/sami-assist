@@ -4760,11 +4760,12 @@ export async function createSalesOrderInvoice(
         )
       ).rows;
 
+    const hasExplicitLineSelection =
+      Array.isArray(input.lines);
+
     const requested =
-      Array.isArray(
-        input.lines,
-      )
-        ? input.lines
+      hasExplicitLineSelection
+        ? input.lines as unknown[]
         : [];
 
     const requestedMap =
@@ -4840,6 +4841,16 @@ export async function createSalesOrderInvoice(
           'An invoice line does not belong to this sales order.',
         );
       }
+    }
+
+    if (
+      hasExplicitLineSelection &&
+      requestedMap.size === 0
+    ) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'Choose at least one invoiceable line with a quantity greater than zero.',
+      );
     }
 
     const invoicePolicy =
