@@ -323,6 +323,26 @@ export async function issueInvoiceCreditNote(
         duplicate.rows.length >
           0
       ) {
+        if (
+          String(
+            duplicate.rows[0].status,
+          ) === 'cancelled'
+        ) {
+          throw new InvoicingError(
+            'CREDIT_NOTE_STATE_INVALID',
+            'The credit note tied to this idempotency key has been cancelled. Resolve the previous note before retrying the operation.',
+          );
+        }
+
+        const duplicateCreditState =
+          await refreshCreditStatus(
+            client,
+            context.companyId,
+            String(
+              duplicate.rows[0].id,
+            ),
+          );
+
         await client.query(
           'COMMIT',
         );
@@ -344,10 +364,9 @@ export async function issueInvoiceCreditNote(
                 .total_amount,
             ),
           status:
-            String(
-              duplicate.rows[0]
-                .status,
-            ),
+            duplicateCreditState.status,
+          availableCredit:
+            duplicateCreditState.availableAmount,
           duplicate:
             true,
         };
