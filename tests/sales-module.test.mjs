@@ -2837,3 +2837,21 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   assert.match(fulfillment, /sales-order-invoice:' \+ orderId/);
   assert.match(cancellation, /sales-order-invoice:' \+ orderId/);
 });
+
+
+test('Sales order invoice retries retain their idempotency key until a successful response', async () => {
+  const client = await source('app/apps/sales/SalesOrderDetailClient.tsx');
+
+  assert.match(client, /invoiceIdempotencyKey[\s\S]*useRef<string \| null>/);
+  assert.match(client, /const idempotencyKey =[\s\S]*invoiceIdempotencyKey\.current \|\|/);
+  assert.match(client, /invoiceIdempotencyKey\.current =\s*idempotencyKey/);
+  assert.match(client, /if \(result\)\s*\{\s*invoiceIdempotencyKey\.current = null;/);
+
+  const invoiceActionStart = client.indexOf("'create_order_invoice'");
+  const invoiceActionEnd = client.indexOf("'Draft invoice created from the sales order.'", invoiceActionStart);
+  assert.ok(invoiceActionStart >= 0);
+  assert.ok(invoiceActionEnd > invoiceActionStart);
+  const invoiceAction = client.slice(invoiceActionStart, invoiceActionEnd);
+  assert.match(invoiceAction, /idempotencyKey/);
+  assert.doesNotMatch(invoiceAction, /crypto\s*\.randomUUID/);
+});
