@@ -70,10 +70,14 @@ export default async function PublicSalesOrderPage({
           <h2 className="text-lg font-black">Order items</h2>
           <p className="mt-1 text-sm text-slate-500">Progress is updated by the seller as goods are shipped and delivered.</p>
           <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[560px] text-sm">
+            <table className="w-full min-w-[1120px] text-sm">
               <thead className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="py-3 pr-3">Item</th>
+                  <th className="px-3 py-3 text-right">Unit price</th>
+                  <th className="px-3 py-3 text-right">Discount</th>
+                  <th className="px-3 py-3 text-right">Tax</th>
+                  <th className="px-3 py-3 text-right">Line total</th>
                   <th className="px-3 py-3 text-right">Ordered</th>
                   <th className="px-3 py-3 text-right">Shipped</th>
                   <th className="pl-3 py-3 text-right">Delivered</th>
@@ -86,13 +90,20 @@ export default async function PublicSalesOrderPage({
                       <p className="font-semibold">{line.description}</p>
                       <p className="mt-1 text-xs text-slate-500">{[line.sku, line.unit].filter(Boolean).join(' · ')}</p>
                     </td>
+                    <td className="px-3 py-3 text-right tabular-nums">{money(line.unitPrice, order.currency)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums">{money(line.discountAmount, order.currency)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums">
+                      <p>{line.taxName || 'Tax'}</p>
+                      <p className="mt-1 text-xs text-slate-500">{money(line.taxAmount, order.currency)}</p>
+                    </td>
+                    <td className="px-3 py-3 text-right font-semibold tabular-nums">{money(line.lineTotal, order.currency)}</td>
                     <td className="px-3 py-3 text-right tabular-nums">{line.quantity}</td>
                     <td className="px-3 py-3 text-right tabular-nums">{line.shippedQuantity}</td>
                     <td className="pl-3 py-3 text-right tabular-nums">{line.deliveredQuantity}</td>
                   </tr>
                 ))}
                 {lines.length === 0 && (
-                  <tr><td colSpan={4} className="py-6 text-center text-slate-500">No order lines are available.</td></tr>
+                  <tr><td colSpan={8} className="py-6 text-center text-slate-500">No order lines are available.</td></tr>
                 )}
               </tbody>
             </table>
