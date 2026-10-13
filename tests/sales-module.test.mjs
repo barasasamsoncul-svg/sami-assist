@@ -2910,6 +2910,17 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   assert.match(createShipment, /pg_advisory_xact_lock/);
   assert.ok(createShipment.includes("'sales-order-invoice:' + orderId"));
   assert.match(createShipment, /requireUuid\([\s\S]*?\)\.toLowerCase\(\);/);
+  assert.match(createShipment, /createHash\('sha256'\)/);
+  assert.match(createShipment, /metadata->>'idempotencyKey' = \$3/);
+  assert.match(createShipment, /storedFingerprint !== requestFingerprint/);
+  assert.match(createShipment, /This shipment request key already belongs to a different shipment request/);
+  assert.match(createShipment, /reused: true/);
+  assert.match(createShipment, /metadata,[\s\S]*created_by,[\s\S]*\$8::jsonb/);
+  assert.match(createShipment, /requestFingerprint/);
+  const shipmentDetailClient = await source('app/apps/sales/SalesOrderDetailClient.tsx');
+  assert.match(shipmentDetailClient, /shipmentIdempotencyKey[\s\S]*useRef/);
+  assert.match(shipmentDetailClient, /action:[\s\S]*'create_shipment',[\s\S]*idempotencyKey,/);
+  assert.match(shipmentDetailClient, /if \(result\) \{\s*shipmentIdempotencyKey.current = null;/);
   assert.match(createShipment, /\['cancelled', 'closed'\]/);
   assert.match(updateShipment, /SELECT sales_order_id[\s\S]*LIMIT 1/);
   assert.match(updateShipment, /pg_advisory_xact_lock/);

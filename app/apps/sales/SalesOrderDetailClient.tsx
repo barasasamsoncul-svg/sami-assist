@@ -102,6 +102,16 @@ export default function SalesOrderDetailClient({
       null,
     );
 
+  // Retain the shipment request key until a successful response so a retry
+  // after a lost network response does not create a second shipment.
+  const shipmentIdempotencyKey =
+    useRef<{
+      orderId: string;
+      key: string;
+    } | null>(
+      null,
+    );
+
   const {
     overlay,
     closeOverlay,
@@ -561,6 +571,26 @@ export default function SalesOrderDetailClient({
                               0,
                           );
 
+                      const idempotencyKey =
+                        shipmentIdempotencyKey.current?.orderId === order.id
+                          ? shipmentIdempotencyKey.current.key
+                          : (
+                              globalThis.crypto?.randomUUID?.() ||
+                              (
+                                'sales-shipment-' +
+                                order.id +
+                                '-' +
+                                Date.now().toString(36) +
+                                '-' +
+                                Math.random().toString(36).slice(2)
+                              )
+                            );
+
+                      shipmentIdempotencyKey.current = {
+                        orderId: order.id,
+                        key: idempotencyKey,
+                      };
+
                       const result =
                         await run(
                           {
@@ -568,6 +598,7 @@ export default function SalesOrderDetailClient({
                               'create_shipment',
                             orderId:
                               order.id,
+                            idempotencyKey,
                             carrier:
                               form.get(
                                 'carrier',
@@ -589,9 +620,8 @@ export default function SalesOrderDetailClient({
                           'Shipment created. Mark it shipped when goods leave Inventory.',
                         );
 
-                      if (
-                        result
-                      ) {
+                      if (result) {
+                        shipmentIdempotencyKey.current = null;
                         event.currentTarget
                           .reset();
                       }
