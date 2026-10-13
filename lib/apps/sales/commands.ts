@@ -4633,11 +4633,21 @@ export async function createSalesOrderInvoice(
             unknown
           >;
 
-      requestedMap.set(
+      const lineId =
         requireUuid(
           item.lineId,
           'Sales order line',
-        ),
+        );
+
+      if (requestedMap.has(lineId)) {
+        throw new SalesError(
+          'INVALID_INPUT',
+          'An invoice line can only be selected once.',
+        );
+      }
+
+      requestedMap.set(
+        lineId,
         numberInput(
           item.quantity,
           'Invoice quantity',
@@ -4649,6 +4659,22 @@ export async function createSalesOrderInvoice(
           },
         ),
       );
+    }
+
+    const orderLineIds =
+      new Set(
+        lineRows.map(
+          line => String(line.id),
+        ),
+      );
+
+    for (const requestedLineId of requestedMap.keys()) {
+      if (!orderLineIds.has(requestedLineId)) {
+        throw new SalesError(
+          'INVALID_INPUT',
+          'An invoice line does not belong to this sales order.',
+        );
+      }
     }
 
     const invoicePolicy =
