@@ -15,7 +15,7 @@ const SQL = `
     ADD COLUMN IF NOT EXISTS public_portal_token_expires_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS public_portal_token_revoked_at TIMESTAMPTZ;
 
-  CREATE INDEX IF NOT EXISTS idx_sales_orders_v2_public_portal_token
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_orders_v2_public_portal_token
     ON public.sales_orders_v2(public_portal_token_hash)
     WHERE public_portal_token_hash IS NOT NULL
       AND public_portal_token_revoked_at IS NULL;
