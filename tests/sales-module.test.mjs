@@ -2857,8 +2857,9 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   assert.match(createReturn, /const preparedLineIds =\s*new Set<string>\(\)/);
   assert.match(createReturn, /preparedLineIds\.has\(lineId\)/);
   assert.match(createReturn, /A sales-order line can only be selected once for a return/);
-  assert.match(createReturn, /return_row\.status <> 'cancelled'/);
-  assert.doesNotMatch(createReturn, /return_row\.status IN \([\s\S]*'requested',[\s\S]*'approved'/);
+  assert.match(createReturn, /return_row\.status IN \(\s*'requested',\s*'approved'\s*\)/);
+  assert.doesNotMatch(createReturn, /return_row\.status <> 'cancelled'/,
+    'Received returns already reduce delivered_quantity and must not be subtracted twice.');
   assert.match(createReturn, /pg_advisory_xact_lock/);
   assert.ok(createReturn.includes("'sales-order-invoice:' + orderId"));
 
