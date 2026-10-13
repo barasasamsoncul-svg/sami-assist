@@ -2801,4 +2801,32 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   assert.match(invoice, /normalizeSelection/);
   assert.match(invoice, /JSON\.stringify\(priorSelection\) !== JSON\.stringify\(currentSelection\)/);
   assert.match(invoice, /This invoice batch was started with a different line selection/);
+
+  const fulfillmentStart =
+    commands.indexOf(
+      'export async function updateSalesOrderFulfillment(',
+    );
+  const cancelStart =
+    commands.indexOf(
+      'export async function cancelSalesOrder(',
+    );
+  const invoiceEnd =
+    commands.indexOf(
+      'export async function createSalesOrderInvoice(',
+    );
+  const fulfillment =
+    commands.slice(
+      fulfillmentStart,
+      cancelStart,
+    );
+  const cancellation =
+    commands.slice(
+      cancelStart,
+      invoiceEnd,
+    );
+
+  assert.match(fulfillment, /pg_advisory_xact_lock/);
+  assert.match(cancellation, /pg_advisory_xact_lock/);
+  assert.match(fulfillment, /sales-order-invoice:' \+ orderId/);
+  assert.match(cancellation, /sales-order-invoice:' \+ orderId/);
 });
