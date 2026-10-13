@@ -2810,7 +2810,7 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
     commands.indexOf(
       'export async function cancelSalesOrder(',
     );
-  const invoiceEnd =
+  const createInvoiceStart =
     commands.indexOf(
       'export async function createSalesOrderInvoice(',
     );
@@ -2822,7 +2822,7 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   const cancellation =
     commands.slice(
       cancelStart,
-      invoiceEnd,
+      createInvoiceStart,
     );
 
   assert.match(fulfillment, /pg_advisory_xact_lock/);
