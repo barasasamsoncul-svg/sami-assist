@@ -2836,6 +2836,10 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   assert.match(cancellation, /pg_advisory_xact_lock/);
   assert.match(fulfillment, /sales-order-invoice:' \+ orderId/);
   assert.match(cancellation, /sales-order-invoice:' \+ orderId/);
+  assert.match(cancellation, /SUM\([\s\S]*oi\.shipped_quantity[\s\S]*AS shipped_quantity/);
+  assert.match(cancellation, /SUM\([\s\S]*oi\.delivered_quantity[\s\S]*AS delivered_quantity/);
+  assert.match(cancellation, /This order has shipped or delivered quantities/);
+  assert.match(cancellation, /Process a Sales return to reverse stock/);
 });
 
 
