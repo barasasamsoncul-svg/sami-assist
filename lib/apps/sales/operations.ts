@@ -1685,6 +1685,8 @@ export async function createSalesShipment(
           number;
       }> =
         [];
+    const preparedLineIds =
+      new Set<string>();
 
     for (
       const raw
@@ -2525,7 +2527,15 @@ export async function createSalesReturn(
         requireUuid(
           item.lineId,
           'Sales order line',
+        ).toLowerCase();
+
+      if (preparedLineIds.has(lineId)) {
+        throw new SalesError(
+          'INVALID_INPUT',
+          'A sales-order line can only be selected once for a return.',
         );
+      }
+      preparedLineIds.add(lineId);
 
       const quantity =
         numberInput(
