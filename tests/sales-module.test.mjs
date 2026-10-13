@@ -2874,6 +2874,7 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   assert.ok(shipmentReturnStart > updateShipmentStart);
   assert.match(createShipment, /pg_advisory_xact_lock/);
   assert.ok(createShipment.includes("'sales-order-invoice:' + orderId"));
+  assert.match(createShipment, /'Sales order line',[\\s\\S]*\\)\\.toLowerCase\\(\\)/);
   assert.match(createShipment, /\['cancelled', 'closed'\]/);
   assert.match(updateShipment, /SELECT sales_order_id[\s\S]*LIMIT 1/);
   assert.match(updateShipment, /pg_advisory_xact_lock/);
