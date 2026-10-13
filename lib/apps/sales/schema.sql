@@ -946,9 +946,24 @@ ALTER TABLE public.sales_sequences
 
 -- Sales 3.4 lead and opportunity pipeline.
 
+CREATE TABLE IF NOT EXISTS public.sales_pipelines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL,
+  name VARCHAR(120) NOT NULL,
+  sequence INTEGER NOT NULL DEFAULT 10,
+  is_default BOOLEAN NOT NULL DEFAULT FALSE,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_by UUID,
+  updated_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ
+);
+
   CREATE TABLE IF NOT EXISTS public.sales_pipeline_stages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL,
+    pipeline_id UUID NOT NULL REFERENCES public.sales_pipelines(id),
     name VARCHAR(120) NOT NULL,
     sequence INTEGER NOT NULL DEFAULT 10,
     probability NUMERIC(5,2) NOT NULL DEFAULT 0 CHECK (probability BETWEEN 0 AND 100),
@@ -957,8 +972,7 @@ ALTER TABLE public.sales_sequences
     created_by UUID,
     updated_by UUID,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(company_id, name)
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
   CREATE INDEX IF NOT EXISTS idx_sales_pipeline_stages_company
