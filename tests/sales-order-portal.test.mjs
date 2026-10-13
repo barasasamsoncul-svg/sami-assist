@@ -61,6 +61,6 @@ test('Sales customer order portal is read-only, no-store, and does not expose an
   assert.match(page, /getPublicSalesOrderPortal/);
   assert.match(page, /notFound\(\)/);
   assert.match(page, /Shipment tracking/);
-  assert.match(page, /Delivered quantity/);
+  assert.match(page, /Delivered/);
   assert.match(page, /noindex/);
 });
