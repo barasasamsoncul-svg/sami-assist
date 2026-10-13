@@ -2448,6 +2448,17 @@ export async function createSalesReturn(
       'BEGIN',
     );
 
+    await client.query(
+      `
+        SELECT pg_advisory_xact_lock(
+          hashtext($1)
+        )
+      `,
+      [
+        'sales-order-invoice:' + orderId,
+      ],
+    );
+
     const order =
       await client.query(
         `
@@ -2878,6 +2889,18 @@ export async function receiveSalesReturn(
         'Approve the Sales return before receiving returned goods.',
       );
     }
+
+    await client.query(
+      `
+        SELECT pg_advisory_xact_lock(
+          hashtext($1)
+        )
+      `,
+      [
+        'sales-order-invoice:' +
+        String(returnRow.sales_order_id),
+      ],
+    );
 
     const items =
       await client.query(
