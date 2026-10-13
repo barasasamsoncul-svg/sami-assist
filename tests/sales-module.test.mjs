@@ -2878,6 +2878,16 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   assert.ok(returnCreditInvoiceQuery.includes("'sales-return:' ||"));
   assert.ok(returnCreditInvoiceQuery.includes("$4::text"));
   assert.ok(returnCreditInvoiceQuery.includes("invoice_item.invoice_id::text"));
+
+  const invoicingCreditNotes = await source('lib/apps/invoicing/credit-notes.ts');
+  const issueInvoicingCreditStart = invoicingCreditNotes.indexOf('export async function issueInvoiceCreditNote(');
+  const cancelInvoicingCreditStart = invoicingCreditNotes.indexOf('export async function cancelInvoiceCreditNote(', issueInvoicingCreditStart);
+  const issueInvoicingCredit = invoicingCreditNotes.slice(issueInvoicingCreditStart, cancelInvoicingCreditStart);
+  assert.ok(issueInvoicingCreditStart >= 0);
+  assert.ok(cancelInvoicingCreditStart > issueInvoicingCreditStart);
+  assert.match(issueInvoicingCredit, /duplicateCreditState[\\s\\S]*refreshCreditStatus/);
+  assert.match(issueInvoicingCredit, /availableCredit:\\s*duplicateCreditState\\.availableAmount/);
+  assert.match(issueInvoicingCredit, /CREDIT_NOTE_STATE_INVALID/);
   assert.match(returnCreditInvoiceQuery, /returnId,/);
   assert.match(createReturn, /'Sales order line',[\s\S]*\)\.toLowerCase\(\)/);
 
