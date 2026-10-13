@@ -4185,7 +4185,33 @@ export async function cancelSalesOrder(
                       o.company_id
               ),
               0
-            ) AS invoiced_quantity
+            ) AS invoiced_quantity,
+            COALESCE(
+              (
+                SELECT SUM(
+                  oi.shipped_quantity
+                )
+                FROM sales_order_items_v2 oi
+                WHERE oi.sales_order_id =
+                      o.id
+                  AND oi.company_id =
+                      o.company_id
+              ),
+              0
+            ) AS shipped_quantity,
+            COALESCE(
+              (
+                SELECT SUM(
+                  oi.delivered_quantity
+                )
+                FROM sales_order_items_v2 oi
+                WHERE oi.sales_order_id =
+                      o.id
+                  AND oi.company_id =
+                      o.company_id
+              ),
+              0
+            ) AS delivered_quantity
           FROM sales_orders_v2 o
           WHERE o.id = $1
             AND o.company_id = $2
@@ -4240,6 +4266,16 @@ export async function cancelSalesOrder(
       throw new SalesError(
         'QUOTE_STATE_INVALID',
         'This order already has invoiced quantities. Correct the related invoice before cancelling the order.',
+      );
+    }
+
+    if (
+      Number(order.rows[0].shipped_quantity || 0) > 0 ||
+      Number(order.rows[0].delivered_quantity || 0) > 0
+    ) {
+      throw new SalesError(
+        'QUOTE_STATE_INVALID',
+        'This order has shipped or delivered quantities. Process a Sales return to reverse stock and handle related credits before cancelling the order.',
       );
     }
 
