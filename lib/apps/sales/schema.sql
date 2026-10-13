@@ -228,6 +228,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_orders_v2_quote
   ON public.sales_orders_v2(company_id, quote_id)
   WHERE quote_id IS NOT NULL AND deleted_at IS NULL;
 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_orders_v2_public_portal_token
+  ON public.sales_orders_v2(public_portal_token_hash)
+  WHERE public_portal_token_hash IS NOT NULL
+    AND public_portal_token_revoked_at IS NULL;
+
 CREATE INDEX IF NOT EXISTS idx_sales_orders_v2_company_status
   ON public.sales_orders_v2(company_id, status, order_date DESC)
   WHERE deleted_at IS NULL;
