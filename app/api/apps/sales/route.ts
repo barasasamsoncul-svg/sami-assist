@@ -34,6 +34,7 @@ import {
   getSalesOperationsData,
   getSalesPipelineData,
   getSalesLeadAssignmentHistory,
+  createSalesPipeline,
   createSalesLead,
   bulkReassignSalesLeads,
   bulkCreateSalesLeadActivities,
@@ -313,7 +314,7 @@ export async function GET(
     if (approvals === '1') return json({ success: true, approvals: await getSalesQuoteApprovalData() });
 
     const pipeline = request.nextUrl.searchParams.get('pipeline');
-    if (pipeline === '1') return json({success:true,pipeline:await getSalesPipelineData()});
+    if (pipeline === '1') return json({success:true,pipeline:await getSalesPipelineData(request.nextUrl.searchParams.get('pipelineId'))});
 
     const operations =
       request.nextUrl
@@ -577,6 +578,8 @@ export async function POST(
         ) =>
           Promise<unknown>
       > = {
+        create_pipeline:
+          createSalesPipeline,
         create_lead:
           createSalesLead,
         bulk_reassign_leads:
