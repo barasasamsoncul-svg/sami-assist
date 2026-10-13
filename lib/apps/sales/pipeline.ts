@@ -317,16 +317,36 @@ async function findSalesLeadDuplicates(
   return result.rows;
 }
 
-export async function getSalesPipelineData() {
+export async function getSalesPipelineData(requestedPipelineId?: unknown) {
   const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_VIEW);
-  await ensurePipelineStages(context.pool, context.companyId, context.userId);
-  const [stages, leads, opportunities, activities, salespeople, salesTeams, opportunityActivities, opportunityHistory] = await Promise.all([
+  const { defaultPipelineId } = await ensurePipelineStages(context.pool, context.companyId, context.userId);
+  const requestedId = cleanText(requestedPipelineId, 64);
+  const candidatePipelineId = requestedId ? requireUuid(requestedId, 'Sales pipeline') : defaultPipelineId;
+  const selectedPipeline = await context.pool.query(
+    `SELECT id
+     FROM sales_pipelines
+     WHERE id=$1 AND company_id=$2 AND is_active=TRUE AND deleted_at IS NULL
+     LIMIT 1`,
+    [candidatePipelineId, context.companyId],
+  );
+  if (!selectedPipeline.rows[0]) {
+    throw new SalesError('INVALID_INPUT', 'The selected sales pipeline is not available in this company.');
+  }
+  const activePipelineId = String(selectedPipeline.rows[0].id);
+  const [pipelines, stages, leads, opportunities, activities, salespeople, salesTeams, opportunityActivities, opportunityHistory] = await Promise.all([
     context.pool.query(
-      `SELECT id,name,sequence,probability,stage_type,is_active
-       FROM sales_pipeline_stages
-       WHERE company_id=$1 AND is_active=TRUE
-       ORDER BY sequence,name`,
+      `SELECT id,name,sequence,is_default,is_active
+       FROM sales_pipelines
+       WHERE company_id=$1 AND is_active=TRUE AND deleted_at IS NULL
+       ORDER BY is_default DESC,sequence,name,id`,
       [context.companyId],
+    ),
+    context.pool.query(
+      `SELECT id,pipeline_id,name,sequence,probability,stage_type,is_active
+       FROM sales_pipeline_stages
+       WHERE company_id=$1 AND pipeline_id=$2 AND is_active=TRUE
+       ORDER BY sequence,name`,
+      [context.companyId, activePipelineId],
     ),
     context.pool.query(
       `SELECT l.id,l.lead_number,l.status,l.name,l.company_name,l.contact_name,l.email,l.phone,l.source,l.notes,
@@ -361,11 +381,11 @@ export async function getSalesPipelineData() {
               s.name AS stage_name,s.stage_type
        FROM sales_opportunities o
        JOIN sales_pipeline_stages s ON s.id=o.stage_id AND s.company_id=o.company_id
-       WHERE o.company_id=$1 AND o.deleted_at IS NULL
+       WHERE o.company_id=$1 AND s.pipeline_id=$2 AND o.deleted_at IS NULL
        ORDER BY CASE WHEN s.stage_type='open' THEN 0 WHEN s.stage_type='won' THEN 1 ELSE 2 END,
                 s.sequence,o.expected_close_date NULLS LAST,o.created_at DESC
        LIMIT 500`,
-      [context.companyId],
+      [context.companyId, activePipelineId],
     ),
     context.pool.query(
       `SELECT a.id,a.lead_id,a.activity_type,a.subject,a.description,a.due_date,a.status,a.assigned_user_id,
@@ -425,9 +445,15 @@ export async function getSalesPipelineData() {
        INNER JOIN sales_opportunities o
          ON o.id=a.opportunity_id AND o.company_id=a.company_id AND o.deleted_at IS NULL
        WHERE a.company_id=$1 AND a.deleted_at IS NULL
+         AND EXISTS (
+           SELECT 1 FROM sales_pipeline_stages selected_stage
+           WHERE selected_stage.id=o.stage_id
+             AND selected_stage.company_id=o.company_id
+             AND selected_stage.pipeline_id=$2
+         )
        ORDER BY CASE WHEN a.status='planned' THEN 0 ELSE 1 END,a.due_date NULLS LAST,a.created_at DESC
        LIMIT 1000`,
-      [context.companyId],
+      [context.companyId, activePipelineId],
     ),
     context.pool.query(
       `SELECT h.id,h.opportunity_id,h.from_stage_id,h.to_stage_id,h.probability,h.reason,h.changed_by,h.created_at,
@@ -435,6 +461,9 @@ export async function getSalesPipelineData() {
        FROM sales_opportunity_stage_history h
        INNER JOIN sales_opportunities o
          ON o.id=h.opportunity_id AND o.company_id=h.company_id AND o.deleted_at IS NULL
+       INNER JOIN sales_pipeline_stages current_stage
+         ON current_stage.id=o.stage_id AND current_stage.company_id=o.company_id
+        AND current_stage.pipeline_id=$2
        LEFT JOIN sales_pipeline_stages old_stage
          ON old_stage.id=h.from_stage_id AND old_stage.company_id=h.company_id
        INNER JOIN sales_pipeline_stages new_stage
@@ -442,10 +471,12 @@ export async function getSalesPipelineData() {
        WHERE h.company_id=$1
        ORDER BY h.created_at DESC
        LIMIT 2000`,
-      [context.companyId],
+      [context.companyId, activePipelineId],
     ),
   ]);
   return {
+    pipelines: pipelines.rows,
+    activePipelineId,
     stages: stages.rows,
     leads: leads.rows.map(lead => {
       const score = scoreSalesLead(lead);
