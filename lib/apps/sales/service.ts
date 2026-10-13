@@ -111,6 +111,7 @@ export {
 
 
 export {
+  createSalesPipeline,
   createSalesLead,
   bulkReassignSalesLeads,
   bulkCreateSalesLeadActivities,
