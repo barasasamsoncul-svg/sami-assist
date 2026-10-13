@@ -2508,6 +2508,8 @@ export async function createSalesReturn(
           number;
       }> =
         [];
+    const preparedLineIds =
+      new Set<string>();
 
     for (
       const raw
