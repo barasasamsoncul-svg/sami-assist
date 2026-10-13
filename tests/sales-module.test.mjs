@@ -2051,7 +2051,7 @@ test('Sales Priority 13 supports searchable opportunity editing, loss reasons, c
   assert.ok(pipeline.includes("LOWER(BTRIM(name))='won'"));
   assert.ok(pipeline.includes("LOWER(BTRIM(name))='lost'"));
   assert.ok(pipeline.includes('is_active=TRUE'));
-  assert.ok(pipeline.includes('sales_pipeline_stages.is_active IS DISTINCT FROM TRUE'));
+  assert.ok(pipeline.includes('WHERE id=$1 AND company_id=$2 AND is_active=TRUE'));
   assert.ok(pipeline.includes('INSERT INTO sales_opportunity_stage_history'));
   assert.ok(pipeline.includes("won_at=CASE WHEN $5='won'"));
   assert.ok(pipeline.includes("lost_reason=CASE WHEN $5='lost' THEN $6 ELSE NULL END"));
