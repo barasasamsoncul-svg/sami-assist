@@ -4400,6 +4400,86 @@ export async function createSalesOrderInvoice(
       );
 
     if (
+      existingBatch.rows.length > 0 &&
+      existingBatch.rows[0].invoice_id &&
+      Array.isArray(input.lines) &&
+      input.lines.length > 0
+    ) {
+      const storedValue =
+        existingBatch.rows[0].requested_lines;
+      let storedLines: unknown = storedValue;
+
+      if (typeof storedValue === 'string') {
+        try {
+          storedLines = JSON.parse(storedValue);
+        } catch {
+          storedLines = null;
+        }
+      }
+
+      if (!Array.isArray(storedLines)) {
+        throw new SalesError(
+          'QUOTE_STATE_INVALID',
+          'The existing invoice batch has invalid line-selection evidence. Resolve the batch before retrying.',
+        );
+      }
+
+      const normalizeIdempotentSelection = (items: unknown[]) => {
+        const seen = new Set<string>();
+        return items.map(rawLine => {
+          if (
+            !rawLine ||
+            typeof rawLine !== 'object' ||
+            Array.isArray(rawLine)
+          ) {
+            throw new SalesError(
+              'INVALID_INPUT',
+              'An invoice line selection is invalid.',
+            );
+          }
+
+          const line = rawLine as Record<string, unknown>;
+          const lineId = requireUuid(
+            line.lineId,
+            'Sales order line',
+          ).toLowerCase();
+
+          if (seen.has(lineId)) {
+            throw new SalesError(
+              'INVALID_INPUT',
+              'An invoice line can only be selected once.',
+            );
+          }
+          seen.add(lineId);
+
+          return {
+            lineId,
+            quantity: numberInput(
+              line.quantity,
+              'Invoice quantity',
+              { min: 0.0001, max: 1_000_000 },
+            ),
+          };
+        }).sort((a, b) => a.lineId.localeCompare(b.lineId));
+      };
+
+      const originalSelection =
+        normalizeIdempotentSelection(storedLines);
+      const retrySelection =
+        normalizeIdempotentSelection(input.lines);
+
+      if (
+        JSON.stringify(originalSelection) !==
+        JSON.stringify(retrySelection)
+      ) {
+        throw new SalesError(
+          'INVALID_INPUT',
+          'This idempotency key already belongs to an invoice with a different line selection. Reuse the original selection or use a new key for a new invoice.',
+        );
+      }
+    }
+
+    if (
       existingBatch.rows.length >
         0 &&
       existingBatch.rows[0]
