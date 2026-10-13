@@ -2157,6 +2157,16 @@ export async function updateSalesShipmentStatus(
       );
     }
 
+    if (
+      nextStatus === 'failed' &&
+      row.inventory_posted_at
+    ) {
+      throw new SalesError(
+        'QUOTE_STATE_INVALID',
+        'A shipment with posted stock movement cannot be marked failed. Reconcile the Inventory movement first; use the Sales return process when goods have been received back.',
+      );
+    }
+
     const shouldPost =
       [
         'shipped',
