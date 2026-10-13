@@ -1726,7 +1726,7 @@ export async function createSalesShipment(
         requireUuid(
           item.lineId,
           'Sales order line',
-        );
+        ).toLowerCase();
 
       if (prepared.some(line => line.lineId === lineId)) {
         throw new SalesError(
