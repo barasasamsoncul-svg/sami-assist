@@ -4770,6 +4770,80 @@ export async function createSalesOrderInvoice(
     }
 
     if (
+      existingBatch.rows.length > 0 &&
+      !existingBatch.rows[0].invoice_id
+    ) {
+      const storedValue =
+        existingBatch.rows[0].requested_lines;
+      let storedLines: unknown =
+        storedValue;
+
+      if (typeof storedValue === 'string') {
+        try {
+          storedLines = JSON.parse(storedValue);
+        } catch {
+          storedLines = null;
+        }
+      }
+
+      const normalizeSelection = (items: unknown[]) =>
+        items.map((rawLine: unknown) => {
+          if (
+            !rawLine ||
+            typeof rawLine !== 'object' ||
+            Array.isArray(rawLine)
+          ) {
+            return null;
+          }
+
+          const line = rawLine as Record<string, unknown>;
+          const lineId =
+            typeof line.lineId === 'string'
+              ? line.lineId
+              : '';
+          const quantity = Number(line.quantity);
+
+          if (
+            !lineId ||
+            !Number.isFinite(quantity) ||
+            quantity <= 0
+          ) {
+            return null;
+          }
+
+          return { lineId, quantity };
+        }).sort((a, b) => {
+          if (a === null) return b === null ? 0 : 1;
+          if (b === null) return -1;
+          return a.lineId.localeCompare(b.lineId);
+        });
+
+      const priorSelection =
+        Array.isArray(storedLines)
+          ? normalizeSelection(storedLines)
+          : null;
+      const currentSelection =
+        normalizeSelection(
+          selected.map(item => ({
+            lineId: String(item.line.id),
+            quantity: item.quantity,
+          })),
+        );
+
+      if (
+        !priorSelection ||
+        priorSelection.some(line => line === null) ||
+        priorSelection.length !== currentSelection.length ||
+        JSON.stringify(priorSelection) !== JSON.stringify(currentSelection)
+      ) {
+        throw new SalesError(
+          'QUOTE_STATE_INVALID',
+          'This invoice batch was started with a different line selection. Retry with the original selection or resolve the existing batch before creating another invoice.',
+        );
+      }
+    }
+
+    if (
       settings.allow_partial_invoicing ===
         false &&
       selected.some(
