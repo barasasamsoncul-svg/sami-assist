@@ -2888,7 +2888,7 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   assert.ok(issueInvoicingCredit.includes('const duplicateCreditState'));
   assert.ok(issueInvoicingCredit.includes('availableCredit:'));
   assert.ok(issueInvoicingCredit.includes('duplicateCreditState.availableAmount'));
-  assert.match(issueInvoicingCredit, /CREDIT_NOTE_STATE_INVALID/);
+  assert.match(issueInvoicingCredit, /INVOICE_STATE_INVALID/);
   assert.ok(issueInvoicingCredit.includes('The existing credit note balance could not be verified'));
   assert.match(returnCreditInvoiceQuery, /returnId,/);
   assert.match(createReturn, /'Sales order line',[\s\S]*\)\.toLowerCase\(\)/);
