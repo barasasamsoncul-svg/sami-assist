@@ -2880,3 +2880,20 @@ test('Sales order invoice retries retain their idempotency key until a successfu
   assert.match(invoiceAction, /idempotencyKey/);
   assert.doesNotMatch(invoiceAction, /crypto\s*\.randomUUID/);
 });
+
+
+test('Sales online acceptance refreshes base-currency quote total when optional products change', async () => {
+  const publicSales = await source('lib/apps/sales/public.ts');
+  const acceptStart = publicSales.indexOf('export async function respondToPublicSalesQuote(');
+  const finalStatusUpdate = publicSales.indexOf(
+    '          status = $3::varchar(30),',
+    acceptStart,
+  );
+  const acceptance = publicSales.slice(acceptStart, finalStatusUpdate);
+
+  assert.ok(acceptStart >= 0);
+  assert.ok(finalStatusUpdate > acceptStart);
+  assert.match(acceptance, /base_total_amount =\s*ROUND\(/);
+  assert.match(acceptance, /totals\.subtotal[\s\S]*q\.shipping_total/);
+  assert.match(acceptance, /COALESCE\(NULLIF\(q\.exchange_rate, 0\), 1\)/);
+});
