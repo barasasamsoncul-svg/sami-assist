@@ -9,12 +9,11 @@ async function source(file) {
 }
 
 test('Sales multiple-pipeline migration preserves existing stages and isolates stage names by pipeline', async () => {
-  const [schema, migration, runtime, manifest, migrationTests] = await Promise.all([
+  const [schema, migration, runtime, manifest] = await Promise.all([
     source('lib/apps/sales/schema.sql'),
     source('lib/apps/sales/migrations/3.4.16-to-3.4.17.ts'),
     source('lib/apps/runtime-migrations.ts'),
     source('lib/modules/first-party.ts'),
-    source('tests/module-migrations.test.mjs'),
   ]);
 
   assert.match(schema, /CREATE TABLE IF NOT EXISTS public\.sales_pipelines/);
