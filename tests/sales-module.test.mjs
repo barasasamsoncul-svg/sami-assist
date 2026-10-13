@@ -2766,3 +2766,34 @@ test('Sales reports provide 30/60/90-day weighted opportunity forecasts without 
   assert.match(forecastUi, /Values stay grouped by currency/);
   assert.match(forecastUi, /Probability-weighted/);
 });
+
+
+test('Sales invoice selection rejects duplicate and non-order line IDs', async () => {
+  const commands =
+    await source(
+      'lib/apps/sales/commands.ts',
+    );
+
+  const invoiceStart =
+    commands.indexOf(
+      'export async function createSalesOrderInvoice(',
+    );
+  const invoiceEnd =
+    commands.indexOf(
+      'export async function updateSalesSettings(',
+      invoiceStart,
+    );
+  const invoice =
+    commands.slice(
+      invoiceStart,
+      invoiceEnd,
+    );
+
+  assert.ok(invoiceStart >= 0);
+  assert.ok(invoiceEnd > invoiceStart);
+  assert.match(invoice, /requestedMap\.has\(lineId\)/);
+  assert.match(invoice, /An invoice line can only be selected once/);
+  assert.match(invoice, /new Set\([\s\S]*lineRows\.map\([\s\S]*String\(line\.id\)/);
+  assert.match(invoice, /orderLineIds\.has\(requestedLineId\)/);
+  assert.match(invoice, /An invoice line does not belong to this sales order/);
+});
