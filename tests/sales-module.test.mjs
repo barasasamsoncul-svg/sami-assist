@@ -2801,6 +2801,9 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   assert.match(invoice, /normalizeSelection/);
   assert.match(invoice, /JSON\.stringify\(priorSelection\) !== JSON\.stringify\(currentSelection\)/);
   assert.match(invoice, /This invoice batch was started with a different line selection/);
+  assert.match(invoice, /hasExplicitLineSelection/);
+  assert.match(invoice, /hasExplicitLineSelection &&\s*requestedMap\.size === 0/);
+  assert.match(invoice, /Choose at least one invoiceable line with a quantity greater than zero/);
   assert.match(invoice, /const invoiceableLineCount =\s*lineRows\.filter/);
   assert.match(invoice, /selected\.length !== invoiceableLineCount/);
   assert.match(invoice, /normalizeIdempotentSelection/);
