@@ -2677,10 +2677,7 @@ export async function createSalesReturn(
                         line.id
                     AND return_item.company_id =
                         line.company_id
-                    AND return_row.status IN (
-                      'requested',
-                      'approved'
-                    )
+                    AND return_row.status <> 'cancelled'
                 ),
                 0
               ) AS pending_return_quantity
