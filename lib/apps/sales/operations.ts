@@ -1636,6 +1636,17 @@ export async function createSalesShipment(
       'BEGIN',
     );
 
+    await client.query(
+      `
+        SELECT pg_advisory_xact_lock(
+          hashtext($1)
+        )
+      `,
+      [
+        'sales-order-invoice:' + orderId,
+      ],
+    );
+
     const order =
       await client.query(
         `
@@ -1665,15 +1676,13 @@ export async function createSalesShipment(
     }
 
     if (
-      String(
-        order.rows[0]
-          .status,
-      ) ===
-        'cancelled'
+      ['cancelled', 'closed'].includes(
+        String(order.rows[0].status),
+      )
     ) {
       throw new SalesError(
         'QUOTE_STATE_INVALID',
-        'A cancelled sales order cannot be shipped.',
+        'A cancelled or closed sales order cannot receive a new shipment.',
       );
     }
 
@@ -2009,6 +2018,42 @@ export async function updateSalesShipmentStatus(
       'BEGIN',
     );
 
+    const shipmentOwner =
+      await client.query(
+        `
+          SELECT sales_order_id
+          FROM sales_shipments
+          WHERE id = $1
+            AND company_id = $2
+          LIMIT 1
+        `,
+        [
+          shipmentId,
+          context.companyId,
+        ],
+      );
+
+    if (shipmentOwner.rows.length !== 1) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'Shipment was not found.',
+      );
+    }
+
+    const orderId =
+      String(shipmentOwner.rows[0].sales_order_id);
+
+    await client.query(
+      `
+        SELECT pg_advisory_xact_lock(
+          hashtext($1)
+        )
+      `,
+      [
+        'sales-order-invoice:' + orderId,
+      ],
+    );
+
     const shipment =
       await client.query(
         `
@@ -2025,10 +2070,7 @@ export async function updateSalesShipmentStatus(
         ],
       );
 
-    if (
-      shipment.rows.length !==
-        1
-    ) {
+    if (shipment.rows.length !== 1) {
       throw new SalesError(
         'INVALID_INPUT',
         'Shipment was not found.',
@@ -2037,6 +2079,49 @@ export async function updateSalesShipmentStatus(
 
     const row =
       shipment.rows[0];
+
+    if (String(row.sales_order_id) !== orderId) {
+      throw new SalesError(
+        'QUOTE_STATE_INVALID',
+        'Shipment order linkage changed while the action was being prepared. Reload and retry.',
+      );
+    }
+
+    const parentOrder =
+      await client.query(
+        `
+          SELECT status
+          FROM sales_orders_v2
+          WHERE id = $1
+            AND company_id = $2
+            AND deleted_at IS NULL
+          FOR UPDATE
+        `,
+        [
+          orderId,
+          context.companyId,
+        ],
+      );
+
+    if (parentOrder.rows.length !== 1) {
+      throw new SalesError(
+        'ORDER_NOT_FOUND',
+        'The sales order for this shipment was not found.',
+      );
+    }
+
+    const parentOrderStatus =
+      String(parentOrder.rows[0].status);
+
+    if (
+      ['cancelled', 'closed'].includes(parentOrderStatus) &&
+      !['cancelled', 'failed'].includes(nextStatus)
+    ) {
+      throw new SalesError(
+        'QUOTE_STATE_INVALID',
+        'A shipment for a cancelled or closed sales order cannot be dispatched or delivered. Cancel the unshipped shipment instead.',
+      );
+    }
 
     if (
       String(
