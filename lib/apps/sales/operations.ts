@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { createHash } from 'node:crypto';
+
 import type {
   PoolClient,
 } from 'pg';
@@ -1628,6 +1630,84 @@ export async function createSalesShipment(
     );
   }
 
+  const rawIdempotencyKey =
+    typeof input.idempotencyKey === 'string'
+      ? input.idempotencyKey.trim()
+      : '';
+
+  if (rawIdempotencyKey.length > 120) {
+    throw new SalesError(
+      'INVALID_INPUT',
+      'Shipment request keys must be 120 characters or fewer.',
+    );
+  }
+
+  const idempotencyKey =
+    rawIdempotencyKey || null;
+
+  const requestLines:
+    Array<{
+      lineId: string;
+      quantity: number;
+    }> = [];
+
+  const requestLineIds =
+    new Set<string>();
+
+  for (const raw of requested) {
+    if (
+      !raw ||
+      typeof raw !== 'object' ||
+      Array.isArray(raw)
+    ) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'A shipment line is invalid.',
+      );
+    }
+
+    const item = raw as Record<string, unknown>;
+    const lineId = requireUuid(
+      item.lineId,
+      'Sales order line',
+    ).toLowerCase();
+
+    if (requestLineIds.has(lineId)) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'A sales-order line may appear only once in a shipment. Combine its quantity into one line.',
+      );
+    }
+    requestLineIds.add(lineId);
+
+    requestLines.push({
+      lineId,
+      quantity: numberInput(
+        item.quantity,
+        'Shipment quantity',
+        { min: 0.0001, max: 1_000_000 },
+      ),
+    });
+  }
+
+  requestLines.sort(
+    (left, right) =>
+      left.lineId.localeCompare(right.lineId),
+  );
+
+  const requestPayload = {
+    lines: requestLines,
+    carrier: nullableText(input.carrier, 180),
+    serviceLevel: nullableText(input.serviceLevel, 180),
+    trackingNumber: nullableText(input.trackingNumber, 255),
+    trackingUrl: nullableText(input.trackingUrl, 4000),
+  };
+
+  const requestFingerprint =
+    createHash('sha256')
+      .update(JSON.stringify(requestPayload))
+      .digest('hex');
+
   const client =
     await context.pool.connect();
 
@@ -1675,6 +1755,68 @@ export async function createSalesShipment(
       );
     }
 
+    if (idempotencyKey) {
+      const existingShipment =
+        await client.query(
+          `
+            SELECT
+              id,
+              shipment_number,
+              status,
+              metadata
+            FROM sales_shipments
+            WHERE company_id = $1
+              AND sales_order_id = $2
+              AND metadata->>'idempotencyKey' = $3
+            ORDER BY created_at DESC
+            LIMIT 1
+            FOR UPDATE
+          `,
+          [
+            context.companyId,
+            orderId,
+            idempotencyKey,
+          ],
+        );
+
+      if (existingShipment.rows.length > 0) {
+        const existing = existingShipment.rows[0];
+        let metadata: unknown = existing.metadata;
+
+        if (typeof metadata === 'string') {
+          try {
+            metadata = JSON.parse(metadata);
+          } catch {
+            metadata = null;
+          }
+        }
+
+        const storedFingerprint =
+          metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+            ? (metadata as Record<string, unknown>).requestFingerprint
+            : null;
+
+        if (
+          typeof storedFingerprint !== 'string' ||
+          storedFingerprint !== requestFingerprint
+        ) {
+          throw new SalesError(
+            'QUOTE_STATE_INVALID',
+            'This shipment request key already belongs to a different shipment request. Reload the order before starting a new shipment.',
+          );
+        }
+
+        await client.query('COMMIT');
+
+        return {
+          shipmentId: String(existing.id),
+          shipmentNumber: String(existing.shipment_number),
+          status: String(existing.status),
+          reused: true,
+        };
+      }
+    }
+
     if (
       ['cancelled', 'closed'].includes(
         String(order.rows[0].status),
@@ -1694,58 +1836,10 @@ export async function createSalesShipment(
           number;
       }> =
         [];
-    const preparedLineIds =
-      new Set<string>();
 
-    for (
-      const raw
-      of requested
-    ) {
-      if (
-        !raw ||
-        typeof raw !==
-          'object' ||
-        Array.isArray(
-          raw,
-        )
-      ) {
-        throw new SalesError(
-          'INVALID_INPUT',
-          'A shipment line is invalid.',
-        );
-      }
-
-      const item =
-        raw as
-          Record<
-            string,
-            unknown
-          >;
-
-      const lineId =
-        requireUuid(
-          item.lineId,
-          'Sales order line',
-        ).toLowerCase();
-
-      if (prepared.some(line => line.lineId === lineId)) {
-        throw new SalesError(
-          'INVALID_INPUT',
-          'A sales-order line may appear only once in a shipment. Combine its quantity into one line.',
-        );
-      }
-
-      const quantity =
-        numberInput(
-          item.quantity,
-          'Shipment quantity',
-          {
-            min:
-              0.0001,
-            max:
-              1_000_000,
-          },
-        );
+    for (const requestedLine of requestLines) {
+      const lineId = requestedLine.lineId;
+      const quantity = requestedLine.quantity;
 
       const line =
         await client.query(
@@ -1849,12 +1943,13 @@ export async function createSalesShipment(
             service_level,
             tracking_number,
             tracking_url,
+            metadata,
             created_by,
             updated_by
           )
           VALUES (
             $1,$2,$3,'ready',
-            $4,$5,$6,$7,$8,$8
+            $4,$5,$6,$7,$8::jsonb,$9,$9
           )
           RETURNING id
         `,
@@ -1862,21 +1957,17 @@ export async function createSalesShipment(
           context.companyId,
           orderId,
           shipmentNumber,
-          nullableText(
-            input.carrier,
-            180,
-          ),
-          nullableText(
-            input.serviceLevel,
-            180,
-          ),
-          nullableText(
-            input.trackingNumber,
-            255,
-          ),
-          nullableText(
-            input.trackingUrl,
-            4000,
+          requestPayload.carrier,
+          requestPayload.serviceLevel,
+          requestPayload.trackingNumber,
+          requestPayload.trackingUrl,
+          JSON.stringify(
+            idempotencyKey
+              ? {
+                  idempotencyKey,
+                  requestFingerprint,
+                }
+              : {},
           ),
           context.userId,
         ],
