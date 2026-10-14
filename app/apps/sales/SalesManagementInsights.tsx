@@ -89,7 +89,7 @@ export default function SalesManagementInsights({ data, currency, metrics }: Pro
       <section className="space-y-4">
         <header>
           <h2 className="text-base font-black">Sales orders &amp; revenue</h2>
-          <p className="mt-1 text-sm text-slate-500">Booked sales in your company currency, with fulfillment, invoicing and product/team breakdowns.</p>
+          <p className="mt-1 text-sm text-slate-500">Booked sales grouped by each order's recorded base currency, with fulfillment, invoicing and product/team breakdowns.</p>
         </header>
 
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
