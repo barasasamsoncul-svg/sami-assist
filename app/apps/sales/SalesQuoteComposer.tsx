@@ -830,7 +830,7 @@ export default function SalesQuoteComposer({
                             .value,
                         )
                     }
-                    className={"mt-1 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm" + (disabled ? " cursor-not-allowed opacity-60" : "")}
+                    className="mt-1 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
                   >
                     <option value="">
                       Manual customer
@@ -1769,7 +1769,7 @@ function Input({
                 .value,
             )
         }
-        className="mt-1 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+        className={"mt-1 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm" + (disabled ? " cursor-not-allowed opacity-60" : "")}
       />
     </label>
   );
