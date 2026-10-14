@@ -620,7 +620,8 @@ export async function getSalesOperationsData(
               WHERE return_row.company_id = $1
               GROUP BY
                 return_row.id,
-                order_row.order_number
+                order_row.order_number,
+                order_row.currency
               ORDER BY
                 return_row.created_at DESC
               LIMIT 250
