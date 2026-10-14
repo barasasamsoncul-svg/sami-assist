@@ -1695,7 +1695,7 @@ test('Sales roadmap Part 11 owns tenant-scoped leads and opportunity pipeline', 
   assert.match(pipeline,/numberInput\(input\.expectedValue/);
   assert.match(pipeline,/input\.expectedCloseDate/);
   assert.match(pipeline,/context\.company\.currentCompany\.currency/);
-  assert.match(pipeline,/lead\.rows\[0\]\.status==='disqualified'/);
+  assert.match(pipeline,/lead\.rows\[0\]\.status === 'disqualified'/);
   assert.match(crmUi,/Expected deal value/);
   assert.match(crmUi,/Expected close date/);
   assert.match(crmUi,/Qualify lead/);
@@ -2068,13 +2068,16 @@ test('Sales Priority 13 supports searchable opportunity editing, loss reasons, c
   assert.ok(pipeline.includes('current_stage.stage_type AS current_stage_type'));
   assert.ok(pipeline.includes("currentStageType !== 'open' && targetStageType !== 'open'"));
   assert.ok(pipeline.includes('Reopen a won or lost opportunity before recording a different terminal outcome.'));
-  assert.ok(pipeline.includes('ON CONFLICT (company_id,name) DO UPDATE'));
+  assert.ok(pipeline.includes('sales_pipelines'));
+  assert.ok(pipeline.includes("LOWER(BTRIM(name))='won'"));
+  assert.ok(pipeline.includes("LOWER(BTRIM(name))='lost'"));
   assert.ok(pipeline.includes('is_active=TRUE'));
-  assert.ok(pipeline.includes('sales_pipeline_stages.is_active IS DISTINCT FROM TRUE'));
+  assert.ok(pipeline.includes('WHERE id=$1 AND company_id=$2 AND is_active=TRUE'));
   assert.ok(pipeline.includes('INSERT INTO sales_opportunity_stage_history'));
   assert.ok(pipeline.includes("won_at=CASE WHEN $5='won'"));
   assert.ok(pipeline.includes("lost_reason=CASE WHEN $5='lost' THEN $6 ELSE NULL END"));
-  assert.ok(pipeline.includes("Terminal stages must exist even when the company already has configured open stages."));
+  assert.ok(pipeline.includes("'Won',90,100,'won'"));
+  assert.ok(pipeline.includes("'Lost',100,0,'lost'"));
   assert.ok(pipeline.includes('o.won_at,o.lost_at,o.lost_reason'));
   assert.ok(pipeline.includes('FROM sales_opportunity_stage_history h'));
   assert.ok(pipeline.includes('opportunityHistory: opportunityHistory.rows'));
@@ -2605,7 +2608,7 @@ test('Sales lead-routing rules are tenant-scoped, priority ordered and migration
     source('lib/modules/first-party.ts'),
   ]);
 
-  assert.ok(manifest.includes('version: \'3.4.17\''));
+  assert.ok(manifest.includes('version: \'3.4.18\''));
   assert.ok(rules.includes('requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE)'));
   assert.ok(rules.includes('WHERE company_id=$1 AND deleted_at IS NULL'));
   assert.ok(rules.includes('A routing rule with that name or source match already exists.'));
