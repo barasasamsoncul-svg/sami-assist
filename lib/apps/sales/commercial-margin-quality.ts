@@ -170,55 +170,73 @@ export async function getSalesCommercialMarginQualityReport(): Promise<SalesComm
           document_type = 'order'
           AND status = 'confirmed'
         )
+      ),
+      report_rows AS (
+        SELECT
+          'summary'::text AS row_type,
+          s.document_type,
+          NULL::text AS id,
+          NULL::text AS document_number,
+          NULL::text AS customer_name,
+          NULL::text AS status,
+          NULL::date AS document_date,
+          s.currency,
+          s.document_count,
+          s.subtotal,
+          s.discount_amount,
+          s.net_value,
+          s.cost_total,
+          s.margin_amount,
+          s.weighted_margin_percent AS margin_percent,
+          s.average_discount_percent AS discount_percent,
+          s.low_margin_count,
+          s.high_discount_count,
+          NULL::text AS risk_reason
+        FROM summary s
+
+        UNION ALL
+
+        SELECT
+          'risk'::text AS row_type,
+          r.document_type,
+          r.id,
+          r.document_number,
+          r.customer_name,
+          r.status,
+          r.document_date,
+          r.currency,
+          NULL::int AS document_count,
+          r.subtotal,
+          r.discount_amount,
+          r.net_value,
+          r.cost_total,
+          r.margin_amount,
+          r.margin_percent,
+          r.discount_percent,
+          NULL::int AS low_margin_count,
+          NULL::int AS high_discount_count,
+          r.risk_reason
+        FROM risks r
+        WHERE r.margin_percent < $3 OR r.discount_percent >= $4
+      ),
+      ranked_rows AS (
+        SELECT report_rows.*,
+          ROW_NUMBER() OVER (
+            PARTITION BY row_type, currency
+            ORDER BY margin_percent ASC NULLS LAST,
+              discount_percent DESC NULLS LAST,
+              document_date ASC NULLS LAST,
+              document_number ASC NULLS LAST,
+              id ASC NULLS LAST
+          ) AS currency_rank
+        FROM report_rows
       )
-      SELECT
-        'summary'::text AS row_type,
-        s.document_type,
-        NULL::text AS id,
-        NULL::text AS document_number,
-        NULL::text AS customer_name,
-        NULL::text AS status,
-        NULL::date AS document_date,
-        s.currency,
-        s.document_count,
-        s.subtotal,
-        s.discount_amount,
-        s.net_value,
-        s.cost_total,
-        s.margin_amount,
-        s.weighted_margin_percent AS margin_percent,
-        s.average_discount_percent AS discount_percent,
-        s.low_margin_count,
-        s.high_discount_count,
-        NULL::text AS risk_reason
-      FROM summary s
-
-      UNION ALL
-
-      SELECT
-        'risk'::text AS row_type,
-        r.document_type,
-        r.id,
-        r.document_number,
-        r.customer_name,
-        r.status,
-        r.document_date,
-        r.currency,
-        NULL::int AS document_count,
-        r.subtotal,
-        r.discount_amount,
-        r.net_value,
-        r.cost_total,
-        r.margin_amount,
-        r.margin_percent,
-        r.discount_percent,
-        NULL::int AS low_margin_count,
-        NULL::int AS high_discount_count,
-        r.risk_reason
-      FROM risks r
-      WHERE r.margin_percent < $3 OR r.discount_percent >= $4
-      ORDER BY row_type DESC, currency ASC, margin_percent ASC NULLS LAST, discount_percent DESC NULLS LAST, document_date ASC NULLS LAST
-      LIMIT 350
+      SELECT *
+      FROM ranked_rows
+      WHERE row_type = 'summary' OR currency_rank <= 350
+      ORDER BY row_type DESC, currency ASC, margin_percent ASC NULLS LAST,
+        discount_percent DESC NULLS LAST, document_date ASC NULLS LAST,
+        document_number ASC NULLS LAST
     `,
     [context.companyId, context.company.currentCompany.currency, MARGIN_THRESHOLD_PERCENT, DISCOUNT_THRESHOLD_PERCENT],
   );

@@ -47,7 +47,9 @@ test('Sales commercial review queue is limited to open commercial documents and 
   assert.match(service, /status IN \('draft', 'sent', 'viewed', 'accepted'\)/);
   assert.match(service, /status = 'confirmed'/);
   assert.match(service, /WHERE r\.margin_percent < \$3 OR r\.discount_percent >= \$4/);
-  assert.match(service, /LIMIT 350/);
+  assert.match(service, /PARTITION BY row_type, currency/);
+  assert.match(service, /WHERE row_type = 'summary' OR currency_rank <= 350/);
+  assert.match(service, /ORDER BY row_type DESC, currency ASC/);
   assert.match(component, /Commercial review queue/);
   assert.match(page, /getSalesCommercialMarginQualityReport/);
   assert.match(page, /<SalesCommercialMarginQuality report=\{commercialMarginQuality\} \/>/);
