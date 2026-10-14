@@ -5,6 +5,7 @@ import Link from 'next/link';
 import {
   ArrowLeft,
   Boxes,
+  ChevronRight,
   LayoutDashboard,
   Menu,
   Sparkles,
@@ -173,7 +174,7 @@ function SalesSidebar({
                   {
                     showSection
                       ? (
-                        <p className="px-3 pb-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+                        <p className="px-3 pb-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
                           {
                             item
                               .sectionLabel
@@ -192,9 +193,9 @@ function SalesSidebar({
                         : undefined
                     }
                     className={[
-                      'group flex min-h-10 min-w-0 items-center gap-3 rounded-xl px-3 py-2 text-[11px] font-semibold transition',
+                      'group flex min-h-10 min-w-0 items-center gap-3 rounded-xl px-3 py-2 text-xs font-semibold transition',
                       active
-                        ? 'sami-nav-active-surface shadow-[var(--sami-shadow-sm)] ring-1 ring-[var(--sami-border)]'
+                        ? 'sami-nav-active-surface shadow-[var(--sami-shadow-sm)] ring-1 ring-blue-500/20'
                         : 'text-slate-500 hover:bg-[var(--sami-surface)] hover:text-slate-900 dark:text-slate-400 dark:hover:text-white',
                     ].join(
                       ' ',
@@ -273,10 +274,16 @@ export default function SalesModuleShell({
       unreadNotifications,
     );
 
+  const activePage =
+    appSidebarItems.find(
+      item => item.key === activeSidebarKey,
+    );
+
   return (
     <main
       data-sami-app="sales"
       data-sales-shell="standalone"
+      data-sales-active-view={activeSidebarKey}
       className="min-h-screen bg-[var(--sami-canvas)] text-slate-950 dark:text-white"
     >
       <div className="hidden lg:block">
@@ -362,12 +369,17 @@ export default function SalesModuleShell({
               <ArrowLeft className="h-4 w-4" />
             </Link>
 
-            <div className="min-w-0">
-              <p className="break-words whitespace-normal text-sm font-black">
-                Sales
+            <div className="min-w-0 flex-1">
+              <p className="flex min-w-0 items-center gap-1.5 text-xs">
+                <span className="shrink-0 text-slate-500">Sales</span>
+                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden="true" />
+                <span className="truncate font-black">{activePage?.label || 'Workspace'}</span>
               </p>
-              <p className="break-words whitespace-normal text-[10px] text-slate-500 sm:hidden">
-                {companyName}
+              <p
+                title={activePage?.description || undefined}
+                className="mt-0.5 hidden max-w-[min(52vw,640px)] truncate text-[11px] text-slate-500 sm:block"
+              >
+                {activePage?.description || `Sales workspace for ${companyName}`}
               </p>
             </div>
 

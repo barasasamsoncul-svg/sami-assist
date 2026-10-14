@@ -634,8 +634,10 @@ export default function SalesQuoteComposer({
         catalogItemId:
           item.id,
         description:
-          item.description ||
-          item.name,
+          item.isVariant
+            ? item.name
+            : item.description ||
+              item.name,
         sku:
           item.sku ||
           '',
@@ -1352,7 +1354,8 @@ export default function SalesQuoteComposer({
                             },
                           )
                       }
-                    />
+                    disabled={Boolean(line.catalogItemId)}
+                      />
 
                     <Input
                       label="Unit price"
@@ -1412,7 +1415,8 @@ export default function SalesQuoteComposer({
                             },
                           )
                       }
-                    />
+                    disabled={Boolean(line.catalogItemId)}
+                      />
 
                     <label>
                       <Label>
@@ -1484,7 +1488,8 @@ export default function SalesQuoteComposer({
                             },
                           )
                       }
-                    />
+                    disabled={Boolean(line.catalogItemId)}
+                      />
 
                     <Input
                       label="Tax name"
@@ -1501,7 +1506,8 @@ export default function SalesQuoteComposer({
                             },
                           )
                       }
-                    />
+                    disabled={Boolean(line.catalogItemId)}
+                      />
                   </div>
                 </div>
               ),
@@ -1704,6 +1710,8 @@ function Input({
     'text',
   required =
     false,
+  disabled =
+    false,
 }: {
   label:
     string;
@@ -1718,6 +1726,8 @@ function Input({
   type?:
     string;
   required?:
+    boolean;
+  disabled?:
     boolean;
 }) {
   return (
@@ -1736,6 +1746,9 @@ function Input({
         }
         required={
           required
+        }
+        disabled={
+          disabled
         }
         min={
           type ===
@@ -1756,7 +1769,7 @@ function Input({
                 .value,
             )
         }
-        className="mt-1 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+        className={"mt-1 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm" + (disabled ? " cursor-not-allowed opacity-60" : "")}
       />
     </label>
   );

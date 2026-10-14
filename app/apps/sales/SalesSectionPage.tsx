@@ -4,6 +4,7 @@ import {
 
 import SalesModuleShell from '@/app/apps/sales/SalesModuleShell';
 import SalesWorkspaceClient from '@/app/apps/sales/SalesWorkspaceClient';
+import SalesApprovalsManager from '@/app/apps/sales/SalesApprovalsManager';
 import SalesManagementInsights from '@/app/apps/sales/SalesManagementInsights';
 import SalesOpportunityFunnel from '@/app/apps/sales/SalesOpportunityFunnel';
 import SalesPipelineOutcomes from '@/app/apps/sales/SalesPipelineOutcomes';
@@ -284,7 +285,9 @@ export default async function SalesSectionPage({
         data.company.name
       }
     >
-      {managementInsights && opportunityFunnel && opportunityRiskQueue && pipelineOutcomeReport && pipelineVelocityReport && activityExecutionReport && representativePerformance && leadSourceEffectiveness && commissionPerformance && productPerformance && returnFulfillmentQuality && targetAttainmentReport && quotationEffectiveness && commercialMarginQuality ? (
+      {view === 'approvals' ? (
+        <SalesApprovalsManager />
+      ) : managementInsights && opportunityFunnel && opportunityRiskQueue && pipelineOutcomeReport && pipelineVelocityReport && activityExecutionReport && representativePerformance && leadSourceEffectiveness && commissionPerformance && productPerformance && returnFulfillmentQuality && targetAttainmentReport && quotationEffectiveness && commercialMarginQuality ? (
         <>
           <SalesManagementInsights
             data={managementInsights}

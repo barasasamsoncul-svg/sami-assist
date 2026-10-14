@@ -1590,6 +1590,9 @@ export async function setInvoicingCustomerStatus(
 export async function createInvoicingCatalogItem(
   input:
     Record<string, unknown>,
+  options?: {
+    standardCost?: number;
+  },
 ) {
   const context =
     await requireInvoicingContext(
@@ -1779,10 +1782,11 @@ export async function createInvoicingCatalogItem(
             default_tax_rate_id,
             default_tax_group_id,
             created_by,
-            updated_by
+            updated_by,
+            metadata
           )
           VALUES (
-            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11,$12::jsonb
           )
           RETURNING
             id,
@@ -1804,6 +1808,12 @@ export async function createInvoicingCatalogItem(
           effectiveTaxRateId,
           taxGroupId,
           context.userId,
+          options?.standardCost === undefined
+            ? JSON.stringify({})
+            : JSON.stringify({
+                standardCost: options.standardCost,
+                unitCost: options.standardCost,
+              }),
         ],
       );
 
@@ -1862,6 +1872,9 @@ export async function createInvoicingCatalogItem(
 export async function updateInvoicingCatalogItem(
   input:
     Record<string, unknown>,
+  options?: {
+    standardCost?: number;
+  },
 ) {
   const context =
     await requireInvoicingContext(
@@ -2091,6 +2104,25 @@ export async function updateInvoicingCatalogItem(
       throw new InvoicingError(
         'INVALID_INPUT',
         'Invoice item was not found.',
+      );
+    }
+
+    if (options?.standardCost !== undefined) {
+      await client.query(
+        `UPDATE invoicing_catalog_items
+         SET metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb,
+             updated_by = $4,
+             updated_at = NOW()
+         WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL`,
+        [
+          itemId,
+          context.companyId,
+          JSON.stringify({
+            standardCost: options.standardCost,
+            unitCost: options.standardCost,
+          }),
+          context.userId,
+        ],
       );
     }
 

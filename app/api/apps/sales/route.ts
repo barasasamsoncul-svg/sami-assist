@@ -19,6 +19,10 @@ import {
   changeSalesQuoteStatus,
   convertSalesQuoteToInvoice,
   createSalesCatalogItem,
+  createSalesProductVariant,
+  updateSalesProductVariant,
+  archiveSalesProductVariant,
+  bulkImportSalesCatalogItems,
   createSalesOrderFromQuote,
   createSalesOrderInvoice,
   createSalesCustomer,
@@ -35,6 +39,10 @@ import {
   getSalesPipelineData,
   getSalesLeadAssignmentHistory,
   createSalesPipeline,
+  createSalesPipelineStage,
+  updateSalesPipelineStage,
+  archiveSalesPipelineStage,
+  reorderSalesPipelineStages,
   createSalesLead,
   bulkReassignSalesLeads,
   bulkCreateSalesLeadActivities,
@@ -581,6 +589,14 @@ export async function POST(
       > = {
         create_pipeline:
           createSalesPipeline,
+        create_pipeline_stage:
+          createSalesPipelineStage,
+        update_pipeline_stage:
+          updateSalesPipelineStage,
+        archive_pipeline_stage:
+          archiveSalesPipelineStage,
+        reorder_pipeline_stages:
+          reorderSalesPipelineStages,
         create_lead:
           createSalesLead,
         bulk_reassign_leads:
@@ -619,6 +635,14 @@ export async function POST(
           updateSalesCustomer,
         create_catalog_item:
           createSalesCatalogItem,
+        create_product_variant:
+          createSalesProductVariant,
+        update_product_variant:
+          updateSalesProductVariant,
+        archive_product_variant:
+          archiveSalesProductVariant,
+        bulk_import_catalog_items:
+          bulkImportSalesCatalogItems,
         update_catalog_item:
           updateSalesCatalogItem,
         apply_quote_template:

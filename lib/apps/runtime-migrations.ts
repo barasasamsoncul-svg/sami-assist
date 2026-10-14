@@ -15,6 +15,7 @@ import { SALES_3_4_14_TO_3_4_15 } from '@/lib/apps/sales/migrations/3.4.14-to-3.
 import { SALES_3_4_15_TO_3_4_16 } from '@/lib/apps/sales/migrations/3.4.15-to-3.4.16';
 import { SALES_3_4_16_TO_3_4_17 } from '@/lib/apps/sales/migrations/3.4.16-to-3.4.17';
 import { SALES_3_4_17_TO_3_4_18 } from '@/lib/apps/sales/migrations/3.4.17-to-3.4.18';
+import { SALES_3_4_18_TO_3_4_19 } from '@/lib/apps/sales/migrations/3.4.18-to-3.4.19';
 import { ACCOUNTING_2_33_0_TO_2_34_0 } from '@/lib/apps/accounting/migrations/2.33.0-to-2.34.0';
 import { INVOICING_2_22_0_TO_2_23_0 } from '@/lib/apps/invoicing/migrations/2.22.0-to-2.23.0';
 import { INVOICING_2_21_0_TO_2_22_0 } from '@/lib/apps/invoicing/migrations/2.21.0-to-2.22.0';
@@ -298,6 +299,7 @@ export const SALES_RUNTIME_MIGRATIONS:
     SALES_3_4_15_TO_3_4_16,
     SALES_3_4_16_TO_3_4_17,
     SALES_3_4_17_TO_3_4_18,
+    SALES_3_4_18_TO_3_4_19,
   ];
 
 export const INVOICING_RUNTIME_MIGRATIONS:

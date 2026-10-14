@@ -1460,3 +1460,31 @@ CREATE INDEX IF NOT EXISTS idx_sales_lead_assignment_history_timeline
 
 CREATE INDEX IF NOT EXISTS idx_sales_lead_assignment_history_actor
   ON public.sales_lead_assignment_history(company_id, changed_by, created_at DESC);
+
+
+-- Product variants are first-class, company-scoped records. Each variant is
+-- also represented by its own invoicing_catalog_items row so quote, order and
+-- invoice lines keep the exact SKU/name/price snapshot selected by the user.
+CREATE TABLE IF NOT EXISTS public.sales_product_variants (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  base_catalog_item_id UUID NOT NULL,
+  variant_catalog_item_id UUID NOT NULL,
+  variant_label VARCHAR(180) NOT NULL,
+  sku VARCHAR(120) NOT NULL,
+  attributes JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(attributes) = 'array'),
+  unit_price NUMERIC(18,4) NOT NULL DEFAULT 0 CHECK (unit_price >= 0),
+  unit_cost NUMERIC(18,4) NOT NULL DEFAULT 0 CHECK (unit_cost >= 0),
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_by UUID,
+  updated_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_product_variants_catalog_item
+  ON public.sales_product_variants(company_id, variant_catalog_item_id) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_product_variants_sku
+  ON public.sales_product_variants(company_id, LOWER(BTRIM(sku))) WHERE deleted_at IS NULL AND is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_sales_product_variants_parent
+  ON public.sales_product_variants(company_id, base_catalog_item_id, is_active, variant_label) WHERE deleted_at IS NULL;

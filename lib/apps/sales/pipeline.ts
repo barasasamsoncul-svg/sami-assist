@@ -100,16 +100,22 @@ async function ensurePipelineStages(
     );
     await pool.query(
       `UPDATE sales_pipeline_stages
-       SET stage_type='won',probability=100,sequence=90,updated_by=$3,updated_at=NOW()
+       SET stage_type='won',probability=100,
+           sequence=COALESCE((SELECT MAX(s.sequence)+10 FROM sales_pipeline_stages s WHERE s.company_id=$1 AND s.pipeline_id=$2 AND s.stage_type='open' AND s.is_active=TRUE),10),
+           updated_by=$3,updated_at=NOW()
        WHERE company_id=$1 AND pipeline_id=$2 AND LOWER(BTRIM(name))='won'
-         AND (stage_type IS DISTINCT FROM 'won' OR probability IS DISTINCT FROM 100 OR sequence IS DISTINCT FROM 90)`,
+         AND (stage_type IS DISTINCT FROM 'won' OR probability IS DISTINCT FROM 100
+           OR sequence IS DISTINCT FROM COALESCE((SELECT MAX(s.sequence)+10 FROM sales_pipeline_stages s WHERE s.company_id=$1 AND s.pipeline_id=$2 AND s.stage_type='open' AND s.is_active=TRUE),10))`,
       [companyId, pipelineId, userId],
     );
     await pool.query(
       `UPDATE sales_pipeline_stages
-       SET stage_type='lost',probability=0,sequence=100,updated_by=$3,updated_at=NOW()
+       SET stage_type='lost',probability=0,
+           sequence=COALESCE((SELECT MAX(s.sequence)+20 FROM sales_pipeline_stages s WHERE s.company_id=$1 AND s.pipeline_id=$2 AND s.stage_type='open' AND s.is_active=TRUE),20),
+           updated_by=$3,updated_at=NOW()
        WHERE company_id=$1 AND pipeline_id=$2 AND LOWER(BTRIM(name))='lost'
-         AND (stage_type IS DISTINCT FROM 'lost' OR probability IS DISTINCT FROM 0 OR sequence IS DISTINCT FROM 100)`,
+         AND (stage_type IS DISTINCT FROM 'lost' OR probability IS DISTINCT FROM 0
+           OR sequence IS DISTINCT FROM COALESCE((SELECT MAX(s.sequence)+20 FROM sales_pipeline_stages s WHERE s.company_id=$1 AND s.pipeline_id=$2 AND s.stage_type='open' AND s.is_active=TRUE),20))`,
       [companyId, pipelineId, userId],
     );
   }
@@ -1590,4 +1596,241 @@ export async function moveSalesOpportunity(input: Record<string, unknown>) {
   } finally {
     client.release();
   }
+}
+
+
+async function normalizePipelineTerminalSequences(
+  client: PoolClient,
+  companyId: string,
+  pipelineId: string,
+  userId: string,
+) {
+  await client.query(
+    `UPDATE sales_pipeline_stages
+     SET sequence=COALESCE((SELECT MAX(s.sequence)+10 FROM sales_pipeline_stages s
+       WHERE s.company_id=$1 AND s.pipeline_id=$2 AND s.stage_type='open' AND s.is_active=TRUE),10),
+       updated_by=$3,updated_at=NOW()
+     WHERE company_id=$1 AND pipeline_id=$2 AND stage_type='won' AND is_active=TRUE AND LOWER(BTRIM(name))='won'`,
+    [companyId, pipelineId, userId],
+  );
+  await client.query(
+    `UPDATE sales_pipeline_stages
+     SET sequence=COALESCE((SELECT MAX(s.sequence)+20 FROM sales_pipeline_stages s
+       WHERE s.company_id=$1 AND s.pipeline_id=$2 AND s.stage_type='open' AND s.is_active=TRUE),20),
+       updated_by=$3,updated_at=NOW()
+     WHERE company_id=$1 AND pipeline_id=$2 AND stage_type='lost' AND is_active=TRUE AND LOWER(BTRIM(name))='lost'`,
+    [companyId, pipelineId, userId],
+  );
+}
+
+async function recordPipelineStageActivity(
+  client: PoolClient, companyId: string, userId: string, recordId: string,
+  type: string, content: string, metadata: Record<string, unknown>,
+) {
+  await client.query(
+    `INSERT INTO activities (company_id,user_id,model,record_id,type,content,metadata)
+     VALUES ($1,$2,'sales.pipeline.stage',$3,$4,$5,$6::jsonb)`,
+    [companyId, userId, recordId, type, content, JSON.stringify(metadata)],
+  );
+}
+
+export async function createSalesPipelineStage(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
+  const pipelineId = requireUuid(input.pipelineId, 'Sales pipeline');
+  const name = cleanText(input.name, 120);
+  if (!name) throw new SalesError('INVALID_INPUT', 'Enter a name for the pipeline stage.');
+  if (['won', 'lost'].includes(name.toLowerCase())) throw new SalesError('INVALID_INPUT', 'Won and Lost are reserved terminal stage names.');
+  const probability = numberInput(input.probability ?? 20, 'Stage probability', { min: 0, max: 100 });
+  const client = await context.pool.connect();
+  try {
+    await client.query('BEGIN');
+    const pipeline = await client.query(
+      `SELECT id FROM sales_pipelines WHERE id=$1 AND company_id=$2 AND is_active=TRUE AND deleted_at IS NULL FOR SHARE`,
+      [pipelineId, context.companyId],
+    );
+    if (!pipeline.rows[0]) throw new SalesError('INVALID_INPUT', 'The selected sales pipeline is not available in this company.');
+    const duplicate = await client.query(
+      `SELECT id FROM sales_pipeline_stages WHERE company_id=$1 AND pipeline_id=$2 AND LOWER(BTRIM(name))=LOWER(BTRIM($3)) LIMIT 1 FOR UPDATE`,
+      [context.companyId, pipelineId, name],
+    );
+    if (duplicate.rows[0]) throw new SalesError('INVALID_INPUT', 'A stage with that name already exists in this pipeline.');
+    const seq = await client.query(
+      `SELECT COALESCE(MAX(sequence),0)+10 AS next_sequence FROM sales_pipeline_stages
+       WHERE company_id=$1 AND pipeline_id=$2 AND stage_type='open' AND is_active=TRUE`,
+      [context.companyId, pipelineId],
+    );
+    const sequence = Number(seq.rows[0]?.next_sequence || 10);
+    const created = await client.query(
+      `INSERT INTO sales_pipeline_stages
+       (company_id,pipeline_id,name,sequence,probability,stage_type,is_active,created_by,updated_by)
+       VALUES ($1,$2,$3,$4,$5,'open',TRUE,$6,$6)
+       RETURNING id,pipeline_id,name,sequence,probability,stage_type,is_active`,
+      [context.companyId, pipelineId, name, sequence, probability, context.userId],
+    );
+    const stage = created.rows[0];
+    if (!stage) throw new SalesError('INVALID_INPUT', 'The pipeline stage could not be created.');
+    await normalizePipelineTerminalSequences(client, context.companyId, pipelineId, context.userId);
+    await recordPipelineStageActivity(client, context.companyId, context.userId, String(stage.id),
+      'sales.pipeline.stage.created', 'Created opportunity pipeline stage ' + name + '.',
+      { pipelineId, stageId: stage.id, name, sequence, probability });
+    await client.query('COMMIT');
+    return stage;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally { client.release(); }
+}
+
+export async function updateSalesPipelineStage(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
+  const stageId = requireUuid(input.stageId, 'Pipeline stage');
+  const name = cleanText(input.name, 120);
+  if (!name) throw new SalesError('INVALID_INPUT', 'Enter a name for the pipeline stage.');
+  if (['won', 'lost'].includes(name.toLowerCase())) throw new SalesError('INVALID_INPUT', 'Won and Lost are reserved terminal stage names.');
+  const probability = numberInput(input.probability, 'Stage probability', { min: 0, max: 100 });
+  const client = await context.pool.connect();
+  try {
+    await client.query('BEGIN');
+    const currentResult = await client.query(
+      `SELECT id,pipeline_id,name,sequence,probability,stage_type FROM sales_pipeline_stages
+       WHERE id=$1 AND company_id=$2 AND is_active=TRUE FOR UPDATE`,
+      [stageId, context.companyId],
+    );
+    const current = currentResult.rows[0];
+    if (!current) throw new SalesError('INVALID_INPUT', 'The pipeline stage was not found.');
+    if (String(current.stage_type) !== 'open' || ['won','lost'].includes(String(current.name).trim().toLowerCase())) {
+      throw new SalesError('INVALID_INPUT', 'The terminal Won and Lost stages cannot be edited.');
+    }
+    const duplicate = await client.query(
+      `SELECT id FROM sales_pipeline_stages WHERE company_id=$1 AND pipeline_id=$2
+       AND LOWER(BTRIM(name))=LOWER(BTRIM($3)) AND id<>$4 LIMIT 1 FOR UPDATE`,
+      [context.companyId, current.pipeline_id, name, stageId],
+    );
+    if (duplicate.rows[0]) throw new SalesError('INVALID_INPUT', 'A stage with that name already exists in this pipeline.');
+    const updated = await client.query(
+      `UPDATE sales_pipeline_stages SET name=$3,probability=$4,updated_by=$5,updated_at=NOW()
+       WHERE id=$1 AND company_id=$2 AND is_active=TRUE
+       RETURNING id,pipeline_id,name,sequence,probability,stage_type,is_active`,
+      [stageId, context.companyId, name, probability, context.userId],
+    );
+    await normalizePipelineTerminalSequences(client, context.companyId, String(current.pipeline_id), context.userId);
+    await recordPipelineStageActivity(client, context.companyId, context.userId, stageId,
+      'sales.pipeline.stage.updated', 'Updated opportunity pipeline stage ' + name + '.',
+      { pipelineId: current.pipeline_id, stageId, name, previousName: current.name, probability });
+    await client.query('COMMIT');
+    return updated.rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally { client.release(); }
+}
+
+export async function archiveSalesPipelineStage(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
+  const stageId = requireUuid(input.stageId, 'Pipeline stage');
+  const client = await context.pool.connect();
+  try {
+    await client.query('BEGIN');
+    const currentResult = await client.query(
+      `SELECT id,pipeline_id,name,stage_type FROM sales_pipeline_stages
+       WHERE id=$1 AND company_id=$2 AND is_active=TRUE FOR UPDATE`,
+      [stageId, context.companyId],
+    );
+    const stage = currentResult.rows[0];
+    if (!stage) throw new SalesError('INVALID_INPUT', 'The pipeline stage was not found.');
+    if (String(stage.stage_type) !== 'open' || ['won','lost'].includes(String(stage.name).trim().toLowerCase())) {
+      throw new SalesError('INVALID_INPUT', 'Won and Lost are terminal stages and cannot be archived.');
+    }
+    const count = await client.query(
+      `SELECT COUNT(*)::int AS count FROM sales_pipeline_stages
+       WHERE company_id=$1 AND pipeline_id=$2 AND stage_type='open' AND is_active=TRUE`,
+      [context.companyId, stage.pipeline_id],
+    );
+    if (Number(count.rows[0]?.count || 0) <= 1) {
+      throw new SalesError('INVALID_INPUT', 'A pipeline must keep at least one active open stage.');
+    }
+    const targetResult = await client.query(
+      `SELECT id,name,probability FROM sales_pipeline_stages
+       WHERE company_id=$1 AND pipeline_id=$2 AND stage_type='open' AND is_active=TRUE AND id<>$3
+       ORDER BY sequence,name,id LIMIT 1 FOR UPDATE`,
+      [context.companyId, stage.pipeline_id, stageId],
+    );
+    const target = targetResult.rows[0];
+    if (!target) throw new SalesError('INVALID_INPUT', 'No active destination stage is available.');
+    const affected = await client.query(
+      `SELECT id FROM sales_opportunities WHERE company_id=$1 AND stage_id=$2 AND deleted_at IS NULL FOR UPDATE`,
+      [context.companyId, stageId],
+    );
+    for (const opportunity of affected.rows) {
+      await client.query(
+        `UPDATE sales_opportunities SET stage_id=$3,probability=$4,updated_by=$5,updated_at=NOW()
+         WHERE id=$1 AND company_id=$2`,
+        [opportunity.id, context.companyId, target.id, Number(target.probability), context.userId],
+      );
+      await client.query(
+        `INSERT INTO sales_opportunity_stage_history
+         (company_id,opportunity_id,from_stage_id,to_stage_id,probability,reason,changed_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [context.companyId, opportunity.id, stageId, target.id, Number(target.probability), 'Stage archived: ' + String(stage.name), context.userId],
+      );
+    }
+    await client.query(
+      `UPDATE sales_pipeline_stages SET is_active=FALSE,updated_by=$3,updated_at=NOW()
+       WHERE id=$1 AND company_id=$2`,
+      [stageId, context.companyId, context.userId],
+    );
+    await normalizePipelineTerminalSequences(client, context.companyId, String(stage.pipeline_id), context.userId);
+    await recordPipelineStageActivity(client, context.companyId, context.userId, stageId,
+      'sales.pipeline.stage.archived', 'Archived opportunity pipeline stage ' + String(stage.name) + '.',
+      { pipelineId: stage.pipeline_id, stageId, movedOpportunities: affected.rows.length, destinationStageId: target.id });
+    await client.query('COMMIT');
+    return { id: stageId, movedOpportunities: affected.rows.length, destinationStageId: String(target.id) };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally { client.release(); }
+}
+
+export async function reorderSalesPipelineStages(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
+  const pipelineId = requireUuid(input.pipelineId, 'Sales pipeline');
+  if (!Array.isArray(input.stageIds) || input.stageIds.length < 1 || input.stageIds.length > 100) {
+    throw new SalesError('INVALID_INPUT', 'Choose the complete ordered list of active pipeline stages.');
+  }
+  const stageIds = input.stageIds.map((value, index) => requireUuid(value, 'Stage ' + String(index + 1)));
+  if (new Set(stageIds).size !== stageIds.length) throw new SalesError('INVALID_INPUT', 'A pipeline stage can appear only once in the stage order.');
+  const client = await context.pool.connect();
+  try {
+    await client.query('BEGIN');
+    const pipeline = await client.query(
+      `SELECT id FROM sales_pipelines WHERE id=$1 AND company_id=$2 AND is_active=TRUE AND deleted_at IS NULL FOR SHARE`,
+      [pipelineId, context.companyId],
+    );
+    if (!pipeline.rows[0]) throw new SalesError('INVALID_INPUT', 'The selected sales pipeline is not available in this company.');
+    const currentResult = await client.query(
+      `SELECT id FROM sales_pipeline_stages WHERE company_id=$1 AND pipeline_id=$2
+       AND stage_type='open' AND is_active=TRUE ORDER BY sequence,name,id FOR UPDATE`,
+      [context.companyId, pipelineId],
+    );
+    const currentIds = currentResult.rows.map((row: {id: string}) => String(row.id));
+    if (currentIds.length !== stageIds.length || currentIds.some(id => !stageIds.includes(id))) {
+      throw new SalesError('INVALID_INPUT', 'Stage order must include every active open stage in this pipeline exactly once.');
+    }
+    for (let i = 0; i < stageIds.length; i++) {
+      await client.query(
+        `UPDATE sales_pipeline_stages SET sequence=$3,updated_by=$4,updated_at=NOW()
+         WHERE id=$1 AND company_id=$2 AND pipeline_id=$5 AND stage_type='open' AND is_active=TRUE`,
+        [stageIds[i], context.companyId, (i + 1) * 10, context.userId, pipelineId],
+      );
+    }
+    await normalizePipelineTerminalSequences(client, context.companyId, pipelineId, context.userId);
+    await recordPipelineStageActivity(client, context.companyId, context.userId, pipelineId,
+      'sales.pipeline.stage.reordered', 'Reordered active opportunity pipeline stages.',
+      { pipelineId, stageIds });
+    await client.query('COMMIT');
+    return { pipelineId, stageIds };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally { client.release(); }
 }

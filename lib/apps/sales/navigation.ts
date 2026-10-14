@@ -20,6 +20,7 @@ export const SALES_ROUTE_VIEWS = [
   'organization',
   'operations',
   'reports',
+  'approvals',
   'settings',
 ] as const;
 
@@ -332,6 +333,23 @@ export const SALES_NAVIGATION:
         'Insights',
       capability:
         'canViewReports',
+      sidebar:
+        true,
+    },
+
+    approvals: {
+      href:
+        '/apps/sales/approvals',
+      title:
+        'Quotation approval policies',
+      label:
+        'Quote Approvals',
+      description:
+        'Configure sequential review rules and process pending quotations.',
+      group:
+        'Configuration',
+      capability:
+        'canManageSettings',
       sidebar:
         true,
     },

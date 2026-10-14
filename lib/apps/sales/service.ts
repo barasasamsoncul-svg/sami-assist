@@ -116,6 +116,10 @@ export {
 
 export {
   createSalesPipeline,
+  createSalesPipelineStage,
+  updateSalesPipelineStage,
+  archiveSalesPipelineStage,
+  reorderSalesPipelineStages,
   createSalesLead,
   bulkReassignSalesLeads,
   bulkCreateSalesLeadActivities,
@@ -139,3 +143,11 @@ export {
 export { getSalesLeadAssignmentRules, saveSalesLeadAssignmentRule, deleteSalesLeadAssignmentRule } from '@/lib/apps/sales/lead-assignment-rules';
 
 export { getSalesQuoteApprovalData, saveSalesQuoteApprovalPolicy } from '@/lib/apps/sales/approvals';
+
+
+export {
+  createSalesProductVariant,
+  updateSalesProductVariant,
+  archiveSalesProductVariant,
+  bulkImportSalesCatalogItems,
+} from '@/lib/apps/sales/product-variants';

@@ -637,6 +637,38 @@ export async function saveSalesPricelist(
       input.rules !==
         undefined
     ) {
+      const scopedCatalogItemIds = [
+        ...new Set(
+          rules
+            .map(rule => rule.catalogItemId)
+            .filter((itemId): itemId is string => Boolean(itemId)),
+        ),
+      ];
+
+      if (scopedCatalogItemIds.length > 0) {
+        const validCatalogItems = await client.query(
+          `
+            SELECT id
+            FROM invoicing_catalog_items
+            WHERE company_id = $1
+              AND id = ANY($2::uuid[])
+              AND is_active = TRUE
+              AND deleted_at IS NULL
+          `,
+          [
+            context.companyId,
+            scopedCatalogItemIds,
+          ],
+        );
+
+        if (validCatalogItems.rows.length !== scopedCatalogItemIds.length) {
+          throw new SalesError(
+            'INVALID_INPUT',
+            'Every product-specific pricelist rule must reference an active catalogue item in this company.',
+          );
+        }
+      }
+
       await client.query(
         `
           DELETE FROM sales_pricelist_rules

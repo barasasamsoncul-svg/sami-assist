@@ -192,8 +192,10 @@ export default function SalesOptionalProductsEditor({
         catalogItemId:
           product.id,
         description:
-          product.description ||
-          product.name,
+          product.isVariant
+            ? product.name
+            : product.description ||
+              product.name,
         sku:
           product.sku ||
           '',

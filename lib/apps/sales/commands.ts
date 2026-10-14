@@ -152,18 +152,36 @@ export async function createSalesCatalogItem(
   input:
     Record<string, unknown>,
 ) {
-  await requireSalesContext(
+  const context = await requireSalesContext(
     SALES_PERMISSIONS
       .QUOTE_CREATE,
   );
 
   try {
+    const rawCost = input.unitCost;
+    let standardCost: number | undefined;
+    if (rawCost !== undefined && rawCost !== null && String(rawCost).trim() !== '') {
+      if (!crossPermission(context, SALES_PERMISSIONS.MARGIN_MANAGE)) {
+        throw new SalesError(
+          'SALES_PERMISSION_REQUIRED',
+          'Margin-management permission is required to set catalogue cost.',
+        );
+      }
+      standardCost = numberInput(rawCost, 'Unit cost', { min: 0 });
+    }
+
+    const catalogInput = { ...input };
+    delete catalogInput.unitCost;
     return await createInvoicingCatalogItem(
-      input,
+      catalogInput,
+      standardCost === undefined ? undefined : { standardCost },
     );
   } catch (
     error
   ) {
+    if (error instanceof SalesError) {
+      throw error;
+    }
     return translateCatalogMasterError(
       error,
     );
@@ -175,18 +193,36 @@ export async function updateSalesCatalogItem(
   input:
     Record<string, unknown>,
 ) {
-  await requireSalesContext(
+  const context = await requireSalesContext(
     SALES_PERMISSIONS
       .QUOTE_EDIT,
   );
 
   try {
+    const rawCost = input.unitCost;
+    let standardCost: number | undefined;
+    if (rawCost !== undefined && rawCost !== null && String(rawCost).trim() !== '') {
+      if (!crossPermission(context, SALES_PERMISSIONS.MARGIN_MANAGE)) {
+        throw new SalesError(
+          'SALES_PERMISSION_REQUIRED',
+          'Margin-management permission is required to set catalogue cost.',
+        );
+      }
+      standardCost = numberInput(rawCost, 'Unit cost', { min: 0 });
+    }
+
+    const catalogInput = { ...input };
+    delete catalogInput.unitCost;
     return await updateInvoicingCatalogItem(
-      input,
+      catalogInput,
+      standardCost === undefined ? undefined : { standardCost },
     );
   } catch (
     error
   ) {
+    if (error instanceof SalesError) {
+      throw error;
+    }
     return translateCatalogMasterError(
       error,
     );
@@ -992,10 +1028,9 @@ async function normalizeQuoteLines(
 
     const taxRate =
       numberInput(
-        item.taxRate ??
         catalog
-          ?.tax_rate ??
-        0,
+          ? catalog.tax_rate ?? 0
+          : item.taxRate ?? 0,
         'Tax rate',
         {
           min:
@@ -1082,17 +1117,16 @@ async function normalizeQuoteLines(
       description,
       sku:
         nullableText(
-          item.sku ||
           catalog
-            ?.sku,
+            ? catalog.sku
+            : item.sku,
           180,
         ),
       unit:
         cleanText(
-          item.unit ||
           catalog
-            ?.unit ||
-          'unit',
+            ? catalog.unit
+            : item.unit || 'unit',
           60,
         ) ||
         'unit',
@@ -1107,9 +1141,9 @@ async function normalizeQuoteLines(
       discountAmount,
       taxName:
         nullableText(
-          item.taxName ||
           catalog
-            ?.tax_name,
+            ? catalog.tax_name
+            : item.taxName,
           180,
         ),
       taxRate,
