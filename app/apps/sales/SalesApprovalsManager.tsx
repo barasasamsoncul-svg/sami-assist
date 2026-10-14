@@ -102,7 +102,7 @@ export default function SalesApprovalsManager() {
   }
 
   return (
-    <main className="space-y-5">
+    <div className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-black uppercase tracking-widest text-blue-600">SaMi Sales · Part 11</p>
@@ -192,6 +192,6 @@ export default function SalesApprovalsManager() {
           ))}
         </div>
       </section>
-    </main>
+    </div>
   );
 }
