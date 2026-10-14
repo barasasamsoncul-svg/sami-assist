@@ -67,6 +67,7 @@ import {
   saveSalesLeadAssignmentRule,
   deleteSalesLeadAssignmentRule,
   bulkSendSalesQuotes,
+  bulkInvoiceSalesOrders,
   getSalesWorkspaceData,
   issueSalesReturnCredit,
   markSalesCommissionPaid,
@@ -671,6 +672,8 @@ export async function POST(
           refundSalesReturnCredit,
         bulk_send_quotes:
           bulkSendSalesQuotes,
+        bulk_invoice_orders:
+          bulkInvoiceSalesOrders,
         send_quote:
           sendSalesQuote,
         change_quote_status:

@@ -25,6 +25,10 @@ export {
   bulkSendSalesQuotes,
 } from '@/lib/apps/sales/bulk-send';
 
+export {
+  bulkInvoiceSalesOrders,
+} from '@/lib/apps/sales/bulk-invoice';
+
 
 export {
   getSalesOrderDetail,

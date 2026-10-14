@@ -511,6 +511,8 @@ function exportSales(
     SalesWorkspaceData,
   selectedQuotes?:
     SalesWorkspaceData['quotes'],
+  selectedOrders?:
+    SalesWorkspaceData['orders'],
 ) {
   const rows: (
     string |
@@ -530,8 +532,10 @@ function exportSales(
   ];
 
   const quotesToExport =
-    selectedQuotes ??
-    data.quotes;
+    selectedOrders
+      ? []
+      : selectedQuotes ??
+        data.quotes;
 
   rows.push(
     ...quotesToExport.map(
@@ -547,7 +551,21 @@ function exportSales(
     ),
   );
 
-  if (!selectedQuotes) {
+  if (selectedOrders) {
+    rows.push(
+      ...selectedOrders.map(
+        order => [
+          'Sales order',
+          order.orderNumber,
+          order.customerName,
+          order.status,
+          order.orderDate,
+          order.currency,
+          order.totalAmount,
+        ],
+      ),
+    );
+  } else if (!selectedQuotes) {
     rows.push(
       ...data.orders.map(
         order => [
@@ -614,7 +632,9 @@ function exportSales(
     (
       selectedQuotes
         ? 'sales-quotations-selected-'
-        : 'sales-register-'
+        : selectedOrders
+          ? 'sales-orders-selected-'
+          : 'sales-register-'
     ) +
     new Date()
       .toISOString()
@@ -801,6 +821,20 @@ export default function SalesWorkspaceClient({
   ] =
     useState<string[]>(
       [],
+    );
+
+  const [
+    selectedOrderIds,
+    setSelectedOrderIds,
+  ] =
+    useState<string[]>(
+      [],
+    );
+
+  // Retain per-order invoice retry keys when a request response is interrupted.
+  const bulkInvoiceIdempotencyKeys =
+    useRef<Record<string, string>>(
+      {},
     );
 
   const [
@@ -1143,6 +1177,29 @@ export default function SalesWorkspaceClient({
       ],
     );
 
+  const allVisibleOrdersSelected =
+    visibleOrders.length > 0 &&
+    visibleOrders.every(
+      order => selectedOrderIds.includes(order.id),
+    );
+
+  const invoiceableSelectedOrderIds =
+    useMemo(
+      () =>
+        initialData.orders
+          .filter(
+            order =>
+              selectedOrderIds.includes(order.id) &&
+              order.status === 'confirmed' &&
+              order.invoiceStatus !== 'invoiced',
+          )
+          .map(order => order.id),
+      [
+        initialData.orders,
+        selectedOrderIds,
+      ],
+    );
+
   async function saveCurrentQuoteView() {
     const name = savedViewName.trim();
 
@@ -1241,6 +1298,7 @@ export default function SalesWorkspaceClient({
     setSearch(view.searchQuery);
     setOrderSortBy(view.sortBy);
     setSelectedQuoteIds([]);
+    setSelectedOrderIds([]);
   }
 
 
@@ -1330,6 +1388,99 @@ export default function SalesWorkspaceClient({
         error instanceof Error
           ? error.message
           : 'SaMi could not send the selected quotations.',
+      );
+    }
+  }
+
+  async function bulkInvoiceSelectedOrders() {
+    const orderIds = invoiceableSelectedOrderIds;
+
+    if (orderIds.length === 0) {
+      showWarning(
+        'No invoiceable orders selected',
+        'Select confirmed orders that are not yet fully invoiced.',
+      );
+      return;
+    }
+
+    if (orderIds.length > 25) {
+      showWarning(
+        'Batch is too large',
+        'Invoice at most 25 sales orders at a time.',
+      );
+      return;
+    }
+
+    if (!window.confirm(
+      'Create a separate invoice for each of the ' + orderIds.length +
+      ' selected order(s)? Each order follows its own invoice policy. Successful retries reuse the original invoice.',
+    )) {
+      return;
+    }
+
+    const orders = orderIds.map(orderId => {
+      let idempotencyKey = bulkInvoiceIdempotencyKeys.current[orderId];
+
+      if (!idempotencyKey) {
+        idempotencyKey = 'sales-bulk-' + crypto.randomUUID();
+        bulkInvoiceIdempotencyKeys.current[orderId] = idempotencyKey;
+      }
+
+      return { orderId, idempotencyKey };
+    });
+
+    try {
+      const result = await request({
+        action: 'bulk_invoice_orders',
+        orders,
+      });
+
+      const outcomes = Array.isArray(result.results)
+        ? result.results as Array<{
+            orderId: string;
+            success: boolean;
+            invoiceId?: string;
+            reused?: boolean;
+            error?: string;
+          }>
+        : [];
+      const successes = outcomes.filter(outcome => outcome.success);
+      const failures = outcomes.filter(outcome => !outcome.success);
+
+      for (const outcome of successes) {
+        delete bulkInvoiceIdempotencyKeys.current[outcome.orderId];
+      }
+
+      if (failures.length > 0) {
+        setSelectedOrderIds(failures.map(outcome => outcome.orderId));
+        const details = failures
+          .slice(0, 3)
+          .map(outcome => {
+            const order = initialData.orders.find(item => item.id === outcome.orderId);
+            return (order?.orderNumber || 'Sales order') + ': ' +
+              (outcome.error || 'Invoice creation failed');
+          })
+          .join(' · ');
+
+        showWarning(
+          'Some orders could not be invoiced',
+          successes.length + ' succeeded; ' + failures.length + ' failed.' +
+            (details ? ' ' + details : ''),
+        );
+      } else {
+        setSelectedOrderIds([]);
+        showSuccess(
+          'Invoices created',
+          successes.length + ' sales-order invoice(s) created or safely recovered.',
+        );
+      }
+    } catch (error) {
+      showError(
+        'Bulk invoicing interrupted',
+        (error instanceof Error
+          ? error.message
+          : 'SaMi could not complete bulk invoicing.') +
+          ' Retry the same selection; request keys are retained to prevent duplicate invoices.',
       );
     }
   }
@@ -1735,6 +1886,7 @@ export default function SalesWorkspaceClient({
                   value => {
                     setSearch(value);
                     setSelectedQuoteIds([]);
+                    setSelectedOrderIds([]);
                   }
                 }
                 onExport={
@@ -2273,7 +2425,10 @@ export default function SalesWorkspaceClient({
                   search
                 }
                 setSearch={
-                  setSearch
+                  value => {
+                    setSearch(value);
+                    setSelectedOrderIds([]);
+                  }
                 }
                 onExport={
                   () =>
@@ -2298,7 +2453,10 @@ export default function SalesWorkspaceClient({
                         key={option.key}
                         type="button"
                         aria-pressed={orderStatusView === option.key}
-                        onClick={() => setOrderStatusView(option.key)}
+                        onClick={() => {
+                          setOrderStatusView(option.key);
+                          setSelectedOrderIds([]);
+                        }}
                         className={[
                           'inline-flex min-h-9 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition-colors',
                           orderStatusView === option.key
@@ -2441,7 +2599,10 @@ export default function SalesWorkspaceClient({
                     <button
                       type="button"
                       aria-pressed={orderDisplayMode === 'cards'}
-                      onClick={() => setOrderDisplayMode('cards')}
+                      onClick={() => {
+                        setOrderDisplayMode('cards');
+                        setSelectedOrderIds([]);
+                      }}
                       className={[
                         'inline-flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-bold',
                         orderDisplayMode === 'cards'
@@ -2455,6 +2616,62 @@ export default function SalesWorkspaceClient({
                   </div>
                 </div>
 
+                {selectedOrderIds.length > 0 && (
+                  <div className="sami-surface rounded-[22px] p-3" aria-live="polite">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-black">
+                          {selectedOrderIds.length} sales order{selectedOrderIds.length === 1 ? '' : 's'} selected
+                        </p>
+                        <p className="mt-1 text-[11px] text-slate-500">
+                          {invoiceableSelectedOrderIds.length} confirmed order(s) eligible for invoicing. Maximum 25 per batch.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {initialData.capabilities.canManageOrders &&
+                          invoiceableSelectedOrderIds.length > 0 && (
+                            <button
+                              type="button"
+                              disabled={busy || invoiceableSelectedOrderIds.length > 25}
+                              onClick={() => void bulkInvoiceSelectedOrders()}
+                              className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-3.5 text-xs font-black text-white disabled:opacity-60"
+                            >
+                              <Send className="h-4 w-4" />
+                              Invoice eligible orders ({invoiceableSelectedOrderIds.length})
+                            </button>
+                          )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const selectedOrders = initialData.orders.filter(
+                              order => selectedOrderIds.includes(order.id),
+                            );
+                            if (selectedOrders.length > 0) {
+                              exportSales(initialData, undefined, selectedOrders);
+                            }
+                          }}
+                          className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] px-3.5 text-xs font-black"
+                        >
+                          <Download className="h-4 w-4" />
+                          Export selected CSV
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedOrderIds([])}
+                          className="inline-flex h-10 items-center rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black"
+                        >
+                          Clear selection
+                        </button>
+                      </div>
+                    </div>
+                    {invoiceableSelectedOrderIds.length > 25 && (
+                      <p role="alert" className="mt-2 text-xs text-amber-700">
+                        Select no more than 25 eligible orders for a single invoice batch.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {visibleOrders.length === 0 ? (
                   <div className="sami-surface rounded-[22px] p-8 text-center text-sm text-slate-500">
                     No sales orders match this view.
@@ -2465,6 +2682,26 @@ export default function SalesWorkspaceClient({
                       <table className="w-full min-w-[1120px] text-left text-sm" aria-label="Sales order register">
                         <thead className="border-b border-[var(--sami-border)] bg-slate-500/[0.04] text-[10px] font-black uppercase tracking-[0.09em] text-slate-400">
                           <tr>
+                            <th scope="col" className="w-12 px-4 py-3">
+                              <input
+                                type="checkbox"
+                                aria-label="Select all visible sales orders"
+                                checked={allVisibleOrdersSelected}
+                                disabled={busy || visibleOrders.length === 0}
+                                onChange={event => {
+                                  if (event.target.checked) {
+                                    setSelectedOrderIds(current => Array.from(new Set([
+                                      ...current,
+                                      ...visibleOrders.map(order => order.id),
+                                    ])));
+                                  } else {
+                                    const visibleIds = new Set(visibleOrders.map(order => order.id));
+                                    setSelectedOrderIds(current => current.filter(id => !visibleIds.has(id)));
+                                  }
+                                }}
+                                className="h-4 w-4 rounded accent-blue-600"
+                              />
+                            </th>
                             <th scope="col" className="px-4 py-3">Order</th>
                             <th scope="col" className="px-4 py-3">Customer</th>
                             <th scope="col" className="px-4 py-3">Order date</th>
@@ -2479,6 +2716,26 @@ export default function SalesWorkspaceClient({
                         <tbody className="divide-y divide-[var(--sami-border)]">
                           {visibleOrders.map(order => (
                             <tr key={order.id} className="hover:bg-slate-500/[0.03]">
+                              <td className="px-4 py-3">
+                                <input
+                                  type="checkbox"
+                                  aria-label={'Select sales order ' + order.orderNumber}
+                                  checked={selectedOrderIds.includes(order.id)}
+                                  disabled={busy}
+                                  onChange={event => {
+                                    if (event.target.checked) {
+                                      setSelectedOrderIds(current =>
+                                        current.includes(order.id) ? current : [...current, order.id],
+                                      );
+                                    } else {
+                                      setSelectedOrderIds(current =>
+                                        current.filter(id => id !== order.id),
+                                      );
+                                    }
+                                  }}
+                                  className="h-4 w-4 rounded accent-blue-600"
+                                />
+                              </td>
                               <td className="px-4 py-3">
                                 <Link
                                   href={'/apps/sales/orders/' + order.id}
