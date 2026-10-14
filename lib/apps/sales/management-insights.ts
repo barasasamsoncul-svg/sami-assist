@@ -161,7 +161,7 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
         WHEN valid_until < CURRENT_DATE THEN 0
         WHEN valid_until BETWEEN CURRENT_DATE AND CURRENT_DATE + 7 THEN 1
         ELSE 2
-      END, base_total_amount DESC, quote_date ASC
+      END, COALESCE(viewed_at::date, sent_at::date, quote_date) ASC, quote_date ASC
       LIMIT 10
     `, [companyId]),
     context.pool.query(`
@@ -181,11 +181,28 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
       GROUP BY 1, base_currency ORDER BY 1, base_currency
     `, [companyId]),
     context.pool.query(`
-      SELECT customer_name, base_currency AS currency, COUNT(*)::int AS quote_count,
-        COALESCE(SUM(base_total_amount), 0) AS amount
-      FROM sales_quotes
-      WHERE company_id = $1 AND deleted_at IS NULL
-      GROUP BY customer_name, base_currency ORDER BY amount DESC LIMIT 10
+      WITH customer_totals AS (
+        SELECT
+          customer_name,
+          base_currency AS currency,
+          COUNT(*)::int AS quote_count,
+          COALESCE(SUM(base_total_amount), 0) AS amount
+        FROM sales_quotes
+        WHERE company_id = $1 AND deleted_at IS NULL
+        GROUP BY customer_name, base_currency
+      ),
+      ranked_customers AS (
+        SELECT customer_totals.*,
+          ROW_NUMBER() OVER (
+            PARTITION BY currency
+            ORDER BY amount DESC, customer_name ASC
+          ) AS currency_rank
+        FROM customer_totals
+      )
+      SELECT customer_name, currency, quote_count, amount
+      FROM ranked_customers
+      WHERE currency_rank <= 10
+      ORDER BY currency, amount DESC, customer_name
     `, [companyId]),
     context.pool.query(`
       SELECT
@@ -253,48 +270,73 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
       ORDER BY months.month_start, currencies.currency
     `, [companyId]),
     context.pool.query(`
-      SELECT
-        COALESCE(NULLIF(BTRIM(i.description), ''), NULLIF(BTRIM(i.sku_snapshot), ''), 'Uncatalogued item') AS product_name,
-        MAX(NULLIF(BTRIM(i.sku_snapshot), '')) AS sku,
-        o.base_currency AS currency,
-        COALESCE(SUM(i.quantity), 0) AS quantity,
-        COUNT(DISTINCT o.id)::int AS order_count,
-        COALESCE(SUM(i.line_total * COALESCE(o.exchange_rate, 1)), 0) AS amount
-      FROM sales_order_items_v2 i
-      INNER JOIN sales_orders_v2 o
-        ON o.id = i.sales_order_id
-        AND o.company_id = i.company_id
-      WHERE i.company_id = $1
-        AND o.company_id = $1
-        AND o.deleted_at IS NULL
-        AND o.status IN ('confirmed', 'closed')
-      GROUP BY
-        COALESCE(NULLIF(BTRIM(i.description), ''), NULLIF(BTRIM(i.sku_snapshot), ''), 'Uncatalogued item'),
-        COALESCE(NULLIF(BTRIM(i.sku_snapshot), ''), ''),
-        o.base_currency
-      ORDER BY amount DESC
-      LIMIT 10
+      WITH product_totals AS (
+        SELECT
+          COALESCE(NULLIF(BTRIM(i.description), ''), NULLIF(BTRIM(i.sku_snapshot), ''), 'Uncatalogued item') AS product_name,
+          MAX(NULLIF(BTRIM(i.sku_snapshot), '')) AS sku,
+          o.base_currency AS currency,
+          COALESCE(SUM(i.quantity), 0) AS quantity,
+          COUNT(DISTINCT o.id)::int AS order_count,
+          COALESCE(SUM(i.line_total * COALESCE(o.exchange_rate, 1)), 0) AS amount
+        FROM sales_order_items_v2 i
+        INNER JOIN sales_orders_v2 o
+          ON o.id = i.sales_order_id
+          AND o.company_id = i.company_id
+        WHERE i.company_id = $1
+          AND o.company_id = $1
+          AND o.deleted_at IS NULL
+          AND o.status IN ('confirmed', 'closed')
+        GROUP BY
+          COALESCE(NULLIF(BTRIM(i.description), ''), NULLIF(BTRIM(i.sku_snapshot), ''), 'Uncatalogued item'),
+          COALESCE(NULLIF(BTRIM(i.sku_snapshot), ''), ''),
+          o.base_currency
+      ),
+      ranked_products AS (
+        SELECT product_totals.*,
+          ROW_NUMBER() OVER (
+            PARTITION BY currency
+            ORDER BY amount DESC, product_name ASC, sku ASC NULLS LAST
+          ) AS currency_rank
+        FROM product_totals
+      )
+      SELECT product_name, sku, currency, quantity, order_count, amount
+      FROM ranked_products
+      WHERE currency_rank <= 10
+      ORDER BY currency, amount DESC, product_name
     `, [companyId]),
     context.pool.query(`
-      SELECT
-        COALESCE(NULLIF(BTRIM(t.name), ''), 'Unassigned') AS team_name,
-        o.base_currency AS currency,
-        COUNT(*)::int AS order_count,
-        COALESCE(SUM(o.base_total_amount), 0) AS amount
-      FROM sales_orders_v2 o
-      LEFT JOIN sales_teams t
-        ON t.id = o.sales_team_id
-        AND t.company_id = o.company_id
-        AND t.deleted_at IS NULL
-      WHERE o.company_id = $1
-        AND o.deleted_at IS NULL
-        AND o.status IN ('confirmed', 'closed')
-      GROUP BY
-        COALESCE(t.id::text, 'unassigned'),
-        COALESCE(NULLIF(BTRIM(t.name), ''), 'Unassigned'),
-        o.base_currency
-      ORDER BY amount DESC, team_name, currency
-      LIMIT 10
+      WITH team_totals AS (
+        SELECT
+          COALESCE(t.id::text, 'unassigned') AS team_key,
+          COALESCE(NULLIF(BTRIM(t.name), ''), 'Unassigned') AS team_name,
+          o.base_currency AS currency,
+          COUNT(*)::int AS order_count,
+          COALESCE(SUM(o.base_total_amount), 0) AS amount
+        FROM sales_orders_v2 o
+        LEFT JOIN sales_teams t
+          ON t.id = o.sales_team_id
+          AND t.company_id = o.company_id
+          AND t.deleted_at IS NULL
+        WHERE o.company_id = $1
+          AND o.deleted_at IS NULL
+          AND o.status IN ('confirmed', 'closed')
+        GROUP BY
+          COALESCE(t.id::text, 'unassigned'),
+          COALESCE(NULLIF(BTRIM(t.name), ''), 'Unassigned'),
+          o.base_currency
+      ),
+      ranked_teams AS (
+        SELECT team_totals.*,
+          ROW_NUMBER() OVER (
+            PARTITION BY currency
+            ORDER BY amount DESC, team_name ASC, team_key ASC
+          ) AS currency_rank
+        FROM team_totals
+      )
+      SELECT team_name, currency, order_count, amount
+      FROM ranked_teams
+      WHERE currency_rank <= 10
+      ORDER BY currency, amount DESC, team_name
     `, [companyId]),
     context.pool.query(`
       SELECT
