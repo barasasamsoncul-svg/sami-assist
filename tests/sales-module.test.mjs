@@ -2965,3 +2965,32 @@ test('Sales online acceptance refreshes base-currency quote total when optional 
   assert.match(acceptance, /totals\.subtotal[\s\S]*q\.shipping_total/);
   assert.match(acceptance, /COALESCE\(NULLIF\(q\.exchange_rate, 0\), 1\)/);
 });
+
+test('Sales bulk order invoicing is bounded, permission-gated, retry-safe and reports per-order outcomes', async () => {
+  const [bulk, service, route, workspace] = await Promise.all([
+    source('lib/apps/sales/bulk-invoice.ts'),
+    source('lib/apps/sales/service.ts'),
+    source('app/api/apps/sales/route.ts'),
+    source('app/apps/sales/SalesWorkspaceClient.tsx'),
+  ]);
+
+  assert.match(bulk, /MAX_BULK_ORDER_INVOICES = 25/);
+  assert.match(bulk, /requireSalesContext\(SALES_PERMISSIONS\.ORDER_MANAGE\)/);
+  assert.match(bulk, /input\.orders\.length > MAX_BULK_ORDER_INVOICES/);
+  assert.match(bulk, /new Set<string>\(\)/);
+  assert.match(bulk, /idempotencyKeys\.has\(request\.idempotencyKey\)/);
+  assert.match(bulk, /createSalesOrderInvoice\(/);
+  assert.match(bulk, /for \(const request of requests\)/);
+  assert.match(bulk, /successCount/);
+  assert.match(bulk, /failedCount/);
+  assert.ok(service.includes('bulkInvoiceSalesOrders'));
+  assert.ok(route.includes('bulk_invoice_orders:'));
+  assert.ok(workspace.includes("action: 'bulk_invoice_orders'"));
+  assert.ok(workspace.includes('bulkInvoiceIdempotencyKeys'));
+  assert.ok(workspace.includes('invoiceableSelectedOrderIds'));
+  assert.ok(workspace.includes('aria-label="Select all visible sales orders"'));
+  assert.ok(workspace.includes("aria-label={'Select sales order ' + order.orderNumber}"));
+  assert.ok(workspace.includes('sales-orders-selected-'));
+  assert.ok(workspace.includes('exportSales(initialData, undefined, selectedOrders)'));
+  assert.ok(workspace.includes('Invoice eligible orders'));
+});
