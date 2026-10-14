@@ -71,16 +71,18 @@ test('quote acceptance and order conversion still require completed approval', a
 });
 
 test('approval policy and queue are available in the Sales UI', async () => {
-  const [ui, page, detail, workspace] = await Promise.all([
+  const [ui, page, section, detail, workspace] = await Promise.all([
     source('app/apps/sales/SalesApprovalsManager.tsx'),
     source('app/apps/sales/approvals/page.tsx'),
+    source('app/apps/sales/SalesSectionPage.tsx'),
     source('app/apps/sales/SalesQuoteDetailClient.tsx'),
     source('app/apps/sales/SalesWorkspaceClient.tsx'),
   ]);
   assert.match(ui, /Create approval policy/);
   assert.match(ui, /Sequential approval steps/);
   assert.match(ui, /Approval queue and audit trail/);
-  assert.match(page, /SalesApprovalsManager/);
+  assert.match(page, /SalesSectionPage view="approvals"/);
+  assert.match(section, /view === 'approvals'[\s\S]{0,100}<SalesApprovalsManager \/>/);
   assert.match(detail, /\/apps\/sales\/approvals/);
   assert.match(detail, /\['draft', 'not_required', 'rejected'\]/);
   assert.match(detail, /No approval required/);
