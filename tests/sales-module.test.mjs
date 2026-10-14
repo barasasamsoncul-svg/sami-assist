@@ -267,6 +267,27 @@ test('Sales internal approval is separate from customer acceptance', async () =>
 
 
 
+test('Sales quote approval threshold is evaluated in company base currency on create and edit', async () => {
+  const commands = await source('lib/apps/sales/commands.ts');
+
+  const createStart = commands.indexOf('export async function createSalesQuote(');
+  const updateStart = commands.indexOf('export async function updateSalesQuoteDraft(', createStart);
+  const duplicateStart = commands.indexOf('export async function duplicateSalesQuote(', updateStart);
+  assert.ok(createStart >= 0 && updateStart > createStart && duplicateStart > updateStart);
+
+  for (const [name, body] of [
+    ['create', commands.slice(createStart, updateStart)],
+    ['edit', commands.slice(updateStart, duplicateStart)],
+  ]) {
+    const baseTotal = body.indexOf('const baseTotalAmount =');
+    const approvalDecision = body.indexOf('const approvalRequired =');
+    assert.ok(baseTotal >= 0 && approvalDecision > baseTotal, name + ' must calculate company-base total before approval decision');
+    const approvalExpression = body.slice(approvalDecision, body.indexOf('const approvalStatus =', approvalDecision));
+    assert.match(approvalExpression, /baseTotalAmount\\s*>=/);
+    assert.doesNotMatch(approvalExpression, /calculated\\.totalAmount\\s*>=/);
+  }
+});
+
 test('Sales advanced approval queue supports approve and reason-required reject actions', async () => {
   const ui = await source('app/apps/sales/SalesApprovalsManager.tsx');
   const route = await source('app/api/apps/sales/route.ts');
