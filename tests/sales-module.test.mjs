@@ -3073,3 +3073,32 @@ test('Sales quote deposits validate, persist, display, and carry to confirmed or
   assert.match(runtimeMigrations, /SALES_3_4_16_TO_3_4_17/);
   assert.match(firstParty, /version: '3\.4\.19'/);
 });
+
+test('Sales report result caps rank monetary values within currency and balance bounded output across currencies', async () => {
+  const [
+    products,
+    commissions,
+    quotations,
+    returns,
+    pipelineFunnel,
+  ] = await Promise.all([
+    source('lib/apps/sales/product-performance.ts'),
+    source('lib/apps/sales/commission-performance.ts'),
+    source('lib/apps/sales/quotation-effectiveness.ts'),
+    source('lib/apps/sales/return-fulfillment-quality.ts'),
+    source('lib/apps/sales/pipeline-funnel.ts'),
+  ]);
+
+  assert.match(products, /PARTITION BY currency\\s+ORDER BY net_sales DESC, order_count DESC/);
+  assert.match(products, /ORDER BY currency_rank ASC, currency ASC[\\s\\S]*?LIMIT 250/);
+  assert.match(commissions, /PARTITION BY currency\\s+ORDER BY accrued_amount DESC, paid_amount DESC/);
+  assert.match(commissions, /ORDER BY currency_rank ASC, currency ASC[\\s\\S]*?LIMIT 250/);
+  assert.match(quotations, /PARTITION BY dimension_type, currency/);
+  assert.match(quotations, /PARTITION BY dimension_type\\s+ORDER BY currency_rank ASC, currency ASC/);
+  assert.match(quotations, /WHERE dimension_rank <= 100/);
+  assert.match(returns, /PARTITION BY currency\\s+ORDER BY return_count DESC, credit_amount DESC, reason ASC/);
+  assert.match(returns, /ORDER BY currency_rank ASC, currency ASC, reason ASC/);
+  assert.match(returns, /WHERE report_rank <= 100/);
+  assert.match(pipelineFunnel, /COALESCE\\(o\\.probability, s\\.probability, 0\\) DESC,\\s+o\\.id ASC/);
+  assert.doesNotMatch(pipelineFunnel, /o\\.expected_value DESC/);
+});
