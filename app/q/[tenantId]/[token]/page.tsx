@@ -150,6 +150,14 @@ export default async function PublicSalesQuotePage({
                     '—'
                   }
                 />
+                <Info
+                  label="Deposit / advance"
+                  value={
+                    quote.depositRequiredAmount > 0
+                      ? money(quote.depositRequiredAmount, quote.currency)
+                      : 'None required'
+                  }
+                />
               </div>
             </div>
 
