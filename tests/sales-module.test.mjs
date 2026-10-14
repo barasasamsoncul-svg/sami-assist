@@ -2994,3 +2994,58 @@ test('Sales bulk order invoicing is bounded, permission-gated, retry-safe and re
   assert.ok(workspace.includes('exportSales(initialData, undefined, selectedOrders)'));
   assert.ok(workspace.includes('Invoice eligible orders'));
 });
+
+test('Sales quote deposits validate, persist, display, and carry to confirmed orders', async () => {
+  const [
+    types,
+    commands,
+    queries,
+    publicService,
+    composer,
+    quoteDetail,
+    publicPage,
+    pdf,
+    migration,
+    runtimeMigrations,
+    firstParty,
+  ] = await Promise.all([
+    source('lib/apps/sales/types.ts'),
+    source('lib/apps/sales/commands.ts'),
+    source('lib/apps/sales/queries.ts'),
+    source('lib/apps/sales/public.ts'),
+    source('app/apps/sales/SalesQuoteComposer.tsx'),
+    source('app/apps/sales/SalesQuoteDetailClient.tsx'),
+    source('app/q/[tenantId]/[token]/page.tsx'),
+    source('lib/apps/sales/pdf.ts'),
+    source('lib/apps/sales/migrations/3.4.16-to-3.4.17.ts'),
+    source('lib/apps/runtime-migrations.ts'),
+    source('lib/modules/first-party.ts'),
+  ]);
+
+  assert.match(types, /depositType\?: unknown/);
+  assert.match(types, /depositRequiredAmount: number/);
+  assert.match(commands, /function normalizeSalesQuoteDeposit/);
+  assert.match(commands, /Deposit type must be none, percent, or fixed/);
+  assert.match(commands, /deposit_type,\s*deposit_value/);
+  assert.match(commands, /deposit_type = \$29/);
+  assert.match(commands, /deposit_value = \$30/);
+  assert.match(commands, /orderDeposit\.requiredAmount/);
+  assert.match(commands, /deposit_required_amount = \$5/);
+  assert.match(commands, /depositType:\s*row\.deposit_type/);
+  assert.match(queries, /quote\.deposit_type/);
+  assert.match(queries, /depositRequiredAmount:/);
+  assert.match(publicService, /q\.deposit_type/);
+  assert.match(publicService, /depositRequiredAmount:/);
+  assert.match(composer, /aria-label="Deposit type"/);
+  assert.match(composer, /aria-label="Deposit value"/);
+  assert.match(composer, /depositType,/);
+  assert.match(quoteDetail, /label="Deposit \/ advance"/);
+  assert.match(publicPage, /label="Deposit \/ advance"/);
+  assert.match(publicPage, /quote\.depositRequiredAmount/);
+  assert.match(pdf, /Deposit \/ advance due on order/);
+  assert.match(migration, /fromVersion: '3\.4\.16'/);
+  assert.match(migration, /toVersion: '3\.4\.17'/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS deposit_required_amount/);
+  assert.match(runtimeMigrations, /SALES_3_4_16_TO_3_4_17/);
+  assert.match(firstParty, /version: '3\.4\.17'/);
+});
