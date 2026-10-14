@@ -81,7 +81,7 @@ function parseVariantAttributes(value: string): Array<{ name: string; value: str
   return attributes;
 }
 
-function blank(): Draft {
+function blank(defaultTaxRateId = ''): Draft {
   return {
     itemId:
       '',
@@ -98,7 +98,7 @@ function blank(): Draft {
     unitPrice:
       '',
     taxRateId:
-      '',
+      defaultTaxRateId,
   };
 }
 
@@ -229,6 +229,7 @@ export default function SalesProductCatalogueManager({
       void;
 }) {
   const router = useRouter();
+  const defaultTaxRateId = data.taxRates.find(rate => rate.isDefault)?.id || '';
   const [
     items,
     setItems,
@@ -257,7 +258,7 @@ export default function SalesProductCatalogueManager({
     setDraft,
   ] =
     useState<Draft>(
-      blank(),
+      blank(defaultTaxRateId),
     );
 
   const [
@@ -446,7 +447,7 @@ export default function SalesProductCatalogueManager({
         ],
       );
 
-      setDraft(blank());
+      setDraft(blank(defaultTaxRateId));
       setVariantDraft(blankVariant());
 
       showSuccess(
@@ -737,7 +738,7 @@ export default function SalesProductCatalogueManager({
                 <button
                   type="button"
                   onClick={() => {
-                    setDraft(blank());
+                    setDraft(blank(defaultTaxRateId));
                     setVariantDraft(blankVariant());
                   }}
                   className="inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black"
@@ -891,7 +892,7 @@ export default function SalesProductCatalogueManager({
                           busy
                         }
                         onClick={() => {
-                          setDraft(blank());
+                          setDraft(blank(defaultTaxRateId));
                           setVariantDraft(blankVariant());
                         }}
                         className="h-10 rounded-xl border border-[var(--sami-border)] px-4 text-xs font-black disabled:opacity-60"
