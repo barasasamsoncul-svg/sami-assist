@@ -27,33 +27,48 @@ export async function getSalesCommissionPerformance(): Promise<{ rows: SalesComm
 
   const result = await context.pool.query(
     `
-      SELECT
-        e.user_id::text AS user_id,
-        e.team_id::text AS team_id,
-        COALESCE(NULLIF(BTRIM(t.name), ''), 'Unassigned team') AS team_name,
-        UPPER(COALESCE(NULLIF(BTRIM(e.currency), ''), NULLIF(BTRIM($2::text), ''), 'KES')) AS currency,
-        COUNT(*)::int AS entry_count,
-        COUNT(*) FILTER (WHERE e.status = 'accrued')::int AS accrued_count,
-        COALESCE(SUM(e.commission_amount) FILTER (WHERE e.status = 'accrued'), 0) AS accrued_amount,
-        COUNT(*) FILTER (WHERE e.status = 'paid')::int AS paid_count,
-        COALESCE(SUM(e.commission_amount) FILTER (WHERE e.status = 'paid'), 0) AS paid_amount,
-        COUNT(*) FILTER (WHERE e.status = 'reversed')::int AS reversed_count,
-        COALESCE(SUM(e.commission_amount) FILTER (WHERE e.status = 'reversed'), 0) AS reversed_amount
-      FROM sales_commission_entries e
-      INNER JOIN sales_orders_v2 o
-        ON o.id = e.order_id
-        AND o.company_id = e.company_id
-        AND o.deleted_at IS NULL
-      LEFT JOIN sales_teams t
-        ON t.id = e.team_id
-        AND t.company_id = e.company_id
-        AND t.deleted_at IS NULL
-      WHERE e.company_id = $1
-        AND e.accrued_at >= NOW() - INTERVAL '90 days'
-      GROUP BY e.user_id, e.team_id, t.name, currency
-      ORDER BY currency ASC, accrued_amount DESC, paid_amount DESC, e.user_id NULLS LAST, team_name ASC
-      LIMIT 250
+      WITH commission_rollup AS (
+        SELECT
+          e.user_id::text AS user_id,
+          e.team_id::text AS team_id,
+          COALESCE(NULLIF(BTRIM(t.name), ''), 'Unassigned team') AS team_name,
+          UPPER(COALESCE(NULLIF(BTRIM(e.currency), ''), NULLIF(BTRIM($2::text), ''), 'KES')) AS currency,
+          COUNT(*)::int AS entry_count,
+          COUNT(*) FILTER (WHERE e.status = 'accrued')::int AS accrued_count,
+          COALESCE(SUM(e.commission_amount) FILTER (WHERE e.status = 'accrued'), 0) AS accrued_amount,
+          COUNT(*) FILTER (WHERE e.status = 'paid')::int AS paid_count,
+          COALESCE(SUM(e.commission_amount) FILTER (WHERE e.status = 'paid'), 0) AS paid_amount,
+          COUNT(*) FILTER (WHERE e.status = 'reversed')::int AS reversed_count,
+          COALESCE(SUM(e.commission_amount) FILTER (WHERE e.status = 'reversed'), 0) AS reversed_amount
+        FROM sales_commission_entries e
+        INNER JOIN sales_orders_v2 o
+          ON o.id = e.order_id
+          AND o.company_id = e.company_id
+          AND o.deleted_at IS NULL
+        LEFT JOIN sales_teams t
+          ON t.id = e.team_id
+          AND t.company_id = e.company_id
+          AND t.deleted_at IS NULL
+        WHERE e.company_id = $1
+          AND e.accrued_at >= NOW() - INTERVAL '90 days'
+        GROUP BY e.user_id, e.team_id, t.name, currency
+      ),
+      ranked_commissions AS (
+        SELECT commission_rollup.*,
+          ROW_NUMBER() OVER (
+            PARTITION BY currency
+            ORDER BY accrued_amount DESC, paid_amount DESC,
+              user_id ASC NULLS LAST, team_name ASC, team_id ASC NULLS LAST
+          ) AS currency_rank
+        FROM commission_rollup
+      )
+      SELECT *
+      FROM ranked_commissions
+      WHERE currency_rank <= 250
+      ORDER BY currency ASC, accrued_amount DESC, paid_amount DESC,
+        user_id ASC NULLS LAST, team_name ASC, team_id ASC NULLS LAST
     `,
+
     [context.companyId, context.company.currentCompany.currency],
   );
 
