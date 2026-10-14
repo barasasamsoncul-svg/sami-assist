@@ -44,6 +44,22 @@ test('variant create, update and archive stay company-scoped and transactional',
   assert.doesNotMatch(variants, /input\.companyId|input\.tenantId/);
 });
 
+test('base catalogue editor exposes internal cost only to authorized users and persists metadata on create/update', async () => {
+  const [manager, salesCommands, invoicingCommands] = await Promise.all([
+    source('app/apps/sales/SalesProductCatalogueManager.tsx'),
+    source('lib/apps/sales/commands.ts'),
+    source('lib/apps/invoicing/commands.ts'),
+  ]);
+
+  assert.match(manager, /label="Unit cost \(internal\)"/);
+  assert.match(manager, /data\.capabilities\.canManageMargin \? \(/);
+  assert.match(manager, /data\.capabilities\.canManageMargin && draft\.unitCost\.trim\(\) !== ''/);
+  assert.match(salesCommands, /export async function createSalesCatalogItem[\s\S]*?crossPermission\(context, SALES_PERMISSIONS\.MARGIN_MANAGE\)[\s\S]*?standardCost === undefined \? undefined : \{ standardCost \}/);
+  assert.match(salesCommands, /export async function updateSalesCatalogItem[\s\S]*?crossPermission\(context, SALES_PERMISSIONS\.MARGIN_MANAGE\)[\s\S]*?standardCost === undefined \? undefined : \{ standardCost \}/);
+  assert.match(invoicingCommands, /export async function updateInvoicingCatalogItem\([\s\S]*?standardCost\?: number/);
+  assert.match(invoicingCommands, /SET metadata = COALESCE\(metadata, '\{\}'::jsonb\) \|\| \$3::jsonb/);
+});
+
 test('base catalogue CSV imports preserve authorized unit costs in metadata and reject unauthorized cost writes', async () => {
   const [salesCommands, invoicingCommands, variants] = await Promise.all([
     source('lib/apps/sales/commands.ts'),

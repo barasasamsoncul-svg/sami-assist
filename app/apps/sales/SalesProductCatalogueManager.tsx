@@ -42,6 +42,8 @@ type Draft = {
     string;
   unitPrice:
     string;
+  unitCost:
+    string;
   taxRateId:
     string;
 };
@@ -97,6 +99,8 @@ function blank(defaultTaxRateId = ''): Draft {
       'unit',
     unitPrice:
       '',
+    unitCost:
+      '',
     taxRateId:
       defaultTaxRateId,
   };
@@ -125,6 +129,8 @@ function fromItem(
       String(
         item.unitPrice,
       ),
+    unitCost:
+      item.unitCost === null ? '' : String(item.unitCost),
     taxRateId:
       item.taxRateId ||
       '',
@@ -365,6 +371,9 @@ export default function SalesProductCatalogueManager({
             draft.unit,
           unitPrice:
             draft.unitPrice,
+          ...(data.capabilities.canManageMargin && draft.unitCost.trim() !== ''
+            ? { unitCost: draft.unitCost }
+            : {}),
           taxRateId:
             draft.taxRateId ||
             undefined,
@@ -426,8 +435,9 @@ export default function SalesProductCatalogueManager({
           (keptExistingTax ? previous?.taxRate : 0) ??
           0,
         unitCost:
-          previous?.unitCost ??
-          null,
+          data.capabilities.canManageMargin && draft.unitCost.trim() !== ''
+            ? Number(draft.unitCost)
+            : previous?.unitCost ?? null,
         isVariant: false,
         variantId: null,
         baseCatalogItemId: null,
@@ -823,6 +833,14 @@ export default function SalesProductCatalogueManager({
                           )
                       }
                     />
+                    {data.capabilities.canManageMargin ? (
+                      <Field
+                        label="Unit cost (internal)"
+                        type="number"
+                        value={draft.unitCost}
+                        onChange={value => set('unitCost', value)}
+                      />
+                    ) : null}
                     <label className="block">
                       <span className="text-xs font-black">Tax rate</span>
                       <select

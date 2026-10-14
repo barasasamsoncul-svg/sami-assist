@@ -1872,6 +1872,9 @@ export async function createInvoicingCatalogItem(
 export async function updateInvoicingCatalogItem(
   input:
     Record<string, unknown>,
+  options?: {
+    standardCost?: number;
+  },
 ) {
   const context =
     await requireInvoicingContext(
@@ -2101,6 +2104,25 @@ export async function updateInvoicingCatalogItem(
       throw new InvoicingError(
         'INVALID_INPUT',
         'Invoice item was not found.',
+      );
+    }
+
+    if (options?.standardCost !== undefined) {
+      await client.query(
+        `UPDATE invoicing_catalog_items
+         SET metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb,
+             updated_by = $4,
+             updated_at = NOW()
+         WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL`,
+        [
+          itemId,
+          context.companyId,
+          JSON.stringify({
+            standardCost: options.standardCost,
+            unitCost: options.standardCost,
+          }),
+          context.userId,
+        ],
       );
     }
 
