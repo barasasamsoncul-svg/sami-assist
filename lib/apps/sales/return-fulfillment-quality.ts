@@ -123,7 +123,7 @@ export async function getSalesReturnFulfillmentQualityReport(): Promise<SalesRet
           WHERE r.company_id = $1
             AND r.requested_at >= NOW() - INTERVAL '90 days'
             AND o.status <> 'cancelled'
-        )
+        ),
         status_totals AS (
           SELECT
             status,
@@ -166,7 +166,7 @@ export async function getSalesReturnFulfillmentQualityReport(): Promise<SalesRet
           FROM sales_return_credits
           WHERE company_id = $1
           GROUP BY company_id, return_id
-        )
+        ),
         reason_totals AS (
           SELECT
             COALESCE(NULLIF(BTRIM(r.reason), ''), 'Unspecified') AS reason,
