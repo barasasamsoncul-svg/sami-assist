@@ -65,7 +65,11 @@ test('bulk import validates bounds, reports each row and can import variant rows
 });
 
 test('catalogue UI provides CSV import/export plus variant create, edit and archive', async () => {
-  const manager = await source('app/apps/sales/SalesProductCatalogueManager.tsx');
+  const [manager, composer, optionalEditor] = await Promise.all([
+    source('app/apps/sales/SalesProductCatalogueManager.tsx'),
+    source('app/apps/sales/SalesQuoteComposer.tsx'),
+    source('app/apps/sales/SalesOptionalProductsEditor.tsx'),
+  ]);
 
   assert.match(manager, /function parseCsv/);
   assert.match(manager, /function downloadCsv/);
@@ -79,4 +83,6 @@ test('catalogue UI provides CSV import/export plus variant create, edit and arch
   assert.match(manager, /Product variants/);
   assert.ok(manager.includes("char === '\\n'"), 'CSV parser must split real newline characters');
   assert.ok(manager.includes("join('\\r\\n')"), 'CSV export must use CRLF row separators');
+  assert.match(composer, /item\.isVariant[\s\S]*?\? item\.name/);
+  assert.match(optionalEditor, /product\.isVariant[\s\S]*?\? product\.name/);
 });

@@ -634,8 +634,10 @@ export default function SalesQuoteComposer({
         catalogItemId:
           item.id,
         description:
-          item.description ||
-          item.name,
+          item.isVariant
+            ? item.name
+            : item.description ||
+              item.name,
         sku:
           item.sku ||
           '',
