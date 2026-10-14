@@ -65,7 +65,7 @@ test('Sales Operations preserves order currency when formatting return-credit am
 
   const operations = service.slice(operationsStart, operationsEnd);
   assert.match(operations, /'currency',\s*order_row\.currency/);
-  assert.match(operations, /GROUP BY[\\s\\S]*?return_row\\.id,[\\s\\S]*?order_row\\.order_number,[\\s\\S]*?order_row\\.currency/);
+  assert.match(operations, /GROUP BY[\s\S]*?return_row\.id,[\s\S]*?order_row\.order_number,[\s\S]*?order_row\.currency/);
 
   const creditType = component.slice(component.indexOf('type OperationsData'), component.indexOf('function money('));
   assert.match(creditType, /creditNoteNumber:\s*string;[\s\S]*?currency:\s*string;/);
