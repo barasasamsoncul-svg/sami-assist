@@ -708,6 +708,7 @@ export async function getSalesWorkspaceData():
               FROM sales_orders_v2
               WHERE company_id = $1
                 AND deleted_at IS NULL
+                AND status IN ('confirmed', 'closed')
               GROUP BY base_currency
               ORDER BY base_currency
             `,
