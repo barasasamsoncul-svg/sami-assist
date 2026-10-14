@@ -124,19 +124,32 @@ export async function getSalesReturnFulfillmentQualityReport(): Promise<SalesRet
             AND r.requested_at >= NOW() - INTERVAL '90 days'
             AND o.status <> 'cancelled'
         )
-        SELECT
-          status,
-          currency,
-          COUNT(*)::int AS return_count,
-          COUNT(DISTINCT sales_order_id)::int AS order_count,
-          COALESCE(SUM(item_quantity), 0) AS item_quantity,
-          COALESCE(SUM(credit_amount), 0) AS credit_amount,
-          COALESCE(SUM(available_credit), 0) AS available_credit,
-          COALESCE(SUM(refunded_amount), 0) AS refunded_amount
-        FROM return_rows
-        GROUP BY status, currency
+        status_totals AS (
+          SELECT
+            status,
+            currency,
+            COUNT(*)::int AS return_count,
+            COUNT(DISTINCT sales_order_id)::int AS order_count,
+            COALESCE(SUM(item_quantity), 0) AS item_quantity,
+            COALESCE(SUM(credit_amount), 0) AS credit_amount,
+            COALESCE(SUM(available_credit), 0) AS available_credit,
+            COALESCE(SUM(refunded_amount), 0) AS refunded_amount
+          FROM return_rows
+          GROUP BY status, currency
+        ),
+        ranked_statuses AS (
+          SELECT status_totals.*,
+            ROW_NUMBER() OVER (
+              PARTITION BY currency
+              ORDER BY return_count DESC, status ASC
+            ) AS currency_rank
+          FROM status_totals
+        )
+        SELECT status, currency, return_count, order_count, item_quantity,
+          credit_amount, available_credit, refunded_amount
+        FROM ranked_statuses
+        WHERE currency_rank <= 250
         ORDER BY currency ASC, return_count DESC, status ASC
-        LIMIT 250
       `,
       [context.companyId, context.company.currentCompany.currency],
     ) : Promise.resolve({ rows: [] }),
@@ -154,30 +167,42 @@ export async function getSalesReturnFulfillmentQualityReport(): Promise<SalesRet
           WHERE company_id = $1
           GROUP BY company_id, return_id
         )
-        SELECT
-          COALESCE(NULLIF(BTRIM(r.reason), ''), 'Unspecified') AS reason,
-          UPPER(COALESCE(NULLIF(BTRIM(o.currency), ''), NULLIF(BTRIM($2::text), ''), 'KES')) AS currency,
-          COUNT(*)::int AS return_count,
-          COALESCE(SUM(i.item_quantity), 0) AS item_quantity,
-          COALESCE(SUM(c.credit_amount), 0) AS credit_amount
-        FROM sales_returns r
-        INNER JOIN sales_orders_v2 o
-          ON o.id = r.sales_order_id
-          AND o.company_id = r.company_id
-          AND o.deleted_at IS NULL
-        LEFT JOIN item_totals i
-          ON i.return_id = r.id
-          AND i.company_id = r.company_id
-        LEFT JOIN credit_totals c
-          ON c.return_id = r.id
-          AND c.company_id = r.company_id
-        WHERE r.company_id = $1
-          AND r.requested_at >= NOW() - INTERVAL '90 days'
-          AND r.status <> 'cancelled'
-          AND o.status <> 'cancelled'
-        GROUP BY reason, currency
-        ORDER BY return_count DESC, credit_amount DESC, reason ASC, currency ASC
-        LIMIT 100
+        reason_totals AS (
+          SELECT
+            COALESCE(NULLIF(BTRIM(r.reason), ''), 'Unspecified') AS reason,
+            UPPER(COALESCE(NULLIF(BTRIM(o.currency), ''), NULLIF(BTRIM($2::text), ''), 'KES')) AS currency,
+            COUNT(*)::int AS return_count,
+            COALESCE(SUM(i.item_quantity), 0) AS item_quantity,
+            COALESCE(SUM(c.credit_amount), 0) AS credit_amount
+          FROM sales_returns r
+          INNER JOIN sales_orders_v2 o
+            ON o.id = r.sales_order_id
+            AND o.company_id = r.company_id
+            AND o.deleted_at IS NULL
+          LEFT JOIN item_totals i
+            ON i.return_id = r.id
+            AND i.company_id = r.company_id
+          LEFT JOIN credit_totals c
+            ON c.return_id = r.id
+            AND c.company_id = r.company_id
+          WHERE r.company_id = $1
+            AND r.requested_at >= NOW() - INTERVAL '90 days'
+            AND r.status <> 'cancelled'
+            AND o.status <> 'cancelled'
+          GROUP BY reason, currency
+        ),
+        ranked_reasons AS (
+          SELECT reason_totals.*,
+            ROW_NUMBER() OVER (
+              PARTITION BY currency
+              ORDER BY return_count DESC, credit_amount DESC, reason ASC
+            ) AS currency_rank
+          FROM reason_totals
+        )
+        SELECT reason, currency, return_count, item_quantity, credit_amount
+        FROM ranked_reasons
+        WHERE currency_rank <= 100
+        ORDER BY currency ASC, return_count DESC, credit_amount DESC, reason ASC
       `,
       [context.companyId, context.company.currentCompany.currency],
     ) : Promise.resolve({ rows: [] }),
