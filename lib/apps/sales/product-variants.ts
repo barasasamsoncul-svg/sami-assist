@@ -115,7 +115,7 @@ export async function createSalesProductVariant(input: Record<string, unknown>) 
       [variantId,context.companyId,baseCatalogItemId,catalogItemId,label,sku,JSON.stringify(attributes),unitPrice,unitCost,context.userId],
     );
     await audit(client,context,variantId,'sales.product.variant.created','Created product variant '+name+'.',
-      {baseCatalogItemId,catalogItemId,sku,attributes,unitPrice,...(canViewSalesCost(context) ? { unitCost } : {})});
+      {baseCatalogItemId,catalogItemId,sku,attributes,unitPrice});
     await client.query('COMMIT');
     return {variantId,id:catalogItemId,catalogItemId,baseCatalogItemId,name,variantLabel:label,sku,attributes,unitPrice,...(canViewSalesCost(context) ? { unitCost } : {}),isVariant:true};
   } catch(error) {
@@ -176,7 +176,7 @@ export async function updateSalesProductVariant(input: Record<string, unknown>) 
       [variantId,context.companyId,label,sku,JSON.stringify(attributes),unitPrice,unitCost,context.userId],
     );
     await audit(client,context,variantId,'sales.product.variant.updated','Updated product variant '+name+'.',
-      {variantId,sku,attributes,unitPrice,...(canViewSalesCost(context) ? { unitCost } : {})});
+      {variantId,sku,attributes,unitPrice});
     await client.query('COMMIT');
     return {variantId,id:String(current.variant_catalog_item_id),catalogItemId:String(current.variant_catalog_item_id),
       baseCatalogItemId:String(current.base_catalog_item_id),name,variantLabel:label,sku,attributes,unitPrice,...(canViewSalesCost(context) ? { unitCost } : {}),isVariant:true};

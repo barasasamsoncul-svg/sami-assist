@@ -53,7 +53,9 @@ test('new variants inherit the base product cost unless an authorized user overr
   assert.match(variants, /: inheritedUnitCost/);
   assert.match(variants, /requireCostPermission\(context, input\.unitCost\)/);
   assert.match(variants, /function canViewSalesCost\(context: Context\)[\s\S]*?MARGIN_VIEW/);
-  assert.equal((variants.match(/canViewSalesCost\(context\) \? \{ unitCost \} : \{\}/g) || []).length, 4);
+  assert.equal((variants.match(/canViewSalesCost\(context\) \? \{ unitCost \} : \{\}/g) || []).length, 2);
+  assert.match(variants, /sales\.product\.variant\.created'[\s\S]{0,220}\{baseCatalogItemId,catalogItemId,sku,attributes,unitPrice\}\)/);
+  assert.match(variants, /sales\.product\.variant\.updated'[\s\S]{0,220}\{variantId,sku,attributes,unitPrice\}\)/);
 });
 
 test('bulk import validates bounds, reports each row and can import variant rows by base SKU', async () => {
