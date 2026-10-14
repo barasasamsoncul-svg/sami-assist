@@ -192,7 +192,7 @@ function MonthlySalesChart({ rows }: {
 }) {
   const currencies = Array.from(new Set(rows.map(row => row.currency))).sort();
 
-  return <div className="sami-surface rounded-[24px] p-4">
+  return <div role="region" aria-label="Monthly booked sales chart" className="sami-surface rounded-[24px] p-4">
     <div className="flex items-start justify-between gap-3">
       <div>
         <h2 className="text-sm font-black">Monthly booked sales</h2>
