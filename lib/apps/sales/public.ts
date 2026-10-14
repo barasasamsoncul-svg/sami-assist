@@ -100,6 +100,8 @@ export async function getPublicSalesQuote(
           q.tax_total,
           q.shipping_total,
           q.total_amount,
+          q.deposit_type,
+          q.deposit_value,
           q.notes,
           q.terms,
           q.sales_order_id,
@@ -456,6 +458,20 @@ export async function getPublicSalesQuote(
       money(
         quote.shipping_total,
       ),
+    depositType:
+      quote.deposit_type === 'percent'
+        ? 'percent'
+        : quote.deposit_type === 'fixed'
+          ? 'fixed'
+          : 'none',
+    depositValue:
+      money(quote.deposit_value),
+    depositRequiredAmount:
+      quote.deposit_type === 'percent'
+        ? money(money(quote.total_amount) * money(quote.deposit_value) / 100)
+        : quote.deposit_type === 'fixed'
+          ? Math.min(money(quote.total_amount), money(quote.deposit_value))
+          : 0,
     totalAmount:
       money(
         quote.total_amount,
