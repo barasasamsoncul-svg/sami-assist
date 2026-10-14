@@ -44,6 +44,8 @@ test('approval engine enforces sequential assigned reviewers and records immutab
   assert.match(engine, /approver_role_key/);
   assert.match(engine, /permissionSet\.has/);
   assert.match(engine, /already decided this approval step/);
+  assert.match(engine, /requesterUserIds\.includes\(context\.userId\)/);
+  assert.match(engine, /cannot approve or reject their own request/);
   assert.match(engine, /required_approvals/);
   assert.match(engine, /quote_fingerprint/);
   assert.match(engine, /optionalLines/);

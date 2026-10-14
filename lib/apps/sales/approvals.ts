@@ -276,6 +276,16 @@ export async function reviewAdvancedSalesQuoteApproval(input: Record<string, unk
     );
     if (requestResult.rows.length !== 1) throw new SalesError('QUOTE_STATE_INVALID', 'No active approval request exists for this quotation.');
     const request = requestResult.rows[0] as Record<string, unknown>;
+    const requesterUserIds = [
+      String(request.requested_by || ''),
+      String(quote.approval_requested_by || ''),
+    ].filter(Boolean);
+    if (requesterUserIds.includes(context.userId)) {
+      throw new SalesError(
+        'SALES_PERMISSION_REQUIRED',
+        'The person who submitted a quotation for approval cannot approve or reject their own request.',
+      );
+    }
     if (String(request.quote_fingerprint) !== snapshot.fingerprint) {
       await client.query(`UPDATE sales_quote_approval_requests SET status='superseded',completed_at=NOW(),updated_at=NOW() WHERE id=$1 AND company_id=$2`, [request.id, context.companyId]);
       await client.query(`UPDATE sales_quotes SET approval_status='draft',approval_requested_at=NULL,approval_requested_by=NULL,updated_at=NOW() WHERE id=$1 AND company_id=$2`, [quoteId, context.companyId]);
