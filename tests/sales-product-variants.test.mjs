@@ -115,9 +115,25 @@ test('catalogue UI provides CSV import/export plus variant create, edit and arch
 
 
 
-test('quote tax on saved catalogue lines comes from the company catalogue; ad-hoc lines may supply a rate', async () => {
+test('saved catalogue quote lines keep server-authoritative SKU, unit and tax; ad-hoc lines may supply their own', async () => {
   const commands = await source('lib/apps/sales/commands.ts');
 
+  assert.ok(
+    commands.includes(`sku:
+        nullableText(
+          catalog
+            ? catalog.sku
+            : item.sku,`),
+    'Saved catalogue lines must snapshot the catalogue SKU, not a client-submitted SKU.',
+  );
+  assert.ok(
+    commands.includes(`unit:
+        cleanText(
+          catalog
+            ? catalog.unit
+            : item.unit || 'unit',`),
+    'Saved catalogue lines must use the catalogue unit.',
+  );
   assert.ok(
     commands.includes(`const taxRate =
       numberInput(

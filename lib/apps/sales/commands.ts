@@ -1081,17 +1081,16 @@ async function normalizeQuoteLines(
       description,
       sku:
         nullableText(
-          item.sku ||
           catalog
-            ?.sku,
+            ? catalog.sku
+            : item.sku,
           180,
         ),
       unit:
         cleanText(
-          item.unit ||
           catalog
-            ?.unit ||
-          'unit',
+            ? catalog.unit
+            : item.unit || 'unit',
           60,
         ) ||
         'unit',
