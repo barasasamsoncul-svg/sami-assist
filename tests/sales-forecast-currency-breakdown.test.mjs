@@ -19,6 +19,16 @@ test('Sales revenue outlook aggregates only comparable base-currency amounts', a
   assert.match(forecast, /base_total_amount/);
   assert.match(forecast, /base_currency AS currency/);
   assert.match(forecast, /GROUP BY base_currency/);
+  assert.match(
+    forecast,
+    /AND \(\s*status = 'accepted'\s+OR valid_until IS NULL\s+OR valid_until >= CURRENT_DATE\s*\)/,
+    'expired but accepted quotations remain forecastable, while other expired quotations are excluded',
+  );
+  assert.match(
+    forecast,
+    /COUNT\(\*\) FILTER \(\s*WHERE status IN \('draft', 'sent', 'viewed'\)\s+AND valid_until IS NOT NULL/,
+    'accepted quotations must not be counted as expiring offers',
+  );
   assert.match(forecast, /currencies AS \([\s\S]*?SELECT currency FROM quote_pipeline[\s\S]*?UNION[\s\S]*?SELECT currency FROM committed/);
   assert.match(forecast, /ORDER BY currencies\.currency/);
   assert.doesNotMatch(forecast, /SUM\(total_amount\)/);
