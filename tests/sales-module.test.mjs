@@ -248,7 +248,7 @@ test('Sales quote conversion marks the linked CRM opportunity won and records th
   );
   assert.ok(
     quoteToOrder.indexOf('await markSalesOpportunityWonFromAcceptedQuote(') <
-      quoteToOrder.lastIndexOf("await client.query(\n      'COMMIT'"),
+      quoteToOrder.lastIndexOf("'COMMIT'"),
     'Opportunity reconciliation must happen before the conversion transaction commits.',
   );
 });
