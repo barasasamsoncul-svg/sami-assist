@@ -153,31 +153,50 @@ export async function getSalesReturnFulfillmentQualityReport(): Promise<SalesRet
           FROM sales_return_credits
           WHERE company_id = $1
           GROUP BY company_id, return_id
+        ),
+        reason_rollup AS (
+          SELECT
+            COALESCE(NULLIF(BTRIM(r.reason), ''), 'Unspecified') AS reason,
+            UPPER(COALESCE(NULLIF(BTRIM(o.currency), ''), NULLIF(BTRIM($2::text), ''), 'KES')) AS currency,
+            COUNT(*)::int AS return_count,
+            COALESCE(SUM(i.item_quantity), 0) AS item_quantity,
+            COALESCE(SUM(c.credit_amount), 0) AS credit_amount
+          FROM sales_returns r
+          INNER JOIN sales_orders_v2 o
+            ON o.id = r.sales_order_id
+            AND o.company_id = r.company_id
+            AND o.deleted_at IS NULL
+          LEFT JOIN item_totals i
+            ON i.return_id = r.id
+            AND i.company_id = r.company_id
+          LEFT JOIN credit_totals c
+            ON c.return_id = r.id
+            AND c.company_id = r.company_id
+          WHERE r.company_id = $1
+            AND r.requested_at >= NOW() - INTERVAL '90 days'
+            AND r.status <> 'cancelled'
+            AND o.status <> 'cancelled'
+          GROUP BY reason, currency
+        ),
+        ranked_reasons AS (
+          SELECT reason_rollup.*,
+            ROW_NUMBER() OVER (
+              PARTITION BY currency
+              ORDER BY return_count DESC, credit_amount DESC, reason ASC
+            ) AS currency_rank
+          FROM reason_rollup
+        ),
+        balanced_reasons AS (
+          SELECT ranked_reasons.*,
+            ROW_NUMBER() OVER (
+              ORDER BY currency_rank ASC, currency ASC, reason ASC
+            ) AS report_rank
+          FROM ranked_reasons
         )
-        SELECT
-          COALESCE(NULLIF(BTRIM(r.reason), ''), 'Unspecified') AS reason,
-          UPPER(COALESCE(NULLIF(BTRIM(o.currency), ''), NULLIF(BTRIM($2::text), ''), 'KES')) AS currency,
-          COUNT(*)::int AS return_count,
-          COALESCE(SUM(i.item_quantity), 0) AS item_quantity,
-          COALESCE(SUM(c.credit_amount), 0) AS credit_amount
-        FROM sales_returns r
-        INNER JOIN sales_orders_v2 o
-          ON o.id = r.sales_order_id
-          AND o.company_id = r.company_id
-          AND o.deleted_at IS NULL
-        LEFT JOIN item_totals i
-          ON i.return_id = r.id
-          AND i.company_id = r.company_id
-        LEFT JOIN credit_totals c
-          ON c.return_id = r.id
-          AND c.company_id = r.company_id
-        WHERE r.company_id = $1
-          AND r.requested_at >= NOW() - INTERVAL '90 days'
-          AND r.status <> 'cancelled'
-          AND o.status <> 'cancelled'
-        GROUP BY reason, currency
-        ORDER BY return_count DESC, credit_amount DESC, reason ASC, currency ASC
-        LIMIT 100
+        SELECT reason, currency, return_count, item_quantity, credit_amount
+        FROM balanced_reasons
+        WHERE report_rank <= 100
+        ORDER BY currency_rank ASC, currency ASC, reason ASC
       `,
       [context.companyId, context.company.currentCompany.currency],
     ) : Promise.resolve({ rows: [] }),
