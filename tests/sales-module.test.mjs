@@ -2861,6 +2861,14 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
       createInvoiceStart,
     );
 
+  assert.match(fulfillment, /const requestedLineIds = new Set<string>\(\)/);
+  assert.match(fulfillment, /requestedLineIds\.has\(lineId\)/);
+  assert.match(fulfillment, /A fulfillment line can only be updated once per request/);
+  assert.ok(
+    fulfillment.indexOf('const requestedLineIds = new Set<string>()') <
+      fulfillment.indexOf('const client ='),
+    'Duplicate fulfillment lines must be rejected before acquiring a database connection.',
+  );
   assert.match(fulfillment, /pg_advisory_xact_lock/);
   assert.match(cancellation, /pg_advisory_xact_lock/);
   assert.match(fulfillment, /sales-order-invoice:' \+ orderId/);
