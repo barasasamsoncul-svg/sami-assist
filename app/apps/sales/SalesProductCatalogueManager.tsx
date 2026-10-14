@@ -2,15 +2,20 @@
 
 import {
   Box,
+  Download,
   Pencil,
   Plus,
   Search,
+  Upload,
 } from 'lucide-react';
 
 import {
+  useEffect,
   useMemo,
   useState,
 } from 'react';
+
+import { useRouter } from 'next/navigation';
 
 import type {
   SalesWorkspaceData,
@@ -92,6 +97,60 @@ function fromItem(
 }
 
 
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let quoted = false;
+  const source = text.replace(/^\\uFEFF/, '');
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (quoted) {
+      if (char === '"' && source[index + 1] === '"') {
+        cell += '"';
+        index += 1;
+      } else if (char === '"') {
+        quoted = false;
+      } else {
+        cell += char;
+      }
+    } else if (char === '"' && cell.length === 0) {
+      quoted = true;
+    } else if (char === ',') {
+      row.push(cell);
+      cell = '';
+    } else if (char === '\\n') {
+      row.push(cell.replace(/\\r$/, ''));
+      if (row.some(value => value.trim())) rows.push(row);
+      row = [];
+      cell = '';
+    } else {
+      cell += char;
+    }
+  }
+  row.push(cell.replace(/\\r$/, ''));
+  if (row.some(value => value.trim())) rows.push(row);
+  if (quoted) throw new Error('The CSV file has an unclosed quoted field.');
+  return rows;
+}
+
+function csvCell(value: unknown): string {
+  const text = String(value ?? '');
+  return /[",\\r\\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+}
+
+function downloadCsv(filename: string, rows: unknown[][]) {
+  const csv = rows.map(row => row.map(csvCell).join(',')).join('\\r\\n');
+  const blob = new Blob(['\\uFEFF', csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+
 export default function SalesProductCatalogueManager({
   data,
   busy,
@@ -134,6 +193,7 @@ export default function SalesProductCatalogueManager({
     ) =>
       void;
 }) {
+  const router = useRouter();
   const [
     items,
     setItems,
@@ -141,6 +201,15 @@ export default function SalesProductCatalogueManager({
     useState(
       data.catalogItems,
     );
+
+  useEffect(() => {
+    setItems(data.catalogItems);
+  }, [data.catalogItems]);
+
+  const [
+    importing,
+    setImporting,
+  ] = useState(false);
 
   const [
     query,
@@ -169,14 +238,13 @@ export default function SalesProductCatalogueManager({
             .trim()
             .toLowerCase();
 
-        if (
-          !value
-        ) {
-          return items;
+        if (!value) {
+          return items.filter(item => !item.isVariant);
         }
 
         return items.filter(
           item =>
+            !item.isVariant &&
             [
               item.name,
               item.sku,
@@ -308,6 +376,12 @@ export default function SalesProductCatalogueManager({
         unitCost:
           previous?.unitCost ??
           null,
+        isVariant: false,
+        variantId: null,
+        baseCatalogItemId: null,
+        baseProductName: null,
+        variantLabel: null,
+        variantAttributes: [],
       };
 
       setItems(
@@ -331,6 +405,7 @@ export default function SalesProductCatalogueManager({
           : 'Catalogue item created',
         'The shared product master is ready for Sales quotations and Invoicing.',
       );
+      router.refresh();
     } catch (
       error
     ) {
@@ -341,6 +416,56 @@ export default function SalesProductCatalogueManager({
           ? error.message
           : 'SaMi could not save the catalogue item.',
       );
+    }
+  }
+
+
+  function exportCatalogue() {
+    const rows = items.filter(item => !item.isVariant);
+    downloadCsv('sami-sales-catalogue.csv', [
+      ['name', 'itemType', 'sku', 'description', 'unit', 'unitPrice', 'taxRateId'],
+      ...rows.map(item => [item.name, item.itemType, item.sku || '', item.description || '', item.unit, item.unitPrice, item.taxRateId || '']),
+    ]);
+  }
+
+  async function importCatalogue(file: File) {
+    if (!data.capabilities.canManageCatalog) {
+      showError('Catalogue permission required', 'You need catalogue-management permission to import products.');
+      return;
+    }
+    setImporting(true);
+    try {
+      const rows = parseCsv(await file.text());
+      if (rows.length < 2) throw new Error('The CSV must include a header row and at least one product row.');
+      if (rows.length - 1 > 200) throw new Error('Import is limited to 200 product rows per file.');
+      const normalizeHeader = (value: string) => value.trim().toLowerCase().replace(/[ _-]/g, '');
+      const headers = rows[0].map(normalizeHeader);
+      const column = (...names: string[]) => headers.findIndex(header => names.includes(header));
+      const nameColumn = column('name', 'productname', 'itemname');
+      if (nameColumn < 0) throw new Error('The CSV needs a name or productName column.');
+      const val = (row: string[], index: number) => index < 0 ? '' : row[index]?.trim() || '';
+      const itemsToImport = rows.slice(1).map(row => ({
+        name: val(row, nameColumn),
+        itemType: val(row, column('itemtype', 'type')).toLowerCase() || 'product',
+        sku: val(row, column('sku', 'itemsku')),
+        description: val(row, column('description', 'details')),
+        unit: val(row, column('unit', 'uom')) || 'unit',
+        unitPrice: val(row, column('unitprice', 'price', 'sellingprice')) || '0',
+        taxRateId: val(row, column('taxrateid')),
+      }));
+      const result = await request({ action: 'bulk_import_catalog_items', items: itemsToImport }) as {
+        total?: number; created?: number; failed?: number; results?: Array<{ row?: number; success?: boolean; error?: string; name?: string }>;
+      };
+      const created = Number(result.created || 0);
+      const failed = Number(result.failed || 0);
+      const failures = (result.results || []).filter(item => item.success === false).slice(0, 3);
+      const details = failures.map(item => 'Row ' + String(item.row || '?') + ': ' + String(item.error || 'Import failed')).join(' · ');
+      showSuccess('Catalogue import finished', created + ' created; ' + failed + ' failed.' + (details ? ' ' + details : ''));
+      router.refresh();
+    } catch (error) {
+      showError('Catalogue import failed', error instanceof Error ? error.message : 'SaMi could not read that CSV file.');
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -360,6 +485,16 @@ export default function SalesProductCatalogueManager({
 
       <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
         <div className="sami-surface rounded-[24px] p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-bold text-slate-500">Import or export catalogue data</p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={exportCatalogue} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[var(--sami-border)] px-2.5 text-xs font-bold"><Download className="h-3.5 w-3.5" /> Export CSV</button>
+              <label className={['inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--sami-border)] px-2.5 text-xs font-bold', importing || busy || !data.capabilities.canManageCatalog ? 'pointer-events-none opacity-50' : ''].join(' ')}>
+                <Upload className="h-3.5 w-3.5" /> {importing ? 'Importing…' : 'Import CSV'}
+                <input type="file" accept=".csv,text/csv" disabled={importing || busy || !data.capabilities.canManageCatalog} className="sr-only" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void importCatalogue(file); }} />
+              </label>
+            </div>
+          </div>
           <div className="relative">
             <Search
               className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400"
