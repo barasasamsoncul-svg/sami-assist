@@ -831,31 +831,33 @@ export async function getSalesWorkspaceData():
                 item.unit,
                 item.unit_price,
                 item.metadata,
-                tax.id
-                  AS tax_rate_id,
-                tax.name
-                  AS tax_name,
-                COALESCE(
-                  tax.rate,
-                  0
-                )
-                  AS tax_rate
+                tax.id AS tax_rate_id,
+                tax.name AS tax_name,
+                COALESCE(tax.rate,0) AS tax_rate,
+                variant.id AS variant_id,
+                variant.base_catalog_item_id,
+                base_item.name AS base_product_name,
+                variant.variant_label,
+                variant.attributes AS variant_attributes,
+                variant.unit_cost AS variant_unit_cost
               FROM invoicing_catalog_items item
               LEFT JOIN invoicing_tax_rates tax
-                ON tax.id =
-                   item.default_tax_rate_id
-               AND tax.company_id =
-                   item.company_id
-               AND tax.deleted_at
-                   IS NULL
-              WHERE item.company_id =
-                    $1
-                AND item.is_active =
-                    TRUE
-                AND item.deleted_at
-                    IS NULL
-              ORDER BY
-                LOWER(item.name)
+                ON tax.id = item.default_tax_rate_id
+               AND tax.company_id = item.company_id
+               AND tax.deleted_at IS NULL
+              LEFT JOIN sales_product_variants variant
+                ON variant.variant_catalog_item_id = item.id
+               AND variant.company_id = item.company_id
+               AND variant.is_active = TRUE
+               AND variant.deleted_at IS NULL
+              LEFT JOIN invoicing_catalog_items base_item
+                ON base_item.id = variant.base_catalog_item_id
+               AND base_item.company_id = variant.company_id
+               AND base_item.deleted_at IS NULL
+              WHERE item.company_id = $1
+                AND item.is_active = TRUE
+                AND item.deleted_at IS NULL
+              ORDER BY LOWER(COALESCE(base_item.name,item.name)), variant.variant_label NULLS FIRST
               LIMIT 500
             `,
             [
@@ -1435,71 +1437,25 @@ export async function getSalesWorkspaceData():
         }),
       ),
 
-    catalogItems:
-      catalogItems.rows.map(
-        row => ({
-          id:
-            String(
-              row.id,
-            ),
-          itemType:
-            String(
-              row.item_type ||
-              'service',
-            ),
-          name:
-            String(
-              row.name,
-            ),
-          sku:
-            row.sku
-              ? String(
-                  row.sku,
-                )
-              : null,
-          description:
-            row.description
-              ? String(
-                  row.description,
-                )
-              : null,
-          unit:
-            String(
-              row.unit ||
-              'unit',
-            ),
-          unitPrice:
-            money(
-              row.unit_price,
-            ),
-          taxRateId:
-            row.tax_rate_id
-              ? String(
-                  row.tax_rate_id,
-                )
-              : null,
-          taxName:
-            row.tax_name
-              ? String(
-                  row.tax_name,
-                )
-              : null,
-          taxRate:
-            money(
-              row.tax_rate,
-            ),
-          unitCost:
-            access.canViewMargin
-              ? money(
-                  row.metadata
-                    ?.standardCost ??
-                  row.metadata
-                    ?.unitCost ??
-                  0,
-                )
-              : null,
-        }),
-      ),
+    catalogItems: catalogItems.rows.map(row => ({
+      id: String(row.id),
+      itemType: String(row.item_type || 'service'),
+      name: String(row.name),
+      sku: row.sku ? String(row.sku) : null,
+      description: row.description ? String(row.description) : null,
+      unit: String(row.unit || 'unit'),
+      unitPrice: money(row.unit_price),
+      taxRateId: row.tax_rate_id ? String(row.tax_rate_id) : null,
+      taxName: row.tax_name ? String(row.tax_name) : null,
+      taxRate: money(row.tax_rate),
+      unitCost: access.canViewMargin ? money(row.variant_unit_cost ?? row.metadata?.standardCost ?? row.metadata?.unitCost ?? 0) : null,
+      isVariant: Boolean(row.variant_id),
+      variantId: row.variant_id ? String(row.variant_id) : null,
+      baseCatalogItemId: row.base_catalog_item_id ? String(row.base_catalog_item_id) : null,
+      baseProductName: row.base_product_name ? String(row.base_product_name) : null,
+      variantLabel: row.variant_label ? String(row.variant_label) : null,
+      variantAttributes: Array.isArray(row.variant_attributes) ? row.variant_attributes as Array<{ name: string; value: string }> : [],
+    })),
 
     pricelists:
       pricelists.rows.map(
