@@ -35,6 +35,7 @@ export async function getSalesProductPerformance(): Promise<{ rows: SalesProduct
 
   const result = await context.pool.query(
     `
+      WITH product_totals AS (
       SELECT
         CASE
           WHEN i.catalog_item_id IS NOT NULL THEN 'catalog:' || i.catalog_item_id::text
@@ -68,7 +69,18 @@ export async function getSalesProductPerformance(): Promise<{ rows: SalesProduct
         AND o.status IN ('confirmed', 'closed')
         AND o.order_date >= CURRENT_DATE - INTERVAL '90 days'
       GROUP BY product_key, currency
-      ORDER BY net_sales DESC, order_count DESC, product_name ASC, currency ASC
+      ),
+      ranked_product_totals AS (
+        SELECT product_totals.*,
+          ROW_NUMBER() OVER (
+            PARTITION BY currency
+            ORDER BY net_sales DESC, order_count DESC, product_name ASC, product_key ASC
+          ) AS currency_rank
+        FROM product_totals
+      )
+      SELECT *
+      FROM ranked_product_totals
+      ORDER BY currency_rank ASC, currency ASC, net_sales DESC, order_count DESC, product_name ASC, product_key ASC
       LIMIT 250
     `,
     [context.companyId, context.company.currentCompany.currency],
