@@ -976,6 +976,18 @@ CREATE TABLE IF NOT EXISTS public.sales_pipelines (
   deleted_at TIMESTAMPTZ
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_pipelines_company_name
+  ON public.sales_pipelines(company_id, LOWER(BTRIM(name)))
+  WHERE deleted_at IS NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_pipelines_company_default
+  ON public.sales_pipelines(company_id)
+  WHERE is_default=TRUE AND is_active=TRUE AND deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_sales_pipelines_company_active
+  ON public.sales_pipelines(company_id, is_active, sequence, LOWER(name))
+  WHERE deleted_at IS NULL;
+
   CREATE TABLE IF NOT EXISTS public.sales_pipeline_stages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL,
@@ -993,6 +1005,12 @@ CREATE TABLE IF NOT EXISTS public.sales_pipelines (
 
   CREATE INDEX IF NOT EXISTS idx_sales_pipeline_stages_company
     ON public.sales_pipeline_stages(company_id, is_active, sequence, name);
+
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_pipeline_stages_company_pipeline_name
+    ON public.sales_pipeline_stages(company_id, pipeline_id, LOWER(BTRIM(name)));
+
+  CREATE INDEX IF NOT EXISTS idx_sales_pipeline_stages_pipeline
+    ON public.sales_pipeline_stages(company_id, pipeline_id, is_active, sequence, name);
 
   CREATE TABLE IF NOT EXISTS public.sales_leads (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
