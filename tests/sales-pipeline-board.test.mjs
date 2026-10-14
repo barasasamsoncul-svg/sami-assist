@@ -38,7 +38,7 @@ test('Pipeline stage mutations are company-scoped, transactional, and keep Won/L
     source('lib/apps/sales/pipeline.ts'),
     source('lib/apps/sales/schema.sql'),
   ]);
-  assert.match(schema, /CREATE TABLE IF NOT EXISTS public\\.sales_pipeline_stages/);
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS public\.sales_pipeline_stages/);
   for (const name of [
     'createSalesPipelineStage',
     'updateSalesPipelineStage',
