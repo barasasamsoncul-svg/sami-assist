@@ -6,17 +6,19 @@ import {
   SALES_PERMISSIONS,
 } from '@/lib/apps/sales/context';
 
+type CurrencyAmount = { currency: string; amount: number };
+
 export type SalesManagementInsightsData = {
   summary: {
     quoteCount: number;
     openQuoteCount: number;
-    openQuoteValue: number;
+    openQuoteValueByCurrency: CurrencyAmount[];
     expiredOpenQuoteCount: number;
     expiringSoonQuoteCount: number;
     staleQuoteCount: number;
     followUpQuoteCount: number;
-    currentMonthQuoteValue: number;
-    priorMonthQuoteValue: number;
+    currentMonthQuoteValueByCurrency: CurrencyAmount[];
+    priorMonthQuoteValueByCurrency: CurrencyAmount[];
   };
   followUpQueue: Array<{
     id: string;
@@ -27,21 +29,22 @@ export type SalesManagementInsightsData = {
     validUntil: string | null;
     reason: 'expired' | 'expiring' | 'stale';
     ageDays: number;
+    currency: string;
   }>;
-  statusCounts: Array<{ status: string; count: number; amount: number }>;
-  monthly: Array<{ month: string; quoteCount: number; amount: number }>;
-  topCustomers: Array<{ customerName: string; quoteCount: number; amount: number }>;
+  statusCounts: Array<{ status: string; currency: string; count: number; amount: number }>;
+  monthly: Array<{ month: string; currency: string; quoteCount: number; amount: number }>;
+  topCustomers: Array<{ customerName: string; currency: string; quoteCount: number; amount: number }>;
   orderSummary: {
     bookedOrderCount: number;
-    bookedOrderValue: number;
+    bookedOrderValueByCurrency: CurrencyAmount[];
     ordersNeedingFulfillment: number;
     ordersNotFullyInvoiced: number;
-    currentMonthOrderValue: number;
-    priorMonthOrderValue: number;
+    currentMonthOrderValueByCurrency: CurrencyAmount[];
+    priorMonthOrderValueByCurrency: CurrencyAmount[];
   };
-  orderMonthly: Array<{ month: string; orderCount: number; amount: number }>;
-  topProducts: Array<{ productName: string; sku: string | null; quantity: number; orderCount: number; amount: number }>;
-  teamPerformance: Array<{ teamName: string; orderCount: number; amount: number }>;
+  orderMonthly: Array<{ month: string; currency: string; orderCount: number; amount: number }>;
+  topProducts: Array<{ productName: string; sku: string | null; currency: string; quantity: number; orderCount: number; amount: number }>;
+  teamPerformance: Array<{ teamName: string; currency: string; orderCount: number; amount: number }>;
   forecast: Array<{
     horizonDays: number;
     currency: string;
@@ -55,13 +58,13 @@ const EMPTY_REPORT: SalesManagementInsightsData = {
   summary: {
     quoteCount: 0,
     openQuoteCount: 0,
-    openQuoteValue: 0,
+    openQuoteValueByCurrency: [],
     expiredOpenQuoteCount: 0,
     expiringSoonQuoteCount: 0,
     staleQuoteCount: 0,
     followUpQuoteCount: 0,
-    currentMonthQuoteValue: 0,
-    priorMonthQuoteValue: 0,
+    currentMonthQuoteValueByCurrency: [],
+    priorMonthQuoteValueByCurrency: [],
   },
   followUpQueue: [],
   statusCounts: [],
@@ -69,11 +72,11 @@ const EMPTY_REPORT: SalesManagementInsightsData = {
   topCustomers: [],
   orderSummary: {
     bookedOrderCount: 0,
-    bookedOrderValue: 0,
+    bookedOrderValueByCurrency: [],
     ordersNeedingFulfillment: 0,
     ordersNotFullyInvoiced: 0,
-    currentMonthOrderValue: 0,
-    priorMonthOrderValue: 0,
+    currentMonthOrderValueByCurrency: [],
+    priorMonthOrderValueByCurrency: [],
   },
   orderMonthly: [],
   topProducts: [],
@@ -94,11 +97,13 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
   const companyId = context.companyId;
   const [
     summaryResult,
+    quoteValuesResult,
     queueResult,
     statusResult,
     monthlyResult,
     customersResult,
     orderSummaryResult,
+    orderValuesResult,
     orderMonthlyResult,
     productsResult,
     teamsResult,
@@ -108,7 +113,6 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
       SELECT
         COUNT(*)::int AS quote_count,
         COUNT(*) FILTER (WHERE status IN ('sent', 'viewed'))::int AS open_quote_count,
-        COALESCE(SUM(base_total_amount) FILTER (WHERE status IN ('sent', 'viewed')), 0) AS open_quote_value,
         COUNT(*) FILTER (WHERE status IN ('sent', 'viewed') AND valid_until < CURRENT_DATE)::int AS expired_open_quote_count,
         COUNT(*) FILTER (WHERE status IN ('sent', 'viewed') AND valid_until BETWEEN CURRENT_DATE AND CURRENT_DATE + 7)::int AS expiring_soon_quote_count,
         COUNT(*) FILTER (WHERE status IN ('sent', 'viewed') AND COALESCE(viewed_at::date, sent_at::date, quote_date) <= CURRENT_DATE - 7)::int AS stale_quote_count,
@@ -117,7 +121,14 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
             AND (valid_until < CURRENT_DATE
               OR valid_until BETWEEN CURRENT_DATE AND CURRENT_DATE + 7
               OR COALESCE(viewed_at::date, sent_at::date, quote_date) <= CURRENT_DATE - 7)
-        )::int AS follow_up_quote_count,
+        )::int AS follow_up_quote_count
+      FROM sales_quotes
+      WHERE company_id = $1 AND deleted_at IS NULL
+    `, [companyId]),
+    context.pool.query(`
+      SELECT
+        base_currency AS currency,
+        COALESCE(SUM(base_total_amount) FILTER (WHERE status IN ('sent', 'viewed')), 0) AS open_quote_value,
         COALESCE(SUM(base_total_amount) FILTER (
           WHERE quote_date >= DATE_TRUNC('month', CURRENT_DATE)::date
             AND quote_date < (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month')::date
@@ -128,10 +139,12 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
         ), 0) AS prior_month_quote_value
       FROM sales_quotes
       WHERE company_id = $1 AND deleted_at IS NULL
+      GROUP BY base_currency
+      ORDER BY base_currency
     `, [companyId]),
     context.pool.query(`
       SELECT id, quote_number, customer_name, status,
-        base_total_amount AS amount, valid_until,
+        base_total_amount AS amount, base_currency AS currency, valid_until,
         CASE
           WHEN valid_until < CURRENT_DATE THEN 'expired'
           WHEN valid_until BETWEEN CURRENT_DATE AND CURRENT_DATE + 7 THEN 'expiring'
@@ -152,30 +165,31 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
       LIMIT 10
     `, [companyId]),
     context.pool.query(`
-      SELECT status, COUNT(*)::int AS count, COALESCE(SUM(base_total_amount), 0) AS amount
-      FROM sales_quotes
-      WHERE company_id = $1 AND deleted_at IS NULL
-      GROUP BY status ORDER BY status
-    `, [companyId]),
-    context.pool.query(`
-      SELECT TO_CHAR(DATE_TRUNC('month', quote_date), 'YYYY-MM') AS month,
-        COUNT(*)::int AS quote_count, COALESCE(SUM(base_total_amount), 0) AS amount
-      FROM sales_quotes
-      WHERE company_id = $1 AND deleted_at IS NULL
-        AND quote_date >= CURRENT_DATE - INTERVAL '11 months'
-      GROUP BY 1 ORDER BY 1
-    `, [companyId]),
-    context.pool.query(`
-      SELECT customer_name, COUNT(*)::int AS quote_count,
+      SELECT status, base_currency AS currency, COUNT(*)::int AS count,
         COALESCE(SUM(base_total_amount), 0) AS amount
       FROM sales_quotes
       WHERE company_id = $1 AND deleted_at IS NULL
-      GROUP BY customer_name ORDER BY amount DESC LIMIT 10
+      GROUP BY status, base_currency ORDER BY status, base_currency
+    `, [companyId]),
+    context.pool.query(`
+      SELECT TO_CHAR(DATE_TRUNC('month', quote_date), 'YYYY-MM') AS month,
+        base_currency AS currency, COUNT(*)::int AS quote_count,
+        COALESCE(SUM(base_total_amount), 0) AS amount
+      FROM sales_quotes
+      WHERE company_id = $1 AND deleted_at IS NULL
+        AND quote_date >= CURRENT_DATE - INTERVAL '11 months'
+      GROUP BY 1, base_currency ORDER BY 1, base_currency
+    `, [companyId]),
+    context.pool.query(`
+      SELECT customer_name, base_currency AS currency, COUNT(*)::int AS quote_count,
+        COALESCE(SUM(base_total_amount), 0) AS amount
+      FROM sales_quotes
+      WHERE company_id = $1 AND deleted_at IS NULL
+      GROUP BY customer_name, base_currency ORDER BY amount DESC LIMIT 10
     `, [companyId]),
     context.pool.query(`
       SELECT
         COUNT(*) FILTER (WHERE status IN ('confirmed', 'closed'))::int AS booked_order_count,
-        COALESCE(SUM(base_total_amount) FILTER (WHERE status IN ('confirmed', 'closed')), 0) AS booked_order_value,
         COUNT(*) FILTER (
           WHERE status IN ('confirmed', 'closed')
             AND fulfillment_status <> 'fulfilled'
@@ -183,7 +197,14 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
         COUNT(*) FILTER (
           WHERE status IN ('confirmed', 'closed')
             AND invoice_status <> 'invoiced'
-        )::int AS orders_not_fully_invoiced,
+        )::int AS orders_not_fully_invoiced
+      FROM sales_orders_v2
+      WHERE company_id = $1 AND deleted_at IS NULL
+    `, [companyId]),
+    context.pool.query(`
+      SELECT
+        base_currency AS currency,
+        COALESCE(SUM(base_total_amount) FILTER (WHERE status IN ('confirmed', 'closed')), 0) AS booked_order_value,
         COALESCE(SUM(base_total_amount) FILTER (
           WHERE status IN ('confirmed', 'closed')
             AND order_date >= DATE_TRUNC('month', CURRENT_DATE)::date
@@ -196,6 +217,8 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
         ), 0) AS prior_month_order_value
       FROM sales_orders_v2
       WHERE company_id = $1 AND deleted_at IS NULL
+      GROUP BY base_currency
+      ORDER BY base_currency
     `, [companyId]),
     context.pool.query(`
       WITH months AS (
@@ -204,25 +227,36 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
           DATE_TRUNC('month', CURRENT_DATE),
           INTERVAL '1 month'
         )::date AS month_start
+      ),
+      currencies AS (
+        SELECT DISTINCT base_currency AS currency
+        FROM sales_orders_v2
+        WHERE company_id = $1
+          AND deleted_at IS NULL
+          AND status IN ('confirmed', 'closed')
       )
       SELECT
         TO_CHAR(months.month_start, 'YYYY-MM') AS month,
+        currencies.currency,
         COUNT(o.id)::int AS order_count,
         COALESCE(SUM(o.base_total_amount), 0) AS amount
       FROM months
+      CROSS JOIN currencies
       LEFT JOIN sales_orders_v2 o
         ON o.company_id = $1
         AND o.deleted_at IS NULL
         AND o.status IN ('confirmed', 'closed')
+        AND o.base_currency = currencies.currency
         AND o.order_date >= months.month_start
         AND o.order_date < (months.month_start + INTERVAL '1 month')::date
-      GROUP BY months.month_start
-      ORDER BY months.month_start
+      GROUP BY months.month_start, currencies.currency
+      ORDER BY months.month_start, currencies.currency
     `, [companyId]),
     context.pool.query(`
       SELECT
         COALESCE(NULLIF(BTRIM(i.description), ''), NULLIF(BTRIM(i.sku_snapshot), ''), 'Uncatalogued item') AS product_name,
         MAX(NULLIF(BTRIM(i.sku_snapshot), '')) AS sku,
+        o.base_currency AS currency,
         COALESCE(SUM(i.quantity), 0) AS quantity,
         COUNT(DISTINCT o.id)::int AS order_count,
         COALESCE(SUM(i.line_total * COALESCE(o.exchange_rate, 1)), 0) AS amount
@@ -236,13 +270,15 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
         AND o.status IN ('confirmed', 'closed')
       GROUP BY
         COALESCE(NULLIF(BTRIM(i.description), ''), NULLIF(BTRIM(i.sku_snapshot), ''), 'Uncatalogued item'),
-        COALESCE(NULLIF(BTRIM(i.sku_snapshot), ''), '')
+        COALESCE(NULLIF(BTRIM(i.sku_snapshot), ''), ''),
+        o.base_currency
       ORDER BY amount DESC
       LIMIT 10
     `, [companyId]),
     context.pool.query(`
       SELECT
         COALESCE(NULLIF(BTRIM(t.name), ''), 'Unassigned') AS team_name,
+        o.base_currency AS currency,
         COUNT(*)::int AS order_count,
         COALESCE(SUM(o.base_total_amount), 0) AS amount
       FROM sales_orders_v2 o
@@ -255,8 +291,9 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
         AND o.status IN ('confirmed', 'closed')
       GROUP BY
         COALESCE(t.id::text, 'unassigned'),
-        COALESCE(NULLIF(BTRIM(t.name), ''), 'Unassigned')
-      ORDER BY amount DESC, team_name
+        COALESCE(NULLIF(BTRIM(t.name), ''), 'Unassigned'),
+        o.base_currency
+      ORDER BY amount DESC, team_name, currency
       LIMIT 10
     `, [companyId]),
     context.pool.query(`
@@ -288,17 +325,29 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
   ]);
 
   const summaryRow = summaryResult.rows[0] || {};
+  const quoteValues = quoteValuesResult.rows.map(row => ({
+    currency: String(row.currency || 'KES').toUpperCase(),
+    openQuoteValue: Number(row.open_quote_value || 0),
+    currentMonthQuoteValue: Number(row.current_month_quote_value || 0),
+    priorMonthQuoteValue: Number(row.prior_month_quote_value || 0),
+  }));
+  const orderValues = orderValuesResult.rows.map(row => ({
+    currency: String(row.currency || 'KES').toUpperCase(),
+    bookedOrderValue: Number(row.booked_order_value || 0),
+    currentMonthOrderValue: Number(row.current_month_order_value || 0),
+    priorMonthOrderValue: Number(row.prior_month_order_value || 0),
+  }));
   return {
     summary: {
       quoteCount: Number(summaryRow.quote_count || 0),
       openQuoteCount: Number(summaryRow.open_quote_count || 0),
-      openQuoteValue: Number(summaryRow.open_quote_value || 0),
+      openQuoteValueByCurrency: quoteValues.map(row => ({ currency: row.currency, amount: row.openQuoteValue })),
       expiredOpenQuoteCount: Number(summaryRow.expired_open_quote_count || 0),
       expiringSoonQuoteCount: Number(summaryRow.expiring_soon_quote_count || 0),
       staleQuoteCount: Number(summaryRow.stale_quote_count || 0),
       followUpQuoteCount: Number(summaryRow.follow_up_quote_count || 0),
-      currentMonthQuoteValue: Number(summaryRow.current_month_quote_value || 0),
-      priorMonthQuoteValue: Number(summaryRow.prior_month_quote_value || 0),
+      currentMonthQuoteValueByCurrency: quoteValues.map(row => ({ currency: row.currency, amount: row.currentMonthQuoteValue })),
+      priorMonthQuoteValueByCurrency: quoteValues.map(row => ({ currency: row.currency, amount: row.priorMonthQuoteValue })),
     },
     followUpQueue: queueResult.rows.map(row => ({
       id: String(row.id),
@@ -306,44 +355,57 @@ export async function getSalesManagementInsights(): Promise<SalesManagementInsig
       customerName: String(row.customer_name),
       status: String(row.status),
       amount: Number(row.amount || 0),
+      currency: String(row.currency || 'KES').toUpperCase(),
       validUntil: row.valid_until ? String(row.valid_until).slice(0, 10) : null,
       reason: String(row.reason) as 'expired' | 'expiring' | 'stale',
       ageDays: Number(row.age_days || 0),
     })),
     statusCounts: statusResult.rows.map(row => ({
-      status: String(row.status), count: Number(row.count || 0), amount: Number(row.amount || 0),
+      status: String(row.status),
+      currency: String(row.currency || 'KES').toUpperCase(),
+      count: Number(row.count || 0),
+      amount: Number(row.amount || 0),
     })),
     monthly: monthlyResult.rows.map(row => ({
-      month: String(row.month), quoteCount: Number(row.quote_count || 0), amount: Number(row.amount || 0),
+      month: String(row.month),
+      currency: String(row.currency || 'KES').toUpperCase(),
+      quoteCount: Number(row.quote_count || 0),
+      amount: Number(row.amount || 0),
     })),
     topCustomers: customersResult.rows.map(row => ({
-      customerName: String(row.customer_name), quoteCount: Number(row.quote_count || 0), amount: Number(row.amount || 0),
+      customerName: String(row.customer_name),
+      currency: String(row.currency || 'KES').toUpperCase(),
+      quoteCount: Number(row.quote_count || 0),
+      amount: Number(row.amount || 0),
     })),
     orderSummary: (() => {
       const row = orderSummaryResult.rows[0] || {};
       return {
         bookedOrderCount: Number(row.booked_order_count || 0),
-        bookedOrderValue: Number(row.booked_order_value || 0),
+        bookedOrderValueByCurrency: orderValues.map(item => ({ currency: item.currency, amount: item.bookedOrderValue })),
         ordersNeedingFulfillment: Number(row.orders_needing_fulfillment || 0),
         ordersNotFullyInvoiced: Number(row.orders_not_fully_invoiced || 0),
-        currentMonthOrderValue: Number(row.current_month_order_value || 0),
-        priorMonthOrderValue: Number(row.prior_month_order_value || 0),
+        currentMonthOrderValueByCurrency: orderValues.map(item => ({ currency: item.currency, amount: item.currentMonthOrderValue })),
+        priorMonthOrderValueByCurrency: orderValues.map(item => ({ currency: item.currency, amount: item.priorMonthOrderValue })),
       };
     })(),
     orderMonthly: orderMonthlyResult.rows.map(row => ({
       month: String(row.month || ''),
+      currency: String(row.currency || 'KES').toUpperCase(),
       orderCount: Number(row.order_count || 0),
       amount: Number(row.amount || 0),
     })),
     topProducts: productsResult.rows.map(row => ({
       productName: String(row.product_name || 'Uncatalogued item'),
       sku: row.sku ? String(row.sku) : null,
+      currency: String(row.currency || 'KES').toUpperCase(),
       quantity: Number(row.quantity || 0),
       orderCount: Number(row.order_count || 0),
       amount: Number(row.amount || 0),
     })),
     teamPerformance: teamsResult.rows.map(row => ({
       teamName: String(row.team_name || 'Unassigned'),
+      currency: String(row.currency || 'KES').toUpperCase(),
       orderCount: Number(row.order_count || 0),
       amount: Number(row.amount || 0),
     })),
