@@ -554,3 +554,133 @@ svg {
   color: inherit !important;
   stroke: currentColor;
 }
+
+
+/*
+ * Sales visual system
+ * Shared by the standalone Sales shell and the quote/order detail surfaces.
+ * Keep the contract scoped to Sales so neighboring apps retain their own
+ * visual profiles and interaction sizing.
+ */
+main[data-sami-app="sales"] {
+  --sales-card-radius: 20px;
+  --sales-control-radius: 12px;
+  --sales-control-height: 42px;
+  --sales-focus: color-mix(in srgb, var(--sami-brand) 24%, transparent);
+}
+
+main[data-sami-app="sales"] :where(h1, h2, h3, h4) {
+  text-wrap: pretty;
+}
+
+main[data-sami-app="sales"] h1 {
+  font-size: clamp(1.45rem, 1.25rem + 0.45vw, 1.9rem);
+  line-height: 1.18;
+  letter-spacing: -0.035em;
+}
+
+main[data-sami-app="sales"] :where(.sami-surface, .sami-surface-raised) {
+  border-radius: var(--sales-card-radius);
+  border-color: var(--sami-border);
+}
+
+main[data-sami-app="sales"] .sami-surface {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.035), 0 8px 24px rgba(15, 23, 42, 0.025);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.dark main[data-sami-app="sales"] .sami-surface {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16), 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+main[data-sami-app="sales"] :where(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]):not([type="color"]), select, textarea) {
+  border-radius: var(--sales-control-radius);
+  border-color: var(--sami-border-strong);
+  transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+}
+
+main[data-sami-app="sales"] :where(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]):not([type="color"]), select) {
+  min-height: var(--sales-control-height);
+}
+
+main[data-sami-app="sales"] textarea {
+  min-height: 104px;
+}
+
+main[data-sami-app="sales"] :where(input, select, textarea):focus-visible {
+  border-color: var(--sami-brand);
+  outline: 2px solid var(--sales-focus);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 3px var(--sales-focus);
+}
+
+main[data-sami-app="sales"] :where(a, button) {
+  -webkit-tap-highlight-color: transparent;
+}
+
+main[data-sami-app="sales"] button:not(:disabled) {
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+main[data-sami-app="sales"] button:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+main[data-sami-app="sales"] :where(a, button):focus-visible {
+  outline-color: var(--sami-brand);
+  outline-offset: 3px;
+}
+
+main[data-sami-app="sales"] table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+main[data-sami-app="sales"] thead th {
+  background-color: var(--sami-surface-soft);
+  color: var(--sami-muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.055em;
+  line-height: 1.4;
+  vertical-align: middle;
+}
+
+main[data-sami-app="sales"] tbody tr:not(:last-child) td {
+  border-bottom: 1px solid var(--sami-border);
+}
+
+main[data-sami-app="sales"] tbody tr {
+  transition: background-color 120ms ease;
+}
+
+main[data-sami-app="sales"] tbody tr:hover td {
+  background-color: color-mix(in srgb, var(--sami-brand) 3.5%, var(--sami-surface));
+}
+
+main[data-sami-app="sales"] :where(.sami-soft-surface) {
+  border-radius: 14px;
+}
+
+@media (max-width: 640px) {
+  main[data-sami-app="sales"] :where(.sami-surface, .sami-surface-raised) {
+    border-radius: 16px;
+  }
+
+  main[data-sami-app="sales"] table {
+    font-size: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  main[data-sami-app="sales"] *,
+  main[data-sami-app="sales"] *::before,
+  main[data-sami-app="sales"] *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

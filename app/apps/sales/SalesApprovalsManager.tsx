@@ -102,7 +102,7 @@ export default function SalesApprovalsManager() {
   }
 
   return (
-    <main className="mx-auto max-w-6xl space-y-5 p-4 sm:p-6">
+    <main className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-black uppercase tracking-widest text-blue-600">SaMi Sales · Part 11</p>
