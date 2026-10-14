@@ -36,3 +36,22 @@ test('Sales surfaces share the scoped visual system and consistent workspace she
   assert.match(quoteRoute, /appKey\s*=\s*"sales"/);
   assert.match(orderRoute, /appKey\s*=\s*"sales"/);
 });
+
+test('Sales workspace report and KPI amounts preserve their base currency', async () => {
+  const [queries, types, workspace] = await Promise.all([
+    source('lib/apps/sales/queries.ts'),
+    source('lib/apps/sales/types.ts'),
+    source('app/apps/sales/SalesWorkspaceClient.tsx'),
+  ]);
+
+  assert.match(queries, /GROUP BY status, base_currency/);
+  assert.match(queries, /GROUP BY 1, base_currency/);
+  assert.match(queries, /PARTITION BY currency[\\s\\S]*?WHERE currency_rank <= 10/);
+  assert.match(queries, /GROUP BY base_currency[\\s\\S]*?ORDER BY base_currency/);
+  assert.doesNotMatch(queries, /orders\\.rows\\.reduce/);
+  assert.match(types, /quoteValueByCurrency: Array<{ currency: string; amount: number }>/);
+  assert.match(types, /orderValueByCurrency: Array<{ currency: string; amount: number }>/);
+  assert.match(workspace, /currencyTotalsLabel\\(\\s*data\\.metrics\\.quoteValueByCurrency/);
+  assert.match(workspace, /item\\.month \\+ ' · ' \\+ item\\.currency/);
+  assert.match(workspace, /item\\.customerName \\+ ' · ' \\+ item\\.currency/);
+});
