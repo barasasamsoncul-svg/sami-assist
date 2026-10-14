@@ -72,6 +72,7 @@ test('base catalogue CSV imports preserve authorized unit costs in metadata and 
   assert.match(salesCommands, /if \(error instanceof SalesError\) \{\s*throw error;/);
   assert.match(salesCommands, /createInvoicingCatalogItem\([\s\S]*?standardCost === undefined \? undefined : \{ standardCost \}/);
   assert.match(invoicingCommands, /standardCost\?: number/);
+  assert.match(invoicingCommands, /options\?\.standardCost === undefined\s*\? JSON\.stringify\(\{\}\)/);
   assert.match(invoicingCommands, /metadata[\s\S]*?standardCost: options\.standardCost[\s\S]*?unitCost: options\.standardCost/);
   assert.match(variants, /const optionalUnitCost = cleanText\(row\.unitCost, 60\);[\s\S]*?\.\.\.\(optionalUnitCost \? \{ unitCost: optionalUnitCost \} : \{\}\)/);
 });

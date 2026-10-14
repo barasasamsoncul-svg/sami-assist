@@ -1809,7 +1809,7 @@ export async function createInvoicingCatalogItem(
           taxGroupId,
           context.userId,
           options?.standardCost === undefined
-            ? null
+            ? JSON.stringify({})
             : JSON.stringify({
                 standardCost: options.standardCost,
                 unitCost: options.standardCost,
