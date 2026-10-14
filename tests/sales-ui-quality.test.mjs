@@ -44,14 +44,16 @@ test('Sales workspace report and KPI amounts preserve their base currency', asyn
     source('app/apps/sales/SalesWorkspaceClient.tsx'),
   ]);
 
-  assert.match(queries, /GROUP BY status, base_currency/);
-  assert.match(queries, /GROUP BY 1, base_currency/);
-  assert.match(queries, /PARTITION BY currency[\\s\\S]*?WHERE currency_rank <= 10/);
-  assert.match(queries, /GROUP BY base_currency[\\s\\S]*?ORDER BY base_currency/);
-  assert.doesNotMatch(queries, /orders\\.rows\\.reduce/);
-  assert.match(types, /quoteValueByCurrency: Array<{ currency: string; amount: number }>/);
-  assert.match(types, /orderValueByCurrency: Array<{ currency: string; amount: number }>/);
-  assert.match(workspace, /currencyTotalsLabel\\(\\s*data\\.metrics\\.quoteValueByCurrency/);
-  assert.match(workspace, /item\\.month \\+ ' · ' \\+ item\\.currency/);
-  assert.match(workspace, /item\\.customerName \\+ ' · ' \\+ item\\.currency/);
+  assert.ok(queries.includes('GROUP BY status, base_currency'));
+  assert.ok(queries.includes('GROUP BY 1, base_currency'));
+  assert.ok(queries.includes('PARTITION BY currency'));
+  assert.ok(queries.includes('WHERE currency_rank <= 10'));
+  assert.ok(queries.includes('GROUP BY base_currency\n              ORDER BY base_currency'));
+  assert.ok(!queries.includes('orders.rows.reduce'));
+  assert.ok(types.includes('quoteValueByCurrency: Array<{ currency: string; amount: number }>'));
+  assert.ok(types.includes('orderValueByCurrency: Array<{ currency: string; amount: number }>'));
+  assert.ok(workspace.includes('currencyTotalsLabel(\n              data.metrics.quoteValueByCurrency,'));
+  assert.ok(workspace.includes("item.month + ' · ' + item.currency"));
+  assert.ok(workspace.includes("item.customerName + ' · ' + item.currency"));
+  assert.equal((workspace.match(/money\(\s*item\.amount,\s*item\.currency/g) || []).length, 3);
 });
