@@ -296,6 +296,24 @@ export default function SalesQuoteComposer({
     );
 
   const [
+    depositType,
+    setDepositType,
+  ] =
+    useState<'none' | 'percent' | 'fixed'>(
+      initialQuote?.depositType || 'none',
+    );
+
+  const [
+    depositValue,
+    setDepositValue,
+  ] =
+    useState(
+      String(
+        initialQuote?.depositValue || 0,
+      ),
+    );
+
+  const [
     notes,
     setNotes,
   ] =
@@ -710,6 +728,11 @@ export default function SalesQuoteComposer({
         Number(
           shippingTotal,
         ),
+      depositType,
+      depositValue:
+        depositType === 'none'
+          ? 0
+          : Number(depositValue),
       notes,
       terms,
       internalNotes,
@@ -918,6 +941,45 @@ export default function SalesQuoteComposer({
               }
               required
             />
+            <label className="block">
+              <Label>Deposit / advance</Label>
+              <select
+                aria-label="Deposit type"
+                value={depositType}
+                onChange={event => {
+                  const next = event.target.value as 'none' | 'percent' | 'fixed';
+                  setDepositType(next);
+                  if (next !== 'none' && (!depositValue || Number(depositValue) <= 0)) {
+                    setDepositValue('30');
+                  }
+                }}
+                className="mt-1 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+              >
+                <option value="none">No deposit required</option>
+                <option value="percent">Percentage of quotation total</option>
+                <option value="fixed">Fixed amount</option>
+              </select>
+            </label>
+            {depositType !== 'none' && (
+              <label className="block">
+                <Label>{depositType === 'percent' ? 'Deposit percentage (%)' : 'Deposit amount'}</Label>
+                <input
+                  type="number"
+                  min="0.01"
+                  max={depositType === 'percent' ? 100 : undefined}
+                  step="0.01"
+                  value={depositValue}
+                  required
+                  onChange={event => setDepositValue(event.target.value)}
+                  aria-label="Deposit value"
+                  className="mt-1 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                />
+                <span className="mt-1 block text-[11px] text-slate-500">
+                  The amount will be calculated from the final quotation total and carried to the sales order.
+                  Payment is recorded through SaMi Invoicing, not on this quotation form.
+                </span>
+              </label>
+            )}
             <Input
               label="Currency"
               value={
