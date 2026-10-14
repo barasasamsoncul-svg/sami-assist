@@ -116,6 +116,10 @@ export {
 
 export {
   createSalesPipeline,
+  createSalesPipelineStage,
+  updateSalesPipelineStage,
+  archiveSalesPipelineStage,
+  reorderSalesPipelineStages,
   createSalesLead,
   bulkReassignSalesLeads,
   bulkCreateSalesLeadActivities,

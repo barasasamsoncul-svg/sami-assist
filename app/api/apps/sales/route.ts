@@ -35,6 +35,10 @@ import {
   getSalesPipelineData,
   getSalesLeadAssignmentHistory,
   createSalesPipeline,
+  createSalesPipelineStage,
+  updateSalesPipelineStage,
+  archiveSalesPipelineStage,
+  reorderSalesPipelineStages,
   createSalesLead,
   bulkReassignSalesLeads,
   bulkCreateSalesLeadActivities,
@@ -581,6 +585,14 @@ export async function POST(
       > = {
         create_pipeline:
           createSalesPipeline,
+        create_pipeline_stage:
+          createSalesPipelineStage,
+        update_pipeline_stage:
+          updateSalesPipelineStage,
+        archive_pipeline_stage:
+          archiveSalesPipelineStage,
+        reorder_pipeline_stages:
+          reorderSalesPipelineStages,
         create_lead:
           createSalesLead,
         bulk_reassign_leads:
