@@ -114,15 +114,24 @@ test('catalogue UI provides CSV import/export plus variant create, edit and arch
 });
 
 
+
 test('quote tax on saved catalogue lines comes from the company catalogue; ad-hoc lines may supply a rate', async () => {
   const commands = await source('lib/apps/sales/commands.ts');
 
-  assert.match(
-    commands,
-    /const taxRate =\\s*numberInput\\(\\s*catalog\\s*\\?\\s*catalog\\.tax_rate \\?\\? 0\\s*:\\s*item\\.taxRate \\?\\? 0,/,
+  assert.ok(
+    commands.includes(`const taxRate =
+      numberInput(
+        catalog
+          ? catalog.tax_rate ?? 0
+          : item.taxRate ?? 0,`),
+    'Saved catalogue lines must use the catalogue tax rate, not a client-submitted rate.',
   );
-  assert.match(
-    commands,
-    /taxName:\\s*nullableText\\(\\s*catalog\\s*\\?\\s*catalog\\.tax_name\\s*:\\s*item\\.taxName,/,
+  assert.ok(
+    commands.includes(`taxName:
+        nullableText(
+          catalog
+            ? catalog.tax_name
+            : item.taxName,`),
+    'Saved catalogue lines must use the catalogue tax name, not a client-submitted name.',
   );
 });
