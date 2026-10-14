@@ -688,13 +688,11 @@ export async function getSalesOperationsData(
             `
               WITH quote_pipeline AS (
                 SELECT
-                  COALESCE(
-                    SUM(total_amount),
-                    0
-                  ) AS open_pipeline,
+                  base_currency AS currency,
+                  COALESCE(SUM(base_total_amount), 0) AS open_pipeline,
                   COALESCE(
                     SUM(
-                      total_amount *
+                      base_total_amount *
                       CASE status
                         WHEN 'draft' THEN 0.20
                         WHEN 'sent' THEN 0.40
@@ -707,55 +705,51 @@ export async function getSalesOperationsData(
                   ) AS weighted_pipeline,
                   COUNT(*) FILTER (
                     WHERE valid_until IS NOT NULL
-                      AND valid_until BETWEEN
-                          CURRENT_DATE
-                          AND CURRENT_DATE + 7
+                      AND valid_until BETWEEN CURRENT_DATE
+                      AND CURRENT_DATE + 7
                   ) AS expiring_7_days
                 FROM sales_quotes
                 WHERE company_id = $1
                   AND deleted_at IS NULL
-                  AND status IN (
-                    'draft',
-                    'sent',
-                    'viewed',
-                    'accepted'
-                  )
+                  AND status IN ('draft', 'sent', 'viewed', 'accepted')
                   AND (
                     valid_until IS NULL
-                    OR valid_until <=
-                       CURRENT_DATE +
-                       $2::int
+                    OR valid_until <= CURRENT_DATE + $2::int
                   )
+                GROUP BY base_currency
               ),
               committed AS (
                 SELECT
-                  COALESCE(
-                    SUM(
-                      subtotal -
-                      discount_total
-                    ),
-                    0
-                  ) AS committed_orders,
+                  base_currency AS currency,
+                  COALESCE(SUM(base_total_amount), 0) AS committed_orders,
                   COUNT(*) AS order_count
                 FROM sales_orders_v2
                 WHERE company_id = $1
                   AND deleted_at IS NULL
-                  AND status =
-                      'confirmed'
-                  AND invoice_status <>
-                      'invoiced'
+                  AND status = 'confirmed'
+                  AND invoice_status <> 'invoiced'
+                GROUP BY base_currency
+              ),
+              currencies AS (
+                SELECT currency FROM quote_pipeline
+                UNION
+                SELECT currency FROM committed
               )
               SELECT
-                quote_pipeline.open_pipeline,
-                quote_pipeline.weighted_pipeline,
-                quote_pipeline.expiring_7_days,
-                committed.committed_orders,
-                committed.order_count,
-                quote_pipeline.weighted_pipeline +
-                  committed.committed_orders
-                  AS expected_revenue
-              FROM quote_pipeline,
-                   committed
+                currencies.currency,
+                COALESCE(quote_pipeline.open_pipeline, 0) AS open_pipeline,
+                COALESCE(quote_pipeline.weighted_pipeline, 0) AS weighted_pipeline,
+                COALESCE(quote_pipeline.expiring_7_days, 0) AS expiring_7_days,
+                COALESCE(committed.committed_orders, 0) AS committed_orders,
+                COALESCE(committed.order_count, 0) AS order_count,
+                COALESCE(quote_pipeline.weighted_pipeline, 0) +
+                  COALESCE(committed.committed_orders, 0) AS expected_revenue
+              FROM currencies
+              LEFT JOIN quote_pipeline
+                ON quote_pipeline.currency = currencies.currency
+              LEFT JOIN committed
+                ON committed.currency = currencies.currency
+              ORDER BY currencies.currency
             `,
             [
               context.companyId,
@@ -765,59 +759,76 @@ export async function getSalesOperationsData(
         : Promise.resolve({
             rows: [
               {
-                open_pipeline:
-                  0,
-                weighted_pipeline:
-                  0,
-                expiring_7_days:
-                  0,
-                committed_orders:
-                  0,
-                order_count:
-                  0,
-                expected_revenue:
-                  0,
+                currency:
+                  String(context.company.currentCompany.currency || 'KES').toUpperCase(),
+                open_pipeline: 0,
+                weighted_pipeline: 0,
+                expiring_7_days: 0,
+                committed_orders: 0,
+                order_count: 0,
+                expected_revenue: 0,
               },
             ],
           }),
     ]);
 
-  const forecastRow =
-    forecast.rows[0] ||
-    {};
+  const companyBaseCurrency =
+    String(
+      context.company.currentCompany.currency ||
+      'KES',
+    ).toUpperCase();
+
+  const forecastCurrencies = (
+    forecast.rows || []
+  ).map(
+    row => ({
+      currency:
+        String(
+          row.currency ||
+          companyBaseCurrency,
+        ).toUpperCase(),
+      openPipeline:
+        money(row.open_pipeline || 0),
+      weightedPipeline:
+        money(row.weighted_pipeline || 0),
+      committedOrders:
+        money(row.committed_orders || 0),
+      expectedRevenue:
+        money(row.expected_revenue || 0),
+      expiring7Days:
+        Number(row.expiring_7_days || 0),
+      committedOrderCount:
+        Number(row.order_count || 0),
+    }),
+  );
+
+  const baseCurrencyForecast =
+    forecastCurrencies.find(
+      item => item.currency === companyBaseCurrency,
+    );
 
   const forecastData = {
     horizonDays,
+    baseCurrency: companyBaseCurrency,
+    // Legacy scalar fields represent only the current company base currency.
     openPipeline:
-      money(
-        forecastRow
-          .open_pipeline,
-      ),
+      baseCurrencyForecast?.openPipeline || 0,
     weightedPipeline:
-      money(
-        forecastRow
-          .weighted_pipeline,
-      ),
+      baseCurrencyForecast?.weightedPipeline || 0,
     committedOrders:
-      money(
-        forecastRow
-          .committed_orders,
-      ),
+      baseCurrencyForecast?.committedOrders || 0,
     expectedRevenue:
-      money(
-        forecastRow
-          .expected_revenue,
-      ),
+      baseCurrencyForecast?.expectedRevenue || 0,
+    currencyBreakdown:
+      forecastCurrencies,
     expiring7Days:
-      Number(
-        forecastRow
-          .expiring_7_days ||
+      forecastCurrencies.reduce(
+        (total, item) => total + item.expiring7Days,
         0,
       ),
     committedOrderCount:
-      Number(
-        forecastRow
-          .order_count ||
+      forecastCurrencies.reduce(
+        (total, item) => total + item.committedOrderCount,
         0,
       ),
   };
@@ -880,12 +891,10 @@ export async function getSalesOperationsData(
         forecastData
           .expectedRevenue,
         JSON.stringify({
-          expiring7Days:
-            forecastData
-              .expiring7Days,
-          committedOrderCount:
-            forecastData
-              .committedOrderCount,
+          baseCurrency: companyBaseCurrency,
+          currencyBreakdown: forecastData.currencyBreakdown,
+          expiring7Days: forecastData.expiring7Days,
+          committedOrderCount: forecastData.committedOrderCount,
         }),
         context.userId,
       ],
