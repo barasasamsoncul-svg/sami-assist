@@ -36,7 +36,7 @@ test('Sales quotation effectiveness keeps transaction currencies separate and re
   const component = await source('app/apps/sales/SalesQuotationEffectiveness.tsx');
   assert.match(service, /GROUP BY salesperson_user_id, currency/);
   assert.match(service, /GROUP BY template_id, template_name, currency/);
-  assert.match(service, /PARTITION BY dimension_type/);
+  assert.match(service, /PARTITION BY dimension_type,\s*currency/);
   assert.match(service, /tu\.tenant_id = \$1/);
   assert.match(service, /tu\.status = 'active'/);
   assert.match(service, /tu\.member_type = 'internal'/);
