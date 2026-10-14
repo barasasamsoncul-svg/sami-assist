@@ -53,6 +53,7 @@ test('base catalogue CSV imports preserve authorized unit costs in metadata and 
 
   assert.match(salesCommands, /rawCost = input\.unitCost/);
   assert.match(salesCommands, /crossPermission\(context, SALES_PERMISSIONS\.MARGIN_MANAGE\)/);
+  assert.match(salesCommands, /if \(error instanceof SalesError\) \{\s*throw error;/);
   assert.match(salesCommands, /createInvoicingCatalogItem\([\s\S]*?standardCost === undefined \? undefined : \{ standardCost \}/);
   assert.match(invoicingCommands, /standardCost\?: number/);
   assert.match(invoicingCommands, /metadata[\s\S]*?standardCost: options\.standardCost[\s\S]*?unitCost: options\.standardCost/);

@@ -179,6 +179,9 @@ export async function createSalesCatalogItem(
   } catch (
     error
   ) {
+    if (error instanceof SalesError) {
+      throw error;
+    }
     return translateCatalogMasterError(
       error,
     );
