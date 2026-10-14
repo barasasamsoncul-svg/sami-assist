@@ -72,6 +72,22 @@ test('catalogue management capability matches the Sales and shared-catalogue per
   );
 });
 
+test('catalogue tax rates are company-scoped and UI can assign the shared Invoicing rate', async () => {
+  const [queries, types, manager] = await Promise.all([
+    source('lib/apps/sales/queries.ts'),
+    source('lib/apps/sales/types.ts'),
+    source('app/apps/sales/SalesProductCatalogueManager.tsx'),
+  ]);
+
+  assert.match(queries, /FROM invoicing_tax_rates[\s\S]*?WHERE company_id = \$1[\s\S]*?is_active = TRUE[\s\S]*?deleted_at IS NULL/);
+  assert.match(queries, /taxRates: taxRates\.rows\.map/);
+  assert.match(types, /taxRates: Array<\{[\s\S]*?id: string;[\s\S]*?name: string;[\s\S]*?rate: number;/);
+  assert.match(manager, /<span className="text-xs font-black">Tax rate<\/span>/);
+  assert.match(manager, /data\.taxRates\.map/);
+  assert.match(manager, /set\('taxRateId', event\.target\.value\)/);
+  assert.match(manager, /taxName:[\s\S]*?selectedTax\?\.name/);
+});
+
 test('catalogue UI provides CSV import/export plus variant create, edit and archive', async () => {
   const [manager, composer, optionalEditor] = await Promise.all([
     source('app/apps/sales/SalesProductCatalogueManager.tsx'),
@@ -89,6 +105,8 @@ test('catalogue UI provides CSV import/export plus variant create, edit and arch
   assert.match(manager, /update_product_variant/);
   assert.match(manager, /archive_product_variant/);
   assert.match(manager, /Product variants/);
+  assert.match(manager, /Tax rate/);
+  assert.match(manager, /data\.taxRates\.map/);
   assert.ok(manager.includes("char === '\\n'"), 'CSV parser must split real newline characters');
   assert.ok(manager.includes("join('\\r\\n')"), 'CSV export must use CRLF row separators');
   assert.match(composer, /item\.isVariant[\s\S]*?\? item\.name/);

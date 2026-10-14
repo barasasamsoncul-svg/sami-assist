@@ -390,6 +390,8 @@ export default function SalesProductCatalogueManager({
             item.id ===
             id,
         );
+      const selectedTax = data.taxRates.find(rate => rate.id === draft.taxRateId);
+      const keptExistingTax = draft.taxRateId && draft.taxRateId === previous?.taxRateId;
 
       const next: Item = {
         id,
@@ -415,10 +417,12 @@ export default function SalesProductCatalogueManager({
           draft.taxRateId ||
           null,
         taxName:
-          previous?.taxName ||
+          selectedTax?.name ||
+          (keptExistingTax ? previous?.taxName : null) ||
           null,
         taxRate:
-          previous?.taxRate ||
+          selectedTax?.rate ??
+          (keptExistingTax ? previous?.taxRate : 0) ??
           0,
         unitCost:
           previous?.unitCost ??
@@ -818,20 +822,29 @@ export default function SalesProductCatalogueManager({
                           )
                       }
                     />
-                    <div className="rounded-xl border border-[var(--sami-border)] p-3 text-xs text-slate-500">
-                      Tax remains linked to the authoritative tax record. Existing item tax: {
-                        draft.itemId
-                          ? (
-                              items.find(
-                                item =>
-                                  item.id ===
-                                  draft.itemId,
-                              )?.taxName ||
-                              'None'
-                            )
-                          : 'None'
-                      }.
-                    </div>
+                    <label className="block">
+                      <span className="text-xs font-black">Tax rate</span>
+                      <select
+                        value={draft.taxRateId}
+                        onChange={event => set('taxRateId', event.target.value)}
+                        className="mt-1 h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                      >
+                        <option value="">No tax</option>
+                        {draft.taxRateId && !data.taxRates.some(rate => rate.id === draft.taxRateId) ? (
+                          <option value={draft.taxRateId}>
+                            Existing tax: {items.find(item => item.id === draft.itemId)?.taxName || 'unavailable rate'}
+                          </option>
+                        ) : null}
+                        {data.taxRates.map(rate => (
+                          <option key={rate.id} value={rate.id}>
+                            {rate.name} · {rate.rate}%{rate.priceIncluded ? ' (included)' : ''}{rate.isDefault ? ' · default' : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="mt-1 block text-xs text-slate-500">
+                        Tax is taken from the company’s shared Invoicing tax configuration and recalculated on quotations.
+                      </span>
+                    </label>
                     <div className="sm:col-span-2">
                       <label className="block">
                         <span className="text-xs font-black">

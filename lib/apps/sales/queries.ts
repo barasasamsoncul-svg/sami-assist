@@ -418,6 +418,7 @@ export async function getSalesWorkspaceData():
     settings,
     billingCustomers,
     catalogItems,
+    taxRates,
   ] =
     await Promise.all([
       context.pool.query(
@@ -875,6 +876,30 @@ export async function getSalesWorkspaceData():
         : Promise.resolve({
             rows: [],
           }),
+
+      access.canManageCatalog && related.catalog
+        ? context.pool.query(
+            `
+              SELECT
+                id,
+                name,
+                rate,
+                tax_type,
+                country_code,
+                price_included,
+                is_default,
+                valid_from,
+                valid_to
+              FROM invoicing_tax_rates
+              WHERE company_id = $1
+                AND is_active = TRUE
+                AND deleted_at IS NULL
+              ORDER BY is_default DESC, LOWER(name)
+              LIMIT 250
+            `,
+            [context.companyId],
+          )
+        : Promise.resolve({ rows: [] }),
     ]);
 
   const metric =
@@ -1444,6 +1469,18 @@ export async function getSalesWorkspaceData():
             ),
         }),
       ),
+
+    taxRates: taxRates.rows.map(row => ({
+      id: String(row.id),
+      name: String(row.name),
+      rate: money(row.rate),
+      taxType: String(row.tax_type || 'vat'),
+      countryCode: row.country_code ? String(row.country_code) : null,
+      priceIncluded: row.price_included === true,
+      isDefault: row.is_default === true,
+      validFrom: row.valid_from ? String(row.valid_from).slice(0, 10) : null,
+      validTo: row.valid_to ? String(row.valid_to).slice(0, 10) : null,
+    })),
 
     catalogItems: catalogItems.rows.map(row => ({
       id: String(row.id),

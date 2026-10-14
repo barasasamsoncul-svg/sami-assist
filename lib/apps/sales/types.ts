@@ -497,6 +497,17 @@ export type SalesWorkspaceData = {
     notes: string | null;
     status: string;
   }>;
+  taxRates: Array<{
+    id: string;
+    name: string;
+    rate: number;
+    taxType: string;
+    countryCode: string | null;
+    priceIncluded: boolean;
+    isDefault: boolean;
+    validFrom: string | null;
+    validTo: string | null;
+  }>;
   catalogItems: Array<{
     id: string;
     itemType: string;
