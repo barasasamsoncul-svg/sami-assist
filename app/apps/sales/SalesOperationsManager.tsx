@@ -50,6 +50,7 @@ type OperationsData = {
       invoiceId: string;
       creditNoteId: string;
       creditNoteNumber: string;
+      currency: string;
       amount: number | string;
       availableCredit: number | string;
       refundedAmount: number | string;
@@ -772,10 +773,12 @@ export default function SalesOperationsManager({
                                             Credit {
                                               money(
                                                 credit.amount,
+                                                credit.currency,
                                               )
                                             } · Available {
                                               money(
                                                 credit.availableCredit,
+                                                credit.currency,
                                               )
                                             }
                                           </p>

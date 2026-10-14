@@ -586,6 +586,8 @@ export async function getSalesOperationsData(
                           credit.credit_note_id,
                           'creditNoteNumber',
                           credit.credit_note_number,
+                          'currency',
+                          order_row.currency,
                           'amount',
                           credit.amount,
                           'availableCredit',

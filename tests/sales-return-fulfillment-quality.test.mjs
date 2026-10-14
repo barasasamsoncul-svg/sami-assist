@@ -54,3 +54,20 @@ test('Sales return and fulfillment quality report is integrated with Sales Repor
   assert.match(page, /<SalesReturnFulfillmentQuality report=\{returnFulfillmentQuality\} \/>/);
   assert.match(packageJson, /tests\/sales-return-fulfillment-quality\.test\.mjs/);
 });
+
+test('Sales Operations preserves order currency when formatting return-credit amounts', async () => {
+  const service = await source('lib/apps/sales/operations.ts');
+  const component = await source('app/apps/sales/SalesOperationsManager.tsx');
+
+  const operationsStart = service.indexOf('export async function getSalesOperationsData(');
+  const operationsEnd = service.indexOf('export async function setSalesOrderDepositRequirement(', operationsStart);
+  assert.ok(operationsStart >= 0 && operationsEnd > operationsStart, 'Sales operations data query must exist');
+
+  const operations = service.slice(operationsStart, operationsEnd);
+  assert.match(operations, /'currency',\\s*order_row\\.currency/);
+
+  const creditType = component.slice(component.indexOf('type OperationsData'), component.indexOf('function money('));
+  assert.match(creditType, /creditNoteNumber:\\s*string;[\\s\\S]*?currency:\\s*string;/);
+  assert.match(component, /money\\(\\s*credit\\.amount,\\s*credit\\.currency\\s*\\)/);
+  assert.match(component, /money\\(\\s*credit\\.availableCredit,\\s*credit\\.currency\\s*\\)/);
+});
