@@ -19,7 +19,7 @@ test('Sales multiple-pipeline migration preserves existing stages and isolates s
   assert.match(schema, /CREATE TABLE IF NOT EXISTS public\.sales_pipelines/);
   assert.match(schema, /pipeline_id UUID NOT NULL REFERENCES public\.sales_pipelines\(id\)/);
   assert.match(schema, /is_default BOOLEAN NOT NULL DEFAULT FALSE/);
-  assert.match(migration, /fromVersion: '3\.4\.18'/);
+  assert.match(migration, /fromVersion: '3\.4\.17'/);
   assert.match(migration, /toVersion: '3\.4\.18'/);
   assert.match(migration, /UPDATE public\.sales_pipeline_stages AS stage[\s\S]*SET pipeline_id=p\.id/);
   assert.match(migration, /DROP CONSTRAINT IF EXISTS sales_pipeline_stages_company_id_name_key/);
