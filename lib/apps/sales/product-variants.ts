@@ -62,20 +62,28 @@ export async function createSalesProductVariant(input: Record<string, unknown>) 
   const attributes = normalizeAttributes(input.attributes);
   const label = labelFor(attributes);
   requireCostPermission(context, input.unitCost);
-  const unitCost = canManageSalesCost(context)
-    ? numberInput(input.unitCost ?? 0, 'Variant unit cost', { min: 0 })
-    : 0;
   const client = await context.pool.connect();
   try {
     await client.query('BEGIN');
     const baseResult = await client.query(
-      `SELECT id,name,item_type,description,unit,unit_price,tax_category,default_tax_rate_id,default_tax_group_id
+      `SELECT id,name,item_type,description,unit,unit_price,tax_category,default_tax_rate_id,default_tax_group_id,metadata
        FROM invoicing_catalog_items WHERE id=$1 AND company_id=$2 AND item_type='product'
          AND is_active=TRUE AND deleted_at IS NULL FOR SHARE`,
       [baseCatalogItemId, context.companyId],
     );
     const base = baseResult.rows[0];
     if (!base) throw new SalesError('INVALID_INPUT', 'Select an active product from the shared catalogue.');
+    const baseMetadata = base.metadata && typeof base.metadata === 'object' && !Array.isArray(base.metadata)
+      ? base.metadata as Record<string, unknown>
+      : {};
+    const inheritedUnitCost = numberInput(
+      baseMetadata.standardCost ?? baseMetadata.unitCost ?? 0,
+      'Base product cost',
+      { min: 0 },
+    );
+    const unitCost = canManageSalesCost(context)
+      ? numberInput(input.unitCost ?? inheritedUnitCost, 'Variant unit cost', { min: 0 })
+      : inheritedUnitCost;
     const unitPrice = numberInput(input.unitPrice ?? base.unit_price, 'Variant unit price', { min: 0 });
     const name = nameFor(String(base.name), label);
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1), hashtext(LOWER(BTRIM($2))))', ['sales-product-variant:' + context.companyId, sku]);

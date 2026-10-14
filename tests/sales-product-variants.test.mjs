@@ -44,6 +44,16 @@ test('variant create, update and archive stay company-scoped and transactional',
   assert.doesNotMatch(variants, /input\.companyId|input\.tenantId/);
 });
 
+test('new variants inherit the base product cost unless an authorized user overrides it', async () => {
+  const variants = await source('lib/apps/sales/product-variants.ts');
+
+  assert.match(variants, /default_tax_group_id,metadata/);
+  assert.match(variants, /baseMetadata\.standardCost \?\? baseMetadata\.unitCost \?\? 0/);
+  assert.match(variants, /input\.unitCost \?\? inheritedUnitCost/);
+  assert.match(variants, /: inheritedUnitCost/);
+  assert.match(variants, /requireCostPermission\(context, input\.unitCost\)/);
+});
+
 test('bulk import validates bounds, reports each row and can import variant rows by base SKU', async () => {
   const [variants, service, route] = await Promise.all([
     source('lib/apps/sales/product-variants.ts'),
