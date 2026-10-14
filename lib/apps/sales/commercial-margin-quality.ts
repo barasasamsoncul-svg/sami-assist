@@ -170,7 +170,7 @@ export async function getSalesCommercialMarginQualityReport(): Promise<SalesComm
           document_type = 'order'
           AND status = 'confirmed'
         )
-      )
+      ),
       report_rows AS (
         SELECT
           'summary'::text AS row_type,
