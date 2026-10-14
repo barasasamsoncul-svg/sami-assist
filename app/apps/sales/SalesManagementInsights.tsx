@@ -33,8 +33,8 @@ function monthComparison(
   prior: Array<{ currency: string; amount: number }>,
   noActivityLabel: string,
 ) {
-  const currentByCurrency = new Map(current.map(item => [item.currency, item.amount]));
-  const priorByCurrency = new Map(prior.map(item => [item.currency, item.amount]));
+  const currentByCurrency = new Map(current.map(item => [item.currency, item.amount] as const));
+  const priorByCurrency = new Map(prior.map(item => [item.currency, item.amount] as const));
   const currencies = Array.from(new Set([...current, ...prior]
     .filter(item => Number(item.amount) !== 0)
     .map(item => item.currency))).sort();
