@@ -17,6 +17,10 @@ function canManageSalesCost(context: Context) {
   return context.permissions.isOwner || context.permissions.permissionSet.has(SALES_PERMISSIONS.MARGIN_MANAGE);
 }
 
+function canViewSalesCost(context: Context) {
+  return canManageSalesCost(context) || context.permissions.permissionSet.has(SALES_PERMISSIONS.MARGIN_VIEW);
+}
+
 function requireCostPermission(context: Context, value: unknown) {
   if (value !== undefined && !canManageSalesCost(context)) {
     throw new SalesError('SALES_PERMISSION_REQUIRED', 'Changing product cost requires sales margin-management permission.', { permission: SALES_PERMISSIONS.MARGIN_MANAGE });
@@ -111,9 +115,9 @@ export async function createSalesProductVariant(input: Record<string, unknown>) 
       [variantId,context.companyId,baseCatalogItemId,catalogItemId,label,sku,JSON.stringify(attributes),unitPrice,unitCost,context.userId],
     );
     await audit(client,context,variantId,'sales.product.variant.created','Created product variant '+name+'.',
-      {baseCatalogItemId,catalogItemId,sku,attributes,unitPrice,unitCost});
+      {baseCatalogItemId,catalogItemId,sku,attributes,unitPrice,...(canViewSalesCost(context) ? { unitCost } : {})});
     await client.query('COMMIT');
-    return {variantId,id:catalogItemId,catalogItemId,baseCatalogItemId,name,variantLabel:label,sku,attributes,unitPrice,unitCost,isVariant:true};
+    return {variantId,id:catalogItemId,catalogItemId,baseCatalogItemId,name,variantLabel:label,sku,attributes,unitPrice,...(canViewSalesCost(context) ? { unitCost } : {}),isVariant:true};
   } catch(error) {
     await client.query('ROLLBACK').catch(()=>undefined);
     throw error;
@@ -172,10 +176,10 @@ export async function updateSalesProductVariant(input: Record<string, unknown>) 
       [variantId,context.companyId,label,sku,JSON.stringify(attributes),unitPrice,unitCost,context.userId],
     );
     await audit(client,context,variantId,'sales.product.variant.updated','Updated product variant '+name+'.',
-      {variantId,sku,attributes,unitPrice,unitCost});
+      {variantId,sku,attributes,unitPrice,...(canViewSalesCost(context) ? { unitCost } : {})});
     await client.query('COMMIT');
     return {variantId,id:String(current.variant_catalog_item_id),catalogItemId:String(current.variant_catalog_item_id),
-      baseCatalogItemId:String(current.base_catalog_item_id),name,variantLabel:label,sku,attributes,unitPrice,unitCost,isVariant:true};
+      baseCatalogItemId:String(current.base_catalog_item_id),name,variantLabel:label,sku,attributes,unitPrice,...(canViewSalesCost(context) ? { unitCost } : {}),isVariant:true};
   } catch(error) {
     await client.query('ROLLBACK').catch(()=>undefined);
     throw error;
