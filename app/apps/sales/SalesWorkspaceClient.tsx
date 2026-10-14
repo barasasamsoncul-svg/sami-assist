@@ -2975,11 +2975,9 @@ function Overview({
         <Metric
           label="Quoted value"
           value={
-            money(
-              data.metrics
-                .quoteValue,
-              data.company
-                .currency,
+            currencyTotalsLabel(
+              data.metrics.quoteValueByCurrency,
+              data.company.currency,
             )
           }
           note={
@@ -2991,11 +2989,9 @@ function Overview({
         <Metric
           label="Accepted value"
           value={
-            money(
-              data.metrics
-                .acceptedValue,
-              data.company
-                .currency,
+            currencyTotalsLabel(
+              data.metrics.acceptedValueByCurrency,
+              data.company.currency,
             )
           }
           note={
@@ -3007,16 +3003,13 @@ function Overview({
         <Metric
           label="Sales orders"
           value={
-            money(
-              data.metrics
-                .orderValue,
-              data.company
-                .currency,
+            currencyTotalsLabel(
+              data.metrics.orderValueByCurrency,
+              data.company.currency,
             )
           }
           note={
-            data.orders
-              .length +
+            data.metrics.orderCount +
             ' orders'
           }
         />
@@ -3151,11 +3144,7 @@ function Reports({
           data.statusCounts.map(
             item => ({
               label:
-                item.status
-                  .replaceAll(
-                    '_',
-                    ' ',
-                  ),
+                item.status.replaceAll('_', ' ') + ' · ' + item.currency,
               primary:
                 String(
                   item.count,
@@ -3163,8 +3152,7 @@ function Reports({
               secondary:
                 money(
                   item.amount,
-                  data.company
-                    .currency,
+                  item.currency,
                 ),
             }),
           )
@@ -3176,7 +3164,7 @@ function Reports({
           data.monthly.map(
             item => ({
               label:
-                item.month,
+                item.month + ' · ' + item.currency,
               primary:
                 String(
                   item.quoteCount,
@@ -3185,8 +3173,7 @@ function Reports({
               secondary:
                 money(
                   item.amount,
-                  data.company
-                    .currency,
+                  item.currency,
                 ),
             }),
           )
@@ -3198,7 +3185,7 @@ function Reports({
           data.topCustomers.map(
             item => ({
               label:
-                item.customerName,
+                item.customerName + ' · ' + item.currency,
               primary:
                 String(
                   item.quoteCount,
@@ -3207,8 +3194,7 @@ function Reports({
               secondary:
                 money(
                   item.amount,
-                  data.company
-                    .currency,
+                  item.currency,
                 ),
             }),
           )
@@ -3622,6 +3608,20 @@ function Toolbar({
 }
 
 
+function currencyTotalsLabel(
+  rows: Array<{ currency: string; amount: number }>,
+  fallbackCurrency: string,
+) {
+  if (rows.length === 0) return fallbackCurrency + ' 0.00';
+  return rows.map(row =>
+    row.currency + ' ' + row.amount.toLocaleString('en-KE', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }),
+  ).join(' · ');
+}
+
+
 function Metric({
   label,
   value,
@@ -3641,7 +3641,7 @@ function Metric({
           label
         }
       </p>
-      <p className="mt-2 text-xl font-black">
+      <p className="mt-2 break-words text-base font-black leading-snug">
         {
           value
         }
