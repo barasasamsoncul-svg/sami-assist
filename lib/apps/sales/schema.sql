@@ -79,6 +79,10 @@ CREATE TABLE IF NOT EXISTS public.sales_quotes (
   exchange_rate_source VARCHAR(120) NOT NULL DEFAULT 'base',
   base_total_amount NUMERIC(18,2) NOT NULL DEFAULT 0
     CHECK (base_total_amount >= 0),
+  deposit_type VARCHAR(20) NOT NULL DEFAULT 'none'
+    CHECK (deposit_type IN ('none','percent','fixed')),
+  deposit_value NUMERIC(18,2) NOT NULL DEFAULT 0
+    CHECK (deposit_value >= 0),
   reference VARCHAR(255),
   salesperson_user_id UUID,
   approval_status VARCHAR(30) NOT NULL DEFAULT 'not_required'
@@ -194,6 +198,18 @@ CREATE TABLE IF NOT EXISTS public.sales_orders_v2 (
   exchange_rate_source VARCHAR(120) NOT NULL DEFAULT 'base',
   base_total_amount NUMERIC(18,2) NOT NULL DEFAULT 0
     CHECK (base_total_amount >= 0),
+  deposit_type VARCHAR(20) NOT NULL DEFAULT 'none'
+    CHECK (deposit_type IN ('none','percent','fixed')),
+  deposit_value NUMERIC(18,2) NOT NULL DEFAULT 0
+    CHECK (deposit_value >= 0),
+  deposit_required_amount NUMERIC(18,2) NOT NULL DEFAULT 0
+    CHECK (deposit_required_amount >= 0),
+  deposit_received_amount NUMERIC(18,2) NOT NULL DEFAULT 0
+    CHECK (deposit_received_amount >= 0),
+  deposit_retainer_id UUID,
+  deposit_payment_id UUID,
+  deposit_status VARCHAR(30) NOT NULL DEFAULT 'none'
+    CHECK (deposit_status IN ('none','pending','received','partially_applied','applied','refunded')),
   reference VARCHAR(255),
   customer_name VARCHAR(255) NOT NULL,
   customer_email VARCHAR(255),
@@ -946,9 +962,36 @@ ALTER TABLE public.sales_sequences
 
 -- Sales 3.4 lead and opportunity pipeline.
 
+CREATE TABLE IF NOT EXISTS public.sales_pipelines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL,
+  name VARCHAR(120) NOT NULL,
+  sequence INTEGER NOT NULL DEFAULT 10,
+  is_default BOOLEAN NOT NULL DEFAULT FALSE,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_by UUID,
+  updated_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_pipelines_company_name
+  ON public.sales_pipelines(company_id, LOWER(BTRIM(name)))
+  WHERE deleted_at IS NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_pipelines_company_default
+  ON public.sales_pipelines(company_id)
+  WHERE is_default=TRUE AND is_active=TRUE AND deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_sales_pipelines_company_active
+  ON public.sales_pipelines(company_id, is_active, sequence, LOWER(name))
+  WHERE deleted_at IS NULL;
+
   CREATE TABLE IF NOT EXISTS public.sales_pipeline_stages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL,
+    pipeline_id UUID NOT NULL REFERENCES public.sales_pipelines(id),
     name VARCHAR(120) NOT NULL,
     sequence INTEGER NOT NULL DEFAULT 10,
     probability NUMERIC(5,2) NOT NULL DEFAULT 0 CHECK (probability BETWEEN 0 AND 100),
@@ -957,12 +1000,17 @@ ALTER TABLE public.sales_sequences
     created_by UUID,
     updated_by UUID,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(company_id, name)
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
   CREATE INDEX IF NOT EXISTS idx_sales_pipeline_stages_company
     ON public.sales_pipeline_stages(company_id, is_active, sequence, name);
+
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_pipeline_stages_company_pipeline_name
+    ON public.sales_pipeline_stages(company_id, pipeline_id, LOWER(BTRIM(name)));
+
+  CREATE INDEX IF NOT EXISTS idx_sales_pipeline_stages_pipeline
+    ON public.sales_pipeline_stages(company_id, pipeline_id, is_active, sequence, name);
 
   CREATE TABLE IF NOT EXISTS public.sales_leads (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
