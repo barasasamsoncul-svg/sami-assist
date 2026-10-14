@@ -155,7 +155,7 @@ export async function getSalesQuotationEffectivenessReport(): Promise<SalesQuota
       ranked_dimensions AS (
         SELECT dimensions.*,
           ROW_NUMBER() OVER (
-            PARTITION BY dimension_type
+            PARTITION BY dimension_type, currency
             ORDER BY converted_value DESC, accepted_value DESC, quote_count DESC, dimension_label ASC NULLS LAST, dimension_key ASC, currency ASC
           ) AS dimension_rank
         FROM dimensions
