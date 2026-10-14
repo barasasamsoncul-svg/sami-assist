@@ -704,7 +704,8 @@ export async function getSalesOperationsData(
                     0
                   ) AS weighted_pipeline,
                   COUNT(*) FILTER (
-                    WHERE valid_until IS NOT NULL
+                    WHERE status IN ('draft', 'sent', 'viewed')
+                      AND valid_until IS NOT NULL
                       AND valid_until BETWEEN CURRENT_DATE
                       AND CURRENT_DATE + 7
                   ) AS expiring_7_days
@@ -715,6 +716,11 @@ export async function getSalesOperationsData(
                   AND (
                     valid_until IS NULL
                     OR valid_until <= CURRENT_DATE + $2::int
+                  )
+                  AND (
+                    status = 'accepted'
+                    OR valid_until IS NULL
+                    OR valid_until >= CURRENT_DATE
                   )
                 GROUP BY base_currency
               ),
