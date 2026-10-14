@@ -150,6 +150,14 @@ export default async function PublicSalesQuotePage({
                     '—'
                   }
                 />
+                <Info
+                  label="Deposit / advance"
+                  value={
+                    quote.depositRequiredAmount > 0
+                      ? money(quote.depositRequiredAmount, quote.currency)
+                      : 'None required'
+                  }
+                />
               </div>
             </div>
 
@@ -193,7 +201,7 @@ export default async function PublicSalesQuotePage({
           >
             <h2 className="text-sm font-black">Quotation acceptance recorded</h2>
             <p className="mt-2 text-sm leading-6">
-              Thank you. Your acceptance has been recorded. The sales team can now process the order and arrange any required invoice or deposit through SaMi Invoicing.
+              Thank you. Your acceptance has been recorded. The sales team can now process the order and arrange any required invoice or deposit through SaMi Invoicing. {quote.depositRequiredAmount > 0 ? 'The quoted deposit / advance is ' + money(quote.depositRequiredAmount, quote.currency) + '.' : ''}
             </p>
             {quote.salesOrderId && (
               <p className="mt-2 text-sm leading-6">

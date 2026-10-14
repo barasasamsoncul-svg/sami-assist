@@ -138,6 +138,12 @@ export async function GET(
           quote.taxTotal,
         shippingTotal:
           quote.shippingTotal,
+        depositType:
+          quote.depositType,
+        depositValue:
+          quote.depositValue,
+        depositRequiredAmount:
+          quote.depositRequiredAmount,
         totalAmount:
           quote.totalAmount,
         notes:

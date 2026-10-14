@@ -1297,6 +1297,61 @@ function totals(
 }
 
 
+type SalesQuoteDepositType = 'none' | 'percent' | 'fixed';
+
+function normalizeSalesQuoteDeposit(
+  input: {
+    depositType?: unknown;
+    depositValue?: unknown;
+  },
+  totalAmount: number,
+) {
+  const depositTypeRaw =
+    input.depositType === undefined ||
+    input.depositType === null ||
+    input.depositType === ''
+      ? 'none'
+      : cleanText(input.depositType, 20).toLowerCase();
+
+  if (
+    depositTypeRaw !== 'none' &&
+    depositTypeRaw !== 'percent' &&
+    depositTypeRaw !== 'fixed'
+  ) {
+    throw new SalesError(
+      'INVALID_INPUT',
+      'Deposit type must be none, percent, or fixed.',
+    );
+  }
+
+  const depositType = depositTypeRaw as SalesQuoteDepositType;
+  const depositValue =
+    depositType === 'none'
+      ? 0
+      : numberInput(
+          input.depositValue,
+          'Deposit value',
+          {
+            min: 0.0001,
+            max: depositType === 'percent' ? 100 : 1_000_000_000,
+          },
+        );
+
+  const requiredAmount =
+    depositType === 'percent'
+      ? money(totalAmount * depositValue / 100)
+      : depositType === 'fixed'
+        ? Math.min(totalAmount, money(depositValue))
+        : 0;
+
+  return {
+    depositType,
+    depositValue,
+    requiredAmount,
+  };
+}
+
+
 export async function createSalesQuote(
   input:
     CreateSalesQuoteInput,
@@ -1565,10 +1620,22 @@ export async function createSalesQuote(
         shippingTotal,
       );
 
+    const deposit =
+      normalizeSalesQuoteDeposit(
+        quoteInput,
+        calculated.totalAmount,
+      );
+
+    const baseTotalAmount =
+      salesBaseAmount(
+        calculated.totalAmount,
+        exchangeRate.rate,
+      );
+
     const approvalRequired =
       settings.require_quote_approval ===
         true &&
-      calculated.totalAmount >=
+      baseTotalAmount >=
         money(
           settings.quote_approval_threshold,
         );
@@ -1633,14 +1700,16 @@ export async function createSalesQuote(
             sales_team_id,
             territory_id,
             created_by,
-            updated_by
+            updated_by,
+            deposit_type,
+            deposit_value
           )
           VALUES (
             $1,$2,$3,$4,
             'draft',
             $5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
             $15,$16,$17,$18,$19,$20,$21,$22,$23,$24,
-            $25,$26,$27,$28,$29,$30,$31,$31
+            $25,$26,$27,$28,$29,$30,$31,$31,$32,$33
           )
           RETURNING
             id,
@@ -1701,18 +1770,14 @@ export async function createSalesQuote(
           salesAssignment
             .territoryId,
           context.userId,
+          deposit.depositType,
+          deposit.depositValue,
         ],
       );
 
     const quoteId =
       String(
         result.rows[0].id,
-      );
-
-    const baseTotalAmount =
-      salesBaseAmount(
-        calculated.totalAmount,
-        exchangeRate.rate,
       );
 
     await client.query(
@@ -2184,10 +2249,22 @@ export async function updateSalesQuoteDraft(
         shippingTotal,
       );
 
+    const deposit =
+      normalizeSalesQuoteDeposit(
+        input,
+        calculated.totalAmount,
+      );
+
+    const baseTotalAmount =
+      salesBaseAmount(
+        calculated.totalAmount,
+        exchangeRate.rate,
+      );
+
     const approvalRequired =
       settings.require_quote_approval ===
         true &&
-      calculated.totalAmount >=
+      baseTotalAmount >=
         money(
           settings.quote_approval_threshold,
         );
@@ -2234,6 +2311,8 @@ export async function updateSalesQuoteDraft(
           terms = $26,
           internal_notes = $27,
           updated_by = $28,
+          deposit_type = $29,
+          deposit_value = $30,
           updated_at = NOW()
         WHERE id = $1
           AND company_id = $2
@@ -2287,14 +2366,10 @@ export async function updateSalesQuoteDraft(
           6000,
         ),
         context.userId,
+        deposit.depositType,
+        deposit.depositValue,
       ],
     );
-
-    const baseTotalAmount =
-      salesBaseAmount(
-        calculated.totalAmount,
-        exchangeRate.rate,
-      );
 
     await client.query(
       `
@@ -2505,6 +2580,10 @@ export async function duplicateSalesQuote(
       row.shipping_address,
     shippingTotal:
       row.shipping_total,
+    depositType:
+      row.deposit_type || 'none',
+    depositValue:
+      row.deposit_value || 0,
     notes:
       row.notes,
     terms:
@@ -3142,6 +3221,15 @@ export async function createSalesOrderFromQuote(
         row.status,
       );
 
+    const orderDeposit =
+      normalizeSalesQuoteDeposit(
+        {
+          depositType: row.deposit_type,
+          depositValue: row.deposit_value,
+        },
+        money(row.total_amount),
+      );
+
     if (currentStatus === 'converted' && !row.sales_order_id) {
       throw new SalesError(
         'QUOTE_STATE_INVALID',
@@ -3358,6 +3446,30 @@ export async function createSalesOrderFromQuote(
           row.total_amount ||
           0,
         ),
+      ],
+    );
+
+    await client.query(
+      `
+        UPDATE sales_orders_v2
+        SET
+          deposit_type = $3,
+          deposit_value = $4,
+          deposit_required_amount = $5,
+          deposit_status = $6,
+          updated_by = $7,
+          updated_at = NOW()
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [
+        orderId,
+        context.companyId,
+        orderDeposit.depositType,
+        orderDeposit.depositValue,
+        orderDeposit.requiredAmount,
+        orderDeposit.requiredAmount > 0 ? 'pending' : 'none',
+        context.userId,
       ],
     );
 

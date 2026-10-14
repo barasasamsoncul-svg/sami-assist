@@ -513,6 +513,12 @@ function pageStream(
           'Shipping',
           quote.shippingTotal,
         ],
+        ...(quote.depositRequiredAmount > 0
+          ? [[
+              'Deposit / advance due on order',
+              quote.depositRequiredAmount,
+            ] as const]
+          : []),
         [
           'TOTAL',
           quote.totalAmount,

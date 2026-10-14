@@ -3394,7 +3394,7 @@ function Settings({
           />
           <SettingInput
             name="quoteApprovalThreshold"
-            label="Approval threshold"
+            label="Approval threshold (base currency)"
             type="number"
             defaultValue={
               String(
