@@ -919,7 +919,7 @@ export async function getSalesWorkspaceData():
     metrics.rows[0] ||
     {};
 
-remove order sum over limited page  const setting =
+ const setting =
     settings.rows[0] ||
     {};
 
