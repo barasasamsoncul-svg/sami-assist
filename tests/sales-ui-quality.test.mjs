@@ -48,6 +48,7 @@ test('Sales workspace report and KPI amounts preserve their base currency', asyn
   assert.ok(queries.includes('GROUP BY 1, base_currency'));
   assert.ok(queries.includes('PARTITION BY currency'));
   assert.ok(queries.includes('WHERE currency_rank <= 10'));
+  assert.ok(queries.includes("status IN ('confirmed', 'closed')"));
   assert.ok(queries.includes('GROUP BY base_currency\n              ORDER BY base_currency'));
   assert.ok(!queries.includes('orders.rows.reduce'));
   assert.ok(types.includes('quoteValueByCurrency: Array<{ currency: string; amount: number }>'));
