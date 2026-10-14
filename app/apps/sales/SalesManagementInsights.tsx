@@ -18,18 +18,56 @@ function formatMoney(value: number, currency: string) {
   }
 }
 
+function formatCurrencyBreakdown(
+  values: Array<{ currency: string; amount: number }>,
+  fallbackCurrency: string,
+) {
+  const nonZero = values.filter(item => Number(item.amount) !== 0);
+  return nonZero.length
+    ? nonZero.map(item => formatMoney(item.amount, item.currency)).join(' · ')
+    : formatMoney(0, values[0]?.currency || fallbackCurrency);
+}
+
+function monthComparison(
+  current: Array<{ currency: string; amount: number }>,
+  prior: Array<{ currency: string; amount: number }>,
+  noActivityLabel: string,
+) {
+  const currentByCurrency = new Map(current.map(item => [item.currency, item.amount]));
+  const priorByCurrency = new Map(prior.map(item => [item.currency, item.amount]));
+  const currencies = Array.from(new Set([...current, ...prior]
+    .filter(item => Number(item.amount) !== 0)
+    .map(item => item.currency))).sort();
+
+  if (currencies.length === 0) return noActivityLabel;
+
+  return currencies.map(currency => {
+    const now = Number(currentByCurrency.get(currency) || 0);
+    const before = Number(priorByCurrency.get(currency) || 0);
+    if (before > 0) {
+      return currency + ': ' + Math.round((now / before - 1) * 100) + '% vs last month';
+    }
+    if (now > 0) return currency + ': new activity this month';
+    return currency + ': no activity this month';
+  }).join(' · ');
+}
+
 export default function SalesManagementInsights({ data, currency, metrics }: Props) {
   const { summary } = data;
   const conversionRate = metrics.quoteCount > 0 ? metrics.convertedCount / metrics.quoteCount * 100 : 0;
-  const orderMonthChange = data.orderSummary.priorMonthOrderValue > 0
-    ? Math.round((data.orderSummary.currentMonthOrderValue / data.orderSummary.priorMonthOrderValue - 1) * 100) + '% vs last month'
-    : data.orderSummary.currentMonthOrderValue > 0 ? 'New booked sales this month' : 'No booked sales this month';
+  const orderMonthChange = monthComparison(
+    data.orderSummary.currentMonthOrderValueByCurrency,
+    data.orderSummary.priorMonthOrderValueByCurrency,
+    'No booked sales this month',
+  );
   const acceptanceRate = metrics.quoteCount > 0
     ? (metrics.acceptedCount + metrics.convertedCount) / metrics.quoteCount * 100
     : 0;
-  const monthChange = summary.priorMonthQuoteValue > 0
-    ? `${Math.round((summary.currentMonthQuoteValue / summary.priorMonthQuoteValue - 1) * 100)}% vs last month`
-    : summary.currentMonthQuoteValue > 0 ? 'New activity this month' : 'No activity this month';
+  const monthChange = monthComparison(
+    summary.currentMonthQuoteValueByCurrency,
+    summary.priorMonthQuoteValueByCurrency,
+    'No activity this month',
+  );
 
   return (
     <div className="w-full space-y-4 p-4 sm:p-6">
@@ -43,9 +81,9 @@ export default function SalesManagementInsights({ data, currency, metrics }: Pro
           detail={`${metrics.convertedCount.toLocaleString()} converted of ${metrics.quoteCount.toLocaleString()} quotes`} />
         <Metric label="Acceptance rate" value={`${Math.round(acceptanceRate)}%`}
           detail={`${(metrics.acceptedCount + metrics.convertedCount).toLocaleString()} accepted or converted`} />
-        <Metric label="Open quote value" value={formatMoney(summary.openQuoteValue, currency)}
+        <Metric label="Open quote value" value={formatCurrencyBreakdown(summary.openQuoteValueByCurrency, currency)}
           detail={`${summary.openQuoteCount.toLocaleString()} sent or viewed quotes awaiting outcome`} />
-        <Metric label="This month’s quote value" value={formatMoney(summary.currentMonthQuoteValue, currency)} detail={monthChange} />
+        <Metric label="This month’s quote value" value={formatCurrencyBreakdown(summary.currentMonthQuoteValueByCurrency, currency)} detail={monthChange} />
       </section>
 
       <section className="space-y-4">
@@ -55,9 +93,9 @@ export default function SalesManagementInsights({ data, currency, metrics }: Pro
         </header>
 
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <Metric label="Booked order value" value={formatMoney(data.orderSummary.bookedOrderValue, currency)}
+          <Metric label="Booked order value" value={formatCurrencyBreakdown(data.orderSummary.bookedOrderValueByCurrency, currency)}
             detail={data.orderSummary.bookedOrderCount.toLocaleString() + ' confirmed or closed orders'} />
-          <Metric label="This month’s booked sales" value={formatMoney(data.orderSummary.currentMonthOrderValue, currency)}
+          <Metric label="This month’s booked sales" value={formatCurrencyBreakdown(data.orderSummary.currentMonthOrderValueByCurrency, currency)}
             detail={orderMonthChange} />
           <Metric label="Orders needing fulfillment" value={data.orderSummary.ordersNeedingFulfillment.toLocaleString()}
             detail="Confirmed orders not fully delivered" />
@@ -66,12 +104,12 @@ export default function SalesManagementInsights({ data, currency, metrics }: Pro
         </section>
 
         <section className="grid gap-4 xl:grid-cols-3">
-          <MonthlySalesChart rows={data.orderMonthly} currency={currency} />
+          <MonthlySalesChart rows={data.orderMonthly} />
           <ReportCard title="Top products by sales" rows={data.topProducts.map(item => ({
-            label: item.productName, primary: item.quantity.toLocaleString() + ' units · ' + item.orderCount.toLocaleString() + ' orders', secondary: formatMoney(item.amount, currency),
+            label: item.productName + ' · ' + item.currency, primary: item.quantity.toLocaleString() + ' units · ' + item.orderCount.toLocaleString() + ' orders', secondary: formatMoney(item.amount, item.currency),
           }))} />
           <ReportCard title="Sales team performance" rows={data.teamPerformance.map(item => ({
-            label: item.teamName, primary: item.orderCount.toLocaleString() + ' orders', secondary: formatMoney(item.amount, currency),
+            label: item.teamName + ' · ' + item.currency, primary: item.orderCount.toLocaleString() + ' orders', secondary: formatMoney(item.amount, item.currency),
           }))} />
         </section>
       </section>
@@ -111,7 +149,7 @@ export default function SalesManagementInsights({ data, currency, metrics }: Pro
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-sm font-black">{formatMoney(item.amount, currency)}</p>
+                <p className="text-sm font-black">{formatMoney(item.amount, item.currency)}</p>
                 <p className="mt-1 text-[10px] uppercase tracking-[0.08em] text-slate-400">{item.status.replaceAll('_', ' ')}</p>
               </div>
             </div>
@@ -121,13 +159,13 @@ export default function SalesManagementInsights({ data, currency, metrics }: Pro
 
       <section className="grid gap-4 xl:grid-cols-3">
         <ReportCard title="Quote status" rows={data.statusCounts.map(item => ({
-          label: item.status.replaceAll('_', ' '), primary: String(item.count), secondary: formatMoney(item.amount, currency),
+          label: item.status.replaceAll('_', ' ') + ' · ' + item.currency, primary: String(item.count), secondary: formatMoney(item.amount, item.currency),
         }))} />
         <ReportCard title="Monthly quotation value" rows={data.monthly.map(item => ({
-          label: item.month, primary: `${item.quoteCount} quotes`, secondary: formatMoney(item.amount, currency),
+          label: item.month + ' · ' + item.currency, primary: `${item.quoteCount} quotes`, secondary: formatMoney(item.amount, item.currency),
         }))} />
         <ReportCard title="Top customers" rows={data.topCustomers.map(item => ({
-          label: item.customerName, primary: `${item.quoteCount} quotes`, secondary: formatMoney(item.amount, currency),
+          label: item.customerName + ' · ' + item.currency, primary: `${item.quoteCount} quotes`, secondary: formatMoney(item.amount, item.currency),
         }))} />
       </section>
     </div>
@@ -149,41 +187,49 @@ function Count({ label, count }: { label: string; count: number }) {
   </div>;
 }
 
-function MonthlySalesChart({ rows, currency }: {
-  rows: Array<{ month: string; orderCount: number; amount: number }>;
-  currency: string;
+function MonthlySalesChart({ rows }: {
+  rows: Array<{ month: string; currency: string; orderCount: number; amount: number }>;
 }) {
-  const maxAmount = Math.max(1, ...rows.map(row => row.amount));
+  const currencies = Array.from(new Set(rows.map(row => row.currency))).sort();
 
   return <div className="sami-surface rounded-[24px] p-4">
     <div className="flex items-start justify-between gap-3">
       <div>
         <h2 className="text-sm font-black">Monthly booked sales</h2>
-        <p className="mt-1 text-[11px] text-slate-500">Last 12 months · confirmed and closed orders</p>
+        <p className="mt-1 text-[11px] text-slate-500">Last 12 months · grouped by recorded base currency</p>
       </div>
       <span className="rounded-full border border-[var(--sami-border)] px-2 py-1 text-[10px] font-black text-slate-500">12 months</span>
     </div>
     {rows.length === 0 ? <p className="mt-4 text-xs text-slate-500">No report data yet.</p> : (
-      <ol className="mt-4 space-y-3" aria-label="Monthly booked sales chart">
-        {rows.map(row => {
-          const width = row.amount > 0 ? Math.max(2, row.amount / maxAmount * 100) : 0;
-          return <li key={row.month} className="grid grid-cols-[4.25rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5">
-            <span className="text-[11px] font-bold text-slate-500">{row.month}</span>
-            <div className="min-w-0">
-              <div className="h-2.5 overflow-hidden rounded-full bg-slate-500/10"
-                role="img"
-                aria-label={row.month + ': ' + formatMoney(row.amount, currency) + ', ' + row.orderCount.toLocaleString() + ' orders'}
-                title={row.month + ' · ' + formatMoney(row.amount, currency)}>
-                <div className="h-full rounded-full bg-blue-600 transition-[width]" style={{ width: width + '%' }} />
-              </div>
-              <div className="mt-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
-                <span className="text-[10px] text-slate-500">{row.orderCount.toLocaleString()} orders</span>
-                <span className="text-[11px] font-black tabular-nums">{formatMoney(row.amount, currency)}</span>
-              </div>
-            </div>
-          </li>;
+      <div className="mt-4 space-y-5">
+        {currencies.map(currency => {
+          const currencyRows = rows.filter(row => row.currency === currency);
+          const maxAmount = Math.max(1, ...currencyRows.map(row => row.amount));
+          return <section key={currency} aria-label={currency + ' monthly booked sales'}>
+            <h3 className="mb-3 text-xs font-black">{currency}</h3>
+            <ol className="space-y-3" aria-label={'Monthly booked sales in ' + currency}>
+              {currencyRows.map(row => {
+                const width = row.amount > 0 ? Math.max(2, row.amount / maxAmount * 100) : 0;
+                return <li key={row.month + '-' + row.currency} className="grid grid-cols-[4.25rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5">
+                  <span className="text-[11px] font-bold text-slate-500">{row.month}</span>
+                  <div className="min-w-0">
+                    <div className="h-2.5 overflow-hidden rounded-full bg-slate-500/10"
+                      role="img"
+                      aria-label={row.month + ': ' + formatMoney(row.amount, currency) + ', ' + row.orderCount.toLocaleString() + ' orders'}
+                      title={row.month + ' · ' + formatMoney(row.amount, currency)}>
+                      <div className="h-full rounded-full bg-blue-600 transition-[width]" style={{ width: width + '%' }} />
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
+                      <span className="text-[10px] text-slate-500">{row.orderCount.toLocaleString()} orders</span>
+                      <span className="text-[11px] font-black tabular-nums">{formatMoney(row.amount, currency)}</span>
+                    </div>
+                  </div>
+                </li>;
+              })}
+            </ol>
+          </section>;
         })}
-      </ol>
+      </div>
     )}
   </div>;
 }
