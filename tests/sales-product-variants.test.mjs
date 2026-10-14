@@ -158,6 +158,10 @@ test('catalogue UI provides CSV import/export plus variant create, edit and arch
   assert.ok(manager.includes("join('\\r\\n')"), 'CSV export must use CRLF row separators');
   assert.match(composer, /item\.isVariant[\s\S]*?\? item\.name/);
   assert.match(optionalEditor, /product\.isVariant[\s\S]*?\? product\.name/);
+  assert.match(composer, /disabled=\{Boolean\(line\.catalogItemId\)\}/);
+  assert.equal((composer.match(/disabled=\{Boolean\(line\.catalogItemId\)\}/g) || []).length, 4);
+  assert.match(composer, /disabled\?:\s*boolean/);
+
 });
 
 
