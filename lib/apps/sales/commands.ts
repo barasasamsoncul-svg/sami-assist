@@ -3874,6 +3874,28 @@ export async function updateSalesOrderFulfillment(
     );
   }
 
+  // Reject duplicate line IDs before opening a transaction so one request
+  // cannot post inventory fulfillment twice for the same sales-order line.
+  const requestedLineIds = new Set<string>();
+  for (const raw of updates) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'A fulfillment line is invalid.',
+      );
+    }
+
+    const row = raw as Record<string, unknown>;
+    const lineId = requireUuid(row.lineId, 'Sales order line').toLowerCase();
+    if (requestedLineIds.has(lineId)) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'A fulfillment line can only be updated once per request.',
+      );
+    }
+    requestedLineIds.add(lineId);
+  }
+
   const client =
     await context.pool.connect();
 
