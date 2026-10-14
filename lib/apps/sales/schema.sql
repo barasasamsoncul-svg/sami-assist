@@ -79,6 +79,10 @@ CREATE TABLE IF NOT EXISTS public.sales_quotes (
   exchange_rate_source VARCHAR(120) NOT NULL DEFAULT 'base',
   base_total_amount NUMERIC(18,2) NOT NULL DEFAULT 0
     CHECK (base_total_amount >= 0),
+  deposit_type VARCHAR(20) NOT NULL DEFAULT 'none'
+    CHECK (deposit_type IN ('none','percent','fixed')),
+  deposit_value NUMERIC(18,2) NOT NULL DEFAULT 0
+    CHECK (deposit_value >= 0),
   reference VARCHAR(255),
   salesperson_user_id UUID,
   approval_status VARCHAR(30) NOT NULL DEFAULT 'not_required'
@@ -194,6 +198,18 @@ CREATE TABLE IF NOT EXISTS public.sales_orders_v2 (
   exchange_rate_source VARCHAR(120) NOT NULL DEFAULT 'base',
   base_total_amount NUMERIC(18,2) NOT NULL DEFAULT 0
     CHECK (base_total_amount >= 0),
+  deposit_type VARCHAR(20) NOT NULL DEFAULT 'none'
+    CHECK (deposit_type IN ('none','percent','fixed')),
+  deposit_value NUMERIC(18,2) NOT NULL DEFAULT 0
+    CHECK (deposit_value >= 0),
+  deposit_required_amount NUMERIC(18,2) NOT NULL DEFAULT 0
+    CHECK (deposit_required_amount >= 0),
+  deposit_received_amount NUMERIC(18,2) NOT NULL DEFAULT 0
+    CHECK (deposit_received_amount >= 0),
+  deposit_retainer_id UUID,
+  deposit_payment_id UUID,
+  deposit_status VARCHAR(30) NOT NULL DEFAULT 'none'
+    CHECK (deposit_status IN ('none','pending','received','partially_applied','applied','refunded')),
   reference VARCHAR(255),
   customer_name VARCHAR(255) NOT NULL,
   customer_email VARCHAR(255),
