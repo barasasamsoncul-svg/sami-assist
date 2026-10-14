@@ -509,6 +509,12 @@ export type SalesWorkspaceData = {
     taxName: string | null;
     taxRate: number;
     unitCost: number | null;
+    isVariant: boolean;
+    variantId: string | null;
+    baseCatalogItemId: string | null;
+    baseProductName: string | null;
+    variantLabel: string | null;
+    variantAttributes: Array<{ name: string; value: string }>;
   }>;
   pricelists: Array<{
     id: string;
