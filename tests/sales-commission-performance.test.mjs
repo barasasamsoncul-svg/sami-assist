@@ -39,6 +39,9 @@ test('Sales commission performance resolves active tenant salespeople and keeps 
   assert.match(service, /tu\.deleted_at IS NULL/);
   assert.match(service, /u\.deleted_at IS NULL/);
   assert.match(service, /GROUP BY e\.user_id, e\.team_id, t\.name, currency/);
+  assert.match(service, /PARTITION BY currency/);
+  assert.match(service, /WHERE currency_rank <= 250/);
+  assert.match(service, /ORDER BY currency ASC, accrued_amount DESC/);
   assert.match(ui, /new Set\(rows\.map\(row => row\.currency\)\)/);
   assert.match(ui, /currency totals are never combined/);
 });
