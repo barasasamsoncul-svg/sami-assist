@@ -1739,6 +1739,8 @@ export async function getSalesQuoteDetail(
             quote.tax_total,
             quote.shipping_total,
             quote.total_amount,
+            quote.deposit_type,
+            quote.deposit_value,
             quote.current_revision,
             quote.template_id,
             quote.pricelist_id,
@@ -2155,6 +2157,20 @@ export async function getSalesQuoteDetail(
       money(
         row.shipping_total,
       ),
+    depositType:
+      row.deposit_type === 'percent'
+        ? 'percent'
+        : row.deposit_type === 'fixed'
+          ? 'fixed'
+          : 'none',
+    depositValue:
+      money(row.deposit_value),
+    depositRequiredAmount:
+      row.deposit_type === 'percent'
+        ? money(money(row.total_amount) * money(row.deposit_value) / 100)
+        : row.deposit_type === 'fixed'
+          ? Math.min(money(row.total_amount), money(row.deposit_value))
+          : 0,
     notes:
       row.notes
         ? String(
