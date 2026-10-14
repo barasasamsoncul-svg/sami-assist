@@ -112,3 +112,17 @@ test('catalogue UI provides CSV import/export plus variant create, edit and arch
   assert.match(composer, /item\.isVariant[\s\S]*?\? item\.name/);
   assert.match(optionalEditor, /product\.isVariant[\s\S]*?\? product\.name/);
 });
+
+
+test('quote tax on saved catalogue lines comes from the company catalogue; ad-hoc lines may supply a rate', async () => {
+  const commands = await source('lib/apps/sales/commands.ts');
+
+  assert.match(
+    commands,
+    /const taxRate =\\s*numberInput\\(\\s*catalog\\s*\\?\\s*catalog\\.tax_rate \\?\\? 0\\s*:\\s*item\\.taxRate \\?\\? 0,/,
+  );
+  assert.match(
+    commands,
+    /taxName:\\s*nullableText\\(\\s*catalog\\s*\\?\\s*catalog\\.tax_name\\s*:\\s*item\\.taxName,/,
+  );
+});

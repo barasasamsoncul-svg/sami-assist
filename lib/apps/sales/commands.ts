@@ -992,10 +992,9 @@ async function normalizeQuoteLines(
 
     const taxRate =
       numberInput(
-        item.taxRate ??
         catalog
-          ?.tax_rate ??
-        0,
+          ? catalog.tax_rate ?? 0
+          : item.taxRate ?? 0,
         'Tax rate',
         {
           min:
@@ -1107,9 +1106,9 @@ async function normalizeQuoteLines(
       discountAmount,
       taxName:
         nullableText(
-          item.taxName ||
           catalog
-            ?.tax_name,
+            ? catalog.tax_name
+            : item.taxName,
           180,
         ),
       taxRate,
