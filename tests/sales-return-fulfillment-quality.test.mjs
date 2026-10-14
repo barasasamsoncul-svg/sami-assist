@@ -64,10 +64,10 @@ test('Sales Operations preserves order currency when formatting return-credit am
   assert.ok(operationsStart >= 0 && operationsEnd > operationsStart, 'Sales operations data query must exist');
 
   const operations = service.slice(operationsStart, operationsEnd);
-  assert.match(operations, /'currency',\\s*order_row\\.currency/);
+  assert.match(operations, /'currency',\s*order_row\.currency/);
 
   const creditType = component.slice(component.indexOf('type OperationsData'), component.indexOf('function money('));
-  assert.match(creditType, /creditNoteNumber:\\s*string;[\\s\\S]*?currency:\\s*string;/);
-  assert.match(component, /money\\(\\s*credit\\.amount,\\s*credit\\.currency\\s*\\)/);
-  assert.match(component, /money\\(\\s*credit\\.availableCredit,\\s*credit\\.currency\\s*\\)/);
+  assert.match(creditType, /creditNoteNumber:\s*string;[\s\S]*?currency:\s*string;/);
+  assert.match(component, /money\(\s*credit\.amount,\s*credit\.currency\s*\)/);
+  assert.match(component, /money\(\s*credit\.availableCredit,\s*credit\.currency\s*\)/);
 });
