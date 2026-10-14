@@ -221,6 +221,38 @@ test('Sales quote creation recomputes commercial totals server side', async () =
 });
 
 
+
+test('Sales quote conversion marks the linked CRM opportunity won and records the stage transition', async () => {
+  const commands = await source('lib/apps/sales/commands.ts');
+  const helperStart = commands.indexOf('async function markSalesOpportunityWonFromAcceptedQuote(');
+  const orderStart = commands.indexOf('export async function createSalesOrderFromQuote(');
+  const invoiceStart = commands.indexOf('export async function convertSalesQuoteToInvoice(', orderStart);
+  assert.ok(helperStart >= 0 && orderStart > helperStart && invoiceStart > orderStart);
+
+  const helper = commands.slice(helperStart, orderStart);
+  const quoteToOrder = commands.slice(orderStart, invoiceStart);
+  assert.match(helper, /opportunity\.company_id = \$2/);
+  assert.match(helper, /FOR UPDATE OF opportunity/);
+  assert.match(helper, /stage_type = 'won'/);
+  assert.match(helper, /UPDATE sales_opportunities[\s\S]*stage_id = \$3/);
+  assert.match(helper, /won_at = COALESCE\(won_at, NOW\(\)\)/);
+  assert.match(helper, /lost_at = NULL/);
+  assert.match(helper, /INSERT INTO sales_opportunity_stage_history/);
+  assert.match(helper, /sales\.opportunity\.won_from_order/);
+  assert.match(helper, /quoteId: input\.quoteId/);
+  assert.match(quoteToOrder, /row\.opportunity_id/);
+  assert.equal(
+    (quoteToOrder.match(/await markSalesOpportunityWonFromAcceptedQuote\(/g) || []).length,
+    2,
+    'Both first conversion and idempotent retries must reconcile the linked opportunity.',
+  );
+  assert.ok(
+    quoteToOrder.indexOf('await markSalesOpportunityWonFromAcceptedQuote(') <
+      quoteToOrder.lastIndexOf("'COMMIT'"),
+    'Opportunity reconciliation must happen before the conversion transaction commits.',
+  );
+});
+
 test('Sales internal approval is separate from customer acceptance', async () => {
   const [
     schema,
