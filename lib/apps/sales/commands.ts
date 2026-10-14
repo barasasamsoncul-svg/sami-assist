@@ -1626,10 +1626,16 @@ export async function createSalesQuote(
         calculated.totalAmount,
       );
 
+    const baseTotalAmount =
+      salesBaseAmount(
+        calculated.totalAmount,
+        exchangeRate.rate,
+      );
+
     const approvalRequired =
       settings.require_quote_approval ===
         true &&
-      calculated.totalAmount >=
+      baseTotalAmount >=
         money(
           settings.quote_approval_threshold,
         );
@@ -1772,12 +1778,6 @@ export async function createSalesQuote(
     const quoteId =
       String(
         result.rows[0].id,
-      );
-
-    const baseTotalAmount =
-      salesBaseAmount(
-        calculated.totalAmount,
-        exchangeRate.rate,
       );
 
     await client.query(
@@ -2255,10 +2255,16 @@ export async function updateSalesQuoteDraft(
         calculated.totalAmount,
       );
 
+    const baseTotalAmount =
+      salesBaseAmount(
+        calculated.totalAmount,
+        exchangeRate.rate,
+      );
+
     const approvalRequired =
       settings.require_quote_approval ===
         true &&
-      calculated.totalAmount >=
+      baseTotalAmount >=
         money(
           settings.quote_approval_threshold,
         );
@@ -2364,12 +2370,6 @@ export async function updateSalesQuoteDraft(
         deposit.depositValue,
       ],
     );
-
-    const baseTotalAmount =
-      salesBaseAmount(
-        calculated.totalAmount,
-        exchangeRate.rate,
-      );
 
     await client.query(
       `
