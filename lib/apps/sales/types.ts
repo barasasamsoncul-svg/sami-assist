@@ -184,6 +184,9 @@ export type SalesQuoteDetail =
     discountTotal: number;
     taxTotal: number;
     shippingTotal: number;
+    depositType: 'none' | 'percent' | 'fixed';
+    depositValue: number;
+    depositRequiredAmount: number;
     notes: string | null;
     terms: string | null;
     internalNotes: string | null;
@@ -566,6 +569,8 @@ export type CreateSalesQuoteInput = {
   billingAddress?: unknown;
   shippingAddress?: unknown;
   shippingTotal?: unknown;
+  depositType?: unknown;
+  depositValue?: unknown;
   notes?: unknown;
   terms?: unknown;
   internalNotes?: unknown;
