@@ -19,6 +19,10 @@ import {
   changeSalesQuoteStatus,
   convertSalesQuoteToInvoice,
   createSalesCatalogItem,
+  createSalesProductVariant,
+  updateSalesProductVariant,
+  archiveSalesProductVariant,
+  bulkImportSalesCatalogItems,
   createSalesOrderFromQuote,
   createSalesOrderInvoice,
   createSalesCustomer,
@@ -631,6 +635,14 @@ export async function POST(
           updateSalesCustomer,
         create_catalog_item:
           createSalesCatalogItem,
+        create_product_variant:
+          createSalesProductVariant,
+        update_product_variant:
+          updateSalesProductVariant,
+        archive_product_variant:
+          archiveSalesProductVariant,
+        bulk_import_catalog_items:
+          bulkImportSalesCatalogItems,
         update_catalog_item:
           updateSalesCatalogItem,
         apply_quote_template:
