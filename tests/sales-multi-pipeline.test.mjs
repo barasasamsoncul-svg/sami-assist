@@ -11,7 +11,7 @@ async function source(file) {
 test('Sales multiple-pipeline migration preserves existing stages and isolates stage names by pipeline', async () => {
   const [schema, migration, runtime, manifest] = await Promise.all([
     source('lib/apps/sales/schema.sql'),
-    source('lib/apps/sales/migrations/3.4.16-to-3.4.17.ts'),
+    source('lib/apps/sales/migrations/3.4.17-to-3.4.18.ts'),
     source('lib/apps/runtime-migrations.ts'),
     source('lib/modules/first-party.ts'),
   ]);
@@ -19,16 +19,16 @@ test('Sales multiple-pipeline migration preserves existing stages and isolates s
   assert.match(schema, /CREATE TABLE IF NOT EXISTS public\.sales_pipelines/);
   assert.match(schema, /pipeline_id UUID NOT NULL REFERENCES public\.sales_pipelines\(id\)/);
   assert.match(schema, /is_default BOOLEAN NOT NULL DEFAULT FALSE/);
-  assert.match(migration, /fromVersion: '3\.4\.16'/);
-  assert.match(migration, /toVersion: '3\.4\.17'/);
+  assert.match(migration, /fromVersion: '3\.4\.18'/);
+  assert.match(migration, /toVersion: '3\.4\.18'/);
   assert.match(migration, /UPDATE public\.sales_pipeline_stages AS stage[\s\S]*SET pipeline_id=p\.id/);
   assert.match(migration, /DROP CONSTRAINT IF EXISTS sales_pipeline_stages_company_id_name_key/);
   assert.match(migration, /uq_sales_pipeline_stages_company_pipeline_name/);
   assert.match(migration, /uq_sales_pipelines_company_default/);
   assert.match(migration, /'Qualification'[\s\S]*'Won'[\s\S]*'Lost'/);
-  assert.match(runtime, /SALES_3_4_16_TO_3_4_17/);
-  assert.match(runtime, /SALES_3_4_16_TO_3_4_17,[\s\S]*\];/);
-  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.17'/);
+  assert.match(runtime, /SALES_3_4_17_TO_3_4_18/);
+  assert.match(runtime, /SALES_3_4_17_TO_3_4_18,[\s\S]*\];/);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.18'/);
 });
 
 test('Sales creates company-scoped pipelines by cloning stages from the default pipeline', async () => {
