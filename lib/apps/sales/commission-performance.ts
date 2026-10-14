@@ -27,6 +27,7 @@ export async function getSalesCommissionPerformance(): Promise<{ rows: SalesComm
 
   const result = await context.pool.query(
     `
+      WITH commission_totals AS (
       SELECT
         e.user_id::text AS user_id,
         e.team_id::text AS team_id,
@@ -51,7 +52,18 @@ export async function getSalesCommissionPerformance(): Promise<{ rows: SalesComm
       WHERE e.company_id = $1
         AND e.accrued_at >= NOW() - INTERVAL '90 days'
       GROUP BY e.user_id, e.team_id, t.name, currency
-      ORDER BY currency ASC, accrued_amount DESC, paid_amount DESC, e.user_id NULLS LAST, team_name ASC
+      ),
+      ranked_commission_totals AS (
+        SELECT commission_totals.*,
+          ROW_NUMBER() OVER (
+            PARTITION BY currency
+            ORDER BY accrued_amount DESC, paid_amount DESC, user_id NULLS LAST, team_name ASC, team_id NULLS LAST
+          ) AS currency_rank
+        FROM commission_totals
+      )
+      SELECT *
+      FROM ranked_commission_totals
+      ORDER BY currency_rank ASC, currency ASC, accrued_amount DESC, paid_amount DESC, user_id NULLS LAST, team_name ASC
       LIMIT 250
     `,
     [context.companyId, context.company.currentCompany.currency],
