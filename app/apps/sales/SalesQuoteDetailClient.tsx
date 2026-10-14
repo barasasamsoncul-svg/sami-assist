@@ -1183,6 +1183,14 @@ export default function SalesQuoteDetailClient({
                     )
                   }
                 />
+                <Summary
+                  label="Deposit / advance"
+                  value={
+                    quote.depositRequiredAmount > 0
+                      ? money(quote.depositRequiredAmount, quote.currency)
+                      : 'None required'
+                  }
+                />
                 {
                   workspace
                     .capabilities
