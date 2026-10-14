@@ -224,7 +224,7 @@ export async function getSalesOpportunityRiskQueue(): Promise<SalesOpportunityRi
         END,
         o.expected_close_date ASC NULLS LAST,
         days_in_stage DESC,
-        o.expected_value DESC,
+        COALESCE(o.probability, s.probability, 0) DESC,
         o.id ASC
       LIMIT 50
     `,
