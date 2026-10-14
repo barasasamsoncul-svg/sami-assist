@@ -12,6 +12,16 @@ function requireCatalogManage(context: Context) {
     throw new SalesError('SALES_PERMISSION_REQUIRED', 'Product-variant management requires shared catalogue-management permission.', { permission: 'invoicing.catalog.manage' });
   }
 }
+
+function canManageSalesCost(context: Context) {
+  return context.permissions.isOwner || context.permissions.permissionSet.has(SALES_PERMISSIONS.MARGIN_MANAGE);
+}
+
+function requireCostPermission(context: Context, value: unknown) {
+  if (value !== undefined && !canManageSalesCost(context)) {
+    throw new SalesError('SALES_PERMISSION_REQUIRED', 'Changing product cost requires sales margin-management permission.', { permission: SALES_PERMISSIONS.MARGIN_MANAGE });
+  }
+}
 function normalizeAttributes(value: unknown): Attribute[] {
   if (!Array.isArray(value) || value.length < 1 || value.length > 12) throw new SalesError('INVALID_INPUT', 'A product variant needs between 1 and 12 attribute values.');
   const seen = new Set<string>();
@@ -51,7 +61,10 @@ export async function createSalesProductVariant(input: Record<string, unknown>) 
   if (!sku) throw new SalesError('INVALID_INPUT', 'Each product variant needs a unique SKU.');
   const attributes = normalizeAttributes(input.attributes);
   const label = labelFor(attributes);
-  const unitCost = numberInput(input.unitCost ?? 0, 'Variant unit cost', { min: 0 });
+  requireCostPermission(context, input.unitCost);
+  const unitCost = canManageSalesCost(context)
+    ? numberInput(input.unitCost ?? 0, 'Variant unit cost', { min: 0 })
+    : 0;
   const client = await context.pool.connect();
   try {
     await client.query('BEGIN');
@@ -116,6 +129,7 @@ export async function updateSalesProductVariant(input: Record<string, unknown>) 
               b.default_tax_rate_id,b.default_tax_group_id
        FROM sales_product_variants v
        INNER JOIN invoicing_catalog_items b ON b.id=v.base_catalog_item_id AND b.company_id=v.company_id
+         AND b.is_active=TRUE AND b.deleted_at IS NULL
        INNER JOIN invoicing_catalog_items i ON i.id=v.variant_catalog_item_id AND i.company_id=v.company_id
        WHERE v.id=$1 AND v.company_id=$2 AND v.is_active=TRUE AND v.deleted_at IS NULL
          AND i.is_active=TRUE AND i.deleted_at IS NULL FOR UPDATE OF v,i`,
@@ -124,7 +138,10 @@ export async function updateSalesProductVariant(input: Record<string, unknown>) 
     const current = currentResult.rows[0];
     if (!current) throw new SalesError('INVALID_INPUT', 'The active product variant was not found.');
     const unitPrice = numberInput(input.unitPrice ?? current.unit_price,'Variant unit price',{min:0});
-    const unitCost = numberInput(input.unitCost ?? current.unit_cost,'Variant unit cost',{min:0});
+    requireCostPermission(context, input.unitCost);
+    const unitCost = canManageSalesCost(context)
+      ? numberInput(input.unitCost ?? current.unit_cost,'Variant unit cost',{min:0})
+      : Number(current.unit_cost ?? 0);
     const name = nameFor(String(current.base_name),label);
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1), hashtext(LOWER(BTRIM($2))))',['sales-product-variant:'+context.companyId,sku]);
     const duplicate = await client.query(
@@ -191,30 +208,114 @@ export async function archiveSalesProductVariant(input: Record<string, unknown>)
   } finally { client.release(); }
 }
 
+function parseImportedVariantAttributes(value: unknown): unknown {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new SalesError('INVALID_INPUT', 'Variant rows need variantAttributes, for example Color=Blue|Size=Large.');
+  }
+  const raw = value.trim();
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed;
+  } catch {
+    // Accept a human-editable delimited form as well as JSON exported by SaMi.
+  }
+  return raw.split(/[|\r\n;]+/).map(part => {
+    const separator = part.indexOf('=');
+    if (separator < 1) {
+      throw new SalesError('INVALID_INPUT', 'Use attribute=value pairs for variantAttributes.');
+    }
+    return {
+      name: part.slice(0, separator).trim(),
+      value: part.slice(separator + 1).trim(),
+    };
+  }).filter(part => part.name && part.value);
+}
+
 export async function bulkImportSalesCatalogItems(input: Record<string, unknown>) {
   const context = await requireSalesContext(SALES_PERMISSIONS.QUOTE_CREATE);
   requireCatalogManage(context);
-  const rows=input.items;
-  if(!Array.isArray(rows)||rows.length<1||rows.length>200) throw new SalesError('INVALID_INPUT','Upload between 1 and 200 catalogue rows per import.');
-  const results:Array<Record<string,unknown>>=[];
-  for(let index=0;index<rows.length;index+=1) {
-    const raw=rows[index];
-    if(!raw||typeof raw!=='object'||Array.isArray(raw)){results.push({row:index+2,success:false,error:'Invalid row data.'});continue;}
-    const row=raw as Record<string,unknown>;
-    const name=cleanText(row.name,255);
-    const itemType=cleanText(row.itemType,30).toLowerCase()==='service'?'service':'product';
-    const sku=cleanText(row.sku,120);
-    const unit=cleanText(row.unit,40)||'unit';
-    const description=cleanText(row.description,4000);
-    if(!name){results.push({row:index+2,success:false,error:'Item name is required.'});continue;}
+  const rows = input.items;
+  if (!Array.isArray(rows) || rows.length < 1 || rows.length > 200) {
+    throw new SalesError('INVALID_INPUT', 'Upload between 1 and 200 catalogue rows per import.');
+  }
+
+  const results: Array<Record<string, unknown>> = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    const rowNumber = index + 2;
+    const raw = rows[index];
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      results.push({ row: rowNumber, success: false, error: 'Invalid row data.' });
+      continue;
+    }
+
+    const row = raw as Record<string, unknown>;
+    const sku = cleanText(row.sku, 120);
+    const unit = cleanText(row.unit, 40) || 'unit';
+    const description = cleanText(row.description, 4000);
+    const baseProductSku = cleanText(row.baseProductSku, 120);
+
     try {
-      const unitPrice=numberInput(row.unitPrice??0,'Unit price',{min:0});
-      const created=await createSalesCatalogItem({itemType,name,sku,unit,description,unitPrice,taxRateId:cleanText(row.taxRateId,120)||undefined});
-      results.push({row:index+2,success:true,id:created.id,name:created.name});
-    } catch(error) {
-      results.push({row:index+2,success:false,name,error:error instanceof Error?error.message:'Could not create this catalogue row.'});
+      if (baseProductSku) {
+        if (!sku) throw new SalesError('INVALID_INPUT', 'Each product variant needs a unique SKU.');
+        const baseResult = await context.pool.query(
+          "SELECT item.id " +
+          "FROM invoicing_catalog_items item " +
+          "WHERE item.company_id=$1 AND item.item_type='product' " +
+          "AND item.is_active=TRUE AND item.deleted_at IS NULL " +
+          "AND LOWER(BTRIM(COALESCE(item.sku,'')))=LOWER(BTRIM($2)) " +
+          "AND NOT EXISTS (" +
+          "SELECT 1 FROM sales_product_variants variant " +
+          "WHERE variant.company_id=item.company_id " +
+          "AND variant.variant_catalog_item_id=item.id AND variant.deleted_at IS NULL) " +
+          "LIMIT 1",
+          [context.companyId, baseProductSku],
+        );
+        const base = baseResult.rows[0];
+        if (!base) {
+          throw new SalesError('INVALID_INPUT', 'Base product SKU "' + baseProductSku + '" was not found in this company catalogue. Import the base product first.');
+        }
+        const optionalUnitCost = cleanText(row.unitCost, 60);
+        const created = await createSalesProductVariant({
+          baseCatalogItemId: String(base.id),
+          sku,
+          attributes: parseImportedVariantAttributes(row.variantAttributes ?? row.attributes),
+          ...(cleanText(row.unitPrice, 60) ? { unitPrice: row.unitPrice } : {}),
+          ...(optionalUnitCost ? { unitCost: optionalUnitCost } : {}),
+        });
+        results.push({ row: rowNumber, success: true, id: created.catalogItemId, name: created.name, sku, isVariant: true });
+        continue;
+      }
+
+      const name = cleanText(row.name, 255);
+      if (!name) throw new SalesError('INVALID_INPUT', 'Item name is required.');
+      const rawType = cleanText(row.itemType, 30).toLowerCase();
+      const itemType = rawType || 'product';
+      if (itemType !== 'product' && itemType !== 'service') {
+        throw new SalesError('INVALID_INPUT', 'Item type must be product or service.');
+      }
+      const unitPrice = numberInput(row.unitPrice ?? 0, 'Unit price', { min: 0 });
+      const created = await createSalesCatalogItem({
+        itemType,
+        name,
+        sku,
+        unit,
+        description,
+        unitPrice,
+        taxRateId: cleanText(row.taxRateId, 120) || undefined,
+      });
+      results.push({ row: rowNumber, success: true, id: created.id, name: created.name, sku, isVariant: false });
+    } catch (error) {
+      results.push({
+        row: rowNumber,
+        success: false,
+        name: cleanText(row.name, 255) || undefined,
+        sku: sku || undefined,
+        error: error instanceof Error ? error.message : 'Could not create this catalogue row.',
+      });
     }
   }
-  const created=results.filter(row=>row.success===true).length;
-  return {total:rows.length,created,failed:rows.length-created,results};
+
+  const created = results.filter(row => row.success === true).length;
+  return { total: rows.length, created, failed: rows.length - created, results };
 }

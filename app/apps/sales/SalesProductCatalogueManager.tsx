@@ -46,6 +46,41 @@ type Draft = {
     string;
 };
 
+type VariantDraft = {
+  variantId: string;
+  sku: string;
+  attributes: string;
+  unitPrice: string;
+  unitCost: string;
+};
+
+function blankVariant(unitPrice = ''): VariantDraft {
+  return { variantId: '', sku: '', attributes: '', unitPrice, unitCost: '' };
+}
+
+function variantFromItem(item: Item): VariantDraft {
+  return {
+    variantId: item.variantId || '',
+    sku: item.sku || '',
+    attributes: item.variantAttributes.map(attribute => attribute.name + '=' + attribute.value).join('\n'),
+    unitPrice: String(item.unitPrice),
+    unitCost: item.unitCost === null ? '' : String(item.unitCost),
+  };
+}
+
+function parseVariantAttributes(value: string): Array<{ name: string; value: string }> {
+  const attributes = value.split(/\r?\n/).map(line => line.trim()).filter(Boolean).map(line => {
+    const split = line.indexOf('=');
+    if (split < 1 || !line.slice(0, split).trim() || !line.slice(split + 1).trim()) {
+      throw new Error('Enter each variant attribute on its own line as Name=Value, for example Color=Blue.');
+    }
+    return { name: line.slice(0, split).trim(), value: line.slice(split + 1).trim() };
+  });
+  if (!attributes.length) throw new Error('Add at least one variant attribute, such as Color=Blue.');
+  if (attributes.length > 12) throw new Error('A variant can have at most 12 attributes.');
+  return attributes;
+}
+
 function blank(): Draft {
   return {
     itemId:
@@ -102,7 +137,7 @@ function parseCsv(text: string): string[][] {
   let row: string[] = [];
   let cell = '';
   let quoted = false;
-  const source = text.replace(/^\\uFEFF/, '');
+  const source = text.replace(/^\uFEFF/, '');
   for (let index = 0; index < source.length; index += 1) {
     const char = source[index];
     if (quoted) {
@@ -119,8 +154,8 @@ function parseCsv(text: string): string[][] {
     } else if (char === ',') {
       row.push(cell);
       cell = '';
-    } else if (char === '\\n') {
-      row.push(cell.replace(/\\r$/, ''));
+    } else if (char === '\n') {
+      row.push(cell.replace(/\r$/, ''));
       if (row.some(value => value.trim())) rows.push(row);
       row = [];
       cell = '';
@@ -128,7 +163,7 @@ function parseCsv(text: string): string[][] {
       cell += char;
     }
   }
-  row.push(cell.replace(/\\r$/, ''));
+  row.push(cell.replace(/\r$/, ''));
   if (row.some(value => value.trim())) rows.push(row);
   if (quoted) throw new Error('The CSV file has an unclosed quoted field.');
   return rows;
@@ -136,12 +171,12 @@ function parseCsv(text: string): string[][] {
 
 function csvCell(value: unknown): string {
   const text = String(value ?? '');
-  return /[",\\r\\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+  return /[",\r\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
 }
 
 function downloadCsv(filename: string, rows: unknown[][]) {
-  const csv = rows.map(row => row.map(csvCell).join(',')).join('\\r\\n');
-  const blob = new Blob(['\\uFEFF', csv], { type: 'text/csv;charset=utf-8;' });
+  const csv = rows.map(row => row.map(csvCell).join(',')).join('\r\n');
+  const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
@@ -225,10 +260,22 @@ export default function SalesProductCatalogueManager({
       blank(),
     );
 
+  const [
+    variantDraft,
+    setVariantDraft,
+  ] = useState<VariantDraft>(blankVariant());
+
   const editing =
     Boolean(
       draft.itemId,
     );
+
+  const selectedBaseItem = draft.itemId
+    ? items.find(item => item.id === draft.itemId && !item.isVariant)
+    : undefined;
+  const variantsForSelected = selectedBaseItem?.itemType === 'product'
+    ? items.filter(item => item.isVariant && item.baseCatalogItemId === selectedBaseItem.id)
+    : [];
 
   const visible =
     useMemo(
@@ -395,9 +442,8 @@ export default function SalesProductCatalogueManager({
         ],
       );
 
-      setDraft(
-        blank(),
-      );
+      setDraft(blank());
+      setVariantDraft(blankVariant());
 
       showSuccess(
         editing
@@ -420,11 +466,81 @@ export default function SalesProductCatalogueManager({
   }
 
 
+  async function saveVariant() {
+    if (!selectedBaseItem || selectedBaseItem.itemType !== 'product') {
+      showError('Select a base product', 'Product variants can only be created from an active product.');
+      return;
+    }
+    if (!variantDraft.sku.trim()) {
+      showError('Variant SKU required', 'Enter a unique SKU for this variant.');
+      return;
+    }
+    let attributes: Array<{ name: string; value: string }>;
+    try {
+      attributes = parseVariantAttributes(variantDraft.attributes);
+    } catch (error) {
+      showError('Variant attributes required', error instanceof Error ? error.message : 'Check the variant attributes.');
+      return;
+    }
+
+    try {
+      const result = await request({
+        action: variantDraft.variantId ? 'update_product_variant' : 'create_product_variant',
+        ...(variantDraft.variantId ? { variantId: variantDraft.variantId } : { baseCatalogItemId: selectedBaseItem.id }),
+        sku: variantDraft.sku.trim(),
+        attributes,
+        ...(variantDraft.unitPrice.trim() ? { unitPrice: variantDraft.unitPrice } : {}),
+        ...(data.capabilities.canManageMargin && variantDraft.unitCost.trim() ? { unitCost: variantDraft.unitCost } : {}),
+      });
+      if (!result.catalogItemId && !result.id) {
+        throw new Error('SaMi did not return the saved variant catalogue item.');
+      }
+      showSuccess(variantDraft.variantId ? 'Product variant updated' : 'Product variant created', 'The variant has its own SKU and catalogue identity for quotations, orders and invoices.');
+      setVariantDraft(blankVariant(String(selectedBaseItem.unitPrice)));
+      router.refresh();
+    } catch (error) {
+      showError('Product variant could not be saved', error instanceof Error ? error.message : 'SaMi could not save the product variant.');
+    }
+  }
+
+  async function archiveVariant(item: Item) {
+    if (!item.variantId) {
+      showError('Variant could not be archived', 'The variant record identifier is missing.');
+      return;
+    }
+    if (!window.confirm('Archive variant ' + (item.sku || item.name) + '? It will no longer be available for new quotations, but historical documents remain unchanged.')) return;
+    try {
+      await request({ action: 'archive_product_variant', variantId: item.variantId });
+      setItems(current => current.filter(candidate => candidate.id !== item.id));
+      if (variantDraft.variantId === item.variantId) setVariantDraft(blankVariant(String(selectedBaseItem?.unitPrice || '')));
+      showSuccess('Product variant archived', 'Historical quotation and order lines retain their saved snapshots.');
+      router.refresh();
+    } catch (error) {
+      showError('Product variant could not be archived', error instanceof Error ? error.message : 'SaMi could not archive the product variant.');
+    }
+  }
+
   function exportCatalogue() {
-    const rows = items.filter(item => !item.isVariant);
+    const rows = items;
     downloadCsv('sami-sales-catalogue.csv', [
-      ['name', 'itemType', 'sku', 'description', 'unit', 'unitPrice', 'taxRateId'],
-      ...rows.map(item => [item.name, item.itemType, item.sku || '', item.description || '', item.unit, item.unitPrice, item.taxRateId || '']),
+      ['name', 'itemType', 'sku', 'description', 'unit', 'unitPrice', 'taxRateId', 'baseProductSku', 'variantAttributes', 'unitCost'],
+      ...rows.map(item => {
+        const base = item.isVariant
+          ? items.find(candidate => candidate.id === item.baseCatalogItemId)
+          : undefined;
+        return [
+          item.name,
+          item.itemType,
+          item.sku || '',
+          item.description || '',
+          item.unit,
+          item.unitPrice,
+          item.taxRateId || '',
+          base?.sku || '',
+          item.isVariant ? JSON.stringify(item.variantAttributes) : '',
+          item.unitCost ?? '',
+        ];
+      }),
     ]);
   }
 
@@ -452,6 +568,9 @@ export default function SalesProductCatalogueManager({
         unit: val(row, column('unit', 'uom')) || 'unit',
         unitPrice: val(row, column('unitprice', 'price', 'sellingprice')) || '0',
         taxRateId: val(row, column('taxrateid')),
+        baseProductSku: val(row, column('baseproductsku', 'parentproductsku')),
+        variantAttributes: val(row, column('variantattributes', 'attributes')),
+        unitCost: val(row, column('unitcost', 'cost')),
       }));
       const result = await request({ action: 'bulk_import_catalog_items', items: itemsToImport }) as {
         total?: number; created?: number; failed?: number; results?: Array<{ row?: number; success?: boolean; error?: string; name?: string }>;
@@ -460,7 +579,9 @@ export default function SalesProductCatalogueManager({
       const failed = Number(result.failed || 0);
       const failures = (result.results || []).filter(item => item.success === false).slice(0, 3);
       const details = failures.map(item => 'Row ' + String(item.row || '?') + ': ' + String(item.error || 'Import failed')).join(' · ');
-      showSuccess('Catalogue import finished', created + ' created; ' + failed + ' failed.' + (details ? ' ' + details : ''));
+      const summary = created + ' created; ' + failed + ' failed.' + (details ? ' ' + details : '');
+      if (created === 0 && failed > 0) showError('Catalogue import needs attention', summary);
+      else showSuccess('Catalogue import finished', summary);
       router.refresh();
     } catch (error) {
       showError('Catalogue import failed', error instanceof Error ? error.message : 'SaMi could not read that CSV file.');
@@ -530,14 +651,10 @@ export default function SalesProductCatalogueManager({
                         key={
                           item.id
                         }
-                        onClick={
-                          () =>
-                            setDraft(
-                              fromItem(
-                                item,
-                              ),
-                            )
-                        }
+                        onClick={() => {
+                          setDraft(fromItem(item));
+                          setVariantDraft(blankVariant(String(item.unitPrice)));
+                        }}
                         className="w-full rounded-2xl border border-[var(--sami-border)] p-3 text-left transition hover:bg-slate-500/[0.04]"
                       >
                         <div className="flex items-start justify-between gap-3">
@@ -615,12 +732,10 @@ export default function SalesProductCatalogueManager({
               (
                 <button
                   type="button"
-                  onClick={
-                    () =>
-                      setDraft(
-                        blank(),
-                      )
-                  }
+                  onClick={() => {
+                    setDraft(blank());
+                    setVariantDraft(blankVariant());
+                  }}
                   className="inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black"
                 >
                   <Plus
@@ -762,12 +877,10 @@ export default function SalesProductCatalogueManager({
                         disabled={
                           busy
                         }
-                        onClick={
-                          () =>
-                            setDraft(
-                              blank(),
-                            )
-                        }
+                        onClick={() => {
+                          setDraft(blank());
+                          setVariantDraft(blankVariant());
+                        }}
                         className="h-10 rounded-xl border border-[var(--sami-border)] px-4 text-xs font-black disabled:opacity-60"
                       >
                         Clear
@@ -783,6 +896,75 @@ export default function SalesProductCatalogueManager({
           }
         </div>
       </div>
+
+      {selectedBaseItem && selectedBaseItem.itemType === 'product' && data.capabilities.canManageCatalog ? (
+        <section className="sami-surface space-y-4 rounded-[24px] p-4 sm:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">Product variants</p>
+              <h3 className="mt-1 text-lg font-black">{selectedBaseItem.name}</h3>
+              <p className="mt-1 max-w-3xl text-sm text-slate-500">Create SKU-level variants such as colour, size or packaging. Each variant becomes a shared catalogue item so quotes, orders and invoices keep the selected SKU.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setVariantDraft(blankVariant(String(selectedBaseItem.unitPrice)))}
+              className="inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black"
+            >
+              <Plus className="h-4 w-4" /> New variant
+            </button>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+            <div className="rounded-2xl border border-[var(--sami-border)] p-3">
+              <h4 className="text-sm font-black">{variantDraft.variantId ? 'Edit variant' : 'Create variant'}</h4>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <Field label="Variant SKU" value={variantDraft.sku} onChange={value => setVariantDraft(current => ({ ...current, sku: value }))} />
+                <Field label="Unit price" type="number" value={variantDraft.unitPrice} onChange={value => setVariantDraft(current => ({ ...current, unitPrice: value }))} />
+                {data.capabilities.canManageMargin ? (
+                  <Field label="Unit cost (restricted)" type="number" value={variantDraft.unitCost} onChange={value => setVariantDraft(current => ({ ...current, unitCost: value }))} />
+                ) : null}
+                <label className="block sm:col-span-2">
+                  <span className="text-xs font-black">Attributes (one per line)</span>
+                  <textarea
+                    value={variantDraft.attributes}
+                    onChange={event => setVariantDraft(current => ({ ...current, attributes: event.target.value }))}
+                    placeholder={'Color=Blue\nSize=Large'}
+                    rows={4}
+                    className="mt-1 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 py-2 text-sm"
+                  />
+                </label>
+                <div className="flex flex-wrap gap-2 sm:col-span-2">
+                  <button type="button" disabled={busy || importing} onClick={() => void saveVariant()} className="h-10 rounded-xl bg-blue-600 px-4 text-xs font-black text-white disabled:opacity-60">
+                    {variantDraft.variantId ? 'Save variant' : 'Create variant'}
+                  </button>
+                  <button type="button" disabled={busy || importing} onClick={() => setVariantDraft(blankVariant(String(selectedBaseItem.unitPrice)))} className="h-10 rounded-xl border border-[var(--sami-border)] px-4 text-xs font-black disabled:opacity-60">
+                    Clear
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h4 className="text-sm font-black">Active variants ({variantsForSelected.length})</h4>
+              {variantsForSelected.length ? variantsForSelected.map(item => (
+                <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--sami-border)] p-3">
+                  <div className="min-w-0">
+                    <p className="break-words text-sm font-black">{item.variantLabel || item.name}</p>
+                    <p className="mt-1 text-xs text-slate-500">{[item.sku, item.variantAttributes.map(attribute => attribute.name + ': ' + attribute.value).join(' · ')].filter(Boolean).join(' · ')}</p>
+                    <p className="mt-1 text-sm font-bold">{new Intl.NumberFormat('en-KE', { style: 'currency', currency: data.company.currency, maximumFractionDigits: 2 }).format(item.unitPrice)}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="button" disabled={busy || importing} onClick={() => setVariantDraft(variantFromItem(item))} className="h-9 rounded-lg border border-[var(--sami-border)] px-3 text-xs font-bold disabled:opacity-60">Edit</button>
+                    <button type="button" disabled={busy || importing} onClick={() => void archiveVariant(item)} className="h-9 rounded-lg border border-red-300 px-3 text-xs font-bold text-red-600 disabled:opacity-60">Archive</button>
+                  </div>
+                </div>
+              )) : (
+                <div className="rounded-xl border border-dashed border-[var(--sami-border)] p-5 text-sm text-slate-500">No active variants yet. Add the first SKU above.</div>
+              )}
+            </div>
+          </div>
+        </section>
+      ) : null}
     </section>
   );
 }

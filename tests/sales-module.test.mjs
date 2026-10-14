@@ -2608,7 +2608,7 @@ test('Sales lead-routing rules are tenant-scoped, priority ordered and migration
     source('lib/modules/first-party.ts'),
   ]);
 
-  assert.ok(manifest.includes('version: \'3.4.18\''));
+  assert.ok(manifest.includes('version: \'3.4.19\''));
   assert.ok(rules.includes('requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE)'));
   assert.ok(rules.includes('WHERE company_id=$1 AND deleted_at IS NULL'));
   assert.ok(rules.includes('A routing rule with that name or source match already exists.'));
