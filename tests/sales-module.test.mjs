@@ -283,8 +283,8 @@ test('Sales quote approval threshold is evaluated in company base currency on cr
     const approvalDecision = body.indexOf('const approvalRequired =');
     assert.ok(baseTotal >= 0 && approvalDecision > baseTotal, name + ' must calculate company-base total before approval decision');
     const approvalExpression = body.slice(approvalDecision, body.indexOf('const approvalStatus =', approvalDecision));
-    assert.match(approvalExpression, /baseTotalAmount\\s*>=/);
-    assert.doesNotMatch(approvalExpression, /calculated\\.totalAmount\\s*>=/);
+    assert.ok(approvalExpression.includes('baseTotalAmount >='));
+    assert.ok(!approvalExpression.includes('calculated.totalAmount >='));
   }
 });
 
