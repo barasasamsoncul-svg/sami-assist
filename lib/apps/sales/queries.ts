@@ -320,6 +320,14 @@ function salesCapabilities(
         INVOICING_CATALOG_MANAGE,
       ),
     canManageCatalog:
+      can(
+        SALES_PERMISSIONS
+          .QUOTE_CREATE,
+      ) &&
+      can(
+        SALES_PERMISSIONS
+          .QUOTE_EDIT,
+      ) &&
       crossCan(
         INVOICING_CATALOG_MANAGE,
       ),

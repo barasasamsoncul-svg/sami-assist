@@ -64,6 +64,14 @@ test('bulk import validates bounds, reports each row and can import variant rows
   assert.match(route, /archive_product_variant:\s*archiveSalesProductVariant/);
 });
 
+test('catalogue management capability matches the Sales and shared-catalogue permissions', async () => {
+  const queries = await source('lib/apps/sales/queries.ts');
+  assert.match(
+    queries,
+    /canManageCatalog:\s*can\([\s\S]*?QUOTE_CREATE[\s\S]*?can\([\s\S]*?QUOTE_EDIT[\s\S]*?crossCan\([\s\S]*?INVOICING_CATALOG_MANAGE/,
+  );
+});
+
 test('catalogue UI provides CSV import/export plus variant create, edit and archive', async () => {
   const [manager, composer, optionalEditor] = await Promise.all([
     source('app/apps/sales/SalesProductCatalogueManager.tsx'),
