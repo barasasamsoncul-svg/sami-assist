@@ -72,10 +72,20 @@ type OperationsData = {
   }>;
   forecast: {
     horizonDays: number;
+    baseCurrency: string;
     openPipeline: number;
     weightedPipeline: number;
     committedOrders: number;
     expectedRevenue: number;
+    currencyBreakdown: Array<{
+      currency: string;
+      openPipeline: number;
+      weightedPipeline: number;
+      committedOrders: number;
+      expectedRevenue: number;
+      expiring7Days: number;
+      committedOrderCount: number;
+    }>;
     expiring7Days: number;
     committedOrderCount: number;
   };
@@ -183,6 +193,30 @@ export default function SalesOperationsManager({
     useState(
       '90',
     );
+
+  function forecastValue(
+    metric:
+      'expectedRevenue' |
+      'weightedPipeline' |
+      'committedOrders',
+  ) {
+    const breakdown = data?.forecast.currencyBreakdown || [];
+    const applicable = breakdown.filter(
+      item => Number(item[metric] || 0) !== 0,
+    );
+
+    if (applicable.length === 0) {
+      const currency = data?.forecast.baseCurrency || breakdown[0]?.currency || 'KES';
+      return money(
+        data?.forecast[metric] || 0,
+        currency,
+      );
+    }
+
+    return applicable.map(
+      item => money(item[metric], item.currency),
+    ).join(' · ');
+  }
 
   async function refresh(
     nextHorizon =
@@ -383,10 +417,7 @@ export default function SalesOperationsManager({
                 }
                 label="Expected revenue"
                 value={
-                  money(
-                    data.forecast
-                      .expectedRevenue,
-                  )
+                  forecastValue('expectedRevenue')
                 }
               />
               <Metric
@@ -395,10 +426,7 @@ export default function SalesOperationsManager({
                 }
                 label="Weighted pipeline"
                 value={
-                  money(
-                    data.forecast
-                      .weightedPipeline,
-                  )
+                  forecastValue('weightedPipeline')
                 }
               />
               <Metric
@@ -407,10 +435,7 @@ export default function SalesOperationsManager({
                 }
                 label="Committed orders"
                 value={
-                  money(
-                    data.forecast
-                      .committedOrders,
-                  )
+                  forecastValue('committedOrders')
                 }
               />
               <Metric
@@ -933,13 +958,13 @@ function Metric({
   return (
     <div className="sami-surface rounded-[22px] p-4">
       <div className="flex items-center justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
             {
               label
             }
           </p>
-          <p className="mt-2 text-lg font-black">
+          <p className="mt-2 break-words text-base font-black sm:text-lg">
             {
               value
             }
