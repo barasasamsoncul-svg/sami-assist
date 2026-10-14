@@ -32,6 +32,6 @@ test('Sales surfaces share the scoped visual system and consistent workspace she
   assert.match(section, /view === 'approvals'/);
   assert.match(approvalRoute, /SalesSectionPage view="approvals"/);
   assert.doesNotMatch(approvalUi, /mx-auto max-w-6xl space-y-5 p-4 sm:p-6/);
-  assert.match(quoteRoute, /appKey[\s\S]{0,80}'sales'/);
-  assert.match(orderRoute, /appKey[\s\S]{0,80}'sales'/);
+  assert.match(quoteRoute, /appKey\s*=\s*"sales"/);
+  assert.match(orderRoute, /appKey\s*=\s*"sales"/);
 });
