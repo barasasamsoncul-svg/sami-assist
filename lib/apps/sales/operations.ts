@@ -586,6 +586,8 @@ export async function getSalesOperationsData(
                           credit.credit_note_id,
                           'creditNoteNumber',
                           credit.credit_note_number,
+                          'currency',
+                          order_row.currency,
                           'amount',
                           credit.amount,
                           'availableCredit',
@@ -618,7 +620,8 @@ export async function getSalesOperationsData(
               WHERE return_row.company_id = $1
               GROUP BY
                 return_row.id,
-                order_row.order_number
+                order_row.order_number,
+                order_row.currency
               ORDER BY
                 return_row.created_at DESC
               LIMIT 250
@@ -3668,8 +3671,15 @@ export async function issueSalesReturnCredit(
           ),
       });
 
-    const saved =
-      await context.pool.query(
+    // Invoice credit creation is independently idempotent. Persist the Sales-side
+    // allocation rows and counters atomically so a retry can repair a failed
+    // local save without incrementing a quantity for an existing allocation.
+    const client = await context.pool.connect();
+    let returnCreditId = "";
+    try {
+      await client.query('BEGIN');
+
+      const saved = await client.query(
         `
           INSERT INTO sales_return_credits (
             company_id,
@@ -3717,65 +3727,72 @@ export async function issueSalesReturnCredit(
         ],
       );
 
-    const returnCreditId =
-      String(
-        saved.rows[0].id,
-      );
+      returnCreditId = String(saved.rows[0].id);
 
-    for (
-      const line
-      of lines
-    ) {
-      await context.pool.query(
-        `
-          INSERT INTO sales_return_credit_items (
-            company_id,
-            return_credit_id,
-            return_item_id,
-            invoice_item_id,
-            quantity
-          )
-          VALUES (
-            $1,$2,$3,$4,$5
-          )
-          ON CONFLICT (
-            return_credit_id,
-            return_item_id,
-            invoice_item_id
-          )
-          DO NOTHING
-        `,
-        [
-          context.companyId,
-          returnCreditId,
-          line.returnItemId,
-          line.invoiceItemId,
-          line.quantity,
-        ],
-      );
+      for (const line of lines) {
+        const allocation = await client.query(
+          `
+            INSERT INTO sales_return_credit_items (
+              company_id,
+              return_credit_id,
+              return_item_id,
+              invoice_item_id,
+              quantity
+            )
+            VALUES (
+              $1,$2,$3,$4,$5
+            )
+            ON CONFLICT (
+              return_credit_id,
+              return_item_id,
+              invoice_item_id
+            )
+            DO NOTHING
+            RETURNING id
+          `,
+          [
+            context.companyId,
+            returnCreditId,
+            line.returnItemId,
+            line.invoiceItemId,
+            line.quantity,
+          ],
+        );
 
-      await context.pool.query(
-        `
-          UPDATE sales_order_items_v2
-          SET
-            credited_quantity =
-              LEAST(
-                returned_quantity,
-                credited_quantity +
-                $4
-              )
-          WHERE id = $1
-            AND sales_order_id = $2
-            AND company_id = $3
-        `,
-        [
-          line.orderLineId,
-          returnRow
-            .sales_order_id,
-          context.companyId,
-          line.quantity,
-        ],
-      );
+        // Only newly persisted allocations advance this aggregate. An idempotent
+        // retry sees the existing allocation and leaves credited_quantity alone.
+        if (allocation.rows.length > 0) {
+          await client.query(
+            `
+              UPDATE sales_order_items_v2
+              SET
+                credited_quantity =
+                  LEAST(
+                    returned_quantity,
+                    credited_quantity + $4
+                  )
+              WHERE id = $1
+                AND sales_order_id = $2
+                AND company_id = $3
+            `,
+            [
+              line.orderLineId,
+              returnRow.sales_order_id,
+              context.companyId,
+              line.quantity,
+            ],
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+    } catch (error) {
+      try {
+        await client.query('ROLLBACK');
+      } catch {}
+      throw error;
+    } finally {
+      client.release();
     }
 
     createdCredits.push({
