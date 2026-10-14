@@ -120,7 +120,7 @@ export default function SalesManagementInsights({ data, currency, metrics }: Pro
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-sm font-black">Quotes needing attention</h2>
-            <p className="mt-1 text-xs text-slate-500">Prioritized by expiry risk, then quote value. Open a quote to continue the customer follow-up.</p>
+            <p className="mt-1 text-xs text-slate-500">Prioritized by expiry risk, then age. Open a quote to continue the customer follow-up.</p>
           </div>
           <span className="rounded-full border border-[var(--sami-border)] px-3 py-1.5 text-xs font-black">
             {summary.followUpQuoteCount.toLocaleString()} to follow up
