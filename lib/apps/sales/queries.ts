@@ -408,11 +408,13 @@ export async function getSalesWorkspaceData():
   const [
     company,
     metrics,
+    quoteValues,
     statusCounts,
     monthly,
     topCustomers,
     quotes,
     orders,
+    orderValues,
     templates,
     pricelists,
     settings,
@@ -462,21 +464,7 @@ export async function getSalesWorkspaceData():
             COUNT(*) FILTER (
               WHERE status = 'converted'
             )::int
-              AS converted_count,
-            COALESCE(
-              SUM(base_total_amount),
-              0
-            ) AS quote_value,
-            COALESCE(
-              SUM(base_total_amount)
-                FILTER (
-                  WHERE status IN (
-                    'accepted',
-                    'converted'
-                  )
-                ),
-              0
-            ) AS accepted_value
+              AS converted_count
           FROM sales_quotes
           WHERE company_id = $1
             AND deleted_at IS NULL
@@ -486,23 +474,36 @@ export async function getSalesWorkspaceData():
         ],
       ),
 
+      context.pool.query(
+        `
+          SELECT
+            UPPER(COALESCE(NULLIF(BTRIM(base_currency), ''), NULLIF(BTRIM($2::text), ''), 'KES')) AS currency,
+            COALESCE(SUM(base_total_amount), 0) AS quote_value,
+            COALESCE(SUM(base_total_amount) FILTER (
+              WHERE status IN ('accepted', 'converted')
+            ), 0) AS accepted_value
+          FROM sales_quotes
+          WHERE company_id = $1
+            AND deleted_at IS NULL
+          GROUP BY base_currency
+          ORDER BY currency
+        `,
+        [context.companyId, context.company.currentCompany.currency],
+      ),
+
       access.canViewReports
         ? context.pool.query(
             `
               SELECT
                 status,
-                COUNT(*)::int
-                  AS count,
-                COALESCE(
-                  SUM(base_total_amount),
-                  0
-                )
-                  AS amount
+                base_currency AS currency,
+                COUNT(*)::int AS count,
+                COALESCE(SUM(base_total_amount), 0) AS amount
               FROM sales_quotes
               WHERE company_id = $1
                 AND deleted_at IS NULL
-              GROUP BY status
-              ORDER BY status
+              GROUP BY status, base_currency
+              ORDER BY status, base_currency
             `,
             [
               context.companyId,
@@ -516,29 +517,16 @@ export async function getSalesWorkspaceData():
         ? context.pool.query(
             `
               SELECT
-                TO_CHAR(
-                  DATE_TRUNC(
-                    'month',
-                    quote_date
-                  ),
-                  'YYYY-MM'
-                )
-                  AS month,
-                COUNT(*)::int
-                  AS quote_count,
-                COALESCE(
-                  SUM(base_total_amount),
-                  0
-                )
-                  AS amount
+                TO_CHAR(DATE_TRUNC('month', quote_date), 'YYYY-MM') AS month,
+                base_currency AS currency,
+                COUNT(*)::int AS quote_count,
+                COALESCE(SUM(base_total_amount), 0) AS amount
               FROM sales_quotes
               WHERE company_id = $1
                 AND deleted_at IS NULL
-                AND quote_date >=
-                    CURRENT_DATE -
-                    INTERVAL '11 months'
-              GROUP BY 1
-              ORDER BY 1
+                AND quote_date >= CURRENT_DATE - INTERVAL '11 months'
+              GROUP BY 1, base_currency
+              ORDER BY 1, base_currency
             `,
             [
               context.companyId,
@@ -551,21 +539,29 @@ export async function getSalesWorkspaceData():
       access.canViewReports
         ? context.pool.query(
             `
-              SELECT
-                customer_name,
-                COUNT(*)::int
-                  AS quote_count,
-                COALESCE(
-                  SUM(base_total_amount),
-                  0
-                )
-                  AS amount
-              FROM sales_quotes
-              WHERE company_id = $1
-                AND deleted_at IS NULL
-              GROUP BY customer_name
-              ORDER BY amount DESC
-              LIMIT 10
+              WITH customer_totals AS (
+                SELECT
+                  customer_name,
+                  base_currency AS currency,
+                  COUNT(*)::int AS quote_count,
+                  COALESCE(SUM(base_total_amount), 0) AS amount
+                FROM sales_quotes
+                WHERE company_id = $1
+                  AND deleted_at IS NULL
+                GROUP BY customer_name, base_currency
+              ),
+              ranked_customers AS (
+                SELECT customer_totals.*,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY currency
+                    ORDER BY amount DESC, customer_name ASC
+                  ) AS currency_rank
+                FROM customer_totals
+              )
+              SELECT customer_name, currency, quote_count, amount
+              FROM ranked_customers
+              WHERE currency_rank <= 10
+              ORDER BY currency, amount DESC, customer_name
             `,
             [
               context.companyId,
@@ -701,6 +697,23 @@ export async function getSalesWorkspaceData():
         : Promise.resolve({
             rows: [],
           }),
+
+      access.canViewOrders
+        ? context.pool.query(
+            `
+              SELECT
+                base_currency AS currency,
+                COUNT(*)::int AS order_count,
+                COALESCE(SUM(base_total_amount), 0) AS amount
+              FROM sales_orders_v2
+              WHERE company_id = $1
+                AND deleted_at IS NULL
+              GROUP BY base_currency
+              ORDER BY base_currency
+            `,
+            [context.companyId],
+          )
+        : Promise.resolve({ rows: [] }),
 
       context.pool.query(
         `
@@ -906,32 +919,32 @@ export async function getSalesWorkspaceData():
     metrics.rows[0] ||
     {};
 
-  const orderValue =
-    access.canViewOrders
-      ? money(
-          orders.rows.reduce(
-            (
-              sum,
-              row,
-            ) =>
-              sum +
-              Number(
-                row.base_total_amount ??
-                row.total_amount ??
-                0,
-              ),
-            0,
-          ),
-        )
-      : 0;
-
-  const setting =
+remove order sum over limited page  const setting =
     settings.rows[0] ||
     {};
 
   const companyRow =
     company.rows[0] ||
     {};
+
+  const currencyFor = (value: unknown) =>
+    String(value || companyRow.currency || context.company.currentCompany.currency || 'KES').toUpperCase();
+  const quoteValueByCurrency = quoteValues.rows.map(row => ({
+    currency: currencyFor(row.currency),
+    amount: money(row.quote_value),
+  }));
+  const acceptedValueByCurrency = quoteValues.rows.map(row => ({
+    currency: currencyFor(row.currency),
+    amount: money(row.accepted_value),
+  }));
+  const orderValueByCurrency = orderValues.rows.map(row => ({
+    currency: currencyFor(row.currency),
+    amount: money(row.amount),
+  }));
+  const orderCount = orderValues.rows.reduce(
+    (sum, row) => sum + Number(row.order_count || 0),
+    0,
+  );
 
   return {
     company: {
@@ -980,15 +993,10 @@ export async function getSalesWorkspaceData():
           metric.converted_count ||
           0,
         ),
-      quoteValue:
-        money(
-          metric.quote_value,
-        ),
-      acceptedValue:
-        money(
-          metric.accepted_value,
-        ),
-      orderValue,
+      quoteValueByCurrency,
+      acceptedValueByCurrency,
+      orderValueByCurrency,
+      orderCount,
     },
 
     statusCounts:
@@ -998,6 +1006,7 @@ export async function getSalesWorkspaceData():
             String(
               row.status,
             ),
+          currency: currencyFor(row.currency),
           count:
             Number(
               row.count ||
@@ -1017,6 +1026,7 @@ export async function getSalesWorkspaceData():
             String(
               row.month,
             ),
+          currency: currencyFor(row.currency),
           quoteCount:
             Number(
               row.quote_count ||
@@ -1036,6 +1046,7 @@ export async function getSalesWorkspaceData():
             String(
               row.customer_name,
             ),
+          currency: currencyFor(row.currency),
           quoteCount:
             Number(
               row.quote_count ||
