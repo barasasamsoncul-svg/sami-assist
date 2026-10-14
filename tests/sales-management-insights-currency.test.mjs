@@ -18,6 +18,9 @@ test('Sales management insights group historical quote and order amounts by reco
   assert.match(service, /GROUP BY base_currency\s+ORDER BY base_currency/);
   assert.match(service, /GROUP BY months\.month_start, currencies\.currency/);
   assert.match(service, /o\.base_currency AS currency/);
+  assert.match(service, /ROW_NUMBER\(\) OVER/);
+  assert.match(service, /PARTITION BY currency/);
+  assert.match(service, /COALESCE\(viewed_at::date, sent_at::date, quote_date\) ASC/);
   assert.match(service, /openQuoteValueByCurrency/);
   assert.match(service, /bookedOrderValueByCurrency/);
 });
