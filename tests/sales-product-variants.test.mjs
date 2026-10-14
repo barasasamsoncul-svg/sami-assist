@@ -44,6 +44,21 @@ test('variant create, update and archive stay company-scoped and transactional',
   assert.doesNotMatch(variants, /input\.companyId|input\.tenantId/);
 });
 
+test('base catalogue CSV imports preserve authorized unit costs in metadata and reject unauthorized cost writes', async () => {
+  const [salesCommands, invoicingCommands, variants] = await Promise.all([
+    source('lib/apps/sales/commands.ts'),
+    source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/sales/product-variants.ts'),
+  ]);
+
+  assert.match(salesCommands, /rawCost = input\.unitCost/);
+  assert.match(salesCommands, /crossPermission\(context, SALES_PERMISSIONS\.MARGIN_MANAGE\)/);
+  assert.match(salesCommands, /createInvoicingCatalogItem\([\s\S]*?standardCost === undefined \? undefined : \{ standardCost \}/);
+  assert.match(invoicingCommands, /standardCost\?: number/);
+  assert.match(invoicingCommands, /metadata[\s\S]*?standardCost: options\.standardCost[\s\S]*?unitCost: options\.standardCost/);
+  assert.match(variants, /const optionalUnitCost = cleanText\(row\.unitCost, 60\);[\s\S]*?\.\.\.\(optionalUnitCost \? \{ unitCost: optionalUnitCost \} : \{\}\)/);
+});
+
 test('new variants inherit the base product cost unless an authorized user overrides it', async () => {
   const variants = await source('lib/apps/sales/product-variants.ts');
 

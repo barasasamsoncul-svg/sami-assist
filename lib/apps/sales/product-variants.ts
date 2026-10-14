@@ -307,6 +307,7 @@ export async function bulkImportSalesCatalogItems(input: Record<string, unknown>
         throw new SalesError('INVALID_INPUT', 'Item type must be product or service.');
       }
       const unitPrice = numberInput(row.unitPrice ?? 0, 'Unit price', { min: 0 });
+      const optionalUnitCost = cleanText(row.unitCost, 60);
       const created = await createSalesCatalogItem({
         itemType,
         name,
@@ -315,6 +316,7 @@ export async function bulkImportSalesCatalogItems(input: Record<string, unknown>
         description,
         unitPrice,
         taxRateId: cleanText(row.taxRateId, 120) || undefined,
+        ...(optionalUnitCost ? { unitCost: optionalUnitCost } : {}),
       });
       results.push({ row: rowNumber, success: true, id: created.id, name: created.name, sku, isVariant: false });
     } catch (error) {

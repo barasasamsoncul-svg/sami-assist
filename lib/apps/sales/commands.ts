@@ -152,14 +152,29 @@ export async function createSalesCatalogItem(
   input:
     Record<string, unknown>,
 ) {
-  await requireSalesContext(
+  const context = await requireSalesContext(
     SALES_PERMISSIONS
       .QUOTE_CREATE,
   );
 
   try {
+    const rawCost = input.unitCost;
+    let standardCost: number | undefined;
+    if (rawCost !== undefined && rawCost !== null && String(rawCost).trim() !== '') {
+      if (!crossPermission(context, SALES_PERMISSIONS.MARGIN_MANAGE)) {
+        throw new SalesError(
+          'SALES_PERMISSION_REQUIRED',
+          'Margin-management permission is required to set catalogue cost.',
+        );
+      }
+      standardCost = numberInput(rawCost, 'Unit cost', { min: 0 });
+    }
+
+    const catalogInput = { ...input };
+    delete catalogInput.unitCost;
     return await createInvoicingCatalogItem(
-      input,
+      catalogInput,
+      standardCost === undefined ? undefined : { standardCost },
     );
   } catch (
     error
