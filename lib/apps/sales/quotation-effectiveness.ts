@@ -155,15 +155,23 @@ export async function getSalesQuotationEffectivenessReport(): Promise<SalesQuota
       ranked_dimensions AS (
         SELECT dimensions.*,
           ROW_NUMBER() OVER (
-            PARTITION BY dimension_type
-            ORDER BY converted_value DESC, accepted_value DESC, quote_count DESC, dimension_label ASC NULLS LAST, dimension_key ASC, currency ASC
-          ) AS dimension_rank
+            PARTITION BY dimension_type, currency
+            ORDER BY converted_value DESC, accepted_value DESC, quote_count DESC, dimension_label ASC NULLS LAST, dimension_key ASC
+          ) AS currency_rank
         FROM dimensions
+      ),
+      balanced_dimensions AS (
+        SELECT ranked_dimensions.*,
+          ROW_NUMBER() OVER (
+            PARTITION BY dimension_type
+            ORDER BY currency_rank ASC, currency ASC, dimension_key ASC
+          ) AS dimension_rank
+        FROM ranked_dimensions
       )
       SELECT *
-      FROM ranked_dimensions
+      FROM balanced_dimensions
       WHERE dimension_rank <= 100
-      ORDER BY dimension_type ASC, currency ASC, converted_value DESC, quote_count DESC, dimension_label ASC NULLS LAST
+      ORDER BY dimension_type ASC, currency ASC, currency_rank ASC, converted_value DESC, quote_count DESC, dimension_label ASC NULLS LAST
     `,
     [context.companyId, companyCurrency],
   );
