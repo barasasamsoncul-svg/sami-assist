@@ -5,6 +5,7 @@ import { queryControl } from '@/lib/db/control';
 
 import { cleanText, isoDate, nullableText, numberInput, optionalUuid, requireSalesContext, requireUuid, SALES_PERMISSIONS, SalesError } from '@/lib/apps/sales/context';
 import { scoreSalesLead } from '@/lib/apps/sales/lead-scoring';
+import { terminalSalesOpportunityProbability } from '@/lib/apps/sales/pipeline-stage-rules';
 import { chooseBalancedSalesLeadAssignee, selectSalesLeadAssignmentRule } from '@/lib/apps/sales/lead-assignment';
 
 async function ensurePipelineStages(
@@ -1426,9 +1427,12 @@ export async function convertSalesLeadToOpportunity(input: Record<string, unknow
     if (!/^[A-Z]{3}$/.test(currency)) {
       throw new SalesError('INVALID_INPUT', 'Currency must be a three-letter code.');
     }
-    const probability = input.probability === undefined
-      ? Number(stage.rows[0].probability)
-      : numberInput(input.probability, 'Probability', { min: 0, max: 100 });
+    const terminalProbability = terminalSalesOpportunityProbability(targetStageType);
+    const probability = terminalProbability !== null
+      ? terminalProbability
+      : input.probability === undefined
+        ? Number(stage.rows[0].probability)
+        : numberInput(input.probability, 'Probability', { min: 0, max: 100 });
     const created = await client.query(
       `INSERT INTO sales_opportunities
         (company_id,opportunity_number,lead_id,stage_id,name,customer_name,contact_name,email,phone,
