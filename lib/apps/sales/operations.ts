@@ -24,6 +24,8 @@ import {
   postSalesFulfillmentToInventory,
 } from '@/lib/apps/sales/inventory';
 
+import { salesOrderDepositIdempotencyKey } from '@/lib/apps/sales/deposit-rules';
+
 import {
   cleanText,
   money,
@@ -1304,7 +1306,7 @@ export async function recordSalesOrderDeposit(
     // A Sales order supports one deposit. Do not let a caller-supplied key
     // bypass that invariant; a retry after a cross-module partial failure must
     // recover the same Invoicing retainer regardless of the request key.
-    const key = 'sales-order-' + orderId + '-deposit';
+    const key = salesOrderDepositIdempotencyKey(orderId);
     const deposit = await recordCustomerRetainer({
       customerId,
       amount,
@@ -1316,6 +1318,14 @@ export async function recordSalesOrderDeposit(
       receivedDate: input.receivedDate,
       idempotencyKey: key,
     });
+
+    if (Math.abs(money(deposit.amount) - amount) > 0.0001) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'A deposit already exists for this sales order with a different amount. Retry using the original amount.',
+        { recordedAmount: money(deposit.amount) },
+      );
+    }
 
     await client.query(
       `
