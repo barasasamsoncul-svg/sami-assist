@@ -1400,17 +1400,73 @@ function normalizeSalesQuoteDeposit(
 }
 
 
-export async function createSalesQuote(
-  input:
-    CreateSalesQuoteInput,
-) {
-  const context =
-    await requireSalesContext(
-      SALES_PERMISSIONS
-        .QUOTE_CREATE,
-    );
+type SalesQuoteAuthoringDependencies = {
+  ensureSalesDefaults: typeof ensureSalesDefaults;
+  crossPermission: typeof crossPermission;
+  resolveTemplate: typeof resolveTemplate;
+  resolveCustomerSnapshot: typeof resolveCustomerSnapshot;
+  resolveSalesExchangeRate: typeof resolveSalesExchangeRate;
+  normalizeQuoteLines: typeof normalizeQuoteLines;
+  totals: typeof totals;
+  normalizeSalesQuoteDeposit: typeof normalizeSalesQuoteDeposit;
+  salesBaseAmount: typeof salesBaseAmount;
+  salesQuoteRequiresLegacyApproval: typeof salesQuoteRequiresLegacyApproval;
+  nextSalesNumber: typeof nextSalesNumber;
+  resolveSalesAssignmentForUser: typeof resolveSalesAssignmentForUser;
+  insertQuoteLines: typeof insertQuoteLines;
+  recordSalesActivity: typeof recordSalesActivity;
+  emitSalesAutomationEvent: typeof emitSalesAutomationEvent;
+  requireUuid: typeof requireUuid;
+  optionalUuid: typeof optionalUuid;
+  cleanText: typeof cleanText;
+  isoDate: typeof isoDate;
+  datePlusDays: typeof datePlusDays;
+  nullableText: typeof nullableText;
+  numberInput: typeof numberInput;
+};
 
-  await ensureSalesDefaults(
+const defaultSalesQuoteAuthoringDependencies: SalesQuoteAuthoringDependencies = {
+  ensureSalesDefaults,
+  crossPermission,
+  resolveTemplate,
+  resolveCustomerSnapshot,
+  resolveSalesExchangeRate,
+  normalizeQuoteLines,
+  totals,
+  normalizeSalesQuoteDeposit,
+  salesBaseAmount,
+  salesQuoteRequiresLegacyApproval,
+  nextSalesNumber,
+  resolveSalesAssignmentForUser,
+  insertQuoteLines,
+  recordSalesActivity,
+  emitSalesAutomationEvent,
+  requireUuid,
+  optionalUuid,
+  cleanText,
+  isoDate,
+  datePlusDays,
+  nullableText,
+  numberInput,
+};
+
+/**
+ * Transaction-level quotation creation primitive. The public production entry
+ * point authorizes the caller before invoking this function. Dependencies can
+ * be replaced by integration tests while quote and quote-line persistence stays
+ * on PostgreSQL.
+ */
+export async function createSalesQuoteTransaction(
+  input: CreateSalesQuoteInput,
+  context: Awaited<ReturnType<typeof requireSalesContext>>,
+  overrides: Partial<SalesQuoteAuthoringDependencies> = {},
+) {
+  const deps: SalesQuoteAuthoringDependencies = {
+    ...defaultSalesQuoteAuthoringDependencies,
+    ...overrides,
+  };
+
+  await deps.ensureSalesDefaults(
     context.pool,
     context.companyId,
     context.userId,
@@ -1448,7 +1504,7 @@ export async function createSalesQuote(
       rawOpportunityId === null ||
       rawOpportunityId === ''
         ? null
-        : requireUuid(rawOpportunityId, 'Opportunity');
+        : deps.requireUuid(rawOpportunityId, 'Opportunity');
 
     let linkedOpportunity:
       Record<string, unknown> |
@@ -1456,7 +1512,7 @@ export async function createSalesQuote(
 
     if (opportunityId) {
       if (
-        !crossPermission(
+        !deps.crossPermission(
           context,
           SALES_PERMISSIONS.PIPELINE_VIEW,
           SALES_PERMISSIONS.PIPELINE_MANAGE,
@@ -1519,7 +1575,7 @@ export async function createSalesQuote(
           ...input,
           billingCustomerId:
             input.billingCustomerId ??
-            (crossPermission(
+            (deps.crossPermission(
               context,
               'invoicing.customer.view',
               'invoicing.customer.manage',
@@ -1546,30 +1602,30 @@ export async function createSalesQuote(
       : input;
 
     const template =
-      await resolveTemplate(
+      await deps.resolveTemplate(
         client,
         context.companyId,
         quoteInput.templateId,
       );
 
     const customer =
-      await resolveCustomerSnapshot(
+      await deps.resolveCustomerSnapshot(
         client,
         context,
         quoteInput,
       );
 
     const quoteDate =
-      isoDate(
+      deps.isoDate(
         input.quoteDate,
       );
 
     const validUntil =
       input.validUntil
-        ? isoDate(
+        ? deps.isoDate(
             input.validUntil,
           )
-        : datePlusDays(
+        : deps.datePlusDays(
             quoteDate,
             Number(
               settings.default_validity_days ||
@@ -1588,7 +1644,7 @@ export async function createSalesQuote(
     }
 
     const currency =
-      cleanText(
+      deps.cleanText(
         quoteInput.currency ||
         customer.currency ||
         settings.default_currency ||
@@ -1611,7 +1667,7 @@ export async function createSalesQuote(
     }
 
     const baseCurrency =
-      cleanText(
+      deps.cleanText(
         context.company
           .currentCompany
           .currency ||
@@ -1622,7 +1678,7 @@ export async function createSalesQuote(
         .toUpperCase();
 
     const exchangeRate =
-      await resolveSalesExchangeRate(
+      await deps.resolveSalesExchangeRate(
         client,
         {
           companyId:
@@ -1637,12 +1693,12 @@ export async function createSalesQuote(
       );
 
     const pricelistId =
-      optionalUuid(
+      deps.optionalUuid(
         input.pricelistId,
       );
 
     const lines =
-      await normalizeQuoteLines(
+      await deps.normalizeQuoteLines(
         client,
         context,
         input.lines,
@@ -1656,32 +1712,32 @@ export async function createSalesQuote(
       );
 
     const shippingTotal =
-      numberInput(
+      deps.numberInput(
         input.shippingTotal ??
         0,
         'Shipping',
       );
 
     const calculated =
-      totals(
+      deps.totals(
         lines,
         shippingTotal,
       );
 
     const deposit =
-      normalizeSalesQuoteDeposit(
+      deps.normalizeSalesQuoteDeposit(
         quoteInput,
         calculated.totalAmount,
       );
 
     const baseTotalAmount =
-      salesBaseAmount(
+      deps.salesBaseAmount(
         calculated.totalAmount,
         exchangeRate.rate,
       );
 
     const approvalRequired =
-      salesQuoteRequiresLegacyApproval(
+      deps.salesQuoteRequiresLegacyApproval(
         settings.require_quote_approval,
         settings.quote_approval_threshold,
         baseTotalAmount,
@@ -1693,7 +1749,7 @@ export async function createSalesQuote(
         : 'not_required';
 
     const quoteNumber =
-      await nextSalesNumber(
+      await deps.nextSalesNumber(
         client,
         context.companyId,
         context.userId,
@@ -1701,7 +1757,7 @@ export async function createSalesQuote(
       );
 
     const salesAssignment =
-      await resolveSalesAssignmentForUser(
+      await deps.resolveSalesAssignmentForUser(
         client,
         {
           companyId:
@@ -1773,7 +1829,7 @@ export async function createSalesQuote(
           quoteDate,
           validUntil,
           currency,
-          nullableText(
+          deps.nullableText(
             quoteInput.reference,
             255,
           ),
@@ -1793,21 +1849,21 @@ export async function createSalesQuote(
           calculated.costTotal,
           calculated.marginAmount,
           calculated.marginPercent,
-          nullableText(
+          deps.nullableText(
             input.notes ||
             template
               ?.notes ||
             settings.default_notes,
             6000,
           ),
-          nullableText(
+          deps.nullableText(
             input.terms ||
             template
               ?.terms ||
             settings.terms_and_conditions,
             12000,
           ),
-          nullableText(
+          deps.nullableText(
             input.internalNotes,
             6000,
           ),
@@ -1893,7 +1949,7 @@ export async function createSalesQuote(
       );
     }
 
-    await insertQuoteLines(
+    await deps.insertQuoteLines(
       client,
       context.companyId,
       quoteId,
@@ -1924,7 +1980,7 @@ export async function createSalesQuote(
       ],
     );
 
-    await recordSalesActivity(
+    await deps.recordSalesActivity(
       client,
       {
         companyId:
@@ -1951,7 +2007,7 @@ export async function createSalesQuote(
       'COMMIT',
     );
 
-    await emitSalesAutomationEvent(
+    await deps.emitSalesAutomationEvent(
       context,
       {
         triggerKey:
@@ -1999,23 +2055,26 @@ export async function createSalesQuote(
 }
 
 
-export async function updateSalesQuoteDraft(
-  input:
-    CreateSalesQuoteInput & {
-      quoteId?: unknown;
-    },
+
+
+export async function createSalesQuote(
+  input: CreateSalesQuoteInput,
 ) {
-  const context =
-    await requireSalesContext(
-      SALES_PERMISSIONS
-        .QUOTE_EDIT,
-    );
+  const context = await requireSalesContext(SALES_PERMISSIONS.QUOTE_CREATE);
+  return createSalesQuoteTransaction(input, context);
+}
+export async function updateSalesQuoteDraftTransaction(
+  input: CreateSalesQuoteInput & { quoteId?: unknown },
+  context: Awaited<ReturnType<typeof requireSalesContext>>,
+  overrides: Partial<SalesQuoteAuthoringDependencies> = {},
+) {
+  const deps: SalesQuoteAuthoringDependencies = {
+    ...defaultSalesQuoteAuthoringDependencies,
+    ...overrides,
+  };
 
   const quoteId =
-    requireUuid(
-      input.quoteId,
-      'Quote',
-    );
+    deps.requireUuid(input.quoteId, 'Quote');
 
   const client =
     await context.pool.connect();
@@ -2108,30 +2167,30 @@ export async function updateSalesQuoteDraft(
       {};
 
     const template =
-      await resolveTemplate(
+      await deps.resolveTemplate(
         client,
         context.companyId,
         input.templateId,
       );
 
     const customer =
-      await resolveCustomerSnapshot(
+      await deps.resolveCustomerSnapshot(
         client,
         context,
         input,
       );
 
     const quoteDate =
-      isoDate(
+      deps.isoDate(
         input.quoteDate,
       );
 
     const validUntil =
       input.validUntil
-        ? isoDate(
+        ? deps.isoDate(
             input.validUntil,
           )
-        : datePlusDays(
+        : deps.datePlusDays(
             quoteDate,
             Number(
               settings.default_validity_days ||
@@ -2150,7 +2209,7 @@ export async function updateSalesQuoteDraft(
     }
 
     const currency =
-      cleanText(
+      deps.cleanText(
         input.currency ||
         customer.currency ||
         settings.default_currency ||
@@ -2171,7 +2230,7 @@ export async function updateSalesQuoteDraft(
     }
 
     const baseCurrency =
-      cleanText(
+      deps.cleanText(
         context.company
           .currentCompany
           .currency ||
@@ -2250,7 +2309,7 @@ export async function updateSalesQuoteDraft(
             manualOverride:
               false,
           }
-        : await resolveSalesExchangeRate(
+        : await deps.resolveSalesExchangeRate(
             client,
             {
               companyId:
@@ -2265,12 +2324,12 @@ export async function updateSalesQuoteDraft(
           );
 
     const pricelistId =
-      optionalUuid(
+      deps.optionalUuid(
         input.pricelistId,
       );
 
     const lines =
-      await normalizeQuoteLines(
+      await deps.normalizeQuoteLines(
         client,
         context,
         input.lines,
@@ -2284,32 +2343,32 @@ export async function updateSalesQuoteDraft(
       );
 
     const shippingTotal =
-      numberInput(
+      deps.numberInput(
         input.shippingTotal ??
         0,
         'Shipping',
       );
 
     const calculated =
-      totals(
+      deps.totals(
         lines,
         shippingTotal,
       );
 
     const deposit =
-      normalizeSalesQuoteDeposit(
+      deps.normalizeSalesQuoteDeposit(
         input,
         calculated.totalAmount,
       );
 
     const baseTotalAmount =
-      salesBaseAmount(
+      deps.salesBaseAmount(
         calculated.totalAmount,
         exchangeRate.rate,
       );
 
     const approvalRequired =
-      salesQuoteRequiresLegacyApproval(
+      deps.salesQuoteRequiresLegacyApproval(
         settings.require_quote_approval,
         settings.quote_approval_threshold,
         baseTotalAmount,
@@ -2373,7 +2432,7 @@ export async function updateSalesQuoteDraft(
         quoteDate,
         validUntil,
         currency,
-        nullableText(
+        deps.nullableText(
           input.reference,
           255,
         ),
@@ -2393,21 +2452,21 @@ export async function updateSalesQuoteDraft(
         calculated.costTotal,
         calculated.marginAmount,
         calculated.marginPercent,
-        nullableText(
+        deps.nullableText(
           input.notes ||
           template
             ?.notes ||
           settings.default_notes,
           6000,
         ),
-        nullableText(
+        deps.nullableText(
           input.terms ||
           template
             ?.terms ||
           settings.terms_and_conditions,
           12000,
         ),
-        nullableText(
+        deps.nullableText(
           input.internalNotes,
           6000,
         ),
@@ -2453,14 +2512,14 @@ export async function updateSalesQuoteDraft(
       ],
     );
 
-    await insertQuoteLines(
+    await deps.insertQuoteLines(
       client,
       context.companyId,
       quoteId,
       lines,
     );
 
-    await recordSalesActivity(
+    await deps.recordSalesActivity(
       client,
       {
         companyId:
@@ -2511,6 +2570,16 @@ export async function updateSalesQuoteDraft(
   } finally {
     client.release();
   }
+}
+
+
+
+
+export async function updateSalesQuoteDraft(
+  input: CreateSalesQuoteInput & { quoteId?: unknown },
+) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.QUOTE_EDIT);
+  return updateSalesQuoteDraftTransaction(input, context);
 }
 
 
