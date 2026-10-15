@@ -319,12 +319,13 @@ test('Sales quote conversion marks the linked CRM opportunity won and records th
     source('lib/apps/sales/opportunity-conversion.ts'),
   ]);
   const helperStart = conversion.indexOf('export async function markSalesOpportunityWonFromAcceptedQuote(');
-  const orderStart = commands.indexOf('export async function createSalesOrderFromQuote(');
+  const transactionStart = commands.indexOf('export async function createSalesOrderFromQuoteTransaction(');
+  const orderStart = commands.indexOf('export async function createSalesOrderFromQuote(', transactionStart);
   const invoiceStart = commands.indexOf('export async function convertSalesQuoteToInvoice(', orderStart);
-  assert.ok(helperStart >= 0 && orderStart >= 0 && invoiceStart > orderStart);
+  assert.ok(helperStart >= 0 && transactionStart >= 0 && orderStart > transactionStart && invoiceStart > orderStart);
 
   const helper = conversion.slice(helperStart);
-  const quoteToOrder = commands.slice(orderStart, invoiceStart);
+  const quoteToOrder = commands.slice(transactionStart, invoiceStart);
   assert.match(commands, /from ['"]@\/lib\/apps\/sales\/opportunity-conversion['"]/);
   assert.match(helper, /opportunity\.company_id = \$2/);
   assert.match(helper, /FOR UPDATE OF opportunity/);
@@ -338,14 +339,14 @@ test('Sales quote conversion marks the linked CRM opportunity won and records th
   assert.match(helper, /requireUuid\(rawOpportunityId, 'Opportunity'\)/);
   assert.match(quoteToOrder, /row\.opportunity_id/);
   assert.equal(
-    (quoteToOrder.match(/await markSalesOpportunityWonFromAcceptedQuote\(/g) || []).length,
+    (quoteToOrder.match(/await deps\.markSalesOpportunityWonFromAcceptedQuote\(/g) || []).length,
     2,
     'Both first conversion and idempotent retries must reconcile the linked opportunity.',
   );
-  assert.match(quoteToOrder, /requireUuid,/,
+  assert.match(quoteToOrder, /deps\.requireUuid,/,
     'the conversion helper must keep the authoritative Sales UUID validator');
   assert.ok(
-    quoteToOrder.indexOf('await markSalesOpportunityWonFromAcceptedQuote(') <
+    quoteToOrder.indexOf('await deps.markSalesOpportunityWonFromAcceptedQuote(') <
       quoteToOrder.lastIndexOf("'COMMIT'"),
     'Opportunity reconciliation must happen before the conversion transaction commits.',
   );
@@ -518,9 +519,14 @@ test('Sales quote-to-order is transaction-safe, idempotent, and invoice permissi
       'lib/apps/sales/commands.ts',
     );
 
+  const transactionStart =
+    commands.indexOf(
+      'export async function createSalesOrderFromQuoteTransaction(',
+    );
   const orderStart =
     commands.indexOf(
       'export async function createSalesOrderFromQuote(',
+      transactionStart,
     );
   const invoiceStart =
     commands.indexOf(
@@ -533,11 +539,11 @@ test('Sales quote-to-order is transaction-safe, idempotent, and invoice permissi
       invoiceStart,
     );
 
-  assert.ok(orderStart >= 0 && invoiceStart > orderStart && fulfillmentStart > invoiceStart);
+  assert.ok(transactionStart >= 0 && orderStart > transactionStart && invoiceStart > orderStart && fulfillmentStart > invoiceStart);
 
   const quoteToOrder =
     commands.slice(
-      orderStart,
+      transactionStart,
       invoiceStart,
     );
 
@@ -554,6 +560,8 @@ test('Sales quote-to-order is transaction-safe, idempotent, and invoice permissi
   assert.match(quoteToOrder, /INSERT INTO sales_order_items_v2/);
   assert.match(quoteToOrder, /sales_order_id = \$3/);
   assert.match(quoteToOrder, /Complete internal quotation approval before creating a sales order/);
+  assert.match(quoteToOrder, /salesDateOnly\(row\.exchange_rate_date\)/,
+    'PostgreSQL DATE values must be normalized before they are written into order exchange-rate dates');
   assert.match(quoteToOrder, /ROLLBACK/);
 
   const quoteToInvoice =
