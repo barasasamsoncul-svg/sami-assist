@@ -2817,8 +2817,182 @@ integration(
       assert.equal(failedDeliveryLog.rows[0].status, 'failed');
       assert.equal(failedDeliveryLog.rows[0].error_code, 'EMAIL_MISSING');
 
+      // Prove that a valid quote ID is not authority to read or mutate another
+      // company's quotation. Both the database write path and delivery adapter
+      // boundary must stop before side effects for a mismatched company scope.
+      const otherCompanyId = '99999999-9999-4999-8999-999999999999';
+      const beforeIsolationProbe = await returnPool.query(
+        `SELECT status, total_amount, public_enabled, public_token_hash
+         FROM sales_quotes WHERE id = $1 AND company_id = $2`,
+        [createdAuthoringQuote.id, companyId],
+      );
+      assert.equal(beforeIsolationProbe.rows.length, 1);
+
+      await assert.rejects(
+        updateSalesQuoteDraftTransaction(
+          {
+            ...authoringInput,
+            quoteId: createdAuthoringQuote.id,
+            notes: 'Cross-company edit attempt',
+            lines: [{ description: 'Unauthorized overwrite', quantity: 999, unitPrice: 0.01, unitCost: 0 }],
+          },
+          {
+            ...authoringContext,
+            companyId: otherCompanyId,
+          } as Parameters<typeof updateSalesQuoteDraftTransaction>[1],
+          quoteAuthoringDependencies,
+        ),
+        (error: unknown) => error instanceof Error && /Quote was not found/.test(error.message),
+        'the quote editor must not disclose or mutate a quotation in another company',
+      );
+
+      let forbiddenDeliveryAdapterCalls = 0;
+      const forbiddenDeliveryAdapters: Parameters<typeof deliverSalesQuote>[1] = {
+        assertSalesQuoteApprovalSatisfied: async () => { forbiddenDeliveryAdapterCalls += 1; },
+        createPublicToken: () => {
+          forbiddenDeliveryAdapterCalls += 1;
+          return 'must-not-be-created';
+        },
+      };
+      await assert.rejects(
+        deliverSalesQuote(
+          {
+            pool: returnPool as unknown as Pool,
+            tenantId: 'integration-test-tenant',
+            companyId: otherCompanyId,
+            companyName: 'Unauthorized Company',
+            userId,
+            quoteId: createdAuthoringQuote.id,
+            channels: ['email'],
+          },
+          forbiddenDeliveryAdapters,
+        ),
+        (error: unknown) => error instanceof Error && /Quotation was not found/.test(error.message),
+        'delivery must not resolve a quotation outside the active company',
+      );
+      assert.equal(forbiddenDeliveryAdapterCalls, 0,
+        'approval and public-token adapters must not run for a cross-company quote');
+      const afterIsolationProbe = await returnPool.query(
+        `SELECT status, total_amount, public_enabled, public_token_hash
+         FROM sales_quotes WHERE id = $1 AND company_id = $2`,
+        [createdAuthoringQuote.id, companyId],
+      );
+      assert.deepEqual(afterIsolationProbe.rows, beforeIsolationProbe.rows,
+        'failed cross-company operations must leave the source quote unchanged');
+      const crossCompanyDeliveryRows = await returnPool.query(
+        `SELECT COUNT(*)::int AS count FROM sales_delivery_log
+         WHERE quote_id = $1 AND company_id = $2`,
+        [createdAuthoringQuote.id, otherCompanyId],
+      );
+      assert.equal(crossCompanyDeliveryRows.rows[0].count, 0);
+
     } finally {
       returnSessionHolder.client?.release();
+      await pool.end();
+    }
+  },
+);
+
+
+integration(
+  'ERP parity: fresh Sales schema and every registered upgrade execute in PostgreSQL',
+  async () => {
+    const pool = new Pool({
+      connectionString: DATABASE_URL,
+    });
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+      await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
+      await client.query(`
+        CREATE TABLE public.companies (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          name TEXT NOT NULL DEFAULT 'Sales Migration Test',
+          currency VARCHAR(3) NOT NULL DEFAULT 'KES',
+          deleted_at TIMESTAMPTZ
+        )
+      `);
+
+      const { SALES_RUNTIME_MIGRATIONS } = await import('../lib/apps/runtime-migrations');
+      const { getSamiModuleMigrationPlan } = await import('../lib/modules/migrations');
+      const plan = getSamiModuleMigrationPlan('sales', '1.0.0', '3.4.19');
+
+      assert.equal(plan.length, SALES_RUNTIME_MIGRATIONS.length,
+        'the migration planner must include every registered Sales transition');
+      assert.equal(plan[0].fromVersion, '1.0.0');
+      assert.equal(plan[plan.length - 1].toVersion, '3.4.19');
+
+      for (let index = 0; index < plan.length; index += 1) {
+        const migration = plan[index];
+        assert.equal(migration.moduleKey, 'sales');
+        assert.equal(migration.namespace, 'sales');
+        if (index > 0) {
+          assert.equal(plan[index - 1].toVersion, migration.fromVersion,
+            'Sales migration chain must be continuous with no missing/overlapping version step');
+        }
+        await migration.run(client, {
+          moduleKey: 'sales',
+          namespace: 'sales',
+          fromVersion: migration.fromVersion,
+          toVersion: migration.toVersion,
+        });
+      }
+
+      const requiredTables = [
+        'sales_settings',
+        'sales_quotes',
+        'sales_quote_items',
+        'sales_quote_status_history',
+        'sales_quote_approval_policies',
+        'sales_order_invoice_batches',
+        'sales_orders_v2',
+        'sales_order_items_v2',
+        'sales_delivery_log',
+        'sales_product_variants',
+        'sales_returns',
+        'sales_return_credits',
+      ];
+      const tableCheck = await client.query(
+        `SELECT required.table_name
+         FROM unnest($1::text[]) AS required(table_name)
+         LEFT JOIN information_schema.tables actual
+           ON actual.table_schema = 'public'
+          AND actual.table_name = required.table_name
+         WHERE actual.table_name IS NULL
+         ORDER BY required.table_name`,
+        [requiredTables],
+      );
+      assert.deepEqual(tableCheck.rows, [],
+        'fresh install + registered Sales migration chain must materialize all supported Sales domains');
+
+      const requiredQuoteColumns = [
+        'approval_status',
+        'base_total_amount',
+        'public_token_hash',
+        'sales_order_id',
+        'internal_notes',
+      ];
+      const quoteColumnCheck = await client.query(
+        `SELECT required.column_name
+         FROM unnest($1::text[]) AS required(column_name)
+         LEFT JOIN information_schema.columns actual
+           ON actual.table_schema = 'public'
+          AND actual.table_name = 'sales_quotes'
+          AND actual.column_name = required.column_name
+         WHERE actual.column_name IS NULL
+         ORDER BY required.column_name`,
+        [requiredQuoteColumns],
+      );
+      assert.deepEqual(quoteColumnCheck.rows, [],
+        'fresh and upgraded quotation schema must retain critical lifecycle/commercial fields');
+
+      await client.query('ROLLBACK');
+    } catch (error) {
+      try { await client.query('ROLLBACK'); } catch {}
+      throw error;
+    } finally {
+      client.release();
       await pool.end();
     }
   },
