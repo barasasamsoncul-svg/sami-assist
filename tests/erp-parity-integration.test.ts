@@ -840,8 +840,21 @@ integration(
       assert.equal(retryCounts.rows[0].history_count, 1);
       assert.equal(retryCounts.rows[0].activity_count, 1);
 
-      // Deleted and cross-company CRM records must not be mutated by an order
-      // conversion. The parent Sales transaction is still allowed to continue.
+      // A same-ID lookup under another company must not mutate the active
+      // opportunity, append history, or emit activity.
+      await markSalesOpportunityWonFromAcceptedQuote(
+        client,
+        { ...conversionInput, companyId: otherCompanyId },
+        validateOpportunityUuid,
+      );
+      const crossCompanyGuard = await client.query(
+        'SELECT stage_id FROM sales_opportunities WHERE id = $1 AND company_id = $2',
+        [opportunityId, companyId],
+      );
+      assert.equal(crossCompanyGuard.rows[0].stage_id, wonStageId);
+
+      // A deleted CRM record must also be ignored, allowing the Sales order
+      // transaction to continue without mutating soft-deleted opportunity data.
       await client.query(
         'UPDATE sales_opportunities SET deleted_at = NOW() WHERE id = $1',
         [opportunityId],
@@ -849,11 +862,6 @@ integration(
       await markSalesOpportunityWonFromAcceptedQuote(
         client,
         conversionInput,
-        validateOpportunityUuid,
-      );
-      await markSalesOpportunityWonFromAcceptedQuote(
-        client,
-        { ...conversionInput, companyId: otherCompanyId },
         validateOpportunityUuid,
       );
       const finalCounts = await client.query(
