@@ -77,6 +77,7 @@ test('Sales quote expiry normalizes PostgreSQL date values and preserves accepte
   const publicGetExpiry = publicGet.slice(publicGetExpiryStart, publicGetExpiryEnd);
   assert.match(publicGetExpiry, /FOR UPDATE/,
     'public expiry must re-read the quote while holding its row lock');
+  assert.match(publicGetExpiry, /quote\.valid_until = currentResult\.rows\[0\]\.valid_until/);
   assert.match(publicGetExpiry, /INSERT INTO sales_quote_status_history/);
   assert.ok(publicGetExpiry.includes("type: 'sales.quote.expired'"));
   assert.ok(publicGetExpiry.includes("await client.query('COMMIT')"));
