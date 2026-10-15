@@ -32,10 +32,11 @@ async function source(
 
 
 
-test('Sales quote expiry normalizes PostgreSQL date values and preserves accepted or rejectable state transitions', async () => {
-  const [commands, publicSales] = await Promise.all([
+test('Sales quote expiry normalizes dates and uses one compare-and-set audited transition for public actions', async () => {
+  const [commands, publicSales, expiryTransition] = await Promise.all([
     source('lib/apps/sales/commands.ts'),
     source('lib/apps/sales/public.ts'),
+    source('lib/apps/sales/public-quote-expiry.ts'),
   ]);
 
   assert.match(commands, /shouldExpireSalesQuoteBeforeAcceptance\(/);
@@ -53,7 +54,6 @@ test('Sales quote expiry normalizes PostgreSQL date values and preserves accepte
   assert.ok(expiryCommit > expiryHistory);
   assert.match(internal.slice(expiryDecision, expiryCommit), /public_enabled = FALSE/);
   assert.match(internal.slice(expiryDecision, expiryCommit), /sales\.quote\.expired/);
-  assert.match(internal.slice(expiryDecision, expiryCommit), /Quotation expired before acceptance/);
 
   const publicGetStart = publicSales.indexOf('export async function getPublicSalesQuote(');
   const publicRespondStart = publicSales.indexOf('export async function respondToPublicSalesQuote(', publicGetStart);
@@ -64,39 +64,35 @@ test('Sales quote expiry normalizes PostgreSQL date values and preserves accepte
 
   const response = publicSales.slice(publicRespondStart);
   assert.match(response, /isSalesQuoteExpired\(/);
-  const onlyOpenStatuses = response.indexOf("['sent', 'viewed'].includes(current)");
-  const expiryCheck = response.indexOf('isSalesQuoteExpired(');
-  const expiryMutation = response.indexOf("status = 'expired'", expiryCheck);
-  assert.ok(onlyOpenStatuses >= 0 && expiryCheck > onlyOpenStatuses,
-    'public expiry mutation must be limited to open, customer-actionable quotes');
-  assert.ok(expiryMutation > expiryCheck);
+  const responseExpiryStart = response.indexOf("if (\n      ['sent', 'viewed'].includes(current)");
+  const responseExpiryEnd = response.indexOf("if (\n      ![\n        'sent',", responseExpiryStart);
+  assert.ok(responseExpiryStart >= 0 && responseExpiryEnd > responseExpiryStart);
+  const responseExpiry = response.slice(responseExpiryStart, responseExpiryEnd);
+  assert.match(response, /LEFT JOIN sales_settings[\s\S]*?FOR UPDATE OF q/,
+    'public response must lock only the quotation row because company settings are left-joined');
+  assert.match(responseExpiry, /expirePublicSalesQuoteWithAudit/);
+  assert.match(responseExpiry, /await client.query\('COMMIT'\)/);
+  assert.match(responseExpiry, /This quote has expired/);
 
   const publicGetExpiryStart = publicGet.indexOf("  if (\n    [\n      'sent',\n      'viewed',");
   const publicGetExpiryEnd = publicGet.indexOf("  } else if (\n    options.markViewed", publicGetExpiryStart);
   assert.ok(publicGetExpiryStart >= 0 && publicGetExpiryEnd > publicGetExpiryStart);
   const publicGetExpiry = publicGet.slice(publicGetExpiryStart, publicGetExpiryEnd);
   assert.match(publicGetExpiry, /FOR UPDATE/,
-    'public expiry must re-read the quote while holding its row lock');
+    'public page reads must re-check status under the row lock before expiring');
   assert.match(publicGetExpiry, /quote\.valid_until = currentResult\.rows\[0\]\.valid_until/);
-  assert.match(publicGetExpiry, /INSERT INTO sales_quote_status_history/);
-  assert.ok(publicGetExpiry.includes("type: 'sales.quote.expired'"));
-  assert.ok(publicGetExpiry.includes("await client.query('COMMIT')"));
-  assert.equal(publicGetExpiry.includes('await pool.query('), false,
-    'expiry status, history, and activity must share one transaction');
+  assert.match(publicGetExpiry, /expirePublicSalesQuoteWithAudit/);
+  assert.match(publicGetExpiry, /await client\.query\('COMMIT'\)/);
 
-  const responseExpiryStart = response.indexOf("if (\n      ['sent', 'viewed'].includes(current)");
-  const responseExpiryEnd = response.indexOf("if (\n      ![\n        'sent',", responseExpiryStart);
-  assert.ok(responseExpiryStart >= 0 && responseExpiryEnd > responseExpiryStart);
-  const responseExpiry = response.slice(responseExpiryStart, responseExpiryEnd);
-  assert.match(response, /FOR UPDATE/,
-    'public response must serialize expiry against accept/reject actions');
-  assert.match(responseExpiry, /INSERT INTO sales_quote_status_history/);
-  assert.ok(responseExpiry.includes("type: 'sales.quote.expired'"));
-  const responseHistory = responseExpiry.indexOf('INSERT INTO sales_quote_status_history');
-  const responseActivity = responseExpiry.indexOf("type: 'sales.quote.expired'");
-  const responseCommit = responseExpiry.indexOf("'COMMIT'");
-  assert.ok(responseHistory >= 0 && responseActivity > responseHistory && responseCommit > responseActivity,
-    'expiry history and activity must commit atomically before the public action is rejected');
+  assert.match(expiryTransition, /AND status = \$3::varchar\(30\)/,
+    'expiry must compare-and-set against the exact source status');
+  assert.match(expiryTransition, /RETURNING id/);
+  assert.match(expiryTransition, /INSERT INTO sales_quote_status_history/);
+  assert.match(expiryTransition, /await recordActivity\(client/);
+  assert.match(expiryTransition, /type: 'sales\.quote\.expired'/);
+  assert.match(expiryTransition, /if \(changed\.rows\.length !== 1\) \{[\s\S]*?return false/);
+  assert.doesNotMatch(expiryTransition, /client\.query\(\s*['"](?:BEGIN|COMMIT)['"]\s*\)/,
+    'the caller keeps status and audit records inside its transaction');
 });
 
 test('Sales quote-to-invoice checks invoicing and customer permissions before converting the quote', async () => {
