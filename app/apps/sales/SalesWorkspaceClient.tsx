@@ -1087,7 +1087,6 @@ export default function SalesWorkspaceClient({
 
   useEffect(() => {
     if (quoteBaseData.current !== initialData.quotes) {
-      quoteBaseData.current = initialData.quotes;
       setQuoteRecords(initialData.quotes);
       setQuoteRegisterHasMore(initialData.quotes.length >= 250);
       setQuoteRegisterTotalCount(initialData.metrics.quoteCount);
@@ -1096,7 +1095,6 @@ export default function SalesWorkspaceClient({
 
   useEffect(() => {
     if (orderBaseData.current !== initialData.orders) {
-      orderBaseData.current = initialData.orders;
       setOrderRecords(initialData.orders);
       setOrderRegisterHasMore(initialData.orders.length >= 250);
       setOrderRegisterTotalCount(initialData.metrics.orderCount);
@@ -1109,6 +1107,7 @@ export default function SalesWorkspaceClient({
     const baseChanged = quoteBaseData.current !== initialData.quotes;
     if (signature === previousQuoteQuery.current && !baseChanged) return;
     previousQuoteQuery.current = signature;
+    quoteBaseData.current = initialData.quotes;
     const controller = new AbortController();
     setQuoteRegisterLoading(true);
     setQuoteRegisterError('');
@@ -1137,6 +1136,7 @@ export default function SalesWorkspaceClient({
     return () => {
       window.clearTimeout(timer);
       controller.abort();
+      setQuoteRegisterLoading(false);
     };
   }, [view, search, quoteStatusView, initialData.quotes, initialData.metrics.quoteCount]);
 
@@ -1146,6 +1146,7 @@ export default function SalesWorkspaceClient({
     const baseChanged = orderBaseData.current !== initialData.orders;
     if (signature === previousOrderQuery.current && !baseChanged) return;
     previousOrderQuery.current = signature;
+    orderBaseData.current = initialData.orders;
     const controller = new AbortController();
     setOrderRegisterLoading(true);
     setOrderRegisterError('');
@@ -1175,6 +1176,7 @@ export default function SalesWorkspaceClient({
     return () => {
       window.clearTimeout(timer);
       controller.abort();
+      setOrderRegisterLoading(false);
     };
   }, [view, search, orderStatusView, orderSortBy, initialData.orders, initialData.metrics.orderCount]);
 
