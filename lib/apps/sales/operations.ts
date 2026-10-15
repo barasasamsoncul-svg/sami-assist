@@ -3310,11 +3310,27 @@ export async function issueSalesReturnCredit(
         .RETURN_MANAGE,
     );
 
-  const returnId =
-    requireUuid(
-      input.returnId,
-      'Sales return',
+  const returnId = requireUuid(input.returnId, 'Sales return').toLowerCase();
+
+  // Serialize the complete return-credit workflow. Invoicing writes the credit
+  // note in its own transaction, so a retry must not race another request for
+  // the same return while either request is recovering the Sales-side records.
+  const serializationClient = await context.pool.connect();
+  const lockParameters = [
+    context.companyId,
+    'sales-return-credit:' + returnId,
+  ];
+  try {
+    await serializationClient.query(
+      'SELECT pg_advisory_lock(hashtext($1), hashtext($2))',
+      lockParameters,
     );
+  } catch (error) {
+    serializationClient.release();
+    throw error;
+  }
+
+  try {
 
   const returnResult =
     await context.pool.query(
@@ -3826,7 +3842,13 @@ export async function issueSalesReturnCredit(
     `
       UPDATE sales_returns
       SET
-        status = 'credited',
+        status = CASE
+          WHEN status IN ('partially_refunded', 'refunded')
+          THEN status
+          WHEN $4::boolean
+          THEN 'credited'
+          ELSE status
+        END,
         credited_at =
           COALESCE(
             credited_at,
@@ -3841,16 +3863,28 @@ export async function issueSalesReturnCredit(
       returnId,
       context.companyId,
       context.userId,
+      createdCredits.length > 0,
     ],
   );
 
   return {
     returnId,
     status:
-      'credited',
+      createdCredits.length > 0
+        ? 'credited'
+        : String(returnRow.status),
     credits:
       createdCredits,
   };
+  } finally {
+    try {
+      await serializationClient.query(
+        'SELECT pg_advisory_unlock(hashtext($1), hashtext($2))',
+        lockParameters,
+      );
+    } catch {}
+    serializationClient.release();
+  }
 }
 
 export async function refundSalesReturnCredit(
