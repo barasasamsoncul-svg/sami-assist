@@ -427,7 +427,8 @@ export async function getPublicSalesQuote(
       ),
     status,
     quoteDate:
-      salesDateOnly(quote.quote_date),
+      salesDateOnly(quote.quote_date) ||
+      String(quote.quote_date).slice(0, 10),
     validUntil:
       salesDateOnly(quote.valid_until),
     currency:
