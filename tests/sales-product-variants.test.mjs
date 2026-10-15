@@ -17,7 +17,7 @@ test('Sales product variants have an additive 3.4.19 migration and runtime regis
     source('lib/apps/sales/schema.sql'),
   ]);
 
-  assert.match(manifest, /key: "sales"[\s\S]*?version: '3\.4\.19'/);
+  assert.match(manifest, /key: "sales"[\s\S]*?version: '3\.4\.20'/);
   assert.match(migration, /fromVersion: '3\.4\.18'/);
   assert.match(migration, /toVersion: '3\.4\.19'/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS public\.sales_product_variants/);

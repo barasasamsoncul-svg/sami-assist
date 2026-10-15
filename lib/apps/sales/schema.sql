@@ -992,15 +992,22 @@ CREATE INDEX IF NOT EXISTS idx_sales_pipelines_company_active
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL,
     pipeline_id UUID NOT NULL REFERENCES public.sales_pipelines(id),
+    code VARCHAR(60),
     name VARCHAR(120) NOT NULL,
     sequence INTEGER NOT NULL DEFAULT 10,
     probability NUMERIC(5,2) NOT NULL DEFAULT 0 CHECK (probability BETWEEN 0 AND 100),
     stage_type VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (stage_type IN ('open','won','lost')),
+    is_won BOOLEAN NOT NULL DEFAULT FALSE,
+    is_lost BOOLEAN NOT NULL DEFAULT FALSE,
+    fold_in_kanban BOOLEAN NOT NULL DEFAULT FALSE,
+    description TEXT,
+    color VARCHAR(20),
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_by UUID,
     updated_by UUID,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ
   );
 
   CREATE INDEX IF NOT EXISTS idx_sales_pipeline_stages_company
