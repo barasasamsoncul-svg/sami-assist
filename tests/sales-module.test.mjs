@@ -68,8 +68,8 @@ test('Sales quote expiry normalizes dates and uses one compare-and-set audited t
   const responseExpiryEnd = response.indexOf("if (\n      ![\n        'sent',", responseExpiryStart);
   assert.ok(responseExpiryStart >= 0 && responseExpiryEnd > responseExpiryStart);
   const responseExpiry = response.slice(responseExpiryStart, responseExpiryEnd);
-  assert.match(response, /FOR UPDATE/,
-    'public response must lock the quote before it decides whether to expire it');
+  assert.match(response, /LEFT JOIN sales_settings[\s\S]*?FOR UPDATE OF q/,
+    'public response must lock only the quotation row because company settings are left-joined');
   assert.match(responseExpiry, /expirePublicSalesQuoteWithAudit/);
   assert.match(responseExpiry, /await client.query\('COMMIT'\)/);
   assert.match(responseExpiry, /This quote has expired/);
