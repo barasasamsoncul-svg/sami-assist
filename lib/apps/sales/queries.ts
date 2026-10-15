@@ -3830,12 +3830,14 @@ export async function getSalesQuoteRegisterPage(input: Record<string, unknown> =
     rows, offset, limit, totalCount: Number(count.rows[0]?.total || 0), hasMore, nextOffset: offset + rows.length,
     queueCounts: {
       all: Number(count.rows[0]?.all || 0),
-      awaiting_fulfillment: Number(count.rows[0]?.awaiting_fulfillment || 0),
-      partially_fulfilled: Number(count.rows[0]?.partially_fulfilled || 0),
-      fulfilled: Number(count.rows[0]?.fulfilled || 0),
-      not_invoiced: Number(count.rows[0]?.not_invoiced || 0),
-      partially_invoiced: Number(count.rows[0]?.partially_invoiced || 0),
-      invoiced: Number(count.rows[0]?.invoiced || 0),
+      draft: Number(count.rows[0]?.draft || 0),
+      needs_approval: Number(count.rows[0]?.needs_approval || 0),
+      awaiting_response: Number(count.rows[0]?.awaiting_response || 0),
+      accepted: Number(count.rows[0]?.accepted || 0),
+      converted: Number(count.rows[0]?.converted || 0),
+      expired: Number(count.rows[0]?.expired || 0),
+      expiring_soon: Number(count.rows[0]?.expiring_soon || 0),
+      closed_without_sale: Number(count.rows[0]?.closed_without_sale || 0),
     },
   };
 }
@@ -3970,5 +3972,16 @@ export async function getSalesOrderRegisterPage(input: Record<string, unknown> =
       : 0,
   }));
 
-  return { rows, offset, limit, totalCount: Number(count.rows[0]?.total || 0), hasMore, nextOffset: offset + rows.length };
+  return {
+    rows, offset, limit, totalCount: Number(count.rows[0]?.total || 0), hasMore, nextOffset: offset + rows.length,
+    queueCounts: {
+      all: Number(count.rows[0]?.all || 0),
+      awaiting_fulfillment: Number(count.rows[0]?.awaiting_fulfillment || 0),
+      partially_fulfilled: Number(count.rows[0]?.partially_fulfilled || 0),
+      fulfilled: Number(count.rows[0]?.fulfilled || 0),
+      not_invoiced: Number(count.rows[0]?.not_invoiced || 0),
+      partially_invoiced: Number(count.rows[0]?.partially_invoiced || 0),
+      invoiced: Number(count.rows[0]?.invoiced || 0),
+    },
+  };
 }
