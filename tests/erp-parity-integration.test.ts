@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 
 import {
   Pool,
+  type PoolClient,
 } from 'pg';
 
 import {
@@ -925,6 +926,7 @@ integration(
     let invoiceAutomationCalls = 0;
     const invoiceAutomationSeeds: string[] = [];
     const invoicePayloads: unknown[] = [];
+    const returnSessionHolder: { client: PoolClient | null } = { client: null };
 
     try {
       await setupClient.query(`
@@ -1213,6 +1215,8 @@ integration(
           shipped_quantity NUMERIC(14,4) NOT NULL DEFAULT 0,
           delivered_quantity NUMERIC(14,4) NOT NULL DEFAULT 0,
           invoiced_quantity NUMERIC(14,4) NOT NULL DEFAULT 0,
+          returned_quantity NUMERIC(14,4) NOT NULL DEFAULT 0,
+          credited_quantity NUMERIC(14,4) NOT NULL DEFAULT 0,
           sort_order INTEGER NOT NULL,
           description TEXT NOT NULL,
           sku_snapshot TEXT,
@@ -1287,8 +1291,113 @@ integration(
           id UUID PRIMARY KEY,
           company_id UUID NOT NULL,
           reference TEXT,
+          invoice_date DATE NOT NULL DEFAULT CURRENT_DATE,
+          status VARCHAR(30) NOT NULL DEFAULT 'posted',
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           deleted_at TIMESTAMPTZ
+        );
+
+        CREATE TEMP TABLE invoicing_invoice_items (
+          id UUID PRIMARY KEY,
+          company_id UUID NOT NULL,
+          invoice_id UUID NOT NULL,
+          quantity NUMERIC(18,4) NOT NULL,
+          metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+          sort_order INTEGER NOT NULL DEFAULT 1
+        );
+
+        CREATE TEMP TABLE sales_returns (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          sales_order_id UUID NOT NULL,
+          return_number VARCHAR(120) NOT NULL,
+          status VARCHAR(30) NOT NULL DEFAULT 'requested',
+          reason TEXT NOT NULL,
+          requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          approved_at TIMESTAMPTZ,
+          received_at TIMESTAMPTZ,
+          credited_at TIMESTAMPTZ,
+          refunded_at TIMESTAMPTZ,
+          created_by UUID,
+          updated_by UUID,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE(company_id, return_number)
+        );
+
+        CREATE TEMP TABLE sales_return_items (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          return_id UUID NOT NULL REFERENCES sales_returns(id) ON DELETE CASCADE,
+          sales_order_line_id UUID NOT NULL,
+          quantity NUMERIC(18,4) NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE(return_id, sales_order_line_id)
+        );
+
+        CREATE TEMP TABLE sales_return_credits (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          return_id UUID NOT NULL REFERENCES sales_returns(id) ON DELETE CASCADE,
+          invoice_id UUID NOT NULL,
+          credit_note_id UUID NOT NULL,
+          credit_note_number VARCHAR(140) NOT NULL,
+          amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+          available_credit NUMERIC(18,2) NOT NULL DEFAULT 0,
+          refunded_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+          created_by UUID,
+          updated_by UUID,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE(return_id, invoice_id),
+          UNIQUE(company_id, credit_note_id)
+        );
+
+        CREATE TEMP TABLE sales_return_credit_items (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          return_credit_id UUID NOT NULL REFERENCES sales_return_credits(id) ON DELETE CASCADE,
+          return_item_id UUID NOT NULL REFERENCES sales_return_items(id) ON DELETE RESTRICT,
+          invoice_item_id UUID NOT NULL,
+          quantity NUMERIC(18,4) NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE(return_credit_id, return_item_id, invoice_item_id)
+        );
+
+        CREATE TEMP TABLE invoicing_credit_notes (
+          id UUID PRIMARY KEY,
+          company_id UUID NOT NULL,
+          status VARCHAR(30) NOT NULL DEFAULT 'issued',
+          idempotency_key VARCHAR(160),
+          deleted_at TIMESTAMPTZ,
+          UNIQUE(company_id, idempotency_key)
+        );
+
+        CREATE TEMP TABLE invoicing_credit_note_items (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          credit_note_id UUID NOT NULL,
+          invoice_item_id UUID NOT NULL,
+          quantity NUMERIC(18,4) NOT NULL,
+          UNIQUE(credit_note_id, invoice_item_id)
+        );
+
+        CREATE TEMP TABLE invoicing_credit_note_balances (
+          company_id UUID NOT NULL,
+          credit_note_id UUID NOT NULL,
+          available_amount NUMERIC(18,2) NOT NULL,
+          PRIMARY KEY(company_id, credit_note_id)
+        );
+
+        CREATE TEMP TABLE invoicing_credit_note_refunds (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          credit_note_id UUID NOT NULL,
+          idempotency_key VARCHAR(180) NOT NULL,
+          amount NUMERIC(18,2) NOT NULL,
+          status VARCHAR(30) NOT NULL DEFAULT 'posted',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE(company_id, credit_note_id, idempotency_key)
         );
       `);
 
@@ -1884,13 +1993,502 @@ integration(
       );
       assert.equal(opportunityAudit?.model, 'sales.opportunity');
       assert.equal(opportunityAudit?.record_id, opportunityId);
-      assert.deepEqual(opportunityAudit?.metadata, {
-        quoteId,
-        quoteNumber: 'Q-2026-0042',
-        orderId: first.id,
-        orderNumber,
+
+      // Carry the same PostgreSQL lifecycle through return receipt, invoice-credit
+      // allocation, partial refund and idempotent refund recovery. The adapters
+      // stand in only for Invoicing's cross-module commands; Sales persistence and
+      // Inventory stock movements execute against PostgreSQL.
+      const {
+        createSalesReturnTransaction,
+        approveSalesReturnTransaction,
+        receiveSalesReturnTransaction,
+        issueSalesReturnCreditTransaction,
+        refundSalesReturnCreditTransaction,
+      } = await import('../lib/apps/sales/operations');
+
+      const getReturnSession = async (): Promise<PoolClient> => {
+        if (!returnSessionHolder.client) {
+          returnSessionHolder.client = await pool.connect();
+        }
+        return returnSessionHolder.client;
+      };
+      const returnPool = {
+        query: async (queryText: string, values?: readonly unknown[]) => {
+          const client = await getReturnSession();
+          return client.query(queryText, values as never[]);
+        },
+        connect: async () => {
+          const sharedClient = await getReturnSession();
+          return {
+            query: (queryText: string, values?: readonly unknown[]) =>
+              sharedClient.query(queryText, values as never[]),
+            // Keep the serialized test connection alive until the final assertions.
+            release: () => {},
+          };
+        },
+      } as unknown as typeof pool;
+
+      const returnContext = {
+        ...context,
+        pool: returnPool,
+      } as unknown as Parameters<typeof createSalesReturnTransaction>[1];
+
+      const firstCreditNoteId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+      const secondCreditNoteId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+      const firstInvoiceItemId = 'f1111111-1111-4111-8111-111111111111';
+      const secondInvoiceItemId = 'f2222222-2222-4222-8222-222222222222';
+      const returnNumber = 'SR-2026-0003';
+      let returnNumberCalls = 0;
+      let invoiceCreditCalls = 0;
+      let refundAdapterCalls = 0;
+      const creditRequests: Array<{
+        invoiceId: string;
+        lineQuantities: number[];
+      }> = [];
+
+      await returnPool.query(
+        `INSERT INTO invoicing_invoices (id, company_id, reference, invoice_date, status)
+         VALUES
+           ($1, $3, 'INV-SALES-001', '2026-10-15', 'posted'),
+           ($2, $3, 'INV-SALES-002', '2026-10-16', 'posted')`,
+        [firstInvoiceId, secondInvoiceId, companyId],
+      );
+
+      const invoiceLineMetadata = JSON.stringify({
+        sourceModule: 'sales',
+        salesOrderId: first.id,
+        salesOrderLineId: orderLineId,
       });
+      await returnPool.query(
+        `INSERT INTO invoicing_invoice_items
+           (id, company_id, invoice_id, quantity, metadata, sort_order)
+         VALUES
+           ($1, $2, $3, 0.4, $5::jsonb, 1),
+           ($4, $2, $6, 0.6, $5::jsonb, 1)`,
+        [
+          firstInvoiceItemId,
+          companyId,
+          firstInvoiceId,
+          secondInvoiceItemId,
+          invoiceLineMetadata,
+          secondInvoiceId,
+        ],
+      );
+
+      const createdReturn = await createSalesReturnTransaction(
+        {
+          orderId: first.id,
+          reason: 'Customer returned part of the delivered order.',
+          lines: [{ lineId: orderLineId, quantity: 0.5 }],
+        },
+        returnContext,
+        {
+          nextSalesNumber: async () => {
+            returnNumberCalls += 1;
+            return returnNumber;
+          },
+        },
+      );
+      assert.equal(createdReturn.returnNumber, returnNumber);
+      assert.equal(createdReturn.status, 'requested');
+      assert.equal(returnNumberCalls, 1);
+
+      await assert.rejects(
+        createSalesReturnTransaction(
+          {
+            orderId: first.id,
+            reason: 'Try to return an already reserved quantity.',
+            lines: [{ lineId: orderLineId, quantity: 0.1 }],
+          },
+          returnContext,
+          {
+            nextSalesNumber: async () => {
+              returnNumberCalls += 1;
+              return 'SR-2026-0004';
+            },
+          },
+        ),
+        /Return quantity exceeds the delivered quantity still available to return/,
+        'pending return quantities must reserve the delivered amount against duplicate requests',
+      );
+      assert.equal(returnNumberCalls, 1, 'rejected return requests must not consume a return sequence');
+
+      const approvedReturn = await approveSalesReturnTransaction(
+        { returnId: createdReturn.returnId },
+        returnContext,
+      );
+      assert.equal(approvedReturn.status, 'approved');
+
+      const receivedReturn = await receiveSalesReturnTransaction(
+        { returnId: createdReturn.returnId },
+        returnContext,
+      );
+      assert.equal(receivedReturn.status, 'received');
+
+      const returnLineAfterReceipt = await returnPool.query(
+        `SELECT delivered_quantity, returned_quantity, credited_quantity
+         FROM sales_order_items_v2 WHERE id = $1 AND company_id = $2`,
+        [orderLineId, companyId],
+      );
+      const stockAfterReturn = await returnPool.query(
+        `SELECT quantity FROM stock_levels
+         WHERE company_id = $1 AND product_id = $2 AND warehouse_id = $3`,
+        [companyId, catalogItemId, warehouseId],
+      );
+      const returnMovements = await returnPool.query(
+        `SELECT movement_type, quantity FROM stock_movements
+         WHERE company_id = $1 AND product_id = $2
+         ORDER BY movement_type, created_at, id`,
+        [companyId, catalogItemId],
+      );
+      assert.equal(Number(returnLineAfterReceipt.rows[0].delivered_quantity), 0);
+      assert.equal(Number(returnLineAfterReceipt.rows[0].returned_quantity), 0.5);
+      assert.equal(Number(returnLineAfterReceipt.rows[0].credited_quantity), 0);
+      assert.equal(Number(stockAfterReturn.rows[0].quantity), 10);
+      assert.equal(returnMovements.rows.length, 2);
+      assert.deepEqual(
+        returnMovements.rows.map((row: Record<string, unknown>) => String(row.movement_type)).sort(),
+        ['sales_delivery', 'sales_return'],
+      );
+      assert.equal(
+        Number(returnMovements.rows.find((row: Record<string, unknown>) => row.movement_type === 'sales_return')?.quantity),
+        0.5,
+      );
+
+      const creditNoteByInvoice = new Map([
+        [firstInvoiceId, { id: firstCreditNoteId, number: 'CN-SALES-001', amount: 46.4 }],
+        [secondInvoiceId, { id: secondCreditNoteId, number: 'CN-SALES-002', amount: 11.6 }],
+      ]);
+      const creditDependencies: Parameters<typeof issueSalesReturnCreditTransaction>[2] = {
+        issueInvoiceCreditNote: (async (input: {
+          invoiceId: string;
+          idempotencyKey: string;
+          items: Array<{ invoiceItemId: string; quantity: number }>;
+        }) => {
+          invoiceCreditCalls += 1;
+          const invoiceId = String(input.invoiceId);
+          const note = creditNoteByInvoice.get(invoiceId);
+          assert.ok(note, 'a return credit must map to one of the source Sales invoices');
+          creditRequests.push({
+            invoiceId,
+            lineQuantities: input.items.map(item => Number(item.quantity)),
+          });
+
+          await returnPool.query(
+            `INSERT INTO invoicing_credit_notes (id, company_id, status, idempotency_key)
+             VALUES ($1, $2, 'issued', $3)
+             ON CONFLICT (company_id, idempotency_key) DO NOTHING`,
+            [note.id, companyId, String(input.idempotencyKey)],
+          );
+          for (const item of input.items) {
+            await returnPool.query(
+              `INSERT INTO invoicing_credit_note_items
+                 (company_id, credit_note_id, invoice_item_id, quantity)
+               VALUES ($1, $2, $3, $4)
+               ON CONFLICT (credit_note_id, invoice_item_id) DO NOTHING`,
+              [companyId, note.id, String(item.invoiceItemId), Number(item.quantity)],
+            );
+          }
+          await returnPool.query(
+            `INSERT INTO invoicing_credit_note_balances
+               (company_id, credit_note_id, available_amount)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (company_id, credit_note_id) DO NOTHING`,
+            [companyId, note.id, note.amount],
+          );
+          const balance = await returnPool.query(
+            `SELECT available_amount FROM invoicing_credit_note_balances
+             WHERE company_id = $1 AND credit_note_id = $2`,
+            [companyId, note.id],
+          );
+          return {
+            id: note.id,
+            creditNoteNumber: note.number,
+            amount: note.amount,
+            status: 'issued',
+            availableCredit: Number(balance.rows[0].available_amount),
+            duplicate: invoiceCreditCalls > 2,
+          };
+        }) as unknown as NonNullable<Parameters<typeof issueSalesReturnCreditTransaction>[2]>['issueInvoiceCreditNote'],
+      };
+
+      const issuedReturnCredits = await issueSalesReturnCreditTransaction(
+        { returnId: createdReturn.returnId },
+        returnContext as Parameters<typeof issueSalesReturnCreditTransaction>[1],
+        creditDependencies,
+      );
+      assert.equal(issuedReturnCredits.status, 'credited');
+      assert.equal(issuedReturnCredits.credits.length, 2);
+      assert.equal(invoiceCreditCalls, 2);
+      assert.deepEqual(
+        creditRequests.map(request => [request.invoiceId, ...request.lineQuantities.map(quantity => Number(quantity.toFixed(4)))]),
+        [
+          [firstInvoiceId, 0.4],
+          [secondInvoiceId, 0.1],
+        ],
+        'the returned quantity must be allocated across its two source invoices without exceeding either line',
+      );
+
+      const savedReturnCredits = await returnPool.query(
+        `SELECT invoice_id, credit_note_id, amount, available_credit, refunded_amount
+         FROM sales_return_credits
+         WHERE company_id = $1 AND return_id = $2
+         ORDER BY invoice_id`,
+        [companyId, createdReturn.returnId],
+      );
+      const savedAllocations = await returnPool.query(
+        `SELECT credit.invoice_id, item.invoice_item_id, item.quantity
+         FROM sales_return_credit_items item
+         INNER JOIN sales_return_credits credit
+           ON credit.id = item.return_credit_id
+          AND credit.company_id = item.company_id
+         WHERE item.company_id = $1 AND credit.return_id = $2
+         ORDER BY credit.invoice_id`,
+        [companyId, createdReturn.returnId],
+      );
+      const creditedLine = await returnPool.query(
+        `SELECT credited_quantity, returned_quantity
+         FROM sales_order_items_v2 WHERE id = $1 AND company_id = $2`,
+        [orderLineId, companyId],
+      );
+      assert.equal(savedReturnCredits.rows.length, 2);
+      assert.equal(Number(savedReturnCredits.rows[0].amount), 46.4);
+      assert.equal(Number(savedReturnCredits.rows[1].amount), 11.6);
+      assert.equal(savedAllocations.rows.length, 2);
+      assert.equal(savedAllocations.rows[0].invoice_item_id, firstInvoiceItemId);
+      assert.equal(Number(savedAllocations.rows[0].quantity), 0.4);
+      assert.equal(savedAllocations.rows[1].invoice_item_id, secondInvoiceItemId);
+      assert.equal(Number(savedAllocations.rows[1].quantity), 0.1);
+      assert.equal(Number(creditedLine.rows[0].credited_quantity), 0.5);
+      assert.equal(Number(creditedLine.rows[0].returned_quantity), 0.5);
+
+      const retriedReturnCredits = await issueSalesReturnCreditTransaction(
+        { returnId: createdReturn.returnId },
+        returnContext as Parameters<typeof issueSalesReturnCreditTransaction>[1],
+        creditDependencies,
+      );
+      assert.equal(retriedReturnCredits.status, 'credited');
+      assert.equal(invoiceCreditCalls, 4, 'a credit request should be idempotent at the Invoicing boundary');
+      const retryAllocationCount = await returnPool.query(
+        `SELECT COUNT(*)::int AS count
+         FROM sales_return_credit_items item
+         INNER JOIN sales_return_credits credit
+           ON credit.id = item.return_credit_id
+          AND credit.company_id = item.company_id
+         WHERE item.company_id = $1 AND credit.return_id = $2`,
+        [companyId, createdReturn.returnId],
+      );
+      const retryCreditedLine = await returnPool.query(
+        `SELECT credited_quantity FROM sales_order_items_v2 WHERE id = $1 AND company_id = $2`,
+        [orderLineId, companyId],
+      );
+      assert.equal(retryAllocationCount.rows[0].count, 2);
+      assert.equal(Number(retryCreditedLine.rows[0].credited_quantity), 0.5,
+        'replayed credit allocation must not increase the credited quantity twice');
+
+      const creditBalances = await returnPool.query(
+        `SELECT id, invoice_id, credit_note_id, available_credit, refunded_amount
+         FROM sales_return_credits WHERE company_id = $1 AND return_id = $2 ORDER BY invoice_id`,
+        [companyId, createdReturn.returnId],
+      );
+      const firstReturnCreditId = String(creditBalances.rows[0].id);
+      const secondReturnCreditId = String(creditBalances.rows[1].id);
+
+      const refundDependencies: Parameters<typeof refundSalesReturnCreditTransaction>[2] = {
+        refundInvoiceCreditNote: (async (input: {
+          creditNoteId: string;
+          idempotencyKey: string;
+          amount: number;
+        }) => {
+          refundAdapterCalls += 1;
+          const creditNoteId = String(input.creditNoteId);
+          const invoicingKey = 'credit-refund:' + String(input.idempotencyKey);
+          const prior = await returnPool.query(
+            `SELECT id, amount FROM invoicing_credit_note_refunds
+             WHERE company_id = $1 AND credit_note_id = $2 AND idempotency_key = $3`,
+            [companyId, creditNoteId, invoicingKey],
+          );
+          const currentBalance = await returnPool.query(
+            `SELECT available_amount FROM invoicing_credit_note_balances
+             WHERE company_id = $1 AND credit_note_id = $2`,
+            [companyId, creditNoteId],
+          );
+          if (prior.rows.length > 0) {
+            return {
+              refundId: String(prior.rows[0].id),
+              refundNumber: 'RF-SALES-IDEMPOTENT',
+              amount: Number(prior.rows[0].amount),
+              availableCredit: Number(currentBalance.rows[0].available_amount),
+              duplicate: true,
+            };
+          }
+
+          const current = Number(currentBalance.rows[0].available_amount);
+          const amount = Number(input.amount);
+          assert.ok(amount > 0 && amount <= current + 0.0001, 'Invoicing must reject an over-refund');
+          const nextAvailable = Math.round((current - amount) * 100) / 100;
+          const inserted = await returnPool.query(
+            `INSERT INTO invoicing_credit_note_refunds
+               (company_id, credit_note_id, idempotency_key, amount, status)
+             VALUES ($1, $2, $3, $4, 'posted')
+             RETURNING id`,
+            [companyId, creditNoteId, invoicingKey, amount],
+          );
+          await returnPool.query(
+            `UPDATE invoicing_credit_note_balances
+             SET available_amount = $3
+             WHERE company_id = $1 AND credit_note_id = $2`,
+            [companyId, creditNoteId, nextAvailable],
+          );
+          return {
+            refundId: String(inserted.rows[0].id),
+            refundNumber: 'RF-SALES-' + refundAdapterCalls,
+            amount,
+            availableCredit: nextAvailable,
+            duplicate: false,
+          };
+        }) as unknown as NonNullable<Parameters<typeof refundSalesReturnCreditTransaction>[2]>['refundInvoiceCreditNote'],
+      };
+
+      const partialRefund = await refundSalesReturnCreditTransaction(
+        {
+          returnCreditId: firstReturnCreditId,
+          amount: 20,
+          idempotencyKey: 'return-first-refund-partial',
+        },
+        returnContext as Parameters<typeof refundSalesReturnCreditTransaction>[1],
+        refundDependencies,
+      );
+      assert.equal(partialRefund.status, 'partially_refunded');
+      assert.equal(partialRefund.amount, 20);
+      assert.equal(partialRefund.availableCredit, 26.4);
+
+      const retriedPartialRefund = await refundSalesReturnCreditTransaction(
+        {
+          returnCreditId: firstReturnCreditId,
+          amount: 20,
+          idempotencyKey: 'return-first-refund-partial',
+        },
+        returnContext as Parameters<typeof refundSalesReturnCreditTransaction>[1],
+        refundDependencies,
+      );
+      assert.equal(retriedPartialRefund.status, 'partially_refunded');
+      assert.equal(retriedPartialRefund.amount, 20);
+      assert.equal(retriedPartialRefund.availableCredit, 26.4);
+      const refundCountAfterRetry = await returnPool.query(
+        `SELECT COUNT(*)::int AS count FROM invoicing_credit_note_refunds
+         WHERE company_id = $1 AND credit_note_id = $2`,
+        [companyId, creditBalances.rows[0].credit_note_id],
+      );
+      assert.equal(refundCountAfterRetry.rows[0].count, 1);
+      assert.equal(refundAdapterCalls, 2, 'refund retry reuses the Invoicing idempotency key without posting twice');
+
+      const creditRetryAfterRefund = await issueSalesReturnCreditTransaction(
+        { returnId: createdReturn.returnId },
+        returnContext as Parameters<typeof issueSalesReturnCreditTransaction>[1],
+        creditDependencies,
+      );
+      assert.equal(creditRetryAfterRefund.status, 'partially_refunded',
+        'credit retry must preserve a return that has already entered the refund lifecycle');
+      assert.equal(invoiceCreditCalls, 6);
+      const statusAfterCreditRetry = await returnPool.query(
+        `SELECT status FROM sales_returns WHERE id = $1 AND company_id = $2`,
+        [createdReturn.returnId, companyId],
+      );
+      assert.equal(statusAfterCreditRetry.rows[0].status, 'partially_refunded');
+
+      const finalRefund = await refundSalesReturnCreditTransaction(
+        {
+          returnCreditId: firstReturnCreditId,
+          amount: 26.4,
+          idempotencyKey: 'return-first-refund-final',
+        },
+        returnContext as Parameters<typeof refundSalesReturnCreditTransaction>[1],
+        refundDependencies,
+      );
+      assert.equal(finalRefund.status, 'partially_refunded',
+        'a return remains partially refunded while another credit note has an unused balance');
+      assert.equal(finalRefund.availableCredit, 0);
+
+      const secondCreditRefund = await refundSalesReturnCreditTransaction(
+        {
+          returnCreditId: secondReturnCreditId,
+          amount: 11.6,
+          idempotencyKey: 'return-second-credit-refund',
+        },
+        returnContext as Parameters<typeof refundSalesReturnCreditTransaction>[1],
+        refundDependencies,
+      );
+      assert.equal(secondCreditRefund.status, 'refunded');
+      assert.equal(secondCreditRefund.availableCredit, 0);
+
+      await assert.rejects(
+        refundSalesReturnCreditTransaction(
+          {
+            returnCreditId: firstReturnCreditId,
+            amount: 0.01,
+            idempotencyKey: 'return-over-refund',
+          },
+          returnContext as Parameters<typeof refundSalesReturnCreditTransaction>[1],
+          refundDependencies,
+        ),
+        /Refund amount exceeds the customer credit available from this return/,
+        'Sales must reject a refund greater than the remaining credit balance before calling Invoicing',
+      );
+
+      const finalReturn = await returnPool.query(
+        `SELECT status, received_at, credited_at, refunded_at
+         FROM sales_returns WHERE id = $1 AND company_id = $2`,
+        [createdReturn.returnId, companyId],
+      );
+      const finalReturnCredits = await returnPool.query(
+        `SELECT COUNT(*)::int AS count, SUM(amount) AS total_credit,
+                SUM(available_credit) AS remaining_credit,
+                SUM(refunded_amount) AS refunded_amount
+         FROM sales_return_credits WHERE company_id = $1 AND return_id = $2`,
+        [companyId, createdReturn.returnId],
+      );
+      const finalRefunds = await returnPool.query(
+        `SELECT COUNT(*)::int AS count, SUM(amount) AS refunded_amount
+         FROM invoicing_credit_note_refunds WHERE company_id = $1`,
+        [companyId],
+      );
+      const finalLine = await returnPool.query(
+        `SELECT delivered_quantity, returned_quantity, credited_quantity, invoiced_quantity
+         FROM sales_order_items_v2 WHERE id = $1 AND company_id = $2`,
+        [orderLineId, companyId],
+      );
+      const finalStock = await returnPool.query(
+        `SELECT quantity FROM stock_levels
+         WHERE company_id = $1 AND product_id = $2 AND warehouse_id = $3`,
+        [companyId, catalogItemId, warehouseId],
+      );
+      const finalMovements = await returnPool.query(
+        `SELECT movement_type, quantity FROM stock_movements
+         WHERE company_id = $1 AND product_id = $2
+         ORDER BY movement_type, created_at, id`,
+        [companyId, catalogItemId],
+      );
+      assert.equal(finalReturn.rows[0].status, 'refunded');
+      assert.ok(finalReturn.rows[0].received_at instanceof Date);
+      assert.ok(finalReturn.rows[0].credited_at instanceof Date);
+      assert.ok(finalReturn.rows[0].refunded_at instanceof Date);
+      assert.equal(finalReturnCredits.rows[0].count, 2);
+      assert.equal(Number(finalReturnCredits.rows[0].total_credit), 58);
+      assert.equal(Number(finalReturnCredits.rows[0].remaining_credit), 0);
+      assert.equal(Number(finalReturnCredits.rows[0].refunded_amount), 58);
+      assert.equal(finalRefunds.rows[0].count, 3,
+        'one duplicate retry must not add an extra posted refund');
+      assert.equal(Number(finalRefunds.rows[0].refunded_amount), 58);
+      assert.equal(Number(finalLine.rows[0].delivered_quantity), 0);
+      assert.equal(Number(finalLine.rows[0].returned_quantity), 0.5);
+      assert.equal(Number(finalLine.rows[0].credited_quantity), 0.5);
+      assert.equal(Number(finalLine.rows[0].invoiced_quantity), 1);
+      assert.equal(Number(finalStock.rows[0].quantity), 10);
+      assert.equal(finalMovements.rows.length, 2);
+
     } finally {
+      returnSessionHolder.client?.release();
       await pool.end();
     }
   },

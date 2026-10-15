@@ -2590,20 +2590,21 @@ export async function updateSalesShipmentStatus(
   }
 }
 
-export async function createSalesReturn(
-  input:
-    Record<
-      string,
-      unknown
-    >,
-) {
-  const context =
-    await requireSalesContext(
-      SALES_PERMISSIONS
-        .RETURN_MANAGE,
-    );
+type SalesReturnCreateDependencies = {
+  nextSalesNumber: typeof nextSalesNumber;
+};
 
-  const orderId =
+const defaultSalesReturnCreateDependencies: SalesReturnCreateDependencies = {
+  nextSalesNumber,
+};
+
+export async function createSalesReturnTransaction(
+  input: Record<string, unknown>,
+  context: Awaited<ReturnType<typeof requireSalesContext>>,
+  overrides: Partial<SalesReturnCreateDependencies> = {},
+) {
+  const deps: SalesReturnCreateDependencies = { ...defaultSalesReturnCreateDependencies, ...overrides };
+const orderId =
     requireUuid(
       input.orderId,
       'Sales order',
@@ -2853,7 +2854,7 @@ export async function createSalesReturn(
     }
 
     const returnNumber =
-      await nextSalesNumber(
+      await deps.nextSalesNumber(
         client,
         context.companyId,
         context.userId,
@@ -2964,19 +2965,16 @@ export async function createSalesReturn(
   }
 }
 
-export async function approveSalesReturn(
-  input:
-    Record<
-      string,
-      unknown
-    >,
-) {
-  const context =
-    await requireSalesContext(
-      SALES_PERMISSIONS
-        .RETURN_MANAGE,
-    );
 
+export async function createSalesReturn(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.RETURN_MANAGE);
+  return createSalesReturnTransaction(input, context);
+}
+
+export async function approveSalesReturnTransaction(
+  input: Record<string, unknown>,
+  context: Awaited<ReturnType<typeof requireSalesContext>>,
+) {
   const returnId =
     requireUuid(
       input.returnId,
@@ -3024,20 +3022,17 @@ export async function approveSalesReturn(
   };
 }
 
-export async function receiveSalesReturn(
-  input:
-    Record<
-      string,
-      unknown
-    >,
-) {
-  const context =
-    await requireSalesContext(
-      SALES_PERMISSIONS
-        .RETURN_MANAGE,
-    );
 
-  const returnId =
+export async function approveSalesReturn(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.RETURN_MANAGE);
+  return approveSalesReturnTransaction(input, context);
+}
+
+export async function receiveSalesReturnTransaction(
+  input: Record<string, unknown>,
+  context: Awaited<ReturnType<typeof requireSalesContext>>,
+) {
+const returnId =
     requireUuid(
       input.returnId,
       'Sales return',
@@ -3302,20 +3297,27 @@ export async function receiveSalesReturn(
   }
 }
 
-export async function issueSalesReturnCredit(
-  input:
-    Record<
-      string,
-      unknown
-    >,
-) {
-  const context =
-    await requireSalesContext(
-      SALES_PERMISSIONS
-        .RETURN_MANAGE,
-    );
 
-  const returnId = requireUuid(input.returnId, 'Sales return').toLowerCase();
+export async function receiveSalesReturn(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.RETURN_MANAGE);
+  return receiveSalesReturnTransaction(input, context);
+}
+
+type SalesReturnCreditDependencies = {
+  issueInvoiceCreditNote: typeof issueInvoiceCreditNote;
+};
+
+const defaultSalesReturnCreditDependencies: SalesReturnCreditDependencies = {
+  issueInvoiceCreditNote,
+};
+
+export async function issueSalesReturnCreditTransaction(
+  input: Record<string, unknown>,
+  context: Awaited<ReturnType<typeof requireSalesContext>>,
+  overrides: Partial<SalesReturnCreditDependencies> = {},
+) {
+  const deps: SalesReturnCreditDependencies = { ...defaultSalesReturnCreditDependencies, ...overrides };
+const returnId = requireUuid(input.returnId, 'Sales return').toLowerCase();
 
   // Serialize the complete return-credit workflow. Invoicing writes the credit
   // note in its own transaction, so a retry must not race another request for
@@ -3338,7 +3340,7 @@ export async function issueSalesReturnCredit(
   try {
 
     const returnResult =
-      await context.pool.query(
+      await serializationClient.query(
         `
           SELECT
             id,
@@ -3389,7 +3391,7 @@ export async function issueSalesReturnCredit(
     }
 
     const returnItems =
-      await context.pool.query(
+      await serializationClient.query(
         `
           SELECT
             item.id,
@@ -3464,7 +3466,7 @@ export async function issueSalesReturnCredit(
         );
 
       const invoiceItems =
-        await context.pool.query(
+        await serializationClient.query(
           `
             SELECT
               invoice_item.id,
@@ -3669,7 +3671,7 @@ export async function issueSalesReturnCredit(
       ] of byInvoice
     ) {
       const credit =
-        await issueInvoiceCreditNote({
+        await deps.issueInvoiceCreditNote({
           invoiceId,
           reason:
             'Sales return ' +
@@ -3705,7 +3707,7 @@ export async function issueSalesReturnCredit(
       // Invoice credit creation is independently idempotent. Persist the Sales-side
       // allocation rows and counters atomically so a retry can repair a failed
       // local save without incrementing a quantity for an existing allocation.
-      const client = await context.pool.connect();
+      const client = serializationClient;
       let returnCreditId = "";
       try {
         await client.query('BEGIN');
@@ -3823,7 +3825,7 @@ export async function issueSalesReturnCredit(
         } catch {}
         throw error;
       } finally {
-        client.release();
+        // The session-level return-credit lock remains held until the outer finally.
       }
 
       createdCredits.push({
@@ -3844,7 +3846,7 @@ export async function issueSalesReturnCredit(
       });
     }
 
-    const returnState = await context.pool.query(
+    const returnState = await serializationClient.query(
       `
         UPDATE sales_returns
         SET
@@ -3891,19 +3893,26 @@ export async function issueSalesReturnCredit(
   }
 }
 
-export async function refundSalesReturnCredit(
-  input:
-    Record<
-      string,
-      unknown
-    >,
-) {
-  const context =
-    await requireSalesContext(
-      SALES_PERMISSIONS
-        .RETURN_MANAGE,
-    );
 
+export async function issueSalesReturnCredit(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.RETURN_MANAGE);
+  return issueSalesReturnCreditTransaction(input, context);
+}
+
+type SalesReturnRefundDependencies = {
+  refundInvoiceCreditNote: typeof refundInvoiceCreditNote;
+};
+
+const defaultSalesReturnRefundDependencies: SalesReturnRefundDependencies = {
+  refundInvoiceCreditNote,
+};
+
+export async function refundSalesReturnCreditTransaction(
+  input: Record<string, unknown>,
+  context: Awaited<ReturnType<typeof requireSalesContext>>,
+  overrides: Partial<SalesReturnRefundDependencies> = {},
+) {
+  const deps: SalesReturnRefundDependencies = { ...defaultSalesReturnRefundDependencies, ...overrides };
   const returnCreditId =
     requireUuid(
       input.returnCreditId,
@@ -3963,7 +3972,7 @@ export async function refundSalesReturnCredit(
   }
 
   try {
-    const freshResult = await context.pool.query(
+    const freshResult = await serializationClient.query(
       `
         SELECT
           credit.id,
@@ -4011,7 +4020,7 @@ export async function refundSalesReturnCredit(
     // rejecting its original amount against that now-lower balance.
     let priorRefund: { amount: unknown; idempotency_key: unknown } | null = null;
     if (suppliedRefundKey && legacyRefundKey) {
-      const priorRefundResult = await context.pool.query(
+      const priorRefundResult = await serializationClient.query(
         `
           SELECT amount, idempotency_key
           FROM invoicing_credit_note_refunds
@@ -4069,7 +4078,7 @@ export async function refundSalesReturnCredit(
     }
 
     const refund =
-      await refundInvoiceCreditNote({
+      await deps.refundInvoiceCreditNote({
         creditNoteId:
           String(
             row.credit_note_id,
@@ -4108,7 +4117,7 @@ export async function refundSalesReturnCredit(
       });
 
     const authoritative =
-      await context.pool.query(
+      await serializationClient.query(
         `
           SELECT
             balance.available_amount,
@@ -4170,7 +4179,7 @@ export async function refundSalesReturnCredit(
         ),
       );
 
-    await context.pool.query(
+    await serializationClient.query(
       `
         UPDATE sales_return_credits
         SET
@@ -4191,7 +4200,7 @@ export async function refundSalesReturnCredit(
     );
 
     const balances =
-      await context.pool.query(
+      await serializationClient.query(
         `
           SELECT
             COALESCE(
@@ -4231,14 +4240,14 @@ export async function refundSalesReturnCredit(
           ? 'refunded'
           : 'partially_refunded';
 
-    await context.pool.query(
+    await serializationClient.query(
       `
         UPDATE sales_returns
         SET
-          status = $3,
+          status = $3::varchar(30),
           refunded_at =
             CASE
-              WHEN $3 =
+              WHEN $3::varchar(30) =
                    'refunded'
               THEN COALESCE(
                 refunded_at,
@@ -4285,4 +4294,10 @@ export async function refundSalesReturnCredit(
     } catch {}
     serializationClient.release();
   }
+}
+
+
+export async function refundSalesReturnCredit(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.RETURN_MANAGE);
+  return refundSalesReturnCreditTransaction(input, context);
 }

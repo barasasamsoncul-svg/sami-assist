@@ -11,8 +11,8 @@ async function source(file) {
 
 test('Sales return credit counters change only when a new allocation is committed', async () => {
   const operations = await source('lib/apps/sales/operations.ts');
-  const start = operations.indexOf('export async function issueSalesReturnCredit(');
-  const end = operations.indexOf('export async function refundSalesReturnCredit(', start);
+  const start = operations.indexOf('export async function issueSalesReturnCreditTransaction(');
+  const end = operations.indexOf('export async function refundSalesReturnCreditTransaction(', start);
   assert.ok(start >= 0 && end > start, 'return-credit issuance function must exist');
 
   const credit = operations.slice(start, end);
@@ -23,7 +23,7 @@ test('Sales return credit counters change only when a new allocation is committe
   assert.ok(allocation > saved, 'persist the invoice-line allocation after the return-credit record');
   assert.ok(counterUpdate > allocation, 'update the order-line aggregate after persisting the allocation');
 
-  assert.match(credit, /const client = await context\.pool\.connect\(\)/);
+  assert.ok(credit.includes('const serializationClient = await context.pool.connect()'));
   assert.match(credit, /await client\.query\('BEGIN'\)/);
   assert.match(credit, /await client\.query\('COMMIT'\)/);
   assert.match(credit, /await client\.query\('ROLLBACK'\)/);
@@ -39,14 +39,14 @@ test('Sales return credit counters change only when a new allocation is committe
 
 test('Sales return-credit issuance serializes retries and preserves refund lifecycle states', async () => {
   const operations = await source('lib/apps/sales/operations.ts');
-  const start = operations.indexOf('export async function issueSalesReturnCredit(');
-  const end = operations.indexOf('export async function refundSalesReturnCredit(', start);
+  const start = operations.indexOf('export async function issueSalesReturnCreditTransaction(');
+  const end = operations.indexOf('export async function refundSalesReturnCreditTransaction(', start);
   const credit = operations.slice(start, end);
   const compact = credit.replace(/\s+/g, ' ');
 
   const lock = credit.indexOf("pg_advisory_lock(hashtext($1), hashtext($2))");
   const returnRead = credit.indexOf('FROM sales_returns');
-  const invoiceCredit = credit.indexOf('await issueInvoiceCreditNote(');
+  const invoiceCredit = credit.indexOf('await deps.issueInvoiceCreditNote(');
   const unlock = credit.indexOf("pg_advisory_unlock(hashtext($1), hashtext($2))");
   assert.ok(lock >= 0 && lock < returnRead, 'serialize before reading return-credit state');
   assert.match(credit, /!\[\s*'received',\s*'credited',\s*'partially_refunded',\s*'refunded',?\s*\]\.includes/, 'allow idempotent recovery of a return whose refund already completed');
@@ -62,14 +62,14 @@ test('Sales return-credit issuance serializes retries and preserves refund lifec
 
 test('Sales return refunds serialize with credit issuance and reload the balance after locking', async () => {
   const operations = await source('lib/apps/sales/operations.ts');
-  const start = operations.indexOf('export async function refundSalesReturnCredit(');
+  const start = operations.indexOf('export async function refundSalesReturnCreditTransaction(');
   const refund = operations.slice(start);
   const compact = refund.replace(/\s+/g, ' ');
 
   const firstCreditRead = refund.indexOf('FROM sales_return_credits');
   const lock = refund.indexOf("pg_advisory_lock(hashtext($1), hashtext($2))");
-  const freshCreditRead = refund.indexOf('const freshResult = await context.pool.query(');
-  const refundCall = refund.indexOf('await refundInvoiceCreditNote(');
+  const freshCreditRead = refund.indexOf('const freshResult = await serializationClient.query(');
+  const refundCall = refund.indexOf('await deps.refundInvoiceCreditNote(');
   const unlock = refund.indexOf("pg_advisory_unlock(hashtext($1), hashtext($2))");
 
   assert.ok(firstCreditRead >= 0 && firstCreditRead < lock, 'identify the parent return before taking its lock');
@@ -81,13 +81,13 @@ test('Sales return refunds serialize with credit issuance and reload the balance
 
 test('Sales refund retries recover their posted amount before available-balance validation', async () => {
   const operations = await source('lib/apps/sales/operations.ts');
-  const start = operations.indexOf('export async function refundSalesReturnCredit(');
+  const start = operations.indexOf('export async function refundSalesReturnCreditTransaction(');
   const refund = operations.slice(start);
   const compact = refund.replace(/\s+/g, ' ');
 
   const priorRefundLookup = refund.indexOf('FROM invoicing_credit_note_refunds');
   const amountValidation = refund.indexOf('if (', priorRefundLookup);
-  const refundCall = refund.indexOf('await refundInvoiceCreditNote(');
+  const refundCall = refund.indexOf('await deps.refundInvoiceCreditNote(');
   assert.ok(priorRefundLookup >= 0 && priorRefundLookup < refundCall, 'look up a caller-supplied idempotency key before retry amount validation');
   assert.ok(compact.includes("'credit-refund:' + suppliedRefundKey"), 'look up the exact key used by Invoicing');
   assert.ok(compact.includes('salesReturnRefundIdempotencyKey(returnCreditId, callerKey)'), 'use the full-key collision-safe helper');

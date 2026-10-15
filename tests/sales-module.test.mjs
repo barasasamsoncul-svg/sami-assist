@@ -3035,8 +3035,8 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   assert.match(cancellation, /Cancel all unshipped shipment plans before cancelling this order/);
 
   const operations = await source('lib/apps/sales/operations.ts');
-  const returnStart = operations.indexOf('export async function createSalesReturn(');
-  const approveStart = operations.indexOf('export async function approveSalesReturn(', returnStart);
+  const returnStart = operations.indexOf('export async function createSalesReturnTransaction(');
+  const approveStart = operations.indexOf('export async function approveSalesReturnTransaction(', returnStart);
   const createReturn = operations.slice(returnStart, approveStart);
   assert.ok(returnStart >= 0);
   assert.ok(approveStart > returnStart);
@@ -3049,16 +3049,16 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   assert.match(createReturn, /pg_advisory_xact_lock/);
   assert.ok(createReturn.includes("'sales-order-invoice:' + orderId"));
 
-  const receiveStart = operations.indexOf('export async function receiveSalesReturn(');
-  const issueCreditStart = operations.indexOf('export async function issueSalesReturnCredit(', receiveStart);
+  const receiveStart = operations.indexOf('export async function receiveSalesReturnTransaction(');
+  const issueCreditStart = operations.indexOf('export async function issueSalesReturnCreditTransaction(', receiveStart);
   const receiveReturn = operations.slice(receiveStart, issueCreditStart);
   assert.ok(receiveStart >= 0);
   assert.ok(issueCreditStart > receiveStart);
   assert.match(receiveReturn, /pg_advisory_xact_lock/);
   assert.match(receiveReturn, /sales-order-invoice:/);
 
-  const issueReturnCreditStart = operations.indexOf('export async function issueSalesReturnCredit(');
-  const refundReturnCreditStart = operations.indexOf('export async function refundSalesReturnCredit(', issueReturnCreditStart);
+  const issueReturnCreditStart = operations.indexOf('export async function issueSalesReturnCreditTransaction(');
+  const refundReturnCreditStart = operations.indexOf('export async function refundSalesReturnCreditTransaction(', issueReturnCreditStart);
   const issueReturnCredit = operations.slice(issueReturnCreditStart, refundReturnCreditStart);
   const returnCreditInvoiceQueryStart = issueReturnCredit.indexOf('const invoiceItems =');
   const returnCreditInvoiceQueryEndMatch =
@@ -3092,7 +3092,7 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
 
   const shipmentStart = operations.indexOf('export async function createSalesShipment(');
   const updateShipmentStart = operations.indexOf('export async function updateSalesShipmentStatus(', shipmentStart);
-  const shipmentReturnStart = operations.indexOf('export async function createSalesReturn(', updateShipmentStart);
+  const shipmentReturnStart = operations.indexOf('export async function createSalesReturnTransaction(', updateShipmentStart);
   const createShipment = operations.slice(shipmentStart, updateShipmentStart);
   const updateShipment = operations.slice(updateShipmentStart, shipmentReturnStart);
   assert.ok(shipmentStart >= 0);
