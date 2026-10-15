@@ -3023,6 +3023,314 @@ integration(
   },
 );
 
+
+
+integration(
+  'ERP parity: Sales sequential quotation approval persists decisions and stale-request recovery in PostgreSQL',
+  async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    const client = await pool.connect();
+    let outerTransaction = false;
+
+    try {
+      await client.query('BEGIN');
+      outerTransaction = true;
+      await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
+      await client.query(\`
+        CREATE TABLE public.companies (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          name TEXT NOT NULL DEFAULT 'Approval Test Company',
+          currency VARCHAR(3) NOT NULL DEFAULT 'KES',
+          deleted_at TIMESTAMPTZ
+        )
+      \`);
+
+      const { SALES_RUNTIME_MIGRATIONS } = await import('../lib/apps/runtime-migrations');
+      const { getSamiModuleMigrationPlan } = await import('../lib/modules/migrations');
+      const {
+        requestAdvancedSalesQuoteApprovalTransaction,
+        reviewAdvancedSalesQuoteApprovalTransaction,
+        assertSalesQuoteApprovalSatisfied,
+      } = await import('../lib/apps/sales/approvals');
+
+      const plan = getSamiModuleMigrationPlan('sales', '1.0.0', '3.4.20');
+      for (let index = 0; index < plan.length; index += 1) {
+        const migration = plan[index];
+        assert.equal(migration.moduleKey, 'sales');
+        if (index > 0) {
+          assert.equal(plan[index - 1].toVersion, migration.fromVersion);
+        }
+        await migration.run(client, {
+          moduleKey: 'sales',
+          namespace: 'sales',
+          fromVersion: migration.fromVersion,
+          toVersion: migration.toVersion,
+        });
+      }
+
+      const companyId = 'a1111111-1111-4111-8111-111111111111';
+      const requesterId = 'a2222222-2222-4222-8222-222222222222';
+      const reviewerOneId = 'a3333333-3333-4333-8333-333333333333';
+      const reviewerTwoId = 'a4444444-4444-4444-8444-444444444444';
+      await client.query(
+        'INSERT INTO public.companies (id, name, currency) VALUES ($1, $2, $3)',
+        [companyId, 'Approval Test Company', 'KES'],
+      );
+
+      // In production this table is provisioned by Core. The integration test
+      // installs Sales in isolation, so provide the exact activity write contract.
+      await client.query(\`
+        CREATE TABLE IF NOT EXISTS public.activities (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          user_id UUID,
+          model VARCHAR(120) NOT NULL,
+          record_id UUID NOT NULL,
+          type VARCHAR(160) NOT NULL,
+          content TEXT NOT NULL,
+          metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      \`);
+
+      await client.query(
+        \`INSERT INTO public.sales_settings
+          (company_id, default_currency, require_quote_approval, quote_approval_threshold)
+         VALUES ($1, 'KES', FALSE, 0)\`,
+        [companyId],
+      );
+
+      const policyResult = await client.query(
+        \`INSERT INTO public.sales_quote_approval_policies
+          (company_id, name, is_active, priority, min_quote_total, currency_code, created_by, updated_by)
+         VALUES ($1, 'High-value two-step approval', TRUE, 1, 500, 'KES', $2, $2)
+         RETURNING id\`,
+        [companyId, requesterId],
+      );
+      const policyId = String(policyResult.rows[0].id);
+
+      await client.query(
+        \`INSERT INTO public.sales_quote_approval_policy_steps
+          (company_id, policy_id, step_order, approver_user_id, approver_role_key, required_approvals)
+         VALUES
+          ($1, $2, 1, $3, NULL, 1),
+          ($1, $2, 2, $4, NULL, 1)\`,
+        [companyId, policyId, reviewerOneId, reviewerTwoId],
+      );
+
+      async function insertQuote(quoteNumber: string) {
+        const inserted = await client.query(
+          \`INSERT INTO public.sales_quotes
+            (company_id, quote_number, status, quote_date, valid_until, currency,
+             base_currency, base_total_amount, total_amount, subtotal, discount_total,
+             tax_total, shipping_total, approval_status, customer_name, created_by, updated_by)
+           VALUES ($1, $2, 'draft', CURRENT_DATE, CURRENT_DATE + 14, 'KES',
+             'KES', 900, 900, 900, 0, 0, 0, 'not_required', 'Approval Buyer', $3, $3)
+           RETURNING id\`,
+          [companyId, quoteNumber, requesterId],
+        );
+        const quoteId = String(inserted.rows[0].id);
+        await client.query(
+          \`INSERT INTO public.sales_quote_items
+            (quote_id, company_id, sort_order, description, quantity, unit_price,
+             discount_type, discount_value, discount_amount, tax_rate, tax_amount, subtotal, line_total)
+           VALUES ($1, $2, 1, 'Approval test line', 1, 900, 'percent', 0, 0, 0, 0, 900, 900)\`,
+          [quoteId, companyId],
+        );
+        return quoteId;
+      }
+
+      let savepointNumber = 0;
+      const approvalPool = {
+        query: (sql: string, values?: unknown[]) =>
+          client.query(sql, values as never),
+        connect: async () => {
+          const savepoint = 'sales_approval_sp_' + String(++savepointNumber);
+          let active = false;
+          return {
+            query: async (sql: string, values?: unknown[]) => {
+              const command = sql.trim().toUpperCase();
+              if (command === 'BEGIN') {
+                active = true;
+                return client.query('SAVEPOINT ' + savepoint);
+              }
+              if (command === 'COMMIT') {
+                const result = await client.query('RELEASE SAVEPOINT ' + savepoint);
+                active = false;
+                return result;
+              }
+              if (command === 'ROLLBACK') {
+                if (!active) return { rows: [], rowCount: 0 };
+                await client.query('ROLLBACK TO SAVEPOINT ' + savepoint);
+                const result = await client.query('RELEASE SAVEPOINT ' + savepoint);
+                active = false;
+                return result;
+              }
+              return client.query(sql, values as never);
+            },
+            release: () => {},
+          };
+        },
+      };
+
+      type ApprovalContext = Parameters<typeof requestAdvancedSalesQuoteApprovalTransaction>[1];
+      const asContext = (userId: string) => ({
+        permissions: { isOwner: false, permissionSet: new Set<string>() },
+        company: {
+          tenantId: 'approval-test-tenant',
+          userId,
+          currentCompanyId: companyId,
+          currentCompany: { id: companyId, name: 'Approval Test Company', currency: 'KES' },
+        },
+        tenantId: 'approval-test-tenant',
+        userId,
+        companyId,
+        pool: approvalPool,
+      } as unknown as ApprovalContext);
+
+      const quoteId = await insertQuote('Q-APPROVAL-001');
+
+      await assert.rejects(
+        () => assertSalesQuoteApprovalSatisfied(client, companyId, quoteId),
+        /cannot proceed until all internal approval steps are complete/,
+        'matching active approval policy must block acceptance before approval',
+      );
+
+      const requesterContext = asContext(requesterId);
+      const request = await requestAdvancedSalesQuoteApprovalTransaction(
+        { quoteId },
+        requesterContext,
+      );
+      assert.equal(request.approvalStatus, 'pending');
+      assert.equal(request.currentStepOrder, 1);
+      assert.ok(request.requestId);
+
+      const retryRequest = await requestAdvancedSalesQuoteApprovalTransaction(
+        { quoteId },
+        requesterContext,
+      );
+      assert.equal(retryRequest.requestId, request.requestId,
+        'retrying submission while pending must recover the existing request, not duplicate it');
+
+      await assert.rejects(
+        () => reviewAdvancedSalesQuoteApprovalTransaction(
+          { quoteId, decision: 'approve' },
+          requesterContext,
+        ),
+        /cannot approve or reject their own request/,
+      );
+
+      const reviewerOneContext = asContext(reviewerOneId);
+      const firstDecision = await reviewAdvancedSalesQuoteApprovalTransaction(
+        { quoteId, decision: 'approve' },
+        reviewerOneContext,
+      );
+      assert.equal(firstDecision.approvalStatus, 'pending');
+      assert.equal(firstDecision.currentStepOrder, 2,
+        'first approval must advance the request to the next configured step');
+
+      const unauthorizedDecision = await reviewAdvancedSalesQuoteApprovalTransaction(
+        { quoteId, decision: 'approve' },
+        reviewerOneContext,
+      ).then(
+        () => ({ rejected: false, error: '' }),
+        (error: unknown) => ({
+          rejected: true,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+      assert.equal(unauthorizedDecision.rejected, true,
+        'a reviewer assigned only to the completed step must not approve the next step');
+      assert.match(unauthorizedDecision.error, /not an assigned approver/);
+
+      const reviewerTwoContext = asContext(reviewerTwoId);
+      const finalDecision = await reviewAdvancedSalesQuoteApprovalTransaction(
+        { quoteId, decision: 'approve' },
+        reviewerTwoContext,
+      );
+      assert.equal(finalDecision.approvalStatus, 'approved');
+
+      const persisted = await client.query(
+        \`SELECT q.approval_status, r.status AS request_status, r.current_step_order,
+                COUNT(d.id)::int AS decision_count
+         FROM public.sales_quotes q
+         JOIN public.sales_quote_approval_requests r
+           ON r.quote_id = q.id AND r.company_id = q.company_id
+         LEFT JOIN public.sales_quote_approval_decisions d
+           ON d.request_id = r.id AND d.company_id = r.company_id
+         WHERE q.id = $1 AND q.company_id = $2
+         GROUP BY q.approval_status, r.status, r.current_step_order\`,
+        [quoteId, companyId],
+      );
+      assert.equal(persisted.rows.length, 1);
+      assert.equal(persisted.rows[0].approval_status, 'approved');
+      assert.equal(persisted.rows[0].request_status, 'approved');
+      assert.equal(Number(persisted.rows[0].decision_count), 2,
+        'only the two assigned reviewers must have durable decisions');
+
+      const approvalsHistory = await client.query(
+        \`SELECT from_status, to_status
+         FROM public.sales_quote_approval_history
+         WHERE quote_id = $1 AND company_id = $2
+         ORDER BY created_at, id\`,
+        [quoteId, companyId],
+      );
+      assert.deepEqual(
+        approvalsHistory.rows.map(row => [row.from_status, row.to_status]),
+        [['not_required', 'pending'], ['pending', 'pending'], ['pending', 'approved']],
+      );
+
+      await assert.doesNotReject(
+        () => assertSalesQuoteApprovalSatisfied(client, companyId, quoteId),
+        'completed approval must unblock the authoritative approval gate',
+      );
+
+      // A quote changed after submission invalidates the approval fingerprint.
+      const staleQuoteId = await insertQuote('Q-APPROVAL-002');
+      const staleRequest = await requestAdvancedSalesQuoteApprovalTransaction(
+        { quoteId: staleQuoteId },
+        requesterContext,
+      );
+      await client.query(
+        'UPDATE public.sales_quotes SET notes = $3 WHERE id = $1 AND company_id = $2',
+        [staleQuoteId, companyId, 'Changed after approval submission'],
+      );
+      await assert.rejects(
+        () => reviewAdvancedSalesQuoteApprovalTransaction(
+          { quoteId: staleQuoteId, decision: 'approve' },
+          reviewerOneContext,
+        ),
+        /Quotation terms changed after submission/,
+      );
+      const staleState = await client.query(
+        \`SELECT q.approval_status, r.status AS request_status
+         FROM public.sales_quotes q
+         JOIN public.sales_quote_approval_requests r
+           ON r.quote_id = q.id AND r.company_id = q.company_id
+         WHERE q.id = $1 AND q.company_id = $2 AND r.id = $3\`,
+        [staleQuoteId, companyId, staleRequest.requestId],
+      );
+      assert.equal(staleState.rows[0].approval_status, 'draft');
+      assert.equal(staleState.rows[0].request_status, 'superseded');
+
+      const decisionCount = await client.query(
+        'SELECT COUNT(*)::int AS count FROM public.sales_quote_approval_decisions WHERE request_id = $1',
+        [staleRequest.requestId],
+      );
+      assert.equal(decisionCount.rows[0].count, 0,
+        'stale requests must be superseded without a reviewer decision');
+
+    } finally {
+      if (outerTransaction) {
+        try { await client.query('ROLLBACK'); } catch {}
+      }
+      client.release();
+      await pool.end();
+    }
+  },
+);
+
+
 integration(
   'ERP parity: remaining specialist depth schemas execute in PostgreSQL',
   async () => {
