@@ -3190,13 +3190,13 @@ test('Sales revision and approval engine use consistent currency-safe threshold 
   ]);
 
   const revisionStart = commercial.indexOf('export async function createSalesQuoteRevision(');
-  const revisionEnd = commercial.indexOf('\\nexport async function ', revisionStart + 30);
+  const revisionEnd = commercial.indexOf('\nexport async function ', revisionStart + 30);
   assert.ok(revisionStart >= 0 && revisionEnd > revisionStart, 'quote revision should have a bounded implementation');
   const revision = commercial.slice(revisionStart, revisionEnd);
-  assert.match(revision, /salesQuoteRequiresLegacyApproval\\([\\s\\S]*row\.base_total_amount/);
+  assert.match(revision, /salesQuoteRequiresLegacyApproval\([\s\S]*row\.base_total_amount/);
 
   assert.equal(
-    (approvals.match(/salesQuoteRequiresLegacyApproval\\(/g) || []).length,
+    (approvals.match(/salesQuoteRequiresLegacyApproval\(/g) || []).length,
     2,
     'approval submission and quote-to-cash enforcement must share the base-currency threshold rule',
   );
