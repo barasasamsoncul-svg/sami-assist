@@ -269,6 +269,31 @@ test('Sales context is tenant/company scoped and permission controlled', async (
 });
 
 
+test('Sales quote authoring and delivery keep permission checks on their public entry points', async () => {
+  const commands = await source('lib/apps/sales/commands.ts');
+
+  const createStart = commands.indexOf('export async function createSalesQuote(');
+  const createEnd = commands.indexOf('export async function updateSalesQuoteDraftTransaction(', createStart);
+  assert.ok(createStart >= 0 && createEnd > createStart);
+  const createEntry = commands.slice(createStart, createEnd);
+  assert.match(createEntry, /await requireSalesContext\(\s*SALES_PERMISSIONS\.QUOTE_CREATE\s*\)/);
+  assert.match(createEntry, /return createSalesQuoteTransaction\(input, context\)/);
+
+  const updateStart = commands.indexOf('export async function updateSalesQuoteDraft(');
+  const updateEnd = commands.indexOf('export async function duplicateSalesQuote(', updateStart);
+  assert.ok(updateStart >= 0 && updateEnd > updateStart);
+  const updateEntry = commands.slice(updateStart, updateEnd);
+  assert.match(updateEntry, /await requireSalesContext\(\s*SALES_PERMISSIONS\.QUOTE_EDIT\s*\)/);
+  assert.match(updateEntry, /return updateSalesQuoteDraftTransaction\(input, context\)/);
+
+  const deliveryStart = commands.indexOf('export async function sendSalesQuote(');
+  const deliveryEnd = commands.indexOf('async function markSalesOpportunityWonFromAcceptedQuote(', deliveryStart);
+  assert.ok(deliveryStart >= 0 && deliveryEnd > deliveryStart);
+  const deliveryEntry = commands.slice(deliveryStart, deliveryEnd);
+  assert.match(deliveryEntry, /await requireSalesContext\(\s*SALES_PERMISSIONS\.QUOTE_SEND\s*\)/);
+  assert.match(deliveryEntry, /await deliverSalesQuote\(/);
+});
+
 test('Sales quote creation recomputes commercial totals server side', async () => {
   const commands =
     await source(
