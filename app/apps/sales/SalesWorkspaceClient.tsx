@@ -848,8 +848,8 @@ export default function SalesWorkspaceClient({
   const [orderRegisterLoading, setOrderRegisterLoading] = useState(false);
   const [quoteRegisterError, setQuoteRegisterError] = useState('');
   const [orderRegisterError, setOrderRegisterError] = useState('');
-  const previousQuoteQuery = useRef(search.trim() + '|' + quoteStatusView);
-  const previousOrderQuery = useRef(search.trim() + '|' + orderStatusView + '|' + orderSortBy);
+  const previousQuoteQuery = useRef('');
+  const previousOrderQuery = useRef('');
   const quoteBaseData = useRef(initialData.quotes);
   const orderBaseData = useRef(initialData.orders);
 
@@ -1252,6 +1252,7 @@ export default function SalesWorkspaceClient({
                 [
                   quote.quoteNumber,
                   quote.customerName,
+                  quote.customerEmail || '',
                   quote.status,
                   quote.approvalStatus,
                   quote.reference ||
@@ -1320,6 +1321,7 @@ export default function SalesWorkspaceClient({
               [
                 order.orderNumber,
                 order.customerName,
+                order.reference || '',
                 order.status,
                 order.fulfillmentStatus,
                 order.invoiceStatus,
