@@ -3928,7 +3928,7 @@ export async function getSalesOrderRegisterPage(input: Record<string, unknown> =
             OR ($3::text = 'partially_invoiced' AND COALESCE(o.invoice_status, 'not_invoiced') = 'partial')
             OR ($3::text = 'invoiced' AND COALESCE(o.invoice_status, 'not_invoiced') = 'invoiced')
           )::int AS total,
-          COUNT(*)::int AS all,
+          COUNT(*)::int AS all_count,
           COUNT(*) FILTER (WHERE COALESCE(o.fulfillment_status, 'not_started') = 'not_started')::int AS awaiting_fulfillment,
           COUNT(*) FILTER (WHERE COALESCE(o.fulfillment_status, 'not_started') = 'partial')::int AS partially_fulfilled,
           COUNT(*) FILTER (WHERE COALESCE(o.fulfillment_status, 'not_started') = 'fulfilled')::int AS fulfilled,
@@ -3975,7 +3975,7 @@ export async function getSalesOrderRegisterPage(input: Record<string, unknown> =
   return {
     rows, offset, limit, totalCount: Number(count.rows[0]?.total || 0), hasMore, nextOffset: offset + rows.length,
     queueCounts: {
-      all: Number(count.rows[0]?.all || 0),
+      all: Number(count.rows[0]?.all_count || 0),
       awaiting_fulfillment: Number(count.rows[0]?.awaiting_fulfillment || 0),
       partially_fulfilled: Number(count.rows[0]?.partially_fulfilled || 0),
       fulfilled: Number(count.rows[0]?.fulfilled || 0),
