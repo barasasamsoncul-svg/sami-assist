@@ -277,7 +277,7 @@ export async function getPublicSalesQuote(
             fromStatus: currentStatus as 'sent' | 'viewed',
             source: 'public_quote_view',
           },
-          recordSalesActivity,
+          dependencies.recordSalesActivity,
         );
 
         if (expired) {
