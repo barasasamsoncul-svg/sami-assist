@@ -46,7 +46,7 @@ test('Sales quote expiry normalizes PostgreSQL date values and preserves accepte
   const expiryDecision = internal.indexOf('shouldExpireSalesQuoteBeforeAcceptance(');
   const expiryUpdate = internal.indexOf("status = 'expired'", expiryDecision);
   const expiryHistory = internal.indexOf('INSERT INTO sales_quote_status_history', expiryUpdate);
-  const expiryCommit = internal.indexOf("await client.query('COMMIT')", expiryHistory);
+  const expiryCommit = internal.indexOf("'COMMIT'", expiryHistory);
   assert.ok(expiryDecision >= 0);
   assert.ok(expiryUpdate > expiryDecision);
   assert.ok(expiryHistory > expiryUpdate);
