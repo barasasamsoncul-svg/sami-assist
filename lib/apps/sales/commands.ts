@@ -4858,15 +4858,33 @@ export async function cancelSalesOrder(
 }
 
 
-export async function createSalesOrderInvoice(
-  input:
-    Record<string, unknown>,
+type SalesOrderInvoiceTransactionDependencies = {
+  createInvoicingCustomer: typeof createInvoicingCustomer;
+  createInvoice: typeof createInvoice;
+  emitSalesAutomationEvent: typeof emitSalesAutomationEvent;
+};
+
+const defaultSalesOrderInvoiceTransactionDependencies: SalesOrderInvoiceTransactionDependencies = {
+  createInvoicingCustomer,
+  createInvoice,
+  emitSalesAutomationEvent,
+};
+
+/**
+ * Transaction-level Sales invoice batch operation. The production entry point
+ * checks Sales permissions before invoking this helper. Cross-module calls can
+ * be supplied by PostgreSQL integration tests while the Sales batch, quantity,
+ * and lifecycle SQL remains the production implementation.
+ */
+export async function createSalesOrderInvoiceTransaction(
+  input: Record<string, unknown>,
+  context: Awaited<ReturnType<typeof requireSalesContext>>,
+  overrides: Partial<SalesOrderInvoiceTransactionDependencies> = {},
 ) {
-  const context =
-    await requireSalesContext(
-      SALES_PERMISSIONS
-        .ORDER_MANAGE,
-    );
+  const deps: SalesOrderInvoiceTransactionDependencies = {
+    ...defaultSalesOrderInvoiceTransactionDependencies,
+    ...overrides,
+  };
 
   const orderId =
     requireUuid(
@@ -5132,7 +5150,7 @@ export async function createSalesOrderInvoice(
     ) {
       try {
         const createdCustomer =
-          await createInvoicingCustomer({
+          await deps.createInvoicingCustomer({
             name:
               orderRow.customer_name,
             email:
@@ -5706,7 +5724,7 @@ export async function createSalesOrderInvoice(
         );
     } else {
       const invoice =
-        await createInvoice({
+        await deps.createInvoice({
           customerId:
             String(
               billingCustomerId,
@@ -5988,7 +6006,7 @@ export async function createSalesOrderInvoice(
       'COMMIT',
     );
 
-    await emitSalesAutomationEvent(
+    await deps.emitSalesAutomationEvent(
       context,
       {
         triggerKey:
@@ -6049,6 +6067,21 @@ export async function createSalesOrderInvoice(
   }
 }
 
+
+
+export async function createSalesOrderInvoice(
+  input: Record<string, unknown>,
+) {
+  const context = await requireSalesContext(
+    SALES_PERMISSIONS
+      .ORDER_MANAGE,
+  );
+
+  return createSalesOrderInvoiceTransaction(
+    input,
+    context,
+  );
+}
 
 export async function updateSalesSettings(
   input:
