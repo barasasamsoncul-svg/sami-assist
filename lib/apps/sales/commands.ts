@@ -258,6 +258,10 @@ import {
 } from '@/lib/apps/sales/organization';
 
 import {
+  shouldExpireSalesQuoteBeforeAcceptance,
+} from '@/lib/apps/sales/date-utils';
+
+import {
   postSalesFulfillmentToInventory,
   releaseSalesOrderReservations,
   reserveSalesOrderInventory,
@@ -2815,26 +2819,75 @@ export async function changeSalesQuoteStatus(
       );
     }
 
-    const expired =
-      existing.rows[0]
-        .valid_until &&
-      String(
-        existing.rows[0]
-          .valid_until,
-      ) <
-        isoDate(
-          null,
-        );
-
     if (
-      expired &&
-      [
-        'sent',
-        'viewed',
-      ].includes(
+      shouldExpireSalesQuoteBeforeAcceptance(
+        existing.rows[0].valid_until,
         current,
+        nextStatus,
       )
     ) {
+      await client.query(
+        `
+          UPDATE sales_quotes
+          SET
+            status = 'expired',
+            expired_at = COALESCE(expired_at, NOW()),
+            public_enabled = FALSE,
+            updated_by = $3::uuid,
+            updated_at = NOW()
+          WHERE id = $1
+            AND company_id = $2
+        `,
+        [
+          quoteId,
+          context.companyId,
+          context.userId,
+        ],
+      );
+
+      await client.query(
+        `
+          INSERT INTO sales_quote_status_history (
+            quote_id,
+            company_id,
+            from_status,
+            to_status,
+            reason,
+            changed_by
+          )
+          VALUES (
+            $1, $2, $3, 'expired', $4, $5
+          )
+        `,
+        [
+          quoteId,
+          context.companyId,
+          current,
+          'Quotation expired before acceptance.',
+          context.userId,
+        ],
+      );
+
+      await recordSalesActivity(
+        client,
+        {
+          companyId: context.companyId,
+          userId: context.userId,
+          quoteId,
+          type: 'sales.quote.expired',
+          content:
+            'Quote ' +
+            String(existing.rows[0].quote_number) +
+            ' expired before acceptance.',
+          metadata: {
+            attemptedAction: nextStatus,
+            reason: 'validity_expired',
+          },
+        },
+      );
+
+      await client.query('COMMIT');
+
       throw new SalesError(
         'QUOTE_STATE_INVALID',
         'This quote has expired. Duplicate it to issue a new offer.',

@@ -31,6 +31,47 @@ async function source(
 
 
 
+
+test('Sales quote expiry normalizes PostgreSQL date values and preserves accepted or rejectable state transitions', async () => {
+  const [commands, publicSales] = await Promise.all([
+    source('lib/apps/sales/commands.ts'),
+    source('lib/apps/sales/public.ts'),
+  ]);
+
+  assert.match(commands, /shouldExpireSalesQuoteBeforeAcceptance\(/);
+  const internalStart = commands.indexOf('export async function changeSalesQuoteStatus(');
+  const internalEnd = commands.indexOf('\n\nexport async function ', internalStart + 30);
+  assert.ok(internalStart >= 0 && internalEnd > internalStart);
+  const internal = commands.slice(internalStart, internalEnd);
+  const expiryDecision = internal.indexOf('shouldExpireSalesQuoteBeforeAcceptance(');
+  const expiryUpdate = internal.indexOf("status = 'expired'", expiryDecision);
+  const expiryHistory = internal.indexOf('INSERT INTO sales_quote_status_history', expiryUpdate);
+  const expiryCommit = internal.indexOf("'COMMIT'", expiryHistory);
+  assert.ok(expiryDecision >= 0);
+  assert.ok(expiryUpdate > expiryDecision);
+  assert.ok(expiryHistory > expiryUpdate);
+  assert.ok(expiryCommit > expiryHistory);
+  assert.match(internal.slice(expiryDecision, expiryCommit), /public_enabled = FALSE/);
+  assert.match(internal.slice(expiryDecision, expiryCommit), /sales\.quote\.expired/);
+  assert.match(internal.slice(expiryDecision, expiryCommit), /Quotation expired before acceptance/);
+
+  const publicGetStart = publicSales.indexOf('export async function getPublicSalesQuote(');
+  const publicRespondStart = publicSales.indexOf('export async function respondToPublicSalesQuote(', publicGetStart);
+  assert.ok(publicGetStart >= 0 && publicRespondStart > publicGetStart);
+  const publicGet = publicSales.slice(publicGetStart, publicRespondStart);
+  assert.match(publicGet, /isSalesQuoteExpired\(/);
+  assert.match(publicGet, /validUntil:\s*salesDateOnly\(quote\.valid_until\)/);
+
+  const response = publicSales.slice(publicRespondStart);
+  assert.match(response, /isSalesQuoteExpired\(/);
+  const onlyOpenStatuses = response.indexOf("['sent', 'viewed'].includes(current)");
+  const expiryCheck = response.indexOf('isSalesQuoteExpired(');
+  const expiryMutation = response.indexOf("status = 'expired'", expiryCheck);
+  assert.ok(onlyOpenStatuses >= 0 && expiryCheck > onlyOpenStatuses,
+    'public expiry mutation must be limited to open, customer-actionable quotes');
+  assert.ok(expiryMutation > expiryCheck);
+});
+
 test('Sales quote-to-invoice checks invoicing and customer permissions before converting the quote', async () => {
   const commands = await source('lib/apps/sales/commands.ts');
   const start = commands.indexOf('export async function convertSalesQuoteToInvoice(');

@@ -3,6 +3,11 @@ import 'server-only';
 import { assertSalesQuoteApprovalSatisfied } from '@/lib/apps/sales/approvals';
 import { SALES_QUOTE_ELECTRONIC_SIGNATURE_CONSENT } from '@/lib/apps/sales/signature';
 
+import {
+  isSalesQuoteExpired,
+  salesDateOnly,
+} from '@/lib/apps/sales/date-utils';
+
 import crypto from 'crypto';
 
 import {
@@ -206,11 +211,10 @@ export async function getPublicSalesQuote(
     ].includes(
       status,
     ) &&
-    quote.valid_until &&
-    String(
+    isSalesQuoteExpired(
       quote.valid_until,
-    ) <
-      today
+      today,
+    )
   ) {
     status =
       'expired';
@@ -423,15 +427,10 @@ export async function getPublicSalesQuote(
       ),
     status,
     quoteDate:
-      String(
-        quote.quote_date,
-      ),
+      salesDateOnly(quote.quote_date) ||
+      String(quote.quote_date).slice(0, 10),
     validUntil:
-      quote.valid_until
-        ? String(
-            quote.valid_until,
-          )
-        : null,
+      salesDateOnly(quote.valid_until),
     currency:
       String(
         quote.currency,
@@ -823,11 +822,11 @@ export async function respondToPublicSalesQuote(
         );
 
     if (
-      quote.valid_until &&
-      String(
+      ['sent', 'viewed'].includes(current) &&
+      isSalesQuoteExpired(
         quote.valid_until,
-      ) <
-        today
+        today,
+      )
     ) {
       await client.query(
         `
