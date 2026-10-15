@@ -1414,10 +1414,15 @@ integration(
          ORDER BY type`,
         [companyId, opportunityId, quoteId],
       );
-      assert.equal(audit.rows.length, 3);
+      assert.equal(audit.rows.length, 4);
       assert.deepEqual(
         audit.rows.map((row: Record<string, unknown>) => row.type).sort(),
-        ['sales.opportunity.won_from_order', 'sales.quote.converted', 'sales.quote.customer_accepted'],
+        [
+          'sales.opportunity.won_from_order',
+          'sales.quote.converted',
+          'sales.quote.customer_accepted',
+          'sales.quote.optional_products_selected',
+        ],
       );
       const opportunityAudit = audit.rows.find(
         (row: Record<string, unknown>) => row.type === 'sales.opportunity.won_from_order',
