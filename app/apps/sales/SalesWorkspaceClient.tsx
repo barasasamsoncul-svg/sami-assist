@@ -1108,6 +1108,7 @@ export default function SalesWorkspaceClient({
     if (signature === previousQuoteQuery.current && !baseChanged) return;
     previousQuoteQuery.current = signature;
     quoteBaseData.current = initialData.quotes;
+    setSelectedQuoteIds([]);
     const controller = new AbortController();
     setQuoteRegisterLoading(true);
     setQuoteRegisterError('');
@@ -1147,6 +1148,7 @@ export default function SalesWorkspaceClient({
     if (signature === previousOrderQuery.current && !baseChanged) return;
     previousOrderQuery.current = signature;
     orderBaseData.current = initialData.orders;
+    setSelectedOrderIds([]);
     const controller = new AbortController();
     setOrderRegisterLoading(true);
     setOrderRegisterError('');
