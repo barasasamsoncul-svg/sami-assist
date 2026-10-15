@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { salesQuoteRequiresLegacyApproval } from '@/lib/apps/sales/approval-policy';
+
 import type {
   PoolClient,
 } from 'pg';
@@ -1079,14 +1081,11 @@ export async function createSalesQuoteRevision(
       {};
 
     const approvalRequired =
-      policy.require_quote_approval ===
-        true &&
-      money(
-        row.total_amount,
-      ) >=
-        money(
-          policy.quote_approval_threshold,
-        );
+      salesQuoteRequiresLegacyApproval(
+        policy.require_quote_approval,
+        policy.quote_approval_threshold,
+        row.base_total_amount,
+      );
 
     const nextRevision =
       currentRevision +
