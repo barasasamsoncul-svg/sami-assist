@@ -156,6 +156,7 @@ export type SalesOrderSummary = {
   quoteId: string | null;
   quoteNumber: string | null;
   latestInvoiceId: string | null;
+  reference: string | null;
   status: string;
   fulfillmentStatus: string;
   invoiceStatus: string;
