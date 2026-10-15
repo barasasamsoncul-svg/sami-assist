@@ -1041,6 +1041,7 @@ integration(
           id UUID PRIMARY KEY,
           quote_id UUID NOT NULL,
           company_id UUID NOT NULL,
+          sort_order INTEGER NOT NULL DEFAULT 0,
           catalog_item_id UUID,
           description TEXT NOT NULL DEFAULT 'Optional item',
           sku_snapshot TEXT,
