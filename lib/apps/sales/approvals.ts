@@ -184,6 +184,18 @@ export async function assertSalesQuoteApprovalSatisfied(client: Queryable, compa
 
 export async function requestAdvancedSalesQuoteApproval(input: Record<string, unknown>) {
   const context = await requireSalesContext(SALES_PERMISSIONS.QUOTE_EDIT);
+  return requestAdvancedSalesQuoteApprovalTransaction(input, context);
+}
+
+/**
+ * Transaction body is exported so integration tests can run the exact
+ * production approval workflow against PostgreSQL while keeping permission
+ * resolution at the public entry point above.
+ */
+export async function requestAdvancedSalesQuoteApprovalTransaction(
+  input: Record<string, unknown>,
+  context: Awaited<ReturnType<typeof requireSalesContext>>,
+) {
   const quoteId = requireUuid(input.quoteId, 'Quote');
   const client = await context.pool.connect();
   try {
@@ -259,6 +271,18 @@ export async function requestAdvancedSalesQuoteApproval(input: Record<string, un
 
 export async function reviewAdvancedSalesQuoteApproval(input: Record<string, unknown>) {
   const context = await requireSalesContext(SALES_PERMISSIONS.QUOTE_INTERNAL_APPROVE);
+  return reviewAdvancedSalesQuoteApprovalTransaction(input, context);
+}
+
+/**
+ * Approval decision transaction separated from auth/context resolution so
+ * PostgreSQL integration tests can exercise the production SQL and lifecycle
+ * transitions without bypassing the public permission boundary in production.
+ */
+export async function reviewAdvancedSalesQuoteApprovalTransaction(
+  input: Record<string, unknown>,
+  context: Awaited<ReturnType<typeof requireSalesContext>>,
+) {
   const quoteId = requireUuid(input.quoteId, 'Quote');
   const decision = cleanText(input.decision, 20).toLowerCase();
   if (!['approve','reject'].includes(decision)) throw new SalesError('INVALID_INPUT', 'Choose approve or reject.');
