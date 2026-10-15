@@ -314,14 +314,18 @@ test('Sales quote creation recomputes commercial totals server side', async () =
 
 
 test('Sales quote conversion marks the linked CRM opportunity won and records the stage transition', async () => {
-  const commands = await source('lib/apps/sales/commands.ts');
-  const helperStart = commands.indexOf('async function markSalesOpportunityWonFromAcceptedQuote(');
+  const [commands, conversion] = await Promise.all([
+    source('lib/apps/sales/commands.ts'),
+    source('lib/apps/sales/opportunity-conversion.ts'),
+  ]);
+  const helperStart = conversion.indexOf('export async function markSalesOpportunityWonFromAcceptedQuote(');
   const orderStart = commands.indexOf('export async function createSalesOrderFromQuote(');
   const invoiceStart = commands.indexOf('export async function convertSalesQuoteToInvoice(', orderStart);
-  assert.ok(helperStart >= 0 && orderStart > helperStart && invoiceStart > orderStart);
+  assert.ok(helperStart >= 0 && orderStart >= 0 && invoiceStart > orderStart);
 
-  const helper = commands.slice(helperStart, orderStart);
+  const helper = conversion.slice(helperStart);
   const quoteToOrder = commands.slice(orderStart, invoiceStart);
+  assert.match(commands, /from ['"]@\/lib\/apps\/sales\/opportunity-conversion['"]/);
   assert.match(helper, /opportunity\.company_id = \$2/);
   assert.match(helper, /FOR UPDATE OF opportunity/);
   assert.match(helper, /stage_type = 'won'/);
@@ -331,18 +335,22 @@ test('Sales quote conversion marks the linked CRM opportunity won and records th
   assert.match(helper, /INSERT INTO sales_opportunity_stage_history/);
   assert.match(helper, /sales\.opportunity\.won_from_order/);
   assert.match(helper, /quoteId: input\.quoteId/);
+  assert.match(helper, /requireUuid\(rawOpportunityId, 'Opportunity'\)/);
   assert.match(quoteToOrder, /row\.opportunity_id/);
   assert.equal(
     (quoteToOrder.match(/await markSalesOpportunityWonFromAcceptedQuote\(/g) || []).length,
     2,
     'Both first conversion and idempotent retries must reconcile the linked opportunity.',
   );
+  assert.match(quoteToOrder, /requireUuid,/,
+    'the conversion helper must keep the authoritative Sales UUID validator');
   assert.ok(
     quoteToOrder.indexOf('await markSalesOpportunityWonFromAcceptedQuote(') <
       quoteToOrder.lastIndexOf("'COMMIT'"),
     'Opportunity reconciliation must happen before the conversion transaction commits.',
   );
 });
+
 
 test('Sales internal approval is separate from customer acceptance', async () => {
   const [
