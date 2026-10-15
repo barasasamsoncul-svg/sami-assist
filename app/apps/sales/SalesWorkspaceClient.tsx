@@ -261,6 +261,7 @@ type SalesRegisterPage<T> = {
   totalCount: number;
   hasMore: boolean;
   nextOffset: number;
+  queueCounts?: Record<string, number>;
 };
 
 async function requestSalesRegisterPage<T>(
@@ -844,6 +845,8 @@ export default function SalesWorkspaceClient({
   const [orderRegisterHasMore, setOrderRegisterHasMore] = useState(initialData.orders.length >= 250);
   const [quoteRegisterTotalCount, setQuoteRegisterTotalCount] = useState(initialData.metrics.quoteCount);
   const [orderRegisterTotalCount, setOrderRegisterTotalCount] = useState(initialData.metrics.orderCount);
+  const [quoteRegisterQueueCounts, setQuoteRegisterQueueCounts] = useState<Record<string, number> | null>(null);
+  const [orderRegisterQueueCounts, setOrderRegisterQueueCounts] = useState<Record<string, number> | null>(null);
   const [quoteRegisterLoading, setQuoteRegisterLoading] = useState(false);
   const [orderRegisterLoading, setOrderRegisterLoading] = useState(false);
   const [quoteRegisterError, setQuoteRegisterError] = useState('');
@@ -1128,6 +1131,7 @@ export default function SalesWorkspaceClient({
           setQuoteRecords(page.rows);
           setQuoteRegisterHasMore(page.hasMore);
           setQuoteRegisterTotalCount(page.totalCount);
+          setQuoteRegisterQueueCounts(page.queueCounts || {});
         })
         .catch(error => {
           if (!controller.signal.aborted && requestId === quoteRegisterRequestId.current) {
@@ -1171,6 +1175,7 @@ export default function SalesWorkspaceClient({
           setOrderRecords(page.rows);
           setOrderRegisterHasMore(page.hasMore);
           setOrderRegisterTotalCount(page.totalCount);
+          setOrderRegisterQueueCounts(page.queueCounts || {});
         })
         .catch(error => {
           if (!controller.signal.aborted && requestId === orderRegisterRequestId.current) {
@@ -1208,6 +1213,7 @@ export default function SalesWorkspaceClient({
       });
       setQuoteRegisterHasMore(page.hasMore);
       setQuoteRegisterTotalCount(page.totalCount);
+      setQuoteRegisterQueueCounts(page.queueCounts || {});
     } catch (error) {
       if (requestId === quoteRegisterRequestId.current) {
         setQuoteRegisterError(error instanceof Error ? error.message : 'Could not load more quotations.');
@@ -1238,6 +1244,7 @@ export default function SalesWorkspaceClient({
       });
       setOrderRegisterHasMore(page.hasMore);
       setOrderRegisterTotalCount(page.totalCount);
+      setOrderRegisterQueueCounts(page.queueCounts || {});
     } catch (error) {
       if (requestId === orderRegisterRequestId.current) {
         setOrderRegisterError(error instanceof Error ? error.message : 'Could not load more sales orders.');
@@ -2135,7 +2142,7 @@ export default function SalesWorkspaceClient({
                       >
                         {option.label}
                         <span className="rounded-full bg-black/5 px-1.5 py-0.5 text-[10px] dark:bg-white/10">
-                          {quoteRecords.filter(quote => matchesQuoteStatusView(quote, option.key)).length}
+                          {quoteRegisterQueueCounts?.[option.key] ?? '—'}
                         </span>
                       </button>
                     ))}
@@ -2685,7 +2692,7 @@ export default function SalesWorkspaceClient({
                       >
                         {option.label}
                         <span className="rounded-full bg-black/5 px-1.5 py-0.5 text-[10px] dark:bg-white/10">
-                          {orderRecords.filter(order => matchesSalesOrderView(order, option.key)).length}
+                          {orderRegisterQueueCounts?.[option.key] ?? '—'}
                         </span>
                       </button>
                     ))}
