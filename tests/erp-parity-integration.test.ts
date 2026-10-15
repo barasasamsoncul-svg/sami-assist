@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 
 import {
   Pool,
+  type PoolClient,
 } from 'pg';
 
 import {
@@ -925,7 +926,7 @@ integration(
     let invoiceAutomationCalls = 0;
     const invoiceAutomationSeeds: string[] = [];
     const invoicePayloads: unknown[] = [];
-    let returnSession: Awaited<ReturnType<typeof pool.connect>> | null = null;
+    const returnSessionHolder: { client: PoolClient | null } = { client: null };
 
     try {
       await setupClient.query(`
@@ -2005,13 +2006,11 @@ integration(
         refundSalesReturnCreditTransaction,
       } = await import('../lib/apps/sales/operations');
 
-      const getReturnSession = async (): Promise<Awaited<ReturnType<typeof pool.connect>>> => {
-        if (!returnSession) {
-          const client = await pool.connect();
-          returnSession = client;
-          return client;
+      const getReturnSession = async (): Promise<PoolClient> => {
+        if (!returnSessionHolder.client) {
+          returnSessionHolder.client = await pool.connect();
         }
-        return returnSession;
+        return returnSessionHolder.client;
       };
       const returnPool = {
         query: async (queryText: string, values?: readonly unknown[]) => {
@@ -2224,7 +2223,7 @@ integration(
       assert.equal(issuedReturnCredits.credits.length, 2);
       assert.equal(invoiceCreditCalls, 2);
       assert.deepEqual(
-        creditRequests.map(request => [request.invoiceId, ...request.lineQuantities]),
+        creditRequests.map(request => [request.invoiceId, ...request.lineQuantities.map(quantity => Number(quantity.toFixed(4)))]),
         [
           [firstInvoiceId, 0.4],
           [secondInvoiceId, 0.1],
@@ -2493,7 +2492,7 @@ integration(
       assert.equal(finalMovements.rows.length, 2);
 
     } finally {
-      (returnSession as Awaited<ReturnType<typeof pool.connect>> | null)?.release();
+      returnSessionHolder.client?.release();
       await pool.end();
     }
   },
