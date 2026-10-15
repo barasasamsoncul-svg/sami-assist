@@ -46,6 +46,19 @@ test('Sales shipment quality reports only recorded durations and filters to rece
   assert.match(component, /credit, available credit, and refunds are kept separate by currency/i);
 });
 
+test('Sales return status and reason result caps are applied independently per currency', async () => {
+  const service = await source('lib/apps/sales/return-fulfillment-quality.ts');
+  assert.match(
+    service,
+    /status_totals AS \([\s\S]*?GROUP BY status, currency[\s\S]*?ranked_statuses AS \([\s\S]*?PARTITION BY currency[\s\S]*?WHERE currency_rank <= 250/,
+  );
+  assert.match(
+    service,
+    /reason_totals AS \([\s\S]*?GROUP BY reason, currency[\s\S]*?ranked_reasons AS \([\s\S]*?PARTITION BY currency[\s\S]*?WHERE currency_rank <= 100/,
+  );
+  assert.match(service, /ORDER BY currency ASC, return_count DESC, credit_amount DESC, reason ASC/);
+});
+
 test('Sales return and fulfillment quality report is integrated with Sales Reports and regression suite', async () => {
   const page = await source('app/apps/sales/SalesSectionPage.tsx');
   const packageJson = await source('package.json');

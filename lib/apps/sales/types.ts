@@ -454,22 +454,26 @@ export type SalesWorkspaceData = {
     sentCount: number;
     acceptedCount: number;
     convertedCount: number;
-    quoteValue: number;
-    acceptedValue: number;
-    orderValue: number;
+    quoteValueByCurrency: Array<{ currency: string; amount: number }>;
+    acceptedValueByCurrency: Array<{ currency: string; amount: number }>;
+    orderValueByCurrency: Array<{ currency: string; amount: number }>;
+    orderCount: number;
   };
   statusCounts: Array<{
     status: string;
+    currency: string;
     count: number;
     amount: number;
   }>;
   monthly: Array<{
     month: string;
+    currency: string;
     quoteCount: number;
     amount: number;
   }>;
   topCustomers: Array<{
     customerName: string;
+    currency: string;
     quoteCount: number;
     amount: number;
   }>;

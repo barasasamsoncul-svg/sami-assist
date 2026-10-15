@@ -69,6 +69,20 @@ function money(
 }
 
 
+function moneyByCurrency(
+  rows: Array<{ currency: string; amount: number }>,
+  fallbackCurrency: string,
+) {
+  if (rows.length === 0) {
+    return money(0, fallbackCurrency);
+  }
+
+  return rows
+    .map(row => money(row.amount, row.currency))
+    .join(' · ');
+}
+
+
 function priorityFromSeverity(
   value:
     string,
@@ -780,9 +794,8 @@ export const salesDashboardAnalysisProvider:
           label:
             'Quoted value',
           value:
-            money(
-              data.metrics
-                .quoteValue,
+            moneyByCurrency(
+              data.metrics.quoteValueByCurrency,
               currency,
             ),
           description:
@@ -809,9 +822,8 @@ export const salesDashboardAnalysisProvider:
           label:
             'Accepted value',
           value:
-            money(
-              data.metrics
-                .acceptedValue,
+            moneyByCurrency(
+              data.metrics.acceptedValueByCurrency,
               currency,
             ),
           description:
@@ -835,9 +847,8 @@ export const salesDashboardAnalysisProvider:
           label:
             'Sales orders',
           value:
-            money(
-              data.metrics
-                .orderValue,
+            moneyByCurrency(
+              data.metrics.orderValueByCurrency,
               currency,
             ),
           description:
@@ -877,15 +888,13 @@ export const salesDashboardAnalysisProvider:
           title:
             'Sales pipeline',
           detail:
-            money(
-              data.metrics
-                .quoteValue,
+            moneyByCurrency(
+              data.metrics.quoteValueByCurrency,
               currency,
             ) +
             ' quoted; ' +
-            money(
-              data.metrics
-                .acceptedValue,
+            moneyByCurrency(
+              data.metrics.acceptedValueByCurrency,
               currency,
             ) +
             ' accepted; ' +
