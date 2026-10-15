@@ -835,7 +835,7 @@ export async function respondToPublicSalesQuote(
                 TRUE
             AND q.deleted_at
                 IS NULL
-          FOR UPDATE
+          FOR UPDATE OF q
         `,
         [
           tokenHash,
