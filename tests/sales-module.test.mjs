@@ -30,6 +30,33 @@ async function source(
 }
 
 
+
+test('Sales quote-to-invoice checks invoicing and customer permissions before converting the quote', async () => {
+  const commands = await source('lib/apps/sales/commands.ts');
+  const start = commands.indexOf('export async function convertSalesQuoteToInvoice(');
+  const end = commands.indexOf('export async function updateSalesOrderFulfillment(', start);
+  assert.ok(start >= 0 && end > start, 'quote-to-invoice wrapper should have a bounded implementation');
+
+  const conversion = commands.slice(start, end);
+  const orderCreation = conversion.indexOf('await createSalesOrderFromQuote(');
+  assert.ok(orderCreation > 0);
+  assert.ok(
+    conversion.indexOf('await requireInvoicingContext(') >= 0 &&
+    conversion.indexOf('await requireInvoicingContext(') < orderCreation,
+    'invoice permission and module access must be checked before order creation',
+  );
+  assert.ok(
+    conversion.indexOf('INVOICING_PERMISSIONS.CUSTOMER_VIEW') < orderCreation,
+    'customer access must be preflighted before order creation',
+  );
+  assert.ok(
+    conversion.indexOf('INVOICING_PERMISSIONS.CUSTOMER_MANAGE') < orderCreation,
+    'customer creation permission must be preflighted before order creation',
+  );
+  assert.match(conversion, /active_billing_customer_id/);
+  assert.match(conversion, /hasAnyInvoicingPermission\([\s\S]*INVOICING_PERMISSIONS\.CUSTOMER_MANAGE/);
+});
+
 test('Sales v3 models commercial pricing, quote approval, order fulfillment and invoice state independently', async () => {
   const schema =
     await source(
