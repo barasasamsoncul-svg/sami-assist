@@ -1365,8 +1365,8 @@ export async function applySalesOrderDeposit(
   const context = await requireSalesContext(
     SALES_PERMISSIONS.DEPOSIT_MANAGE,
   );
-  const orderId = requireUuid(input.orderId, 'Sales order');
-  const invoiceId = requireUuid(input.invoiceId, 'Invoice');
+  const orderId = requireUuid(input.orderId, 'Sales order').toLowerCase();
+  const invoiceId = requireUuid(input.invoiceId, 'Invoice').toLowerCase();
   const operationKey = (
     'sales-order:' + orderId + ':deposit:' + invoiceId
   ).slice(0, 160);
