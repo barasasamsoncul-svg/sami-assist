@@ -19,6 +19,8 @@ import {
 } from '../lib/apps/sales/opportunity-conversion';
 
 import { moveSalesOpportunityTransaction } from '../lib/apps/sales/pipeline';
+import { createSalesQuoteTransaction } from '../lib/apps/sales/commands';
+import { resolveSalesPricelistUnitPrice } from '../lib/apps/sales/commercial';
 
 import {
   postInvoiceConfirmationToAccounting,
@@ -3822,6 +3824,340 @@ integration(
         'ROLLBACK',
       );
     } finally {
+      client.release();
+      await pool.end();
+    }
+  },
+);
+
+
+
+integration(
+  'ERP parity: effective-dated Sales pricelists and quote-line snapshots execute in PostgreSQL',
+  async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    const client = await pool.connect();
+    let outerTransaction = false;
+
+    try {
+      await client.query('BEGIN');
+      outerTransaction = true;
+      await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
+      await client.query(`
+        CREATE TABLE public.companies (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          name TEXT NOT NULL DEFAULT 'Sales Pricing Test',
+          currency VARCHAR(3) NOT NULL DEFAULT 'KES',
+          deleted_at TIMESTAMPTZ
+        )
+      `);
+
+      const companyId = 'c1111111-1111-4111-8111-111111111111';
+      const otherCompanyId = 'c2222222-2222-4222-8222-222222222222';
+      const userId = 'c3333333-3333-4333-8333-333333333333';
+      const customerId = 'c4444444-4444-4444-8444-444444444444';
+      const otherCustomerId = 'c5555555-5555-4555-8555-555555555555';
+      const taxId = 'c6666666-6666-4666-8666-666666666666';
+      const productId = 'c7777777-7777-4777-8777-777777777777';
+      const secondProductId = 'c8888888-8888-4888-8888-888888888888';
+
+      await client.query(
+        'INSERT INTO public.companies (id, name, currency) VALUES ($1, $2, $3), ($4, $5, $3)',
+        [companyId, 'Pricing Company', 'KES', otherCompanyId, 'Other Pricing Company'],
+      );
+
+      // Minimal shared-catalogue relations used by the production quote-line normalizer.
+      await client.query(`
+        CREATE TABLE public.invoicing_tax_rates (
+          id UUID PRIMARY KEY,
+          company_id UUID NOT NULL,
+          name VARCHAR(180) NOT NULL,
+          rate NUMERIC(8,4) NOT NULL,
+          deleted_at TIMESTAMPTZ
+        )
+      `);
+      await client.query(`
+        CREATE TABLE public.invoicing_catalog_items (
+          id UUID PRIMARY KEY,
+          company_id UUID NOT NULL,
+          name VARCHAR(180) NOT NULL,
+          sku VARCHAR(120),
+          description TEXT,
+          unit VARCHAR(60) NOT NULL DEFAULT 'unit',
+          unit_price NUMERIC(18,4) NOT NULL DEFAULT 0,
+          external_product_id UUID,
+          metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+          default_tax_rate_id UUID,
+          is_active BOOLEAN NOT NULL DEFAULT TRUE,
+          deleted_at TIMESTAMPTZ
+        )
+      `);
+
+      const { getSamiModuleMigrationPlan } = await import('../lib/modules/migrations');
+      const plan = getSamiModuleMigrationPlan('sales', '1.0.0', '3.4.20');
+      for (let index = 0; index < plan.length; index += 1) {
+        const migration = plan[index];
+        assert.equal(migration.moduleKey, 'sales');
+        if (index > 0) {
+          assert.equal(plan[index - 1].toVersion, migration.fromVersion,
+            'Sales migration chain must stay continuous');
+        }
+        await migration.run(client, {
+          moduleKey: 'sales',
+          namespace: 'sales',
+          fromVersion: migration.fromVersion,
+          toVersion: migration.toVersion,
+        });
+      }
+
+      await client.query(
+        'INSERT INTO public.invoicing_tax_rates (id, company_id, name, rate) VALUES ($1, $2, $3, $4)',
+        [taxId, companyId, 'VAT', 16],
+      );
+      await client.query(
+        `INSERT INTO public.invoicing_catalog_items
+          (id, company_id, name, sku, description, unit, unit_price, metadata, default_tax_rate_id)
+         VALUES
+          ($1, $2, 'Priced Product', 'PRICE-1', 'Priced product description', 'each', 200, '{"standardCost":40}'::jsonb, $3),
+          ($4, $2, 'Generic Product', 'PRICE-2', 'Generic product description', 'each', 100, '{"standardCost":20}'::jsonb, $3)`,
+        [productId, companyId, taxId, secondProductId],
+      );
+
+      const pricelistResult = await client.query(
+        `INSERT INTO public.sales_pricelists
+          (company_id, name, currency, billing_customer_id, valid_from, valid_until, is_active)
+         VALUES ($1, 'One-day customer pricelist', 'KES', $2, DATE '2026-10-16', DATE '2026-10-16', TRUE)
+         RETURNING id`,
+        [companyId, customerId],
+      );
+      const pricelistId = String(pricelistResult.rows[0].id);
+
+      const lowTierRule = await client.query(
+        `INSERT INTO public.sales_pricelist_rules
+          (company_id, pricelist_id, catalog_item_id, min_quantity, calculation, amount, priority)
+         VALUES ($1, $2, $3, 1, 'discount_percent', 10, 100)
+         RETURNING id`,
+        [companyId, pricelistId, productId],
+      );
+      await client.query(
+        `INSERT INTO public.sales_pricelist_rules
+          (company_id, pricelist_id, catalog_item_id, min_quantity, calculation, amount, priority)
+         VALUES ($1, $2, $3, 10, 'fixed', 125, 100)`,
+        [companyId, pricelistId, productId],
+      );
+      // The generic rule has a better numeric priority, but a product-specific
+      // rule must still win before the generic fallback.
+      await client.query(
+        `INSERT INTO public.sales_pricelist_rules
+          (company_id, pricelist_id, catalog_item_id, min_quantity, calculation, amount, priority)
+         VALUES ($1, $2, NULL, 1, 'markup_percent', 5, 1)`,
+        [companyId, pricelistId],
+      );
+      const foreignPricelistResult = await client.query(
+        `INSERT INTO public.sales_pricelists
+          (company_id, name, currency, billing_customer_id, valid_from, valid_until, is_active)
+         VALUES ($1, 'Foreign company pricelist', 'KES', $2, DATE '2026-10-16', DATE '2026-10-16', TRUE)
+         RETURNING id`,
+        [otherCompanyId, customerId],
+      );
+      const foreignPricelistId = String(foreignPricelistResult.rows[0].id);
+
+      // Keep all production quote writes on this integration test's PostgreSQL
+      // session. Translate the inner transaction boundary to a savepoint so the
+      // outer fixture transaction can still be rolled back at test end.
+      const quotePool = {
+        query: async (queryText: string, values?: readonly unknown[]) =>
+          client.query(queryText, values as never[]),
+        connect: async () => ({
+          query: async (queryText: string, values?: readonly unknown[]) => {
+            const command = queryText.trim().toUpperCase();
+            if (command === 'BEGIN') return client.query('SAVEPOINT sales_pricing_quote_tx');
+            if (command === 'COMMIT') return client.query('RELEASE SAVEPOINT sales_pricing_quote_tx');
+            if (command === 'ROLLBACK') {
+              await client.query('ROLLBACK TO SAVEPOINT sales_pricing_quote_tx');
+              return client.query('RELEASE SAVEPOINT sales_pricing_quote_tx');
+            }
+            return client.query(queryText, values as never[]);
+          },
+          release: () => {},
+        }),
+      };
+
+      let quoteSequence = 0;
+      const quoteContext = {
+        pool: quotePool,
+        tenantId: 'sales-pricing-integration-tenant',
+        companyId,
+        userId,
+        company: {
+          currentCompany: {
+            id: companyId,
+            name: 'Pricing Company',
+            currency: 'KES',
+          },
+        },
+        permissions: {
+          isOwner: true,
+          permissionSet: new Set<string>(),
+        },
+      } as unknown as Parameters<typeof createSalesQuoteTransaction>[1];
+
+      const quoteDependencies: Parameters<typeof createSalesQuoteTransaction>[2] = {
+        ensureSalesDefaults: async () => {},
+        resolveTemplate: async () => null,
+        resolveCustomerSnapshot: async (_client, _context, input) => ({
+          billingCustomerId: input.billingCustomerId ? String(input.billingCustomerId) : customerId,
+          customerName: String(input.customerName ?? 'Pricing Customer'),
+          customerEmail: input.customerEmail ? String(input.customerEmail) : null,
+          customerPhone: input.customerPhone ? String(input.customerPhone) : null,
+          customerTaxId: input.customerTaxId ? String(input.customerTaxId) : null,
+          billingAddress: input.billingAddress ? String(input.billingAddress) : null,
+          shippingAddress: input.shippingAddress ? String(input.shippingAddress) : null,
+          currency: String(input.currency ?? 'KES'),
+        }),
+        resolveSalesExchangeRate: async (_client, input) => ({
+          currency: String(input.currency).toUpperCase(),
+          baseCurrency: String(input.baseCurrency).toUpperCase(),
+          rate: 1,
+          effectiveDate: String(input.effectiveDate),
+          source: 'base' as const,
+          sourceName: 'Company base currency',
+          manualOverride: false,
+        }),
+        nextSalesNumber: async () => 'PRICE-Q-' + String(++quoteSequence).padStart(3, '0'),
+        resolveSalesAssignmentForUser: async () => ({
+          salesTeamId: null,
+          territoryId: null,
+        }),
+        recordSalesActivity: async () => {},
+        emitSalesAutomationEvent: async () => {},
+      };
+
+      type PricingQuoteOptions = {
+        quoteDate?: string;
+        billingCustomerId?: string;
+        currency?: string;
+        selectedPricelistId?: string;
+      };
+      const createPricedQuote = (
+        catalogItemId: string,
+        quantity: number,
+        reference: string,
+        options: PricingQuoteOptions = {},
+      ) => createSalesQuoteTransaction(
+        {
+          quoteDate: options.quoteDate ?? '2026-10-16',
+          validUntil: '2026-10-30',
+          currency: options.currency ?? 'KES',
+          billingCustomerId: options.billingCustomerId ?? customerId,
+          pricelistId: options.selectedPricelistId ?? pricelistId,
+          customerName: 'Pricing Customer',
+          customerEmail: 'buyer@pricing.example',
+          reference,
+          lines: [{ catalogItemId, quantity }],
+        },
+        quoteContext,
+        quoteDependencies,
+      );
+
+      const basePricedQuote = await createPricedQuote(productId, 5, 'PRICE-BASE-TIER');
+      const quantityTierQuote = await createPricedQuote(productId, 12, 'PRICE-QUANTITY-TIER');
+      const genericFallbackQuote = await createPricedQuote(secondProductId, 1, 'PRICE-GENERIC-FALLBACK');
+      assert.equal(basePricedQuote.totalAmount, 1044,
+        'the product-specific 10% price rule should apply before tax at the effective date');
+      assert.equal(quantityTierQuote.totalAmount, 1740,
+        'the 10-unit tier should replace the base product rule with a fixed unit price of 125');
+      assert.equal(genericFallbackQuote.totalAmount, 121.8,
+        'a product without its own rule should use the generic 5% markup rule');
+
+      const baseLineBeforeChange = await client.query(
+        `SELECT q.total_amount, item.unit_price, item.subtotal, item.tax_rate, item.tax_amount, item.line_total
+         FROM public.sales_quotes q
+         JOIN public.sales_quote_items item
+           ON item.quote_id = q.id AND item.company_id = q.company_id
+         WHERE q.id = $1 AND q.company_id = $2`,
+        [basePricedQuote.id, companyId],
+      );
+      assert.equal(baseLineBeforeChange.rows.length, 1);
+      assert.equal(Number(baseLineBeforeChange.rows[0].total_amount), 1044);
+      assert.equal(Number(baseLineBeforeChange.rows[0].unit_price), 180);
+      assert.equal(Number(baseLineBeforeChange.rows[0].subtotal), 900);
+      assert.equal(Number(baseLineBeforeChange.rows[0].tax_rate), 16);
+      assert.equal(Number(baseLineBeforeChange.rows[0].tax_amount), 144);
+      assert.equal(Number(baseLineBeforeChange.rows[0].line_total), 1044);
+
+      // A pricelist that expires before the quote date, starts after it, or
+      // is bound to another customer must not be selected by the resolver.
+      const resolvePricing = (quoteDate: string, billingCustomerId = customerId, selectedPricelistId = pricelistId) =>
+        resolveSalesPricelistUnitPrice(client, {
+          companyId,
+          pricelistId: selectedPricelistId,
+          catalogItemId: productId,
+          billingCustomerId,
+          quantity: 1,
+          baseUnitPrice: 200,
+          quoteDate,
+        });
+      await assert.rejects(() => resolvePricing('2026-10-15'), /active pricelist that is valid for the quotation date/);
+      await assert.rejects(() => resolvePricing('2026-10-17'), /active pricelist that is valid for the quotation date/);
+      await assert.rejects(() => resolvePricing('2026-10-16', otherCustomerId), /active pricelist that is valid for the quotation date/);
+      await assert.rejects(() => resolvePricing('2026-10-16', customerId, foreignPricelistId),
+        /active pricelist that is valid for the quotation date/);
+
+      await client.query(
+        'UPDATE public.sales_pricelist_rules SET calculation = $3, amount = $4 WHERE id = $1 AND company_id = $2',
+        [lowTierRule.rows[0].id, companyId, 'fixed', 50],
+      );
+      await client.query(
+        'UPDATE public.invoicing_catalog_items SET unit_price = 500 WHERE id = $1 AND company_id = $2',
+        [productId, companyId],
+      );
+      await client.query(
+        'UPDATE public.invoicing_tax_rates SET rate = 8 WHERE id = $1 AND company_id = $2',
+        [taxId, companyId],
+      );
+
+      const quoteAfterCatalogueChange = await createPricedQuote(productId, 5, 'PRICE-AFTER-CATALOGUE-CHANGE');
+      assert.equal(quoteAfterCatalogueChange.totalAmount, 270,
+        'new quotes should use the revised fixed price and current catalogue tax rate');
+
+      const originalSnapshotAfterChange = await client.query(
+        `SELECT q.total_amount, item.unit_price, item.tax_rate, item.tax_amount, item.line_total
+         FROM public.sales_quotes q
+         JOIN public.sales_quote_items item
+           ON item.quote_id = q.id AND item.company_id = q.company_id
+         WHERE q.id = $1 AND q.company_id = $2`,
+        [basePricedQuote.id, companyId],
+      );
+      assert.equal(Number(originalSnapshotAfterChange.rows[0].total_amount), 1044);
+      assert.equal(Number(originalSnapshotAfterChange.rows[0].unit_price), 180);
+      assert.equal(Number(originalSnapshotAfterChange.rows[0].tax_rate), 16);
+      assert.equal(Number(originalSnapshotAfterChange.rows[0].tax_amount), 144);
+      assert.equal(Number(originalSnapshotAfterChange.rows[0].line_total), 1044);
+
+      const newSnapshot = await client.query(
+        `SELECT q.total_amount, item.unit_price, item.tax_rate, item.subtotal, item.tax_amount, item.line_total
+         FROM public.sales_quotes q
+         JOIN public.sales_quote_items item
+           ON item.quote_id = q.id AND item.company_id = q.company_id
+         WHERE q.id = $1 AND q.company_id = $2`,
+        [quoteAfterCatalogueChange.id, companyId],
+      );
+      assert.equal(Number(newSnapshot.rows[0].unit_price), 50);
+      assert.equal(Number(newSnapshot.rows[0].tax_rate), 8);
+      assert.equal(Number(newSnapshot.rows[0].subtotal), 250);
+      assert.equal(Number(newSnapshot.rows[0].tax_amount), 20);
+      assert.equal(Number(newSnapshot.rows[0].line_total), 270);
+
+      await assert.rejects(
+        () => createPricedQuote(productId, 1, 'PRICE-CURRENCY-MISMATCH', { currency: 'USD' }),
+        /selected pricelist currency must match the quotation currency/,
+        'a quotation must not silently mix a KES pricelist with a USD quotation',
+      );
+    } finally {
+      if (outerTransaction) {
+        try { await client.query('ROLLBACK'); } catch {}
+      }
       client.release();
       await pool.end();
     }
