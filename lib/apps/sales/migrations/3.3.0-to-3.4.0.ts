@@ -190,42 +190,60 @@ const SQL = `
   CREATE INDEX IF NOT EXISTS idx_sales_quote_stage_history_quote
     ON public.sales_quote_stage_history(company_id, quote_id, created_at DESC);
 
-  INSERT INTO public.sales_pipeline_stages (
-    company_id,
-    code,
-    name,
-    sequence,
-    probability,
-    stage_type,
-    is_won,
-    is_lost,
-    fold_in_kanban,
-    description
-  )
-  SELECT
-    companies.company_id,
-    stage.code,
-    stage.name,
-    stage.sequence,
-    stage.probability,
-    stage.stage_type,
-    stage.is_won,
-    stage.is_lost,
-    stage.fold_in_kanban,
-    'Seeded on upgrade to Sales 3.4.0'
-  FROM (
-    SELECT DISTINCT company_id
-    FROM public.sales_quotes
-  ) companies
-  CROSS JOIN (
-    VALUES
-      ('draft',     'Draft',     10,  10.00, 'open', FALSE, FALSE, FALSE),
-      ('sent',      'Sent',      20,  30.00, 'open', FALSE, FALSE, FALSE),
-      ('viewed',    'Viewed',    30,  50.00, 'open', FALSE, FALSE, FALSE),
-      ('accepted',  'Accepted',  40,  80.00, 'open', FALSE, FALSE, TRUE),
-      ('converted', 'Converted', 50, 100.00, 'won',  TRUE,  FALSE, TRUE)
-  ) AS stage(code, name, sequence, probability, stage_type, is_won, is_lost, fold_in_kanban)
-  ON CONFLICT (company_id, name) DO NOTHING;
+  -- Version 3.3 tenants have a legacy stage table keyed by (company_id, name).
+  -- The bootstrap migration now reads the current schema.sql, so a fresh install
+  -- can already have pipeline_id and a normalized composite unique index before
+  -- this historical migration is replayed. Seed legacy rows only when the old
+  -- single-pipeline shape is present; the later 3.4.17 -> 3.4.18 migration owns
+  -- default pipeline + stage seeding for the multi-pipeline shape.
+  DO $sales_3_3_stage_seed$
+  BEGIN
+    IF NOT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'sales_pipeline_stages'
+        AND column_name = 'pipeline_id'
+    ) THEN
+      INSERT INTO public.sales_pipeline_stages (
+        company_id,
+        code,
+        name,
+        sequence,
+        probability,
+        stage_type,
+        is_won,
+        is_lost,
+        fold_in_kanban,
+        description
+      )
+      SELECT
+        companies.company_id,
+        stage.code,
+        stage.name,
+        stage.sequence,
+        stage.probability,
+        stage.stage_type,
+        stage.is_won,
+        stage.is_lost,
+        stage.fold_in_kanban,
+        'Seeded on upgrade to Sales 3.4.0'
+      FROM (
+        SELECT DISTINCT company_id
+        FROM public.sales_quotes
+      ) companies
+      CROSS JOIN (
+        VALUES
+          ('draft',     'Draft',     10,  10.00, 'open', FALSE, FALSE, FALSE),
+          ('sent',      'Sent',      20,  30.00, 'open', FALSE, FALSE, FALSE),
+          ('viewed',    'Viewed',    30,  50.00, 'open', FALSE, FALSE, FALSE),
+          ('accepted',  'Accepted',  40,  80.00, 'open', FALSE, FALSE, TRUE),
+          ('converted', 'Converted', 50, 100.00, 'won',  TRUE,  FALSE, TRUE)
+      ) AS stage(code, name, sequence, probability, stage_type, is_won, is_lost, fold_in_kanban)
+      ON CONFLICT DO NOTHING;
+    END IF;
+  END
+  $sales_3_3_stage_seed$;
 
   UPDATE public.sales_pipeline_stages
   SET
