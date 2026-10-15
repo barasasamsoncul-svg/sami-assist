@@ -3985,41 +3985,67 @@ export async function refundSalesReturnCredit(
     const row = freshResult.rows[0];
 
     const available =
-      money(
-        row.available_credit,
-      );
+      money(row.available_credit);
 
-    const amount =
-      input.amount ===
-        undefined ||
-      input.amount ===
-        null ||
-      input.amount ===
-        ''
-        ? available
-        : numberInput(
-            input.amount,
-            'Refund amount',
-            {
-              min:
-                0.0001,
-            },
-          );
+    const callerKey = cleanText(input.idempotencyKey, 80);
+    const suppliedRefundKey = callerKey
+      ? ('sales-return-credit:' + returnCreditId + ':refund:' + callerKey).slice(0, 120)
+      : null;
+
+    // A retry may arrive after Invoicing has committed the refund and Sales has
+    // repaired its cached balance. Recover the existing operation before
+    // rejecting its original amount against that now-lower balance.
+    let priorRefund: { amount: unknown } | null = null;
+    if (suppliedRefundKey) {
+      const priorRefundResult = await context.pool.query(
+        `
+          SELECT amount
+          FROM invoicing_credit_note_refunds
+          WHERE company_id = $1
+            AND credit_note_id = $2
+            AND idempotency_key = $3
+          LIMIT 1
+        `,
+        [
+          context.companyId,
+          String(row.credit_note_id),
+          'credit-refund:' + suppliedRefundKey,
+        ],
+      );
+      priorRefund = priorRefundResult.rows[0] || null;
+    }
+
+    const hasRequestedAmount =
+      input.amount !== undefined &&
+      input.amount !== null &&
+      input.amount !== '';
+    const requestedAmount = hasRequestedAmount
+      ? numberInput(input.amount, 'Refund amount', { min: 0.0001 })
+      : null;
+    const amount = priorRefund
+      ? money(priorRefund.amount)
+      : requestedAmount ?? available;
 
     if (
-      amount <=
-        0 ||
-      amount >
-        available +
-          0.0001
+      priorRefund &&
+      requestedAmount !== null &&
+      Math.abs(requestedAmount - amount) > 0.0001
+    ) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'This refund idempotency key was already used with a different amount.',
+        { recordedAmount: amount },
+      );
+    }
+
+    if (
+      amount <= 0 ||
+      (!priorRefund && amount > available + 0.0001)
     ) {
       throw new SalesError(
         'INVALID_INPUT',
         'Refund amount exceeds the customer credit available from this return.',
-        {
-          availableCredit:
-            available,
-        },
+        { availableCredit: available },
       );
     }
 
@@ -4041,36 +4067,15 @@ export async function refundSalesReturnCredit(
           ) ||
           'Refund for Sales return',
         idempotencyKey:
+          suppliedRefundKey ||
           (
-            cleanText(
-              input.idempotencyKey,
-              80,
-            )
-              ? (
-                  'sales-return-credit:' +
-                  returnCreditId +
-                  ':refund:' +
-                  cleanText(
-                    input.idempotencyKey,
-                    80,
-                  )
-                )
-              : (
-                  'sales-return-credit:' +
-                  returnCreditId +
-                  ':refund:' +
-                  available.toFixed(
-                    2,
-                  ) +
-                  ':' +
-                  amount.toFixed(
-                    2,
-                  )
-                )
-          ).slice(
-            0,
-            120,
-          ),
+            'sales-return-credit:' +
+            returnCreditId +
+            ':refund:' +
+            available.toFixed(2) +
+            ':' +
+            amount.toFixed(2)
+          ).slice(0, 120),
         metadata: {
           sourceModule:
             'sales',
@@ -4201,12 +4206,11 @@ export async function refundSalesReturnCredit(
       );
 
     const nextStatus =
-      remaining <=
-        0.0001 &&
-      refundedAmount >
-        0
-        ? 'refunded'
-        : 'partially_refunded';
+      refundedAmount <= 0.0001
+        ? 'credited'
+        : remaining <= 0.0001
+          ? 'refunded'
+          : 'partially_refunded';
 
     await context.pool.query(
       `
