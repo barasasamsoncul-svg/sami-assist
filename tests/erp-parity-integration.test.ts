@@ -885,6 +885,469 @@ integration(
 );
 
 integration(
+  'ERP parity: accepted Sales quote converts to one confirmed order and reconciles CRM in PostgreSQL',
+  async () => {
+    const { createSalesOrderFromQuoteTransaction } = await import('../lib/apps/sales/commands');
+    const pool = new Pool({
+      connectionString: DATABASE_URL,
+      max: 1,
+    });
+    const setupClient = await pool.connect();
+
+    const companyId = '11111111-1111-4111-8111-111111111111';
+    const userId = '22222222-2222-4222-8222-222222222222';
+    const salesTeamId = '23232323-2323-4232-8232-232323232323';
+    const territoryId = '24242424-2424-4242-8242-242424242424';
+    const pipelineId = '33333333-3333-4333-8333-333333333333';
+    const openStageId = '44444444-4444-4444-8444-444444444444';
+    const wonStageId = '55555555-5555-4555-8555-555555555555';
+    const opportunityId = '66666666-6666-4666-8666-666666666666';
+    const quoteId = '77777777-7777-4777-8777-777777777777';
+    const catalogItemId = '88888888-8888-4888-8888-888888888888';
+
+    const orderNumber = 'SO-2026-0017';
+    let reserveCalls = 0;
+    let commissionCalls = 0;
+    let automationCalls = 0;
+    let sequenceCalls = 0;
+
+    try {
+      await setupClient.query(`
+        CREATE TEMP TABLE sales_pipeline_stages (
+          id UUID PRIMARY KEY,
+          company_id UUID NOT NULL,
+          pipeline_id UUID NOT NULL,
+          stage_type VARCHAR(20) NOT NULL,
+          is_active BOOLEAN NOT NULL DEFAULT TRUE,
+          name VARCHAR(100) NOT NULL,
+          sequence INTEGER NOT NULL
+        );
+
+        CREATE TEMP TABLE sales_opportunities (
+          id UUID PRIMARY KEY,
+          company_id UUID NOT NULL,
+          stage_id UUID NOT NULL,
+          deleted_at TIMESTAMPTZ,
+          probability NUMERIC(5,2) NOT NULL DEFAULT 0,
+          won_at TIMESTAMPTZ,
+          lost_at TIMESTAMPTZ,
+          lost_reason TEXT,
+          updated_by UUID,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TEMP TABLE sales_opportunity_stage_history (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          opportunity_id UUID NOT NULL,
+          from_stage_id UUID,
+          to_stage_id UUID NOT NULL,
+          probability NUMERIC(5,2) NOT NULL,
+          reason TEXT,
+          changed_by UUID,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TEMP TABLE sales_quotes (
+          id UUID PRIMARY KEY,
+          company_id UUID NOT NULL,
+          deleted_at TIMESTAMPTZ,
+          sales_order_id UUID,
+          opportunity_id UUID,
+          quote_number VARCHAR(80) NOT NULL,
+          status VARCHAR(30) NOT NULL,
+          approval_status VARCHAR(30) NOT NULL DEFAULT 'not_required',
+          currency VARCHAR(3) NOT NULL,
+          reference TEXT,
+          customer_name TEXT NOT NULL,
+          customer_email TEXT,
+          customer_phone TEXT,
+          customer_tax_id TEXT,
+          billing_address TEXT,
+          shipping_address TEXT,
+          subtotal NUMERIC(14,2) NOT NULL,
+          discount_total NUMERIC(14,2) NOT NULL,
+          tax_total NUMERIC(14,2) NOT NULL,
+          shipping_total NUMERIC(14,2) NOT NULL,
+          total_amount NUMERIC(14,2) NOT NULL,
+          pricelist_id UUID,
+          cost_total NUMERIC(14,2) NOT NULL,
+          margin_amount NUMERIC(14,2) NOT NULL,
+          margin_percent NUMERIC(8,4) NOT NULL,
+          salesperson_user_id UUID,
+          sales_team_id UUID,
+          territory_id UUID,
+          notes TEXT,
+          terms TEXT,
+          quote_date DATE NOT NULL,
+          base_currency VARCHAR(3) NOT NULL,
+          exchange_rate NUMERIC(18,8) NOT NULL,
+          exchange_rate_date DATE NOT NULL,
+          exchange_rate_source VARCHAR(40) NOT NULL,
+          base_total_amount NUMERIC(14,2) NOT NULL,
+          deposit_type VARCHAR(20) NOT NULL DEFAULT 'none',
+          deposit_value NUMERIC(14,2) NOT NULL DEFAULT 0,
+          converted_at TIMESTAMPTZ,
+          public_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+          updated_by UUID,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TEMP TABLE sales_quote_items (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          quote_id UUID NOT NULL,
+          company_id UUID NOT NULL,
+          catalog_item_id UUID,
+          external_product_id UUID,
+          sort_order INTEGER NOT NULL,
+          description TEXT NOT NULL,
+          sku_snapshot TEXT,
+          unit VARCHAR(40) NOT NULL,
+          quantity NUMERIC(14,4) NOT NULL,
+          unit_price NUMERIC(14,2) NOT NULL,
+          unit_cost NUMERIC(14,2) NOT NULL,
+          cost_total NUMERIC(14,2) NOT NULL,
+          margin_amount NUMERIC(14,2) NOT NULL,
+          margin_percent NUMERIC(8,4) NOT NULL,
+          discount_type VARCHAR(20) NOT NULL,
+          discount_value NUMERIC(14,2) NOT NULL,
+          discount_amount NUMERIC(14,2) NOT NULL,
+          tax_name_snapshot TEXT,
+          tax_rate NUMERIC(8,4) NOT NULL,
+          tax_amount NUMERIC(14,2) NOT NULL,
+          subtotal NUMERIC(14,2) NOT NULL,
+          line_total NUMERIC(14,2) NOT NULL
+        );
+
+        CREATE TEMP TABLE sales_orders_v2 (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          quote_id UUID NOT NULL,
+          order_number VARCHAR(80) NOT NULL,
+          status VARCHAR(30) NOT NULL,
+          order_date DATE NOT NULL,
+          currency VARCHAR(3) NOT NULL,
+          reference TEXT,
+          customer_name TEXT NOT NULL,
+          customer_email TEXT,
+          customer_phone TEXT,
+          customer_tax_id TEXT,
+          billing_address TEXT,
+          shipping_address TEXT,
+          subtotal NUMERIC(14,2) NOT NULL,
+          discount_total NUMERIC(14,2) NOT NULL,
+          tax_total NUMERIC(14,2) NOT NULL,
+          shipping_total NUMERIC(14,2) NOT NULL,
+          total_amount NUMERIC(14,2) NOT NULL,
+          pricelist_id UUID,
+          cost_total NUMERIC(14,2) NOT NULL,
+          margin_amount NUMERIC(14,2) NOT NULL,
+          margin_percent NUMERIC(8,4) NOT NULL,
+          salesperson_user_id UUID,
+          sales_team_id UUID,
+          territory_id UUID,
+          notes TEXT,
+          terms TEXT,
+          created_by UUID,
+          updated_by UUID,
+          base_currency VARCHAR(3),
+          exchange_rate NUMERIC(18,8),
+          exchange_rate_date DATE,
+          exchange_rate_source VARCHAR(40),
+          base_total_amount NUMERIC(14,2),
+          deposit_type VARCHAR(20),
+          deposit_value NUMERIC(14,2),
+          deposit_required_amount NUMERIC(14,2),
+          deposit_status VARCHAR(30),
+          latest_invoice_id UUID,
+          deleted_at TIMESTAMPTZ,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TEMP TABLE sales_order_items_v2 (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          sales_order_id UUID NOT NULL,
+          company_id UUID NOT NULL,
+          catalog_item_id UUID,
+          external_product_id UUID,
+          sort_order INTEGER NOT NULL,
+          description TEXT NOT NULL,
+          sku_snapshot TEXT,
+          unit VARCHAR(40) NOT NULL,
+          quantity NUMERIC(14,4) NOT NULL,
+          unit_price NUMERIC(14,2) NOT NULL,
+          unit_cost NUMERIC(14,2) NOT NULL,
+          cost_total NUMERIC(14,2) NOT NULL,
+          margin_amount NUMERIC(14,2) NOT NULL,
+          margin_percent NUMERIC(8,4) NOT NULL,
+          discount_type VARCHAR(20) NOT NULL,
+          discount_value NUMERIC(14,2) NOT NULL,
+          discount_amount NUMERIC(14,2) NOT NULL,
+          tax_name_snapshot TEXT,
+          tax_rate NUMERIC(8,4) NOT NULL,
+          tax_amount NUMERIC(14,2) NOT NULL,
+          subtotal NUMERIC(14,2) NOT NULL,
+          line_total NUMERIC(14,2) NOT NULL
+        );
+
+        CREATE TEMP TABLE sales_order_status_history (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          sales_order_id UUID NOT NULL,
+          company_id UUID NOT NULL,
+          from_status VARCHAR(30),
+          to_status VARCHAR(30) NOT NULL,
+          reason TEXT,
+          changed_by UUID,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TEMP TABLE sales_quote_status_history (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          quote_id UUID NOT NULL,
+          company_id UUID NOT NULL,
+          from_status VARCHAR(30),
+          to_status VARCHAR(30) NOT NULL,
+          reason TEXT,
+          changed_by UUID,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TEMP TABLE activities (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          user_id UUID,
+          model VARCHAR(80) NOT NULL,
+          record_id UUID NOT NULL,
+          type VARCHAR(120) NOT NULL,
+          content TEXT NOT NULL,
+          metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `);
+
+      await setupClient.query(
+        `INSERT INTO sales_pipeline_stages
+          (id, company_id, pipeline_id, stage_type, is_active, name, sequence)
+         VALUES
+          ($1, $2, $3, 'open', TRUE, 'Qualified', 10),
+          ($4, $2, $3, 'won', TRUE, 'Won', 100)`,
+        [openStageId, companyId, pipelineId, wonStageId],
+      );
+
+      await setupClient.query(
+        `INSERT INTO sales_opportunities
+          (id, company_id, stage_id, probability, lost_at, lost_reason, updated_by)
+         VALUES ($1, $2, $3, 40, NOW(), 'old loss metadata', $4)`,
+        [opportunityId, companyId, openStageId, userId],
+      );
+
+      await setupClient.query(
+        `INSERT INTO sales_quotes (
+           id, company_id, opportunity_id, quote_number, status, approval_status,
+           currency, customer_name, subtotal, discount_total, tax_total, shipping_total,
+           total_amount, cost_total, margin_amount, margin_percent,
+           salesperson_user_id, sales_team_id, territory_id, quote_date,
+           base_currency, exchange_rate, exchange_rate_date, exchange_rate_source,
+           base_total_amount, deposit_type, deposit_value
+         ) VALUES (
+           $1,$2,$3,'Q-2026-0042','accepted','not_required',
+           'KES','Acme Ltd',100,0,16,0,116,0,100,100,
+           $4,$5,$6,'2026-10-15','KES',1,'2026-10-15','base',116,'none',0
+         )`,
+        [quoteId, companyId, opportunityId, userId, salesTeamId, territoryId],
+      );
+
+      await setupClient.query(
+        `INSERT INTO sales_quote_items (
+           quote_id, company_id, catalog_item_id, external_product_id,
+           sort_order, description, sku_snapshot, unit, quantity, unit_price,
+           unit_cost, cost_total, margin_amount, margin_percent, discount_type,
+           discount_value, discount_amount, tax_name_snapshot, tax_rate, tax_amount,
+           subtotal, line_total
+         ) VALUES (
+           $1,$2,$3,NULL,1,'Consulting','CONS-1','unit',1,100,
+           0,0,100,100,'percent',0,0,'VAT',16,16,100,116
+         )`,
+        [quoteId, companyId, catalogItemId],
+      );
+    } finally {
+      setupClient.release();
+    }
+
+    const context = {
+      companyId,
+      userId,
+      tenantId: 'integration-test-tenant',
+      company: {
+        currentCompany: {
+          currency: 'KES',
+        },
+      },
+      pool,
+    } as unknown as Parameters<typeof createSalesOrderFromQuoteTransaction>[1];
+
+    const dependencies: Parameters<typeof createSalesOrderFromQuoteTransaction>[2] = {
+      ensureSalesDefaults: async () => {},
+      assertSalesQuoteApprovalSatisfied: async () => {},
+      nextSalesNumber: async () => {
+        sequenceCalls += 1;
+        return orderNumber;
+      },
+      reserveSalesOrderInventory: async () => {
+        reserveCalls += 1;
+      },
+      recordSalesOrderCommissionEntries: async () => {
+        commissionCalls += 1;
+      },
+      emitSalesAutomationEvent: async () => {
+        automationCalls += 1;
+      },
+    };
+
+    try {
+      const first = await createSalesOrderFromQuoteTransaction(
+        { quoteId },
+        context,
+        dependencies,
+      );
+      assert.equal(first.orderNumber, orderNumber);
+      assert.equal(first.status, 'confirmed');
+      assert.equal(first.invoiceId, null);
+      assert.equal(sequenceCalls, 1);
+      assert.equal(reserveCalls, 1);
+      assert.equal(commissionCalls, 1);
+      assert.equal(automationCalls, 1);
+
+      const firstCheck = await pool.query(
+        `SELECT
+           q.status AS quote_status,
+           q.sales_order_id,
+           o.id AS order_id,
+           o.order_number,
+           o.status AS order_status,
+           o.currency,
+           o.base_currency,
+           o.exchange_rate,
+           o.base_total_amount,
+           line.description,
+           line.sku_snapshot,
+           line.quantity,
+           line.unit_price,
+           line.tax_amount,
+           line.line_total
+         FROM sales_quotes q
+         INNER JOIN sales_orders_v2 o
+           ON o.id = q.sales_order_id
+          AND o.company_id = q.company_id
+         INNER JOIN sales_order_items_v2 line
+           ON line.sales_order_id = o.id
+          AND line.company_id = o.company_id
+         WHERE q.id = $1 AND q.company_id = $2`,
+        [quoteId, companyId],
+      );
+      assert.equal(firstCheck.rows.length, 1);
+      assert.equal(firstCheck.rows[0].quote_status, 'converted');
+      assert.equal(firstCheck.rows[0].sales_order_id, first.id);
+      assert.equal(firstCheck.rows[0].order_id, first.id);
+      assert.equal(firstCheck.rows[0].order_number, orderNumber);
+      assert.equal(firstCheck.rows[0].order_status, 'confirmed');
+      assert.equal(firstCheck.rows[0].currency, 'KES');
+      assert.equal(firstCheck.rows[0].base_currency, 'KES');
+      assert.equal(Number(firstCheck.rows[0].exchange_rate), 1);
+      assert.equal(Number(firstCheck.rows[0].base_total_amount), 116);
+      assert.equal(firstCheck.rows[0].description, 'Consulting');
+      assert.equal(firstCheck.rows[0].sku_snapshot, 'CONS-1');
+      assert.equal(Number(firstCheck.rows[0].quantity), 1);
+      assert.equal(Number(firstCheck.rows[0].unit_price), 100);
+      assert.equal(Number(firstCheck.rows[0].tax_amount), 16);
+      assert.equal(Number(firstCheck.rows[0].line_total), 116);
+
+      const second = await createSalesOrderFromQuoteTransaction(
+        { quoteId },
+        context,
+        dependencies,
+      );
+      assert.equal(second.id, first.id);
+      assert.equal(second.orderNumber, first.orderNumber);
+      assert.equal(second.status, first.status);
+      assert.equal(sequenceCalls, 1, 'a conversion retry must reuse the original order number');
+      assert.equal(reserveCalls, 1, 'a conversion retry must not reserve stock again');
+      assert.equal(commissionCalls, 1, 'a conversion retry must not accrue commission again');
+      assert.equal(automationCalls, 1, 'a conversion retry must not re-emit order-created automation');
+
+      const [counts, opportunity, quoteHistory, orderHistory] = await Promise.all([
+        pool.query(
+          `SELECT
+             (SELECT COUNT(*)::int FROM sales_orders_v2 WHERE company_id = $1 AND quote_id = $2) AS orders,
+             (SELECT COUNT(*)::int FROM sales_order_items_v2 WHERE company_id = $1 AND sales_order_id = $3) AS order_lines`,
+          [companyId, quoteId, first.id],
+        ),
+        pool.query(
+          `SELECT stage_id, probability, won_at, lost_at, lost_reason
+           FROM sales_opportunities
+           WHERE id = $1 AND company_id = $2`,
+          [opportunityId, companyId],
+        ),
+        pool.query(
+          `SELECT from_status, to_status, reason
+           FROM sales_quote_status_history
+           WHERE company_id = $1 AND quote_id = $2`,
+          [companyId, quoteId],
+        ),
+        pool.query(
+          `SELECT from_status, to_status, reason
+           FROM sales_order_status_history
+           WHERE company_id = $1 AND sales_order_id = $2`,
+          [companyId, first.id],
+        ),
+      ]);
+
+      assert.equal(counts.rows[0].orders, 1);
+      assert.equal(counts.rows[0].order_lines, 1);
+      assert.equal(opportunity.rows.length, 1);
+      assert.equal(opportunity.rows[0].stage_id, wonStageId);
+      assert.equal(Number(opportunity.rows[0].probability), 100);
+      assert.ok(opportunity.rows[0].won_at instanceof Date);
+      assert.equal(opportunity.rows[0].lost_at, null);
+      assert.equal(opportunity.rows[0].lost_reason, null);
+      assert.equal(quoteHistory.rows.length, 1);
+      assert.equal(quoteHistory.rows[0].from_status, 'accepted');
+      assert.equal(quoteHistory.rows[0].to_status, 'converted');
+      assert.equal(orderHistory.rows.length, 1);
+      assert.equal(orderHistory.rows[0].from_status, null);
+      assert.equal(orderHistory.rows[0].to_status, 'confirmed');
+
+      const audit = await pool.query(
+        `SELECT model, record_id, type, metadata
+         FROM activities
+         WHERE company_id = $1
+           AND record_id IN ($2, $3)
+         ORDER BY type`,
+        [companyId, opportunityId, quoteId],
+      );
+      assert.equal(audit.rows.length, 2);
+      assert.deepEqual(
+        audit.rows.map((row: Record<string, unknown>) => row.type).sort(),
+        ['sales.opportunity.won_from_order', 'sales.quote.converted'],
+      );
+      const opportunityAudit = audit.rows.find(
+        (row: Record<string, unknown>) => row.type === 'sales.opportunity.won_from_order',
+      );
+      assert.equal(opportunityAudit?.model, 'sales.opportunity');
+      assert.equal(opportunityAudit?.record_id, opportunityId);
+      assert.deepEqual(opportunityAudit?.metadata, {
+        quoteId,
+        quoteNumber: 'Q-2026-0042',
+        orderId: first.id,
+        orderNumber,
+      });
+    } finally {
+      await pool.end();
+    }
+  },
+);
+
+integration(
   'ERP parity: remaining specialist depth schemas execute in PostgreSQL',
   async () => {
     const pool =
