@@ -2138,7 +2138,7 @@ test('Sales Priority 9 supports searchable lead lifecycle, reassignment, disqual
     source('app/apps/sales/SalesPipelineManager.tsx'),
   ]);
 
-  assert.ok(manifest.includes('key: "sales"') && manifest.includes("version: '3.4.19'"));
+  assert.ok(manifest.includes('key: "sales"') && manifest.includes("version: '3.4.20'"));
   assert.ok(migration.includes("sales-3.4.5-to-3.4.6"));
   assert.ok(migration.includes("CREATE TABLE IF NOT EXISTS public.sales_lead_activities"));
   assert.match(runtime, /SALES_3_4_5_TO_3_4_6/);
@@ -2804,7 +2804,7 @@ test('Sales lead-routing rules are tenant-scoped, priority ordered and migration
     source('lib/modules/first-party.ts'),
   ]);
 
-  assert.ok(manifest.includes('version: \'3.4.19\''));
+  assert.ok(manifest.includes('version: \'3.4.20\''));
   assert.ok(rules.includes('requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE)'));
   assert.ok(rules.includes('WHERE company_id=$1 AND deleted_at IS NULL'));
   assert.ok(rules.includes('A routing rule with that name or source match already exists.'));
@@ -2843,7 +2843,7 @@ test('Sales lead reassignment validates team membership and records reasoned his
     source('lib/modules/first-party.ts'),
   ]);
 
-  assert.ok(manifest.includes("version: '3.4.19'"));
+  assert.ok(manifest.includes("version: '3.4.20'"));
   assert.ok(schema.includes('CREATE TABLE IF NOT EXISTS public.sales_lead_assignment_history'));
   assert.ok(schema.includes('idx_sales_lead_assignment_history_timeline'));
   assert.ok(migration.includes('sales-3.4.14-to-3.4.15'));
