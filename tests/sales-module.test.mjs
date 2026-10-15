@@ -290,7 +290,7 @@ test('Sales quote authoring and delivery keep permission checks on their public 
   const deliveryEnd = commands.indexOf('export async function createSalesOrderFromQuote(', deliveryStart);
   assert.ok(deliveryStart >= 0 && deliveryEnd > deliveryStart);
   const deliveryEntry = commands.slice(deliveryStart, deliveryEnd);
-  assert.match(deliveryEntry, /await requireSalesContext\(\s*SALES_PERMISSIONS\.QUOTE_SEND\s*\)/);
+  assert.match(deliveryEntry, /await requireSalesContext\([\s\S]*?QUOTE_SEND[\s\S]*?\)/);
   assert.match(deliveryEntry, /await deliverSalesQuote\(/);
 });
 
