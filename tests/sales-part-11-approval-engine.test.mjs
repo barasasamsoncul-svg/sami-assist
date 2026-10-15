@@ -24,12 +24,16 @@ test('Sales Part 11 routes legacy approval actions through the sequential approv
 });
 
 test('approval policy evaluation supports total, discount, margin and currency conditions', async () => {
-  const engine = await source('lib/apps/sales/approvals.ts');
-  assert.match(engine, /min_quote_total/);
-  assert.match(engine, /max_discount_percent/);
-  assert.match(engine, /min_margin_percent/);
-  assert.match(engine, /currency_code/);
-  assert.match(engine, /triggers\.some\(Boolean\)/);
+  const [engine, policy] = await Promise.all([
+    source('lib/apps/sales/approvals.ts'),
+    source('lib/apps/sales/approval-policy.ts'),
+  ]);
+  assert.match(policy, /min_quote_total/);
+  assert.match(policy, /max_discount_percent/);
+  assert.match(policy, /min_margin_percent/);
+  assert.match(policy, /currency_code/);
+  assert.match(policy, /triggers\.some\(Boolean\)/);
+  assert.match(engine, /salesQuoteApprovalPolicyMatches\(policy, quote\)/);
   assert.match(engine, /ORDER BY priority ASC, created_at ASC/);
 });
 
