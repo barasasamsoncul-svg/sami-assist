@@ -875,65 +875,27 @@ export async function respondToPublicSalesQuote(
         today,
       )
     ) {
-      await client.query(
-        `
-          UPDATE sales_quotes
-          SET
-            status = 'expired',
-            expired_at =
-              COALESCE(
-                expired_at,
-                NOW()
-              ),
-            public_enabled =
-              FALSE,
-            updated_at =
-              NOW()
-          WHERE id = $1
-            AND company_id = $2
-        `,
-        [
-          quote.id,
-          quote.company_id,
-        ],
-      );
-
-      await client.query(
-        `
-          INSERT INTO sales_quote_status_history (
-            quote_id,
-            company_id,
-            from_status,
-            to_status,
-            reason,
-            changed_by
-          )
-          VALUES ($1, $2, $3, 'expired', $4, NULL)
-        `,
-        [
-          quote.id,
-          quote.company_id,
-          current,
-          'Quotation expired before customer action.',
-        ],
-      );
-
-      await recordSalesActivity(client, {
-        companyId: String(quote.company_id),
-        userId: null,
-        quoteId: String(quote.id),
-        type: 'sales.quote.expired',
-        content: 'Quote ' + String(quote.quote_number) + ' expired before customer action.',
-        metadata: {
-          attemptedAction: input.action,
-          reason: 'validity_expired',
+      const expired = await expirePublicSalesQuoteWithAudit(
+        client,
+        {
+          quoteId: String(quote.id),
+          companyId: String(quote.company_id),
+          quoteNumber: String(quote.quote_number),
+          fromStatus: current as 'sent' | 'viewed',
           source: 'public_quote_response',
+          attemptedAction: input.action,
         },
-      });
-
-      await client.query(
-        'COMMIT',
+        recordSalesActivity,
       );
+
+      await client.query('COMMIT');
+
+      if (!expired) {
+        throw new SalesError(
+          'QUOTE_STATE_INVALID',
+          'This quote changed while you were responding. Reload the quotation page and try again.',
+        );
+      }
 
       throw new SalesError(
         'QUOTE_STATE_INVALID',
