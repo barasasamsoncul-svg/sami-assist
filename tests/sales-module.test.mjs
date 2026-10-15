@@ -287,7 +287,7 @@ test('Sales quote authoring and delivery keep permission checks on their public 
   assert.match(updateEntry, /return updateSalesQuoteDraftTransaction\(input, context\)/);
 
   const deliveryStart = commands.indexOf('export async function sendSalesQuote(');
-  const deliveryEnd = commands.indexOf('async function markSalesOpportunityWonFromAcceptedQuote(', deliveryStart);
+  const deliveryEnd = commands.indexOf('export async function createSalesOrderFromQuote(', deliveryStart);
   assert.ok(deliveryStart >= 0 && deliveryEnd > deliveryStart);
   const deliveryEntry = commands.slice(deliveryStart, deliveryEnd);
   assert.match(deliveryEntry, /await requireSalesContext\(\s*SALES_PERMISSIONS\.QUOTE_SEND\s*\)/);
