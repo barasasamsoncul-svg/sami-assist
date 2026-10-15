@@ -17,6 +17,18 @@ test('Sales Part 11 routes legacy approval actions through the sequential approv
   ]);
   assert.match(commands, /return requestAdvancedSalesQuoteApproval\(input\)/);
   assert.match(commands, /return reviewAdvancedSalesQuoteApproval\(input\)/);
+  const requestPublicStart = engine.indexOf('export async function requestAdvancedSalesQuoteApproval(');
+  const requestTransactionStart = engine.indexOf('export async function requestAdvancedSalesQuoteApprovalTransaction(', requestPublicStart);
+  const reviewPublicStart = engine.indexOf('export async function reviewAdvancedSalesQuoteApproval(');
+  const reviewTransactionStart = engine.indexOf('export async function reviewAdvancedSalesQuoteApprovalTransaction(', reviewPublicStart);
+  assert.ok(requestPublicStart >= 0 && requestTransactionStart > requestPublicStart);
+  assert.ok(reviewPublicStart > requestTransactionStart && reviewTransactionStart > reviewPublicStart);
+  const requestPublic = engine.slice(requestPublicStart, requestTransactionStart);
+  const reviewPublic = engine.slice(reviewPublicStart, reviewTransactionStart);
+  assert.match(requestPublic, /requireSalesContext\(SALES_PERMISSIONS\.QUOTE_EDIT\)/);
+  assert.match(requestPublic, /requestAdvancedSalesQuoteApprovalTransaction\(input, context\)/);
+  assert.match(reviewPublic, /requireSalesContext\(SALES_PERMISSIONS\.QUOTE_INTERNAL_APPROVE\)/);
+  assert.match(reviewPublic, /reviewAdvancedSalesQuoteApprovalTransaction\(input, context\)/);
   assert.match(service, /getSalesQuoteApprovalData/);
   assert.match(service, /saveSalesQuoteApprovalPolicy/);
   assert.match(route, /approvals === '1'/);
