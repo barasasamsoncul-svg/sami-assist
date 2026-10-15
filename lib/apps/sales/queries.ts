@@ -3677,6 +3677,8 @@ export async function getSalesQuoteRegisterPage(input: Record<string, unknown> =
       OR quote.customer_name ILIKE ('%' || $2::text || '%')
       OR COALESCE(quote.customer_email, '') ILIKE ('%' || $2::text || '%')
       OR COALESCE(quote.reference, '') ILIKE ('%' || $2::text || '%')
+      OR quote.effective_status ILIKE ('%' || $2::text || '%')
+      OR COALESCE(quote.approval_status, '') ILIKE ('%' || $2::text || '%')
     )
     AND (
       $3::text = 'all'
@@ -3810,8 +3812,8 @@ export async function getSalesOrderRegisterPage(input: Record<string, unknown> =
   const statusView = normalizeOrderRegisterStatus(input.statusView);
   const sortBy = normalizeOrderRegisterSort(input.sortBy);
   const sortSql: Record<SalesOrderSortBy, string> = {
-    newest: 'o.created_at DESC, o.id DESC',
-    oldest: 'o.created_at ASC, o.id ASC',
+    newest: 'o.order_date DESC, o.id DESC',
+    oldest: 'o.order_date ASC, o.id ASC',
     value_high: 'o.base_total_amount DESC, o.created_at DESC, o.id DESC',
     value_low: 'o.base_total_amount ASC, o.created_at DESC, o.id DESC',
     delivery_first: '(CASE WHEN COALESCE(SUM(oi.quantity), 0) > 0 THEN ROUND(100.0 * COALESCE(SUM(oi.delivered_quantity), 0) / SUM(oi.quantity)) ELSE 0 END) ASC, o.created_at DESC, o.id DESC',
@@ -3826,6 +3828,9 @@ export async function getSalesOrderRegisterPage(input: Record<string, unknown> =
       OR o.order_number ILIKE ('%' || $2::text || '%')
       OR o.customer_name ILIKE ('%' || $2::text || '%')
       OR COALESCE(o.reference, '') ILIKE ('%' || $2::text || '%')
+      OR COALESCE(o.status, '') ILIKE ('%' || $2::text || '%')
+      OR COALESCE(o.fulfillment_status, 'not_started') ILIKE ('%' || $2::text || '%')
+      OR COALESCE(o.invoice_status, 'not_invoiced') ILIKE ('%' || $2::text || '%')
     )
     AND (
       $3::text = 'all'
