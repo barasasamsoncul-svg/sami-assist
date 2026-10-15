@@ -294,6 +294,15 @@ test('Sales quote authoring and delivery keep permission checks on their public 
   assert.match(deliveryEntry, /await deliverSalesQuote\(/);
 });
 
+test('Sales 3.3 migration is safe for legacy and current multi-pipeline stage schemas', async () => {
+  const migration = await source('lib/apps/sales/migrations/3.3.0-to-3.4.0.ts');
+  assert.match(migration, /DO \$sales_3_3_stage_seed\$/);
+  assert.match(migration, /information_schema\.columns[\s\S]*column_name = 'pipeline_id'[\s\S]*THEN[\s\S]*INSERT INTO public\.sales_pipeline_stages/);
+  assert.match(migration, /ON CONFLICT DO NOTHING/);
+  assert.doesNotMatch(migration, /ON CONFLICT\s*\(\s*company_id\s*,\s*name\s*\)\s+DO NOTHING/,
+    'legacy migration must not assume the current schema retains the old company/name unique constraint');
+});
+
 test('Sales fresh pipeline-stage schema declares every column before dependent indexes', async () => {
   const [schema, migration] = await Promise.all([
     source('lib/apps/sales/schema.sql'),
