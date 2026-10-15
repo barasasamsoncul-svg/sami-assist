@@ -888,7 +888,7 @@ integration(
 integration(
   'ERP parity: accepted Sales quote converts to one confirmed order and reconciles CRM in PostgreSQL',
   async () => {
-    const { createSalesOrderFromQuoteTransaction, updateSalesOrderFulfillmentTransaction } = await import('../lib/apps/sales/commands');
+    const { createSalesOrderFromQuoteTransaction, createSalesOrderInvoiceTransaction, updateSalesOrderFulfillmentTransaction } = await import('../lib/apps/sales/commands');
     const { getPublicSalesQuote, respondToPublicSalesQuote } = await import('../lib/apps/sales/public');
     const pool = new Pool({
       connectionString: DATABASE_URL,
@@ -907,6 +907,9 @@ integration(
     const quoteId = '77777777-7777-4777-8777-777777777777';
     const catalogItemId = '88888888-8888-4888-8888-888888888888';
     const warehouseId = '99999999-9999-4999-8999-999999999999';
+    const billingCustomerId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const firstInvoiceId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const secondInvoiceId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
     const publicToken = 'sami-sales-integration-customer-acceptance-token-2026-10-15';
     const tokenHash = createHash('sha256').update(publicToken).digest('hex');
 
@@ -917,6 +920,11 @@ integration(
     let fulfillmentAutomationCalls = 0;
     const fulfillmentAutomationSeeds: string[] = [];
     let sequenceCalls = 0;
+    let invoiceCreateCalls = 0;
+    let billingCustomerCreateCalls = 0;
+    let invoiceAutomationCalls = 0;
+    const invoiceAutomationSeeds: string[] = [];
+    const invoicePayloads: unknown[] = [];
 
     try {
       await setupClient.query(`
@@ -962,6 +970,7 @@ integration(
           template_id UUID,
           sales_order_id UUID,
           latest_invoice_id UUID,
+          billing_customer_id UUID,
           opportunity_id UUID,
           quote_number VARCHAR(80) NOT NULL,
           status VARCHAR(30) NOT NULL,
@@ -1035,6 +1044,9 @@ integration(
           company_id UUID PRIMARY KEY,
           allow_online_acceptance BOOLEAN NOT NULL DEFAULT TRUE,
           allow_online_rejection BOOLEAN NOT NULL DEFAULT TRUE,
+          allow_partial_invoicing BOOLEAN NOT NULL DEFAULT TRUE,
+          require_billing_customer_for_invoice BOOLEAN NOT NULL DEFAULT TRUE,
+          invoice_policy VARCHAR(30) NOT NULL DEFAULT 'ordered',
           primary_color TEXT,
           secondary_color TEXT,
           footer_text TEXT
@@ -1186,6 +1198,7 @@ integration(
           deposit_required_amount NUMERIC(14,2),
           deposit_status VARCHAR(30),
           latest_invoice_id UUID,
+          shipping_invoiced BOOLEAN NOT NULL DEFAULT FALSE,
           deleted_at TIMESTAMPTZ,
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
@@ -1199,6 +1212,7 @@ integration(
           stock_reservation_id UUID,
           shipped_quantity NUMERIC(14,4) NOT NULL DEFAULT 0,
           delivered_quantity NUMERIC(14,4) NOT NULL DEFAULT 0,
+          invoiced_quantity NUMERIC(14,4) NOT NULL DEFAULT 0,
           sort_order INTEGER NOT NULL,
           description TEXT NOT NULL,
           sku_snapshot TEXT,
@@ -1251,6 +1265,29 @@ integration(
           content TEXT NOT NULL,
           metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TEMP TABLE sales_order_invoice_batches (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          sales_order_id UUID NOT NULL,
+          idempotency_key VARCHAR(120) NOT NULL,
+          source_reference TEXT NOT NULL DEFAULT '',
+          requested_lines JSONB,
+          created_by UUID,
+          status VARCHAR(30) NOT NULL DEFAULT 'pending',
+          invoice_id UUID,
+          error_code VARCHAR(120),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE(company_id, sales_order_id, idempotency_key)
+        );
+
+        CREATE TEMP TABLE invoicing_invoices (
+          id UUID PRIMARY KEY,
+          company_id UUID NOT NULL,
+          reference TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          deleted_at TIMESTAMPTZ
         );
       `);
 
@@ -1330,6 +1367,11 @@ integration(
          )`,
         [quoteId, companyId, catalogItemId],
       );
+      await setupClient.query(
+        `INSERT INTO sales_settings (company_id, allow_partial_invoicing, require_billing_customer_for_invoice, invoice_policy)
+         VALUES ($1, TRUE, TRUE, 'ordered')`,
+        [companyId],
+      );
     } finally {
       setupClient.release();
     }
@@ -1363,6 +1405,24 @@ integration(
       },
       emitSalesAutomationEvent: async () => {
         automationCalls += 1;
+      },
+    };
+
+
+    const invoiceDependencies: Parameters<typeof createSalesOrderInvoiceTransaction>[2] = {
+      createInvoicingCustomer: async () => {
+        billingCustomerCreateCalls += 1;
+        return { id: billingCustomerId };
+      },
+      createInvoice: async input => {
+        invoicePayloads.push(input);
+        const id = invoiceCreateCalls === 0 ? firstInvoiceId : secondInvoiceId;
+        invoiceCreateCalls += 1;
+        return { id };
+      },
+      emitSalesAutomationEvent: async (_context, event) => {
+        invoiceAutomationCalls += 1;
+        invoiceAutomationSeeds.push(event.idempotencySeed);
       },
     };
 
@@ -1598,6 +1658,113 @@ integration(
         [companyId, catalogItemId, warehouseId],
       );
       assert.equal(Number(stockAfterFulfillmentRetry.rows[0].quantity), 9.5);
+
+      const orderLineId = String(firstCheck.rows[0].order_line_id);
+      const partialInvoiceInput = {
+        orderId: first.id,
+        idempotencyKey: 'erp-sales-partial-invoice-001',
+        lines: [{ lineId: orderLineId, quantity: 0.4 }],
+      };
+      const partialInvoice = await createSalesOrderInvoiceTransaction(
+        partialInvoiceInput,
+        context,
+        invoiceDependencies,
+      );
+      assert.equal(partialInvoice.invoiceId, firstInvoiceId);
+      assert.equal(partialInvoice.invoiceStatus, 'partial');
+      assert.equal(partialInvoice.status, 'confirmed');
+      assert.equal(partialInvoice.reused, false);
+      assert.equal(invoiceCreateCalls, 1);
+      assert.equal(billingCustomerCreateCalls, 1);
+      const firstInvoicePayload = invoicePayloads[0] as { lines: Array<{ quantity: number }>; reference: string };
+      assert.equal(firstInvoicePayload.lines.length, 1);
+      assert.equal(firstInvoicePayload.lines[0].quantity, 0.4);
+      assert.ok(firstInvoicePayload.reference.includes('Sales order ' + first.orderNumber));
+
+      const partialInvoiceRetry = await createSalesOrderInvoiceTransaction(
+        partialInvoiceInput,
+        context,
+        invoiceDependencies,
+      );
+      assert.equal(partialInvoiceRetry.invoiceId, firstInvoiceId);
+      assert.equal(partialInvoiceRetry.reused, true);
+      assert.equal(invoiceCreateCalls, 1,
+        'retrying the completed partial invoice batch must not call Invoicing again');
+
+      const remainingInvoice = await createSalesOrderInvoiceTransaction(
+        {
+          orderId: first.id,
+          idempotencyKey: 'erp-sales-invoice-remaining-002',
+        },
+        context,
+        invoiceDependencies,
+      );
+      assert.equal(remainingInvoice.invoiceId, secondInvoiceId);
+      assert.equal(remainingInvoice.invoiceStatus, 'invoiced');
+      assert.equal(remainingInvoice.status, 'confirmed',
+        'fully invoiced orders remain confirmed until fulfillment is complete');
+      assert.equal(invoiceCreateCalls, 2);
+      assert.equal(billingCustomerCreateCalls, 1,
+        'the billing customer linked by the first batch should be reused');
+      const secondInvoicePayload = invoicePayloads[1] as { lines: Array<{ quantity: number }> };
+      assert.equal(secondInvoicePayload.lines.length, 1);
+      assert.equal(secondInvoicePayload.lines[0].quantity, 0.6,
+        'all_remaining should invoice only the quantity left after the earlier partial batch');
+      assert.equal(invoiceAutomationCalls, 2,
+        'each new invoice emits one automation event while the retry emits none');
+      assert.deepEqual(invoiceAutomationSeeds, [
+        'invoice:' + firstInvoiceId,
+        'invoice:' + secondInvoiceId,
+      ]);
+
+      const invoicedLine = await pool.query(
+        `SELECT quantity, delivered_quantity, invoiced_quantity
+         FROM sales_order_items_v2
+         WHERE sales_order_id = $1 AND company_id = $2`,
+        [first.id, companyId],
+      );
+      assert.equal(invoicedLine.rows.length, 1);
+      assert.equal(Number(invoicedLine.rows[0].quantity), 1);
+      assert.equal(Number(invoicedLine.rows[0].delivered_quantity), 0.5);
+      assert.equal(Number(invoicedLine.rows[0].invoiced_quantity), 1);
+
+      const invoiceLinks = await pool.query(
+        `SELECT order_row.invoice_status,
+                order_row.latest_invoice_id AS order_latest_invoice_id,
+                quote.latest_invoice_id AS quote_latest_invoice_id,
+                order_row.shipping_invoiced
+         FROM sales_orders_v2 order_row
+         INNER JOIN sales_quotes quote
+           ON quote.id = order_row.quote_id
+          AND quote.company_id = order_row.company_id
+         WHERE order_row.id = $1 AND order_row.company_id = $2`,
+        [first.id, companyId],
+      );
+      assert.equal(invoiceLinks.rows.length, 1);
+      assert.equal(invoiceLinks.rows[0].invoice_status, 'invoiced');
+      assert.equal(invoiceLinks.rows[0].order_latest_invoice_id, secondInvoiceId);
+      assert.equal(invoiceLinks.rows[0].quote_latest_invoice_id, secondInvoiceId);
+      assert.equal(invoiceLinks.rows[0].shipping_invoiced, false);
+
+      const invoiceBatches = await pool.query(
+        `SELECT idempotency_key, status, invoice_id, requested_lines->>'mode' AS selection_mode,
+                requested_lines->'lines' AS requested_lines
+         FROM sales_order_invoice_batches
+         WHERE company_id = $1 AND sales_order_id = $2
+         ORDER BY created_at ASC, id ASC`,
+        [companyId, first.id],
+      );
+      assert.equal(invoiceBatches.rows.length, 2);
+      assert.equal(invoiceBatches.rows[0].idempotency_key, 'erp-sales-partial-invoice-001');
+      assert.equal(invoiceBatches.rows[0].status, 'created');
+      assert.equal(invoiceBatches.rows[0].invoice_id, firstInvoiceId);
+      assert.equal(invoiceBatches.rows[0].selection_mode, 'explicit');
+      assert.equal(invoiceBatches.rows[1].idempotency_key, 'erp-sales-invoice-remaining-002');
+      assert.equal(invoiceBatches.rows[1].status, 'created');
+      assert.equal(invoiceBatches.rows[1].invoice_id, secondInvoiceId);
+      assert.equal(invoiceBatches.rows[1].selection_mode, 'all_remaining');
+      assert.equal(invoiceBatches.rows[1].requested_lines[0].lineId, orderLineId);
+      assert.equal(Number(invoiceBatches.rows[1].requested_lines[0].quantity), 0.6);
       const movementCountAfterRetry = await pool.query(
         `SELECT COUNT(*)::int AS count FROM stock_movements
          WHERE company_id = $1 AND product_id = $2 AND movement_type = 'sales_delivery'`,
@@ -1683,11 +1850,15 @@ integration(
       assert.equal(quoteHistory.rows[1].to_status, 'accepted');
       assert.equal(quoteHistory.rows[2].from_status, 'accepted');
       assert.equal(quoteHistory.rows[2].to_status, 'converted');
-      assert.equal(orderHistory.rows.length, 2);
+      assert.equal(orderHistory.rows.length, 4);
       assert.equal(orderHistory.rows[0].from_status, null);
       assert.equal(orderHistory.rows[0].to_status, 'confirmed');
       assert.equal(orderHistory.rows[1].from_status, 'fulfillment:not_started');
       assert.equal(orderHistory.rows[1].to_status, 'fulfillment:partial');
+      assert.equal(orderHistory.rows[2].from_status, 'invoice:not_invoiced');
+      assert.equal(orderHistory.rows[2].to_status, 'invoice:partial');
+      assert.equal(orderHistory.rows[3].from_status, 'invoice:partial');
+      assert.equal(orderHistory.rows[3].to_status, 'invoice:invoiced');
 
       const audit = await pool.query(
         `SELECT model, record_id, type, metadata
