@@ -90,7 +90,8 @@ test('Sales refund retries recover their posted amount before available-balance 
   const refundCall = refund.indexOf('await refundInvoiceCreditNote(');
   assert.ok(priorRefundLookup >= 0 && priorRefundLookup < refundCall, 'look up a caller-supplied idempotency key before retry amount validation');
   assert.ok(compact.includes("'credit-refund:' + suppliedRefundKey"), 'look up the exact key used by Invoicing');
-  assert.match(compact, /createHash\('sha256'\)\.update\(callerKey\)\.digest\('hex'\)/, 'hash the complete caller key before composing the fixed-length idempotency key');
+  assert.ok(compact.includes('salesReturnRefundIdempotencyKey(returnCreditId, callerKey)'), 'use the full-key collision-safe helper');
+  assert.ok(compact.includes('legacySalesReturnRefundIdempotencyKey(returnCreditId, callerKey)'), 'preserve lookup compatibility for old keys');
   assert.ok(compact.includes('idempotency_key IN ($3, $4)'), 'recover both new hashed keys and legacy truncated keys');
   assert.match(compact, /const refundOperationKey = priorRefund \? String\(priorRefund\.idempotency_key\)\.slice\('credit-refund:'\.length\) : suppliedRefundKey/);
   assert.ok(compact.includes('const amount = priorRefund ? money(priorRefund.amount) : requestedAmount ?? available'));
