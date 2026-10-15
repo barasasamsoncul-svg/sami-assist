@@ -757,6 +757,21 @@ export async function getPublicSalesQuote(
 }
 
 
+type PublicSalesQuoteResponseDependencies = {
+  getTenantPoolByTenantId: typeof getTenantPoolByTenantId;
+  assertSalesQuoteApprovalSatisfied: typeof assertSalesQuoteApprovalSatisfied;
+  expirePublicSalesQuoteWithAudit: typeof expirePublicSalesQuoteWithAudit;
+  recordSalesActivity: typeof recordSalesActivity;
+};
+
+const defaultPublicSalesQuoteResponseDependencies: PublicSalesQuoteResponseDependencies = {
+  getTenantPoolByTenantId,
+  assertSalesQuoteApprovalSatisfied,
+  expirePublicSalesQuoteWithAudit,
+  recordSalesActivity,
+};
+
+
 export async function respondToPublicSalesQuote(
   tenantId:
     string,
@@ -784,13 +799,19 @@ export async function respondToPublicSalesQuote(
     selectedOptionalItemIds?:
       unknown;
   },
+  overrides: Partial<PublicSalesQuoteResponseDependencies> = {},
 ) {
+  const dependencies: PublicSalesQuoteResponseDependencies = {
+    ...defaultPublicSalesQuoteResponseDependencies,
+    ...overrides,
+  };
+
   assertToken(
     token,
   );
 
   const pool =
-    await getTenantPoolByTenantId(
+    await dependencies.getTenantPoolByTenantId(
       tenantId,
     );
 
@@ -875,7 +896,7 @@ export async function respondToPublicSalesQuote(
         today,
       )
     ) {
-      const expired = await expirePublicSalesQuoteWithAudit(
+      const expired = await dependencies.expirePublicSalesQuoteWithAudit(
         client,
         {
           quoteId: String(quote.id),
@@ -930,7 +951,7 @@ export async function respondToPublicSalesQuote(
       if (requesterEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(requesterEmail)) {
         throw new SalesError('INVALID_INPUT', 'Enter a valid email address or leave the email field blank.');
       }
-      await recordSalesActivity(client, {
+      await dependencies.recordSalesActivity(client, {
         companyId: String(quote.company_id),
         userId: null,
         quoteId: String(quote.id),
@@ -955,7 +976,7 @@ export async function respondToPublicSalesQuote(
     }
 
     if (input.action === 'accept') {
-      await assertSalesQuoteApprovalSatisfied(client, String(quote.company_id), String(quote.id));
+      await dependencies.assertSalesQuoteApprovalSatisfied(client, String(quote.company_id), String(quote.id));
     }
 
     if (
@@ -1397,7 +1418,7 @@ export async function respondToPublicSalesQuote(
         ],
       );
 
-      await recordSalesActivity(
+      await dependencies.recordSalesActivity(
         client,
         {
           companyId:
@@ -1512,7 +1533,7 @@ export async function respondToPublicSalesQuote(
       ],
     );
 
-    await recordSalesActivity(
+    await dependencies.recordSalesActivity(
       client,
       {
         companyId:

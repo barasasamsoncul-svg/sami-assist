@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 
 import {
   Pool,
@@ -888,6 +889,7 @@ integration(
   'ERP parity: accepted Sales quote converts to one confirmed order and reconciles CRM in PostgreSQL',
   async () => {
     const { createSalesOrderFromQuoteTransaction } = await import('../lib/apps/sales/commands');
+    const { respondToPublicSalesQuote } = await import('../lib/apps/sales/public');
     const pool = new Pool({
       connectionString: DATABASE_URL,
       max: 1,
@@ -904,6 +906,8 @@ integration(
     const opportunityId = '66666666-6666-4666-8666-666666666666';
     const quoteId = '77777777-7777-4777-8777-777777777777';
     const catalogItemId = '88888888-8888-4888-8888-888888888888';
+    const publicToken = 'sami-sales-integration-customer-acceptance-token-2026-10-15';
+    const tokenHash = createHash('sha256').update(publicToken).digest('hex');
 
     const orderNumber = 'SO-2026-0017';
     let reserveCalls = 0;
@@ -988,8 +992,31 @@ integration(
           deposit_type VARCHAR(20) NOT NULL DEFAULT 'none',
           deposit_value NUMERIC(14,2) NOT NULL DEFAULT 0,
           converted_at TIMESTAMPTZ,
+          public_token_hash CHAR(64),
+          valid_until DATE NOT NULL,
+          accepted_at TIMESTAMPTZ,
+          rejected_at TIMESTAMPTZ,
+          accepted_by_name TEXT,
+          accepted_by_email TEXT,
+          acceptance_note TEXT,
+          acceptance_signature_consent_text TEXT,
           public_enabled BOOLEAN NOT NULL DEFAULT TRUE,
           updated_by UUID,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TEMP TABLE sales_settings (
+          company_id UUID PRIMARY KEY,
+          allow_online_acceptance BOOLEAN NOT NULL DEFAULT TRUE,
+          allow_online_rejection BOOLEAN NOT NULL DEFAULT TRUE
+        );
+
+        CREATE TEMP TABLE sales_quote_optional_items (
+          id UUID PRIMARY KEY,
+          quote_id UUID NOT NULL,
+          company_id UUID NOT NULL,
+          is_selected BOOLEAN NOT NULL DEFAULT FALSE,
+          selected_at TIMESTAMPTZ,
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
 
@@ -1148,13 +1175,19 @@ integration(
            total_amount, cost_total, margin_amount, margin_percent,
            salesperson_user_id, sales_team_id, territory_id, quote_date,
            base_currency, exchange_rate, exchange_rate_date, exchange_rate_source,
-           base_total_amount, deposit_type, deposit_value
+           base_total_amount, deposit_type, deposit_value, public_token_hash, valid_until
          ) VALUES (
-           $1,$2,$3,'Q-2026-0042','accepted','not_required',
+           $1,$2,$3,'Q-2026-0042','sent','not_required',
            'KES','Acme Ltd',100,0,16,0,116,0,100,100,
-           $4,$5,$6,'2026-10-15','KES',1,'2026-10-15','base',116,'none',0
+           $4,$5,$6,CURRENT_DATE,'KES',1,CURRENT_DATE,'base',116,'none',0,$7,CURRENT_DATE + 14
          )`,
-        [quoteId, companyId, opportunityId, userId, salesTeamId, territoryId],
+        [quoteId, companyId, opportunityId, userId, salesTeamId, territoryId, tokenHash],
+      );
+
+      await setupClient.query(
+        `INSERT INTO sales_settings (company_id, allow_online_acceptance, allow_online_rejection)
+         VALUES ($1, TRUE, TRUE)`,
+        [companyId],
       );
 
       await setupClient.query(
@@ -1210,6 +1243,54 @@ integration(
     };
 
     try {
+      const acceptance = await respondToPublicSalesQuote(
+        'integration-test-tenant',
+        publicToken,
+        {
+          action: 'accept',
+          signerName: 'Acme Authorized Buyer',
+          signerEmail: 'buyer@acme.test',
+          signatureConsent: true,
+          acceptanceNote: 'Approved for order processing.',
+        },
+        {
+          getTenantPoolByTenantId: async () => pool,
+          assertSalesQuoteApprovalSatisfied: async () => {},
+        },
+      );
+      assert.equal(acceptance.id, quoteId);
+      assert.equal(acceptance.status, 'accepted');
+
+      const acceptanceEvidence = await pool.query(
+        `SELECT
+           status,
+           accepted_by_name,
+           accepted_by_email,
+           acceptance_note,
+           acceptance_signature_consent_text,
+           public_enabled
+         FROM sales_quotes
+         WHERE id = $1 AND company_id = $2`,
+        [quoteId, companyId],
+      );
+      assert.equal(acceptanceEvidence.rows.length, 1);
+      assert.equal(acceptanceEvidence.rows[0].status, 'accepted');
+      assert.equal(acceptanceEvidence.rows[0].accepted_by_name, 'Acme Authorized Buyer');
+      assert.equal(acceptanceEvidence.rows[0].accepted_by_email, 'buyer@acme.test');
+      assert.equal(acceptanceEvidence.rows[0].acceptance_note, 'Approved for order processing.');
+      assert.match(acceptanceEvidence.rows[0].acceptance_signature_consent_text, /electronic signature/i);
+      assert.equal(acceptanceEvidence.rows[0].public_enabled, false);
+
+      const acceptedHistory = await pool.query(
+        `SELECT from_status, to_status, reason
+         FROM sales_quote_status_history
+         WHERE company_id = $1 AND quote_id = $2`,
+        [companyId, quoteId],
+      );
+      assert.equal(acceptedHistory.rows.length, 1);
+      assert.equal(acceptedHistory.rows[0].from_status, 'sent');
+      assert.equal(acceptedHistory.rows[0].to_status, 'accepted');
+
       const first = await createSalesOrderFromQuoteTransaction(
         { quoteId },
         context,
@@ -1296,7 +1377,8 @@ integration(
         pool.query(
           `SELECT from_status, to_status, reason
            FROM sales_quote_status_history
-           WHERE company_id = $1 AND quote_id = $2`,
+           WHERE company_id = $1 AND quote_id = $2
+           ORDER BY created_at ASC`,
           [companyId, quoteId],
         ),
         pool.query(
@@ -1315,9 +1397,11 @@ integration(
       assert.ok(opportunity.rows[0].won_at instanceof Date);
       assert.equal(opportunity.rows[0].lost_at, null);
       assert.equal(opportunity.rows[0].lost_reason, null);
-      assert.equal(quoteHistory.rows.length, 1);
-      assert.equal(quoteHistory.rows[0].from_status, 'accepted');
-      assert.equal(quoteHistory.rows[0].to_status, 'converted');
+      assert.equal(quoteHistory.rows.length, 2);
+      assert.equal(quoteHistory.rows[0].from_status, 'sent');
+      assert.equal(quoteHistory.rows[0].to_status, 'accepted');
+      assert.equal(quoteHistory.rows[1].from_status, 'accepted');
+      assert.equal(quoteHistory.rows[1].to_status, 'converted');
       assert.equal(orderHistory.rows.length, 1);
       assert.equal(orderHistory.rows[0].from_status, null);
       assert.equal(orderHistory.rows[0].to_status, 'confirmed');
@@ -1330,10 +1414,15 @@ integration(
          ORDER BY type`,
         [companyId, opportunityId, quoteId],
       );
-      assert.equal(audit.rows.length, 2);
+      assert.equal(audit.rows.length, 4);
       assert.deepEqual(
         audit.rows.map((row: Record<string, unknown>) => row.type).sort(),
-        ['sales.opportunity.won_from_order', 'sales.quote.converted'],
+        [
+          'sales.opportunity.won_from_order',
+          'sales.quote.converted',
+          'sales.quote.customer_accepted',
+          'sales.quote.optional_products_selected',
+        ],
       );
       const opportunityAudit = audit.rows.find(
         (row: Record<string, unknown>) => row.type === 'sales.opportunity.won_from_order',
