@@ -10,11 +10,16 @@ import {
   money,
   requireSalesContext,
   SALES_PERMISSIONS,
+  SalesError,
 } from '@/lib/apps/sales/context';
 
 import type {
   SalesOrderDetail,
+  SalesOrderSortBy,
+  SalesOrderSummary,
   SalesQuoteDetail,
+  SalesQuoteStatusView,
+  SalesQuoteSummary,
   SalesWorkspaceData,
 } from '@/lib/apps/sales/types';
 
@@ -644,6 +649,7 @@ export async function getSalesWorkspaceData():
                 o.quote_id,
                 q.quote_number,
                 o.latest_invoice_id,
+                o.reference,
                 o.status,
                 o.fulfillment_status,
                 o.invoice_status,
@@ -1251,6 +1257,8 @@ export async function getSalesWorkspaceData():
                   row.quote_number,
                 )
               : null,
+          reference:
+            row.reference ? String(row.reference) : null,
           latestInvoiceId:
             row.latest_invoice_id
               ? String(
@@ -3606,4 +3614,374 @@ export async function searchSalesRecords(
         ),
     }),
   );
+}
+
+const SALES_REGISTER_PAGE_SIZE = 250;
+
+function normalizeSalesRegisterOffset(value: unknown) {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed)
+    ? Math.min(1_000_000, Math.max(0, Math.floor(parsed)))
+    : 0;
+}
+
+function normalizeSalesRegisterLimit(value: unknown) {
+  const parsed = Number(value ?? SALES_REGISTER_PAGE_SIZE);
+  return Number.isFinite(parsed)
+    ? Math.min(SALES_REGISTER_PAGE_SIZE, Math.max(1, Math.floor(parsed)))
+    : SALES_REGISTER_PAGE_SIZE;
+}
+
+function normalizeQuoteRegisterStatus(value: unknown): SalesQuoteStatusView {
+  const allowed: SalesQuoteStatusView[] = [
+    'all', 'draft', 'needs_approval', 'awaiting_response',
+    'accepted', 'converted', 'closed_without_sale', 'expired', 'expiring_soon',
+  ];
+  const status = typeof value === 'string' ? value.trim() : '';
+  return allowed.includes(status as SalesQuoteStatusView)
+    ? status as SalesQuoteStatusView
+    : 'all';
+}
+
+function normalizeOrderRegisterStatus(value: unknown) {
+  const allowed = [
+    'all', 'awaiting_fulfillment', 'partially_fulfilled', 'fulfilled',
+    'not_invoiced', 'partially_invoiced', 'invoiced',
+  ] as const;
+  const status = typeof value === 'string' ? value.trim() : '';
+  return allowed.includes(status as typeof allowed[number])
+    ? status as typeof allowed[number]
+    : 'all';
+}
+
+function normalizeOrderRegisterSort(value: unknown): SalesOrderSortBy {
+  const allowed: SalesOrderSortBy[] = [
+    'newest', 'oldest', 'value_high', 'value_low',
+    'delivery_first', 'invoice_first', 'customer_az',
+  ];
+  const sort = typeof value === 'string' ? value.trim() : '';
+  return allowed.includes(sort as SalesOrderSortBy)
+    ? sort as SalesOrderSortBy
+    : 'newest';
+}
+
+export async function getSalesQuoteRegisterPage(input: Record<string, unknown> = {}) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.QUOTE_VIEW);
+  const offset = normalizeSalesRegisterOffset(input.offset);
+  const limit = normalizeSalesRegisterLimit(input.limit);
+  const search = typeof input.search === 'string' ? input.search.trim().slice(0, 120) : '';
+  const statusView = normalizeQuoteRegisterStatus(input.statusView);
+
+  const parameters = [context.companyId, search, statusView];
+  const searchSql = `
+    AND (
+      $2::text = ''
+      OR quote.quote_number ILIKE ('%' || $2::text || '%')
+      OR quote.customer_name ILIKE ('%' || $2::text || '%')
+      OR COALESCE(quote.customer_email, '') ILIKE ('%' || $2::text || '%')
+      OR COALESCE(quote.reference, '') ILIKE ('%' || $2::text || '%')
+      OR quote.effective_status ILIKE ('%' || $2::text || '%')
+      OR COALESCE(quote.approval_status, '') ILIKE ('%' || $2::text || '%')
+    )
+  `;
+  const statusSql = `
+    AND (
+      $3::text = 'all'
+      OR ($3::text = 'draft' AND quote.effective_status = 'draft')
+      OR ($3::text = 'needs_approval' AND quote.approval_status = 'pending')
+      OR ($3::text = 'awaiting_response' AND quote.effective_status IN ('sent', 'viewed'))
+      OR ($3::text = 'accepted' AND quote.effective_status = 'accepted')
+      OR ($3::text = 'converted' AND quote.effective_status = 'converted')
+      OR ($3::text = 'expired' AND quote.effective_status = 'expired')
+      OR ($3::text = 'expiring_soon'
+        AND quote.effective_status IN ('sent', 'viewed')
+        AND quote.valid_until >= CURRENT_DATE
+        AND quote.valid_until <= CURRENT_DATE + INTERVAL '7 days')
+      OR ($3::text = 'closed_without_sale'
+        AND quote.effective_status IN ('rejected', 'expired', 'cancelled'))
+    )
+  `;
+
+  const [page, count] = await Promise.all([
+    context.pool.query(
+      `
+        WITH quote_rows AS (
+          SELECT quote.*,
+            CASE
+              WHEN quote.status IN ('sent', 'viewed')
+                AND quote.valid_until IS NOT NULL
+                AND quote.valid_until < CURRENT_DATE
+              THEN 'expired'
+              ELSE quote.status
+            END AS effective_status
+          FROM sales_quotes quote
+          WHERE quote.company_id = $1
+            AND quote.deleted_at IS NULL
+        )
+        SELECT
+          quote.id, quote.quote_number, quote.effective_status, quote.quote_date,
+          quote.valid_until, quote.currency, quote.base_currency, quote.exchange_rate,
+          quote.exchange_rate_date, quote.exchange_rate_source, quote.base_total_amount,
+          quote.customer_name, quote.customer_email, quote.total_amount, quote.current_revision,
+          quote.template_id, quote.pricelist_id, quote.margin_amount, quote.margin_percent,
+          quote.reference, quote.approval_status, quote.sales_order_id, quote.latest_invoice_id,
+          quote.created_at, quote.stage_id, quote.expected_close_date,
+          quote.probability_override, stage.code AS stage_code, stage.name AS stage_name,
+          COALESCE(quote.probability_override, stage.probability, 0) AS probability
+        FROM quote_rows quote
+        LEFT JOIN sales_pipeline_stages stage
+          ON stage.id = quote.stage_id
+         AND stage.company_id = quote.company_id
+         AND stage.deleted_at IS NULL
+        WHERE TRUE
+          ${searchSql}
+          ${statusSql}
+        ORDER BY quote.created_at DESC, quote.id DESC
+        LIMIT $4 OFFSET $5
+      `,
+      [...parameters, limit + 1, offset],
+    ),
+    context.pool.query(
+      `
+        WITH quote_rows AS (
+          SELECT quote.*,
+            CASE
+              WHEN quote.status IN ('sent', 'viewed')
+                AND quote.valid_until IS NOT NULL
+                AND quote.valid_until < CURRENT_DATE
+              THEN 'expired'
+              ELSE quote.status
+            END AS effective_status
+          FROM sales_quotes quote
+          WHERE quote.company_id = $1
+            AND quote.deleted_at IS NULL
+        )
+        SELECT
+          COUNT(*) FILTER (WHERE
+            $3::text = 'all'
+            OR ($3::text = 'draft' AND quote.effective_status = 'draft')
+            OR ($3::text = 'needs_approval' AND quote.approval_status = 'pending')
+            OR ($3::text = 'awaiting_response' AND quote.effective_status IN ('sent', 'viewed'))
+            OR ($3::text = 'accepted' AND quote.effective_status = 'accepted')
+            OR ($3::text = 'converted' AND quote.effective_status = 'converted')
+            OR ($3::text = 'expired' AND quote.effective_status = 'expired')
+            OR ($3::text = 'expiring_soon'
+              AND quote.effective_status IN ('sent', 'viewed')
+              AND quote.valid_until >= CURRENT_DATE
+              AND quote.valid_until <= CURRENT_DATE + INTERVAL '7 days')
+            OR ($3::text = 'closed_without_sale'
+              AND quote.effective_status IN ('rejected', 'expired', 'cancelled'))
+          )::int AS total,
+          COUNT(*)::int AS all_count,
+          COUNT(*) FILTER (WHERE quote.effective_status = 'draft')::int AS draft,
+          COUNT(*) FILTER (WHERE quote.approval_status = 'pending')::int AS needs_approval,
+          COUNT(*) FILTER (WHERE quote.effective_status IN ('sent', 'viewed'))::int AS awaiting_response,
+          COUNT(*) FILTER (WHERE quote.effective_status = 'accepted')::int AS accepted,
+          COUNT(*) FILTER (WHERE quote.effective_status = 'converted')::int AS converted,
+          COUNT(*) FILTER (WHERE quote.effective_status = 'expired')::int AS expired,
+          COUNT(*) FILTER (WHERE quote.effective_status IN ('sent', 'viewed')
+            AND quote.valid_until >= CURRENT_DATE
+            AND quote.valid_until <= CURRENT_DATE + INTERVAL '7 days')::int AS expiring_soon,
+          COUNT(*) FILTER (WHERE quote.effective_status IN ('rejected', 'expired', 'cancelled'))::int AS closed_without_sale
+        FROM quote_rows quote
+        WHERE TRUE
+          ${searchSql}
+      `,
+      parameters,
+    ),
+  ]);
+
+  const hasMore = page.rows.length > limit;
+  const rows = page.rows.slice(0, limit).map((row): SalesQuoteSummary => ({
+    id: String(row.id),
+    quoteNumber: String(row.quote_number),
+    status: String(row.effective_status),
+    quoteDate: String(row.quote_date),
+    validUntil: row.valid_until ? String(row.valid_until).slice(0, 10) : null,
+    currency: String(row.currency),
+    baseCurrency: String(row.base_currency || context.company.currentCompany.currency || row.currency),
+    exchangeRate: Number(row.exchange_rate || 1),
+    exchangeRateDate: String(row.exchange_rate_date || row.quote_date).slice(0, 10),
+    exchangeRateSource: String(row.exchange_rate_source || 'base'),
+    baseTotalAmount: money(row.base_total_amount ?? row.total_amount),
+    customerName: String(row.customer_name),
+    customerEmail: row.customer_email ? String(row.customer_email) : null,
+    totalAmount: money(row.total_amount),
+    currentRevision: Math.max(1, Number(row.current_revision || 1)),
+    templateId: row.template_id ? String(row.template_id) : null,
+    pricelistId: row.pricelist_id ? String(row.pricelist_id) : null,
+    marginAmount: hasSalesPermission(context.permissions.isOwner, context.permissions.permissionSet, SALES_PERMISSIONS.MARGIN_VIEW)
+      ? money(row.margin_amount) : null,
+    marginPercent: hasSalesPermission(context.permissions.isOwner, context.permissions.permissionSet, SALES_PERMISSIONS.MARGIN_VIEW)
+      ? money(row.margin_percent) : null,
+    reference: row.reference ? String(row.reference) : null,
+    approvalStatus: String(row.approval_status || 'not_required'),
+    salesOrderId: row.sales_order_id ? String(row.sales_order_id) : null,
+    latestInvoiceId: row.latest_invoice_id ? String(row.latest_invoice_id) : null,
+    stageId: row.stage_id ? String(row.stage_id) : null,
+    stageCode: row.stage_code ? String(row.stage_code) : null,
+    stageName: row.stage_name ? String(row.stage_name) : null,
+    probability: Number(row.probability || 0),
+    expectedCloseDate: row.expected_close_date ? String(row.expected_close_date).slice(0, 10) : null,
+    createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
+  }));
+
+  return {
+    rows, offset, limit, totalCount: Number(count.rows[0]?.total || 0), hasMore, nextOffset: offset + rows.length,
+    queueCounts: {
+      all: Number(count.rows[0]?.all_count || 0),
+      draft: Number(count.rows[0]?.draft || 0),
+      needs_approval: Number(count.rows[0]?.needs_approval || 0),
+      awaiting_response: Number(count.rows[0]?.awaiting_response || 0),
+      accepted: Number(count.rows[0]?.accepted || 0),
+      converted: Number(count.rows[0]?.converted || 0),
+      expired: Number(count.rows[0]?.expired || 0),
+      expiring_soon: Number(count.rows[0]?.expiring_soon || 0),
+      closed_without_sale: Number(count.rows[0]?.closed_without_sale || 0),
+    },
+  };
+}
+
+export async function getSalesOrderRegisterPage(input: Record<string, unknown> = {}) {
+  const context = await requireSalesContext();
+  const canViewOrders =
+    hasSalesPermission(context.permissions.isOwner, context.permissions.permissionSet, SALES_PERMISSIONS.ORDER_VIEW) ||
+    hasSalesPermission(context.permissions.isOwner, context.permissions.permissionSet, SALES_PERMISSIONS.ORDER_MANAGE);
+  if (!canViewOrders) {
+    throw new SalesError('SALES_PERMISSION_REQUIRED', 'You do not have permission to view Sales orders.');
+  }
+
+  const offset = normalizeSalesRegisterOffset(input.offset);
+  const limit = normalizeSalesRegisterLimit(input.limit);
+  const search = typeof input.search === 'string' ? input.search.trim().slice(0, 120) : '';
+  const statusView = normalizeOrderRegisterStatus(input.statusView);
+  const sortBy = normalizeOrderRegisterSort(input.sortBy);
+  const sortSql: Record<SalesOrderSortBy, string> = {
+    newest: 'o.order_date DESC, o.id DESC',
+    oldest: 'o.order_date ASC, o.id ASC',
+    value_high: 'COALESCE(o.base_total_amount, o.total_amount) DESC NULLS LAST, o.created_at DESC, o.id DESC',
+    value_low: 'COALESCE(o.base_total_amount, o.total_amount) ASC NULLS LAST, o.created_at DESC, o.id DESC',
+    delivery_first: '(CASE WHEN COALESCE(SUM(oi.quantity), 0) > 0 THEN ROUND(100.0 * COALESCE(SUM(oi.delivered_quantity), 0) / SUM(oi.quantity)) ELSE 0 END) ASC, o.created_at DESC, o.id DESC',
+    invoice_first: '(CASE WHEN COALESCE(SUM(oi.quantity), 0) > 0 THEN ROUND(100.0 * COALESCE(SUM(oi.invoiced_quantity), 0) / SUM(oi.quantity)) ELSE 0 END) ASC, o.created_at DESC, o.id DESC',
+    customer_az: 'LOWER(o.customer_name) ASC, o.created_at DESC, o.id DESC',
+  };
+
+  const parameters = [context.companyId, search, statusView];
+  const searchSql = `
+    AND (
+      $2::text = ''
+      OR o.order_number ILIKE ('%' || $2::text || '%')
+      OR o.customer_name ILIKE ('%' || $2::text || '%')
+      OR COALESCE(o.reference, '') ILIKE ('%' || $2::text || '%')
+      OR COALESCE(o.status, '') ILIKE ('%' || $2::text || '%')
+      OR COALESCE(o.fulfillment_status, 'not_started') ILIKE ('%' || $2::text || '%')
+      OR COALESCE(o.invoice_status, 'not_invoiced') ILIKE ('%' || $2::text || '%')
+    )
+  `;
+  const statusSql = `
+    AND (
+      $3::text = 'all'
+      OR ($3::text = 'awaiting_fulfillment' AND COALESCE(o.fulfillment_status, 'not_started') = 'not_started')
+      OR ($3::text = 'partially_fulfilled' AND COALESCE(o.fulfillment_status, 'not_started') = 'partial')
+      OR ($3::text = 'fulfilled' AND COALESCE(o.fulfillment_status, 'not_started') = 'fulfilled')
+      OR ($3::text = 'not_invoiced' AND COALESCE(o.invoice_status, 'not_invoiced') = 'not_invoiced')
+      OR ($3::text = 'partially_invoiced' AND COALESCE(o.invoice_status, 'not_invoiced') = 'partial')
+      OR ($3::text = 'invoiced' AND COALESCE(o.invoice_status, 'not_invoiced') = 'invoiced')
+    )
+  `;
+
+  const [page, count] = await Promise.all([
+    context.pool.query(
+      `
+        SELECT
+          o.id, o.order_number, o.quote_id, q.quote_number, o.latest_invoice_id,
+          o.reference, o.status, o.fulfillment_status, o.invoice_status, o.order_date, o.currency,
+          o.base_currency, o.exchange_rate, o.exchange_rate_date, o.exchange_rate_source,
+          o.base_total_amount, o.customer_name, o.total_amount,
+          COALESCE(SUM(oi.quantity), 0) AS ordered_quantity,
+          COALESCE(SUM(oi.delivered_quantity), 0) AS delivered_quantity,
+          COALESCE(SUM(oi.invoiced_quantity), 0) AS invoiced_quantity
+        FROM sales_orders_v2 o
+        LEFT JOIN sales_order_items_v2 oi
+          ON oi.sales_order_id = o.id AND oi.company_id = o.company_id
+        LEFT JOIN sales_quotes q
+          ON q.id = o.quote_id AND q.company_id = o.company_id
+        WHERE o.company_id = $1
+          AND o.deleted_at IS NULL
+          ${searchSql}
+          ${statusSql}
+        GROUP BY o.id, q.quote_number
+        ORDER BY ${sortSql[sortBy]}
+        LIMIT $4 OFFSET $5
+      `,
+      [...parameters, limit + 1, offset],
+    ),
+    context.pool.query(
+      `
+        SELECT
+          COUNT(*) FILTER (WHERE
+            $3::text = 'all'
+            OR ($3::text = 'awaiting_fulfillment' AND COALESCE(o.fulfillment_status, 'not_started') = 'not_started')
+            OR ($3::text = 'partially_fulfilled' AND COALESCE(o.fulfillment_status, 'not_started') = 'partial')
+            OR ($3::text = 'fulfilled' AND COALESCE(o.fulfillment_status, 'not_started') = 'fulfilled')
+            OR ($3::text = 'not_invoiced' AND COALESCE(o.invoice_status, 'not_invoiced') = 'not_invoiced')
+            OR ($3::text = 'partially_invoiced' AND COALESCE(o.invoice_status, 'not_invoiced') = 'partial')
+            OR ($3::text = 'invoiced' AND COALESCE(o.invoice_status, 'not_invoiced') = 'invoiced')
+          )::int AS total,
+          COUNT(*)::int AS all_count,
+          COUNT(*) FILTER (WHERE COALESCE(o.fulfillment_status, 'not_started') = 'not_started')::int AS awaiting_fulfillment,
+          COUNT(*) FILTER (WHERE COALESCE(o.fulfillment_status, 'not_started') = 'partial')::int AS partially_fulfilled,
+          COUNT(*) FILTER (WHERE COALESCE(o.fulfillment_status, 'not_started') = 'fulfilled')::int AS fulfilled,
+          COUNT(*) FILTER (WHERE COALESCE(o.invoice_status, 'not_invoiced') = 'not_invoiced')::int AS not_invoiced,
+          COUNT(*) FILTER (WHERE COALESCE(o.invoice_status, 'not_invoiced') = 'partial')::int AS partially_invoiced,
+          COUNT(*) FILTER (WHERE COALESCE(o.invoice_status, 'not_invoiced') = 'invoiced')::int AS invoiced
+        FROM sales_orders_v2 o
+        WHERE o.company_id = $1
+          AND o.deleted_at IS NULL
+          ${searchSql}
+      `,
+      parameters,
+    ),
+  ]);
+
+  const hasMore = page.rows.length > limit;
+  const rows = page.rows.slice(0, limit).map((row): SalesOrderSummary => ({
+    id: String(row.id),
+    orderNumber: String(row.order_number),
+    quoteId: row.quote_id ? String(row.quote_id) : null,
+    quoteNumber: row.quote_number ? String(row.quote_number) : null,
+    latestInvoiceId: row.latest_invoice_id ? String(row.latest_invoice_id) : null,
+    reference: row.reference ? String(row.reference) : null,
+    status: String(row.status),
+    fulfillmentStatus: String(row.fulfillment_status || 'not_started'),
+    invoiceStatus: String(row.invoice_status || 'not_invoiced'),
+    orderDate: String(row.order_date),
+    currency: String(row.currency),
+    baseCurrency: String(row.base_currency || context.company.currentCompany.currency || row.currency),
+    exchangeRate: Number(row.exchange_rate || 1),
+    exchangeRateDate: String(row.exchange_rate_date || row.order_date).slice(0, 10),
+    exchangeRateSource: String(row.exchange_rate_source || 'base'),
+    baseTotalAmount: money(row.base_total_amount ?? row.total_amount),
+    customerName: String(row.customer_name),
+    totalAmount: money(row.total_amount),
+    deliveredPercent: Number(row.ordered_quantity || 0) > 0
+      ? Math.min(100, Math.round(Number(row.delivered_quantity || 0) / Number(row.ordered_quantity) * 100))
+      : 0,
+    invoicedPercent: Number(row.ordered_quantity || 0) > 0
+      ? Math.min(100, Math.round(Number(row.invoiced_quantity || 0) / Number(row.ordered_quantity) * 100))
+      : 0,
+  }));
+
+  return {
+    rows, offset, limit, totalCount: Number(count.rows[0]?.total || 0), hasMore, nextOffset: offset + rows.length,
+    queueCounts: {
+      all: Number(count.rows[0]?.all_count || 0),
+      awaiting_fulfillment: Number(count.rows[0]?.awaiting_fulfillment || 0),
+      partially_fulfilled: Number(count.rows[0]?.partially_fulfilled || 0),
+      fulfilled: Number(count.rows[0]?.fulfilled || 0),
+      not_invoiced: Number(count.rows[0]?.not_invoiced || 0),
+      partially_invoiced: Number(count.rows[0]?.partially_invoiced || 0),
+      invoiced: Number(count.rows[0]?.invoiced || 0),
+    },
+  };
 }

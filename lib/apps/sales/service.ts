@@ -32,7 +32,9 @@ export {
 
 export {
   getSalesOrderDetail,
+  getSalesOrderRegisterPage,
   getSalesQuoteDetail,
+  getSalesQuoteRegisterPage,
   getSalesWorkspaceData,
   searchSalesRecords,
 } from '@/lib/apps/sales/queries';

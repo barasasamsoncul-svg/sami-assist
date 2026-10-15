@@ -253,6 +253,38 @@ function matchesSalesOrderView(
 }
 
 
+
+type SalesRegisterPage<T> = {
+  rows: T[];
+  offset: number;
+  limit: number;
+  totalCount: number;
+  hasMore: boolean;
+  nextOffset: number;
+  queueCounts?: Record<string, number>;
+};
+
+async function requestSalesRegisterPage<T>(
+  kind: 'quotes' | 'orders',
+  query: URLSearchParams,
+  signal?: AbortSignal,
+): Promise<SalesRegisterPage<T>> {
+  query.set('register', kind);
+  const response = await fetch('/api/apps/sales?' + query.toString(), {
+    cache: 'no-store',
+    signal,
+  });
+  const body = await response.json().catch(() => ({})) as {
+    success?: boolean;
+    error?: string;
+    register?: SalesRegisterPage<T>;
+  };
+  if (!response.ok || body.success !== true || !body.register) {
+    throw new Error(body.error || 'Could not load the Sales register.');
+  }
+  return body.register;
+}
+
 type LinkedOpportunity = {
   id: string;
   opportunity_number: string;
@@ -807,6 +839,25 @@ export default function SalesWorkspaceClient({
       'newest',
     );
 
+  const [quoteRecords, setQuoteRecords] = useState<SalesWorkspaceData['quotes']>(initialData.quotes);
+  const [orderRecords, setOrderRecords] = useState<SalesWorkspaceData['orders']>(initialData.orders);
+  const [quoteRegisterHasMore, setQuoteRegisterHasMore] = useState(initialData.quotes.length >= 250);
+  const [orderRegisterHasMore, setOrderRegisterHasMore] = useState(initialData.orders.length >= 250);
+  const [quoteRegisterTotalCount, setQuoteRegisterTotalCount] = useState(initialData.metrics.quoteCount);
+  const [orderRegisterTotalCount, setOrderRegisterTotalCount] = useState(initialData.metrics.orderCount);
+  const [quoteRegisterQueueCounts, setQuoteRegisterQueueCounts] = useState<Record<string, number> | null>(null);
+  const [orderRegisterQueueCounts, setOrderRegisterQueueCounts] = useState<Record<string, number> | null>(null);
+  const [quoteRegisterLoading, setQuoteRegisterLoading] = useState(false);
+  const [orderRegisterLoading, setOrderRegisterLoading] = useState(false);
+  const [quoteRegisterError, setQuoteRegisterError] = useState('');
+  const [orderRegisterError, setOrderRegisterError] = useState('');
+  const previousQuoteQuery = useRef('');
+  const previousOrderQuery = useRef('');
+  const quoteRegisterRequestId = useRef(0);
+  const orderRegisterRequestId = useRef(0);
+  const quoteBaseData = useRef(initialData.quotes);
+  const orderBaseData = useRef(initialData.orders);
+
   const [
     orderDisplayMode,
     setOrderDisplayMode,
@@ -1039,6 +1090,170 @@ export default function SalesWorkspaceClient({
     };
   }, [initialData.company.id]);
 
+  useEffect(() => {
+    if (quoteBaseData.current !== initialData.quotes) {
+      setQuoteRecords(initialData.quotes);
+      setQuoteRegisterHasMore(initialData.quotes.length >= 250);
+      setQuoteRegisterTotalCount(initialData.metrics.quoteCount);
+    }
+  }, [initialData.quotes, initialData.metrics.quoteCount]);
+
+  useEffect(() => {
+    if (orderBaseData.current !== initialData.orders) {
+      setOrderRecords(initialData.orders);
+      setOrderRegisterHasMore(initialData.orders.length >= 250);
+      setOrderRegisterTotalCount(initialData.metrics.orderCount);
+    }
+  }, [initialData.orders, initialData.metrics.orderCount]);
+
+  useEffect(() => {
+    if (view !== 'quotes') return;
+    const signature = search.trim() + '|' + quoteStatusView;
+    const baseChanged = quoteBaseData.current !== initialData.quotes;
+    if (signature === previousQuoteQuery.current && !baseChanged) return;
+    const requestId = ++quoteRegisterRequestId.current;
+    setSelectedQuoteIds([]);
+    const controller = new AbortController();
+    setQuoteRegisterLoading(true);
+    setQuoteRegisterError('');
+    const timer = window.setTimeout(() => {
+      const query = new URLSearchParams({
+        offset: '0',
+        limit: '250',
+        search: search.trim(),
+        statusView: quoteStatusView,
+      });
+      void requestSalesRegisterPage<SalesWorkspaceData['quotes'][number]>('quotes', query, controller.signal)
+        .then(page => {
+          if (requestId !== quoteRegisterRequestId.current) return;
+          previousQuoteQuery.current = signature;
+          quoteBaseData.current = initialData.quotes;
+          setQuoteRecords(page.rows);
+          setQuoteRegisterHasMore(page.hasMore);
+          setQuoteRegisterTotalCount(page.totalCount);
+          setQuoteRegisterQueueCounts(page.queueCounts || {});
+        })
+        .catch(error => {
+          if (!controller.signal.aborted && requestId === quoteRegisterRequestId.current) {
+            setQuoteRegisterError(error instanceof Error ? error.message : 'Could not load quotations.');
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted && requestId === quoteRegisterRequestId.current) setQuoteRegisterLoading(false);
+        });
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+      if (requestId === quoteRegisterRequestId.current) setQuoteRegisterLoading(false);
+    };
+  }, [view, search, quoteStatusView, initialData.quotes, initialData.metrics.quoteCount]);
+
+  useEffect(() => {
+    if (view !== 'orders') return;
+    const signature = search.trim() + '|' + orderStatusView + '|' + orderSortBy;
+    const baseChanged = orderBaseData.current !== initialData.orders;
+    if (signature === previousOrderQuery.current && !baseChanged) return;
+    const requestId = ++orderRegisterRequestId.current;
+    setSelectedOrderIds([]);
+    const controller = new AbortController();
+    setOrderRegisterLoading(true);
+    setOrderRegisterError('');
+    const timer = window.setTimeout(() => {
+      const query = new URLSearchParams({
+        offset: '0',
+        limit: '250',
+        search: search.trim(),
+        statusView: orderStatusView,
+        sortBy: orderSortBy,
+      });
+      void requestSalesRegisterPage<SalesWorkspaceData['orders'][number]>('orders', query, controller.signal)
+        .then(page => {
+          if (requestId !== orderRegisterRequestId.current) return;
+          previousOrderQuery.current = signature;
+          orderBaseData.current = initialData.orders;
+          setOrderRecords(page.rows);
+          setOrderRegisterHasMore(page.hasMore);
+          setOrderRegisterTotalCount(page.totalCount);
+          setOrderRegisterQueueCounts(page.queueCounts || {});
+        })
+        .catch(error => {
+          if (!controller.signal.aborted && requestId === orderRegisterRequestId.current) {
+            setOrderRegisterError(error instanceof Error ? error.message : 'Could not load sales orders.');
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted && requestId === orderRegisterRequestId.current) setOrderRegisterLoading(false);
+        });
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+      if (requestId === orderRegisterRequestId.current) setOrderRegisterLoading(false);
+    };
+  }, [view, search, orderStatusView, orderSortBy, initialData.orders, initialData.metrics.orderCount]);
+
+  async function loadMoreQuoteRecords() {
+    if (quoteRegisterLoading || !quoteRegisterHasMore) return;
+    const requestId = ++quoteRegisterRequestId.current;
+    setQuoteRegisterLoading(true);
+    setQuoteRegisterError('');
+    try {
+      const query = new URLSearchParams({
+        offset: String(quoteRecords.length),
+        limit: '250',
+        search: search.trim(),
+        statusView: quoteStatusView,
+      });
+      const page = await requestSalesRegisterPage<SalesWorkspaceData['quotes'][number]>('quotes', query);
+      if (requestId !== quoteRegisterRequestId.current) return;
+      setQuoteRecords(current => {
+        const existing = new Set(current.map(row => row.id));
+        return [...current, ...page.rows.filter(row => !existing.has(row.id))];
+      });
+      setQuoteRegisterHasMore(page.hasMore);
+      setQuoteRegisterTotalCount(page.totalCount);
+      setQuoteRegisterQueueCounts(page.queueCounts || {});
+    } catch (error) {
+      if (requestId === quoteRegisterRequestId.current) {
+        setQuoteRegisterError(error instanceof Error ? error.message : 'Could not load more quotations.');
+      }
+    } finally {
+      if (requestId === quoteRegisterRequestId.current) setQuoteRegisterLoading(false);
+    }
+  }
+
+  async function loadMoreOrderRecords() {
+    if (orderRegisterLoading || !orderRegisterHasMore) return;
+    const requestId = ++orderRegisterRequestId.current;
+    setOrderRegisterLoading(true);
+    setOrderRegisterError('');
+    try {
+      const query = new URLSearchParams({
+        offset: String(orderRecords.length),
+        limit: '250',
+        search: search.trim(),
+        statusView: orderStatusView,
+        sortBy: orderSortBy,
+      });
+      const page = await requestSalesRegisterPage<SalesWorkspaceData['orders'][number]>('orders', query);
+      if (requestId !== orderRegisterRequestId.current) return;
+      setOrderRecords(current => {
+        const existing = new Set(current.map(row => row.id));
+        return [...current, ...page.rows.filter(row => !existing.has(row.id))];
+      });
+      setOrderRegisterHasMore(page.hasMore);
+      setOrderRegisterTotalCount(page.totalCount);
+      setOrderRegisterQueueCounts(page.queueCounts || {});
+    } catch (error) {
+      if (requestId === orderRegisterRequestId.current) {
+        setOrderRegisterError(error instanceof Error ? error.message : 'Could not load more sales orders.');
+      }
+    } finally {
+      if (requestId === orderRegisterRequestId.current) setOrderRegisterLoading(false);
+    }
+  }
+
   const visibleQuotes =
     useMemo(
       () => {
@@ -1060,6 +1275,7 @@ export default function SalesWorkspaceClient({
                 [
                   quote.quoteNumber,
                   quote.customerName,
+                  quote.customerEmail || '',
                   quote.status,
                   quote.approvalStatus,
                   quote.reference ||
@@ -1077,7 +1293,7 @@ export default function SalesWorkspaceClient({
           );
       },
       [
-        initialData.quotes,
+        quoteRecords,
         search,
         quoteStatusView,
       ],
@@ -1095,7 +1311,7 @@ export default function SalesWorkspaceClient({
   const sendableSelectedQuoteIds =
     useMemo(
       () =>
-        initialData.quotes
+        quoteRecords
           .filter(
             quote =>
               selectedQuoteIds.includes(quote.id) &&
@@ -1107,7 +1323,7 @@ export default function SalesWorkspaceClient({
           )
           .map(quote => quote.id),
       [
-        initialData.quotes,
+        quoteRecords,
         selectedQuoteIds,
       ],
     );
@@ -1120,7 +1336,7 @@ export default function SalesWorkspaceClient({
             .trim()
             .toLowerCase();
 
-        const matchingOrders = initialData.orders.filter(
+        const matchingOrders = orderRecords.filter(
           order =>
             matchesSalesOrderView(order, orderStatusView) &&
             (
@@ -1128,6 +1344,7 @@ export default function SalesWorkspaceClient({
               [
                 order.orderNumber,
                 order.customerName,
+                order.reference || '',
                 order.status,
                 order.fulfillmentStatus,
                 order.invoiceStatus,
@@ -1170,7 +1387,7 @@ export default function SalesWorkspaceClient({
         });
       },
       [
-        initialData.orders,
+        orderRecords,
         orderStatusView,
         orderSortBy,
         search,
@@ -1186,7 +1403,7 @@ export default function SalesWorkspaceClient({
   const invoiceableSelectedOrderIds =
     useMemo(
       () =>
-        initialData.orders
+        orderRecords
           .filter(
             order =>
               selectedOrderIds.includes(order.id) &&
@@ -1195,7 +1412,7 @@ export default function SalesWorkspaceClient({
           )
           .map(order => order.id),
       [
-        initialData.orders,
+        orderRecords,
         selectedOrderIds,
       ],
     );
@@ -1362,7 +1579,7 @@ export default function SalesWorkspaceClient({
         const failureSummary = failures
           .slice(0, 3)
           .map(outcome => {
-            const quote = initialData.quotes.find(
+            const quote = quoteRecords.find(
               item => item.id === outcome.quoteId,
             );
             return (quote?.quoteNumber || 'Quotation') +
@@ -1456,7 +1673,7 @@ export default function SalesWorkspaceClient({
         const details = failures
           .slice(0, 3)
           .map(outcome => {
-            const order = initialData.orders.find(item => item.id === outcome.orderId);
+            const order = orderRecords.find(item => item.id === outcome.orderId);
             return (order?.orderNumber || 'Sales order') + ': ' +
               (outcome.error || 'Invoice creation failed');
           })
@@ -1925,7 +2142,7 @@ export default function SalesWorkspaceClient({
                       >
                         {option.label}
                         <span className="rounded-full bg-black/5 px-1.5 py-0.5 text-[10px] dark:bg-white/10">
-                          {initialData.quotes.filter(quote => matchesQuoteStatusView(quote, option.key)).length}
+                          {quoteRegisterQueueCounts?.[option.key] ?? '—'}
                         </span>
                       </button>
                     ))}
@@ -2044,7 +2261,7 @@ export default function SalesWorkspaceClient({
                       <button
                         type="button"
                         onClick={() => {
-                          const selectedQuotes = initialData.quotes.filter(
+                          const selectedQuotes = quoteRecords.filter(
                             quote => selectedQuoteIds.includes(quote.id),
                           );
                           if (selectedQuotes.length > 0) {
@@ -2253,6 +2470,15 @@ export default function SalesWorkspaceClient({
                     </tbody>
                   </table>
                 </div>
+              </div>
+              {quoteRegisterError && <p role="alert" className="mt-3 text-sm text-red-600">{quoteRegisterError}</p>}
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
+                <span>Showing {quoteRecords.length.toLocaleString()} of {quoteRegisterTotalCount.toLocaleString()} quotations</span>
+                {quoteRegisterHasMore && (
+                  <button type="button" disabled={quoteRegisterLoading} onClick={() => void loadMoreQuoteRecords()} className="rounded-xl border border-[var(--sami-border)] px-4 py-2 font-semibold disabled:opacity-50">
+                    {quoteRegisterLoading ? 'Loading quotations…' : 'Load more quotations'}
+                  </button>
+                )}
               </div>
             </section>
           )
@@ -2466,7 +2692,7 @@ export default function SalesWorkspaceClient({
                       >
                         {option.label}
                         <span className="rounded-full bg-black/5 px-1.5 py-0.5 text-[10px] dark:bg-white/10">
-                          {initialData.orders.filter(order => matchesSalesOrderView(order, option.key)).length}
+                          {orderRegisterQueueCounts?.[option.key] ?? '—'}
                         </span>
                       </button>
                     ))}
@@ -2643,7 +2869,7 @@ export default function SalesWorkspaceClient({
                         <button
                           type="button"
                           onClick={() => {
-                            const selectedOrders = initialData.orders.filter(
+                            const selectedOrders = orderRecords.filter(
                               order => selectedOrderIds.includes(order.id),
                             );
                             if (selectedOrders.length > 0) {
@@ -2822,6 +3048,15 @@ export default function SalesWorkspaceClient({
                       </Link>
                     ))}
                   </div>
+                )}
+              </div>
+              {orderRegisterError && <p role="alert" className="mt-3 text-sm text-red-600">{orderRegisterError}</p>}
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
+                <span>Showing {orderRecords.length.toLocaleString()} of {orderRegisterTotalCount.toLocaleString()} sales orders</span>
+                {orderRegisterHasMore && (
+                  <button type="button" disabled={orderRegisterLoading} onClick={() => void loadMoreOrderRecords()} className="rounded-xl border border-[var(--sami-border)] px-4 py-2 font-semibold disabled:opacity-50">
+                    {orderRegisterLoading ? 'Loading sales orders…' : 'Load more sales orders'}
+                  </button>
                 )}
               </div>
 
