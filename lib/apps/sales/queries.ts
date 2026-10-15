@@ -649,6 +649,7 @@ export async function getSalesWorkspaceData():
                 o.quote_id,
                 q.quote_number,
                 o.latest_invoice_id,
+                o.reference,
                 o.status,
                 o.fulfillment_status,
                 o.invoice_status,
@@ -1256,6 +1257,8 @@ export async function getSalesWorkspaceData():
                   row.quote_number,
                 )
               : null,
+          reference:
+            row.reference ? String(row.reference) : null,
           latestInvoiceId:
             row.latest_invoice_id
               ? String(
@@ -3848,7 +3851,7 @@ export async function getSalesOrderRegisterPage(input: Record<string, unknown> =
       `
         SELECT
           o.id, o.order_number, o.quote_id, q.quote_number, o.latest_invoice_id,
-          o.status, o.fulfillment_status, o.invoice_status, o.order_date, o.currency,
+          o.reference, o.status, o.fulfillment_status, o.invoice_status, o.order_date, o.currency,
           o.base_currency, o.exchange_rate, o.exchange_rate_date, o.exchange_rate_source,
           o.base_total_amount, o.customer_name, o.total_amount,
           COALESCE(SUM(oi.quantity), 0) AS ordered_quantity,
@@ -3887,6 +3890,7 @@ export async function getSalesOrderRegisterPage(input: Record<string, unknown> =
     quoteId: row.quote_id ? String(row.quote_id) : null,
     quoteNumber: row.quote_number ? String(row.quote_number) : null,
     latestInvoiceId: row.latest_invoice_id ? String(row.latest_invoice_id) : null,
+    reference: row.reference ? String(row.reference) : null,
     status: String(row.status),
     fulfillmentStatus: String(row.fulfillment_status || 'not_started'),
     invoiceStatus: String(row.invoice_status || 'not_invoiced'),
