@@ -889,7 +889,14 @@ integration(
 integration(
   'ERP parity: accepted Sales quote converts to one confirmed order and reconciles CRM in PostgreSQL',
   async () => {
-    const { createSalesOrderFromQuoteTransaction, createSalesOrderInvoiceTransaction, updateSalesOrderFulfillmentTransaction } = await import('../lib/apps/sales/commands');
+    const {
+      createSalesQuoteTransaction,
+      updateSalesQuoteDraftTransaction,
+      createSalesOrderFromQuoteTransaction,
+      createSalesOrderInvoiceTransaction,
+      updateSalesOrderFulfillmentTransaction,
+    } = await import('../lib/apps/sales/commands');
+    const { deliverSalesQuote } = await import('../lib/apps/sales/delivery');
     const { getPublicSalesQuote, respondToPublicSalesQuote } = await import('../lib/apps/sales/public');
     const pool = new Pool({
       connectionString: DATABASE_URL,
@@ -966,7 +973,7 @@ integration(
         );
 
         CREATE TEMP TABLE sales_quotes (
-          id UUID PRIMARY KEY,
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           company_id UUID NOT NULL,
           deleted_at TIMESTAMPTZ,
           template_id UUID,
@@ -1018,6 +1025,16 @@ integration(
           acceptance_note TEXT,
           acceptance_signature_consent_text TEXT,
           public_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+          sent_at TIMESTAMPTZ,
+          internal_notes TEXT,
+          created_by UUID,
+          approval_requested_at TIMESTAMPTZ,
+          approval_requested_by UUID,
+          approved_at TIMESTAMPTZ,
+          approved_by UUID,
+          approval_rejected_at TIMESTAMPTZ,
+          approval_rejected_by UUID,
+          approval_rejection_reason TEXT,
           updated_by UUID,
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
@@ -1049,6 +1066,12 @@ integration(
           allow_partial_invoicing BOOLEAN NOT NULL DEFAULT TRUE,
           require_billing_customer_for_invoice BOOLEAN NOT NULL DEFAULT TRUE,
           invoice_policy VARCHAR(30) NOT NULL DEFAULT 'ordered',
+          default_validity_days INTEGER NOT NULL DEFAULT 14,
+          default_currency VARCHAR(3) NOT NULL DEFAULT 'KES',
+          require_quote_approval BOOLEAN NOT NULL DEFAULT FALSE,
+          quote_approval_threshold NUMERIC(14,2),
+          terms_and_conditions TEXT,
+          default_notes TEXT,
           primary_color TEXT,
           secondary_color TEXT,
           footer_text TEXT
@@ -1256,6 +1279,20 @@ integration(
           to_status VARCHAR(30) NOT NULL,
           reason TEXT,
           changed_by UUID,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TEMP TABLE sales_delivery_log (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          quote_id UUID NOT NULL,
+          channel VARCHAR(30) NOT NULL,
+          destination_fingerprint VARCHAR(64),
+          provider VARCHAR(80),
+          provider_message_id VARCHAR(255),
+          status VARCHAR(30) NOT NULL,
+          error_code VARCHAR(120),
+          created_by UUID,
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
 
@@ -2486,6 +2523,299 @@ integration(
       assert.equal(Number(finalLine.rows[0].invoiced_quantity), 1);
       assert.equal(Number(finalStock.rows[0].quantity), 10);
       assert.equal(finalMovements.rows.length, 2);
+
+
+      // Finish the quote authoring path against the same PostgreSQL-backed tenant:
+      // create a commercial draft, revise its lines/totals, deliver it, and ensure
+      // the terminal sent state prevents further draft edits.
+      let authoringQuoteSequence = 0;
+      const makeAuthoringLine = (raw: unknown) => {
+        const item = Array.isArray(raw) && raw[0] && typeof raw[0] === 'object'
+          ? raw[0] as Record<string, unknown>
+          : {};
+        const quantity = Math.max(0.0001, Number(item.quantity ?? 1));
+        const unitPrice = Math.max(0, Number(item.unitPrice ?? 100));
+        const unitCost = Math.max(0, Number(item.unitCost ?? 30));
+        const subtotal = Math.round(quantity * unitPrice * 100) / 100;
+        const costTotal = Math.round(quantity * unitCost * 100) / 100;
+        const taxRate = 16;
+        const taxAmount = Math.round(subtotal * taxRate) / 100;
+        const discountAmount = 0;
+        return [{
+          catalogItemId: null,
+          externalProductId: null,
+          sortOrder: 1,
+          description: String(item.description ?? 'Authoring test line'),
+          sku: String(item.sku ?? 'AUTHORING-1'),
+          unit: 'unit',
+          quantity,
+          unitPrice,
+          unitCost,
+          costTotal,
+          marginAmount: Math.round((subtotal - costTotal) * 100) / 100,
+          marginPercent: subtotal > 0 ? Math.round((subtotal - costTotal) / subtotal * 10000) / 100 : 0,
+          discountType: 'percent' as const,
+          discountValue: 0,
+          discountAmount,
+          taxName: 'VAT',
+          taxRate,
+          taxAmount,
+          subtotal,
+          lineTotal: subtotal + taxAmount,
+        }];
+      };
+
+      const quoteAuthoringDependencies: Parameters<typeof createSalesQuoteTransaction>[2] = {
+        ensureSalesDefaults: async () => {},
+        resolveTemplate: async () => null,
+        resolveCustomerSnapshot: async (_client, _ctx, input) => ({
+          billingCustomerId: null,
+          customerName: String(input.customerName ?? 'Authoring Customer'),
+          customerEmail: input.customerEmail ? String(input.customerEmail) : null,
+          customerPhone: input.customerPhone ? String(input.customerPhone) : null,
+          customerTaxId: input.customerTaxId ? String(input.customerTaxId) : null,
+          billingAddress: input.billingAddress ? String(input.billingAddress) : null,
+          shippingAddress: input.shippingAddress ? String(input.shippingAddress) : null,
+          currency: 'KES',
+        }),
+        resolveSalesExchangeRate: async (_client, input) => ({
+          currency: String(input.currency).toUpperCase(),
+          baseCurrency: String(input.baseCurrency).toUpperCase(),
+          rate: 1,
+          effectiveDate: String(input.effectiveDate),
+          source: 'base' as const,
+          sourceName: 'Company base currency',
+          manualOverride: false,
+        }),
+        normalizeQuoteLines: async (_client, _ctx, raw) => makeAuthoringLine(raw),
+        nextSalesNumber: async () => {
+          authoringQuoteSequence += 1;
+          return 'Q-2026-AUTH-' + String(authoringQuoteSequence).padStart(3, '0');
+        },
+        resolveSalesAssignmentForUser: async () => ({
+          salesTeamId: null,
+          territoryId: null,
+        }),
+        emitSalesAutomationEvent: async () => {},
+      };
+
+      const authoringInput = {
+        quoteDate: '2026-10-15',
+        validUntil: '2026-10-29',
+        currency: 'KES',
+        customerName: 'Authoring Customer Ltd',
+        customerEmail: 'buyer@authoring.test',
+        reference: 'AUTHORING-REF-1',
+        notes: 'Initial notes',
+        lines: [{ description: 'Consulting support', sku: 'AUTH-1', quantity: 1, unitPrice: 100, unitCost: 30 }],
+      };
+      const authoringContext = returnContext as Parameters<typeof createSalesQuoteTransaction>[1];
+      const createdAuthoringQuote = await createSalesQuoteTransaction(
+        authoringInput,
+        authoringContext,
+        quoteAuthoringDependencies,
+      );
+      assert.equal(createdAuthoringQuote.status, 'draft');
+      assert.equal(createdAuthoringQuote.quoteNumber, 'Q-2026-AUTH-001');
+      assert.equal(createdAuthoringQuote.totalAmount, 116);
+      assert.equal(createdAuthoringQuote.currency, 'KES');
+
+      const createdAuthoringState = await returnPool.query(
+        `SELECT status, subtotal, tax_total, total_amount, base_total_amount, internal_notes
+         FROM sales_quotes WHERE id = $1 AND company_id = $2`,
+        [createdAuthoringQuote.id, companyId],
+      );
+      assert.equal(createdAuthoringState.rows.length, 1);
+      assert.equal(createdAuthoringState.rows[0].status, 'draft');
+      assert.equal(Number(createdAuthoringState.rows[0].subtotal), 100);
+      assert.equal(Number(createdAuthoringState.rows[0].tax_total), 16);
+      assert.equal(Number(createdAuthoringState.rows[0].total_amount), 116);
+      assert.equal(Number(createdAuthoringState.rows[0].base_total_amount), 116);
+      assert.equal(createdAuthoringState.rows[0].internal_notes, null);
+
+      const createdAuthoringLine = await returnPool.query(
+        `SELECT description, sku_snapshot, quantity, unit_price, tax_amount, line_total
+         FROM sales_quote_items WHERE quote_id = $1 AND company_id = $2`,
+        [createdAuthoringQuote.id, companyId],
+      );
+      assert.equal(createdAuthoringLine.rows.length, 1);
+      assert.equal(createdAuthoringLine.rows[0].description, 'Consulting support');
+      assert.equal(createdAuthoringLine.rows[0].sku_snapshot, 'AUTH-1');
+      assert.equal(Number(createdAuthoringLine.rows[0].quantity), 1);
+      assert.equal(Number(createdAuthoringLine.rows[0].line_total), 116);
+
+      const revisedAuthoringQuote = await updateSalesQuoteDraftTransaction(
+        {
+          ...authoringInput,
+          quoteId: createdAuthoringQuote.id,
+          shippingTotal: 5,
+          notes: 'Revised commercial terms',
+          lines: [{ description: 'Consulting support - expanded', sku: 'AUTH-1', quantity: 2, unitPrice: 100, unitCost: 30 }],
+        },
+        authoringContext as Parameters<typeof updateSalesQuoteDraftTransaction>[1],
+        quoteAuthoringDependencies,
+      );
+      assert.equal(revisedAuthoringQuote.status, 'draft');
+      assert.equal(revisedAuthoringQuote.totalAmount, 237);
+      const revisedAuthoringState = await returnPool.query(
+        `SELECT status, subtotal, tax_total, shipping_total, total_amount, notes
+         FROM sales_quotes WHERE id = $1 AND company_id = $2`,
+        [createdAuthoringQuote.id, companyId],
+      );
+      assert.equal(revisedAuthoringState.rows.length, 1);
+      assert.equal(revisedAuthoringState.rows[0].status, 'draft');
+      assert.equal(Number(revisedAuthoringState.rows[0].subtotal), 200);
+      assert.equal(Number(revisedAuthoringState.rows[0].tax_total), 32);
+      assert.equal(Number(revisedAuthoringState.rows[0].shipping_total), 5);
+      assert.equal(Number(revisedAuthoringState.rows[0].total_amount), 237);
+      assert.equal(revisedAuthoringState.rows[0].notes, 'Revised commercial terms');
+      const revisedAuthoringLines = await returnPool.query(
+        `SELECT description, quantity, unit_price, line_total
+         FROM sales_quote_items WHERE quote_id = $1 AND company_id = $2`,
+        [createdAuthoringQuote.id, companyId],
+      );
+      assert.equal(revisedAuthoringLines.rows.length, 1, 'editing a quote must replace its existing line set atomically');
+      assert.equal(revisedAuthoringLines.rows[0].description, 'Consulting support - expanded');
+      assert.equal(Number(revisedAuthoringLines.rows[0].quantity), 2);
+      assert.equal(Number(revisedAuthoringLines.rows[0].line_total), 232);
+
+      const authoringDeliveryDeps: Parameters<typeof deliverSalesQuote>[1] = {
+        assertSalesQuoteApprovalSatisfied: async () => {},
+        getPublicSalesQuote: async (tenantId, token, options) => getPublicSalesQuote(
+          tenantId,
+          token,
+          options,
+          { getTenantPoolByTenantId: async () => returnPool as unknown as Pool },
+        ),
+        renderSalesQuotePdf: () => Buffer.from('%PDF-1.4 SaMi integration test'),
+        sendWorkspaceNotificationEmail: async () => ({
+          success: true,
+          messageId: 'authoring-delivery-email-001',
+        }),
+      };
+      const sentAuthoringQuote = await deliverSalesQuote(
+        {
+          pool: returnPool as unknown as Pool,
+          tenantId: 'integration-test-tenant',
+          companyId,
+          companyName: 'SaMi Integration',
+          userId,
+          quoteId: createdAuthoringQuote.id,
+          channels: ['email'],
+        },
+        authoringDeliveryDeps,
+      );
+      assert.ok(sentAuthoringQuote.publicPath.includes('/q/integration-test-tenant/'));
+      assert.equal(sentAuthoringQuote.deliveries.length, 1);
+      assert.equal(sentAuthoringQuote.deliveries[0].success, true);
+      assert.equal(sentAuthoringQuote.deliveries[0].messageId, 'authoring-delivery-email-001');
+
+      const sentAuthoringState = await returnPool.query(
+        `SELECT status, public_enabled, public_token_hash, sent_at
+         FROM sales_quotes WHERE id = $1 AND company_id = $2`,
+        [createdAuthoringQuote.id, companyId],
+      );
+      assert.equal(sentAuthoringState.rows[0].status, 'sent');
+      assert.equal(sentAuthoringState.rows[0].public_enabled, true);
+      assert.ok(sentAuthoringState.rows[0].public_token_hash);
+      assert.ok(sentAuthoringState.rows[0].sent_at instanceof Date);
+
+      const sentDeliveryLog = await returnPool.query(
+        `SELECT channel, status, provider_message_id
+         FROM sales_delivery_log WHERE quote_id = $1 AND company_id = $2`,
+        [createdAuthoringQuote.id, companyId],
+      );
+      assert.equal(sentDeliveryLog.rows.length, 1);
+      assert.equal(sentDeliveryLog.rows[0].channel, 'email');
+      assert.equal(sentDeliveryLog.rows[0].status, 'sent');
+      assert.equal(sentDeliveryLog.rows[0].provider_message_id, 'authoring-delivery-email-001');
+
+      const sentAuthoringHistory = await returnPool.query(
+        `SELECT from_status, to_status FROM sales_quote_status_history
+         WHERE quote_id = $1 AND company_id = $2 ORDER BY created_at`,
+        [createdAuthoringQuote.id, companyId],
+      );
+      assert.equal(sentAuthoringHistory.rows.length, 2);
+      assert.equal(sentAuthoringHistory.rows[0].from_status, null);
+      assert.equal(sentAuthoringHistory.rows[0].to_status, 'draft');
+      assert.equal(sentAuthoringHistory.rows[1].from_status, 'draft');
+      assert.equal(sentAuthoringHistory.rows[1].to_status, 'sent');
+
+      await assert.rejects(
+        updateSalesQuoteDraftTransaction(
+          {
+            ...authoringInput,
+            quoteId: createdAuthoringQuote.id,
+            lines: [{ description: 'Must not overwrite a sent quote', quantity: 3, unitPrice: 1, unitCost: 0 }],
+          },
+          authoringContext as Parameters<typeof updateSalesQuoteDraftTransaction>[1],
+          quoteAuthoringDependencies,
+        ),
+        /Only draft quotes can be edited/,
+        'a delivered quotation must be revised by duplication, never edited in place',
+      );
+      const noEditAfterSend = await returnPool.query(
+        `SELECT status, total_amount FROM sales_quotes WHERE id = $1 AND company_id = $2`,
+        [createdAuthoringQuote.id, companyId],
+      );
+      assert.equal(noEditAfterSend.rows[0].status, 'sent');
+      assert.equal(Number(noEditAfterSend.rows[0].total_amount), 237);
+
+      const quoteAuthoringAudit = await returnPool.query(
+        `SELECT type FROM activities
+         WHERE company_id = $1 AND record_id = $2
+         ORDER BY created_at`,
+        [companyId, createdAuthoringQuote.id],
+      );
+      assert.deepEqual(
+        quoteAuthoringAudit.rows.map((row: Record<string, unknown>) => row.type),
+        ['sales.quote.created', 'sales.quote.updated', 'sales.quote.sent'],
+      );
+
+      // A fully failed send records a failed delivery, closes the generated
+      // public link, and leaves the quote draft so the owner can retry.
+      const undeliverableQuote = await createSalesQuoteTransaction(
+        {
+          ...authoringInput,
+          customerName: 'No Email Customer',
+          customerEmail: '',
+          reference: 'AUTHORING-REF-2',
+          lines: [{ description: 'No-contact test', sku: 'AUTH-2', quantity: 1, unitPrice: 50, unitCost: 10 }],
+        },
+        authoringContext,
+        quoteAuthoringDependencies,
+      );
+      await assert.rejects(
+        deliverSalesQuote(
+          {
+            pool: returnPool as unknown as Pool,
+            tenantId: 'integration-test-tenant',
+            companyId,
+            companyName: 'SaMi Integration',
+            userId,
+            quoteId: undeliverableQuote.id,
+            channels: ['email'],
+          },
+          authoringDeliveryDeps,
+        ),
+        (error: unknown) => error instanceof Error && /Quotation delivery failed/.test(error.message),
+      );
+      const failedDeliveryState = await returnPool.query(
+        `SELECT status, public_enabled, public_token_hash
+         FROM sales_quotes WHERE id = $1 AND company_id = $2`,
+        [undeliverableQuote.id, companyId],
+      );
+      assert.equal(failedDeliveryState.rows[0].status, 'draft');
+      assert.equal(failedDeliveryState.rows[0].public_enabled, false);
+      assert.equal(failedDeliveryState.rows[0].public_token_hash, null);
+      const failedDeliveryLog = await returnPool.query(
+        `SELECT status, error_code FROM sales_delivery_log
+         WHERE quote_id = $1 AND company_id = $2`,
+        [undeliverableQuote.id, companyId],
+      );
+      assert.equal(failedDeliveryLog.rows.length, 1);
+      assert.equal(failedDeliveryLog.rows[0].status, 'failed');
+      assert.equal(failedDeliveryLog.rows[0].error_code, 'EMAIL_MISSING');
 
     } finally {
       returnSessionHolder.client?.release();
