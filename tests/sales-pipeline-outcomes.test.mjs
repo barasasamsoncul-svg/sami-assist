@@ -73,9 +73,9 @@ test('opportunity stage transitions keep terminal win/loss probabilities canonic
     source('lib/apps/sales/pipeline.ts'),
     source('lib/apps/sales/pipeline-stage-rules.ts'),
   ]);
-  const start = pipeline.indexOf('export async function moveSalesOpportunity(');
-  const end = pipeline.indexOf('\n\nasync function normalizePipelineTerminalSequences', start);
-  assert.ok(start >= 0 && end > start, 'opportunity move command must have a bounded implementation');
+  const start = pipeline.indexOf('export async function moveSalesOpportunityTransaction(');
+  const end = pipeline.indexOf('export async function moveSalesOpportunity(', start);
+  assert.ok(start >= 0 && end > start, 'opportunity transition transaction core must have a bounded implementation');
   const move = pipeline.slice(start, end);
   assert.match(move, /terminalSalesOpportunityProbability\(targetStageType\)/);
   assert.match(move, /terminalProbability !== null[\s\S]*?\? terminalProbability/);

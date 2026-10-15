@@ -62,3 +62,29 @@ test('Pipeline stage mutations are company-scoped, transactional, and keep Won/L
   assert.match(pipeline, /MAX\(s\.sequence\)\+10/);
   assert.match(pipeline, /MAX\(s\.sequence\)\+20/);
 });
+
+
+test('Opportunity outcome transition SQL is exercised through a transaction core behind the permission-checked command', async () => {
+  const pipeline = await source('lib/apps/sales/pipeline.ts');
+  const helperStart = pipeline.indexOf('export async function moveSalesOpportunityTransaction(');
+  const helperEnd = pipeline.indexOf('export async function moveSalesOpportunity(', helperStart);
+  const wrapperEnd = pipeline.indexOf('async function normalizePipelineTerminalSequences', helperEnd);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart && wrapperEnd > helperEnd);
+
+  const transactionCore = pipeline.slice(helperStart, helperEnd);
+  const wrapper = pipeline.slice(helperEnd, wrapperEnd);
+  assert.match(wrapper, /requireSalesContext\(SALES_PERMISSIONS\.PIPELINE_MANAGE\)/);
+  const begin = wrapper.indexOf("await client.query('BEGIN')");
+  const call = wrapper.indexOf('await moveSalesOpportunityTransaction(');
+  const commit = wrapper.indexOf("await client.query('COMMIT')");
+  assert.ok(begin >= 0 && call > begin && commit > call,
+    'the public command must keep the transaction around the production transition core');
+  assert.match(transactionCore, /WHERE o\.id=\$1 AND o\.company_id=\$2 AND o\.deleted_at IS NULL/);
+  assert.match(transactionCore, /WHERE id=\$1 AND company_id=\$2 AND is_active=TRUE/);
+  assert.match(transactionCore, /An opportunity cannot be moved to a stage in a different sales pipeline/);
+  assert.match(transactionCore, /A reason is required to mark an opportunity as lost/);
+  assert.match(transactionCore, /terminalSalesOpportunityProbability\(targetStageType\)/);
+  assert.match(transactionCore, /INSERT INTO sales_opportunity_stage_history/);
+  assert.doesNotMatch(transactionCore, /query\('BEGIN'\)|query\('COMMIT'\)|query\('ROLLBACK'\)/,
+    'the transaction core must rely on the authorized production caller to commit or roll back');
+});

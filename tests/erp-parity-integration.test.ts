@@ -18,6 +18,8 @@ import {
   markSalesOpportunityWonFromAcceptedQuote,
 } from '../lib/apps/sales/opportunity-conversion';
 
+import { moveSalesOpportunityTransaction } from '../lib/apps/sales/pipeline';
+
 import {
   postInvoiceConfirmationToAccounting,
   postInvoicePaymentToAccounting,
@@ -3326,6 +3328,214 @@ integration(
 
     } finally {
       if (outerTransaction) {
+        try { await client.query('ROLLBACK'); } catch {}
+      }
+      client.release();
+      await pool.end();
+    }
+  },
+);
+
+
+
+integration(
+  'ERP parity: Sales opportunity stage transitions persist Won/Lost lifecycle and loss reasons in PostgreSQL',
+  async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    const client = await pool.connect();
+    let transactionOpen = false;
+
+    try {
+      await client.query('BEGIN');
+      transactionOpen = true;
+      await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
+      await client.query(`
+        CREATE TABLE public.companies (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          name TEXT NOT NULL DEFAULT 'Sales Opportunity Test',
+          currency VARCHAR(3) NOT NULL DEFAULT 'KES',
+          deleted_at TIMESTAMPTZ
+        )
+      `);
+
+      const { getSamiModuleMigrationPlan } = await import('../lib/modules/migrations');
+      const plan = getSamiModuleMigrationPlan('sales', '1.0.0', '3.4.20');
+      for (let index = 0; index < plan.length; index += 1) {
+        const migration = plan[index];
+        assert.equal(migration.moduleKey, 'sales');
+        if (index > 0) assert.equal(plan[index - 1].toVersion, migration.fromVersion);
+        await migration.run(client, {
+          moduleKey: 'sales',
+          namespace: 'sales',
+          fromVersion: migration.fromVersion,
+          toVersion: migration.toVersion,
+        });
+      }
+
+      const companyId = 'b1111111-1111-4111-8111-111111111111';
+      const otherCompanyId = 'b2222222-2222-4222-8222-222222222222';
+      const userId = 'b3333333-3333-4333-8333-333333333333';
+      await client.query(
+        'INSERT INTO public.companies (id, name, currency) VALUES ($1, $2, $3), ($4, $5, $3)',
+        [companyId, 'Pipeline A Company', 'KES', otherCompanyId, 'Pipeline B Company'],
+      );
+
+      async function createPipeline(ownerCompanyId: string, name: string, isDefault: boolean) {
+        const result = await client.query(
+          `INSERT INTO public.sales_pipelines
+            (company_id, name, sequence, is_default, is_active, created_by, updated_by)
+           VALUES ($1,$2,10,$3,TRUE,$4,$4) RETURNING id`,
+          [ownerCompanyId, name, isDefault, userId],
+        );
+        return String(result.rows[0].id);
+      }
+
+      async function createStage(ownerCompanyId: string, pipelineId: string, name: string, sequence: number, probability: number, stageType: 'open' | 'won' | 'lost') {
+        const result = await client.query(
+          `INSERT INTO public.sales_pipeline_stages
+            (company_id, pipeline_id, name, sequence, probability, stage_type, is_active, created_by, updated_by)
+           VALUES ($1,$2,$3,$4,$5,$6,TRUE,$7,$7) RETURNING id`,
+          [ownerCompanyId, pipelineId, name, sequence, probability, stageType, userId],
+        );
+        return String(result.rows[0].id);
+      }
+
+      const pipelineId = await createPipeline(companyId, 'Core Sales', true);
+      const otherPipelineId = await createPipeline(companyId, 'Enterprise Sales', false);
+      const otherCompanyPipelineId = await createPipeline(otherCompanyId, 'Other Company Sales', true);
+      const qualificationId = await createStage(companyId, pipelineId, 'Qualification', 10, 20, 'open');
+      const negotiationId = await createStage(companyId, pipelineId, 'Negotiation', 20, 65, 'open');
+      const wonId = await createStage(companyId, pipelineId, 'Won', 90, 100, 'won');
+      const lostId = await createStage(companyId, pipelineId, 'Lost', 100, 0, 'lost');
+      const otherPipelineStageId = await createStage(companyId, otherPipelineId, 'Qualification', 10, 30, 'open');
+      const otherCompanyStageId = await createStage(otherCompanyId, otherCompanyPipelineId, 'Qualification', 10, 30, 'open');
+
+      const opportunityResult = await client.query(
+        `INSERT INTO public.sales_opportunities
+          (company_id, opportunity_number, stage_id, name, currency, expected_value, probability, created_by, updated_by)
+         VALUES ($1, 'OPP-STAGE-001', $2, 'Pipeline test deal', 'KES', 125000, 20, $3, $3)
+         RETURNING id`,
+        [companyId, qualificationId, userId],
+      );
+      const opportunityId = String(opportunityResult.rows[0].id);
+      const move = (stageId: string, reason?: string, probability?: number, selectedCompanyId = companyId) =>
+        moveSalesOpportunityTransaction(client, {
+          companyId: selectedCompanyId,
+          userId,
+          opportunityId,
+          stageId,
+          reason,
+          probability,
+        });
+
+      await assert.rejects(
+        () => move(lostId),
+        /A reason is required to mark an opportunity as lost/,
+        'marking a deal lost must require a recorded reason',
+      );
+      await assert.rejects(
+        () => move(otherPipelineStageId, 'wrong pipeline'),
+        /different sales pipeline/,
+        'the transition must not cross between pipelines within the same company',
+      );
+      await assert.rejects(
+        () => move(otherCompanyStageId, 'cross company', undefined, otherCompanyId),
+        /Opportunity or pipeline stage was not found/,
+        'a foreign company context must not read or mutate another company opportunity',
+      );
+
+      const untouched = await client.query(
+        `SELECT stage_id, probability FROM public.sales_opportunities WHERE id=$1 AND company_id=$2`,
+        [opportunityId, companyId],
+      );
+      assert.equal(String(untouched.rows[0].stage_id), qualificationId);
+      assert.equal(Number(untouched.rows[0].probability), 20);
+      const emptyHistory = await client.query(
+        'SELECT COUNT(*)::int AS count FROM public.sales_opportunity_stage_history WHERE opportunity_id=$1',
+        [opportunityId],
+      );
+      assert.equal(emptyHistory.rows[0].count, 0,
+        'rejected moves must not write stage-history side effects');
+
+      const lost = await move(lostId, 'Budget deferred', 87);
+      assert.equal(lost.stageType, 'lost');
+      assert.equal(lost.probability, 0, 'lost stage probability is canonical even if the caller sends 87');
+      const lostState = await client.query(
+        `SELECT stage_id, probability, won_at, lost_at, lost_reason
+         FROM public.sales_opportunities WHERE id=$1 AND company_id=$2`,
+        [opportunityId, companyId],
+      );
+      assert.equal(String(lostState.rows[0].stage_id), lostId);
+      assert.equal(Number(lostState.rows[0].probability), 0);
+      assert.equal(lostState.rows[0].won_at, null);
+      assert.ok(lostState.rows[0].lost_at);
+      assert.equal(lostState.rows[0].lost_reason, 'Budget deferred');
+
+      await assert.rejects(
+        () => move(wonId, 'cannot skip reopening'),
+        /Reopen a won or lost opportunity before recording a different terminal outcome/,
+      );
+      const terminalHistory = await client.query(
+        'SELECT COUNT(*)::int AS count FROM public.sales_opportunity_stage_history WHERE opportunity_id=$1',
+        [opportunityId],
+      );
+      assert.equal(terminalHistory.rows[0].count, 1,
+        'a rejected terminal-to-terminal move must not create history');
+
+      const reopened = await move(negotiationId, 'Reopened for follow-up', 83);
+      assert.equal(reopened.stageType, 'open');
+      assert.equal(reopened.probability, 83);
+      const reopenedState = await client.query(
+        `SELECT stage_id, probability, won_at, lost_at, lost_reason
+         FROM public.sales_opportunities WHERE id=$1 AND company_id=$2`,
+        [opportunityId, companyId],
+      );
+      assert.equal(String(reopenedState.rows[0].stage_id), negotiationId);
+      assert.equal(Number(reopenedState.rows[0].probability), 83);
+      assert.equal(reopenedState.rows[0].won_at, null);
+      assert.equal(reopenedState.rows[0].lost_at, null);
+      assert.equal(reopenedState.rows[0].lost_reason, null,
+        'reopening must clear the previous Lost outcome and reason');
+
+      const won = await move(wonId, 'Deal closed', 12);
+      assert.equal(won.stageType, 'won');
+      assert.equal(won.probability, 100, 'won stage probability is canonical even if the caller sends 12');
+      const wonState = await client.query(
+        `SELECT stage_id, probability, won_at, lost_at, lost_reason
+         FROM public.sales_opportunities WHERE id=$1 AND company_id=$2`,
+        [opportunityId, companyId],
+      );
+      assert.equal(String(wonState.rows[0].stage_id), wonId);
+      assert.equal(Number(wonState.rows[0].probability), 100);
+      assert.ok(wonState.rows[0].won_at);
+      assert.equal(wonState.rows[0].lost_at, null);
+      assert.equal(wonState.rows[0].lost_reason, null);
+
+      const history = await client.query(
+        `SELECT from_stage_id, to_stage_id, probability, reason
+         FROM public.sales_opportunity_stage_history
+         WHERE opportunity_id=$1 AND company_id=$2`,
+        [opportunityId, companyId],
+      );
+      assert.equal(history.rows.length, 3);
+      // All rows are created in one transaction, so NOW() can be identical;
+      // assert by target stage instead of assuming timestamp order.
+      const historyByTarget = new Map(history.rows.map(row => [String(row.to_stage_id), row]));
+      const lostHistory = historyByTarget.get(lostId);
+      assert.ok(lostHistory);
+      assert.equal(String(lostHistory.from_stage_id), qualificationId);
+      assert.equal(Number(lostHistory.probability), 0);
+      assert.equal(lostHistory.reason, 'Budget deferred');
+      const reopenedHistory = historyByTarget.get(negotiationId);
+      assert.ok(reopenedHistory);
+      assert.equal(String(reopenedHistory.from_stage_id), lostId);
+      assert.equal(Number(reopenedHistory.probability), 83);
+      const wonHistory = historyByTarget.get(wonId);
+      assert.ok(wonHistory);
+      assert.equal(String(wonHistory.from_stage_id), negotiationId);
+      assert.equal(Number(wonHistory.probability), 100);
+    } finally {
+      if (transactionOpen) {
         try { await client.query('ROLLBACK'); } catch {}
       }
       client.release();
