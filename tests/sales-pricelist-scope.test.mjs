@@ -29,3 +29,19 @@ test('pricelist scope validation is included in the Sales CI regression suite', 
   const packageJson = JSON.parse(await source('package.json'));
   assert.match(packageJson.scripts['test:sales'], /tests\/sales-pricelist-scope\.test\.mjs/);
 });
+
+
+test('effective-dated pricelist resolution and issued quote-price snapshots are exercised against PostgreSQL', async () => {
+  const [integrationTest, packageJson] = await Promise.all([
+    source('tests/erp-parity-integration.test.ts'),
+    source('package.json'),
+  ]);
+
+  assert.match(integrationTest, /ERP parity: effective-dated Sales pricelists and quote-line snapshots execute in PostgreSQL/);
+  assert.match(integrationTest, /createSalesQuoteTransaction/);
+  assert.match(integrationTest, /resolveSalesPricelistUnitPrice/);
+  assert.match(integrationTest, /valid_from/);
+  assert.match(integrationTest, /valid_until/);
+  assert.match(integrationTest, /unit_price/);
+  assert.match(packageJson.scripts['test:erp-integration'], /tests\/erp-parity-integration\.test\.ts/);
+});
