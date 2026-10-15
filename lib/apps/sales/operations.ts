@@ -2603,6 +2603,7 @@ export async function createSalesReturnTransaction(
   context: Awaited<ReturnType<typeof requireSalesContext>>,
   overrides: Partial<SalesReturnCreateDependencies> = {},
 ) {
+  const deps: SalesReturnCreateDependencies = { ...defaultSalesReturnCreateDependencies, ...overrides };
 const orderId =
     requireUuid(
       input.orderId,
@@ -3315,6 +3316,7 @@ export async function issueSalesReturnCreditTransaction(
   context: Awaited<ReturnType<typeof requireSalesContext>>,
   overrides: Partial<SalesReturnCreditDependencies> = {},
 ) {
+  const deps: SalesReturnCreditDependencies = { ...defaultSalesReturnCreditDependencies, ...overrides };
 const returnId = requireUuid(input.returnId, 'Sales return').toLowerCase();
 
   // Serialize the complete return-credit workflow. Invoicing writes the credit
@@ -3389,7 +3391,7 @@ const returnId = requireUuid(input.returnId, 'Sales return').toLowerCase();
     }
 
     const returnItems =
-      await context.pool.query(
+      await serializationClient.query(
         `
           SELECT
             item.id,
@@ -3464,7 +3466,7 @@ const returnId = requireUuid(input.returnId, 'Sales return').toLowerCase();
         );
 
       const invoiceItems =
-        await context.pool.query(
+        await serializationClient.query(
           `
             SELECT
               invoice_item.id,
@@ -3844,7 +3846,7 @@ const returnId = requireUuid(input.returnId, 'Sales return').toLowerCase();
       });
     }
 
-    const returnState = await context.pool.query(
+    const returnState = await serializationClient.query(
       `
         UPDATE sales_returns
         SET
@@ -3910,6 +3912,7 @@ export async function refundSalesReturnCreditTransaction(
   context: Awaited<ReturnType<typeof requireSalesContext>>,
   overrides: Partial<SalesReturnRefundDependencies> = {},
 ) {
+  const deps: SalesReturnRefundDependencies = { ...defaultSalesReturnRefundDependencies, ...overrides };
 const returnCreditId =
     requireUuid(
       input.returnCreditId,
@@ -4017,7 +4020,7 @@ const returnCreditId =
     // rejecting its original amount against that now-lower balance.
     let priorRefund: { amount: unknown; idempotency_key: unknown } | null = null;
     if (suppliedRefundKey && legacyRefundKey) {
-      const priorRefundResult = await context.pool.query(
+      const priorRefundResult = await serializationClient.query(
         `
           SELECT amount, idempotency_key
           FROM invoicing_credit_note_refunds
@@ -4114,7 +4117,7 @@ const returnCreditId =
       });
 
     const authoritative =
-      await context.pool.query(
+      await serializationClient.query(
         `
           SELECT
             balance.available_amount,
@@ -4176,7 +4179,7 @@ const returnCreditId =
         ),
       );
 
-    await context.pool.query(
+    await serializationClient.query(
       `
         UPDATE sales_return_credits
         SET
@@ -4197,7 +4200,7 @@ const returnCreditId =
     );
 
     const balances =
-      await context.pool.query(
+      await serializationClient.query(
         `
           SELECT
             COALESCE(
@@ -4237,7 +4240,7 @@ const returnCreditId =
           ? 'refunded'
           : 'partially_refunded';
 
-    await context.pool.query(
+    await serializationClient.query(
       `
         UPDATE sales_returns
         SET
