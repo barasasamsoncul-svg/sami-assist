@@ -1195,9 +1195,14 @@ integration(
       },
       reserveSalesOrderInventory: async () => {
         reserveCalls += 1;
+        return {
+          integrated: true,
+          reserved: 1,
+        };
       },
       recordSalesOrderCommissionEntries: async () => {
         commissionCalls += 1;
+        return 1;
       },
       emitSalesAutomationEvent: async () => {
         automationCalls += 1;
