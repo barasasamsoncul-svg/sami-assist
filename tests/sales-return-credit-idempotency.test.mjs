@@ -49,7 +49,7 @@ test('Sales return-credit issuance serializes retries and preserves refund lifec
   const invoiceCredit = credit.indexOf('await issueInvoiceCreditNote(');
   const unlock = credit.indexOf("pg_advisory_unlock(hashtext($1), hashtext($2))");
   assert.ok(lock >= 0 && lock < returnRead, 'serialize before reading return-credit state');
-  assert.match(credit, /!\[\s*'received',\s*'credited',\s*'partially_refunded',\s*'refunded'\s*\]\.includes/, 'allow idempotent recovery of a return whose refund already completed');
+  assert.match(credit, /!\[\s*'received',\s*'credited',\s*'partially_refunded',\s*'refunded',?\s*\]\.includes/, 'allow idempotent recovery of a return whose refund already completed');
   assert.ok(invoiceCredit > lock && unlock > invoiceCredit, 'hold the lock over cross-module credit creation and recovery');
   assert.ok(
     compact.includes("status = CASE WHEN status IN ('partially_refunded', 'refunded') THEN status WHEN $4::boolean THEN 'credited' ELSE status END"),
