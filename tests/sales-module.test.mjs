@@ -535,7 +535,7 @@ test('Sales quote-to-order is transaction-safe, idempotent, and invoice permissi
     );
   const fulfillmentStart =
     commands.indexOf(
-      'export async function updateSalesOrderFulfillment(',
+      'export async function updateSalesOrderFulfillmentTransaction(',
       invoiceStart,
     );
 
