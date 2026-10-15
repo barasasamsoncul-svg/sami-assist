@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { salesQuoteApprovalPolicyMatches, salesQuoteRequiresLegacyApproval } from '@/lib/apps/sales/approval-policy';
+
 import crypto from 'crypto';
 import type { PoolClient } from 'pg';
 import {
@@ -16,7 +18,7 @@ import {
 function fingerprint(quote: Record<string, unknown>, lines: Record<string, unknown>[], optionalLines: Record<string, unknown>[] = []) {
   const normalized = {
     quote: Object.fromEntries(
-      ['customer_name','customer_email','customer_phone','customer_tax_id','billing_address','shipping_address','quote_date','valid_until','currency','reference','subtotal','discount_total','tax_total','shipping_total','total_amount','margin_amount','margin_percent','notes','terms']
+      ['customer_name','customer_email','customer_phone','customer_tax_id','billing_address','shipping_address','quote_date','valid_until','currency','reference','subtotal','discount_total','tax_total','shipping_total','total_amount','base_total_amount','base_currency','exchange_rate','exchange_rate_date','margin_amount','margin_percent','notes','terms']
         .map(key => [key, quote[key] ?? null]),
     ),
     lines: lines.map(line => Object.fromEntries(
@@ -55,16 +57,7 @@ async function quoteSnapshot(client: Queryable, companyId: string, quoteId: stri
 }
 
 function policyMatches(policy: Record<string, unknown>, quote: Record<string, unknown>) {
-  if (policy.currency_code && String(policy.currency_code).toUpperCase() !== String(quote.currency || '').toUpperCase()) return false;
-  const total = Number(quote.total_amount || 0);
-  const subtotal = Number(quote.subtotal || 0);
-  const discountPercent = subtotal > 0 ? Number(quote.discount_total || 0) / subtotal * 100 : 0;
-  const marginPercent = quote.margin_percent == null ? null : Number(quote.margin_percent);
-  const triggers: boolean[] = [];
-  if (policy.min_quote_total != null) triggers.push(total >= Number(policy.min_quote_total));
-  if (policy.max_discount_percent != null) triggers.push(discountPercent > Number(policy.max_discount_percent));
-  if (policy.min_margin_percent != null) triggers.push(marginPercent == null || marginPercent < Number(policy.min_margin_percent));
-  return triggers.some(Boolean);
+  return salesQuoteApprovalPolicyMatches(policy, quote);
 }
 
 async function currentPolicies(client: Queryable, companyId: string) {
@@ -179,8 +172,11 @@ export async function assertSalesQuoteApprovalSatisfied(client: Queryable, compa
     'SELECT require_quote_approval,quote_approval_threshold FROM sales_settings WHERE company_id=$1',
     [companyId],
   );
-  const legacyRequired = settings.rows[0]?.require_quote_approval === true &&
-    Number(snapshot.quote.total_amount || 0) >= Number(settings.rows[0]?.quote_approval_threshold || 0);
+  const legacyRequired = salesQuoteRequiresLegacyApproval(
+    settings.rows[0]?.require_quote_approval,
+    settings.rows[0]?.quote_approval_threshold,
+    snapshot.quote.base_total_amount,
+  );
   if ((matching || legacyRequired) && String(snapshot.quote.approval_status || 'not_required') !== 'approved') {
     throw new SalesError('QUOTE_STATE_INVALID', 'This quotation matches an approval policy and cannot proceed until all internal approval steps are complete.');
   }
@@ -220,7 +216,11 @@ export async function requestAdvancedSalesQuoteApproval(input: Record<string, un
       'SELECT require_quote_approval,quote_approval_threshold FROM sales_settings WHERE company_id=$1',
       [context.companyId],
     );
-    const legacyRequired = settings.rows[0]?.require_quote_approval === true && Number(quote.total_amount || 0) >= Number(settings.rows[0]?.quote_approval_threshold || 0);
+    const legacyRequired = salesQuoteRequiresLegacyApproval(
+      settings.rows[0]?.require_quote_approval,
+      settings.rows[0]?.quote_approval_threshold,
+      quote.base_total_amount,
+    );
     if (!matching && !legacyRequired) {
       await client.query(`UPDATE sales_quotes SET approval_status='not_required',approval_requested_at=NULL,approval_requested_by=NULL,approval_rejected_at=NULL,approval_rejected_by=NULL,approval_rejection_reason=NULL,updated_by=$3,updated_at=NOW() WHERE id=$1 AND company_id=$2`, [quoteId, context.companyId, context.userId]);
       await client.query('COMMIT');
