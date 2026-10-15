@@ -1527,6 +1527,81 @@ export async function updateSalesOpportunity(input: Record<string, unknown>) {
   }
 }
 
+export async function moveSalesOpportunityTransaction(
+  client: PoolClient,
+  input: {
+    companyId: string;
+    userId: string;
+    opportunityId: unknown;
+    stageId: unknown;
+    reason?: unknown;
+    probability?: unknown;
+  },
+) {
+  const opportunityId = requireUuid(input.opportunityId, 'Opportunity');
+  const stageId = requireUuid(input.stageId, 'Stage');
+  const reason = nullableText(input.reason, 2000);
+  const current = await client.query(
+    `SELECT o.*, current_stage.stage_type AS current_stage_type,
+            current_stage.pipeline_id AS current_pipeline_id
+     FROM sales_opportunities o
+     INNER JOIN sales_pipeline_stages current_stage
+       ON current_stage.id=o.stage_id AND current_stage.company_id=o.company_id
+     WHERE o.id=$1 AND o.company_id=$2 AND o.deleted_at IS NULL
+     FOR UPDATE OF o`,
+    [opportunityId, input.companyId],
+  );
+  const stage = await client.query(
+    `SELECT * FROM sales_pipeline_stages
+     WHERE id=$1 AND company_id=$2 AND is_active=TRUE`,
+    [stageId, input.companyId],
+  );
+  if (!current.rows[0] || !stage.rows[0]) {
+    throw new SalesError('INVALID_INPUT', 'Opportunity or pipeline stage was not found.');
+  }
+  if (String(current.rows[0].current_pipeline_id) !== String(stage.rows[0].pipeline_id)) {
+    throw new SalesError('INVALID_INPUT', 'An opportunity cannot be moved to a stage in a different sales pipeline.');
+  }
+  if (String(current.rows[0].stage_id) === stageId) {
+    throw new SalesError('INVALID_INPUT', 'Opportunity is already in that stage.');
+  }
+  const currentStageType = String(current.rows[0].current_stage_type || 'open');
+  const targetStageType = String(stage.rows[0].stage_type || 'open');
+  if (currentStageType !== 'open' && targetStageType !== 'open') {
+    throw new SalesError(
+      'INVALID_INPUT',
+      'Reopen a won or lost opportunity before recording a different terminal outcome.',
+    );
+  }
+  if (targetStageType === 'lost' && !reason) {
+    throw new SalesError('INVALID_INPUT', 'A reason is required to mark an opportunity as lost.');
+  }
+  const terminalProbability = terminalSalesOpportunityProbability(targetStageType);
+  const probability = terminalProbability !== null
+    ? terminalProbability
+    : input.probability === undefined
+      ? Number(stage.rows[0].probability)
+      : numberInput(input.probability, 'Probability', { min: 0, max: 100 });
+  await client.query(
+    `UPDATE sales_opportunities
+     SET stage_id=$3,probability=$4,
+         won_at=CASE WHEN $5='won' THEN COALESCE(won_at,NOW()) ELSE NULL END,
+         lost_at=CASE WHEN $5='lost' THEN COALESCE(lost_at,NOW()) ELSE NULL END,
+         lost_reason=CASE WHEN $5='lost' THEN $6 ELSE NULL END,
+         updated_by=$7,updated_at=NOW()
+     WHERE id=$1 AND company_id=$2`,
+    [opportunityId, input.companyId, stageId, probability, stage.rows[0].stage_type, reason, input.userId],
+  );
+  await client.query(
+    `INSERT INTO sales_opportunity_stage_history
+      (company_id,opportunity_id,from_stage_id,to_stage_id,probability,reason,changed_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [input.companyId, opportunityId, current.rows[0].stage_id, stageId, probability, reason, input.userId],
+  );
+  return { id: opportunityId, stageId, probability, stageType: stage.rows[0].stage_type };
+}
+
+
 export async function moveSalesOpportunity(input: Record<string, unknown>) {
   const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE);
   const opportunityId = requireUuid(input.opportunityId, 'Opportunity');
@@ -1535,73 +1610,23 @@ export async function moveSalesOpportunity(input: Record<string, unknown>) {
   const client = await context.pool.connect();
   try {
     await client.query('BEGIN');
-    const current = await client.query(
-      `SELECT o.*, current_stage.stage_type AS current_stage_type,
-              current_stage.pipeline_id AS current_pipeline_id
-       FROM sales_opportunities o
-       INNER JOIN sales_pipeline_stages current_stage
-         ON current_stage.id=o.stage_id AND current_stage.company_id=o.company_id
-       WHERE o.id=$1 AND o.company_id=$2 AND o.deleted_at IS NULL
-       FOR UPDATE OF o`,
-      [opportunityId, context.companyId],
-    );
-    const stage = await client.query(
-      `SELECT * FROM sales_pipeline_stages
-       WHERE id=$1 AND company_id=$2 AND is_active=TRUE`,
-      [stageId, context.companyId],
-    );
-    if (!current.rows[0] || !stage.rows[0]) {
-      throw new SalesError('INVALID_INPUT', 'Opportunity or pipeline stage was not found.');
-    }
-    if (String(current.rows[0].current_pipeline_id) !== String(stage.rows[0].pipeline_id)) {
-      throw new SalesError('INVALID_INPUT', 'An opportunity cannot be moved to a stage in a different sales pipeline.');
-    }
-    if (current.rows[0].stage_id === stageId) {
-      throw new SalesError('INVALID_INPUT', 'Opportunity is already in that stage.');
-    }
-    const currentStageType = String(current.rows[0].current_stage_type || 'open');
-    const targetStageType = String(stage.rows[0].stage_type || 'open');
-    if (currentStageType !== 'open' && targetStageType !== 'open') {
-      throw new SalesError(
-        'INVALID_INPUT',
-        'Reopen a won or lost opportunity before recording a different terminal outcome.',
-      );
-    }
-    if (targetStageType === 'lost' && !reason) {
-      throw new SalesError('INVALID_INPUT', 'A reason is required to mark an opportunity as lost.');
-    }
-    const terminalProbability = terminalSalesOpportunityProbability(targetStageType);
-    const probability = terminalProbability !== null
-      ? terminalProbability
-      : input.probability === undefined
-        ? Number(stage.rows[0].probability)
-        : numberInput(input.probability, 'Probability', { min: 0, max: 100 });
-    await client.query(
-      `UPDATE sales_opportunities
-       SET stage_id=$3,probability=$4,
-           won_at=CASE WHEN $5='won' THEN COALESCE(won_at,NOW()) ELSE NULL END,
-           lost_at=CASE WHEN $5='lost' THEN COALESCE(lost_at,NOW()) ELSE NULL END,
-           lost_reason=CASE WHEN $5='lost' THEN $6 ELSE NULL END,
-           updated_by=$7,updated_at=NOW()
-       WHERE id=$1 AND company_id=$2`,
-      [opportunityId, context.companyId, stageId, probability, stage.rows[0].stage_type, reason, context.userId],
-    );
-    await client.query(
-      `INSERT INTO sales_opportunity_stage_history
-        (company_id,opportunity_id,from_stage_id,to_stage_id,probability,reason,changed_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [context.companyId, opportunityId, current.rows[0].stage_id, stageId, probability, reason, context.userId],
-    );
+    const result = await moveSalesOpportunityTransaction(client, {
+      companyId: context.companyId,
+      userId: context.userId,
+      opportunityId,
+      stageId,
+      reason,
+      probability: input.probability,
+    });
     await client.query('COMMIT');
-    return { id: opportunityId, stageId, probability, stageType: stage.rows[0].stage_type };
+    return result;
   } catch (error) {
-    await client.query('ROLLBACK');
+    await client.query('ROLLBACK').catch(() => undefined);
     throw error;
   } finally {
     client.release();
   }
 }
-
 
 async function normalizePipelineTerminalSequences(
   client: PoolClient,
