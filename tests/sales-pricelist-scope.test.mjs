@@ -32,9 +32,9 @@ test('pricelist scope validation is included in the Sales CI regression suite', 
 
 
 test('effective-dated pricelist resolution and issued quote-price snapshots are exercised against PostgreSQL', async () => {
-  const [integrationTest, packageJson] = await Promise.all([
+  const [integrationTest, erpWorkflow] = await Promise.all([
     source('tests/erp-parity-integration.test.ts'),
-    source('package.json'),
+    source('.github/workflows/erp-parity-integration.yml'),
   ]);
 
   assert.match(integrationTest, /ERP parity: effective-dated Sales pricelists and quote-line snapshots execute in PostgreSQL/);
@@ -43,5 +43,6 @@ test('effective-dated pricelist resolution and issued quote-price snapshots are 
   assert.match(integrationTest, /valid_from/);
   assert.match(integrationTest, /valid_until/);
   assert.match(integrationTest, /unit_price/);
-  assert.match(packageJson.scripts['test:erp-integration'], /tests\/erp-parity-integration\.test\.ts/);
+  assert.match(erpWorkflow, /tests\/erp-parity-integration\.test\.ts/,
+    'the PostgreSQL pricing regression must run in the ERP Parity CI workflow');
 });
