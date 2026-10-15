@@ -3036,14 +3036,14 @@ integration(
       await client.query('BEGIN');
       outerTransaction = true;
       await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
-      await client.query(\`
+      await client.query(`
         CREATE TABLE public.companies (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           name TEXT NOT NULL DEFAULT 'Approval Test Company',
           currency VARCHAR(3) NOT NULL DEFAULT 'KES',
           deleted_at TIMESTAMPTZ
         )
-      \`);
+      `);
 
       const { SALES_RUNTIME_MIGRATIONS } = await import('../lib/apps/runtime-migrations');
       const { getSamiModuleMigrationPlan } = await import('../lib/modules/migrations');
@@ -3079,7 +3079,7 @@ integration(
 
       // In production this table is provisioned by Core. The integration test
       // installs Sales in isolation, so provide the exact activity write contract.
-      await client.query(\`
+      await client.query(`
         CREATE TABLE IF NOT EXISTS public.activities (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           company_id UUID NOT NULL,
@@ -3091,50 +3091,50 @@ integration(
           metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
-      \`);
+      `);
 
       await client.query(
-        \`INSERT INTO public.sales_settings
+        `INSERT INTO public.sales_settings
           (company_id, default_currency, require_quote_approval, quote_approval_threshold)
-         VALUES ($1, 'KES', FALSE, 0)\`,
+         VALUES ($1, 'KES', FALSE, 0)`,
         [companyId],
       );
 
       const policyResult = await client.query(
-        \`INSERT INTO public.sales_quote_approval_policies
+        `INSERT INTO public.sales_quote_approval_policies
           (company_id, name, is_active, priority, min_quote_total, currency_code, created_by, updated_by)
          VALUES ($1, 'High-value two-step approval', TRUE, 1, 500, 'KES', $2, $2)
-         RETURNING id\`,
+         RETURNING id`,
         [companyId, requesterId],
       );
       const policyId = String(policyResult.rows[0].id);
 
       await client.query(
-        \`INSERT INTO public.sales_quote_approval_policy_steps
+        `INSERT INTO public.sales_quote_approval_policy_steps
           (company_id, policy_id, step_order, approver_user_id, approver_role_key, required_approvals)
          VALUES
           ($1, $2, 1, $3, NULL, 1),
-          ($1, $2, 2, $4, NULL, 1)\`,
+          ($1, $2, 2, $4, NULL, 1)`,
         [companyId, policyId, reviewerOneId, reviewerTwoId],
       );
 
       async function insertQuote(quoteNumber: string) {
         const inserted = await client.query(
-          \`INSERT INTO public.sales_quotes
+          `INSERT INTO public.sales_quotes
             (company_id, quote_number, status, quote_date, valid_until, currency,
              base_currency, base_total_amount, total_amount, subtotal, discount_total,
              tax_total, shipping_total, approval_status, customer_name, created_by, updated_by)
            VALUES ($1, $2, 'draft', CURRENT_DATE, CURRENT_DATE + 14, 'KES',
              'KES', 900, 900, 900, 0, 0, 0, 'not_required', 'Approval Buyer', $3, $3)
-           RETURNING id\`,
+           RETURNING id`,
           [companyId, quoteNumber, requesterId],
         );
         const quoteId = String(inserted.rows[0].id);
         await client.query(
-          \`INSERT INTO public.sales_quote_items
+          `INSERT INTO public.sales_quote_items
             (quote_id, company_id, sort_order, description, quantity, unit_price,
              discount_type, discount_value, discount_amount, tax_rate, tax_amount, subtotal, line_total)
-           VALUES ($1, $2, 1, 'Approval test line', 1, 900, 'percent', 0, 0, 0, 0, 900, 900)\`,
+           VALUES ($1, $2, 1, 'Approval test line', 1, 900, 'percent', 0, 0, 0, 0, 900, 900)`,
           [quoteId, companyId],
         );
         return quoteId;
@@ -3251,7 +3251,7 @@ integration(
       assert.equal(finalDecision.approvalStatus, 'approved');
 
       const persisted = await client.query(
-        \`SELECT q.approval_status, r.status AS request_status, r.current_step_order,
+        `SELECT q.approval_status, r.status AS request_status, r.current_step_order,
                 COUNT(d.id)::int AS decision_count
          FROM public.sales_quotes q
          JOIN public.sales_quote_approval_requests r
@@ -3259,7 +3259,7 @@ integration(
          LEFT JOIN public.sales_quote_approval_decisions d
            ON d.request_id = r.id AND d.company_id = r.company_id
          WHERE q.id = $1 AND q.company_id = $2
-         GROUP BY q.approval_status, r.status, r.current_step_order\`,
+         GROUP BY q.approval_status, r.status, r.current_step_order`,
         [quoteId, companyId],
       );
       assert.equal(persisted.rows.length, 1);
@@ -3269,16 +3269,20 @@ integration(
         'only the two assigned reviewers must have durable decisions');
 
       const approvalsHistory = await client.query(
-        \`SELECT from_status, to_status
+        `SELECT from_status, to_status, reason
          FROM public.sales_quote_approval_history
-         WHERE quote_id = $1 AND company_id = $2
-         ORDER BY created_at, id\`,
+         WHERE quote_id = $1 AND company_id = $2`,
         [quoteId, companyId],
       );
-      assert.deepEqual(
-        approvalsHistory.rows.map(row => [row.from_status, row.to_status]),
-        [['not_required', 'pending'], ['pending', 'pending'], ['pending', 'approved']],
-      );
+      assert.equal(approvalsHistory.rows.length, 3);
+      assert.ok(approvalsHistory.rows.some(row =>
+        row.from_status === 'not_required' && row.to_status === 'pending'));
+      assert.ok(approvalsHistory.rows.some(row =>
+        row.from_status === 'pending' &&
+        row.to_status === 'pending' &&
+        String(row.reason).includes('step 1 completed')));
+      assert.ok(approvalsHistory.rows.some(row =>
+        row.from_status === 'pending' && row.to_status === 'approved'));
 
       await assert.doesNotReject(
         () => assertSalesQuoteApprovalSatisfied(client, companyId, quoteId),
@@ -3303,11 +3307,11 @@ integration(
         /Quotation terms changed after submission/,
       );
       const staleState = await client.query(
-        \`SELECT q.approval_status, r.status AS request_status
+        `SELECT q.approval_status, r.status AS request_status
          FROM public.sales_quotes q
          JOIN public.sales_quote_approval_requests r
            ON r.quote_id = q.id AND r.company_id = q.company_id
-         WHERE q.id = $1 AND q.company_id = $2 AND r.id = $3\`,
+         WHERE q.id = $1 AND q.company_id = $2 AND r.id = $3`,
         [staleQuoteId, companyId, staleRequest.requestId],
       );
       assert.equal(staleState.rows[0].approval_status, 'draft');
