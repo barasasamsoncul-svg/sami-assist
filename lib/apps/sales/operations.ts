@@ -3370,6 +3370,7 @@ export async function issueSalesReturnCredit(
         'received',
         'credited',
         'partially_refunded',
+        'refunded',
       ].includes(
         String(
           returnRow.status,
