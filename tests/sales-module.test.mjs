@@ -638,7 +638,8 @@ test('Sales order invoicing supports partial quantities without bypassing locked
 
   assert.match(
     commands,
-    /await createInvoice\(/,
+    /await deps\.createInvoice\(/,
+    'the Sales invoice transaction must delegate invoice creation to Invoicing through its injectable adapter',
   );
 
   assert.doesNotMatch(
@@ -2939,7 +2940,7 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
 
   const invoiceStart =
     commands.indexOf(
-      'export async function createSalesOrderInvoice(',
+      'export async function createSalesOrderInvoiceTransaction(',
     );
   const invoiceEnd =
     commands.indexOf(
