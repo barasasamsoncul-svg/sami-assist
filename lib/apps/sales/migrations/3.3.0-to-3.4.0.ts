@@ -242,7 +242,7 @@ const SQL = `
       ) AS stage(code, name, sequence, probability, stage_type, is_won, is_lost, fold_in_kanban)
       ON CONFLICT DO NOTHING;
     END IF;
-  END
+  END;
   $sales_3_3_stage_seed$;
 
   UPDATE public.sales_pipeline_stages
