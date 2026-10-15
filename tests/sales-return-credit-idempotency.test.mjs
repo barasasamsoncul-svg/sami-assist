@@ -35,6 +35,8 @@ test('Sales return credit counters change only when a new allocation is committe
     'do not discard historical aggregate values by recomputing only from the current allocation table',
   );
 
+});
+
 test('Sales return-credit issuance serializes retries and preserves refund lifecycle states', async () => {
   const operations = await source('lib/apps/sales/operations.ts');
   const start = operations.indexOf('export async function issueSalesReturnCredit(');
@@ -51,8 +53,6 @@ test('Sales return-credit issuance serializes retries and preserves refund lifec
     credit.includes("status = CASE\\n          WHEN status IN ('partially_refunded', 'refunded')\\n          THEN status\\n          WHEN $4::boolean\\n          THEN 'credited'\\n          ELSE status\\n        END"),
     'do not overwrite a refund state or mark an un-invoiced return as credited',
   );
-});
-
 });
 
 test('Sales return-credit idempotency regression is part of Sales CI', async () => {
