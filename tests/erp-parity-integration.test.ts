@@ -1350,8 +1350,10 @@ integration(
       );
 
       await setupClient.query(
-        `INSERT INTO sales_settings (company_id, allow_online_acceptance, allow_online_rejection)
-         VALUES ($1, TRUE, TRUE)`,
+        `INSERT INTO sales_settings (
+           company_id, allow_online_acceptance, allow_online_rejection,
+           allow_partial_invoicing, require_billing_customer_for_invoice, invoice_policy
+         ) VALUES ($1, TRUE, TRUE, TRUE, TRUE, 'ordered')`,
         [companyId],
       );
 
@@ -1367,11 +1369,6 @@ integration(
            0,0,100,100,'percent',0,0,'VAT',16,16,100,116
          )`,
         [quoteId, companyId, catalogItemId],
-      );
-      await setupClient.query(
-        `INSERT INTO sales_settings (company_id, allow_partial_invoicing, require_billing_customer_for_invoice, invoice_policy)
-         VALUES ($1, TRUE, TRUE, 'ordered')`,
-        [companyId],
       );
     } finally {
       setupClient.release();
