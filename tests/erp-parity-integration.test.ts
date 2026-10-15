@@ -1213,6 +1213,8 @@ integration(
           shipped_quantity NUMERIC(14,4) NOT NULL DEFAULT 0,
           delivered_quantity NUMERIC(14,4) NOT NULL DEFAULT 0,
           invoiced_quantity NUMERIC(14,4) NOT NULL DEFAULT 0,
+          returned_quantity NUMERIC(14,4) NOT NULL DEFAULT 0,
+          credited_quantity NUMERIC(14,4) NOT NULL DEFAULT 0,
           sort_order INTEGER NOT NULL,
           description TEXT NOT NULL,
           sku_snapshot TEXT,
@@ -1287,8 +1289,113 @@ integration(
           id UUID PRIMARY KEY,
           company_id UUID NOT NULL,
           reference TEXT,
+          invoice_date DATE NOT NULL DEFAULT CURRENT_DATE,
+          status VARCHAR(30) NOT NULL DEFAULT 'posted',
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           deleted_at TIMESTAMPTZ
+        );
+
+        CREATE TEMP TABLE invoicing_invoice_items (
+          id UUID PRIMARY KEY,
+          company_id UUID NOT NULL,
+          invoice_id UUID NOT NULL,
+          quantity NUMERIC(18,4) NOT NULL,
+          metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+          sort_order INTEGER NOT NULL DEFAULT 1
+        );
+
+        CREATE TEMP TABLE sales_returns (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          sales_order_id UUID NOT NULL,
+          return_number VARCHAR(120) NOT NULL,
+          status VARCHAR(30) NOT NULL DEFAULT 'requested',
+          reason TEXT NOT NULL,
+          requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          approved_at TIMESTAMPTZ,
+          received_at TIMESTAMPTZ,
+          credited_at TIMESTAMPTZ,
+          refunded_at TIMESTAMPTZ,
+          created_by UUID,
+          updated_by UUID,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE(company_id, return_number)
+        );
+
+        CREATE TEMP TABLE sales_return_items (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          return_id UUID NOT NULL REFERENCES sales_returns(id) ON DELETE CASCADE,
+          sales_order_line_id UUID NOT NULL,
+          quantity NUMERIC(18,4) NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE(return_id, sales_order_line_id)
+        );
+
+        CREATE TEMP TABLE sales_return_credits (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          return_id UUID NOT NULL REFERENCES sales_returns(id) ON DELETE CASCADE,
+          invoice_id UUID NOT NULL,
+          credit_note_id UUID NOT NULL,
+          credit_note_number VARCHAR(140) NOT NULL,
+          amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+          available_credit NUMERIC(18,2) NOT NULL DEFAULT 0,
+          refunded_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+          created_by UUID,
+          updated_by UUID,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE(return_id, invoice_id),
+          UNIQUE(company_id, credit_note_id)
+        );
+
+        CREATE TEMP TABLE sales_return_credit_items (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          return_credit_id UUID NOT NULL REFERENCES sales_return_credits(id) ON DELETE CASCADE,
+          return_item_id UUID NOT NULL REFERENCES sales_return_items(id) ON DELETE RESTRICT,
+          invoice_item_id UUID NOT NULL,
+          quantity NUMERIC(18,4) NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE(return_credit_id, return_item_id, invoice_item_id)
+        );
+
+        CREATE TEMP TABLE invoicing_credit_notes (
+          id UUID PRIMARY KEY,
+          company_id UUID NOT NULL,
+          status VARCHAR(30) NOT NULL DEFAULT 'issued',
+          idempotency_key VARCHAR(160),
+          deleted_at TIMESTAMPTZ,
+          UNIQUE(company_id, idempotency_key)
+        );
+
+        CREATE TEMP TABLE invoicing_credit_note_items (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          credit_note_id UUID NOT NULL,
+          invoice_item_id UUID NOT NULL,
+          quantity NUMERIC(18,4) NOT NULL,
+          UNIQUE(credit_note_id, invoice_item_id)
+        );
+
+        CREATE TEMP TABLE invoicing_credit_note_balances (
+          company_id UUID NOT NULL,
+          credit_note_id UUID NOT NULL,
+          available_amount NUMERIC(18,2) NOT NULL,
+          PRIMARY KEY(company_id, credit_note_id)
+        );
+
+        CREATE TEMP TABLE invoicing_credit_note_refunds (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          credit_note_id UUID NOT NULL,
+          idempotency_key VARCHAR(180) NOT NULL,
+          amount NUMERIC(18,2) NOT NULL,
+          status VARCHAR(30) NOT NULL DEFAULT 'posted',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE(company_id, credit_note_id, idempotency_key)
         );
       `);
 
