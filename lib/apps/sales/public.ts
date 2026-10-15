@@ -324,7 +324,8 @@ export async function getPublicSalesQuote(
       throw error;
     } finally {
       client.release();
-    } else if (
+    }
+  } else if (
     options.markViewed !==
       false &&
     status ===
