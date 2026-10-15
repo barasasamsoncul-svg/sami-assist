@@ -346,7 +346,7 @@ test('Sales quote conversion marks the linked CRM opportunity won and records th
   assert.match(quoteToOrder, /deps\.requireUuid,/,
     'the conversion helper must keep the authoritative Sales UUID validator');
   assert.ok(
-    quoteToOrder.indexOf('await markSalesOpportunityWonFromAcceptedQuote(') <
+    quoteToOrder.indexOf('await deps.markSalesOpportunityWonFromAcceptedQuote(') <
       quoteToOrder.lastIndexOf("'COMMIT'"),
     'Opportunity reconciliation must happen before the conversion transaction commits.',
   );
