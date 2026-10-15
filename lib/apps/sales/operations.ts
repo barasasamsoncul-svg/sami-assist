@@ -4244,10 +4244,10 @@ export async function refundSalesReturnCreditTransaction(
       `
         UPDATE sales_returns
         SET
-          status = $3,
+          status = $3::varchar(30),
           refunded_at =
             CASE
-              WHEN $3 =
+              WHEN $3::varchar(30) =
                    'refunded'
               THEN COALESCE(
                 refunded_at,
