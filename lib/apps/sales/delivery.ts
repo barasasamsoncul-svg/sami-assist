@@ -111,26 +111,46 @@ export function normalizeSalesQuoteDeliveryChannels(
 }
 
 
+type SalesQuoteDeliveryDependencies = {
+  assertSalesQuoteApprovalSatisfied: typeof assertSalesQuoteApprovalSatisfied;
+  createPublicToken: () => string;
+  getPublicSalesQuote: typeof getPublicSalesQuote;
+  renderSalesQuotePdf: typeof renderSalesQuotePdf;
+  sendWorkspaceNotificationEmail: typeof sendWorkspaceNotificationEmail;
+  sendWorkspaceNotificationSms: typeof sendWorkspaceNotificationSms;
+  sendInvoiceWhatsApp: typeof sendInvoiceWhatsApp;
+  recordSalesActivity: typeof recordSalesActivity;
+};
+
+const defaultSalesQuoteDeliveryDependencies: SalesQuoteDeliveryDependencies = {
+  assertSalesQuoteApprovalSatisfied,
+  createPublicToken: () => crypto.randomBytes(32).toString('base64url'),
+  getPublicSalesQuote,
+  renderSalesQuotePdf,
+  sendWorkspaceNotificationEmail,
+  sendWorkspaceNotificationSms,
+  sendInvoiceWhatsApp,
+  recordSalesActivity,
+};
+
 export async function deliverSalesQuote(
   input: {
-    pool:
-      Pool;
-    tenantId:
-      string;
-    companyId:
-      string;
-    companyName:
-      string;
-    userId:
-      string;
-    quoteId:
-      string;
-    channels:
-      SalesQuoteDeliveryChannel[];
-    requireDraft?:
-      boolean;
+    pool: Pool;
+    tenantId: string;
+    companyId: string;
+    companyName: string;
+    userId: string;
+    quoteId: string;
+    channels: SalesQuoteDeliveryChannel[];
+    requireDraft?: boolean;
   },
+  overrides: Partial<SalesQuoteDeliveryDependencies> = {},
 ) {
+  const deps: SalesQuoteDeliveryDependencies = {
+    ...defaultSalesQuoteDeliveryDependencies,
+    ...overrides,
+  };
+
   const result =
     await input.pool.query(
       `
@@ -168,7 +188,7 @@ export async function deliverSalesQuote(
   const quote =
     result.rows[0];
 
-  await assertSalesQuoteApprovalSatisfied(input.pool, input.companyId, input.quoteId);
+  await deps.assertSalesQuoteApprovalSatisfied(input.pool, input.companyId, input.quoteId);
 
   if (
     ![
@@ -215,14 +235,7 @@ export async function deliverSalesQuote(
     );
   }
 
-  const token =
-    crypto
-      .randomBytes(
-        32,
-      )
-      .toString(
-        'base64url',
-      );
+  const token = deps.createPublicToken();
 
   const publicPath =
     '/q/' +
@@ -264,7 +277,7 @@ export async function deliverSalesQuote(
   );
 
   const publicQuote =
-    await getPublicSalesQuote(
+    await deps.getPublicSalesQuote(
       input.tenantId,
       token,
       {
@@ -274,7 +287,7 @@ export async function deliverSalesQuote(
     );
 
   const pdf =
-    renderSalesQuotePdf(
+    deps.renderSalesQuotePdf(
       publicQuote,
     );
 
@@ -368,7 +381,7 @@ export async function deliverSalesQuote(
 
       try {
         const sent =
-          await sendWorkspaceNotificationEmail(
+          await deps.sendWorkspaceNotificationEmail(
             destination,
             String(
               quote.customer_name,
@@ -446,7 +459,7 @@ export async function deliverSalesQuote(
         'whatsapp'
     ) {
       const sent =
-        await sendInvoiceWhatsApp(
+        await deps.sendInvoiceWhatsApp(
           phone,
           {
             caption:
@@ -480,7 +493,7 @@ export async function deliverSalesQuote(
     }
 
     const sent =
-      await sendWorkspaceNotificationSms(
+      await deps.sendWorkspaceNotificationSms(
         phone,
         {
           title:
@@ -644,7 +657,7 @@ export async function deliverSalesQuote(
       );
     }
 
-    await recordSalesActivity(
+    await deps.recordSalesActivity(
       client,
       {
         companyId:
