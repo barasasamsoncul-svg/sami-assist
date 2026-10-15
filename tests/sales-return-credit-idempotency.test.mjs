@@ -53,6 +53,9 @@ test('Sales return-credit issuance serializes retries and preserves refund lifec
     credit.includes("status = CASE\n          WHEN status IN ('partially_refunded', 'refunded')\n          THEN status\n          WHEN $4::boolean\n          THEN 'credited'\n          ELSE status\n        END"),
     'do not overwrite a refund state or mark an un-invoiced return as credited',
   );
+  assert.match(credit, /credited_at = CASE[\\s\\S]*?WHEN \\$4::boolean THEN COALESCE\\(credited_at, NOW\\(\\)\\)[\\s\\S]*?ELSE credited_at/);
+  assert.match(credit, /RETURNING status/);
+  assert.match(credit, /status:\\s*String\\(returnState\\.rows\\[0\\]\\?\\.status \\|\\| returnRow\\.status\\)/);
 });
 
 test('Sales return-credit idempotency regression is part of Sales CI', async () => {
