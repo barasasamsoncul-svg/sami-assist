@@ -3153,23 +3153,54 @@ export async function sendSalesQuote(
 }
 
 
-export async function createSalesOrderFromQuote(
-  input:
-    Record<string, unknown>,
+type SalesOrderConversionDependencies = {
+  ensureSalesDefaults: typeof ensureSalesDefaults;
+  normalizeSalesQuoteDeposit: typeof normalizeSalesQuoteDeposit;
+  money: typeof money;
+  assertSalesQuoteApprovalSatisfied: typeof assertSalesQuoteApprovalSatisfied;
+  nextSalesNumber: typeof nextSalesNumber;
+  resolveSalesAssignmentForUser: typeof resolveSalesAssignmentForUser;
+  reserveSalesOrderInventory: typeof reserveSalesOrderInventory;
+  recordSalesOrderCommissionEntries: typeof recordSalesOrderCommissionEntries;
+  markSalesOpportunityWonFromAcceptedQuote: typeof markSalesOpportunityWonFromAcceptedQuote;
+  requireUuid: typeof requireUuid;
+  recordSalesActivity: typeof recordSalesActivity;
+  emitSalesAutomationEvent: typeof emitSalesAutomationEvent;
+};
+
+const defaultSalesOrderConversionDependencies: SalesOrderConversionDependencies = {
+  ensureSalesDefaults,
+  normalizeSalesQuoteDeposit,
+  money,
+  assertSalesQuoteApprovalSatisfied,
+  nextSalesNumber,
+  resolveSalesAssignmentForUser,
+  reserveSalesOrderInventory,
+  recordSalesOrderCommissionEntries,
+  markSalesOpportunityWonFromAcceptedQuote,
+  requireUuid,
+  recordSalesActivity,
+  emitSalesAutomationEvent,
+};
+
+/**
+ * Transaction-level quote conversion primitive. Production entry points must
+ * authorize the caller before invoking this function. Dependencies are
+ * overrideable for PostgreSQL integration tests of the Sales transaction
+ * without faking the persistence layer or unrelated module adapters.
+ */
+export async function createSalesOrderFromQuoteTransaction(
+  input: { quoteId: string },
+  context: Awaited<ReturnType<typeof requireSalesContext>>,
+  overrides: Partial<SalesOrderConversionDependencies> = {},
 ) {
-  const context =
-    await requireSalesContext(
-      SALES_PERMISSIONS
-        .QUOTE_CONVERT,
-    );
+  const deps: SalesOrderConversionDependencies = {
+    ...defaultSalesOrderConversionDependencies,
+    ...overrides,
+  };
+  const quoteId = input.quoteId;
 
-  const quoteId =
-    requireUuid(
-      input.quoteId,
-      'Quote',
-    );
-
-  await ensureSalesDefaults(
+  await deps.ensureSalesDefaults(
     context.pool,
     context.companyId,
     context.userId,
@@ -3254,7 +3285,7 @@ export async function createSalesOrderFromQuote(
           1
       ) {
         if (String(existing.rows[0].status) !== 'cancelled') {
-          await markSalesOpportunityWonFromAcceptedQuote(
+          await deps.markSalesOpportunityWonFromAcceptedQuote(
             client,
             {
               companyId: context.companyId,
@@ -3265,7 +3296,7 @@ export async function createSalesOrderFromQuote(
               orderId: String(existing.rows[0].id),
               orderNumber: String(existing.rows[0].order_number),
             },
-            requireUuid,
+            deps.requireUuid,
           );
         }
 
@@ -3332,12 +3363,12 @@ export async function createSalesOrderFromQuote(
       );
 
     const orderDeposit =
-      normalizeSalesQuoteDeposit(
+      deps.normalizeSalesQuoteDeposit(
         {
           depositType: row.deposit_type,
           depositValue: row.deposit_value,
         },
-        money(row.total_amount),
+        deps.money(row.total_amount),
       );
 
     if (currentStatus === 'converted' && !row.sales_order_id) {
@@ -3361,7 +3392,7 @@ export async function createSalesOrderFromQuote(
       );
     }
 
-    await assertSalesQuoteApprovalSatisfied(client, context.companyId, quoteId);
+    await deps.assertSalesQuoteApprovalSatisfied(client, context.companyId, quoteId);
 
     const approvalStatus =
       String(
@@ -3382,7 +3413,7 @@ export async function createSalesOrderFromQuote(
     }
 
     const orderNumber =
-      await nextSalesNumber(
+      await deps.nextSalesNumber(
         client,
         context.companyId,
         context.userId,
@@ -3414,7 +3445,7 @@ export async function createSalesOrderFromQuote(
       !salesTeamId
     ) {
       const assignment =
-        await resolveSalesAssignmentForUser(
+        await deps.resolveSalesAssignmentForUser(
           client,
           {
             companyId:
@@ -3670,7 +3701,7 @@ export async function createSalesOrderFromQuote(
       ],
     );
 
-    await reserveSalesOrderInventory(
+    await deps.reserveSalesOrderInventory(
       client,
       {
         companyId:
@@ -3681,7 +3712,7 @@ export async function createSalesOrderFromQuote(
       },
     );
 
-    await recordSalesOrderCommissionEntries(
+    await deps.recordSalesOrderCommissionEntries(
       client,
       {
         companyId:
@@ -3701,14 +3732,14 @@ export async function createSalesOrderFromQuote(
             row.currency,
           ),
         revenueAmount:
-          money(
+          deps.money(
             row.subtotal,
           ) -
-          money(
+          deps.money(
             row.discount_total,
           ),
         marginAmount:
-          money(
+          deps.money(
             row.margin_amount,
           ),
         userId:
@@ -3790,7 +3821,7 @@ export async function createSalesOrderFromQuote(
       );
     }
 
-    await markSalesOpportunityWonFromAcceptedQuote(
+    await deps.markSalesOpportunityWonFromAcceptedQuote(
       client,
       {
         companyId: context.companyId,
@@ -3801,10 +3832,10 @@ export async function createSalesOrderFromQuote(
         orderId,
         orderNumber,
       },
-      requireUuid,
+      deps.requireUuid,
     );
 
-    await recordSalesActivity(
+    await deps.recordSalesActivity(
       client,
       {
         companyId:
@@ -3833,7 +3864,7 @@ export async function createSalesOrderFromQuote(
       'COMMIT',
     );
 
-    await emitSalesAutomationEvent(
+    await deps.emitSalesAutomationEvent(
       context,
       {
         triggerKey:
@@ -3874,6 +3905,30 @@ export async function createSalesOrderFromQuote(
   } finally {
     client.release();
   }
+}
+
+
+
+export async function createSalesOrderFromQuote(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireSalesContext(
+      SALES_PERMISSIONS
+        .QUOTE_CONVERT,
+    );
+
+  const quoteId =
+    requireUuid(
+      input.quoteId,
+      'Quote',
+    );
+
+  return createSalesOrderFromQuoteTransaction(
+    { quoteId },
+    context,
+  );
 }
 
 
