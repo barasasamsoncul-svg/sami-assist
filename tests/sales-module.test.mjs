@@ -383,7 +383,7 @@ test('Sales quote approval threshold is evaluated in company base currency on cr
     const approvalDecision = body.indexOf('const approvalRequired =');
     assert.ok(baseTotal >= 0 && approvalDecision > baseTotal, name + ' must calculate company-base total before approval decision');
     const approvalExpression = body.slice(approvalDecision, body.indexOf('const approvalStatus =', approvalDecision));
-    assert.ok(approvalExpression.includes('baseTotalAmount >='));
+    assert.match(approvalExpression, /salesQuoteRequiresLegacyApproval\([\s\S]*baseTotalAmount/);
     assert.ok(!approvalExpression.includes('calculated.totalAmount >='));
   }
 });
@@ -3180,4 +3180,28 @@ test('Sales quote deposits validate, persist, display, and carry to confirmed or
   assert.match(migration, /ADD COLUMN IF NOT EXISTS deposit_required_amount/);
   assert.match(runtimeMigrations, /SALES_3_4_16_TO_3_4_17/);
   assert.match(firstParty, /version: '3\.4\.19'/);
+});
+
+
+test('Sales revision and approval engine use consistent currency-safe threshold semantics', async () => {
+  const [commercial, approvals] = await Promise.all([
+    source('lib/apps/sales/commercial.ts'),
+    source('lib/apps/sales/approvals.ts'),
+  ]);
+
+  const revisionStart = commercial.indexOf('export async function createSalesQuoteRevision(');
+  const revisionEnd = commercial.indexOf('\nexport async function ', revisionStart + 30);
+  assert.ok(revisionStart >= 0 && revisionEnd > revisionStart, 'quote revision should have a bounded implementation');
+  const revision = commercial.slice(revisionStart, revisionEnd);
+  assert.match(revision, /salesQuoteRequiresLegacyApproval\([\s\S]*row\.base_total_amount/);
+
+  assert.equal(
+    (approvals.match(/salesQuoteRequiresLegacyApproval\(/g) || []).length,
+    2,
+    'approval submission and quote-to-cash enforcement must share the base-currency threshold rule',
+  );
+  assert.match(approvals, /return salesQuoteApprovalPolicyMatches\(policy, quote\)/);
+  assert.match(approvals, /base_total_amount.*base_currency.*exchange_rate.*exchange_rate_date/);
+  assert.doesNotMatch(approvals, /Number\(snapshot\.quote\.total_amount \|\| 0\) >=/);
+  assert.doesNotMatch(approvals, /Number\(quote\.total_amount \|\| 0\) >=/);
 });

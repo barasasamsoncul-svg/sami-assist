@@ -128,6 +128,7 @@ export default function SalesApprovalsManager() {
             <label className="text-xs font-bold">Maximum discount %<input type="number" min="0" max="100" step="0.1" value={maxDiscount} onChange={e => setMaxDiscount(e.target.value)} className="mt-1 block w-full rounded-xl border border-[var(--sami-border)] bg-transparent p-3 text-sm" placeholder="Triggers above cap" /></label>
             <label className="text-xs font-bold">Minimum margin %<input type="number" min="0" max="100" step="0.1" value={minMargin} onChange={e => setMinMargin(e.target.value)} className="mt-1 block w-full rounded-xl border border-[var(--sami-border)] bg-transparent p-3 text-sm" placeholder="Triggers below floor" /></label>
           </div>
+          <p className="text-xs leading-5 text-[var(--sami-muted)]">With Currency blank, Minimum quote total is evaluated in the company&apos;s base currency. Selecting a currency limits this policy to quotes in that currency, so the minimum uses the quote amount in that currency.</p>
 
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-black">Sequential approval steps</h3><button type="button" disabled={steps.length >= 10} onClick={() => setSteps(old => [...old, emptyStep()])} className="rounded-lg border border-[var(--sami-border)] px-3 py-2 text-xs font-bold disabled:opacity-50">Add step</button></div>
