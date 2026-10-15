@@ -1360,186 +1360,248 @@ export async function recordSalesOrderDeposit(
   }
 }
 export async function applySalesOrderDeposit(
-  input:
-    Record<
-      string,
-      unknown
-    >,
+  input: Record<string, unknown>,
 ) {
-  const context =
-    await requireSalesContext(
-      SALES_PERMISSIONS
-        .DEPOSIT_MANAGE,
-    );
+  const context = await requireSalesContext(
+    SALES_PERMISSIONS.DEPOSIT_MANAGE,
+  );
+  const orderId = requireUuid(input.orderId, 'Sales order');
+  const invoiceId = requireUuid(input.invoiceId, 'Invoice');
+  const operationKey = (
+    'sales-order:' + orderId + ':deposit:' + invoiceId
+  ).slice(0, 160);
 
-  const orderId =
-    requireUuid(
-      input.orderId,
-      'Sales order',
-    );
+  const client = await context.pool.connect();
 
-  const invoiceId =
-    requireUuid(
-      input.invoiceId,
-      'Invoice',
-    );
+  try {
+    await client.query('BEGIN');
 
-  const result =
-    await context.pool.query(
+    // Serialize all applications for this order. Keep the row lock until the
+    // Invoicing allocation is committed and the Sales-side status is repaired.
+    const orderResult = await client.query(
       `
-        SELECT
-          o.deposit_payment_id,
-          o.deposit_received_amount,
-          batch.invoice_id,
-          payment_balance.unapplied_amount,
-          aging.balance_due
+        SELECT o.deposit_payment_id
         FROM sales_orders_v2 o
         INNER JOIN sales_order_invoice_batches batch
           ON batch.sales_order_id = o.id
-         AND batch.company_id =
-             o.company_id
+         AND batch.company_id = o.company_id
          AND batch.invoice_id = $3
          AND batch.status = 'created'
-        LEFT JOIN invoicing_payment_balances payment_balance
-          ON payment_balance.payment_id =
-             o.deposit_payment_id
-         AND payment_balance.company_id =
-             o.company_id
-        LEFT JOIN invoicing_aging aging
-          ON aging.invoice_id =
-             batch.invoice_id
-         AND aging.company_id =
-             o.company_id
         WHERE o.id = $1
           AND o.company_id = $2
           AND o.deleted_at IS NULL
         LIMIT 1
+        FOR UPDATE OF o
       `,
-      [
-        orderId,
-        context.companyId,
-        invoiceId,
-      ],
+      [orderId, context.companyId, invoiceId],
     );
 
-  if (
-    result.rows.length !==
-      1 ||
-    !result.rows[0]
-      .deposit_payment_id
-  ) {
-    throw new SalesError(
-      'INVALID_INPUT',
-      'This sales order has no recorded deposit available for that invoice.',
-    );
-  }
+    if (
+      orderResult.rows.length !== 1 ||
+      !orderResult.rows[0].deposit_payment_id
+    ) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'This sales order has no recorded deposit available for that invoice.',
+      );
+    }
 
-  const available =
-    money(
-      result.rows[0]
-        .unapplied_amount,
+    const paymentId = String(orderResult.rows[0].deposit_payment_id);
+
+    // Read balances only after the order lock has been acquired. Keeping the
+    // mutable payment/invoice balances out of the locking SELECT avoids using
+    // a pre-wait snapshot when another allocation has just completed.
+    const [paymentBalanceResult, agingResult] = await Promise.all([
+      client.query(
+        `
+          SELECT
+            allocated_amount,
+            refunded_amount,
+            unapplied_amount
+          FROM invoicing_payment_balances
+          WHERE payment_id = $1
+            AND company_id = $2
+          LIMIT 1
+        `,
+        [paymentId, context.companyId],
+      ),
+      client.query(
+        `
+          SELECT
+            balance_due,
+            effective_status
+          FROM invoicing_aging
+          WHERE invoice_id = $1
+            AND company_id = $2
+          LIMIT 1
+        `,
+        [invoiceId, context.companyId],
+      ),
+    ]);
+
+    if (
+      paymentBalanceResult.rows.length !== 1 ||
+      agingResult.rows.length !== 1
+    ) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'The deposit payment or target invoice balance could not be found.',
+      );
+    }
+
+    const paymentBalance = paymentBalanceResult.rows[0];
+    const aging = agingResult.rows[0];
+    const available = money(paymentBalance.unapplied_amount);
+    const balance = money(aging.balance_due);
+
+    // Invoicing commits its allocation in a separate transaction. If that
+    // succeeded but this Sales transaction failed, recover the exact prior
+    // allocation rather than calling allocateInvoicePayment again (which
+    // correctly rejects a second active allocation to the same invoice).
+    const existingResult = await client.query(
+      `
+        SELECT
+          id,
+          payment_amount,
+          amount,
+          operation_key,
+          status
+        FROM invoicing_payment_allocations
+        WHERE company_id = $1
+          AND payment_id = $2
+          AND invoice_id = $3
+          AND operation_key = $4
+          AND status = 'posted'
+        LIMIT 1
+      `,
+      [context.companyId, paymentId, invoiceId, operationKey],
     );
 
-  const balance =
-    money(
-      result.rows[0]
-        .balance_due,
-    );
+    if (existingResult.rows.length > 0) {
+      const existing = existingResult.rows[0];
+      const existingAmount = money(
+        existing.payment_amount ?? existing.amount,
+      );
+      const amountWasProvided =
+        input.amount !== undefined &&
+        input.amount !== null &&
+        input.amount !== '';
 
-  const requested =
-    input.amount ===
-      undefined ||
-    input.amount ===
-      null ||
-    input.amount ===
-      ''
-      ? Math.min(
-          available,
-          balance,
-        )
-      : numberInput(
+      if (amountWasProvided) {
+        const requestedAmount = numberInput(
           input.amount,
           'Deposit allocation amount',
-          {
-            min:
-              0.0001,
-          },
+          { min: 0.0001 },
         );
+        if (Math.abs(requestedAmount - existingAmount) > 0.0001) {
+          throw new SalesError(
+            'INVALID_INPUT',
+            'This deposit was already applied to the invoice with a different amount. Reverse that allocation before changing it.',
+            { recordedAmount: existingAmount },
+          );
+        }
+      }
 
-  if (
-    requested <=
-      0 ||
-    requested >
-      available +
-        0.0001 ||
-    requested >
-      balance +
-        0.0001
-  ) {
-    throw new SalesError(
-      'INVALID_INPUT',
-      'Deposit allocation must fit the unapplied deposit and invoice balance.',
-      {
-        availableDeposit:
-          available,
-        invoiceBalance:
-          balance,
-      },
-    );
-  }
+      const nextStatus =
+        available <= 0.0001 ? 'applied' : 'partially_applied';
 
-  const allocation =
-    await allocateInvoicePayment({
-      paymentId:
-        String(
-          result.rows[0]
-            .deposit_payment_id,
-        ),
+      await client.query(
+        `
+          UPDATE sales_orders_v2
+          SET
+            deposit_status = $3,
+            updated_by = $4,
+            updated_at = NOW()
+          WHERE id = $1
+            AND company_id = $2
+        `,
+        [orderId, context.companyId, nextStatus, context.userId],
+      );
+
+      await client.query('COMMIT');
+
+      return {
+        orderId,
+        depositStatus: nextStatus,
+        allocationId: String(existing.id),
+        paymentId,
+        invoiceId,
+        invoiceStatus: String(aging.effective_status || ''),
+        remainingBalance: balance,
+        allocatedAmount: money(paymentBalance.allocated_amount),
+        refundedAmount: money(paymentBalance.refunded_amount),
+        unappliedAmount: available,
+        reused: true,
+      };
+    }
+
+    const requested =
+      input.amount === undefined ||
+      input.amount === null ||
+      input.amount === ''
+        ? Math.min(available, balance)
+        : numberInput(
+            input.amount,
+            'Deposit allocation amount',
+            { min: 0.0001 },
+          );
+
+    if (
+      requested <= 0 ||
+      requested > available + 0.0001 ||
+      requested > balance + 0.0001
+    ) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'Deposit allocation must fit the unapplied deposit and invoice balance.',
+        {
+          availableDeposit: available,
+          invoiceBalance: balance,
+        },
+      );
+    }
+
+    const allocation = await allocateInvoicePayment({
+      paymentId,
       invoiceId,
-      amount:
-        requested,
-      operationKey:
-        (
-          'sales-order:' +
-          orderId +
-          ':deposit:' +
-          invoiceId
-        ).slice(
-          0,
-          160,
-        ),
+      amount: requested,
+      operationKey,
     });
 
-  const nextStatus =
-    allocation.unappliedAmount <=
-      0.0001
-      ? 'applied'
-      : 'partially_applied';
+    const nextStatus =
+      allocation.unappliedAmount <= 0.0001
+        ? 'applied'
+        : 'partially_applied';
 
-  await context.pool.query(
-    `
-      UPDATE sales_orders_v2
-      SET
-        deposit_status = $3,
-        updated_by = $4,
-        updated_at = NOW()
-      WHERE id = $1
-        AND company_id = $2
-    `,
-    [
+    await client.query(
+      `
+        UPDATE sales_orders_v2
+        SET
+          deposit_status = $3,
+          updated_by = $4,
+          updated_at = NOW()
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [orderId, context.companyId, nextStatus, context.userId],
+    );
+
+    await client.query('COMMIT');
+
+    return {
       orderId,
-      context.companyId,
-      nextStatus,
-      context.userId,
-    ],
-  );
-
-  return {
-    orderId,
-    depositStatus:
-      nextStatus,
-    ...allocation,
-  };
+      depositStatus: nextStatus,
+      ...allocation,
+      reused: false,
+    };
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {}
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function createSalesShipment(
