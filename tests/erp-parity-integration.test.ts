@@ -2005,14 +2005,21 @@ integration(
         refundSalesReturnCreditTransaction,
       } = await import('../lib/apps/sales/operations');
 
+      const getReturnSession = async (): Promise<Awaited<ReturnType<typeof pool.connect>>> => {
+        if (!returnSession) {
+          const client = await pool.connect();
+          returnSession = client;
+          return client;
+        }
+        return returnSession;
+      };
       const returnPool = {
         query: async (queryText: string, values?: readonly unknown[]) => {
-          if (!returnSession) returnSession = await pool.connect();
-          return returnSession.query(queryText, values as never[]);
+          const client = await getReturnSession();
+          return client.query(queryText, values as never[]);
         },
         connect: async () => {
-          if (!returnSession) returnSession = await pool.connect();
-          const sharedClient = returnSession;
+          const sharedClient = await getReturnSession();
           return {
             query: (queryText: string, values?: readonly unknown[]) =>
               sharedClient.query(queryText, values as never[]),
@@ -2156,7 +2163,11 @@ integration(
         [secondInvoiceId, { id: secondCreditNoteId, number: 'CN-SALES-002', amount: 11.6 }],
       ]);
       const creditDependencies: Parameters<typeof issueSalesReturnCreditTransaction>[2] = {
-        issueInvoiceCreditNote: async input => {
+        issueInvoiceCreditNote: (async (input: {
+          invoiceId: string;
+          idempotencyKey: string;
+          items: Array<{ invoiceItemId: string; quantity: number }>;
+        }) => {
           invoiceCreditCalls += 1;
           const invoiceId = String(input.invoiceId);
           const note = creditNoteByInvoice.get(invoiceId);
@@ -2197,9 +2208,11 @@ integration(
             id: note.id,
             creditNoteNumber: note.number,
             amount: note.amount,
+            status: 'issued',
             availableCredit: Number(balance.rows[0].available_amount),
+            duplicate: invoiceCreditCalls > 2,
           };
-        },
+        }) as unknown as NonNullable<Parameters<typeof issueSalesReturnCreditTransaction>[2]>['issueInvoiceCreditNote'],
       };
 
       const issuedReturnCredits = await issueSalesReturnCreditTransaction(
@@ -2285,7 +2298,11 @@ integration(
       const secondReturnCreditId = String(creditBalances.rows[1].id);
 
       const refundDependencies: Parameters<typeof refundSalesReturnCreditTransaction>[2] = {
-        refundInvoiceCreditNote: async input => {
+        refundInvoiceCreditNote: (async (input: {
+          creditNoteId: string;
+          idempotencyKey: string;
+          amount: number;
+        }) => {
           refundAdapterCalls += 1;
           const creditNoteId = String(input.creditNoteId);
           const invoicingKey = 'credit-refund:' + String(input.idempotencyKey);
@@ -2333,7 +2350,7 @@ integration(
             availableCredit: nextAvailable,
             duplicate: false,
           };
-        },
+        }) as unknown as NonNullable<Parameters<typeof refundSalesReturnCreditTransaction>[2]>['refundInvoiceCreditNote'],
       };
 
       const partialRefund = await refundSalesReturnCreditTransaction(
@@ -2476,7 +2493,7 @@ integration(
       assert.equal(finalMovements.rows.length, 2);
 
     } finally {
-      returnSession?.release();
+      (returnSession as Awaited<ReturnType<typeof pool.connect>> | null)?.release();
       await pool.end();
     }
   },
