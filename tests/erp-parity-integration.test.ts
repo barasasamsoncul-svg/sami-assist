@@ -3504,23 +3504,28 @@ integration(
       assert.equal(wonState.rows[0].lost_reason, null);
 
       const history = await client.query(
-        `SELECT from_stage_id, to_stage_id, probability, reason
+        \`SELECT from_stage_id, to_stage_id, probability, reason
          FROM public.sales_opportunity_stage_history
-         WHERE opportunity_id=$1 AND company_id=$2
-         ORDER BY created_at, id`,
+         WHERE opportunity_id=$1 AND company_id=$2\`,
         [opportunityId, companyId],
       );
       assert.equal(history.rows.length, 3);
-      assert.equal(String(history.rows[0].from_stage_id), qualificationId);
-      assert.equal(String(history.rows[0].to_stage_id), lostId);
-      assert.equal(Number(history.rows[0].probability), 0);
-      assert.equal(history.rows[0].reason, 'Budget deferred');
-      assert.equal(String(history.rows[1].from_stage_id), lostId);
-      assert.equal(String(history.rows[1].to_stage_id), negotiationId);
-      assert.equal(Number(history.rows[1].probability), 83);
-      assert.equal(String(history.rows[2].from_stage_id), negotiationId);
-      assert.equal(String(history.rows[2].to_stage_id), wonId);
-      assert.equal(Number(history.rows[2].probability), 100);
+      // All rows are created in one transaction, so NOW() can be identical;
+      // assert by target stage instead of assuming timestamp order.
+      const historyByTarget = new Map(history.rows.map(row => [String(row.to_stage_id), row]));
+      const lostHistory = historyByTarget.get(lostId);
+      assert.ok(lostHistory);
+      assert.equal(String(lostHistory.from_stage_id), qualificationId);
+      assert.equal(Number(lostHistory.probability), 0);
+      assert.equal(lostHistory.reason, 'Budget deferred');
+      const reopenedHistory = historyByTarget.get(negotiationId);
+      assert.ok(reopenedHistory);
+      assert.equal(String(reopenedHistory.from_stage_id), lostId);
+      assert.equal(Number(reopenedHistory.probability), 83);
+      const wonHistory = historyByTarget.get(wonId);
+      assert.ok(wonHistory);
+      assert.equal(String(wonHistory.from_stage_id), negotiationId);
+      assert.equal(Number(wonHistory.probability), 100);
     } finally {
       if (transactionOpen) {
         try { await client.query('ROLLBACK'); } catch {}
