@@ -889,7 +889,7 @@ integration(
   'ERP parity: accepted Sales quote converts to one confirmed order and reconciles CRM in PostgreSQL',
   async () => {
     const { createSalesOrderFromQuoteTransaction } = await import('../lib/apps/sales/commands');
-    const { respondToPublicSalesQuote } = await import('../lib/apps/sales/public');
+    const { getPublicSalesQuote, respondToPublicSalesQuote } = await import('../lib/apps/sales/public');
     const pool = new Pool({
       connectionString: DATABASE_URL,
       max: 1,
@@ -956,7 +956,9 @@ integration(
           id UUID PRIMARY KEY,
           company_id UUID NOT NULL,
           deleted_at TIMESTAMPTZ,
+          template_id UUID,
           sales_order_id UUID,
+          latest_invoice_id UUID,
           opportunity_id UUID,
           quote_number VARCHAR(80) NOT NULL,
           status VARCHAR(30) NOT NULL,
@@ -992,6 +994,7 @@ integration(
           deposit_type VARCHAR(20) NOT NULL DEFAULT 'none',
           deposit_value NUMERIC(14,2) NOT NULL DEFAULT 0,
           converted_at TIMESTAMPTZ,
+          viewed_at TIMESTAMPTZ,
           public_token_hash CHAR(64),
           valid_until DATE NOT NULL,
           accepted_at TIMESTAMPTZ,
@@ -1005,16 +1008,48 @@ integration(
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
 
+        CREATE TEMP TABLE companies (
+          id UUID PRIMARY KEY,
+          name TEXT NOT NULL,
+          email TEXT,
+          phone TEXT,
+          address TEXT,
+          tax_id TEXT,
+          registration_number TEXT,
+          deleted_at TIMESTAMPTZ
+        );
+
+        CREATE TEMP TABLE sales_quote_templates (
+          id UUID PRIMARY KEY,
+          company_id UUID NOT NULL,
+          deleted_at TIMESTAMPTZ,
+          primary_color TEXT,
+          secondary_color TEXT,
+          footer_text TEXT
+        );
+
         CREATE TEMP TABLE sales_settings (
           company_id UUID PRIMARY KEY,
           allow_online_acceptance BOOLEAN NOT NULL DEFAULT TRUE,
-          allow_online_rejection BOOLEAN NOT NULL DEFAULT TRUE
+          allow_online_rejection BOOLEAN NOT NULL DEFAULT TRUE,
+          primary_color TEXT,
+          secondary_color TEXT,
+          footer_text TEXT
         );
 
         CREATE TEMP TABLE sales_quote_optional_items (
           id UUID PRIMARY KEY,
           quote_id UUID NOT NULL,
           company_id UUID NOT NULL,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          catalog_item_id UUID,
+          description TEXT NOT NULL DEFAULT 'Optional item',
+          sku_snapshot TEXT,
+          unit VARCHAR(40) NOT NULL DEFAULT 'unit',
+          quantity NUMERIC(14,4) NOT NULL DEFAULT 1,
+          unit_price NUMERIC(14,2) NOT NULL DEFAULT 0,
+          tax_name_snapshot TEXT,
+          tax_rate NUMERIC(8,4) NOT NULL DEFAULT 0,
           is_selected BOOLEAN NOT NULL DEFAULT FALSE,
           selected_at TIMESTAMPTZ,
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -1169,6 +1204,12 @@ integration(
       );
 
       await setupClient.query(
+        `INSERT INTO companies (id, name, email, phone, address, tax_id, registration_number)
+         VALUES ($1, 'Acme Supplier', 'sales@acme.test', '+254700000000', 'Nairobi', 'P000000000Z', 'REG-ACME-1')`,
+        [companyId],
+      );
+
+      await setupClient.query(
         `INSERT INTO sales_quotes (
            id, company_id, opportunity_id, quote_number, status, approval_status,
            currency, customer_name, subtotal, discount_total, tax_total, shipping_total,
@@ -1243,6 +1284,33 @@ integration(
     };
 
     try {
+      const publicView = await getPublicSalesQuote(
+        'integration-test-tenant',
+        publicToken,
+        {},
+        {
+          getTenantPoolByTenantId: async () => pool,
+        },
+      );
+      assert.equal(publicView.id, quoteId);
+      assert.equal(publicView.status, 'viewed');
+      assert.equal(publicView.quoteNumber, 'Q-2026-0042');
+      assert.equal(publicView.customer.name, 'Acme Ltd');
+      assert.equal(publicView.lines.length, 1);
+      assert.equal(publicView.lines[0].description, 'Consulting');
+      assert.equal(publicView.portal.allowAcceptance, true);
+
+      const viewHistory = await pool.query(
+        `SELECT from_status, to_status
+         FROM sales_quote_status_history
+         WHERE company_id = $1 AND quote_id = $2
+         ORDER BY created_at ASC`,
+        [companyId, quoteId],
+      );
+      assert.equal(viewHistory.rows.length, 1);
+      assert.equal(viewHistory.rows[0].from_status, 'sent');
+      assert.equal(viewHistory.rows[0].to_status, 'viewed');
+
       const acceptance = await respondToPublicSalesQuote(
         'integration-test-tenant',
         publicToken,
@@ -1287,9 +1355,11 @@ integration(
          WHERE company_id = $1 AND quote_id = $2`,
         [companyId, quoteId],
       );
-      assert.equal(acceptedHistory.rows.length, 1);
+      assert.equal(acceptedHistory.rows.length, 2);
       assert.equal(acceptedHistory.rows[0].from_status, 'sent');
-      assert.equal(acceptedHistory.rows[0].to_status, 'accepted');
+      assert.equal(acceptedHistory.rows[0].to_status, 'viewed');
+      assert.equal(acceptedHistory.rows[1].from_status, 'viewed');
+      assert.equal(acceptedHistory.rows[1].to_status, 'accepted');
 
       const first = await createSalesOrderFromQuoteTransaction(
         { quoteId },
@@ -1397,11 +1467,13 @@ integration(
       assert.ok(opportunity.rows[0].won_at instanceof Date);
       assert.equal(opportunity.rows[0].lost_at, null);
       assert.equal(opportunity.rows[0].lost_reason, null);
-      assert.equal(quoteHistory.rows.length, 2);
+      assert.equal(quoteHistory.rows.length, 3);
       assert.equal(quoteHistory.rows[0].from_status, 'sent');
-      assert.equal(quoteHistory.rows[0].to_status, 'accepted');
-      assert.equal(quoteHistory.rows[1].from_status, 'accepted');
-      assert.equal(quoteHistory.rows[1].to_status, 'converted');
+      assert.equal(quoteHistory.rows[0].to_status, 'viewed');
+      assert.equal(quoteHistory.rows[1].from_status, 'viewed');
+      assert.equal(quoteHistory.rows[1].to_status, 'accepted');
+      assert.equal(quoteHistory.rows[2].from_status, 'accepted');
+      assert.equal(quoteHistory.rows[2].to_status, 'converted');
       assert.equal(orderHistory.rows.length, 1);
       assert.equal(orderHistory.rows[0].from_status, null);
       assert.equal(orderHistory.rows[0].to_status, 'confirmed');
@@ -1414,7 +1486,7 @@ integration(
          ORDER BY type`,
         [companyId, opportunityId, quoteId],
       );
-      assert.equal(audit.rows.length, 4);
+      assert.equal(audit.rows.length, 5);
       assert.deepEqual(
         audit.rows.map((row: Record<string, unknown>) => row.type).sort(),
         [
@@ -1422,6 +1494,7 @@ integration(
           'sales.quote.converted',
           'sales.quote.customer_accepted',
           'sales.quote.optional_products_selected',
+          'sales.quote.viewed',
         ],
       );
       const opportunityAudit = audit.rows.find(

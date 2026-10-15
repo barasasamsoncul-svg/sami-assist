@@ -61,6 +61,19 @@ function assertToken(
 }
 
 
+type PublicSalesQuotePageDependencies = {
+  getTenantPoolByTenantId: typeof getTenantPoolByTenantId;
+  expirePublicSalesQuoteWithAudit: typeof expirePublicSalesQuoteWithAudit;
+  recordSalesActivity: typeof recordSalesActivity;
+};
+
+const defaultPublicSalesQuotePageDependencies: PublicSalesQuotePageDependencies = {
+  getTenantPoolByTenantId,
+  expirePublicSalesQuoteWithAudit,
+  recordSalesActivity,
+};
+
+
 export async function getPublicSalesQuote(
   tenantId:
     string,
@@ -69,13 +82,19 @@ export async function getPublicSalesQuote(
   options: {
     markViewed?: boolean;
   } = {},
+  overrides: Partial<PublicSalesQuotePageDependencies> = {},
 ) {
+  const dependencies: PublicSalesQuotePageDependencies = {
+    ...defaultPublicSalesQuotePageDependencies,
+    ...overrides,
+  };
+
   assertToken(
     token,
   );
 
   const pool =
-    await getTenantPoolByTenantId(
+    await dependencies.getTenantPoolByTenantId(
       tenantId,
     );
 
@@ -249,7 +268,7 @@ export async function getPublicSalesQuote(
         ['sent', 'viewed'].includes(currentStatus) &&
         isSalesQuoteExpired(currentResult.rows[0].valid_until, today)
       ) {
-        const expired = await expirePublicSalesQuoteWithAudit(
+        const expired = await dependencies.expirePublicSalesQuoteWithAudit(
           client,
           {
             quoteId: String(quote.id),
@@ -258,7 +277,7 @@ export async function getPublicSalesQuote(
             fromStatus: currentStatus as 'sent' | 'viewed',
             source: 'public_quote_view',
           },
-          recordSalesActivity,
+          dependencies.recordSalesActivity,
         );
 
         if (expired) {
@@ -358,7 +377,7 @@ export async function getPublicSalesQuote(
           ],
         );
 
-        await recordSalesActivity(
+        await dependencies.recordSalesActivity(
           client,
           {
             companyId:
