@@ -3673,7 +3673,7 @@ export async function getSalesQuoteRegisterPage(input: Record<string, unknown> =
   const statusView = normalizeQuoteRegisterStatus(input.statusView);
 
   const parameters = [context.companyId, search, statusView];
-  const filterSql = `
+  const searchSql = `
     AND (
       $2::text = ''
       OR quote.quote_number ILIKE ('%' || $2::text || '%')
@@ -3683,6 +3683,8 @@ export async function getSalesQuoteRegisterPage(input: Record<string, unknown> =
       OR quote.effective_status ILIKE ('%' || $2::text || '%')
       OR COALESCE(quote.approval_status, '') ILIKE ('%' || $2::text || '%')
     )
+  `;
+  const statusSql = `
     AND (
       $3::text = 'all'
       OR ($3::text = 'draft' AND quote.effective_status = 'draft')
@@ -3732,7 +3734,8 @@ export async function getSalesQuoteRegisterPage(input: Record<string, unknown> =
          AND stage.company_id = quote.company_id
          AND stage.deleted_at IS NULL
         WHERE TRUE
-          ${filterSql}
+          ${searchSql}
+          ${statusSql}
         ORDER BY quote.created_at DESC, quote.id DESC
         LIMIT $4 OFFSET $5
       `,
@@ -3753,10 +3756,36 @@ export async function getSalesQuoteRegisterPage(input: Record<string, unknown> =
           WHERE quote.company_id = $1
             AND quote.deleted_at IS NULL
         )
-        SELECT COUNT(*)::int AS total
+        SELECT
+          COUNT(*) FILTER (WHERE
+            $3::text = 'all'
+            OR ($3::text = 'draft' AND quote.effective_status = 'draft')
+            OR ($3::text = 'needs_approval' AND quote.approval_status = 'pending')
+            OR ($3::text = 'awaiting_response' AND quote.effective_status IN ('sent', 'viewed'))
+            OR ($3::text = 'accepted' AND quote.effective_status = 'accepted')
+            OR ($3::text = 'converted' AND quote.effective_status = 'converted')
+            OR ($3::text = 'expired' AND quote.effective_status = 'expired')
+            OR ($3::text = 'expiring_soon'
+              AND quote.effective_status IN ('sent', 'viewed')
+              AND quote.valid_until >= CURRENT_DATE
+              AND quote.valid_until <= CURRENT_DATE + INTERVAL '7 days')
+            OR ($3::text = 'closed_without_sale'
+              AND quote.effective_status IN ('rejected', 'expired', 'cancelled'))
+          )::int AS total,
+          COUNT(*)::int AS all,
+          COUNT(*) FILTER (WHERE quote.effective_status = 'draft')::int AS draft,
+          COUNT(*) FILTER (WHERE quote.approval_status = 'pending')::int AS needs_approval,
+          COUNT(*) FILTER (WHERE quote.effective_status IN ('sent', 'viewed'))::int AS awaiting_response,
+          COUNT(*) FILTER (WHERE quote.effective_status = 'accepted')::int AS accepted,
+          COUNT(*) FILTER (WHERE quote.effective_status = 'converted')::int AS converted,
+          COUNT(*) FILTER (WHERE quote.effective_status = 'expired')::int AS expired,
+          COUNT(*) FILTER (WHERE quote.effective_status IN ('sent', 'viewed')
+            AND quote.valid_until >= CURRENT_DATE
+            AND quote.valid_until <= CURRENT_DATE + INTERVAL '7 days')::int AS expiring_soon,
+          COUNT(*) FILTER (WHERE quote.effective_status IN ('rejected', 'expired', 'cancelled'))::int AS closed_without_sale
         FROM quote_rows quote
         WHERE TRUE
-          ${filterSql}
+          ${searchSql}
       `,
       parameters,
     ),
@@ -3797,7 +3826,18 @@ export async function getSalesQuoteRegisterPage(input: Record<string, unknown> =
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
   }));
 
-  return { rows, offset, limit, totalCount: Number(count.rows[0]?.total || 0), hasMore, nextOffset: offset + rows.length };
+  return {
+    rows, offset, limit, totalCount: Number(count.rows[0]?.total || 0), hasMore, nextOffset: offset + rows.length,
+    queueCounts: {
+      all: Number(count.rows[0]?.all || 0),
+      awaiting_fulfillment: Number(count.rows[0]?.awaiting_fulfillment || 0),
+      partially_fulfilled: Number(count.rows[0]?.partially_fulfilled || 0),
+      fulfilled: Number(count.rows[0]?.fulfilled || 0),
+      not_invoiced: Number(count.rows[0]?.not_invoiced || 0),
+      partially_invoiced: Number(count.rows[0]?.partially_invoiced || 0),
+      invoiced: Number(count.rows[0]?.invoiced || 0),
+    },
+  };
 }
 
 export async function getSalesOrderRegisterPage(input: Record<string, unknown> = {}) {
@@ -3825,7 +3865,7 @@ export async function getSalesOrderRegisterPage(input: Record<string, unknown> =
   };
 
   const parameters = [context.companyId, search, statusView];
-  const filterSql = `
+  const searchSql = `
     AND (
       $2::text = ''
       OR o.order_number ILIKE ('%' || $2::text || '%')
@@ -3835,6 +3875,8 @@ export async function getSalesOrderRegisterPage(input: Record<string, unknown> =
       OR COALESCE(o.fulfillment_status, 'not_started') ILIKE ('%' || $2::text || '%')
       OR COALESCE(o.invoice_status, 'not_invoiced') ILIKE ('%' || $2::text || '%')
     )
+  `;
+  const statusSql = `
     AND (
       $3::text = 'all'
       OR ($3::text = 'awaiting_fulfillment' AND COALESCE(o.fulfillment_status, 'not_started') = 'not_started')
@@ -3864,7 +3906,8 @@ export async function getSalesOrderRegisterPage(input: Record<string, unknown> =
           ON q.id = o.quote_id AND q.company_id = o.company_id
         WHERE o.company_id = $1
           AND o.deleted_at IS NULL
-          ${filterSql}
+          ${searchSql}
+          ${statusSql}
         GROUP BY o.id, q.quote_number
         ORDER BY ${sortSql[sortBy]}
         LIMIT $4 OFFSET $5
@@ -3873,11 +3916,27 @@ export async function getSalesOrderRegisterPage(input: Record<string, unknown> =
     ),
     context.pool.query(
       `
-        SELECT COUNT(*)::int AS total
+        SELECT
+          COUNT(*) FILTER (WHERE
+            $3::text = 'all'
+            OR ($3::text = 'awaiting_fulfillment' AND COALESCE(o.fulfillment_status, 'not_started') = 'not_started')
+            OR ($3::text = 'partially_fulfilled' AND COALESCE(o.fulfillment_status, 'not_started') = 'partial')
+            OR ($3::text = 'fulfilled' AND COALESCE(o.fulfillment_status, 'not_started') = 'fulfilled')
+            OR ($3::text = 'not_invoiced' AND COALESCE(o.invoice_status, 'not_invoiced') = 'not_invoiced')
+            OR ($3::text = 'partially_invoiced' AND COALESCE(o.invoice_status, 'not_invoiced') = 'partial')
+            OR ($3::text = 'invoiced' AND COALESCE(o.invoice_status, 'not_invoiced') = 'invoiced')
+          )::int AS total,
+          COUNT(*)::int AS all,
+          COUNT(*) FILTER (WHERE COALESCE(o.fulfillment_status, 'not_started') = 'not_started')::int AS awaiting_fulfillment,
+          COUNT(*) FILTER (WHERE COALESCE(o.fulfillment_status, 'not_started') = 'partial')::int AS partially_fulfilled,
+          COUNT(*) FILTER (WHERE COALESCE(o.fulfillment_status, 'not_started') = 'fulfilled')::int AS fulfilled,
+          COUNT(*) FILTER (WHERE COALESCE(o.invoice_status, 'not_invoiced') = 'not_invoiced')::int AS not_invoiced,
+          COUNT(*) FILTER (WHERE COALESCE(o.invoice_status, 'not_invoiced') = 'partial')::int AS partially_invoiced,
+          COUNT(*) FILTER (WHERE COALESCE(o.invoice_status, 'not_invoiced') = 'invoiced')::int AS invoiced
         FROM sales_orders_v2 o
         WHERE o.company_id = $1
           AND o.deleted_at IS NULL
-          ${filterSql}
+          ${searchSql}
       `,
       parameters,
     ),
