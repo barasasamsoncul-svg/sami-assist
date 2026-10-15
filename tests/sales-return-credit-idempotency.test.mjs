@@ -11,8 +11,8 @@ async function source(file) {
 
 test('Sales return credit counters change only when a new allocation is committed', async () => {
   const operations = await source('lib/apps/sales/operations.ts');
-  const start = operations.indexOf('export async function issueSalesReturnCredit(');
-  const end = operations.indexOf('export async function refundSalesReturnCredit(', start);
+  const start = operations.indexOf('export async function issueSalesReturnCreditTransaction(');
+  const end = operations.indexOf('export async function refundSalesReturnCreditTransaction(', start);
   assert.ok(start >= 0 && end > start, 'return-credit issuance function must exist');
 
   const credit = operations.slice(start, end);
@@ -39,8 +39,8 @@ test('Sales return credit counters change only when a new allocation is committe
 
 test('Sales return-credit issuance serializes retries and preserves refund lifecycle states', async () => {
   const operations = await source('lib/apps/sales/operations.ts');
-  const start = operations.indexOf('export async function issueSalesReturnCredit(');
-  const end = operations.indexOf('export async function refundSalesReturnCredit(', start);
+  const start = operations.indexOf('export async function issueSalesReturnCreditTransaction(');
+  const end = operations.indexOf('export async function refundSalesReturnCreditTransaction(', start);
   const credit = operations.slice(start, end);
   const compact = credit.replace(/\s+/g, ' ');
 
@@ -62,7 +62,7 @@ test('Sales return-credit issuance serializes retries and preserves refund lifec
 
 test('Sales return refunds serialize with credit issuance and reload the balance after locking', async () => {
   const operations = await source('lib/apps/sales/operations.ts');
-  const start = operations.indexOf('export async function refundSalesReturnCredit(');
+  const start = operations.indexOf('export async function refundSalesReturnCreditTransaction(');
   const refund = operations.slice(start);
   const compact = refund.replace(/\s+/g, ' ');
 
@@ -81,7 +81,7 @@ test('Sales return refunds serialize with credit issuance and reload the balance
 
 test('Sales refund retries recover their posted amount before available-balance validation', async () => {
   const operations = await source('lib/apps/sales/operations.ts');
-  const start = operations.indexOf('export async function refundSalesReturnCredit(');
+  const start = operations.indexOf('export async function refundSalesReturnCreditTransaction(');
   const refund = operations.slice(start);
   const compact = refund.replace(/\s+/g, ' ');
 
