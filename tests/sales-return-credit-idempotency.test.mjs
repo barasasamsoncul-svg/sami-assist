@@ -50,7 +50,7 @@ test('Sales return-credit issuance serializes retries and preserves refund lifec
   assert.ok(lock >= 0 && lock < returnRead, 'serialize before reading return-credit state');
   assert.ok(invoiceCredit > lock && unlock > invoiceCredit, 'hold the lock over cross-module credit creation and recovery');
   assert.ok(
-    credit.includes("status = CASE\\n          WHEN status IN ('partially_refunded', 'refunded')\\n          THEN status\\n          WHEN $4::boolean\\n          THEN 'credited'\\n          ELSE status\\n        END"),
+    credit.includes("status = CASE\n          WHEN status IN ('partially_refunded', 'refunded')\n          THEN status\n          WHEN $4::boolean\n          THEN 'credited'\n          ELSE status\n        END"),
     'do not overwrite a refund state or mark an un-invoiced return as credited',
   );
 });
