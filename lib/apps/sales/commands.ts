@@ -3973,10 +3973,42 @@ export async function convertSalesQuoteToInvoice(
       .ORDER_MANAGE,
   );
 
-  const invoicingContext = await requireInvoicingContext(
-    INVOICING_PERMISSIONS
-      .INVOICE_CREATE,
-  );
+  const invoicingContext = await (async () => {
+    try {
+      return await requireInvoicingContext(
+        INVOICING_PERMISSIONS
+          .INVOICE_CREATE,
+      );
+    } catch (error) {
+      if (error instanceof InvoicingError) {
+        if (error.code === 'INVOICING_PERMISSION_REQUIRED') {
+          throw new SalesError(
+            'SALES_PERMISSION_REQUIRED',
+            'Invoice-creation permission is required to convert a quotation to an invoice.',
+            error.details,
+          );
+        }
+
+        if (error.code === 'INVOICING_NOT_INSTALLED') {
+          throw new SalesError(
+            'INVOICING_REQUIRED',
+            'Install Invoicing before converting a quotation to an invoice.',
+            error.details,
+          );
+        }
+
+        if (error.code === 'INVOICING_WORKSPACE_SUSPENDED') {
+          throw new SalesError(
+            'SALES_WORKSPACE_SUSPENDED',
+            error.message,
+            error.details,
+          );
+        }
+      }
+
+      throw error;
+    }
+  })();
 
   const customerPermissions = [
     INVOICING_PERMISSIONS.CUSTOMER_VIEW,
@@ -3990,9 +4022,9 @@ export async function convertSalesQuoteToInvoice(
       customerPermissions,
     )
   ) {
-    throw new InvoicingError(
-      'INVOICING_PERMISSION_REQUIRED',
-      'Customer access is required to create or edit an invoice.',
+    throw new SalesError(
+      'SALES_PERMISSION_REQUIRED',
+      'Customer access is required to create an invoice.',
       {
         permission:
           INVOICING_PERMISSIONS.CUSTOMER_VIEW,
@@ -4041,8 +4073,8 @@ export async function convertSalesQuoteToInvoice(
       ],
     )
   ) {
-    throw new InvoicingError(
-      'INVOICING_PERMISSION_REQUIRED',
+    throw new SalesError(
+      'SALES_PERMISSION_REQUIRED',
       'Customer-management access is required to create the billing customer for this quotation.',
       {
         permission:
