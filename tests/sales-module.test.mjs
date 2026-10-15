@@ -3007,7 +3007,12 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   const refundReturnCreditStart = operations.indexOf('export async function refundSalesReturnCredit(', issueReturnCreditStart);
   const issueReturnCredit = operations.slice(issueReturnCreditStart, refundReturnCreditStart);
   const returnCreditInvoiceQueryStart = issueReturnCredit.indexOf('const invoiceItems =');
-  const returnCreditInvoiceQueryEnd = issueReturnCredit.indexOf('for (\n      const invoiceItem', returnCreditInvoiceQueryStart);
+  const returnCreditInvoiceQueryEndMatch =
+    issueReturnCredit.slice(returnCreditInvoiceQueryStart).search(/\n\s*for \(\s*const invoiceItem/);
+  const returnCreditInvoiceQueryEnd =
+    returnCreditInvoiceQueryEndMatch < 0
+      ? -1
+      : returnCreditInvoiceQueryStart + returnCreditInvoiceQueryEndMatch;
   const returnCreditInvoiceQuery = issueReturnCredit.slice(returnCreditInvoiceQueryStart, returnCreditInvoiceQueryEnd);
   assert.ok(issueReturnCreditStart >= 0);
   assert.ok(refundReturnCreditStart > issueReturnCreditStart);
