@@ -1,6 +1,6 @@
 # SaMi Sales parity audit ledger
 
-**Audit baseline:** `main` at `159298a072f88349d459d98677c38011188e60d8` after PR #219 (2026-10-15 follow-up audit).  
+**Audit baseline:** `main` at `9a9f01f5dd1bf637a5f63e30619a85bc67598574` after PR #220 (2026-10-15 follow-up audit).  
 **Purpose:** one authoritative checklist for finishing Sales. This is an evidence ledger, not a claim that Sales has already achieved Odoo/Zoho parity.
 
 ## Completion rule
@@ -42,7 +42,8 @@ A capability is **verified complete** only when (1) its UI action is wired to th
 - **Merged in #216:** extracted the linked CRM opportunity Won-stage reconciliation so its production SQL is exercised against PostgreSQL. The regression covers the open-to-Won transition, probability/timestamp canonicalization, clearing stale Lost metadata, stage history/activity payload, idempotent retry, and no mutation for deleted or cross-company opportunity reads. All eight required release gates passed on the exact PR head before merge.
 - **Merged in #217:** execute the production quote-to-order transaction against PostgreSQL. The regression verifies one confirmed order and copied quote-line snapshots, quote/order lifecycle histories, base-currency totals, CRM Won-stage reconciliation, and one-time inventory-reservation/commission/automation boundaries across an idempotent retry. All eight required release gates passed before merge.
 - **Merged in #219:** extended the PostgreSQL quote-to-order test through the production public customer-acceptance action. It verifies signature consent and signer evidence, public-link closure, the `sent → accepted → converted` history, acceptance audit activity, order creation, CRM Won reconciliation, and idempotent retry behavior. All eight required release gates passed before merge.
-- **Current follow-up branch (not yet merged):** extend the same PostgreSQL path through the real public quote page view before acceptance, asserting `sent → viewed → accepted → converted`, the returned customer/commercial data, the viewed activity, and all lifecycle history records. The quote still enters the test as an already-sent database fixture; quote creation, revision, and delivery are exercised in separate workflow tests.
+- **Merged in #220:** the PostgreSQL quote workflow now calls the production public quote page reader before customer acceptance and order conversion. It verifies the returned customer/commercial data, `sent → viewed → accepted → converted` history, view/accept/conversion activity records, signer/electronic-signature evidence, one order, CRM Won reconciliation, and an idempotent conversion retry. All eight required release gates passed on the exact PR head before merge.
+- **Current follow-up:** close the remaining integrated order-execution path after conversion: actual stock reservation/fulfillment posting, Sales order invoicing, and return/credit/refund reconciliation against PostgreSQL. These capabilities already have individual tests; the next integration proof must combine the authoritative module boundaries and verify persistent quantities and retry behavior in one path. Quote creation, revision, and delivery still have separate workflow coverage and remain a separate quote-entry gate.
 - **Not yet certified:** this ledger does not mark the entire module “done.” The remaining work is execution-level verification of each workflow row, with any confirmed gaps fixed in grouped changes. Only after that and full release validation should Sales be called complete.
 
 ## Audit evidence index
