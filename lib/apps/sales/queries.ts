@@ -3817,8 +3817,8 @@ export async function getSalesOrderRegisterPage(input: Record<string, unknown> =
   const sortSql: Record<SalesOrderSortBy, string> = {
     newest: 'o.order_date DESC, o.id DESC',
     oldest: 'o.order_date ASC, o.id ASC',
-    value_high: 'o.base_total_amount DESC, o.created_at DESC, o.id DESC',
-    value_low: 'o.base_total_amount ASC, o.created_at DESC, o.id DESC',
+    value_high: 'COALESCE(o.base_total_amount, o.total_amount) DESC NULLS LAST, o.created_at DESC, o.id DESC',
+    value_low: 'COALESCE(o.base_total_amount, o.total_amount) ASC NULLS LAST, o.created_at DESC, o.id DESC',
     delivery_first: '(CASE WHEN COALESCE(SUM(oi.quantity), 0) > 0 THEN ROUND(100.0 * COALESCE(SUM(oi.delivered_quantity), 0) / SUM(oi.quantity)) ELSE 0 END) ASC, o.created_at DESC, o.id DESC',
     invoice_first: '(CASE WHEN COALESCE(SUM(oi.quantity), 0) > 0 THEN ROUND(100.0 * COALESCE(SUM(oi.invoiced_quantity), 0) / SUM(oi.quantity)) ELSE 0 END) ASC, o.created_at DESC, o.id DESC',
     customer_az: 'LOWER(o.customer_name) ASC, o.created_at DESC, o.id DESC',
