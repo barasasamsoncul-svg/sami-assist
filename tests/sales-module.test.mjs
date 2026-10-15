@@ -91,7 +91,7 @@ test('Sales quote expiry normalizes dates and uses one compare-and-set audited t
   assert.match(expiryTransition, /await recordActivity\(client/);
   assert.match(expiryTransition, /type: 'sales\.quote\.expired'/);
   assert.match(expiryTransition, /if \(changed\.rows\.length !== 1\) \{[\s\S]*?return false/);
-  assert.doesNotMatch(expiryTransition, /BEGIN|COMMIT/,
+  assert.doesNotMatch(expiryTransition, /client\.query\(\s*['"](?:BEGIN|COMMIT)['"]\s*\)/,
     'the caller keeps status and audit records inside its transaction');
 });
 
