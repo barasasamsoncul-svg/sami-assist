@@ -2993,7 +2993,7 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
 
   const fulfillmentStart =
     commands.indexOf(
-      'export async function updateSalesOrderFulfillment(',
+      'export async function updateSalesOrderFulfillmentTransaction(',
     );
   const cancelStart =
     commands.indexOf(

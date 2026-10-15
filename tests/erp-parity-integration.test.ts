@@ -888,7 +888,7 @@ integration(
 integration(
   'ERP parity: accepted Sales quote converts to one confirmed order and reconciles CRM in PostgreSQL',
   async () => {
-    const { createSalesOrderFromQuoteTransaction } = await import('../lib/apps/sales/commands');
+    const { createSalesOrderFromQuoteTransaction, updateSalesOrderFulfillmentTransaction } = await import('../lib/apps/sales/commands');
     const { getPublicSalesQuote, respondToPublicSalesQuote } = await import('../lib/apps/sales/public');
     const pool = new Pool({
       connectionString: DATABASE_URL,
@@ -906,6 +906,7 @@ integration(
     const opportunityId = '66666666-6666-4666-8666-666666666666';
     const quoteId = '77777777-7777-4777-8777-777777777777';
     const catalogItemId = '88888888-8888-4888-8888-888888888888';
+    const warehouseId = '99999999-9999-4999-8999-999999999999';
     const publicToken = 'sami-sales-integration-customer-acceptance-token-2026-10-15';
     const tokenHash = createHash('sha256').update(publicToken).digest('hex');
 
@@ -913,6 +914,8 @@ integration(
     let reserveCalls = 0;
     let commissionCalls = 0;
     let automationCalls = 0;
+    let fulfillmentAutomationCalls = 0;
+    const fulfillmentAutomationSeeds: string[] = [];
     let sequenceCalls = 0;
 
     try {
@@ -1037,6 +1040,62 @@ integration(
           footer_text TEXT
         );
 
+        CREATE TEMP TABLE products (
+          id UUID PRIMARY KEY,
+          company_id UUID NOT NULL,
+          product_type TEXT NOT NULL DEFAULT 'stockable',
+          deleted_at TIMESTAMPTZ
+        );
+
+        CREATE TEMP TABLE warehouses (
+          id UUID PRIMARY KEY,
+          company_id UUID NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          deleted_at TIMESTAMPTZ
+        );
+
+        CREATE TEMP TABLE stock_levels (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          product_id UUID NOT NULL,
+          warehouse_id UUID NOT NULL,
+          quantity NUMERIC(18,4) NOT NULL DEFAULT 0,
+          reorder_level NUMERIC(18,4) NOT NULL DEFAULT 0,
+          created_by UUID,
+          updated_by UUID,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          deleted_at TIMESTAMPTZ
+        );
+
+        CREATE TEMP TABLE stock_movements (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          product_id UUID NOT NULL,
+          warehouse_id UUID NOT NULL,
+          movement_type TEXT NOT NULL,
+          quantity NUMERIC(18,4) NOT NULL,
+          reference TEXT,
+          created_by UUID,
+          updated_by UUID,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          deleted_at TIMESTAMPTZ
+        );
+
+        CREATE TEMP TABLE stock_reservations (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          product_id UUID NOT NULL,
+          warehouse_id UUID NOT NULL,
+          quantity NUMERIC(18,4) NOT NULL,
+          source_type TEXT NOT NULL,
+          source_reference TEXT NOT NULL,
+          status TEXT NOT NULL,
+          created_by UUID,
+          updated_by UUID,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          deleted_at TIMESTAMPTZ
+        );
+
         CREATE TEMP TABLE sales_quote_optional_items (
           id UUID PRIMARY KEY,
           quote_id UUID NOT NULL,
@@ -1061,6 +1120,9 @@ integration(
           company_id UUID NOT NULL,
           catalog_item_id UUID,
           external_product_id UUID,
+          stock_reservation_id UUID,
+          shipped_quantity NUMERIC(14,4) NOT NULL DEFAULT 0,
+          delivered_quantity NUMERIC(14,4) NOT NULL DEFAULT 0,
           sort_order INTEGER NOT NULL,
           description TEXT NOT NULL,
           sku_snapshot TEXT,
@@ -1087,6 +1149,8 @@ integration(
           quote_id UUID NOT NULL,
           order_number VARCHAR(80) NOT NULL,
           status VARCHAR(30) NOT NULL,
+          fulfillment_status VARCHAR(30) NOT NULL DEFAULT 'not_started',
+          invoice_status VARCHAR(30) NOT NULL DEFAULT 'not_invoiced',
           order_date DATE NOT NULL,
           currency VARCHAR(3) NOT NULL,
           reference TEXT,
@@ -1132,6 +1196,9 @@ integration(
           company_id UUID NOT NULL,
           catalog_item_id UUID,
           external_product_id UUID,
+          stock_reservation_id UUID,
+          shipped_quantity NUMERIC(14,4) NOT NULL DEFAULT 0,
+          delivered_quantity NUMERIC(14,4) NOT NULL DEFAULT 0,
           sort_order INTEGER NOT NULL,
           description TEXT NOT NULL,
           sku_snapshot TEXT,
@@ -1210,6 +1277,25 @@ integration(
       );
 
       await setupClient.query(
+        `INSERT INTO products (id, company_id, product_type)
+         VALUES ($1, $2, 'stockable')`,
+        [catalogItemId, companyId],
+      );
+
+      await setupClient.query(
+        `INSERT INTO warehouses (id, company_id)
+         VALUES ($1, $2)`,
+        [warehouseId, companyId],
+      );
+
+      await setupClient.query(
+        `INSERT INTO stock_levels (
+           company_id, product_id, warehouse_id, quantity, created_by, updated_by
+         ) VALUES ($1, $2, $3, 10, $4, $4)`,
+        [companyId, catalogItemId, warehouseId, userId],
+      );
+
+      await setupClient.query(
         `INSERT INTO sales_quotes (
            id, company_id, opportunity_id, quote_number, status, approval_status,
            currency, customer_name, subtotal, discount_total, tax_total, shipping_total,
@@ -1239,7 +1325,7 @@ integration(
            discount_value, discount_amount, tax_name_snapshot, tax_rate, tax_amount,
            subtotal, line_total
          ) VALUES (
-           $1,$2,$3,NULL,1,'Consulting','CONS-1','unit',1,100,
+           $1,$2,$3,$3,1,'Consulting','CONS-1','unit',1,100,
            0,0,100,100,'percent',0,0,'VAT',16,16,100,116
          )`,
         [quoteId, companyId, catalogItemId],
@@ -1267,12 +1353,9 @@ integration(
         sequenceCalls += 1;
         return orderNumber;
       },
-      reserveSalesOrderInventory: async () => {
+      reserveSalesOrderInventory: async (client, input) => {
         reserveCalls += 1;
-        return {
-          integrated: true,
-          reserved: 1,
-        };
+        return reserveSalesOrderInventory(client, input);
       },
       recordSalesOrderCommissionEntries: async () => {
         commissionCalls += 1;
@@ -1385,6 +1468,13 @@ integration(
            o.base_currency,
            o.exchange_rate,
            o.base_total_amount,
+           o.fulfillment_status,
+           o.invoice_status,
+           line.id AS order_line_id,
+           line.external_product_id,
+           line.stock_reservation_id,
+           line.shipped_quantity,
+           line.delivered_quantity,
            line.description,
            line.sku_snapshot,
            line.quantity,
@@ -1417,6 +1507,124 @@ integration(
       assert.equal(Number(firstCheck.rows[0].unit_price), 100);
       assert.equal(Number(firstCheck.rows[0].tax_amount), 16);
       assert.equal(Number(firstCheck.rows[0].line_total), 116);
+      assert.equal(firstCheck.rows[0].fulfillment_status, 'not_started');
+      assert.equal(firstCheck.rows[0].invoice_status, 'not_invoiced');
+      assert.equal(firstCheck.rows[0].external_product_id, catalogItemId);
+      assert.ok(firstCheck.rows[0].stock_reservation_id);
+
+      const reservation = await pool.query(
+        `SELECT product_id, warehouse_id, quantity, status, source_type, source_reference
+         FROM stock_reservations
+         WHERE id = $1 AND company_id = $2`,
+        [firstCheck.rows[0].stock_reservation_id, companyId],
+      );
+      assert.equal(reservation.rows.length, 1);
+      assert.equal(reservation.rows[0].product_id, catalogItemId);
+      assert.equal(reservation.rows[0].warehouse_id, warehouseId);
+      assert.equal(Number(reservation.rows[0].quantity), 1);
+      assert.equal(reservation.rows[0].status, 'active');
+      assert.equal(reservation.rows[0].source_type, 'sales_order_line');
+      assert.equal(reservation.rows[0].source_reference, firstCheck.rows[0].order_line_id);
+
+      const fulfillmentDependencies: Parameters<typeof updateSalesOrderFulfillmentTransaction>[2] = {
+        postSalesFulfillmentToInventory,
+        emitSalesAutomationEvent: async (_ctx, event) => {
+          fulfillmentAutomationCalls += 1;
+          fulfillmentAutomationSeeds.push(event.idempotencySeed);
+        },
+      };
+      const fulfillmentInput = {
+        orderId: first.id,
+        lines: [{ lineId: String(firstCheck.rows[0].order_line_id), deliveredQuantity: 0.5 }],
+      };
+      const fulfillment = await updateSalesOrderFulfillmentTransaction(
+        fulfillmentInput,
+        context,
+        fulfillmentDependencies,
+      );
+      assert.equal(fulfillment.status, 'confirmed');
+      assert.equal(fulfillment.fulfillmentStatus, 'partial');
+      assert.equal(fulfillment.invoiceStatus, 'not_invoiced');
+      assert.equal(fulfillment.orderedQuantity, 1);
+      assert.equal(fulfillment.deliveredQuantity, 0.5);
+
+      const fulfillmentState = await pool.query(
+        `SELECT
+           line.quantity,
+           line.shipped_quantity,
+           line.delivered_quantity,
+           line.stock_reservation_id,
+           order_row.status,
+           order_row.fulfillment_status,
+           order_row.invoice_status
+         FROM sales_order_items_v2 line
+         INNER JOIN sales_orders_v2 order_row
+           ON order_row.id = line.sales_order_id
+          AND order_row.company_id = line.company_id
+         WHERE line.sales_order_id = $1 AND line.company_id = $2`,
+        [first.id, companyId],
+      );
+      assert.equal(fulfillmentState.rows.length, 1);
+      assert.equal(Number(fulfillmentState.rows[0].shipped_quantity), 0.5);
+      assert.equal(Number(fulfillmentState.rows[0].delivered_quantity), 0.5);
+      assert.equal(fulfillmentState.rows[0].status, 'confirmed');
+      assert.equal(fulfillmentState.rows[0].fulfillment_status, 'partial');
+      assert.equal(fulfillmentState.rows[0].invoice_status, 'not_invoiced');
+
+      const stockAfterPartialDelivery = await pool.query(
+        `SELECT quantity FROM stock_levels
+         WHERE company_id = $1 AND product_id = $2 AND warehouse_id = $3`,
+        [companyId, catalogItemId, warehouseId],
+      );
+      assert.equal(Number(stockAfterPartialDelivery.rows[0].quantity), 9.5);
+      const deliveryMovements = await pool.query(
+        `SELECT movement_type, quantity FROM stock_movements
+         WHERE company_id = $1 AND product_id = $2 ORDER BY created_at ASC`,
+        [companyId, catalogItemId],
+      );
+      assert.equal(deliveryMovements.rows.length, 1);
+      assert.equal(deliveryMovements.rows[0].movement_type, 'sales_delivery');
+      assert.equal(Number(deliveryMovements.rows[0].quantity), 0.5);
+
+      const fulfillmentRetry = await updateSalesOrderFulfillmentTransaction(
+        fulfillmentInput,
+        context,
+        fulfillmentDependencies,
+      );
+      assert.equal(fulfillmentRetry.fulfillmentStatus, 'partial');
+      const stockAfterFulfillmentRetry = await pool.query(
+        `SELECT quantity FROM stock_levels
+         WHERE company_id = $1 AND product_id = $2 AND warehouse_id = $3`,
+        [companyId, catalogItemId, warehouseId],
+      );
+      assert.equal(Number(stockAfterFulfillmentRetry.rows[0].quantity), 9.5);
+      const movementCountAfterRetry = await pool.query(
+        `SELECT COUNT(*)::int AS count FROM stock_movements
+         WHERE company_id = $1 AND product_id = $2 AND movement_type = 'sales_delivery'`,
+        [companyId, catalogItemId],
+      );
+      assert.equal(movementCountAfterRetry.rows[0].count, 1);
+      assert.equal(fulfillmentAutomationCalls, 2);
+      assert.equal(fulfillmentAutomationSeeds[0], fulfillmentAutomationSeeds[1],
+        'same fulfillment retry must reuse the same automation idempotency seed');
+
+      await assert.rejects(
+        updateSalesOrderFulfillmentTransaction(
+          {
+            orderId: first.id,
+            lines: [{ lineId: String(firstCheck.rows[0].order_line_id), deliveredQuantity: 1.1 }],
+          },
+          context,
+          fulfillmentDependencies,
+        ),
+        /Delivered quantity cannot exceed the ordered quantity/,
+      );
+      const stockAfterRejectedOverDelivery = await pool.query(
+        `SELECT quantity FROM stock_levels
+         WHERE company_id = $1 AND product_id = $2 AND warehouse_id = $3`,
+        [companyId, catalogItemId, warehouseId],
+      );
+      assert.equal(Number(stockAfterRejectedOverDelivery.rows[0].quantity), 9.5);
 
       const second = await createSalesOrderFromQuoteTransaction(
         { quoteId },
@@ -1454,7 +1662,8 @@ integration(
         pool.query(
           `SELECT from_status, to_status, reason
            FROM sales_order_status_history
-           WHERE company_id = $1 AND sales_order_id = $2`,
+           WHERE company_id = $1 AND sales_order_id = $2
+           ORDER BY created_at ASC`,
           [companyId, first.id],
         ),
       ]);
@@ -1474,9 +1683,11 @@ integration(
       assert.equal(quoteHistory.rows[1].to_status, 'accepted');
       assert.equal(quoteHistory.rows[2].from_status, 'accepted');
       assert.equal(quoteHistory.rows[2].to_status, 'converted');
-      assert.equal(orderHistory.rows.length, 1);
+      assert.equal(orderHistory.rows.length, 2);
       assert.equal(orderHistory.rows[0].from_status, null);
       assert.equal(orderHistory.rows[0].to_status, 'confirmed');
+      assert.equal(orderHistory.rows[1].from_status, 'fulfillment:not_started');
+      assert.equal(orderHistory.rows[1].to_status, 'fulfillment:partial');
 
       const audit = await pool.query(
         `SELECT model, record_id, type, metadata
