@@ -2232,7 +2232,7 @@ test('Sales quotation workspace provides status-based work queues alongside quot
   assert.ok(workspace.includes('setQuoteStatusView'));
   assert.ok(workspace.includes('aria-label="Quotation work queues"'));
   assert.ok(workspace.includes('aria-pressed={quoteStatusView === option.key}'));
-  assert.ok(workspace.includes('quoteRecords.filter(quote => matchesQuoteStatusView(quote, option.key)).length'));
+  assert.ok(workspace.includes('quoteRegisterQueueCounts?.[option.key]'));
   for (const label of ['All quotations', 'Drafts', 'Awaiting approval', 'Awaiting customer', 'Accepted', 'Converted to order', 'Closed without sale']) {
     assert.ok(workspace.includes(label), 'Quotation work queues include ' + label);
   }
@@ -2271,7 +2271,7 @@ test('Sales order workspace offers fulfillment and invoicing work queues alongsi
   assert.ok(workspace.includes('setOrderStatusView'));
   assert.ok(workspace.includes('aria-label="Sales order work queues"'));
   assert.ok(workspace.includes('aria-pressed={orderStatusView === option.key}'));
-  assert.ok(workspace.includes('orderRecords.filter(order => matchesSalesOrderView(order, option.key)).length'));
+  assert.ok(workspace.includes('orderRegisterQueueCounts?.[option.key]'));
   for (const label of ['All orders', 'Awaiting fulfillment', 'Partially fulfilled', 'Fulfilled', 'Not invoiced', 'Partially invoiced', 'Fully invoiced']) {
     assert.ok(workspace.includes(label), 'Order work queues include ' + label);
   }
