@@ -253,6 +253,37 @@ function matchesSalesOrderView(
 }
 
 
+
+type SalesRegisterPage<T> = {
+  rows: T[];
+  offset: number;
+  limit: number;
+  totalCount: number;
+  hasMore: boolean;
+  nextOffset: number;
+};
+
+async function requestSalesRegisterPage<T>(
+  kind: 'quotes' | 'orders',
+  query: URLSearchParams,
+  signal?: AbortSignal,
+): Promise<SalesRegisterPage<T>> {
+  query.set('register', kind);
+  const response = await fetch('/api/apps/sales?' + query.toString(), {
+    cache: 'no-store',
+    signal,
+  });
+  const body = await response.json().catch(() => ({})) as {
+    success?: boolean;
+    error?: string;
+    register?: SalesRegisterPage<T>;
+  };
+  if (!response.ok || body.success !== true || !body.register) {
+    throw new Error(body.error || 'Could not load the Sales register.');
+  }
+  return body.register;
+}
+
 type LinkedOpportunity = {
   id: string;
   opportunity_number: string;
@@ -807,6 +838,21 @@ export default function SalesWorkspaceClient({
       'newest',
     );
 
+  const [quoteRecords, setQuoteRecords] = useState<SalesWorkspaceData['quotes']>(initialData.quotes);
+  const [orderRecords, setOrderRecords] = useState<SalesWorkspaceData['orders']>(initialData.orders);
+  const [quoteRegisterHasMore, setQuoteRegisterHasMore] = useState(initialData.quotes.length >= 250);
+  const [orderRegisterHasMore, setOrderRegisterHasMore] = useState(initialData.orders.length >= 250);
+  const [quoteRegisterTotalCount, setQuoteRegisterTotalCount] = useState(initialData.metrics.quoteCount);
+  const [orderRegisterTotalCount, setOrderRegisterTotalCount] = useState(initialData.metrics.orderCount);
+  const [quoteRegisterLoading, setQuoteRegisterLoading] = useState(false);
+  const [orderRegisterLoading, setOrderRegisterLoading] = useState(false);
+  const [quoteRegisterError, setQuoteRegisterError] = useState('');
+  const [orderRegisterError, setOrderRegisterError] = useState('');
+  const previousQuoteQuery = useRef(search.trim() + '|' + quoteStatusView);
+  const previousOrderQuery = useRef(search.trim() + '|' + orderStatusView + '|' + orderSortBy);
+  const quoteBaseData = useRef(initialData.quotes);
+  const orderBaseData = useRef(initialData.orders);
+
   const [
     orderDisplayMode,
     setOrderDisplayMode,
@@ -1039,6 +1085,150 @@ export default function SalesWorkspaceClient({
     };
   }, [initialData.company.id]);
 
+  useEffect(() => {
+    if (quoteBaseData.current !== initialData.quotes) {
+      quoteBaseData.current = initialData.quotes;
+      setQuoteRecords(initialData.quotes);
+      setQuoteRegisterHasMore(initialData.quotes.length >= 250);
+      setQuoteRegisterTotalCount(initialData.metrics.quoteCount);
+    }
+  }, [initialData.quotes, initialData.metrics.quoteCount]);
+
+  useEffect(() => {
+    if (orderBaseData.current !== initialData.orders) {
+      orderBaseData.current = initialData.orders;
+      setOrderRecords(initialData.orders);
+      setOrderRegisterHasMore(initialData.orders.length >= 250);
+      setOrderRegisterTotalCount(initialData.metrics.orderCount);
+    }
+  }, [initialData.orders, initialData.metrics.orderCount]);
+
+  useEffect(() => {
+    if (view !== 'quotes') return;
+    const signature = search.trim() + '|' + quoteStatusView;
+    const baseChanged = quoteBaseData.current !== initialData.quotes;
+    if (signature === previousQuoteQuery.current && !baseChanged) return;
+    previousQuoteQuery.current = signature;
+    const controller = new AbortController();
+    setQuoteRegisterLoading(true);
+    setQuoteRegisterError('');
+    const timer = window.setTimeout(() => {
+      const query = new URLSearchParams({
+        offset: '0',
+        limit: '250',
+        search: search.trim(),
+        statusView: quoteStatusView,
+      });
+      void requestSalesRegisterPage<SalesWorkspaceData['quotes'][number]>('quotes', query, controller.signal)
+        .then(page => {
+          setQuoteRecords(page.rows);
+          setQuoteRegisterHasMore(page.hasMore);
+          setQuoteRegisterTotalCount(page.totalCount);
+        })
+        .catch(error => {
+          if (!controller.signal.aborted) {
+            setQuoteRegisterError(error instanceof Error ? error.message : 'Could not load quotations.');
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setQuoteRegisterLoading(false);
+        });
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [view, search, quoteStatusView, initialData.quotes, initialData.metrics.quoteCount]);
+
+  useEffect(() => {
+    if (view !== 'orders') return;
+    const signature = search.trim() + '|' + orderStatusView + '|' + orderSortBy;
+    const baseChanged = orderBaseData.current !== initialData.orders;
+    if (signature === previousOrderQuery.current && !baseChanged) return;
+    previousOrderQuery.current = signature;
+    const controller = new AbortController();
+    setOrderRegisterLoading(true);
+    setOrderRegisterError('');
+    const timer = window.setTimeout(() => {
+      const query = new URLSearchParams({
+        offset: '0',
+        limit: '250',
+        search: search.trim(),
+        statusView: orderStatusView,
+        sortBy: orderSortBy,
+      });
+      void requestSalesRegisterPage<SalesWorkspaceData['orders'][number]>('orders', query, controller.signal)
+        .then(page => {
+          setOrderRecords(page.rows);
+          setOrderRegisterHasMore(page.hasMore);
+          setOrderRegisterTotalCount(page.totalCount);
+        })
+        .catch(error => {
+          if (!controller.signal.aborted) {
+            setOrderRegisterError(error instanceof Error ? error.message : 'Could not load sales orders.');
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setOrderRegisterLoading(false);
+        });
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [view, search, orderStatusView, orderSortBy, initialData.orders, initialData.metrics.orderCount]);
+
+  async function loadMoreQuoteRecords() {
+    if (quoteRegisterLoading || !quoteRegisterHasMore) return;
+    setQuoteRegisterLoading(true);
+    setQuoteRegisterError('');
+    try {
+      const query = new URLSearchParams({
+        offset: String(quoteRecords.length),
+        limit: '250',
+        search: search.trim(),
+        statusView: quoteStatusView,
+      });
+      const page = await requestSalesRegisterPage<SalesWorkspaceData['quotes'][number]>('quotes', query);
+      setQuoteRecords(current => {
+        const existing = new Set(current.map(row => row.id));
+        return [...current, ...page.rows.filter(row => !existing.has(row.id))];
+      });
+      setQuoteRegisterHasMore(page.hasMore);
+      setQuoteRegisterTotalCount(page.totalCount);
+    } catch (error) {
+      setQuoteRegisterError(error instanceof Error ? error.message : 'Could not load more quotations.');
+    } finally {
+      setQuoteRegisterLoading(false);
+    }
+  }
+
+  async function loadMoreOrderRecords() {
+    if (orderRegisterLoading || !orderRegisterHasMore) return;
+    setOrderRegisterLoading(true);
+    setOrderRegisterError('');
+    try {
+      const query = new URLSearchParams({
+        offset: String(orderRecords.length),
+        limit: '250',
+        search: search.trim(),
+        statusView: orderStatusView,
+        sortBy: orderSortBy,
+      });
+      const page = await requestSalesRegisterPage<SalesWorkspaceData['orders'][number]>('orders', query);
+      setOrderRecords(current => {
+        const existing = new Set(current.map(row => row.id));
+        return [...current, ...page.rows.filter(row => !existing.has(row.id))];
+      });
+      setOrderRegisterHasMore(page.hasMore);
+      setOrderRegisterTotalCount(page.totalCount);
+    } catch (error) {
+      setOrderRegisterError(error instanceof Error ? error.message : 'Could not load more sales orders.');
+    } finally {
+      setOrderRegisterLoading(false);
+    }
+  }
+
   const visibleQuotes =
     useMemo(
       () => {
@@ -1077,7 +1267,7 @@ export default function SalesWorkspaceClient({
           );
       },
       [
-        initialData.quotes,
+        quoteRecords,
         search,
         quoteStatusView,
       ],
@@ -1095,7 +1285,7 @@ export default function SalesWorkspaceClient({
   const sendableSelectedQuoteIds =
     useMemo(
       () =>
-        initialData.quotes
+        quoteRecords
           .filter(
             quote =>
               selectedQuoteIds.includes(quote.id) &&
@@ -1107,7 +1297,7 @@ export default function SalesWorkspaceClient({
           )
           .map(quote => quote.id),
       [
-        initialData.quotes,
+        quoteRecords,
         selectedQuoteIds,
       ],
     );
@@ -1120,7 +1310,7 @@ export default function SalesWorkspaceClient({
             .trim()
             .toLowerCase();
 
-        const matchingOrders = initialData.orders.filter(
+        const matchingOrders = orderRecords.filter(
           order =>
             matchesSalesOrderView(order, orderStatusView) &&
             (
@@ -1170,7 +1360,7 @@ export default function SalesWorkspaceClient({
         });
       },
       [
-        initialData.orders,
+        orderRecords,
         orderStatusView,
         orderSortBy,
         search,
@@ -1186,7 +1376,7 @@ export default function SalesWorkspaceClient({
   const invoiceableSelectedOrderIds =
     useMemo(
       () =>
-        initialData.orders
+        orderRecords
           .filter(
             order =>
               selectedOrderIds.includes(order.id) &&
@@ -1195,7 +1385,7 @@ export default function SalesWorkspaceClient({
           )
           .map(order => order.id),
       [
-        initialData.orders,
+        orderRecords,
         selectedOrderIds,
       ],
     );
@@ -1362,7 +1552,7 @@ export default function SalesWorkspaceClient({
         const failureSummary = failures
           .slice(0, 3)
           .map(outcome => {
-            const quote = initialData.quotes.find(
+            const quote = quoteRecords.find(
               item => item.id === outcome.quoteId,
             );
             return (quote?.quoteNumber || 'Quotation') +
@@ -1456,7 +1646,7 @@ export default function SalesWorkspaceClient({
         const details = failures
           .slice(0, 3)
           .map(outcome => {
-            const order = initialData.orders.find(item => item.id === outcome.orderId);
+            const order = orderRecords.find(item => item.id === outcome.orderId);
             return (order?.orderNumber || 'Sales order') + ': ' +
               (outcome.error || 'Invoice creation failed');
           })
@@ -1925,7 +2115,7 @@ export default function SalesWorkspaceClient({
                       >
                         {option.label}
                         <span className="rounded-full bg-black/5 px-1.5 py-0.5 text-[10px] dark:bg-white/10">
-                          {initialData.quotes.filter(quote => matchesQuoteStatusView(quote, option.key)).length}
+                          {quoteRecords.filter(quote => matchesQuoteStatusView(quote, option.key)).length}
                         </span>
                       </button>
                     ))}
@@ -2044,7 +2234,7 @@ export default function SalesWorkspaceClient({
                       <button
                         type="button"
                         onClick={() => {
-                          const selectedQuotes = initialData.quotes.filter(
+                          const selectedQuotes = quoteRecords.filter(
                             quote => selectedQuoteIds.includes(quote.id),
                           );
                           if (selectedQuotes.length > 0) {
@@ -2466,7 +2656,7 @@ export default function SalesWorkspaceClient({
                       >
                         {option.label}
                         <span className="rounded-full bg-black/5 px-1.5 py-0.5 text-[10px] dark:bg-white/10">
-                          {initialData.orders.filter(order => matchesSalesOrderView(order, option.key)).length}
+                          {orderRecords.filter(order => matchesSalesOrderView(order, option.key)).length}
                         </span>
                       </button>
                     ))}
@@ -2643,7 +2833,7 @@ export default function SalesWorkspaceClient({
                         <button
                           type="button"
                           onClick={() => {
-                            const selectedOrders = initialData.orders.filter(
+                            const selectedOrders = orderRecords.filter(
                               order => selectedOrderIds.includes(order.id),
                             );
                             if (selectedOrders.length > 0) {
