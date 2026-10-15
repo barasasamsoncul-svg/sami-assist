@@ -4103,15 +4103,30 @@ export async function convertSalesQuoteToInvoice(
 }
 
 
-export async function updateSalesOrderFulfillment(
-  input:
-    Record<string, unknown>,
+type SalesOrderFulfillmentDependencies = {
+  postSalesFulfillmentToInventory: typeof postSalesFulfillmentToInventory;
+  emitSalesAutomationEvent: typeof emitSalesAutomationEvent;
+};
+
+const defaultSalesOrderFulfillmentDependencies: SalesOrderFulfillmentDependencies = {
+  postSalesFulfillmentToInventory,
+  emitSalesAutomationEvent,
+};
+
+/**
+ * Transaction-level order fulfillment primitive. Production entry points must
+ * authorize the caller before invoking this helper. Dependencies can be
+ * overridden by PostgreSQL integration tests while retaining real persistence.
+ */
+export async function updateSalesOrderFulfillmentTransaction(
+  input: Record<string, unknown>,
+  context: Awaited<ReturnType<typeof requireSalesContext>>,
+  overrides: Partial<SalesOrderFulfillmentDependencies> = {},
 ) {
-  const context =
-    await requireSalesContext(
-      SALES_PERMISSIONS
-        .ORDER_MANAGE,
-    );
+  const deps: SalesOrderFulfillmentDependencies = {
+    ...defaultSalesOrderFulfillmentDependencies,
+    ...overrides,
+  };
 
   const orderId =
     requireUuid(
@@ -4341,7 +4356,7 @@ export async function updateSalesOrderFulfillment(
       const previousShippedQuantity = Number(existingLine.rows[0].shipped_quantity || 0);
       const nextShippedQuantity = Math.max(previousShippedQuantity, deliveredQuantity);
       const shippedDelta = nextShippedQuantity - previousShippedQuantity;
-      const inventoryResult = await postSalesFulfillmentToInventory(
+      const inventoryResult = await deps.postSalesFulfillmentToInventory(
         client,
         {
           companyId: context.companyId,
@@ -4492,7 +4507,7 @@ export async function updateSalesOrderFulfillment(
       'COMMIT',
     );
 
-    await emitSalesAutomationEvent(
+    await deps.emitSalesAutomationEvent(
       context,
       {
         triggerKey:
@@ -4548,6 +4563,20 @@ export async function updateSalesOrderFulfillment(
   }
 }
 
+
+export async function updateSalesOrderFulfillment(
+  input: Record<string, unknown>,
+) {
+  const context = await requireSalesContext(
+    SALES_PERMISSIONS
+      .ORDER_MANAGE,
+  );
+
+  return updateSalesOrderFulfillmentTransaction(
+    input,
+    context,
+  );
+}
 
 export async function cancelSalesOrder(
   input:
