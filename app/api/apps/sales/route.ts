@@ -78,6 +78,8 @@ import {
   bulkSendSalesQuotes,
   bulkInvoiceSalesOrders,
   getSalesWorkspaceData,
+  getSalesQuoteRegisterPage,
+  getSalesOrderRegisterPage,
   issueSalesReturnCredit,
   markSalesCommissionPaid,
   receiveSalesReturn,
@@ -321,6 +323,27 @@ export async function GET(
 
     const approvals = request.nextUrl.searchParams.get('approvals');
     if (approvals === '1') return json({ success: true, approvals: await getSalesQuoteApprovalData() });
+
+    const register = request.nextUrl.searchParams.get('register');
+    if (register === 'quotes') {
+      const page = await getSalesQuoteRegisterPage({
+        offset: request.nextUrl.searchParams.get('offset'),
+        limit: request.nextUrl.searchParams.get('limit'),
+        search: request.nextUrl.searchParams.get('search'),
+        statusView: request.nextUrl.searchParams.get('statusView'),
+      });
+      return json({ success: true, register: page });
+    }
+    if (register === 'orders') {
+      const page = await getSalesOrderRegisterPage({
+        offset: request.nextUrl.searchParams.get('offset'),
+        limit: request.nextUrl.searchParams.get('limit'),
+        search: request.nextUrl.searchParams.get('search'),
+        statusView: request.nextUrl.searchParams.get('statusView'),
+        sortBy: request.nextUrl.searchParams.get('sortBy'),
+      });
+      return json({ success: true, register: page });
+    }
 
     const pipeline = request.nextUrl.searchParams.get('pipeline');
     if (pipeline === '1') return json({success:true,pipeline:await getSalesPipelineData(request.nextUrl.searchParams.get('pipelineId'))});
