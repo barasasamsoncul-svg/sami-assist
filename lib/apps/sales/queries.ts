@@ -3772,7 +3772,7 @@ export async function getSalesQuoteRegisterPage(input: Record<string, unknown> =
             OR ($3::text = 'closed_without_sale'
               AND quote.effective_status IN ('rejected', 'expired', 'cancelled'))
           )::int AS total,
-          COUNT(*)::int AS all,
+          COUNT(*)::int AS all_count,
           COUNT(*) FILTER (WHERE quote.effective_status = 'draft')::int AS draft,
           COUNT(*) FILTER (WHERE quote.approval_status = 'pending')::int AS needs_approval,
           COUNT(*) FILTER (WHERE quote.effective_status IN ('sent', 'viewed'))::int AS awaiting_response,
@@ -3829,7 +3829,7 @@ export async function getSalesQuoteRegisterPage(input: Record<string, unknown> =
   return {
     rows, offset, limit, totalCount: Number(count.rows[0]?.total || 0), hasMore, nextOffset: offset + rows.length,
     queueCounts: {
-      all: Number(count.rows[0]?.all || 0),
+      all: Number(count.rows[0]?.all_count || 0),
       draft: Number(count.rows[0]?.draft || 0),
       needs_approval: Number(count.rows[0]?.needs_approval || 0),
       awaiting_response: Number(count.rows[0]?.awaiting_response || 0),
