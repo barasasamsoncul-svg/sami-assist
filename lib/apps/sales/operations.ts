@@ -24,6 +24,8 @@ import {
   postSalesFulfillmentToInventory,
 } from '@/lib/apps/sales/inventory';
 
+import { salesOrderDepositIdempotencyKey } from '@/lib/apps/sales/deposit-rules';
+
 import {
   cleanText,
   money,
@@ -1247,186 +1249,116 @@ export async function setSalesOrderDepositRequirement(
 }
 
 export async function recordSalesOrderDeposit(
-  input:
-    Record<
-      string,
-      unknown
-    >,
+  input: Record<string, unknown>,
 ) {
-  const context =
-    await requireSalesContext(
-      SALES_PERMISSIONS
-        .DEPOSIT_MANAGE,
-    );
+  const context = await requireSalesContext(SALES_PERMISSIONS.DEPOSIT_MANAGE);
+  const orderId = requireUuid(input.orderId, 'Sales order');
+  const client = await context.pool.connect();
 
-  const orderId =
-    requireUuid(
-      input.orderId,
-      'Sales order',
-    );
+  try {
+    await client.query('BEGIN');
 
-  const orderResult =
-    await context.pool.query(
+    // Serialize deposits for a single order before checking or creating the
+    // external Invoicing retainer. This prevents concurrent requests with
+    // different caller-supplied keys from creating competing deposits.
+    const orderResult = await client.query(
       `
-        SELECT
-          o.*,
-          q.billing_customer_id
+        SELECT o.*, q.billing_customer_id
         FROM sales_orders_v2 o
         LEFT JOIN sales_quotes q
           ON q.id = o.quote_id
-         AND q.company_id =
-             o.company_id
+         AND q.company_id = o.company_id
         WHERE o.id = $1
           AND o.company_id = $2
           AND o.deleted_at IS NULL
         LIMIT 1
+        FOR UPDATE OF o
       `,
-      [
-        orderId,
-        context.companyId,
-      ],
+      [orderId, context.companyId],
     );
 
-  if (
-    orderResult.rows.length !==
-      1
-  ) {
-    throw new SalesError(
-      'ORDER_NOT_FOUND',
-      'Sales order was not found.',
-    );
-  }
+    if (orderResult.rows.length !== 1) {
+      throw new SalesError('ORDER_NOT_FOUND', 'Sales order was not found.');
+    }
 
-  const order =
-    orderResult.rows[0];
+    const order = orderResult.rows[0];
 
-  if (
-    String(
-      order.status,
-    ) ===
-      'cancelled'
-  ) {
-    throw new SalesError(
-      'QUOTE_STATE_INVALID',
-      'A cancelled sales order cannot receive a deposit.',
-    );
-  }
+    if (String(order.status) === 'cancelled') {
+      throw new SalesError('QUOTE_STATE_INVALID', 'A cancelled sales order cannot receive a deposit.');
+    }
 
-  if (
-    order.deposit_payment_id
-  ) {
-    throw new SalesError(
-      'INVALID_INPUT',
-      'A deposit is already recorded for this sales order.',
-    );
-  }
+    if (order.deposit_payment_id) {
+      throw new SalesError('INVALID_INPUT', 'A deposit is already recorded for this sales order.');
+    }
 
-  const customerId =
-    await ensureOrderBillingCustomer({
-      context,
-      order,
-    });
+    const customerId = await ensureOrderBillingCustomer({ context, order });
+    const required = money(order.deposit_required_amount);
+    const amount = numberInput(input.amount ?? required, 'Deposit amount', { min: 0.0001 });
 
-  const required =
-    money(
-      order.deposit_required_amount,
-    );
+    if (required > 0 && Math.abs(amount - required) > 0.0001) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'The recorded deposit must match the configured order deposit requirement.',
+        { requiredAmount: required },
+      );
+    }
 
-  const amount =
-    numberInput(
-      input.amount ??
-      required,
-      'Deposit amount',
-      {
-        min:
-          0.0001,
-      },
-    );
-
-  if (
-    required >
-      0 &&
-    Math.abs(
-      amount -
-      required,
-    ) >
-      0.0001
-  ) {
-    throw new SalesError(
-      'INVALID_INPUT',
-      'The recorded deposit must match the configured order deposit requirement.',
-      {
-        requiredAmount:
-          required,
-      },
-    );
-  }
-
-  const key =
-    cleanText(
-      input.idempotencyKey,
-      120,
-    ) ||
-    (
-      'sales-order-' +
-      orderId +
-      '-deposit'
-    );
-
-  const deposit =
-    await recordCustomerRetainer({
+    // A Sales order supports one deposit. Do not let a caller-supplied key
+    // bypass that invariant; a retry after a cross-module partial failure must
+    // recover the same Invoicing retainer regardless of the request key.
+    const key = salesOrderDepositIdempotencyKey(orderId);
+    const deposit = await recordCustomerRetainer({
       customerId,
       amount,
-      retainerType:
-        'deposit',
-      method:
-        input.method,
-      reference:
-        input.reference,
-      purpose:
-        'Deposit for Sales order ' +
-        String(
-          order.order_number,
-        ),
-      expectedUseDate:
-        input.expectedUseDate,
-      receivedDate:
-        input.receivedDate,
-      idempotencyKey:
-        key,
+      retainerType: 'deposit',
+      method: input.method,
+      reference: input.reference,
+      purpose: 'Deposit for Sales order ' + String(order.order_number),
+      expectedUseDate: input.expectedUseDate,
+      receivedDate: input.receivedDate,
+      idempotencyKey: key,
     });
 
-  await context.pool.query(
-    `
-      UPDATE sales_orders_v2
-      SET
-        deposit_retainer_id = $3,
-        deposit_payment_id = $4,
-        deposit_received_amount = $5,
-        deposit_status = 'received',
-        updated_by = $6,
-        updated_at = NOW()
-      WHERE id = $1
-        AND company_id = $2
-    `,
-    [
+    if (Math.abs(money(deposit.amount) - amount) > 0.0001) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'A deposit already exists for this sales order with a different amount. Retry using the original amount.',
+        { recordedAmount: money(deposit.amount) },
+      );
+    }
+
+    await client.query(
+      `
+        UPDATE sales_orders_v2
+        SET
+          deposit_retainer_id = $3,
+          deposit_payment_id = $4,
+          deposit_received_amount = $5,
+          deposit_status = 'received',
+          updated_by = $6,
+          updated_at = NOW()
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [orderId, context.companyId, deposit.retainerId, deposit.paymentId, deposit.amount, context.userId],
+    );
+
+    await client.query('COMMIT');
+
+    return {
       orderId,
-      context.companyId,
-      deposit.retainerId,
-      deposit.paymentId,
-      deposit.amount,
-      context.userId,
-    ],
-  );
-
-  return {
-    orderId,
-    ...deposit,
-    depositStatus:
-      'received',
-  };
+      ...deposit,
+      depositStatus: 'received',
+    };
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {}
+    throw error;
+  } finally {
+    client.release();
+  }
 }
-
 export async function applySalesOrderDeposit(
   input:
     Record<
