@@ -4963,23 +4963,45 @@ export async function createSalesOrderInvoice(
 
     if (
       existingBatch.rows.length > 0 &&
-      existingBatch.rows[0].invoice_id &&
-      Array.isArray(input.lines) &&
-      input.lines.length > 0
+      existingBatch.rows[0].invoice_id
     ) {
       const storedValue =
         existingBatch.rows[0].requested_lines;
-      let storedLines: unknown = storedValue;
+      let storedSelection: unknown = storedValue;
 
       if (typeof storedValue === 'string') {
         try {
-          storedLines = JSON.parse(storedValue);
+          storedSelection = JSON.parse(storedValue);
         } catch {
-          storedLines = null;
+          storedSelection = null;
         }
       }
 
-      if (!Array.isArray(storedLines)) {
+      let storedMode: 'explicit' | 'all_remaining' | null = null;
+      let storedLines: unknown = storedSelection;
+      const isWrappedSelection =
+        Boolean(storedSelection) &&
+        typeof storedSelection === 'object' &&
+        !Array.isArray(storedSelection);
+
+      if (Array.isArray(storedSelection)) {
+        // Legacy rows stored only the selected lines, without the selection mode.
+        storedLines = storedSelection;
+      } else if (isWrappedSelection) {
+        const selectionRecord =
+          storedSelection as Record<string, unknown>;
+        storedMode =
+          selectionRecord.mode === 'explicit' ||
+          selectionRecord.mode === 'all_remaining'
+            ? selectionRecord.mode
+            : null;
+        storedLines = selectionRecord.lines;
+      }
+
+      if (
+        !Array.isArray(storedLines) ||
+        (isWrappedSelection && storedMode === null)
+      ) {
         throw new SalesError(
           'QUOTE_STATE_INVALID',
           'The existing invoice batch has invalid line-selection evidence. Resolve the batch before retrying.',
@@ -5027,16 +5049,25 @@ export async function createSalesOrderInvoice(
 
       const originalSelection =
         normalizeIdempotentSelection(storedLines);
-      const retrySelection =
-        normalizeIdempotentSelection(input.lines);
 
-      if (
-        JSON.stringify(originalSelection) !==
-        JSON.stringify(retrySelection)
-      ) {
+      if (Array.isArray(input.lines)) {
+        const retrySelection =
+          normalizeIdempotentSelection(input.lines);
+        if (
+          JSON.stringify(originalSelection) !==
+          JSON.stringify(retrySelection)
+        ) {
+          throw new SalesError(
+            'INVALID_INPUT',
+            'This idempotency key already belongs to an invoice with a different line selection. Reuse the original selection or use a new key for a new invoice.',
+          );
+        }
+      } else if (storedMode === 'explicit') {
+        // An omitted selection means "all remaining invoiceable quantities".
+        // It cannot replay an invoice originally created for selected lines.
         throw new SalesError(
           'INVALID_INPUT',
-          'This idempotency key already belongs to an invoice with a different line selection. Reuse the original selection or use a new key for a new invoice.',
+          'This idempotency key already belongs to an invoice with a different line selection. Retry with the original selection or use a new key for a new invoice.',
         );
       }
     }
@@ -5450,15 +5481,35 @@ export async function createSalesOrderInvoice(
     ) {
       const storedValue =
         existingBatch.rows[0].requested_lines;
-      let storedLines: unknown =
+      let storedSelection: unknown =
         storedValue;
 
       if (typeof storedValue === 'string') {
         try {
-          storedLines = JSON.parse(storedValue);
+          storedSelection = JSON.parse(storedValue);
         } catch {
-          storedLines = null;
+          storedSelection = null;
         }
+      }
+
+      let storedMode: 'explicit' | 'all_remaining' | null = null;
+      let storedLines: unknown = storedSelection;
+      const isWrappedSelection =
+        Boolean(storedSelection) &&
+        typeof storedSelection === 'object' &&
+        !Array.isArray(storedSelection);
+
+      if (Array.isArray(storedSelection)) {
+        storedLines = storedSelection;
+      } else if (isWrappedSelection) {
+        const selectionRecord =
+          storedSelection as Record<string, unknown>;
+        storedMode =
+          selectionRecord.mode === 'explicit' ||
+          selectionRecord.mode === 'all_remaining'
+            ? selectionRecord.mode
+            : null;
+        storedLines = selectionRecord.lines;
       }
 
       const normalizeSelection = (items: unknown[]) =>
@@ -5474,7 +5525,7 @@ export async function createSalesOrderInvoice(
           const line = rawLine as Record<string, unknown>;
           const lineId =
             typeof line.lineId === 'string'
-              ? line.lineId
+              ? line.lineId.toLowerCase()
               : '';
           const quantity = Number(line.quantity);
 
@@ -5504,12 +5555,18 @@ export async function createSalesOrderInvoice(
             quantity: item.quantity,
           })),
         );
+      const currentMode =
+        hasExplicitLineSelection
+          ? 'explicit'
+          : 'all_remaining';
 
       if (
         !priorSelection ||
+        (isWrappedSelection && storedMode === null) ||
         priorSelection.some(line => line === null) ||
         priorSelection.length !== currentSelection.length ||
-        JSON.stringify(priorSelection) !== JSON.stringify(currentSelection)
+        JSON.stringify(priorSelection) !== JSON.stringify(currentSelection) ||
+        (storedMode !== null && storedMode !== currentMode)
       ) {
         throw new SalesError(
           'QUOTE_STATE_INVALID',
@@ -5596,8 +5653,11 @@ export async function createSalesOrderInvoice(
             context.companyId,
             orderId,
             idempotencyKey,
-            JSON.stringify(
-              selected.map(
+            JSON.stringify({
+              mode: hasExplicitLineSelection
+                ? 'explicit'
+                : 'all_remaining',
+              lines: selected.map(
                 item => ({
                   lineId:
                     String(
@@ -5607,7 +5667,7 @@ export async function createSalesOrderInvoice(
                     item.quantity,
                 }),
               ),
-            ),
+            }),
             context.userId,
           ],
         );
