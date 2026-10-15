@@ -1377,7 +1377,8 @@ integration(
         pool.query(
           `SELECT from_status, to_status, reason
            FROM sales_quote_status_history
-           WHERE company_id = $1 AND quote_id = $2`,
+           WHERE company_id = $1 AND quote_id = $2
+           ORDER BY created_at ASC`,
           [companyId, quoteId],
         ),
         pool.query(
@@ -1396,9 +1397,11 @@ integration(
       assert.ok(opportunity.rows[0].won_at instanceof Date);
       assert.equal(opportunity.rows[0].lost_at, null);
       assert.equal(opportunity.rows[0].lost_reason, null);
-      assert.equal(quoteHistory.rows.length, 1);
-      assert.equal(quoteHistory.rows[0].from_status, 'accepted');
-      assert.equal(quoteHistory.rows[0].to_status, 'converted');
+      assert.equal(quoteHistory.rows.length, 2);
+      assert.equal(quoteHistory.rows[0].from_status, 'sent');
+      assert.equal(quoteHistory.rows[0].to_status, 'accepted');
+      assert.equal(quoteHistory.rows[1].from_status, 'accepted');
+      assert.equal(quoteHistory.rows[1].to_status, 'converted');
       assert.equal(orderHistory.rows.length, 1);
       assert.equal(orderHistory.rows[0].from_status, null);
       assert.equal(orderHistory.rows[0].to_status, 'confirmed');
@@ -1411,10 +1414,10 @@ integration(
          ORDER BY type`,
         [companyId, opportunityId, quoteId],
       );
-      assert.equal(audit.rows.length, 2);
+      assert.equal(audit.rows.length, 3);
       assert.deepEqual(
         audit.rows.map((row: Record<string, unknown>) => row.type).sort(),
-        ['sales.opportunity.won_from_order', 'sales.quote.converted'],
+        ['sales.opportunity.won_from_order', 'sales.quote.converted', 'sales.quote.customer_accepted'],
       );
       const opportunityAudit = audit.rows.find(
         (row: Record<string, unknown>) => row.type === 'sales.opportunity.won_from_order',
