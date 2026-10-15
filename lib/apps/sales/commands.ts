@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { assertSalesQuoteApprovalSatisfied, requestAdvancedSalesQuoteApproval, reviewAdvancedSalesQuoteApproval } from '@/lib/apps/sales/approvals';
+import { salesQuoteRequiresLegacyApproval } from '@/lib/apps/sales/approval-policy';
 
 import crypto from 'crypto';
 
@@ -1678,12 +1679,11 @@ export async function createSalesQuote(
       );
 
     const approvalRequired =
-      settings.require_quote_approval ===
-        true &&
-      baseTotalAmount >=
-        money(
-          settings.quote_approval_threshold,
-        );
+      salesQuoteRequiresLegacyApproval(
+        settings.require_quote_approval,
+        settings.quote_approval_threshold,
+        baseTotalAmount,
+      );
 
     const approvalStatus =
       approvalRequired
@@ -2307,12 +2307,11 @@ export async function updateSalesQuoteDraft(
       );
 
     const approvalRequired =
-      settings.require_quote_approval ===
-        true &&
-      baseTotalAmount >=
-        money(
-          settings.quote_approval_threshold,
-        );
+      salesQuoteRequiresLegacyApproval(
+        settings.require_quote_approval,
+        settings.quote_approval_threshold,
+        baseTotalAmount,
+      );
 
     const approvalStatus =
       approvalRequired
