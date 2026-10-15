@@ -23,7 +23,7 @@ test('Sales return credit counters change only when a new allocation is committe
   assert.ok(allocation > saved, 'persist the invoice-line allocation after the return-credit record');
   assert.ok(counterUpdate > allocation, 'update the order-line aggregate after persisting the allocation');
 
-  assert.match(credit, /const client = await context\.pool\.connect\(\)/);
+  assert.match(credit, /const serializationClient = await context\\.pool\\.connect\\(\\)/);
   assert.match(credit, /await client\.query\('BEGIN'\)/);
   assert.match(credit, /await client\.query\('COMMIT'\)/);
   assert.match(credit, /await client\.query\('ROLLBACK'\)/);
@@ -87,7 +87,7 @@ test('Sales refund retries recover their posted amount before available-balance 
 
   const priorRefundLookup = refund.indexOf('FROM invoicing_credit_note_refunds');
   const amountValidation = refund.indexOf('if (', priorRefundLookup);
-  const refundCall = refund.indexOf('await refundInvoiceCreditNote(');
+  const refundCall = refund.indexOf('await deps.refundInvoiceCreditNote(');
   assert.ok(priorRefundLookup >= 0 && priorRefundLookup < refundCall, 'look up a caller-supplied idempotency key before retry amount validation');
   assert.ok(compact.includes("'credit-refund:' + suppliedRefundKey"), 'look up the exact key used by Invoicing');
   assert.ok(compact.includes('salesReturnRefundIdempotencyKey(returnCreditId, callerKey)'), 'use the full-key collision-safe helper');
