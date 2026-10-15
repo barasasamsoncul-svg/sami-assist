@@ -7,6 +7,7 @@ import {
   isSalesQuoteExpired,
   salesDateOnly,
 } from '@/lib/apps/sales/date-utils';
+import { expirePublicSalesQuoteWithAudit } from '@/lib/apps/sales/public-quote-expiry';
 
 import crypto from 'crypto';
 
@@ -248,58 +249,23 @@ export async function getPublicSalesQuote(
         ['sent', 'viewed'].includes(currentStatus) &&
         isSalesQuoteExpired(currentResult.rows[0].valid_until, today)
       ) {
-        const changed = await client.query(
-          `
-            UPDATE sales_quotes
-            SET
-              status = 'expired',
-              expired_at = COALESCE(expired_at, NOW()),
-              public_enabled = FALSE,
-              updated_at = NOW()
-            WHERE id = $1
-              AND company_id = $2
-              AND status IN ('sent', 'viewed')
-            RETURNING id
-          `,
-          [quote.id, quote.company_id],
+        const expired = await expirePublicSalesQuoteWithAudit(
+          client,
+          {
+            quoteId: String(quote.id),
+            companyId: String(quote.company_id),
+            quoteNumber: String(quote.quote_number),
+            fromStatus: currentStatus as 'sent' | 'viewed',
+            source: 'public_quote_view',
+          },
+          recordSalesActivity,
         );
 
-        if (changed.rows.length > 0) {
-          await client.query(
-            `
-              INSERT INTO sales_quote_status_history (
-                quote_id,
-                company_id,
-                from_status,
-                to_status,
-                reason,
-                changed_by
-              )
-              VALUES ($1, $2, $3, 'expired', $4, NULL)
-            `,
-            [
-              quote.id,
-              quote.company_id,
-              currentStatus,
-              'Quotation expired before customer action.',
-            ],
-          );
-
-          await recordSalesActivity(client, {
-            companyId: String(quote.company_id),
-            userId: null,
-            quoteId: String(quote.id),
-            type: 'sales.quote.expired',
-            content: 'Quote ' + String(quote.quote_number) + ' expired before customer action.',
-            metadata: {
-              reason: 'validity_expired',
-              source: 'public_quote_view',
-            },
-          });
-
+        if (expired) {
           status = 'expired';
         } else {
-          // Defensive fallback in case a database trigger changed the row.
+          // The source status changed despite the lock/compare-and-set; show the
+          // latest persisted status and never claim an expiry that did not occur.
           const latest = await client.query(
             `
               SELECT status
