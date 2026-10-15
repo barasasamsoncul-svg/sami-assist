@@ -560,6 +560,8 @@ test('Sales quote-to-order is transaction-safe, idempotent, and invoice permissi
   assert.match(quoteToOrder, /INSERT INTO sales_order_items_v2/);
   assert.match(quoteToOrder, /sales_order_id = \$3/);
   assert.match(quoteToOrder, /Complete internal quotation approval before creating a sales order/);
+  assert.match(quoteToOrder, /salesDateOnly\(row\.exchange_rate_date\)/,
+    'PostgreSQL DATE values must be normalized before they are written into order exchange-rate dates');
   assert.match(quoteToOrder, /ROLLBACK/);
 
   const quoteToInvoice =
