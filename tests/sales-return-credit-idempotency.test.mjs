@@ -42,6 +42,7 @@ test('Sales return-credit issuance serializes retries and preserves refund lifec
   const start = operations.indexOf('export async function issueSalesReturnCredit(');
   const end = operations.indexOf('export async function refundSalesReturnCredit(', start);
   const credit = operations.slice(start, end);
+  const compact = credit.replace(/\s+/g, ' ');
 
   const lock = credit.indexOf("pg_advisory_lock(hashtext($1), hashtext($2))");
   const returnRead = credit.indexOf('FROM sales_returns');
@@ -50,12 +51,12 @@ test('Sales return-credit issuance serializes retries and preserves refund lifec
   assert.ok(lock >= 0 && lock < returnRead, 'serialize before reading return-credit state');
   assert.ok(invoiceCredit > lock && unlock > invoiceCredit, 'hold the lock over cross-module credit creation and recovery');
   assert.ok(
-    credit.includes("status = CASE\n          WHEN status IN ('partially_refunded', 'refunded')\n          THEN status\n          WHEN $4::boolean\n          THEN 'credited'\n          ELSE status\n        END"),
+    compact.includes("status = CASE WHEN status IN ('partially_refunded', 'refunded') THEN status WHEN $4::boolean THEN 'credited' ELSE status END"),
     'do not overwrite a refund state or mark an un-invoiced return as credited',
   );
-  assert.match(credit, /credited_at = CASE[\\s\\S]*?WHEN \\$4::boolean THEN COALESCE\\(credited_at, NOW\\(\\)\\)[\\s\\S]*?ELSE credited_at/);
+  assert.ok(compact.includes("credited_at = CASE WHEN $4::boolean THEN COALESCE(credited_at, NOW()) ELSE credited_at END"));
   assert.match(credit, /RETURNING status/);
-  assert.match(credit, /status:\\s*String\\(returnState\\.rows\\[0\\]\\?\\.status \\|\\| returnRow\\.status\\)/);
+  assert.ok(compact.includes("status: String(returnState.rows[0]?.status || returnRow.status)"));
 });
 
 test('Sales return-credit idempotency regression is part of Sales CI', async () => {
