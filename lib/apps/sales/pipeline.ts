@@ -5,6 +5,7 @@ import { queryControl } from '@/lib/db/control';
 
 import { cleanText, isoDate, nullableText, numberInput, optionalUuid, requireSalesContext, requireUuid, SALES_PERMISSIONS, SalesError } from '@/lib/apps/sales/context';
 import { scoreSalesLead } from '@/lib/apps/sales/lead-scoring';
+import { terminalSalesOpportunityProbability } from '@/lib/apps/sales/pipeline-stage-rules';
 import { chooseBalancedSalesLeadAssignee, selectSalesLeadAssignmentRule } from '@/lib/apps/sales/lead-assignment';
 
 async function ensurePipelineStages(
@@ -1569,9 +1570,12 @@ export async function moveSalesOpportunity(input: Record<string, unknown>) {
     if (targetStageType === 'lost' && !reason) {
       throw new SalesError('INVALID_INPUT', 'A reason is required to mark an opportunity as lost.');
     }
-    const probability = input.probability === undefined
-      ? Number(stage.rows[0].probability)
-      : numberInput(input.probability, 'Probability', { min: 0, max: 100 });
+    const terminalProbability = terminalSalesOpportunityProbability(targetStageType);
+    const probability = terminalProbability !== null
+      ? terminalProbability
+      : input.probability === undefined
+        ? Number(stage.rows[0].probability)
+        : numberInput(input.probability, 'Probability', { min: 0, max: 100 });
     await client.query(
       `UPDATE sales_opportunities
        SET stage_id=$3,probability=$4,

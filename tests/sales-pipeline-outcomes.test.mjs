@@ -66,3 +66,21 @@ test('Sales Reports loads and renders win/loss analytics only within the Reports
   assert.match(page, /lossReasons=\{pipelineOutcomeReport\.lossReasons\}/);
   assert.match(packageJson, /tests\/sales-pipeline-outcomes\.test\.mjs/);
 });
+
+
+test('opportunity stage transitions keep terminal win/loss probabilities canonical', async () => {
+  const [pipeline, rules] = await Promise.all([
+    source('lib/apps/sales/pipeline.ts'),
+    source('lib/apps/sales/pipeline-stage-rules.ts'),
+  ]);
+  const start = pipeline.indexOf('export async function moveSalesOpportunity(');
+  const end = pipeline.indexOf('\n\nasync function normalizePipelineTerminalSequences', start);
+  assert.ok(start >= 0 && end > start, 'opportunity move command must have a bounded implementation');
+  const move = pipeline.slice(start, end);
+  assert.match(move, /terminalSalesOpportunityProbability\(targetStageType\)/);
+  assert.match(move, /terminalProbability !== null[\s\S]*?\? terminalProbability/);
+  assert.match(move, /won_at=CASE WHEN \$5='won'/);
+  assert.match(move, /lost_at=CASE WHEN \$5='lost'/);
+  assert.match(rules, /type === 'won'\) return 100/);
+  assert.match(rules, /type === 'lost'\) return 0/);
+});
