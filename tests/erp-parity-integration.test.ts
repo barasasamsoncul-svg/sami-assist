@@ -3512,9 +3512,9 @@ integration(
       assert.equal(wonState.rows[0].lost_reason, null);
 
       const history = await client.query(
-        \`SELECT from_stage_id, to_stage_id, probability, reason
+        `SELECT from_stage_id, to_stage_id, probability, reason
          FROM public.sales_opportunity_stage_history
-         WHERE opportunity_id=$1 AND company_id=$2\`,
+         WHERE opportunity_id=$1 AND company_id=$2`,
         [opportunityId, companyId],
       );
       assert.equal(history.rows.length, 3);
