@@ -314,14 +314,15 @@ test('Sales fresh pipeline-stage schema declares every column before dependent i
     'color',
     'deleted_at',
   ]) {
-    assert.match(initialStageTable, new RegExp('\\b' + column + '\\b'),
+    assert.ok(initialStageTable.includes(column),
       'fresh-install pipeline stage table must include ' + column + ' before partial indexes are created');
   }
 
-  assert.match(migration, /fromVersion: '3\\.4\\.19'[\\s\\S]*toVersion: '3\\.4\\.20'/);
-  assert.match(migration, /ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ/);
-  assert.match(migration, /ADD COLUMN IF NOT EXISTS code VARCHAR\\(60\\)/);
-  assert.match(migration, /CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_pipeline_stages_code/);
+  assert.ok(migration.includes("fromVersion: '3.4.19'"));
+  assert.ok(migration.includes("toVersion: '3.4.20'"));
+  assert.ok(migration.includes('ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ'));
+  assert.ok(migration.includes('ADD COLUMN IF NOT EXISTS code VARCHAR(60)'));
+  assert.ok(migration.includes('CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_pipeline_stages_code'));
 });
 
 test('Sales quote creation recomputes commercial totals server side', async () => {
