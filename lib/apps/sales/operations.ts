@@ -3940,276 +3940,326 @@ export async function refundSalesReturnCredit(
     );
   }
 
-  const row =
-    result.rows[0];
-
-  const available =
-    money(
-      row.available_credit,
+  const returnId = String(result.rows[0].return_id).toLowerCase();
+  const serializationClient = await context.pool.connect();
+  const lockParameters = [
+    context.companyId,
+    'sales-return-credit:' + returnId,
+  ];
+  try {
+    await serializationClient.query(
+      'SELECT pg_advisory_lock(hashtext($1), hashtext($2))',
+      lockParameters,
     );
-
-  const amount =
-    input.amount ===
-      undefined ||
-    input.amount ===
-      null ||
-    input.amount ===
-      ''
-      ? available
-      : numberInput(
-          input.amount,
-          'Refund amount',
-          {
-            min:
-              0.0001,
-          },
-        );
-
-  if (
-    amount <=
-      0 ||
-    amount >
-      available +
-        0.0001
-  ) {
-    throw new SalesError(
-      'INVALID_INPUT',
-      'Refund amount exceeds the customer credit available from this return.',
-      {
-        availableCredit:
-          available,
-      },
-    );
+  } catch (error) {
+    serializationClient.release();
+    throw error;
   }
 
-  const refund =
-    await refundInvoiceCreditNote({
-      creditNoteId:
-        String(
-          row.credit_note_id,
-        ),
-      amount,
-      method:
-        input.method,
-      reference:
-        input.reference,
-      reason:
-        cleanText(
-          input.reason,
-          2000,
-        ) ||
-        'Refund for Sales return',
-      idempotencyKey:
-        (
-          cleanText(
-            input.idempotencyKey,
-            80,
-          )
-            ? (
-                'sales-return-credit:' +
-                returnCreditId +
-                ':refund:' +
-                cleanText(
-                  input.idempotencyKey,
-                  80,
-                )
-              )
-            : (
-                'sales-return-credit:' +
-                returnCreditId +
-                ':refund:' +
-                available.toFixed(
-                  2,
-                ) +
-                ':' +
-                amount.toFixed(
-                  2,
-                )
-              )
-        ).slice(
-          0,
-          120,
-        ),
-      metadata: {
-        sourceModule:
-          'sales',
-        salesReturnId:
-          String(
-            row.return_id,
-          ),
-        salesReturnCreditId:
-          returnCreditId,
-      },
-    });
-
-  const authoritative =
-    await context.pool.query(
+  try {
+    const freshResult = await context.pool.query(
       `
         SELECT
-          balance.available_amount,
-          COALESCE(
-            SUM(
-              CASE
-                WHEN refund_row.status = 'posted'
-                THEN refund_row.amount
-                ELSE 0
-              END
-            ),
-            0
-          ) AS refunded_amount
-        FROM invoicing_credit_note_balances balance
-        LEFT JOIN invoicing_credit_note_refunds refund_row
-          ON refund_row.credit_note_id =
-             balance.credit_note_id
-         AND refund_row.company_id =
-             balance.company_id
-        WHERE balance.company_id = $1
-          AND balance.credit_note_id = $2
-        GROUP BY
-          balance.available_amount
+          credit.id,
+          credit.return_id,
+          credit.credit_note_id,
+          credit.available_credit,
+          credit.refunded_amount,
+          return_row.status
+        FROM sales_return_credits credit
+        INNER JOIN sales_returns return_row
+          ON return_row.id = credit.return_id
+         AND return_row.company_id = credit.company_id
+        WHERE credit.id = $1
+          AND credit.company_id = $2
+          AND credit.return_id = $3
         LIMIT 1
       `,
-      [
-        context.companyId,
-        String(
-          row.credit_note_id,
+      [returnCreditId, context.companyId, returnId],
+    );
+
+    if (freshResult.rows.length !== 1) {
+      throw new SalesError('INVALID_INPUT', 'Sales return credit changed while the refund was waiting. Reload and retry.');
+    }
+
+    const row = freshResult.rows[0];
+
+    const available =
+      money(
+        row.available_credit,
+      );
+
+    const amount =
+      input.amount ===
+        undefined ||
+      input.amount ===
+        null ||
+      input.amount ===
+        ''
+        ? available
+        : numberInput(
+            input.amount,
+            'Refund amount',
+            {
+              min:
+                0.0001,
+            },
+          );
+
+    if (
+      amount <=
+        0 ||
+      amount >
+        available +
+          0.0001
+    ) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'Refund amount exceeds the customer credit available from this return.',
+        {
+          availableCredit:
+            available,
+        },
+      );
+    }
+
+    const refund =
+      await refundInvoiceCreditNote({
+        creditNoteId:
+          String(
+            row.credit_note_id,
+          ),
+        amount,
+        method:
+          input.method,
+        reference:
+          input.reference,
+        reason:
+          cleanText(
+            input.reason,
+            2000,
+          ) ||
+          'Refund for Sales return',
+        idempotencyKey:
+          (
+            cleanText(
+              input.idempotencyKey,
+              80,
+            )
+              ? (
+                  'sales-return-credit:' +
+                  returnCreditId +
+                  ':refund:' +
+                  cleanText(
+                    input.idempotencyKey,
+                    80,
+                  )
+                )
+              : (
+                  'sales-return-credit:' +
+                  returnCreditId +
+                  ':refund:' +
+                  available.toFixed(
+                    2,
+                  ) +
+                  ':' +
+                  amount.toFixed(
+                    2,
+                  )
+                )
+          ).slice(
+            0,
+            120,
+          ),
+        metadata: {
+          sourceModule:
+            'sales',
+          salesReturnId:
+            String(
+              row.return_id,
+            ),
+          salesReturnCreditId:
+            returnCreditId,
+        },
+      });
+
+    const authoritative =
+      await context.pool.query(
+        `
+          SELECT
+            balance.available_amount,
+            COALESCE(
+              SUM(
+                CASE
+                  WHEN refund_row.status = 'posted'
+                  THEN refund_row.amount
+                  ELSE 0
+                END
+              ),
+              0
+            ) AS refunded_amount
+          FROM invoicing_credit_note_balances balance
+          LEFT JOIN invoicing_credit_note_refunds refund_row
+            ON refund_row.credit_note_id =
+               balance.credit_note_id
+           AND refund_row.company_id =
+               balance.company_id
+          WHERE balance.company_id = $1
+            AND balance.credit_note_id = $2
+          GROUP BY
+            balance.available_amount
+          LIMIT 1
+        `,
+        [
+          context.companyId,
+          String(
+            row.credit_note_id,
+          ),
+        ],
+      );
+
+    const availableAfter =
+      money(
+        authoritative.rows[0]
+          ?.available_amount ??
+        refund.availableCredit ??
+        Math.max(
+          0,
+          available -
+          amount,
         ),
+      );
+
+    const authoritativeRefunded =
+      money(
+        authoritative.rows[0]
+          ?.refunded_amount ??
+        (
+          money(
+            row.refunded_amount,
+          ) +
+          (
+            refund.duplicate
+              ? 0
+              : amount
+          )
+        ),
+      );
+
+    await context.pool.query(
+      `
+        UPDATE sales_return_credits
+        SET
+          available_credit = $3,
+          refunded_amount = $4,
+          updated_by = $5,
+          updated_at = NOW()
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [
+        returnCreditId,
+        context.companyId,
+        availableAfter,
+        authoritativeRefunded,
+        context.userId,
       ],
     );
 
-  const availableAfter =
-    money(
-      authoritative.rows[0]
-        ?.available_amount ??
-      refund.availableCredit ??
-      Math.max(
-        0,
-        available -
-        amount,
-      ),
-    );
+    const balances =
+      await context.pool.query(
+        `
+          SELECT
+            COALESCE(
+              SUM(available_credit),
+              0
+            ) AS available_credit,
+            COALESCE(
+              SUM(refunded_amount),
+              0
+            ) AS refunded_amount
+          FROM sales_return_credits
+          WHERE return_id = $1
+            AND company_id = $2
+        `,
+        [
+          row.return_id,
+          context.companyId,
+        ],
+      );
 
-  const authoritativeRefunded =
-    money(
-      authoritative.rows[0]
-        ?.refunded_amount ??
-      (
-        money(
-          row.refunded_amount,
-        ) +
-        (
-          refund.duplicate
-            ? 0
-            : amount
-        )
-      ),
-    );
+    const remaining =
+      money(
+        balances.rows[0]
+          ?.available_credit,
+      );
 
-  await context.pool.query(
-    `
-      UPDATE sales_return_credits
-      SET
-        available_credit = $3,
-        refunded_amount = $4,
-        updated_by = $5,
-        updated_at = NOW()
-      WHERE id = $1
-        AND company_id = $2
-    `,
-    [
-      returnCreditId,
-      context.companyId,
-      availableAfter,
-      authoritativeRefunded,
-      context.userId,
-    ],
-  );
+    const refundedAmount =
+      money(
+        balances.rows[0]
+          ?.refunded_amount,
+      );
 
-  const balances =
+    const nextStatus =
+      remaining <=
+        0.0001 &&
+      refundedAmount >
+        0
+        ? 'refunded'
+        : 'partially_refunded';
+
     await context.pool.query(
       `
-        SELECT
-          COALESCE(
-            SUM(available_credit),
-            0
-          ) AS available_credit,
-          COALESCE(
-            SUM(refunded_amount),
-            0
-          ) AS refunded_amount
-        FROM sales_return_credits
-        WHERE return_id = $1
+        UPDATE sales_returns
+        SET
+          status = $3,
+          refunded_at =
+            CASE
+              WHEN $3 =
+                   'refunded'
+              THEN COALESCE(
+                refunded_at,
+                NOW()
+              )
+              ELSE refunded_at
+            END,
+          updated_by = $4,
+          updated_at = NOW()
+        WHERE id = $1
           AND company_id = $2
       `,
       [
         row.return_id,
         context.companyId,
+        nextStatus,
+        context.userId,
       ],
     );
 
-  const remaining =
-    money(
-      balances.rows[0]
-        ?.available_credit,
-    );
-
-  const refundedAmount =
-    money(
-      balances.rows[0]
-        ?.refunded_amount,
-    );
-
-  const nextStatus =
-    remaining <=
-      0.0001 &&
-    refundedAmount >
-      0
-      ? 'refunded'
-      : 'partially_refunded';
-
-  await context.pool.query(
-    `
-      UPDATE sales_returns
-      SET
-        status = $3,
-        refunded_at =
-          CASE
-            WHEN $3 =
-                 'refunded'
-            THEN COALESCE(
-              refunded_at,
-              NOW()
-            )
-            ELSE refunded_at
-          END,
-        updated_by = $4,
-        updated_at = NOW()
-      WHERE id = $1
-        AND company_id = $2
-    `,
-    [
-      row.return_id,
-      context.companyId,
-      nextStatus,
-      context.userId,
-    ],
-  );
-
-  return {
-    returnCreditId,
-    returnId:
-      String(
-        row.return_id,
-      ),
-    status:
-      nextStatus,
-    refundId:
-      refund.refundId,
-    refundNumber:
-      refund.refundNumber,
-    amount:
-      refund.amount,
-    availableCredit:
-      availableAfter,
-  };
+    return {
+      returnCreditId,
+      returnId:
+        String(
+          row.return_id,
+        ),
+      status:
+        nextStatus,
+      refundId:
+        refund.refundId,
+      refundNumber:
+        refund.refundNumber,
+      amount:
+        refund.amount,
+      availableCredit:
+        availableAfter,
+    };
+  } finally {
+    try {
+      await serializationClient.query(
+        'SELECT pg_advisory_unlock(hashtext($1), hashtext($2))',
+        lockParameters,
+      );
+    } catch {}
+    serializationClient.release();
+  }
 }
