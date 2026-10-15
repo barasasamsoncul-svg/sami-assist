@@ -2932,6 +2932,20 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   assert.match(invoice, /selected\.length !== invoiceableLineCount/);
   assert.match(invoice, /normalizeIdempotentSelection/);
   assert.match(invoice, /idempotency key already belongs to an invoice with a different line selection/);
+  assert.match(invoice, /mode: hasExplicitLineSelection\s*\?\s*'explicit'\s*:\s*'all_remaining'/);
+  assert.match(invoice, /else if \(storedMode === 'explicit'\)/,
+    'an omitted retry selection cannot replay a completed partial invoice');
+  assert.match(invoice, /storedMode !== null && storedMode !== currentMode/,
+    'pending invoice-batch recovery must preserve the original selection mode');
+  const completedBatchGuardStart = invoice.indexOf(
+    'if (\n      existingBatch.rows.length > 0 &&\n      existingBatch.rows[0].invoice_id',
+  );
+  const completedBatchReturn = invoice.indexOf('reused:\n          true', completedBatchGuardStart);
+  assert.ok(completedBatchGuardStart >= 0 && completedBatchReturn > completedBatchGuardStart);
+  const completedBatchGuard = invoice.slice(completedBatchGuardStart, completedBatchReturn);
+  assert.doesNotMatch(completedBatchGuard, /input\.lines\.length > 0/,
+    'empty explicit selections must be rejected instead of bypassing idempotency validation');
+  assert.match(completedBatchGuard, /if \(Array\.isArray\(input\.lines\)\)/);
   assert.ok(
     invoice.indexOf('normalizeIdempotentSelection(storedLines)') <
       invoice.indexOf('return {\n        orderId,\n        invoiceId:'),
