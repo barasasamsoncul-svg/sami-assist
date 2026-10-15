@@ -1278,6 +1278,7 @@ integration(
           status VARCHAR(30) NOT NULL DEFAULT 'pending',
           invoice_id UUID,
           error_code VARCHAR(120),
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           UNIQUE(company_id, sales_order_id, idempotency_key)
         );
@@ -1751,20 +1752,22 @@ integration(
                 requested_lines->'lines' AS requested_lines
          FROM sales_order_invoice_batches
          WHERE company_id = $1 AND sales_order_id = $2
-         ORDER BY created_at ASC, id ASC`,
+         ORDER BY idempotency_key ASC`,
         [companyId, first.id],
       );
       assert.equal(invoiceBatches.rows.length, 2);
-      assert.equal(invoiceBatches.rows[0].idempotency_key, 'erp-sales-partial-invoice-001');
-      assert.equal(invoiceBatches.rows[0].status, 'created');
-      assert.equal(invoiceBatches.rows[0].invoice_id, firstInvoiceId);
-      assert.equal(invoiceBatches.rows[0].selection_mode, 'explicit');
-      assert.equal(invoiceBatches.rows[1].idempotency_key, 'erp-sales-invoice-remaining-002');
-      assert.equal(invoiceBatches.rows[1].status, 'created');
-      assert.equal(invoiceBatches.rows[1].invoice_id, secondInvoiceId);
-      assert.equal(invoiceBatches.rows[1].selection_mode, 'all_remaining');
-      assert.equal(invoiceBatches.rows[1].requested_lines[0].lineId, orderLineId);
-      assert.equal(Number(invoiceBatches.rows[1].requested_lines[0].quantity), 0.6);
+      const explicitBatch = invoiceBatches.rows.find((row: Record<string, unknown>) => row.idempotency_key === 'erp-sales-partial-invoice-001');
+      const remainingBatch = invoiceBatches.rows.find((row: Record<string, unknown>) => row.idempotency_key === 'erp-sales-invoice-remaining-002');
+      assert.ok(explicitBatch);
+      assert.ok(remainingBatch);
+      assert.equal(explicitBatch.status, 'created');
+      assert.equal(explicitBatch.invoice_id, firstInvoiceId);
+      assert.equal(explicitBatch.selection_mode, 'explicit');
+      assert.equal(remainingBatch.status, 'created');
+      assert.equal(remainingBatch.invoice_id, secondInvoiceId);
+      assert.equal(remainingBatch.selection_mode, 'all_remaining');
+      assert.equal(remainingBatch.requested_lines[0].lineId, orderLineId);
+      assert.equal(Number(remainingBatch.requested_lines[0].quantity), 0.6);
       const movementCountAfterRetry = await pool.query(
         `SELECT COUNT(*)::int AS count FROM stock_movements
          WHERE company_id = $1 AND product_id = $2 AND movement_type = 'sales_delivery'`,
