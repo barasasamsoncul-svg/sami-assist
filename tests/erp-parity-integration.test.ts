@@ -3328,8 +3328,13 @@ integration(
 
     } finally {
       if (outerTransaction) {
-        try { await client.query('ROLLBACK'); } c
-
+        try { await client.query('ROLLBACK'); } catch {}
+      }
+      client.release();
+      await pool.end();
+    }
+  },
+);
 
 
 
@@ -3532,15 +3537,6 @@ integration(
     } finally {
       if (transactionOpen) {
         try { await client.query('ROLLBACK'); } catch {}
-      }
-      client.release();
-      await pool.end();
-    }
-  },
-);
-
-
-atch {}
       }
       client.release();
       await pool.end();
