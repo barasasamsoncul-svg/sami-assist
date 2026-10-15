@@ -34,6 +34,25 @@ test('Sales return credit counters change only when a new allocation is committe
     /credited_quantity\s*=\s*LEAST\([\s\S]*?SELECT SUM\(credit_item\.quantity\)/,
     'do not discard historical aggregate values by recomputing only from the current allocation table',
   );
+
+test('Sales return-credit issuance serializes retries and preserves refund lifecycle states', async () => {
+  const operations = await source('lib/apps/sales/operations.ts');
+  const start = operations.indexOf('export async function issueSalesReturnCredit(');
+  const end = operations.indexOf('export async function refundSalesReturnCredit(', start);
+  const credit = operations.slice(start, end);
+
+  const lock = credit.indexOf("pg_advisory_lock(hashtext($1), hashtext($2))");
+  const returnRead = credit.indexOf('FROM sales_returns');
+  const invoiceCredit = credit.indexOf('await issueInvoiceCreditNote(');
+  const unlock = credit.indexOf("pg_advisory_unlock(hashtext($1), hashtext($2))");
+  assert.ok(lock >= 0 && lock < returnRead, 'serialize before reading return-credit state');
+  assert.ok(invoiceCredit > lock && unlock > invoiceCredit, 'hold the lock over cross-module credit creation and recovery');
+  assert.ok(
+    credit.includes("status = CASE\\n          WHEN status IN ('partially_refunded', 'refunded')\\n          THEN status\\n          WHEN $4::boolean\\n          THEN 'credited'\\n          ELSE status\\n        END"),
+    'do not overwrite a refund state or mark an un-invoiced return as credited',
+  );
+});
+
 });
 
 test('Sales return-credit idempotency regression is part of Sales CI', async () => {
