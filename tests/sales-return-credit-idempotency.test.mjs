@@ -23,7 +23,7 @@ test('Sales return credit counters change only when a new allocation is committe
   assert.ok(allocation > saved, 'persist the invoice-line allocation after the return-credit record');
   assert.ok(counterUpdate > allocation, 'update the order-line aggregate after persisting the allocation');
 
-  assert.match(credit, /const serializationClient = await context\\.pool\\.connect\\(\\)/);
+  assert.ok(credit.includes('const serializationClient = await context.pool.connect()'));
   assert.match(credit, /await client\.query\('BEGIN'\)/);
   assert.match(credit, /await client\.query\('COMMIT'\)/);
   assert.match(credit, /await client\.query\('ROLLBACK'\)/);
