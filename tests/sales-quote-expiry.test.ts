@@ -115,8 +115,8 @@ test('public Sales quote expiry writes state, history and activity only when the
   assert.equal(expired, true);
   assert.equal(calls.length, 2);
   assert.match(calls[0].sql, /UPDATE sales_quotes/);
-  assert.match(calls[0].sql, /company_id = \\$2/);
-  assert.match(calls[0].sql, /status = \\$3::varchar\\(30\\)/);
+  assert.match(calls[0].sql, /company_id = \$2/);
+  assert.match(calls[0].sql, /status = \$3::varchar\(30\)/);
   assert.match(calls[0].sql, /RETURNING id/);
   assert.deepEqual(calls[0].values, [quoteId, companyId, 'viewed']);
 
