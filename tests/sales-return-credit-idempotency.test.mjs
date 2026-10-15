@@ -46,7 +46,7 @@ test('Sales return-credit issuance serializes retries and preserves refund lifec
 
   const lock = credit.indexOf("pg_advisory_lock(hashtext($1), hashtext($2))");
   const returnRead = credit.indexOf('FROM sales_returns');
-  const invoiceCredit = credit.indexOf('await issueInvoiceCreditNote(');
+  const invoiceCredit = credit.indexOf('await deps.issueInvoiceCreditNote(');
   const unlock = credit.indexOf("pg_advisory_unlock(hashtext($1), hashtext($2))");
   assert.ok(lock >= 0 && lock < returnRead, 'serialize before reading return-credit state');
   assert.match(credit, /!\[\s*'received',\s*'credited',\s*'partially_refunded',\s*'refunded',?\s*\]\.includes/, 'allow idempotent recovery of a return whose refund already completed');
@@ -68,8 +68,8 @@ test('Sales return refunds serialize with credit issuance and reload the balance
 
   const firstCreditRead = refund.indexOf('FROM sales_return_credits');
   const lock = refund.indexOf("pg_advisory_lock(hashtext($1), hashtext($2))");
-  const freshCreditRead = refund.indexOf('const freshResult = await context.pool.query(');
-  const refundCall = refund.indexOf('await refundInvoiceCreditNote(');
+  const freshCreditRead = refund.indexOf('const freshResult = await serializationClient.query(');
+  const refundCall = refund.indexOf('await deps.refundInvoiceCreditNote(');
   const unlock = refund.indexOf("pg_advisory_unlock(hashtext($1), hashtext($2))");
 
   assert.ok(firstCreditRead >= 0 && firstCreditRead < lock, 'identify the parent return before taking its lock');
