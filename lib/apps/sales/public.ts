@@ -243,6 +243,7 @@ export async function getPublicSalesQuote(
       }
 
       const currentStatus = String(currentResult.rows[0].status);
+      quote.valid_until = currentResult.rows[0].valid_until;
       if (
         ['sent', 'viewed'].includes(currentStatus) &&
         isSalesQuoteExpired(currentResult.rows[0].valid_until, today)
