@@ -3989,32 +3989,45 @@ export async function refundSalesReturnCredit(
       money(row.available_credit);
 
     const callerKey = cleanText(input.idempotencyKey, 80);
+    // Hash the full caller key so values that differ after character 56 never
+    // collapse to the same database idempotency key. The compact key plus the
+    // Invoicing prefix stays within 120 characters.
     const suppliedRefundKey = callerKey
+      ? ('srcr:' + returnCreditId + ':' + createHash('sha256').update(callerKey).digest('hex'))
+      : null;
+    // Older versions stored a truncated, readable key. Keep looking it up so
+    // an in-flight/previously committed refund is recovered instead of replayed.
+    const legacyRefundKey = callerKey
       ? ('sales-return-credit:' + returnCreditId + ':refund:' + callerKey).slice(0, 120)
       : null;
 
     // A retry may arrive after Invoicing has committed the refund and Sales has
     // repaired its cached balance. Recover the existing operation before
     // rejecting its original amount against that now-lower balance.
-    let priorRefund: { amount: unknown } | null = null;
-    if (suppliedRefundKey) {
+    let priorRefund: { amount: unknown; idempotency_key: unknown } | null = null;
+    if (suppliedRefundKey && legacyRefundKey) {
       const priorRefundResult = await context.pool.query(
         `
-          SELECT amount
+          SELECT amount, idempotency_key
           FROM invoicing_credit_note_refunds
           WHERE company_id = $1
             AND credit_note_id = $2
-            AND idempotency_key = $3
+            AND idempotency_key IN ($3, $4)
+          ORDER BY CASE WHEN idempotency_key = $4 THEN 0 ELSE 1 END
           LIMIT 1
         `,
         [
           context.companyId,
           String(row.credit_note_id),
+          'credit-refund:' + legacyRefundKey,
           'credit-refund:' + suppliedRefundKey,
         ],
       );
       priorRefund = priorRefundResult.rows[0] || null;
     }
+    const refundOperationKey = priorRefund
+      ? String(priorRefund.idempotency_key).slice('credit-refund:'.length)
+      : suppliedRefundKey;
 
     const hasRequestedAmount =
       input.amount !== undefined &&
@@ -4068,7 +4081,7 @@ export async function refundSalesReturnCredit(
           ) ||
           'Refund for Sales return',
         idempotencyKey:
-          suppliedRefundKey ||
+          refundOperationKey ||
           (
             'sales-return-credit:' +
             returnCreditId +
@@ -4076,7 +4089,7 @@ export async function refundSalesReturnCredit(
             available.toFixed(2) +
             ':' +
             amount.toFixed(2)
-          ).slice(0, 120),
+          ).slice(0, 106),
         metadata: {
           sourceModule:
             'sales',
