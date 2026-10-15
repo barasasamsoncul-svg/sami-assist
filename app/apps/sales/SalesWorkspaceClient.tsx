@@ -850,6 +850,8 @@ export default function SalesWorkspaceClient({
   const [orderRegisterError, setOrderRegisterError] = useState('');
   const previousQuoteQuery = useRef('');
   const previousOrderQuery = useRef('');
+  const quoteRegisterRequestId = useRef(0);
+  const orderRegisterRequestId = useRef(0);
   const quoteBaseData = useRef(initialData.quotes);
   const orderBaseData = useRef(initialData.orders);
 
@@ -1106,8 +1108,7 @@ export default function SalesWorkspaceClient({
     const signature = search.trim() + '|' + quoteStatusView;
     const baseChanged = quoteBaseData.current !== initialData.quotes;
     if (signature === previousQuoteQuery.current && !baseChanged) return;
-    previousQuoteQuery.current = signature;
-    quoteBaseData.current = initialData.quotes;
+    const requestId = ++quoteRegisterRequestId.current;
     setSelectedQuoteIds([]);
     const controller = new AbortController();
     setQuoteRegisterLoading(true);
@@ -1121,23 +1122,26 @@ export default function SalesWorkspaceClient({
       });
       void requestSalesRegisterPage<SalesWorkspaceData['quotes'][number]>('quotes', query, controller.signal)
         .then(page => {
+          if (requestId !== quoteRegisterRequestId.current) return;
+          previousQuoteQuery.current = signature;
+          quoteBaseData.current = initialData.quotes;
           setQuoteRecords(page.rows);
           setQuoteRegisterHasMore(page.hasMore);
           setQuoteRegisterTotalCount(page.totalCount);
         })
         .catch(error => {
-          if (!controller.signal.aborted) {
+          if (!controller.signal.aborted && requestId === quoteRegisterRequestId.current) {
             setQuoteRegisterError(error instanceof Error ? error.message : 'Could not load quotations.');
           }
         })
         .finally(() => {
-          if (!controller.signal.aborted) setQuoteRegisterLoading(false);
+          if (!controller.signal.aborted && requestId === quoteRegisterRequestId.current) setQuoteRegisterLoading(false);
         });
     }, 250);
     return () => {
       window.clearTimeout(timer);
       controller.abort();
-      setQuoteRegisterLoading(false);
+      if (requestId === quoteRegisterRequestId.current) setQuoteRegisterLoading(false);
     };
   }, [view, search, quoteStatusView, initialData.quotes, initialData.metrics.quoteCount]);
 
@@ -1146,8 +1150,7 @@ export default function SalesWorkspaceClient({
     const signature = search.trim() + '|' + orderStatusView + '|' + orderSortBy;
     const baseChanged = orderBaseData.current !== initialData.orders;
     if (signature === previousOrderQuery.current && !baseChanged) return;
-    previousOrderQuery.current = signature;
-    orderBaseData.current = initialData.orders;
+    const requestId = ++orderRegisterRequestId.current;
     setSelectedOrderIds([]);
     const controller = new AbortController();
     setOrderRegisterLoading(true);
@@ -1162,28 +1165,32 @@ export default function SalesWorkspaceClient({
       });
       void requestSalesRegisterPage<SalesWorkspaceData['orders'][number]>('orders', query, controller.signal)
         .then(page => {
+          if (requestId !== orderRegisterRequestId.current) return;
+          previousOrderQuery.current = signature;
+          orderBaseData.current = initialData.orders;
           setOrderRecords(page.rows);
           setOrderRegisterHasMore(page.hasMore);
           setOrderRegisterTotalCount(page.totalCount);
         })
         .catch(error => {
-          if (!controller.signal.aborted) {
+          if (!controller.signal.aborted && requestId === orderRegisterRequestId.current) {
             setOrderRegisterError(error instanceof Error ? error.message : 'Could not load sales orders.');
           }
         })
         .finally(() => {
-          if (!controller.signal.aborted) setOrderRegisterLoading(false);
+          if (!controller.signal.aborted && requestId === orderRegisterRequestId.current) setOrderRegisterLoading(false);
         });
     }, 250);
     return () => {
       window.clearTimeout(timer);
       controller.abort();
-      setOrderRegisterLoading(false);
+      if (requestId === orderRegisterRequestId.current) setOrderRegisterLoading(false);
     };
   }, [view, search, orderStatusView, orderSortBy, initialData.orders, initialData.metrics.orderCount]);
 
   async function loadMoreQuoteRecords() {
     if (quoteRegisterLoading || !quoteRegisterHasMore) return;
+    const requestId = ++quoteRegisterRequestId.current;
     setQuoteRegisterLoading(true);
     setQuoteRegisterError('');
     try {
@@ -1194,6 +1201,7 @@ export default function SalesWorkspaceClient({
         statusView: quoteStatusView,
       });
       const page = await requestSalesRegisterPage<SalesWorkspaceData['quotes'][number]>('quotes', query);
+      if (requestId !== quoteRegisterRequestId.current) return;
       setQuoteRecords(current => {
         const existing = new Set(current.map(row => row.id));
         return [...current, ...page.rows.filter(row => !existing.has(row.id))];
@@ -1201,14 +1209,17 @@ export default function SalesWorkspaceClient({
       setQuoteRegisterHasMore(page.hasMore);
       setQuoteRegisterTotalCount(page.totalCount);
     } catch (error) {
-      setQuoteRegisterError(error instanceof Error ? error.message : 'Could not load more quotations.');
+      if (requestId === quoteRegisterRequestId.current) {
+        setQuoteRegisterError(error instanceof Error ? error.message : 'Could not load more quotations.');
+      }
     } finally {
-      setQuoteRegisterLoading(false);
+      if (requestId === quoteRegisterRequestId.current) setQuoteRegisterLoading(false);
     }
   }
 
   async function loadMoreOrderRecords() {
     if (orderRegisterLoading || !orderRegisterHasMore) return;
+    const requestId = ++orderRegisterRequestId.current;
     setOrderRegisterLoading(true);
     setOrderRegisterError('');
     try {
@@ -1220,6 +1231,7 @@ export default function SalesWorkspaceClient({
         sortBy: orderSortBy,
       });
       const page = await requestSalesRegisterPage<SalesWorkspaceData['orders'][number]>('orders', query);
+      if (requestId !== orderRegisterRequestId.current) return;
       setOrderRecords(current => {
         const existing = new Set(current.map(row => row.id));
         return [...current, ...page.rows.filter(row => !existing.has(row.id))];
@@ -1227,9 +1239,11 @@ export default function SalesWorkspaceClient({
       setOrderRegisterHasMore(page.hasMore);
       setOrderRegisterTotalCount(page.totalCount);
     } catch (error) {
-      setOrderRegisterError(error instanceof Error ? error.message : 'Could not load more sales orders.');
+      if (requestId === orderRegisterRequestId.current) {
+        setOrderRegisterError(error instanceof Error ? error.message : 'Could not load more sales orders.');
+      }
     } finally {
-      setOrderRegisterLoading(false);
+      if (requestId === orderRegisterRequestId.current) setOrderRegisterLoading(false);
     }
   }
 
