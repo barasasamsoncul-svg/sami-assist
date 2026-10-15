@@ -59,6 +59,25 @@ test('Sales return-credit issuance serializes retries and preserves refund lifec
   assert.ok(compact.includes("status: String(returnState.rows[0]?.status || returnRow.status)"));
 });
 
+test('Sales return refunds serialize with credit issuance and reload the balance after locking', async () => {
+  const operations = await source('lib/apps/sales/operations.ts');
+  const start = operations.indexOf('export async function refundSalesReturnCredit(');
+  const refund = operations.slice(start);
+  const compact = refund.replace(/\s+/g, ' ');
+
+  const firstCreditRead = refund.indexOf('FROM sales_return_credits');
+  const lock = refund.indexOf("pg_advisory_lock(hashtext($1), hashtext($2))");
+  const freshCreditRead = refund.indexOf('const freshResult = await context.pool.query(');
+  const refundCall = refund.indexOf('await refundInvoiceCreditNote(');
+  const unlock = refund.indexOf("pg_advisory_unlock(hashtext($1), hashtext($2))");
+
+  assert.ok(firstCreditRead >= 0 && firstCreditRead < lock, 'identify the parent return before taking its lock');
+  assert.ok(lock < freshCreditRead && freshCreditRead < refundCall, 're-read authoritative credit balance under the shared lock before refunding');
+  assert.ok(refundCall < unlock, 'hold the same return lock through the cross-module refund and Sales state repair');
+  assert.ok(compact.includes("'sales-return-credit:' + returnId"), 'refund and credit issuance use the same per-return lock identity');
+  assert.ok(compact.includes('AND credit.return_id = $3'), 'the locked re-read must remain tied to the parent return');
+});
+
 test('Sales return-credit idempotency regression is part of Sales CI', async () => {
   const packageJson = JSON.parse(await source('package.json'));
   assert.match(packageJson.scripts['test:sales'], /tests\/sales-return-credit-idempotency\.test\.mjs/);
