@@ -260,6 +260,7 @@ import {
 } from '@/lib/apps/sales/organization';
 
 import {
+  salesDateOnly,
   shouldExpireSalesQuoteBeforeAcceptance,
 } from '@/lib/apps/sales/date-utils';
 
@@ -3545,6 +3546,19 @@ export async function createSalesOrderFromQuoteTransaction(
         order.rows[0].id,
       );
 
+    // PostgreSQL DATE columns may be materialized by node-postgres as Date
+    // objects. Normalize them before passing a DATE parameter back to SQL.
+    const exchangeRateDate =
+      salesDateOnly(row.exchange_rate_date) ||
+      salesDateOnly(row.quote_date);
+
+    if (!exchangeRateDate) {
+      throw new SalesError(
+        'QUOTE_STATE_INVALID',
+        'This quotation has an invalid exchange-rate date. Correct the date before converting it to an order.',
+      );
+    }
+
     await client.query(
       `
         UPDATE sales_orders_v2
@@ -3571,13 +3585,7 @@ export async function createSalesOrderFromQuoteTransaction(
           row.exchange_rate ||
           1,
         ),
-        String(
-          row.exchange_rate_date ||
-          row.quote_date,
-        ).slice(
-          0,
-          10,
-        ),
+        exchangeRateDate,
         String(
           row.exchange_rate_source ||
           'base',
