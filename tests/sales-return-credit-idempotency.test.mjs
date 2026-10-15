@@ -78,6 +78,22 @@ test('Sales return refunds serialize with credit issuance and reload the balance
   assert.ok(compact.includes('AND credit.return_id = $3'), 'the locked re-read must remain tied to the parent return');
 });
 
+test('Sales refund retries recover their posted amount before available-balance validation', async () => {
+  const operations = await source('lib/apps/sales/operations.ts');
+  const start = operations.indexOf('export async function refundSalesReturnCredit(');
+  const refund = operations.slice(start);
+  const compact = refund.replace(/\s+/g, ' ');
+
+  const priorRefundLookup = refund.indexOf('FROM invoicing_credit_note_refunds');
+  const amountValidation = refund.indexOf('if (', priorRefundLookup);
+  const refundCall = refund.indexOf('await refundInvoiceCreditNote(');
+  assert.ok(priorRefundLookup >= 0 && priorRefundLookup < refundCall, 'look up a caller-supplied idempotency key before retry amount validation');
+  assert.ok(compact.includes("'credit-refund:' + suppliedRefundKey"), 'look up the exact key used by Invoicing');
+  assert.ok(compact.includes('const amount = priorRefund ? money(priorRefund.amount) : requestedAmount ?? available'));
+  assert.ok(compact.includes('(!priorRefund && amount > available + 0.0001)'), 'apply available-balance rejection only to new refunds');
+  assert.ok(compact.includes("refundedAmount <= 0.0001 ? 'credited'"), 'keep a credited return credited when no posted refunds exist');
+});
+
 test('Sales return-credit idempotency regression is part of Sales CI', async () => {
   const packageJson = JSON.parse(await source('package.json'));
   assert.match(packageJson.scripts['test:sales'], /tests\/sales-return-credit-idempotency\.test\.mjs/);
