@@ -2125,24 +2125,22 @@ integration(
       );
       assert.equal(receivedReturn.status, 'received');
 
-      const [returnLineAfterReceipt, stockAfterReturn, returnMovements] = await Promise.all([
-        returnPool.query(
-          `SELECT delivered_quantity, returned_quantity, credited_quantity
-           FROM sales_order_items_v2 WHERE id = $1 AND company_id = $2`,
-          [orderLineId, companyId],
-        ),
-        returnPool.query(
-          `SELECT quantity FROM stock_levels
-           WHERE company_id = $1 AND product_id = $2 AND warehouse_id = $3`,
-          [companyId, catalogItemId, warehouseId],
-        ),
-        returnPool.query(
-          `SELECT movement_type, quantity FROM stock_movements
-           WHERE company_id = $1 AND product_id = $2
-           ORDER BY movement_type, created_at, id`,
-          [companyId, catalogItemId],
-        ),
-      ]);
+      const returnLineAfterReceipt = await returnPool.query(
+        `SELECT delivered_quantity, returned_quantity, credited_quantity
+         FROM sales_order_items_v2 WHERE id = $1 AND company_id = $2`,
+        [orderLineId, companyId],
+      );
+      const stockAfterReturn = await returnPool.query(
+        `SELECT quantity FROM stock_levels
+         WHERE company_id = $1 AND product_id = $2 AND warehouse_id = $3`,
+        [companyId, catalogItemId, warehouseId],
+      );
+      const returnMovements = await returnPool.query(
+        `SELECT movement_type, quantity FROM stock_movements
+         WHERE company_id = $1 AND product_id = $2
+         ORDER BY movement_type, created_at, id`,
+        [companyId, catalogItemId],
+      );
       assert.equal(Number(returnLineAfterReceipt.rows[0].delivered_quantity), 0);
       assert.equal(Number(returnLineAfterReceipt.rows[0].returned_quantity), 0.5);
       assert.equal(Number(returnLineAfterReceipt.rows[0].credited_quantity), 0);
@@ -2231,30 +2229,28 @@ integration(
         'the returned quantity must be allocated across its two source invoices without exceeding either line',
       );
 
-      const [savedReturnCredits, savedAllocations, creditedLine] = await Promise.all([
-        returnPool.query(
-          `SELECT invoice_id, credit_note_id, amount, available_credit, refunded_amount
-           FROM sales_return_credits
-           WHERE company_id = $1 AND return_id = $2
-           ORDER BY invoice_id`,
-          [companyId, createdReturn.returnId],
-        ),
-        returnPool.query(
-          `SELECT credit.invoice_id, item.invoice_item_id, item.quantity
-           FROM sales_return_credit_items item
-           INNER JOIN sales_return_credits credit
-             ON credit.id = item.return_credit_id
-            AND credit.company_id = item.company_id
-           WHERE item.company_id = $1 AND credit.return_id = $2
-           ORDER BY credit.invoice_id`,
-          [companyId, createdReturn.returnId],
-        ),
-        returnPool.query(
-          `SELECT credited_quantity, returned_quantity
-           FROM sales_order_items_v2 WHERE id = $1 AND company_id = $2`,
-          [orderLineId, companyId],
-        ),
-      ]);
+      const savedReturnCredits = await returnPool.query(
+        `SELECT invoice_id, credit_note_id, amount, available_credit, refunded_amount
+         FROM sales_return_credits
+         WHERE company_id = $1 AND return_id = $2
+         ORDER BY invoice_id`,
+        [companyId, createdReturn.returnId],
+      );
+      const savedAllocations = await returnPool.query(
+        `SELECT credit.invoice_id, item.invoice_item_id, item.quantity
+         FROM sales_return_credit_items item
+         INNER JOIN sales_return_credits credit
+           ON credit.id = item.return_credit_id
+          AND credit.company_id = item.company_id
+         WHERE item.company_id = $1 AND credit.return_id = $2
+         ORDER BY credit.invoice_id`,
+        [companyId, createdReturn.returnId],
+      );
+      const creditedLine = await returnPool.query(
+        `SELECT credited_quantity, returned_quantity
+         FROM sales_order_items_v2 WHERE id = $1 AND company_id = $2`,
+        [orderLineId, companyId],
+      );
       assert.equal(savedReturnCredits.rows.length, 2);
       assert.equal(Number(savedReturnCredits.rows[0].amount), 46.4);
       assert.equal(Number(savedReturnCredits.rows[1].amount), 11.6);
@@ -2273,17 +2269,19 @@ integration(
       );
       assert.equal(retriedReturnCredits.status, 'credited');
       assert.equal(invoiceCreditCalls, 4, 'a credit request should be idempotent at the Invoicing boundary');
-      const [retryAllocationCount, retryCreditedLine] = await Promise.all([
-        returnPool.query(
-          `SELECT COUNT(*)::int AS count FROM sales_return_credit_items
-           WHERE company_id = $1 AND return_id = $2`,
-          [companyId, createdReturn.returnId],
-        ),
-        returnPool.query(
-          `SELECT credited_quantity FROM sales_order_items_v2 WHERE id = $1 AND company_id = $2`,
-          [orderLineId, companyId],
-        ),
-      ]);
+      const retryAllocationCount = await returnPool.query(
+        `SELECT COUNT(*)::int AS count
+         FROM sales_return_credit_items item
+         INNER JOIN sales_return_credits credit
+           ON credit.id = item.return_credit_id
+          AND credit.company_id = item.company_id
+         WHERE item.company_id = $1 AND credit.return_id = $2`,
+        [companyId, createdReturn.returnId],
+      );
+      const retryCreditedLine = await returnPool.query(
+        `SELECT credited_quantity FROM sales_order_items_v2 WHERE id = $1 AND company_id = $2`,
+        [orderLineId, companyId],
+      );
       assert.equal(retryAllocationCount.rows[0].count, 2);
       assert.equal(Number(retryCreditedLine.rows[0].credited_quantity), 0.5,
         'replayed credit allocation must not increase the credited quantity twice');
@@ -2438,41 +2436,39 @@ integration(
         'Sales must reject a refund greater than the remaining credit balance before calling Invoicing',
       );
 
-      const [finalReturn, finalReturnCredits, finalRefunds, finalLine, finalStock, finalMovements] = await Promise.all([
-        returnPool.query(
-          `SELECT status, received_at, credited_at, refunded_at
-           FROM sales_returns WHERE id = $1 AND company_id = $2`,
-          [createdReturn.returnId, companyId],
-        ),
-        returnPool.query(
-          `SELECT COUNT(*)::int AS count, SUM(amount) AS total_credit,
-                  SUM(available_credit) AS remaining_credit,
-                  SUM(refunded_amount) AS refunded_amount
-           FROM sales_return_credits WHERE company_id = $1 AND return_id = $2`,
-          [companyId, createdReturn.returnId],
-        ),
-        returnPool.query(
-          `SELECT COUNT(*)::int AS count, SUM(amount) AS refunded_amount
-           FROM invoicing_credit_note_refunds WHERE company_id = $1`,
-          [companyId],
-        ),
-        returnPool.query(
-          `SELECT delivered_quantity, returned_quantity, credited_quantity, invoiced_quantity
-           FROM sales_order_items_v2 WHERE id = $1 AND company_id = $2`,
-          [orderLineId, companyId],
-        ),
-        returnPool.query(
-          `SELECT quantity FROM stock_levels
-           WHERE company_id = $1 AND product_id = $2 AND warehouse_id = $3`,
-          [companyId, catalogItemId, warehouseId],
-        ),
-        returnPool.query(
-          `SELECT movement_type, quantity FROM stock_movements
-           WHERE company_id = $1 AND product_id = $2
-           ORDER BY movement_type, created_at, id`,
-          [companyId, catalogItemId],
-        ),
-      ]);
+      const finalReturn = await returnPool.query(
+        `SELECT status, received_at, credited_at, refunded_at
+         FROM sales_returns WHERE id = $1 AND company_id = $2`,
+        [createdReturn.returnId, companyId],
+      );
+      const finalReturnCredits = await returnPool.query(
+        `SELECT COUNT(*)::int AS count, SUM(amount) AS total_credit,
+                SUM(available_credit) AS remaining_credit,
+                SUM(refunded_amount) AS refunded_amount
+         FROM sales_return_credits WHERE company_id = $1 AND return_id = $2`,
+        [companyId, createdReturn.returnId],
+      );
+      const finalRefunds = await returnPool.query(
+        `SELECT COUNT(*)::int AS count, SUM(amount) AS refunded_amount
+         FROM invoicing_credit_note_refunds WHERE company_id = $1`,
+        [companyId],
+      );
+      const finalLine = await returnPool.query(
+        `SELECT delivered_quantity, returned_quantity, credited_quantity, invoiced_quantity
+         FROM sales_order_items_v2 WHERE id = $1 AND company_id = $2`,
+        [orderLineId, companyId],
+      );
+      const finalStock = await returnPool.query(
+        `SELECT quantity FROM stock_levels
+         WHERE company_id = $1 AND product_id = $2 AND warehouse_id = $3`,
+        [companyId, catalogItemId, warehouseId],
+      );
+      const finalMovements = await returnPool.query(
+        `SELECT movement_type, quantity FROM stock_movements
+         WHERE company_id = $1 AND product_id = $2
+         ORDER BY movement_type, created_at, id`,
+        [companyId, catalogItemId],
+      );
       assert.equal(finalReturn.rows[0].status, 'refunded');
       assert.ok(finalReturn.rows[0].received_at instanceof Date);
       assert.ok(finalReturn.rows[0].credited_at instanceof Date);
