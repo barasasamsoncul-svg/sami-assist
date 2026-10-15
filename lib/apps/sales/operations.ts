@@ -2975,7 +2975,7 @@ export async function approveSalesReturnTransaction(
   input: Record<string, unknown>,
   context: Awaited<ReturnType<typeof requireSalesContext>>,
 ) {
-const returnId =
+  const returnId =
     requireUuid(
       input.returnId,
       'Sales return',
@@ -3913,7 +3913,7 @@ export async function refundSalesReturnCreditTransaction(
   overrides: Partial<SalesReturnRefundDependencies> = {},
 ) {
   const deps: SalesReturnRefundDependencies = { ...defaultSalesReturnRefundDependencies, ...overrides };
-const returnCreditId =
+  const returnCreditId =
     requireUuid(
       input.returnCreditId,
       'Sales return credit',
