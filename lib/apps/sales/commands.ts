@@ -16,6 +16,13 @@ import {
   updateInvoicingCustomer,
 } from '@/lib/apps/invoicing/commands';
 
+import {
+  hasAnyInvoicingPermission,
+  INVOICING_PERMISSIONS,
+  InvoicingError,
+  requireInvoicingContext,
+} from '@/lib/apps/invoicing/context';
+
 function translateCustomerMasterError(
   error:
     unknown,
@@ -3958,12 +3965,91 @@ export async function convertSalesQuoteToInvoice(
       'Quote',
     );
 
-  // Preflight both action permissions before creating the order; otherwise an
-  // invoice-only permission failure could leave a converted quote and new order.
-  await requireSalesContext(
+  // Preflight cross-module permissions before creating the order. Invoice
+  // creation checks these again, but discovering a missing permission only
+  // after quote conversion would leave a new order without its invoice.
+  const salesContext = await requireSalesContext(
     SALES_PERMISSIONS
       .ORDER_MANAGE,
   );
+
+  const invoicingContext = await requireInvoicingContext(
+    INVOICING_PERMISSIONS
+      .INVOICE_CREATE,
+  );
+
+  const customerPermissions = [
+    INVOICING_PERMISSIONS.CUSTOMER_VIEW,
+    INVOICING_PERMISSIONS.CUSTOMER_MANAGE,
+  ] as const;
+
+  if (
+    !hasAnyInvoicingPermission(
+      invoicingContext.permissions.isOwner,
+      invoicingContext.permissions.permissionSet,
+      customerPermissions,
+    )
+  ) {
+    throw new InvoicingError(
+      'INVOICING_PERMISSION_REQUIRED',
+      'Customer access is required to create or edit an invoice.',
+      {
+        permission:
+          INVOICING_PERMISSIONS.CUSTOMER_VIEW,
+      },
+    );
+  }
+
+  // If the quotation has no active billing customer, invoice creation will
+  // need customer-management permission in order to create/link one.
+  const quoteBilling = await salesContext.pool.query(
+    `
+      SELECT
+        sq.billing_customer_id,
+        customer.id AS active_billing_customer_id
+      FROM sales_quotes sq
+      LEFT JOIN invoicing_customers customer
+        ON customer.id = sq.billing_customer_id
+       AND customer.company_id = sq.company_id
+       AND customer.status = 'active'
+       AND customer.deleted_at IS NULL
+      WHERE sq.id = $1
+        AND sq.company_id = $2
+        AND sq.deleted_at IS NULL
+      LIMIT 1
+    `,
+    [
+      quoteId,
+      salesContext.companyId,
+    ],
+  );
+
+  if (quoteBilling.rows.length !== 1) {
+    throw new SalesError(
+      'QUOTE_NOT_FOUND',
+      'Quotation was not found.',
+    );
+  }
+
+  if (
+    !quoteBilling.rows[0].active_billing_customer_id &&
+    !hasAnyInvoicingPermission(
+      invoicingContext.permissions.isOwner,
+      invoicingContext.permissions.permissionSet,
+      [
+        INVOICING_PERMISSIONS.CUSTOMER_MANAGE,
+      ],
+    )
+  ) {
+    throw new InvoicingError(
+      'INVOICING_PERMISSION_REQUIRED',
+      'Customer-management access is required to create the billing customer for this quotation.',
+      {
+        permission:
+          INVOICING_PERMISSIONS.CUSTOMER_MANAGE,
+      },
+    );
+  }
 
   const order =
     await createSalesOrderFromQuote({
