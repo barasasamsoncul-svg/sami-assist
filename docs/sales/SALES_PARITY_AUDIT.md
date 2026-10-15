@@ -1,6 +1,6 @@
 # SaMi Sales parity audit ledger
 
-**Audit baseline:** `main` at `4465bf7ca2701942e574f7a09944ef7aba349be6` (2026-10-15 audit session).  
+**Audit baseline:** `main` at `e1c637af7d1a2a5eaf16a6459e23a645a5b34b9c` (2026-10-15 follow-up audit).  
 **Purpose:** one authoritative checklist for finishing Sales. This is an evidence ledger, not a claim that Sales has already achieved Odoo/Zoho parity.
 
 ## Completion rule
@@ -11,7 +11,7 @@ A capability is **verified complete** only when (1) its UI action is wired to th
 
 | Domain | Primary implementation surfaces | Existing evidence in repository | Audit disposition |
 |---|---|---|---|
-| Sales workspace, customer records, search/views | `SalesWorkspaceClient.tsx`, `SalesCustomersManager.tsx`, `queries.ts`, `search.ts`, `saved-views.ts` | UI-quality and Sales module tests; source-level placeholder scan found no obvious TODO/disabled stubs | Implementation exists; verify interactive paths, pagination/bulk actions and permission boundaries before closure |
+| Sales workspace, customer records, search/views | `SalesWorkspaceClient.tsx`, `SalesCustomersManager.tsx`, `queries.ts`, `search.ts`, `saved-views.ts` | UI-quality and Sales module tests; server-side quote/order register paging, SQL filtering, sorting, result counts, and load-more controls merged in #211 | Pagination is now implemented for quote/order registers; still verify bulk actions and permission boundaries before closure |
 | Quotations, revisions, templates, optional products, PDF | `commands.ts`, `commercial.ts`, `pdf.ts`, `SalesQuoteComposer.tsx`, `SalesQuoteDetailClient.tsx`, `SalesQuotePdfBuilder.tsx`, `SalesTemplatesManager.tsx` | Sales module and UI-quality tests; quote/approval logic in backend | End-to-end quote create → revise → send/view → accept/reject/expire → convert must be confirmed on one test path |
 | Approval policies and quote/order controls | `approvals.ts`, `commands.ts`, approvals UI | `sales-part-11-approval-engine.test.mjs`, approval migration test, Sales module validation | Explicit approval lifecycle exists; verify threshold and retry paths against the actual database |
 | Lead and opportunity pipeline | `pipeline.ts`, `lead-assignment.ts`, `lead-assignment-rules.ts`, `lead-scoring.ts`, pipeline UI | Pipeline board/multi-pipeline/funnel/outcomes/velocity and lead-assignment tests | Pipeline code and tests exist; verify stage transitions, loss reasons, ownership, won/lost side effects, and quote-to-order bridge together |
@@ -34,8 +34,9 @@ A capability is **verified complete** only when (1) its UI action is wired to th
 - **Fixed in this audit branch:** return lifecycle status results now cap independently per currency; return-reason ranking now selects the top 100 independently per currency, matching the UI's currency sections. Regression assertions are added.
 - **Also fixed in this audit branch:** the Sales workspace now displays quote, accepted-quote and confirmed/closed order totals separately by base currency rather than summing unlike currencies. Status, monthly and top-customer reports carry their own currency, with the top-customer cap partitioned per currency. The booked-order KPI counts all non-deleted confirmed/closed orders instead of summing only the newest 250 rows on screen. The dashboard provider now consumes this currency-aware contract.
 - **Previously merged:** currency-safe forecasts, management insights, quotation effectiveness, product performance, commission performance, and margin-quality row caps (#196–#203). Do not re-open these areas without a failing regression or a newly demonstrated defect.
-- **Last observed main release gates at `4465bf7ca2701942e574f7a09944ef7aba349be6`:** Sales Module Validation, ERP Parity Integration, App Surfaces UI, Platform Kernel Closure, and Pre-Module Core Hardening all completed successfully.
-- **Not yet certified:** this ledger does not mark the entire module “done.” The remaining work is execution-level verification of each workflow row, with any confirmed gaps fixed in grouped changes. Only after that and a full release validation should Sales be called complete.
+- **Merged in #211:** quote and order registers now support bounded server-side pagination, SQL search/status filters, allowlisted order sorting, filtered counts, and load-more controls. Sales Module Validation, ERP Parity Integration, App Surfaces UI, Platform Kernel Closure, Invoicing Module Validation, Category 24, Category 25, and Pre-Module Core Hardening all passed on the exact PR head before merge.
+- **Current follow-up branch (not yet merged):** return-credit issuance and refunds share a per-return lock across the Invoicing call and Sales-side balance repair. Refunds re-read available credit after acquiring the lock; caller-keyed retries recover the original posted amount before balance validation; partial/full refund states are preserved; and a return is credited only when a credit exists, with no refund records incorrectly marking it partially refunded.
+- **Not yet certified:** this ledger does not mark the entire module “done.” The remaining work is execution-level verification of each workflow row, with any confirmed gaps fixed in grouped changes. Only after that and full release validation should Sales be called complete.
 
 ## Audit evidence index
 
