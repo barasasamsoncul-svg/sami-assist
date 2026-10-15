@@ -2916,12 +2916,12 @@ integration(
 
       const { SALES_RUNTIME_MIGRATIONS } = await import('../lib/apps/runtime-migrations');
       const { getSamiModuleMigrationPlan } = await import('../lib/modules/migrations');
-      const plan = getSamiModuleMigrationPlan('sales', '1.0.0', '3.4.19');
+      const plan = getSamiModuleMigrationPlan('sales', '1.0.0', '3.4.20');
 
       assert.equal(plan.length, SALES_RUNTIME_MIGRATIONS.length,
         'the migration planner must include every registered Sales transition');
       assert.equal(plan[0].fromVersion, '1.0.0');
-      assert.equal(plan[plan.length - 1].toVersion, '3.4.19');
+      assert.equal(plan[plan.length - 1].toVersion, '3.4.20');
 
       for (let index = 0; index < plan.length; index += 1) {
         const migration = plan[index];
@@ -2952,6 +2952,7 @@ integration(
         'sales_product_variants',
         'sales_returns',
         'sales_return_credits',
+        'sales_pipeline_stages',
       ];
       const tableCheck = await client.query(
         `SELECT required.table_name
@@ -2986,6 +2987,30 @@ integration(
       );
       assert.deepEqual(quoteColumnCheck.rows, [],
         'fresh and upgraded quotation schema must retain critical lifecycle/commercial fields');
+
+      const requiredStageColumns = [
+        'pipeline_id',
+        'code',
+        'is_won',
+        'is_lost',
+        'fold_in_kanban',
+        'description',
+        'color',
+        'deleted_at',
+      ];
+      const stageColumnCheck = await client.query(
+        `SELECT required.column_name
+         FROM unnest($1::text[]) AS required(column_name)
+         LEFT JOIN information_schema.columns actual
+           ON actual.table_schema = 'public'
+          AND actual.table_name = 'sales_pipeline_stages'
+          AND actual.column_name = required.column_name
+         WHERE actual.column_name IS NULL
+         ORDER BY required.column_name`,
+        [requiredStageColumns],
+      );
+      assert.deepEqual(stageColumnCheck.rows, [],
+        'fresh and upgraded Sales pipeline stages must contain all fields referenced by runtime indexes and UI');
 
       await client.query('ROLLBACK');
     } catch (error) {
