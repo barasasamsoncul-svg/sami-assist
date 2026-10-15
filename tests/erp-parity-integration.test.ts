@@ -13,6 +13,10 @@ import {
 } from '../lib/apps/sales/inventory';
 
 import {
+  markSalesOpportunityWonFromAcceptedQuote,
+} from '../lib/apps/sales/opportunity-conversion';
+
+import {
   postInvoiceConfirmationToAccounting,
   postInvoicePaymentToAccounting,
   reverseInvoicingAccountingEvent,
@@ -634,6 +638,246 @@ integration(
         'ROLLBACK',
       );
     } finally {
+      client.release();
+      await pool.end();
+    }
+  },
+);
+
+integration(
+  'ERP parity: Sales quote-to-order reconciles the linked CRM opportunity to Won once in PostgreSQL',
+  async () => {
+    const pool = new Pool({
+      connectionString: DATABASE_URL,
+    });
+    const client = await pool.connect();
+
+    const companyId = '11111111-1111-4111-8111-111111111111';
+    const otherCompanyId = '12121212-1212-4121-8121-121212121212';
+    const userId = '22222222-2222-4222-8222-222222222222';
+    const pipelineId = '33333333-3333-4333-8333-333333333333';
+    const openStageId = '44444444-4444-4444-8444-444444444444';
+    const wonStageId = '55555555-5555-4555-8555-555555555555';
+    const opportunityId = '66666666-6666-4666-8666-666666666666';
+    const quoteId = '77777777-7777-4777-8777-777777777777';
+    const orderId = '88888888-8888-4888-8888-888888888888';
+
+    const validateOpportunityUuid = (value: unknown, label: string): string => {
+      if (
+        typeof value !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+      ) {
+        throw new Error(label + ' must be a UUID.');
+      }
+      return value;
+    };
+
+    const conversionInput = {
+      companyId,
+      userId,
+      opportunityId,
+      quoteId,
+      quoteNumber: 'Q-2026-0042',
+      orderId,
+      orderNumber: 'SO-2026-0017',
+    };
+
+    try {
+      await client.query('BEGIN');
+      await client.query(`
+        CREATE TEMP TABLE sales_pipeline_stages (
+          id UUID PRIMARY KEY,
+          company_id UUID NOT NULL,
+          pipeline_id UUID NOT NULL,
+          stage_type VARCHAR(20) NOT NULL,
+          is_active BOOLEAN NOT NULL DEFAULT TRUE,
+          name VARCHAR(100) NOT NULL,
+          sequence INTEGER NOT NULL
+        ) ON COMMIT DROP;
+
+        CREATE TEMP TABLE sales_opportunities (
+          id UUID PRIMARY KEY,
+          company_id UUID NOT NULL,
+          stage_id UUID NOT NULL,
+          deleted_at TIMESTAMPTZ,
+          probability NUMERIC(5,2) NOT NULL DEFAULT 0,
+          won_at TIMESTAMPTZ,
+          lost_at TIMESTAMPTZ,
+          lost_reason TEXT,
+          updated_by UUID,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        ) ON COMMIT DROP;
+
+        CREATE TEMP TABLE sales_opportunity_stage_history (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          opportunity_id UUID NOT NULL,
+          from_stage_id UUID,
+          to_stage_id UUID NOT NULL,
+          probability NUMERIC(5,2) NOT NULL,
+          reason TEXT,
+          changed_by UUID,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        ) ON COMMIT DROP;
+
+        CREATE TEMP TABLE activities (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          user_id UUID,
+          model VARCHAR(80) NOT NULL,
+          record_id UUID NOT NULL,
+          type VARCHAR(120) NOT NULL,
+          content TEXT NOT NULL,
+          metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        ) ON COMMIT DROP;
+      `);
+
+      await client.query(
+        `INSERT INTO sales_pipeline_stages
+          (id, company_id, pipeline_id, stage_type, is_active, name, sequence)
+         VALUES
+          ($1, $2, $3, 'open', TRUE, 'Qualified', 10),
+          ($4, $2, $3, 'won', TRUE, 'Won', 100)`,
+        [openStageId, companyId, pipelineId, wonStageId],
+      );
+
+      await client.query(
+        `INSERT INTO sales_opportunities
+          (id, company_id, stage_id, probability, lost_at, lost_reason, updated_by)
+         VALUES ($1, $2, $3, 40, NOW(), 'stale loss metadata', $4)`,
+        [opportunityId, companyId, openStageId, userId],
+      );
+
+      // First order-conversion pass: stage, canonical probability, won/lost
+      // timestamps, immutable stage history and CRM activity must all persist.
+      await markSalesOpportunityWonFromAcceptedQuote(
+        client,
+        conversionInput,
+        validateOpportunityUuid,
+      );
+
+      const firstOpportunity = await client.query(
+        `SELECT stage_id, probability, won_at, lost_at, lost_reason, updated_by
+         FROM sales_opportunities
+         WHERE id = $1 AND company_id = $2`,
+        [opportunityId, companyId],
+      );
+      assert.equal(firstOpportunity.rows.length, 1);
+      assert.equal(firstOpportunity.rows[0].stage_id, wonStageId);
+      assert.equal(Number(firstOpportunity.rows[0].probability), 100);
+      assert.ok(firstOpportunity.rows[0].won_at instanceof Date);
+      assert.equal(firstOpportunity.rows[0].lost_at, null);
+      assert.equal(firstOpportunity.rows[0].lost_reason, null);
+      assert.equal(firstOpportunity.rows[0].updated_by, userId);
+      const firstWonAt = (firstOpportunity.rows[0].won_at as Date).toISOString();
+
+      const firstHistory = await client.query(
+        `SELECT from_stage_id, to_stage_id, probability, reason, changed_by
+         FROM sales_opportunity_stage_history
+         WHERE company_id = $1 AND opportunity_id = $2`,
+        [companyId, opportunityId],
+      );
+      assert.equal(firstHistory.rows.length, 1);
+      assert.equal(firstHistory.rows[0].from_stage_id, openStageId);
+      assert.equal(firstHistory.rows[0].to_stage_id, wonStageId);
+      assert.equal(Number(firstHistory.rows[0].probability), 100);
+      assert.equal(
+        firstHistory.rows[0].reason,
+        'Accepted quotation Q-2026-0042 converted to sales order SO-2026-0017.',
+      );
+      assert.equal(firstHistory.rows[0].changed_by, userId);
+
+      const firstActivity = await client.query(
+        `SELECT model, record_id, type, content, metadata
+         FROM activities
+         WHERE company_id = $1 AND record_id = $2`,
+        [companyId, opportunityId],
+      );
+      assert.equal(firstActivity.rows.length, 1);
+      assert.equal(firstActivity.rows[0].model, 'sales.opportunity');
+      assert.equal(firstActivity.rows[0].record_id, opportunityId);
+      assert.equal(firstActivity.rows[0].type, 'sales.opportunity.won_from_order');
+      assert.equal(
+        firstActivity.rows[0].content,
+        'Accepted quotation Q-2026-0042 converted to sales order SO-2026-0017.',
+      );
+      assert.deepEqual(firstActivity.rows[0].metadata, {
+        quoteId,
+        quoteNumber: 'Q-2026-0042',
+        orderId,
+        orderNumber: 'SO-2026-0017',
+      });
+
+      // An idempotent order-conversion retry preserves Won values without
+      // duplicating transition history or the conversion activity.
+      await markSalesOpportunityWonFromAcceptedQuote(
+        client,
+        conversionInput,
+        validateOpportunityUuid,
+      );
+      const retriedOpportunity = await client.query(
+        `SELECT stage_id, probability, won_at, lost_at, lost_reason
+         FROM sales_opportunities
+         WHERE id = $1 AND company_id = $2`,
+        [opportunityId, companyId],
+      );
+      assert.equal(retriedOpportunity.rows[0].stage_id, wonStageId);
+      assert.equal(Number(retriedOpportunity.rows[0].probability), 100);
+      assert.equal((retriedOpportunity.rows[0].won_at as Date).toISOString(), firstWonAt);
+      assert.equal(retriedOpportunity.rows[0].lost_at, null);
+      assert.equal(retriedOpportunity.rows[0].lost_reason, null);
+
+      const retryCounts = await client.query(
+        `SELECT
+           (SELECT COUNT(*)::int FROM sales_opportunity_stage_history
+             WHERE company_id = $1 AND opportunity_id = $2) AS history_count,
+           (SELECT COUNT(*)::int FROM activities
+             WHERE company_id = $1 AND record_id = $2
+               AND type = 'sales.opportunity.won_from_order') AS activity_count`,
+        [companyId, opportunityId],
+      );
+      assert.equal(retryCounts.rows[0].history_count, 1);
+      assert.equal(retryCounts.rows[0].activity_count, 1);
+
+      // A same-ID lookup under another company must not mutate the active
+      // opportunity, append history, or emit activity.
+      await markSalesOpportunityWonFromAcceptedQuote(
+        client,
+        { ...conversionInput, companyId: otherCompanyId },
+        validateOpportunityUuid,
+      );
+      const crossCompanyGuard = await client.query(
+        'SELECT stage_id FROM sales_opportunities WHERE id = $1 AND company_id = $2',
+        [opportunityId, companyId],
+      );
+      assert.equal(crossCompanyGuard.rows[0].stage_id, wonStageId);
+
+      // A deleted CRM record must also be ignored, allowing the Sales order
+      // transaction to continue without mutating soft-deleted opportunity data.
+      await client.query(
+        'UPDATE sales_opportunities SET deleted_at = NOW() WHERE id = $1',
+        [opportunityId],
+      );
+      await markSalesOpportunityWonFromAcceptedQuote(
+        client,
+        conversionInput,
+        validateOpportunityUuid,
+      );
+      const finalCounts = await client.query(
+        `SELECT
+           (SELECT COUNT(*)::int FROM sales_opportunity_stage_history
+             WHERE company_id = $1 AND opportunity_id = $2) AS history_count,
+           (SELECT COUNT(*)::int FROM activities
+             WHERE company_id = $1 AND record_id = $2) AS activity_count`,
+        [companyId, opportunityId],
+      );
+      assert.equal(finalCounts.rows[0].history_count, 1);
+      assert.equal(finalCounts.rows[0].activity_count, 1);
+    } finally {
+      try {
+        await client.query('ROLLBACK');
+      } catch {}
       client.release();
       await pool.end();
     }
