@@ -2444,6 +2444,15 @@ export default function SalesWorkspaceClient({
                   </table>
                 </div>
               </div>
+              {quoteRegisterError && <p role="alert" className="mt-3 text-sm text-red-600">{quoteRegisterError}</p>}
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
+                <span>Showing {quoteRecords.length.toLocaleString()} of {quoteRegisterTotalCount.toLocaleString()} quotations</span>
+                {quoteRegisterHasMore && (
+                  <button type="button" disabled={quoteRegisterLoading} onClick={() => void loadMoreQuoteRecords()} className="rounded-xl border border-[var(--sami-border)] px-4 py-2 font-semibold disabled:opacity-50">
+                    {quoteRegisterLoading ? 'Loading quotations…' : 'Load more quotations'}
+                  </button>
+                )}
+              </div>
             </section>
           )
         }
@@ -3012,6 +3021,15 @@ export default function SalesWorkspaceClient({
                       </Link>
                     ))}
                   </div>
+                )}
+              </div>
+              {orderRegisterError && <p role="alert" className="mt-3 text-sm text-red-600">{orderRegisterError}</p>}
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
+                <span>Showing {orderRecords.length.toLocaleString()} of {orderRegisterTotalCount.toLocaleString()} sales orders</span>
+                {orderRegisterHasMore && (
+                  <button type="button" disabled={orderRegisterLoading} onClick={() => void loadMoreOrderRecords()} className="rounded-xl border border-[var(--sami-border)] px-4 py-2 font-semibold disabled:opacity-50">
+                    {orderRegisterLoading ? 'Loading sales orders…' : 'Load more sales orders'}
+                  </button>
                 )}
               </div>
 
