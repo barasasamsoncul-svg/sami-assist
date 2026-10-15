@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -887,7 +888,13 @@ integration(
 integration(
   'ERP parity: accepted Sales quote converts to one confirmed order and reconciles CRM in PostgreSQL',
   async () => {
-    const { createSalesOrderFromQuoteTransaction } = await import('../lib/apps/sales/commands');
+    const [
+      { createSalesOrderFromQuoteTransaction },
+      { respondToPublicSalesQuoteWithPool },
+    ] = await Promise.all([
+      import('../lib/apps/sales/commands'),
+      import('../lib/apps/sales/public'),
+    ]);
     const pool = new Pool({
       connectionString: DATABASE_URL,
       max: 1,
@@ -904,6 +911,8 @@ integration(
     const opportunityId = '66666666-6666-4666-8666-666666666666';
     const quoteId = '77777777-7777-4777-8777-777777777777';
     const catalogItemId = '88888888-8888-4888-8888-888888888888';
+    const publicToken = 'sales-quote-public-acceptance-test-token-2026';
+    const publicTokenHash = createHash('sha256').update(publicToken).digest('hex');
 
     const orderNumber = 'SO-2026-0017';
     let reserveCalls = 0;
@@ -988,8 +997,33 @@ integration(
           deposit_type VARCHAR(20) NOT NULL DEFAULT 'none',
           deposit_value NUMERIC(14,2) NOT NULL DEFAULT 0,
           converted_at TIMESTAMPTZ,
+          public_token_hash TEXT,
+          valid_until DATE,
+          viewed_at TIMESTAMPTZ,
+          accepted_at TIMESTAMPTZ,
+          rejected_at TIMESTAMPTZ,
+          expired_at TIMESTAMPTZ,
+          accepted_by_name TEXT,
+          accepted_by_email TEXT,
+          acceptance_note TEXT,
+          acceptance_signature_consent_text TEXT,
           public_enabled BOOLEAN NOT NULL DEFAULT TRUE,
           updated_by UUID,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TEMP TABLE sales_settings (
+          company_id UUID PRIMARY KEY,
+          allow_online_acceptance BOOLEAN NOT NULL DEFAULT TRUE,
+          allow_online_rejection BOOLEAN NOT NULL DEFAULT TRUE
+        );
+
+        CREATE TEMP TABLE sales_quote_optional_items (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          quote_id UUID NOT NULL,
+          company_id UUID NOT NULL,
+          is_selected BOOLEAN NOT NULL DEFAULT FALSE,
+          selected_at TIMESTAMPTZ,
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
 
@@ -1135,6 +1169,12 @@ integration(
       );
 
       await setupClient.query(
+        `INSERT INTO sales_settings (company_id, allow_online_acceptance, allow_online_rejection)
+         VALUES ($1, TRUE, TRUE)`,
+        [companyId],
+      );
+
+      await setupClient.query(
         `INSERT INTO sales_opportunities
           (id, company_id, stage_id, probability, lost_at, lost_reason, updated_by)
          VALUES ($1, $2, $3, 40, NOW(), 'old loss metadata', $4)`,
@@ -1148,13 +1188,15 @@ integration(
            total_amount, cost_total, margin_amount, margin_percent,
            salesperson_user_id, sales_team_id, territory_id, quote_date,
            base_currency, exchange_rate, exchange_rate_date, exchange_rate_source,
-           base_total_amount, deposit_type, deposit_value
+           base_total_amount, deposit_type, deposit_value,
+           public_token_hash, valid_until, public_enabled
          ) VALUES (
-           $1,$2,$3,'Q-2026-0042','accepted','not_required',
+           $1,$2,$3,'Q-2026-0042','sent','not_required',
            'KES','Acme Ltd',100,0,16,0,116,0,100,100,
-           $4,$5,$6,'2026-10-15','KES',1,'2026-10-15','base',116,'none',0
+           $4,$5,$6,'2026-10-15','KES',1,'2026-10-15','base',116,'none',0,
+           $7, DATE '2026-12-31', TRUE
          )`,
-        [quoteId, companyId, opportunityId, userId, salesTeamId, territoryId],
+        [quoteId, companyId, opportunityId, userId, salesTeamId, territoryId, publicTokenHash],
       );
 
       await setupClient.query(
@@ -1185,6 +1227,42 @@ integration(
       },
       pool,
     } as unknown as Parameters<typeof createSalesOrderFromQuoteTransaction>[1];
+
+    const customerAcceptance = await respondToPublicSalesQuoteWithPool(
+      pool,
+      publicToken,
+      {
+        action: 'accept',
+        signerName: 'Test Customer',
+        signerEmail: 'buyer@example.com',
+        signatureConsent: true,
+        acceptanceNote: 'Approved for the order.',
+      },
+      {
+        // Approval-policy evaluation has its own dedicated regression coverage;
+        // this integration isolates the public customer acceptance + conversion chain.
+        assertSalesQuoteApprovalSatisfied: async () => {},
+      },
+    );
+    assert.deepEqual(customerAcceptance, {
+      id: quoteId,
+      status: 'accepted',
+    });
+
+    const acceptedQuote = await pool.query(
+      `SELECT status, accepted_at, accepted_by_name, accepted_by_email,
+              acceptance_note, acceptance_signature_consent_text, public_enabled
+       FROM sales_quotes
+       WHERE id = $1 AND company_id = $2`,
+      [quoteId, companyId],
+    );
+    assert.equal(acceptedQuote.rows[0].status, 'accepted');
+    assert.ok(acceptedQuote.rows[0].accepted_at instanceof Date);
+    assert.equal(acceptedQuote.rows[0].accepted_by_name, 'Test Customer');
+    assert.equal(acceptedQuote.rows[0].accepted_by_email, 'buyer@example.com');
+    assert.equal(acceptedQuote.rows[0].acceptance_note, 'Approved for the order.');
+    assert.equal(acceptedQuote.rows[0].acceptance_signature_consent_text?.length > 20, true);
+    assert.equal(acceptedQuote.rows[0].public_enabled, false);
 
     const dependencies: Parameters<typeof createSalesOrderFromQuoteTransaction>[2] = {
       ensureSalesDefaults: async () => {},
@@ -1315,9 +1393,13 @@ integration(
       assert.ok(opportunity.rows[0].won_at instanceof Date);
       assert.equal(opportunity.rows[0].lost_at, null);
       assert.equal(opportunity.rows[0].lost_reason, null);
-      assert.equal(quoteHistory.rows.length, 1);
-      assert.equal(quoteHistory.rows[0].from_status, 'accepted');
-      assert.equal(quoteHistory.rows[0].to_status, 'converted');
+      assert.equal(quoteHistory.rows.length, 2);
+      assert.ok(quoteHistory.rows.some(
+        (row: Record<string, unknown>) => row.from_status === 'sent' && row.to_status === 'accepted',
+      ), 'public customer acceptance must persist sent -> accepted');
+      assert.ok(quoteHistory.rows.some(
+        (row: Record<string, unknown>) => row.from_status === 'accepted' && row.to_status === 'converted',
+      ), 'subsequent order creation must persist accepted -> converted');
       assert.equal(orderHistory.rows.length, 1);
       assert.equal(orderHistory.rows[0].from_status, null);
       assert.equal(orderHistory.rows[0].to_status, 'confirmed');
@@ -1330,10 +1412,15 @@ integration(
          ORDER BY type`,
         [companyId, opportunityId, quoteId],
       );
-      assert.equal(audit.rows.length, 2);
+      assert.equal(audit.rows.length, 4);
       assert.deepEqual(
         audit.rows.map((row: Record<string, unknown>) => row.type).sort(),
-        ['sales.opportunity.won_from_order', 'sales.quote.converted'],
+        [
+          'sales.opportunity.won_from_order',
+          'sales.quote.converted',
+          'sales.quote.customer_accepted',
+          'sales.quote.optional_products_selected',
+        ].sort(),
       );
       const opportunityAudit = audit.rows.find(
         (row: Record<string, unknown>) => row.type === 'sales.opportunity.won_from_order',
