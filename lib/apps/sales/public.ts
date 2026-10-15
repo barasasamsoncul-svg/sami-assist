@@ -757,48 +757,50 @@ export async function getPublicSalesQuote(
 }
 
 
-export async function respondToPublicSalesQuote(
-  tenantId:
-    string,
-  token:
-    string,
-  input: {
-    action:
-      'accept' |
-      'reject' |
-      'request_revision';
-    reason?:
-      unknown;
-    signerName?:
-      unknown;
-    signerEmail?:
-      unknown;
-    signatureConsent?:
-      unknown;
-    requesterName?:
-      unknown;
-    requesterEmail?:
-      unknown;
-    acceptanceNote?:
-      unknown;
-    selectedOptionalItemIds?:
-      unknown;
-  },
+type PublicSalesQuoteResponseInput = {
+  action: 'accept' | 'reject' | 'request_revision';
+  reason?: unknown;
+  signerName?: unknown;
+  signerEmail?: unknown;
+  signatureConsent?: unknown;
+  requesterName?: unknown;
+  requesterEmail?: unknown;
+  acceptanceNote?: unknown;
+  selectedOptionalItemIds?: unknown;
+};
+
+type PublicSalesQuoteResponseDependencies = {
+  assertSalesQuoteApprovalSatisfied: typeof assertSalesQuoteApprovalSatisfied;
+  expirePublicSalesQuoteWithAudit: typeof expirePublicSalesQuoteWithAudit;
+  recordSalesActivity: typeof recordSalesActivity;
+};
+
+const defaultPublicSalesQuoteResponseDependencies: PublicSalesQuoteResponseDependencies = {
+  assertSalesQuoteApprovalSatisfied,
+  expirePublicSalesQuoteWithAudit,
+  recordSalesActivity,
+};
+
+/**
+ * Executes a public customer response against a supplied tenant pool. The
+ * production wrapper resolves that pool from the tenant ID; exposing the
+ * transaction boundary also lets PostgreSQL integration tests exercise the
+ * real SQL/state transition without mocking persistence.
+ */
+export async function respondToPublicSalesQuoteWithPool(
+  pool: Awaited<ReturnType<typeof getTenantPoolByTenantId>>,
+  token: string,
+  input: PublicSalesQuoteResponseInput,
+  overrides: Partial<PublicSalesQuoteResponseDependencies> = {},
 ) {
-  assertToken(
-    token,
-  );
+  assertToken(token);
 
-  const pool =
-    await getTenantPoolByTenantId(
-      tenantId,
-    );
+  const deps: PublicSalesQuoteResponseDependencies = {
+    ...defaultPublicSalesQuoteResponseDependencies,
+    ...overrides,
+  };
 
-  const tokenHash =
-    sha256(
-      token,
-    );
-
+  const tokenHash = sha256(token);
   const client =
     await pool.connect();
 
@@ -875,7 +877,7 @@ export async function respondToPublicSalesQuote(
         today,
       )
     ) {
-      const expired = await expirePublicSalesQuoteWithAudit(
+      const expired = await deps.expirePublicSalesQuoteWithAudit(
         client,
         {
           quoteId: String(quote.id),
@@ -930,7 +932,7 @@ export async function respondToPublicSalesQuote(
       if (requesterEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(requesterEmail)) {
         throw new SalesError('INVALID_INPUT', 'Enter a valid email address or leave the email field blank.');
       }
-      await recordSalesActivity(client, {
+      await deps.recordSalesActivity(client, {
         companyId: String(quote.company_id),
         userId: null,
         quoteId: String(quote.id),
@@ -955,7 +957,7 @@ export async function respondToPublicSalesQuote(
     }
 
     if (input.action === 'accept') {
-      await assertSalesQuoteApprovalSatisfied(client, String(quote.company_id), String(quote.id));
+      await deps.assertSalesQuoteApprovalSatisfied(client, String(quote.company_id), String(quote.id));
     }
 
     if (
@@ -1397,7 +1399,7 @@ export async function respondToPublicSalesQuote(
         ],
       );
 
-      await recordSalesActivity(
+      await deps.recordSalesActivity(
         client,
         {
           companyId:
@@ -1512,7 +1514,7 @@ export async function respondToPublicSalesQuote(
       ],
     );
 
-    await recordSalesActivity(
+    await deps.recordSalesActivity(
       client,
       {
         companyId:
@@ -1567,4 +1569,20 @@ export async function respondToPublicSalesQuote(
   } finally {
     client.release();
   }
+}
+
+
+export async function respondToPublicSalesQuote(
+  tenantId: string,
+  token: string,
+  input: PublicSalesQuoteResponseInput,
+) {
+  assertToken(token);
+
+  const pool = await getTenantPoolByTenantId(tenantId);
+  return respondToPublicSalesQuoteWithPool(
+    pool,
+    token,
+    input,
+  );
 }
