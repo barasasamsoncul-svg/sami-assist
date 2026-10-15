@@ -70,6 +70,33 @@ test('Sales quote expiry normalizes PostgreSQL date values and preserves accepte
   assert.ok(onlyOpenStatuses >= 0 && expiryCheck > onlyOpenStatuses,
     'public expiry mutation must be limited to open, customer-actionable quotes');
   assert.ok(expiryMutation > expiryCheck);
+
+  const publicGetExpiryStart = publicGet.indexOf("  if (\n    [\n      'sent',\n      'viewed',");
+  const publicGetExpiryEnd = publicGet.indexOf("  } else if (\n    options.markViewed", publicGetExpiryStart);
+  assert.ok(publicGetExpiryStart >= 0 && publicGetExpiryEnd > publicGetExpiryStart);
+  const publicGetExpiry = publicGet.slice(publicGetExpiryStart, publicGetExpiryEnd);
+  assert.match(publicGetExpiry, /FOR UPDATE/,
+    'public expiry must re-read the quote while holding its row lock');
+  assert.match(publicGetExpiry, /quote\.valid_until = currentResult\.rows\[0\]\.valid_until/);
+  assert.match(publicGetExpiry, /INSERT INTO sales_quote_status_history/);
+  assert.ok(publicGetExpiry.includes("type: 'sales.quote.expired'"));
+  assert.ok(publicGetExpiry.includes("await client.query('COMMIT')"));
+  assert.equal(publicGetExpiry.includes('await pool.query('), false,
+    'expiry status, history, and activity must share one transaction');
+
+  const responseExpiryStart = response.indexOf("if (\n      ['sent', 'viewed'].includes(current)");
+  const responseExpiryEnd = response.indexOf("if (\n      ![\n        'sent',", responseExpiryStart);
+  assert.ok(responseExpiryStart >= 0 && responseExpiryEnd > responseExpiryStart);
+  const responseExpiry = response.slice(responseExpiryStart, responseExpiryEnd);
+  assert.match(response, /FOR UPDATE/,
+    'public response must serialize expiry against accept/reject actions');
+  assert.match(responseExpiry, /INSERT INTO sales_quote_status_history/);
+  assert.ok(responseExpiry.includes("type: 'sales.quote.expired'"));
+  const responseHistory = responseExpiry.indexOf('INSERT INTO sales_quote_status_history');
+  const responseActivity = responseExpiry.indexOf("type: 'sales.quote.expired'");
+  const responseCommit = responseExpiry.indexOf("'COMMIT'");
+  assert.ok(responseHistory >= 0 && responseActivity > responseHistory && responseCommit > responseActivity,
+    'expiry history and activity must commit atomically before the public action is rejected');
 });
 
 test('Sales quote-to-invoice checks invoicing and customer permissions before converting the quote', async () => {

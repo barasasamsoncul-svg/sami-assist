@@ -216,35 +216,116 @@ export async function getPublicSalesQuote(
       today,
     )
   ) {
-    status =
-      'expired';
+    const client = await pool.connect();
 
-    await pool.query(
-      `
-        UPDATE sales_quotes
-        SET
-          status = 'expired',
-          expired_at =
-            COALESCE(
-              expired_at,
-              NOW()
-            ),
-          public_enabled =
-            FALSE,
-          updated_at =
-            NOW()
-        WHERE id = $1
-          AND company_id = $2
-          AND status IN (
-            'sent',
-            'viewed'
-          )
-      `,
-      [
-        quote.id,
-        quote.company_id,
-      ],
-    );
+    try {
+      await client.query('BEGIN');
+
+      // Re-read under a row lock. A customer acceptance/rejection may have
+      // committed after the initial public-page SELECT.
+      const currentResult = await client.query(
+        `
+          SELECT status, valid_until
+          FROM sales_quotes
+          WHERE id = $1
+            AND company_id = $2
+            AND deleted_at IS NULL
+          FOR UPDATE
+        `,
+        [quote.id, quote.company_id],
+      );
+
+      if (currentResult.rows.length !== 1) {
+        throw new SalesError(
+          'QUOTE_NOT_FOUND',
+          'Quote was not found.',
+        );
+      }
+
+      const currentStatus = String(currentResult.rows[0].status);
+      quote.valid_until = currentResult.rows[0].valid_until;
+      if (
+        ['sent', 'viewed'].includes(currentStatus) &&
+        isSalesQuoteExpired(currentResult.rows[0].valid_until, today)
+      ) {
+        const changed = await client.query(
+          `
+            UPDATE sales_quotes
+            SET
+              status = 'expired',
+              expired_at = COALESCE(expired_at, NOW()),
+              public_enabled = FALSE,
+              updated_at = NOW()
+            WHERE id = $1
+              AND company_id = $2
+              AND status IN ('sent', 'viewed')
+            RETURNING id
+          `,
+          [quote.id, quote.company_id],
+        );
+
+        if (changed.rows.length > 0) {
+          await client.query(
+            `
+              INSERT INTO sales_quote_status_history (
+                quote_id,
+                company_id,
+                from_status,
+                to_status,
+                reason,
+                changed_by
+              )
+              VALUES ($1, $2, $3, 'expired', $4, NULL)
+            `,
+            [
+              quote.id,
+              quote.company_id,
+              currentStatus,
+              'Quotation expired before customer action.',
+            ],
+          );
+
+          await recordSalesActivity(client, {
+            companyId: String(quote.company_id),
+            userId: null,
+            quoteId: String(quote.id),
+            type: 'sales.quote.expired',
+            content: 'Quote ' + String(quote.quote_number) + ' expired before customer action.',
+            metadata: {
+              reason: 'validity_expired',
+              source: 'public_quote_view',
+            },
+          });
+
+          status = 'expired';
+        } else {
+          // Defensive fallback in case a database trigger changed the row.
+          const latest = await client.query(
+            `
+              SELECT status
+              FROM sales_quotes
+              WHERE id = $1
+                AND company_id = $2
+            `,
+            [quote.id, quote.company_id],
+          );
+          status = latest.rows[0] ? String(latest.rows[0].status) : currentStatus;
+        }
+      } else {
+        // The state may have advanced to accepted/rejected while this request
+        // was waiting for the lock; reflect the database state, not stale data.
+        status = currentStatus;
+      }
+
+      await client.query('COMMIT');
+    } catch (error) {
+      try {
+        await client.query('ROLLBACK');
+      } catch {}
+      throw error;
+    } finally {
+      client.release();
+    }
   } else if (
     options.markViewed !==
       false &&
@@ -850,6 +931,39 @@ export async function respondToPublicSalesQuote(
           quote.company_id,
         ],
       );
+
+      await client.query(
+        `
+          INSERT INTO sales_quote_status_history (
+            quote_id,
+            company_id,
+            from_status,
+            to_status,
+            reason,
+            changed_by
+          )
+          VALUES ($1, $2, $3, 'expired', $4, NULL)
+        `,
+        [
+          quote.id,
+          quote.company_id,
+          current,
+          'Quotation expired before customer action.',
+        ],
+      );
+
+      await recordSalesActivity(client, {
+        companyId: String(quote.company_id),
+        userId: null,
+        quoteId: String(quote.id),
+        type: 'sales.quote.expired',
+        content: 'Quote ' + String(quote.quote_number) + ' expired before customer action.',
+        metadata: {
+          attemptedAction: input.action,
+          reason: 'validity_expired',
+          source: 'public_quote_response',
+        },
+      });
 
       await client.query(
         'COMMIT',

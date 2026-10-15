@@ -1,6 +1,6 @@
 # SaMi Sales parity audit ledger
 
-**Audit baseline:** `main` at `a840be5d7fd9b2fac84acc20813d37fecfd358c9` after PR #212 (2026-10-15 follow-up audit).  
+**Audit baseline:** `main` at `568296a9aaaa7cb10171caa05db432d90cec8989` after PR #213 (2026-10-15 follow-up audit).  
 **Purpose:** one authoritative checklist for finishing Sales. This is an evidence ledger, not a claim that Sales has already achieved Odoo/Zoho parity.
 
 ## Completion rule
@@ -36,7 +36,8 @@ A capability is **verified complete** only when (1) its UI action is wired to th
 - **Previously merged:** currency-safe forecasts, management insights, quotation effectiveness, product performance, commission performance, and margin-quality row caps (#196–#203). Do not re-open these areas without a failing regression or a newly demonstrated defect.
 - **Merged in #211:** quote and order registers now support bounded server-side pagination, SQL search/status filters, allowlisted order sorting, filtered counts, and load-more controls. All required Sales and platform release gates passed on the exact PR head.
 - **Merged in #212:** return-credit issuance and refunds now share a per-return lock across the Invoicing call and Sales-side balance repair. Refunds re-read available credit after locking; caller-keyed retries recover the original posted amount; partial/full refund states are preserved; and new refund keys hash the complete accepted caller key while supporting legacy-key recovery. Sales, Invoicing, ERP, UI, platform, Category 24, Category 25, and Pre-Module Core checks passed on the exact PR head before merge.
-- **Current follow-up branch (not yet merged):** harden invoice-batch idempotency so a completed or in-progress invoice cannot be reused with a different selection mode. New batches record whether the request explicitly selected lines or meant all remaining invoiceable quantities; retries validate even an explicitly empty selection and reject omitted-line retries against a previously explicit partial invoice. Legacy array-form batch records remain supported.
+- **Merged in #213:** invoice-batch retries now persist and validate selection mode. Completed/in-progress invoice batches cannot be replayed with a different selection mode; explicitly empty selections are validated; omitted-line retries are rejected when the original request selected specific lines. Legacy array-form batch records remain supported. All eight required release gates passed on exact PR head `4d946e9868675332ff876b3e7cbc556b5758e0eb` before merge.
+- **Current follow-up branch (not yet merged):** public quote expiry now re-checks lifecycle state under a row lock and records status history plus an activity event in the same transaction when a customer page view or response discovers expiry. The response path's already-locked expiry mutation also records both audit records before committing. Regression coverage protects the transaction and state-recheck boundary.
 - **Not yet certified:** this ledger does not mark the entire module “done.” The remaining work is execution-level verification of each workflow row, with any confirmed gaps fixed in grouped changes. Only after that and full release validation should Sales be called complete.
 
 ## Audit evidence index
