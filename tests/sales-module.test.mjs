@@ -39,9 +39,9 @@ test('Sales quote expiry normalizes dates and uses one compare-and-set audited t
     source('lib/apps/sales/public-quote-expiry.ts'),
   ]);
 
-  assert.match(commands, /shouldExpireSalesQuoteBeforeAcceptance\\(/);
+  assert.match(commands, /shouldExpireSalesQuoteBeforeAcceptance\(/);
   const internalStart = commands.indexOf('export async function changeSalesQuoteStatus(');
-  const internalEnd = commands.indexOf('\\n\\nexport async function ', internalStart + 30);
+  const internalEnd = commands.indexOf('\n\nexport async function ', internalStart + 30);
   assert.ok(internalStart >= 0 && internalEnd > internalStart);
   const internal = commands.slice(internalStart, internalEnd);
   const expiryDecision = internal.indexOf('shouldExpireSalesQuoteBeforeAcceptance(');
@@ -53,44 +53,44 @@ test('Sales quote expiry normalizes dates and uses one compare-and-set audited t
   assert.ok(expiryHistory > expiryUpdate);
   assert.ok(expiryCommit > expiryHistory);
   assert.match(internal.slice(expiryDecision, expiryCommit), /public_enabled = FALSE/);
-  assert.match(internal.slice(expiryDecision, expiryCommit), /sales\\.quote\\.expired/);
+  assert.match(internal.slice(expiryDecision, expiryCommit), /sales\.quote\.expired/);
 
   const publicGetStart = publicSales.indexOf('export async function getPublicSalesQuote(');
   const publicRespondStart = publicSales.indexOf('export async function respondToPublicSalesQuote(', publicGetStart);
   assert.ok(publicGetStart >= 0 && publicRespondStart > publicGetStart);
   const publicGet = publicSales.slice(publicGetStart, publicRespondStart);
-  assert.match(publicGet, /isSalesQuoteExpired\\(/);
-  assert.match(publicGet, /validUntil:\\s*salesDateOnly\\(quote\\.valid_until\\)/);
+  assert.match(publicGet, /isSalesQuoteExpired\(/);
+  assert.match(publicGet, /validUntil:\s*salesDateOnly\(quote\.valid_until\)/);
 
   const response = publicSales.slice(publicRespondStart);
-  assert.match(response, /isSalesQuoteExpired\\(/);
-  const responseExpiryStart = response.indexOf("if (\\n      ['sent', 'viewed'].includes(current)");
-  const responseExpiryEnd = response.indexOf("if (\\n      ![\\n        'sent',", responseExpiryStart);
+  assert.match(response, /isSalesQuoteExpired\(/);
+  const responseExpiryStart = response.indexOf("if (\n      ['sent', 'viewed'].includes(current)");
+  const responseExpiryEnd = response.indexOf("if (\n      ![\n        'sent',", responseExpiryStart);
   assert.ok(responseExpiryStart >= 0 && responseExpiryEnd > responseExpiryStart);
   const responseExpiry = response.slice(responseExpiryStart, responseExpiryEnd);
   assert.match(response, /FOR UPDATE/,
     'public response must lock the quote before it decides whether to expire it');
   assert.match(responseExpiry, /expirePublicSalesQuoteWithAudit/);
-  assert.match(responseExpiry, /await client.query\\('COMMIT'\\)/);
+  assert.match(responseExpiry, /await client.query\('COMMIT'\)/);
   assert.match(responseExpiry, /This quote has expired/);
 
-  const publicGetExpiryStart = publicGet.indexOf("  if (\\n    [\\n      'sent',\\n      'viewed',");
-  const publicGetExpiryEnd = publicGet.indexOf("  } else if (\\n    options.markViewed", publicGetExpiryStart);
+  const publicGetExpiryStart = publicGet.indexOf("  if (\n    [\n      'sent',\n      'viewed',");
+  const publicGetExpiryEnd = publicGet.indexOf("  } else if (\n    options.markViewed", publicGetExpiryStart);
   assert.ok(publicGetExpiryStart >= 0 && publicGetExpiryEnd > publicGetExpiryStart);
   const publicGetExpiry = publicGet.slice(publicGetExpiryStart, publicGetExpiryEnd);
   assert.match(publicGetExpiry, /FOR UPDATE/,
     'public page reads must re-check status under the row lock before expiring');
-  assert.match(publicGetExpiry, /quote\\.valid_until = currentResult\\.rows\\[0\\]\\.valid_until/);
+  assert.match(publicGetExpiry, /quote\.valid_until = currentResult\.rows\[0\]\.valid_until/);
   assert.match(publicGetExpiry, /expirePublicSalesQuoteWithAudit/);
-  assert.match(publicGetExpiry, /await client\\.query\\('COMMIT'\\)/);
+  assert.match(publicGetExpiry, /await client\.query\('COMMIT'\)/);
 
-  assert.match(expiryTransition, /AND status = \\$3::varchar\\(30\\)/,
+  assert.match(expiryTransition, /AND status = \$3::varchar\(30\)/,
     'expiry must compare-and-set against the exact source status');
   assert.match(expiryTransition, /RETURNING id/);
   assert.match(expiryTransition, /INSERT INTO sales_quote_status_history/);
-  assert.match(expiryTransition, /await recordActivity\\(client/);
-  assert.match(expiryTransition, /type: 'sales\\.quote\\.expired'/);
-  assert.match(expiryTransition, /if \\(changed\\.rows\\.length !== 1\\) \\{[\\s\\S]*?return false/);
+  assert.match(expiryTransition, /await recordActivity\(client/);
+  assert.match(expiryTransition, /type: 'sales\.quote\.expired'/);
+  assert.match(expiryTransition, /if \(changed\.rows\.length !== 1\) \{[\s\S]*?return false/);
   assert.doesNotMatch(expiryTransition, /BEGIN|COMMIT/,
     'the caller keeps status and audit records inside its transaction');
 });
