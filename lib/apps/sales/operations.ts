@@ -3838,7 +3838,7 @@ export async function issueSalesReturnCredit(
       });
     }
 
-    await context.pool.query(
+    const returnState = await context.pool.query(
       `
         UPDATE sales_returns
         SET
@@ -3849,15 +3849,15 @@ export async function issueSalesReturnCredit(
             THEN 'credited'
             ELSE status
           END,
-          credited_at =
-            COALESCE(
-              credited_at,
-              NOW()
-            ),
+          credited_at = CASE
+            WHEN $4::boolean THEN COALESCE(credited_at, NOW())
+            ELSE credited_at
+          END,
           updated_by = $3,
           updated_at = NOW()
         WHERE id = $1
           AND company_id = $2
+        RETURNING status
       `,
       [
         returnId,
@@ -3870,9 +3870,7 @@ export async function issueSalesReturnCredit(
     return {
       returnId,
       status:
-        createdCredits.length > 0
-          ? 'credited'
-          : String(returnRow.status),
+        String(returnState.rows[0]?.status || returnRow.status),
       credits:
         createdCredits,
     };
