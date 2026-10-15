@@ -402,8 +402,8 @@ test('Sales internal approval is separate from customer acceptance', async () =>
 test('Sales quote approval threshold is evaluated in company base currency on create and edit', async () => {
   const commands = await source('lib/apps/sales/commands.ts');
 
-  const createStart = commands.indexOf('export async function createSalesQuote(');
-  const updateStart = commands.indexOf('export async function updateSalesQuoteDraft(', createStart);
+  const createStart = commands.indexOf('export async function createSalesQuoteTransaction(');
+  const updateStart = commands.indexOf('export async function updateSalesQuoteDraftTransaction(', createStart);
   const duplicateStart = commands.indexOf('export async function duplicateSalesQuote(', updateStart);
   assert.ok(createStart >= 0 && updateStart > createStart && duplicateStart > updateStart);
 
