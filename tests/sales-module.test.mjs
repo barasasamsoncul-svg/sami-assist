@@ -56,13 +56,19 @@ test('Sales quote expiry normalizes dates and uses one compare-and-set audited t
   assert.match(internal.slice(expiryDecision, expiryCommit), /sales\.quote\.expired/);
 
   const publicGetStart = publicSales.indexOf('export async function getPublicSalesQuote(');
-  const publicRespondStart = publicSales.indexOf('export async function respondToPublicSalesQuote(', publicGetStart);
+  const publicRespondStart = publicSales.indexOf('export async function respondToPublicSalesQuoteWithPool(', publicGetStart);
   assert.ok(publicGetStart >= 0 && publicRespondStart > publicGetStart);
   const publicGet = publicSales.slice(publicGetStart, publicRespondStart);
   assert.match(publicGet, /isSalesQuoteExpired\(/);
   assert.match(publicGet, /validUntil:\s*salesDateOnly\(quote\.valid_until\)/);
 
   const response = publicSales.slice(publicRespondStart);
+  const publicWrapperStart = publicSales.indexOf('export async function respondToPublicSalesQuote(', publicRespondStart);
+  assert.ok(publicWrapperStart > publicRespondStart,
+    'the tenant-facing API must wrap the directly testable response transaction');
+  const publicWrapper = publicSales.slice(publicWrapperStart);
+  assert.match(publicWrapper, /getTenantPoolByTenantId/);
+  assert.match(publicWrapper, /respondToPublicSalesQuoteWithPool/);
   assert.match(response, /isSalesQuoteExpired\(/);
   const responseExpiryStart = response.indexOf("if (\n      ['sent', 'viewed'].includes(current)");
   const responseExpiryEnd = response.indexOf("if (\n      ![\n        'sent',", responseExpiryStart);
