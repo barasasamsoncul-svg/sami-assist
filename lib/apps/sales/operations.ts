@@ -27,6 +27,11 @@ import {
 import { salesOrderDepositIdempotencyKey } from '@/lib/apps/sales/deposit-rules';
 
 import {
+  legacySalesReturnRefundIdempotencyKey,
+  salesReturnRefundIdempotencyKey,
+} from '@/lib/apps/sales/return-credit-rules';
+
+import {
   cleanText,
   money,
   nextSalesNumber,
@@ -3993,12 +3998,12 @@ export async function refundSalesReturnCredit(
     // collapse to the same database idempotency key. The compact key plus the
     // Invoicing prefix stays within 120 characters.
     const suppliedRefundKey = callerKey
-      ? ('srcr:' + returnCreditId + ':' + createHash('sha256').update(callerKey).digest('hex'))
+      ? salesReturnRefundIdempotencyKey(returnCreditId, callerKey)
       : null;
     // Older versions stored a truncated, readable key. Keep looking it up so
     // an in-flight/previously committed refund is recovered instead of replayed.
     const legacyRefundKey = callerKey
-      ? ('sales-return-credit:' + returnCreditId + ':refund:' + callerKey).slice(0, 120)
+      ? legacySalesReturnRefundIdempotencyKey(returnCreditId, callerKey)
       : null;
 
     // A retry may arrive after Invoicing has committed the refund and Sales has
