@@ -4858,15 +4858,37 @@ export async function cancelSalesOrder(
 }
 
 
-export async function createSalesOrderInvoice(
-  input:
-    Record<string, unknown>,
+type SalesOrderInvoiceDependencies = {
+  createInvoice: (
+    input: Parameters<typeof createInvoice>[0],
+  ) => Promise<{ id: string }>;
+  createInvoicingCustomer: (
+    input: Parameters<typeof createInvoicingCustomer>[0],
+  ) => Promise<{ id: string }>;
+  emitSalesAutomationEvent: typeof emitSalesAutomationEvent;
+};
+
+const defaultSalesOrderInvoiceDependencies: SalesOrderInvoiceDependencies = {
+  createInvoice,
+  createInvoicingCustomer,
+  emitSalesAutomationEvent,
+};
+
+/**
+ * Transaction-level Sales invoicing coordinator. Production entry points must
+ * authorize the request before calling this helper. The PostgreSQL integration
+ * suite may replace only the Invoicing/customer/automation adapters while
+ * executing the real Sales invoice-batch and quantity-persistence logic.
+ */
+export async function createSalesOrderInvoiceTransaction(
+  input: Record<string, unknown>,
+  context: Awaited<ReturnType<typeof requireSalesContext>>,
+  overrides: Partial<SalesOrderInvoiceDependencies> = {},
 ) {
-  const context =
-    await requireSalesContext(
-      SALES_PERMISSIONS
-        .ORDER_MANAGE,
-    );
+  const deps: SalesOrderInvoiceDependencies = {
+    ...defaultSalesOrderInvoiceDependencies,
+    ...overrides,
+  };
 
   const orderId =
     requireUuid(
@@ -5132,7 +5154,7 @@ export async function createSalesOrderInvoice(
     ) {
       try {
         const createdCustomer =
-          await createInvoicingCustomer({
+          await deps.createInvoicingCustomer({
             name:
               orderRow.customer_name,
             email:
@@ -5202,7 +5224,7 @@ export async function createSalesOrderInvoice(
         billingCustomerId &&
         orderRow.quote_id
       ) {
-        await context.pool.query(
+        await client.query(
           `
             UPDATE sales_quotes
             SET
@@ -5663,7 +5685,7 @@ export async function createSalesOrderInvoice(
     }
 
     const recovered =
-      await context.pool.query(
+      await client.query(
         `
           SELECT id
           FROM invoicing_invoices
@@ -5706,7 +5728,7 @@ export async function createSalesOrderInvoice(
         );
     } else {
       const invoice =
-        await createInvoice({
+        await deps.createInvoice({
           customerId:
             String(
               billingCustomerId,
@@ -5988,7 +6010,7 @@ export async function createSalesOrderInvoice(
       'COMMIT',
     );
 
-    await emitSalesAutomationEvent(
+    await deps.emitSalesAutomationEvent(
       context,
       {
         triggerKey:
@@ -6049,6 +6071,15 @@ export async function createSalesOrderInvoice(
   }
 }
 
+export async function createSalesOrderInvoice(
+  input: Record<string, unknown>,
+) {
+  const context = await requireSalesContext(
+    SALES_PERMISSIONS.ORDER_MANAGE,
+  );
+
+  return createSalesOrderInvoiceTransaction(input, context);
+}
 
 export async function updateSalesSettings(
   input:
