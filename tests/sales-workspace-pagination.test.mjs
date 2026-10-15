@@ -26,6 +26,10 @@ test('Sales quotation register searches and filters on the server before paging'
   assert.match(implementation, /limit \+ 1/);
   assert.match(implementation, /totalCount: Number\(count\.rows\[0\]/);
   assert.match(implementation, /hasMore/);
+  assert.match(implementation, /AS awaiting_response/);
+  assert.match(implementation, /AS needs_approval/);
+  assert.match(implementation, /AS expiring_soon/);
+  assert.match(implementation, /queueCounts:/);
 });
 
 test('Sales order register searches, filters and sorts on the server before paging', async () => {
@@ -46,6 +50,9 @@ test('Sales order register searches, filters and sorts on the server before pagi
   assert.match(implementation, /LIMIT \$4 OFFSET \$5/);
   assert.match(implementation, /limit \+ 1/);
   assert.match(implementation, /nextOffset: offset \+ rows\.length/);
+  assert.match(implementation, /AS awaiting_fulfillment/);
+  assert.match(implementation, /AS partially_invoiced/);
+  assert.match(implementation, /queueCounts:/);
 });
 
 test('Sales API exposes register paging without accepting caller-provided SQL ordering', async () => {
@@ -68,5 +75,7 @@ test('Sales API exposes register paging without accepting caller-provided SQL or
   assert.match(client, /Load more sales orders/);
   assert.match(client, /quoteRegisterTotalCount/);
   assert.match(client, /orderRegisterTotalCount/);
+  assert.match(client, /quoteRegisterQueueCounts\?\.\[option\.key\]/);
+  assert.match(client, /orderRegisterQueueCounts\?\.\[option\.key\]/);
   assert.match(packageJson.scripts['test:sales'], /tests\/sales-workspace-pagination\.test\.mjs/);
 });
