@@ -294,6 +294,36 @@ test('Sales quote authoring and delivery keep permission checks on their public 
   assert.match(deliveryEntry, /await deliverSalesQuote\(/);
 });
 
+test('Sales fresh pipeline-stage schema declares every column before dependent indexes', async () => {
+  const [schema, migration] = await Promise.all([
+    source('lib/apps/sales/schema.sql'),
+    source('lib/apps/sales/migrations/3.4.19-to-3.4.20.ts'),
+  ]);
+
+  const stageStart = schema.indexOf('CREATE TABLE IF NOT EXISTS public.sales_pipeline_stages (');
+  const stageEnd = schema.indexOf('\n  );', stageStart);
+  assert.ok(stageStart >= 0 && stageEnd > stageStart);
+  const initialStageTable = schema.slice(stageStart, stageEnd);
+  for (const column of [
+    'pipeline_id',
+    'code',
+    'is_won',
+    'is_lost',
+    'fold_in_kanban',
+    'description',
+    'color',
+    'deleted_at',
+  ]) {
+    assert.match(initialStageTable, new RegExp('\\b' + column + '\\b'),
+      'fresh-install pipeline stage table must include ' + column + ' before partial indexes are created');
+  }
+
+  assert.match(migration, /fromVersion: '3\\.4\\.19'[\\s\\S]*toVersion: '3\\.4\\.20'/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS code VARCHAR\\(60\\)/);
+  assert.match(migration, /CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_pipeline_stages_code/);
+});
+
 test('Sales quote creation recomputes commercial totals server side', async () => {
   const commands =
     await source(
