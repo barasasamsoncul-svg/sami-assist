@@ -17,19 +17,19 @@ async function inventoryRuntimeReady(
     await client.query(
       `
         SELECT
-          to_regclass('public.products')
+          to_regclass('products')
             IS NOT NULL
             AS products_ready,
-          to_regclass('public.warehouses')
+          to_regclass('warehouses')
             IS NOT NULL
             AS warehouses_ready,
-          to_regclass('public.stock_levels')
+          to_regclass('stock_levels')
             IS NOT NULL
             AS stock_levels_ready,
-          to_regclass('public.stock_movements')
+          to_regclass('stock_movements')
             IS NOT NULL
             AS stock_movements_ready,
-          to_regclass('public.stock_reservations')
+          to_regclass('stock_reservations')
             IS NOT NULL
             AS reservations_ready
       `,
