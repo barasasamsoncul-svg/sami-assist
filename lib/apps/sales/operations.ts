@@ -3332,550 +3332,550 @@ export async function issueSalesReturnCredit(
 
   try {
 
-  const returnResult =
-    await context.pool.query(
-      `
-        SELECT
-          id,
-          sales_order_id,
-          return_number,
-          reason,
-          status
-        FROM sales_returns
-        WHERE id = $1
-          AND company_id = $2
-        LIMIT 1
-      `,
-      [
-        returnId,
-        context.companyId,
-      ],
-    );
-
-  if (
-    returnResult.rows.length !==
-      1
-  ) {
-    throw new SalesError(
-      'INVALID_INPUT',
-      'Sales return was not found.',
-    );
-  }
-
-  const returnRow =
-    returnResult.rows[0];
-
-  if (
-    ![
-      'received',
-      'credited',
-      'partially_refunded',
-    ].includes(
-      String(
-        returnRow.status,
-      ),
-    )
-  ) {
-    throw new SalesError(
-      'QUOTE_STATE_INVALID',
-      'Receive returned goods before issuing invoice credit.',
-    );
-  }
-
-  const returnItems =
-    await context.pool.query(
-      `
-        SELECT
-          item.id,
-          item.sales_order_line_id,
-          item.quantity,
-          line.invoiced_quantity,
-          line.credited_quantity
-        FROM sales_return_items item
-        INNER JOIN sales_order_items_v2 line
-          ON line.id =
-             item.sales_order_line_id
-         AND line.company_id =
-             item.company_id
-        WHERE item.return_id = $1
-          AND item.company_id = $2
-        ORDER BY
-          item.id
-      `,
-      [
-        returnId,
-        context.companyId,
-      ],
-    );
-
-  type CreditLine = {
-    returnItemId:
-      string;
-    orderLineId:
-      string;
-    invoiceItemId:
-      string;
-    quantity:
-      number;
-  };
-
-  const byInvoice =
-    new Map<
-      string,
-      CreditLine[]
-    >();
-
-  for (
-    const returnItem
-    of returnItems.rows
-  ) {
-    let remaining =
-      Number(
-        returnItem.quantity,
-      );
-
-    let mappedQuantity =
-      0;
-
-    const expectedCreditQuantity =
-      Math.min(
-        Number(
-          returnItem.quantity,
-        ),
-        Math.max(
-          0,
-          Number(
-            returnItem
-              .invoiced_quantity ||
-            0,
-          ) -
-          Number(
-            returnItem
-              .credited_quantity ||
-            0,
-          ),
-        ),
-      );
-
-    const invoiceItems =
+    const returnResult =
       await context.pool.query(
         `
           SELECT
-            invoice_item.id,
-            invoice_item.invoice_id,
-            invoice_item.quantity,
-            COALESCE(
-              (
-                SELECT SUM(
-                  credit_item.quantity
-                )
-                FROM invoicing_credit_note_items credit_item
-                INNER JOIN invoicing_credit_notes credit
-                  ON credit.id =
-                     credit_item.credit_note_id
-                 AND credit.company_id =
-                     credit_item.company_id
-                WHERE credit_item.invoice_item_id =
-                      invoice_item.id
-                  AND credit_item.company_id =
-                      invoice_item.company_id
-                  AND credit.status <>
-                      'cancelled'
-                  AND credit.deleted_at
-                      IS NULL
-                  AND COALESCE(
-                    credit.idempotency_key,
-                    ''
-                  ) <> (
-                    'sales-return:' ||
-                    $4::text ||
-                    ':invoice:' ||
-                    invoice_item.invoice_id::text
-                  )
-              ),
-              0
-            ) AS credited_quantity,
-            invoice.invoice_date
-          FROM invoicing_invoice_items invoice_item
-          INNER JOIN invoicing_invoices invoice
-            ON invoice.id =
-               invoice_item.invoice_id
-           AND invoice.company_id =
-               invoice_item.company_id
-          WHERE invoice_item.company_id = $1
-            AND invoice_item.metadata ->>
-                'sourceModule' =
-                'sales'
-            AND invoice_item.metadata ->>
-                'salesOrderId' =
-                $2
-            AND invoice_item.metadata ->>
-                'salesOrderLineId' =
-                $3
-            AND invoice.deleted_at IS NULL
-            AND invoice.status NOT IN (
-              'draft',
-              'pending_approval',
-              'rejected',
-              'cancelled',
-              'void',
-              'written_off'
-            )
-          ORDER BY
-            invoice.invoice_date,
-            invoice_item.sort_order,
-            invoice_item.id
+            id,
+            sales_order_id,
+            return_number,
+            reason,
+            status
+          FROM sales_returns
+          WHERE id = $1
+            AND company_id = $2
+          LIMIT 1
         `,
         [
-          context.companyId,
-          String(
-            returnRow
-              .sales_order_id,
-          ),
-          String(
-            returnItem
-              .sales_order_line_id,
-          ),
           returnId,
+          context.companyId,
         ],
       );
 
-    for (
-      const invoiceItem
-      of invoiceItems.rows
-    ) {
-      if (
-        remaining <=
-          0.000001
-      ) {
-        break;
-      }
-
-      const available =
-        Math.max(
-          0,
-          Number(
-            invoiceItem.quantity,
-          ) -
-          Number(
-            invoiceItem
-              .credited_quantity ||
-            0,
-          ),
-        );
-
-      if (
-        available <=
-          0.000001
-      ) {
-        continue;
-      }
-
-      const quantity =
-        Math.min(
-          remaining,
-          available,
-        );
-
-      const invoiceId =
-        String(
-          invoiceItem
-            .invoice_id,
-        );
-
-      const lines =
-        byInvoice.get(
-          invoiceId,
-        ) ||
-        [];
-
-      lines.push({
-        returnItemId:
-          String(
-            returnItem.id,
-          ),
-        orderLineId:
-          String(
-            returnItem
-              .sales_order_line_id,
-          ),
-        invoiceItemId:
-          String(
-            invoiceItem.id,
-          ),
-        quantity,
-      });
-
-      byInvoice.set(
-        invoiceId,
-        lines,
-      );
-
-      remaining -=
-        quantity;
-
-      mappedQuantity +=
-        quantity;
-    }
-
     if (
-      expectedCreditQuantity >
-        0.000001 &&
-      mappedQuantity +
-        0.000001 <
-        expectedCreditQuantity
+      returnResult.rows.length !==
+        1
     ) {
       throw new SalesError(
-        'RETURN_CREDIT_LINK_MISSING',
-        'This return includes quantities invoiced before Sales line-source tracking was enabled. Issue the unmatched credit from Invoicing manually; SaMi will not guess the invoice line mapping.',
-        {
-          salesOrderLineId:
+        'INVALID_INPUT',
+        'Sales return was not found.',
+      );
+    }
+
+    const returnRow =
+      returnResult.rows[0];
+
+    if (
+      ![
+        'received',
+        'credited',
+        'partially_refunded',
+      ].includes(
+        String(
+          returnRow.status,
+        ),
+      )
+    ) {
+      throw new SalesError(
+        'QUOTE_STATE_INVALID',
+        'Receive returned goods before issuing invoice credit.',
+      );
+    }
+
+    const returnItems =
+      await context.pool.query(
+        `
+          SELECT
+            item.id,
+            item.sales_order_line_id,
+            item.quantity,
+            line.invoiced_quantity,
+            line.credited_quantity
+          FROM sales_return_items item
+          INNER JOIN sales_order_items_v2 line
+            ON line.id =
+               item.sales_order_line_id
+           AND line.company_id =
+               item.company_id
+          WHERE item.return_id = $1
+            AND item.company_id = $2
+          ORDER BY
+            item.id
+        `,
+        [
+          returnId,
+          context.companyId,
+        ],
+      );
+
+    type CreditLine = {
+      returnItemId:
+        string;
+      orderLineId:
+        string;
+      invoiceItemId:
+        string;
+      quantity:
+        number;
+    };
+
+    const byInvoice =
+      new Map<
+        string,
+        CreditLine[]
+      >();
+
+    for (
+      const returnItem
+      of returnItems.rows
+    ) {
+      let remaining =
+        Number(
+          returnItem.quantity,
+        );
+
+      let mappedQuantity =
+        0;
+
+      const expectedCreditQuantity =
+        Math.min(
+          Number(
+            returnItem.quantity,
+          ),
+          Math.max(
+            0,
+            Number(
+              returnItem
+                .invoiced_quantity ||
+              0,
+            ) -
+            Number(
+              returnItem
+                .credited_quantity ||
+              0,
+            ),
+          ),
+        );
+
+      const invoiceItems =
+        await context.pool.query(
+          `
+            SELECT
+              invoice_item.id,
+              invoice_item.invoice_id,
+              invoice_item.quantity,
+              COALESCE(
+                (
+                  SELECT SUM(
+                    credit_item.quantity
+                  )
+                  FROM invoicing_credit_note_items credit_item
+                  INNER JOIN invoicing_credit_notes credit
+                    ON credit.id =
+                       credit_item.credit_note_id
+                   AND credit.company_id =
+                       credit_item.company_id
+                  WHERE credit_item.invoice_item_id =
+                        invoice_item.id
+                    AND credit_item.company_id =
+                        invoice_item.company_id
+                    AND credit.status <>
+                        'cancelled'
+                    AND credit.deleted_at
+                        IS NULL
+                    AND COALESCE(
+                      credit.idempotency_key,
+                      ''
+                    ) <> (
+                      'sales-return:' ||
+                      $4::text ||
+                      ':invoice:' ||
+                      invoice_item.invoice_id::text
+                    )
+                ),
+                0
+              ) AS credited_quantity,
+              invoice.invoice_date
+            FROM invoicing_invoice_items invoice_item
+            INNER JOIN invoicing_invoices invoice
+              ON invoice.id =
+                 invoice_item.invoice_id
+             AND invoice.company_id =
+                 invoice_item.company_id
+            WHERE invoice_item.company_id = $1
+              AND invoice_item.metadata ->>
+                  'sourceModule' =
+                  'sales'
+              AND invoice_item.metadata ->>
+                  'salesOrderId' =
+                  $2
+              AND invoice_item.metadata ->>
+                  'salesOrderLineId' =
+                  $3
+              AND invoice.deleted_at IS NULL
+              AND invoice.status NOT IN (
+                'draft',
+                'pending_approval',
+                'rejected',
+                'cancelled',
+                'void',
+                'written_off'
+              )
+            ORDER BY
+              invoice.invoice_date,
+              invoice_item.sort_order,
+              invoice_item.id
+          `,
+          [
+            context.companyId,
+            String(
+              returnRow
+                .sales_order_id,
+            ),
             String(
               returnItem
                 .sales_order_line_id,
             ),
-          expectedCreditQuantity,
-          mappedQuantity,
-        },
-      );
-    }
-  }
+            returnId,
+          ],
+        );
 
-  const createdCredits:
-    Array<{
-      invoiceId:
-        string;
-      creditNoteId:
-        string;
-      creditNoteNumber:
-        string;
-      amount:
-        number;
-      availableCredit:
-        number;
-    }> =
-      [];
+      for (
+        const invoiceItem
+        of invoiceItems.rows
+      ) {
+        if (
+          remaining <=
+            0.000001
+        ) {
+          break;
+        }
 
-  for (
-    const [
-      invoiceId,
-      lines,
-    ] of byInvoice
-  ) {
-    const credit =
-      await issueInvoiceCreditNote({
-        invoiceId,
-        reason:
-          'Sales return ' +
-          String(
-            returnRow
-              .return_number,
-          ) +
-          ': ' +
-          String(
-            returnRow.reason,
-          ),
-        idempotencyKey:
-          (
-            'sales-return:' +
-            returnId +
-            ':invoice:' +
-            invoiceId
-          ).slice(
+        const available =
+          Math.max(
             0,
-            120,
-          ),
-        items:
-          lines.map(
-            line => ({
-              invoiceItemId:
-                line.invoiceItemId,
-              quantity:
-                line.quantity,
-            }),
-          ),
-      });
+            Number(
+              invoiceItem.quantity,
+            ) -
+            Number(
+              invoiceItem
+                .credited_quantity ||
+              0,
+            ),
+          );
 
-    // Invoice credit creation is independently idempotent. Persist the Sales-side
-    // allocation rows and counters atomically so a retry can repair a failed
-    // local save without incrementing a quantity for an existing allocation.
-    const client = await context.pool.connect();
-    let returnCreditId = "";
-    try {
-      await client.query('BEGIN');
+        if (
+          available <=
+            0.000001
+        ) {
+          continue;
+        }
 
-      const saved = await client.query(
-        `
-          INSERT INTO sales_return_credits (
-            company_id,
-            return_id,
-            invoice_id,
-            credit_note_id,
-            credit_note_number,
-            amount,
-            available_credit,
-            refunded_amount,
-            created_by,
-            updated_by
-          )
-          VALUES (
-            $1,$2,$3,$4,$5,$6,$7,0,$8,$8
-          )
-          ON CONFLICT (
-            return_id,
-            invoice_id
-          )
-          DO UPDATE SET
-            credit_note_id =
-              EXCLUDED.credit_note_id,
-            credit_note_number =
-              EXCLUDED.credit_note_number,
-            amount =
-              EXCLUDED.amount,
-            available_credit =
-              EXCLUDED.available_credit,
-            updated_by =
-              EXCLUDED.updated_by,
-            updated_at =
-              NOW()
-          RETURNING id
-        `,
-        [
-          context.companyId,
-          returnId,
+        const quantity =
+          Math.min(
+            remaining,
+            available,
+          );
+
+        const invoiceId =
+          String(
+            invoiceItem
+              .invoice_id,
+          );
+
+        const lines =
+          byInvoice.get(
+            invoiceId,
+          ) ||
+          [];
+
+        lines.push({
+          returnItemId:
+            String(
+              returnItem.id,
+            ),
+          orderLineId:
+            String(
+              returnItem
+                .sales_order_line_id,
+            ),
+          invoiceItemId:
+            String(
+              invoiceItem.id,
+            ),
+          quantity,
+        });
+
+        byInvoice.set(
           invoiceId,
-          credit.id,
-          credit.creditNoteNumber,
-          credit.amount,
-          credit.availableCredit,
-          context.userId,
-        ],
-      );
+          lines,
+        );
 
-      returnCreditId = String(saved.rows[0].id);
+        remaining -=
+          quantity;
 
-      for (const line of lines) {
-        const allocation = await client.query(
+        mappedQuantity +=
+          quantity;
+      }
+
+      if (
+        expectedCreditQuantity >
+          0.000001 &&
+        mappedQuantity +
+          0.000001 <
+          expectedCreditQuantity
+      ) {
+        throw new SalesError(
+          'RETURN_CREDIT_LINK_MISSING',
+          'This return includes quantities invoiced before Sales line-source tracking was enabled. Issue the unmatched credit from Invoicing manually; SaMi will not guess the invoice line mapping.',
+          {
+            salesOrderLineId:
+              String(
+                returnItem
+                  .sales_order_line_id,
+              ),
+            expectedCreditQuantity,
+            mappedQuantity,
+          },
+        );
+      }
+    }
+
+    const createdCredits:
+      Array<{
+        invoiceId:
+          string;
+        creditNoteId:
+          string;
+        creditNoteNumber:
+          string;
+        amount:
+          number;
+        availableCredit:
+          number;
+      }> =
+        [];
+
+    for (
+      const [
+        invoiceId,
+        lines,
+      ] of byInvoice
+    ) {
+      const credit =
+        await issueInvoiceCreditNote({
+          invoiceId,
+          reason:
+            'Sales return ' +
+            String(
+              returnRow
+                .return_number,
+            ) +
+            ': ' +
+            String(
+              returnRow.reason,
+            ),
+          idempotencyKey:
+            (
+              'sales-return:' +
+              returnId +
+              ':invoice:' +
+              invoiceId
+            ).slice(
+              0,
+              120,
+            ),
+          items:
+            lines.map(
+              line => ({
+                invoiceItemId:
+                  line.invoiceItemId,
+                quantity:
+                  line.quantity,
+              }),
+            ),
+        });
+
+      // Invoice credit creation is independently idempotent. Persist the Sales-side
+      // allocation rows and counters atomically so a retry can repair a failed
+      // local save without incrementing a quantity for an existing allocation.
+      const client = await context.pool.connect();
+      let returnCreditId = "";
+      try {
+        await client.query('BEGIN');
+
+        const saved = await client.query(
           `
-            INSERT INTO sales_return_credit_items (
+            INSERT INTO sales_return_credits (
               company_id,
-              return_credit_id,
-              return_item_id,
-              invoice_item_id,
-              quantity
+              return_id,
+              invoice_id,
+              credit_note_id,
+              credit_note_number,
+              amount,
+              available_credit,
+              refunded_amount,
+              created_by,
+              updated_by
             )
             VALUES (
-              $1,$2,$3,$4,$5
+              $1,$2,$3,$4,$5,$6,$7,0,$8,$8
             )
             ON CONFLICT (
-              return_credit_id,
-              return_item_id,
-              invoice_item_id
+              return_id,
+              invoice_id
             )
-            DO NOTHING
+            DO UPDATE SET
+              credit_note_id =
+                EXCLUDED.credit_note_id,
+              credit_note_number =
+                EXCLUDED.credit_note_number,
+              amount =
+                EXCLUDED.amount,
+              available_credit =
+                EXCLUDED.available_credit,
+              updated_by =
+                EXCLUDED.updated_by,
+              updated_at =
+                NOW()
             RETURNING id
           `,
           [
             context.companyId,
-            returnCreditId,
-            line.returnItemId,
-            line.invoiceItemId,
-            line.quantity,
+            returnId,
+            invoiceId,
+            credit.id,
+            credit.creditNoteNumber,
+            credit.amount,
+            credit.availableCredit,
+            context.userId,
           ],
         );
 
-        // Only newly persisted allocations advance this aggregate. An idempotent
-        // retry sees the existing allocation and leaves credited_quantity alone.
-        if (allocation.rows.length > 0) {
-          await client.query(
+        returnCreditId = String(saved.rows[0].id);
+
+        for (const line of lines) {
+          const allocation = await client.query(
             `
-              UPDATE sales_order_items_v2
-              SET
-                credited_quantity =
-                  LEAST(
-                    returned_quantity,
-                    credited_quantity + $4
-                  )
-              WHERE id = $1
-                AND sales_order_id = $2
-                AND company_id = $3
+              INSERT INTO sales_return_credit_items (
+                company_id,
+                return_credit_id,
+                return_item_id,
+                invoice_item_id,
+                quantity
+              )
+              VALUES (
+                $1,$2,$3,$4,$5
+              )
+              ON CONFLICT (
+                return_credit_id,
+                return_item_id,
+                invoice_item_id
+              )
+              DO NOTHING
+              RETURNING id
             `,
             [
-              line.orderLineId,
-              returnRow.sales_order_id,
               context.companyId,
+              returnCreditId,
+              line.returnItemId,
+              line.invoiceItemId,
               line.quantity,
             ],
           );
+
+          // Only newly persisted allocations advance this aggregate. An idempotent
+          // retry sees the existing allocation and leaves credited_quantity alone.
+          if (allocation.rows.length > 0) {
+            await client.query(
+              `
+                UPDATE sales_order_items_v2
+                SET
+                  credited_quantity =
+                    LEAST(
+                      returned_quantity,
+                      credited_quantity + $4
+                    )
+                WHERE id = $1
+                  AND sales_order_id = $2
+                  AND company_id = $3
+              `,
+              [
+                line.orderLineId,
+                returnRow.sales_order_id,
+                context.companyId,
+                line.quantity,
+              ],
+            );
+          }
         }
+
+        await client.query('COMMIT');
+      } catch (error) {
+        try {
+          await client.query('ROLLBACK');
+        } catch {}
+        throw error;
+      } finally {
+        client.release();
       }
 
-      await client.query('COMMIT');
-    } catch (error) {
-      try {
-        await client.query('ROLLBACK');
-      } catch {}
-      throw error;
-    } finally {
-      client.release();
+      createdCredits.push({
+        invoiceId,
+        creditNoteId:
+          credit.id,
+        creditNoteNumber:
+          credit.creditNoteNumber,
+        amount:
+          money(
+            credit.amount,
+          ),
+        availableCredit:
+          money(
+            credit.availableCredit ??
+            credit.amount,
+          ),
+      });
     }
 
-    createdCredits.push({
-      invoiceId,
-      creditNoteId:
-        credit.id,
-      creditNoteNumber:
-        credit.creditNoteNumber,
-      amount:
-        money(
-          credit.amount,
-        ),
-      availableCredit:
-        money(
-          credit.availableCredit ??
-          credit.amount,
-        ),
-    });
-  }
+    await context.pool.query(
+      `
+        UPDATE sales_returns
+        SET
+          status = CASE
+            WHEN status IN ('partially_refunded', 'refunded')
+            THEN status
+            WHEN $4::boolean
+            THEN 'credited'
+            ELSE status
+          END,
+          credited_at =
+            COALESCE(
+              credited_at,
+              NOW()
+            ),
+          updated_by = $3,
+          updated_at = NOW()
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [
+        returnId,
+        context.companyId,
+        context.userId,
+        createdCredits.length > 0,
+      ],
+    );
 
-  await context.pool.query(
-    `
-      UPDATE sales_returns
-      SET
-        status = CASE
-          WHEN status IN ('partially_refunded', 'refunded')
-          THEN status
-          WHEN $4::boolean
-          THEN 'credited'
-          ELSE status
-        END,
-        credited_at =
-          COALESCE(
-            credited_at,
-            NOW()
-          ),
-        updated_by = $3,
-        updated_at = NOW()
-      WHERE id = $1
-        AND company_id = $2
-    `,
-    [
+    return {
       returnId,
-      context.companyId,
-      context.userId,
-      createdCredits.length > 0,
-    ],
-  );
-
-  return {
-    returnId,
-    status:
-      createdCredits.length > 0
-        ? 'credited'
-        : String(returnRow.status),
-    credits:
-      createdCredits,
-  };
+      status:
+        createdCredits.length > 0
+          ? 'credited'
+          : String(returnRow.status),
+      credits:
+        createdCredits,
+    };
   } finally {
     try {
       await serializationClient.query(
