@@ -1427,12 +1427,9 @@ export async function convertSalesLeadToOpportunity(input: Record<string, unknow
     if (!/^[A-Z]{3}$/.test(currency)) {
       throw new SalesError('INVALID_INPUT', 'Currency must be a three-letter code.');
     }
-    const terminalProbability = terminalSalesOpportunityProbability(targetStageType);
-    const probability = terminalProbability !== null
-      ? terminalProbability
-      : input.probability === undefined
-        ? Number(stage.rows[0].probability)
-        : numberInput(input.probability, 'Probability', { min: 0, max: 100 });
+    const probability = input.probability === undefined
+      ? Number(stage.rows[0].probability)
+      : numberInput(input.probability, 'Probability', { min: 0, max: 100 });
     const created = await client.query(
       `INSERT INTO sales_opportunities
         (company_id,opportunity_number,lead_id,stage_id,name,customer_name,contact_name,email,phone,
@@ -1573,9 +1570,12 @@ export async function moveSalesOpportunity(input: Record<string, unknown>) {
     if (targetStageType === 'lost' && !reason) {
       throw new SalesError('INVALID_INPUT', 'A reason is required to mark an opportunity as lost.');
     }
-    const probability = input.probability === undefined
-      ? Number(stage.rows[0].probability)
-      : numberInput(input.probability, 'Probability', { min: 0, max: 100 });
+    const terminalProbability = terminalSalesOpportunityProbability(targetStageType);
+    const probability = terminalProbability !== null
+      ? terminalProbability
+      : input.probability === undefined
+        ? Number(stage.rows[0].probability)
+        : numberInput(input.probability, 'Probability', { min: 0, max: 100 });
     await client.query(
       `UPDATE sales_opportunities
        SET stage_id=$3,probability=$4,
