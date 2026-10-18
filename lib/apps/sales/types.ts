@@ -185,10 +185,6 @@ export type SalesQuoteDetail =
     discountTotal: number;
     taxTotal: number;
     shippingTotal: number;
-    costTotal: number | null;
-    marginAmount: number | null;
-    marginPercent: number | null;
-    marginCommissionStale: boolean;
     depositType: 'none' | 'percent' | 'fixed';
     depositValue: number;
     depositRequiredAmount: number;
@@ -292,6 +288,10 @@ export type SalesOrderDetail =
     discountTotal: number;
     taxTotal: number;
     shippingTotal: number;
+    costTotal: number | null;
+    marginAmount: number | null;
+    marginPercent: number | null;
+    marginCommissionStale: boolean;
     depositType: 'none' | 'percent' | 'fixed';
     depositValue: number;
     depositRequiredAmount: number;
