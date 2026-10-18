@@ -25,7 +25,7 @@ test('Sales PDF descriptions use word wrapping and paginate at up to 18 item row
   const pdf = await source('lib/apps/sales/pdf.ts');
   assert.match(pdf, /export function wrap\(textValue: unknown, maxChars: number\): string\[\]/);
   assert.match(pdf, /while \(word\.length > limit\)/);
-  assert.match(pdf, /end - start < 18/);
+  assert.match(pdf, /current\.length >= 18/);
   assert.match(pdf, /wrap\(item\.description, 46\)/);
   assert.match(pdf, /function rowHeight\(item: PdfLine\)/);
   assert.match(pdf, /if \(finalPage\) \{/);
