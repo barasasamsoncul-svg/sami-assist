@@ -551,6 +551,7 @@ export default function SalesQuoteDetailClient({
                       false,
                     )
                 }
+                onLocalError={(message) => showError('Exchange rate required', message)}
                 onSave={
                   async payload => {
                     const result =

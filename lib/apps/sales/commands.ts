@@ -249,6 +249,10 @@ import {
 } from '@/lib/apps/sales/commercial';
 
 import {
+  queryControl,
+} from '@/lib/db/control';
+
+import {
   resolveSalesExchangeRate,
   salesBaseAmount,
 } from '@/lib/apps/sales/currencies';
@@ -1450,6 +1454,35 @@ const defaultSalesQuoteAuthoringDependencies: SalesQuoteAuthoringDependencies = 
   numberInput,
 };
 
+async function assertActiveInternalWorkspaceSalesperson(
+  context: Awaited<ReturnType<typeof requireSalesContext>>,
+  userId: string,
+) {
+  const result = await queryControl(
+    `
+      SELECT 1
+      FROM tenant_users tu
+      INNER JOIN users u ON u.id = tu.user_id
+      WHERE tu.tenant_id = $1
+        AND tu.user_id = $2::uuid
+        AND tu.status = 'active'
+        AND tu.member_type = 'internal'
+        AND tu.deleted_at IS NULL
+        AND u.deleted_at IS NULL
+      LIMIT 1
+    `,
+    [context.tenantId, userId],
+  );
+
+  if (result.rows.length !== 1) {
+    throw new SalesError(
+      'INVALID_INPUT',
+      'Choose an active internal workspace member as the salesperson.',
+    );
+  }
+}
+
+
 /**
  * Transaction-level quotation creation primitive. The public production entry
  * point authorizes the caller before invoking this function. Dependencies can
@@ -1600,6 +1633,12 @@ export async function createSalesQuoteTransaction(
             linkedOpportunity.phone,
         }
       : input;
+
+    const requestedSalespersonUserId = deps.optionalUuid(quoteInput.salespersonUserId);
+    const salespersonUserId = requestedSalespersonUserId || context.userId;
+    if (requestedSalespersonUserId) {
+      await assertActiveInternalWorkspaceSalesperson(context, salespersonUserId);
+    }
 
     const template =
       await deps.resolveTemplate(
@@ -1763,7 +1802,7 @@ export async function createSalesQuoteTransaction(
           companyId:
             context.companyId,
           userId:
-            context.userId,
+            salespersonUserId,
         },
       );
 
@@ -1867,7 +1906,7 @@ export async function createSalesQuoteTransaction(
             input.internalNotes,
             6000,
           ),
-          context.userId,
+          salespersonUserId,
           salesAssignment
             .salesTeamId,
           salesAssignment
@@ -1912,10 +1951,7 @@ export async function createSalesQuoteTransaction(
         `
           UPDATE sales_quotes
           SET
-            opportunity_id = $3,
-            salesperson_user_id = COALESCE($4::uuid, salesperson_user_id),
-            sales_team_id = COALESCE($5::uuid, sales_team_id),
-            territory_id = COALESCE($6::uuid, territory_id)
+            opportunity_id = $3
           WHERE id = $1
             AND company_id = $2
         `,
@@ -1923,9 +1959,6 @@ export async function createSalesQuoteTransaction(
           quoteId,
           context.companyId,
           opportunityId,
-          linkedOpportunity.salesperson_user_id,
-          linkedOpportunity.sales_team_id,
-          linkedOpportunity.territory_id,
         ],
       );
 
@@ -2149,6 +2182,16 @@ export async function updateSalesQuoteDraftTransaction(
         'This quote is in approval. Withdraw or reject approval before editing the commercial terms.',
       );
     }
+
+    const requestedSalespersonUserId = deps.optionalUuid(input.salespersonUserId);
+    const salespersonUserId = requestedSalespersonUserId || context.userId;
+    if (requestedSalespersonUserId) {
+      await assertActiveInternalWorkspaceSalesperson(context, salespersonUserId);
+    }
+    const salespersonAssignment = await deps.resolveSalesAssignmentForUser(client, {
+      companyId: context.companyId,
+      userId: salespersonUserId,
+    });
 
     const settings =
       (
@@ -2418,6 +2461,9 @@ export async function updateSalesQuoteDraftTransaction(
           updated_by = $28,
           deposit_type = $29,
           deposit_value = $30,
+          salesperson_user_id = $31,
+          sales_team_id = $32,
+          territory_id = $33,
           updated_at = NOW()
         WHERE id = $1
           AND company_id = $2
@@ -2473,6 +2519,9 @@ export async function updateSalesQuoteDraftTransaction(
         context.userId,
         deposit.depositType,
         deposit.depositValue,
+        salespersonUserId,
+        salespersonAssignment.salesTeamId,
+        salespersonAssignment.territoryId,
       ],
     );
 

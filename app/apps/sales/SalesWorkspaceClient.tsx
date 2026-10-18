@@ -2083,6 +2083,7 @@ export default function SalesWorkspaceClient({
                       onSave={
                         saveQuote
                       }
+                      onLocalError={(message) => showError('Exchange rate required', message)}
                       onCancel={
                         () =>
                           setComposerOpen(
@@ -3180,6 +3181,7 @@ export default function SalesWorkspaceClient({
                   linkedOpportunity={linkedOpportunity}
                   busy={busy}
                   onSave={saveQuote}
+                  onLocalError={(message) => showError('Exchange rate required', message)}
                   onCancel={() => {
                     router.push(
                       linkedOpportunityId

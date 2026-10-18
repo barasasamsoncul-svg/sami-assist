@@ -115,6 +115,7 @@ export default function SalesQuoteComposer({
   busy,
   onSave,
   onCancel,
+  onLocalError,
 }: {
   data:
     SalesWorkspaceData;
@@ -146,6 +147,8 @@ export default function SalesQuoteComposer({
       Promise<boolean>;
   onCancel:
     () => void;
+  onLocalError?:
+    (message: string) => void;
 }) {
   const [
     customerId,
@@ -240,6 +243,14 @@ export default function SalesQuoteComposer({
         .defaultCurrency ||
       data.company
         .currency,
+    );
+
+  const [
+    salespersonUserId,
+    setSalespersonUserId,
+  ] =
+    useState(
+      initialQuote?.salespersonUserId ?? '',
     );
 
   const [
@@ -672,6 +683,18 @@ export default function SalesQuoteComposer({
   ) {
     event.preventDefault();
 
+    if (
+      currency !== data.company.currency &&
+      (!manualExchangeRate ||
+        !Number.isFinite(Number(manualExchangeRate)) ||
+        Number(manualExchangeRate) <= 0)
+    ) {
+      onLocalError?.(
+        'Enter the exchange rate to ' + data.company.currency + ' before saving.',
+      );
+      return;
+    }
+
     await onSave({
       action:
         initialQuote
@@ -696,6 +719,7 @@ export default function SalesQuoteComposer({
       quoteDate,
       validUntil,
       currency,
+      salespersonUserId: salespersonUserId || undefined,
       exchangeRate:
         currency !==
           data.company
@@ -944,6 +968,25 @@ export default function SalesQuoteComposer({
               required
             />
             <label className="block">
+              <Label>Salesperson</Label>
+              <select
+                aria-label="Salesperson"
+                value={salespersonUserId}
+                onChange={event => setSalespersonUserId(event.target.value)}
+                className="mt-1 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+              >
+                <option value="">Self (me)</option>
+                {data.salespeople.map(person => (
+                  <option key={person.id} value={person.id}>
+                    {person.name}{person.email ? ' · ' + person.email : ''}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-[11px] text-slate-500">
+                Leave as Self (me) to assign this quotation to your own account.
+              </span>
+            </label>
+            <label className="block">
               <Label>Deposit / advance</Label>
               <select
                 aria-label="Deposit type"
@@ -1005,21 +1048,25 @@ export default function SalesQuoteComposer({
                 data.company
                   .currency &&
               (
-                <Input
-                  label={
-                    'Manual FX rate to ' +
-                    data.company
-                      .currency +
-                    ' (optional)'
-                  }
-                  type="number"
-                  value={
-                    manualExchangeRate
-                  }
-                  onChange={
-                    setManualExchangeRate
-                  }
-                />
+                <>
+                  <Input
+                    label={
+                      'Manual FX rate to ' +
+                      data.company
+                        .currency
+                    }
+                    type="number"
+                    value={
+                      manualExchangeRate
+                    }
+                    onChange={
+                      setManualExchangeRate
+                    }
+                  />
+                  <span className="mt-1 block text-[11px] text-slate-500">
+                    Required before saving when the quotation currency differs from the company currency.
+                  </span>
+                </>
               )
             }
             <Input
