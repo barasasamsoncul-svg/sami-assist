@@ -95,6 +95,6 @@ test('Sales workspace exposes bounded salesperson choices and only permits pipel
   assert.match(workspace, /ORDER BY tu\.is_owner DESC,[\s\S]{0,200}LIMIT 500/);
   assert.match(workspace, /AND tu\.user_id = \$2/);
   assert.match(workspace, /defaultSalesperson: defaultSalesperson\.rows\[0\]/);
-  assert.match(capabilities, /canMovePipeline:\s*can\([\s\S]*?SALES_PERMISSIONS\s*\.PIPELINE_MANAGE\s*\),/);
+  assert.match(capabilities, /canMovePipeline:\s*can\([\s\S]*?SALES_PERMISSIONS\s*\.PIPELINE_MANAGE,\s*\),/);
   assert.doesNotMatch(capabilities.slice(capabilities.indexOf('canMovePipeline:'), capabilities.indexOf('canManagePipelineStages:')), /PIPELINE_VIEW/);
 });
