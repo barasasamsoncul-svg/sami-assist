@@ -3355,6 +3355,17 @@ const returnId =
 
     const orderId = String(returnRow.sales_order_id);
     await emitSalesAutomationEvent(context, {
+      triggerKey: 'sales.return.received',
+      recordType: 'sales_return',
+      recordId: returnId,
+      idempotencySeed: 'return-received:' + returnId,
+      payload: {
+        orderId,
+        status: 'received',
+      },
+    });
+
+    await emitSalesAutomationEvent(context, {
       triggerKey: 'sales.order.fulfillment.changed',
       recordType: 'sales_order',
       recordId: orderId,
