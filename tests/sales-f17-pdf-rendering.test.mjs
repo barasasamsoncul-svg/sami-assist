@@ -71,3 +71,29 @@ test('F17 PDF regression tests are part of the Sales CI suite', async () => {
   const packageJson = JSON.parse(await source('package.json'));
   assert.match(packageJson.scripts['test:sales'], /tests\/sales-f17-pdf-rendering\.test\.mjs/);
 });
+
+test('Sales order PDF route selects proforma versus confirmed order, protects margin data, and disables caching', async () => {
+  const [route, pdf, service] = await Promise.all([
+    source('app/api/apps/sales/orders/[orderId]/pdf/route.ts'),
+    source('lib/apps/sales/pdf.ts'),
+    source('lib/apps/sales/service.ts'),
+  ]);
+
+  assert.match(route, /getSalesOrderDetail\(/);
+  assert.match(route, /requireSalesContext\([\s\S]*?SALES_PERMISSIONS[\s\S]*?ORDER_VIEW/);
+  assert.match(route, /SALES_PERMISSIONS\.MARGIN_VIEW/);
+  assert.match(route, /SALES_PERMISSIONS\.MARGIN_MANAGE/);
+  assert.match(route, /maskCosts:\s*![\s\S]*?canViewMargin/);
+  assert.match(route, /FROM sales_order_invoice_batches batch[\s\S]*?INNER JOIN invoicing_invoices invoice/);
+  assert.match(route, /invoice\.status IN \([\s\S]*?'confirmed'[\s\S]*?'sent'[\s\S]*?'paid'/);
+  assert.match(route, /documentTitle:[\s\S]*?hasConfirmedInvoice[\s\S]*?'SALES ORDER'[\s\S]*?'PROFORMA INVOICE'/);
+  assert.match(route, /'Content-Type':\s*'application\/pdf'/);
+  assert.match(route, /'Content-Disposition':[\s\S]*?inline; filename=/);
+  assert.match(route, /private, no-store, no-cache, must-revalidate/);
+  assert.match(service, /getSalesOrderDetail/);
+
+  assert.match(pdf, /maskCosts\?: boolean/);
+  assert.match(pdf, /const pdfOrder = options\.maskCosts[\s\S]*?costTotal: null,[\s\S]*?marginAmount: null,[\s\S]*?marginPercent: null,[\s\S]*?lines: order\.lines\.map/);
+  assert.match(pdf, /unitCost: null,[\s\S]*?costTotal: null,[\s\S]*?marginAmount: null,[\s\S]*?marginPercent: null/);
+  assert.match(pdf, /documentNumber: String\(pdfOrder\.orderNumber/);
+});
