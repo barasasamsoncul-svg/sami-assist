@@ -1052,23 +1052,25 @@ export default function SalesQuoteComposer({
                 data.company
                   .currency &&
               (
-                <Input
-                  label={
-                    'Manual FX rate to ' +
-                    data.company
-                      .currency
-                  }
-                  type="number"
-                  value={
-                    manualExchangeRate
-                  }
-                  onChange={
-                    setManualExchangeRate
-                  }
-                />
-                <span className="mt-1 block text-[11px] text-slate-500">
-                  Required before saving when the quotation currency differs from the company currency.
-                </span>
+                <>
+                  <Input
+                    label={
+                      'Manual FX rate to ' +
+                      data.company
+                        .currency
+                    }
+                    type="number"
+                    value={
+                      manualExchangeRate
+                    }
+                    onChange={
+                      setManualExchangeRate
+                    }
+                  />
+                  <span className="mt-1 block text-[11px] text-slate-500">
+                    Required before saving when the quotation currency differs from the company currency.
+                  </span>
+                </>
               )
             }
             <Input
