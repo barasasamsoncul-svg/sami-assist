@@ -90,6 +90,8 @@ export type SalesOrderPdfOptions = {
 
 const WIN_ANSI_SPECIALS: Record<string, number> = {
   '€': 0x80,
+  '£': 0xa3,
+  '¥': 0xa5,
   '‚': 0x82,
   'ƒ': 0x83,
   '„': 0x84,
