@@ -1348,6 +1348,38 @@ integration(
           sort_order INTEGER NOT NULL DEFAULT 1
         );
 
+        CREATE TEMP TABLE sales_commission_plans (
+          id UUID PRIMARY KEY,
+          company_id UUID NOT NULL
+        );
+
+        CREATE TEMP TABLE sales_commission_assignments (
+          id UUID PRIMARY KEY,
+          company_id UUID NOT NULL,
+          plan_id UUID NOT NULL
+        );
+
+        CREATE TEMP TABLE sales_commission_entries (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          order_id UUID NOT NULL,
+          plan_id UUID NOT NULL,
+          assignment_id UUID NOT NULL,
+          user_id UUID,
+          team_id UUID,
+          basis VARCHAR(20) NOT NULL,
+          basis_amount NUMERIC(18,2) NOT NULL,
+          commission_amount NUMERIC(18,2) NOT NULL,
+          currency VARCHAR(3) NOT NULL,
+          status VARCHAR(20) NOT NULL,
+          source_event_key VARCHAR(255) NOT NULL,
+          metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+          reversed_at TIMESTAMPTZ,
+          created_by UUID,
+          updated_by UUID,
+          UNIQUE(company_id, source_event_key)
+        );
+
         CREATE TEMP TABLE sales_returns (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           company_id UUID NOT NULL,
@@ -2197,6 +2229,25 @@ integration(
         0.5,
       );
 
+      const commissionPlanId = '11111111-1111-4111-8111-111111111111';
+      const commissionAssignmentId = '22222222-2222-4222-8222-222222222222';
+      const accruedCommissionEntryId = '33333333-3333-4333-8333-333333333333';
+      await returnPool.query(
+        'INSERT INTO sales_commission_plans (id, company_id) VALUES ($1, $2)',
+        [commissionPlanId, companyId],
+      );
+      await returnPool.query(
+        'INSERT INTO sales_commission_assignments (id, company_id, plan_id) VALUES ($1, $2, $3)',
+        [commissionAssignmentId, companyId, commissionPlanId],
+      );
+      await returnPool.query(
+        `INSERT INTO sales_commission_entries (
+           id, company_id, order_id, plan_id, assignment_id, basis, basis_amount,
+           commission_amount, currency, status, source_event_key
+         ) VALUES ($1, $2, $3, $4, $5, 'revenue', 116, 11.6, 'KES', 'accrued', 'original-order-commission-001')`,
+        [accruedCommissionEntryId, companyId, first.id, commissionPlanId, commissionAssignmentId],
+      );
+
       const creditNoteByInvoice = new Map([
         [firstInvoiceId, { id: firstCreditNoteId, number: 'CN-SALES-001', amount: 46.4 }],
         [secondInvoiceId, { id: secondCreditNoteId, number: 'CN-SALES-002', amount: 11.6 }],
@@ -2261,6 +2312,20 @@ integration(
       );
       assert.equal(issuedReturnCredits.status, 'credited');
       assert.equal(issuedReturnCredits.credits.length, 2);
+      assert.deepEqual(issuedReturnCredits.commissionReversals, [
+        { currency: 'KES', reversedCount: 1, reversedAmount: 5.8 },
+      ], 'crediting 58.00 of a 116.00 revenue basis reverses half of the 11.60 commission');
+      const commissionReversalRows = await returnPool.query(
+        `SELECT basis_amount, commission_amount, currency, status, source_event_key
+         FROM sales_commission_entries
+         WHERE company_id = $1 AND source_event_key LIKE $2`,
+        [companyId, 'sales-return:' + createdReturn.returnId + ':commission:%'],
+      );
+      assert.equal(commissionReversalRows.rows.length, 1);
+      assert.equal(Number(commissionReversalRows.rows[0].basis_amount), -58);
+      assert.equal(Number(commissionReversalRows.rows[0].commission_amount), -5.8);
+      assert.equal(commissionReversalRows.rows[0].currency, 'KES');
+      assert.equal(commissionReversalRows.rows[0].status, 'reversed');
       assert.equal(invoiceCreditCalls, 2);
       assert.deepEqual(
         creditRequests.map(request => [request.invoiceId, ...request.lineQuantities.map(quantity => Number(quantity.toFixed(4)))]),
