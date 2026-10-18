@@ -789,6 +789,7 @@ export async function getSalesWorkspaceData():
             invoice_policy,
             lock_confirmed_orders,
             require_quote_approval,
+            credit_limit_enforced,
             quote_approval_threshold
           FROM sales_settings
           WHERE company_id = $1
@@ -1019,6 +1020,9 @@ export async function getSalesWorkspaceData():
       name: String(row.name || row.email),
       email: String(row.email),
     })),
+    currentSalespersonId: defaultSalesperson.rows[0]
+      ? String(defaultSalesperson.rows[0].id)
+      : null,
     defaultSalesperson: defaultSalesperson.rows[0]
       ? {
           id: String(defaultSalesperson.rows[0].id),
