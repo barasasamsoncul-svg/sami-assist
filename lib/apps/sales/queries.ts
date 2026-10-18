@@ -2011,12 +2011,15 @@ export async function getSalesQuoteDetail(
     quote.rows[0];
 
   const canWithdrawApproval =
-    hasSalesPermission(
-      context.permissions.isOwner,
-      context.permissions.permissionSet,
-      SALES_PERMISSIONS.QUOTE_EDIT,
-    ) ||
-    String(activeApprovalRequest.rows[0]?.requested_by ?? '') === context.userId;
+    activeApprovalRequest.rows.length === 1 &&
+    (
+      hasSalesPermission(
+        context.permissions.isOwner,
+        context.permissions.permissionSet,
+        SALES_PERMISSIONS.QUOTE_EDIT,
+      ) ||
+      String(activeApprovalRequest.rows[0]?.requested_by ?? '') === context.userId
+    );
 
   return {
     canWithdrawApproval,
