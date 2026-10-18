@@ -874,7 +874,7 @@ test('Sales API exposes the complete quotation-to-cash action surface', async ()
 
   assert.match(
     api,
-    /MAX_BODY_BYTES/,
+    /parseSalesRequestBody\(request\)/,
   );
 
   for (
