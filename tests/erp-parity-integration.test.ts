@@ -1331,6 +1331,7 @@ integration(
           id UUID PRIMARY KEY,
           company_id UUID NOT NULL,
           reference TEXT,
+          currency VARCHAR(3) NOT NULL DEFAULT 'KES',
           invoice_date DATE NOT NULL DEFAULT CURRENT_DATE,
           status VARCHAR(30) NOT NULL DEFAULT 'posted',
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1342,6 +1343,7 @@ integration(
           company_id UUID NOT NULL,
           invoice_id UUID NOT NULL,
           quantity NUMERIC(18,4) NOT NULL,
+          line_total NUMERIC(18,2) NOT NULL DEFAULT 0,
           metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
           sort_order INTEGER NOT NULL DEFAULT 1
         );
@@ -2101,10 +2103,10 @@ integration(
       });
       await returnPool.query(
         `INSERT INTO invoicing_invoice_items
-           (id, company_id, invoice_id, quantity, metadata, sort_order)
+           (id, company_id, invoice_id, quantity, line_total, metadata, sort_order)
          VALUES
-           ($1, $2, $3, 0.4, $5::jsonb, 1),
-           ($4, $2, $6, 0.6, $5::jsonb, 1)`,
+           ($1, $2, $3, 0.4, 46.4, $5::jsonb, 1),
+           ($4, $2, $6, 0.6, 69.6, $5::jsonb, 1)`,
         [
           firstInvoiceItemId,
           companyId,
