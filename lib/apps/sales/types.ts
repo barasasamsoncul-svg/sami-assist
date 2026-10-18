@@ -177,6 +177,7 @@ export type SalesOrderSummary = {
 export type SalesQuoteDetail =
   SalesQuoteSummary & {
     billingCustomerId: string | null;
+    salespersonUserId: string | null;
     customerPhone: string | null;
     customerTaxId: string | null;
     billingAddress: string | null;
@@ -409,6 +410,11 @@ export type SalesWorkspaceData = {
     name: string;
     currency: string;
   };
+  salespeople: Array<{
+    id: string;
+    name: string;
+    email: string;
+  }>;
   capabilities: {
     canView: boolean;
     canCreate: boolean;
@@ -576,6 +582,7 @@ export type SalesWorkspaceData = {
 
 export type CreateSalesQuoteInput = {
   opportunityId?: unknown;
+  salespersonUserId?: unknown;
   billingCustomerId?: unknown;
   templateId?: unknown;
   pricelistId?: unknown;
