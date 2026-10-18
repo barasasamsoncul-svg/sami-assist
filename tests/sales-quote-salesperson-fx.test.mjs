@@ -40,7 +40,9 @@ test('foreign-currency quote submission requires a positive manual FX rate and u
   assert.match(composer, /Number\.isFinite\(Number\(manualExchangeRate\)\)/);
   assert.match(composer, /Enter the exchange rate to '\s*\+ data\.company\.currency \+ ' before saving\.'/);
   assert.match(composer, /onLocalError\?\./);
-  assert.match(composer, /label=\{[\s\S]{0,220}Manual FX rate to[\s\S]{0,220}required/);
+  assert.match(composer, /Manual FX rate to/);
+  assert.match(composer, /Required before saving when the quotation currency differs from the company currency/);
+  assert.match(composer, /type="number"\s+value=\{\s*manualExchangeRate/);
   assert.match(workspace, /onLocalError=\{\(message\) => showError\('Exchange rate required', message\)\}/);
   assert.match(detail, /onLocalError=\{\(message\) => showError\('Exchange rate required', message\)\}/);
 });
