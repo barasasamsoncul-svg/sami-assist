@@ -4,6 +4,12 @@ import {
 } from 'next/server';
 
 import {
+  MAX_BODY_BYTES,
+  parseSalesRequestBody,
+  SalesRequestBodyError,
+} from '@/lib/apps/sales/request-body';
+
+import {
   CompanyContextError,
 } from '@/lib/auth/company-context';
 
@@ -118,11 +124,6 @@ export const runtime =
 
 export const dynamic =
   'force-dynamic';
-
-const MAX_BODY_BYTES =
-  160 *
-  1024;
-
 
 function json(
   body:
@@ -554,38 +555,9 @@ export async function POST(
     );
   }
 
-  const contentLength =
-    Number(
-      request.headers
-        .get(
-          'content-length',
-        ) ||
-      0,
-    );
-
-  if (
-    Number.isFinite(
-      contentLength,
-    ) &&
-    contentLength >
-      MAX_BODY_BYTES
-  ) {
-    return json(
-      {
-        success:
-          false,
-        code:
-          'REQUEST_TOO_LARGE',
-        error:
-          'The Sales request is too large.',
-      },
-      413,
-    );
-  }
-
   try {
     const body =
-      await request.json();
+      await parseSalesRequestBody(request);
 
     if (
       !body ||
@@ -830,6 +802,17 @@ export async function POST(
   } catch (
     error
   ) {
+    if (error instanceof SalesRequestBodyError) {
+      return json(
+        {
+          success: false,
+          code: error.code,
+          error: error.message,
+        },
+        error.status,
+      );
+    }
+
     return handleError(
       error,
     );
