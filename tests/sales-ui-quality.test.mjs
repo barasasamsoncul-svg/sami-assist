@@ -58,3 +58,39 @@ test('Sales workspace report and KPI amounts preserve their base currency', asyn
   assert.ok(workspace.includes("item.customerName + ' · ' + item.currency"));
   assert.equal((workspace.match(/money\(\s*item\.amount,\s*item\.currency/g) || []).length, 3);
 });
+
+test('Sales reports load independently and expose a local fallback for rejected report queries', async () => {
+  const page = await source('app/apps/sales/SalesSectionPage.tsx');
+
+  assert.match(page, /await Promise\.allSettled\(\[[\s\S]{0,1200}getSalesCommercialMarginQualityReport\(\),\s*\] as const\)/);
+  assert.match(page, /function settledReportValue<T>/);
+  assert.match(page, /result\.status === 'rejected'/);
+  assert.match(page, /console\.error\('\[SaMi Sales\] Report failed to load: ' \+ name/);
+  assert.doesNotMatch(page, /managementInsights && opportunityFunnel && opportunityRiskQueue/);
+
+  const reportCallBlock = page.slice(page.indexOf('await Promise.allSettled(['), page.indexOf('] as const)', page.indexOf('await Promise.allSettled([')));
+  assert.equal((reportCallBlock.match(/getSales[A-Za-z]+\(/g) || []).length, 14,
+    'all 14 report calls must be settled independently');
+
+  for (const index of Array.from({ length: 14 }, (_, value) => value)) {
+    assert.ok(page.includes('settledReportValue(reportData?.[' + index + ']'));
+  }
+
+  for (const name of [
+    'Management insights',
+    'Opportunity funnel and risk queue',
+    'Pipeline outcomes',
+    'Pipeline velocity',
+    'Activity execution',
+    'Representative performance',
+    'Lead source effectiveness',
+    'Commission performance',
+    'Product performance',
+    'Return fulfillment quality',
+    'Target attainment',
+    'Quotation effectiveness',
+    'Commercial margin quality',
+  ]) {
+    assert.ok(page.includes('<ReportUnavailable name="' + name + '" />'), name);
+  }
+});
