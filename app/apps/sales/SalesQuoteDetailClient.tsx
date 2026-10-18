@@ -551,6 +551,7 @@ export default function SalesQuoteDetailClient({
                       false,
                     )
                 }
+                onLocalError={showError}
                 onSave={
                   async payload => {
                     const result =
