@@ -4,7 +4,6 @@ import {
 } from 'next/server';
 
 import {
-  MAX_BODY_BYTES,
   parseSalesRequestBody,
   SalesRequestBodyError,
 } from '@/lib/apps/sales/request-body';
