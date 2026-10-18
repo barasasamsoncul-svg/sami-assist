@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  useEffect,
   useRef,
   useState,
   useTransition,
@@ -9,6 +10,7 @@ import {
 import Link from 'next/link';
 
 import {
+  AlertTriangle,
   BadgeDollarSign,
   Copy,
   Link2,
@@ -124,6 +126,24 @@ export default function SalesOrderDetailClient({
     showWarning,
   } =
     useSaMiOverlay();
+
+  const staleCommissionWarningShownFor =
+    useRef<string | null>(null);
+
+  useEffect(() => {
+    if (
+      !order.marginCommissionStale ||
+      staleCommissionWarningShownFor.current === order.id
+    ) {
+      return;
+    }
+
+    staleCommissionWarningShownFor.current = order.id;
+    showWarning(
+      'Commission reversal needs attention',
+      'This order has a received return while commission entries remain accrued. When the return reversal is processed, those commission rows will change. Review the commission ledger after processing.',
+    );
+  }, [order.id, order.marginCommissionStale, showWarning]);
 
   const isBusy =
     busy ||
@@ -392,6 +412,18 @@ export default function SalesOrderDetailClient({
           </div>
         </section>
 
+        {order.marginCommissionStale && (
+          <div role="alert" className="flex items-start gap-3 rounded-2xl border border-amber-400/60 bg-amber-50 p-4 text-amber-950 dark:border-amber-500/40 dark:bg-amber-950/30 dark:text-amber-100">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+            <div>
+              <p className="text-sm font-black">Received return with accrued commissions</p>
+              <p className="mt-1 text-xs leading-5">
+                This order has a received return while one or more commission entries remain accrued. Processing the related reversal will change those commission rows; review the commission ledger after the reversal is completed.
+              </p>
+            </div>
+          </div>
+        )}
+
         <section className="grid gap-4 xl:grid-cols-[1fr_390px]">
           <div className="space-y-4">
             <form
@@ -463,7 +495,7 @@ export default function SalesOrderDetailClient({
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1000px] text-sm">
+                <table className="w-full min-w-[1120px] text-sm">
                   <thead className="border-b border-[var(--sami-border)] text-left text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
                     <tr>
                       <th className="px-4 py-3">
@@ -493,6 +525,11 @@ export default function SalesOrderDetailClient({
                       <th className="px-4 py-3 text-right">
                         Value
                       </th>
+                      {workspace.capabilities.canViewMargin && (
+                        <th className="px-4 py-3 text-right">
+                          Cost / Margin
+                        </th>
+                      )}
                     </tr>
                   </thead>
 
@@ -594,6 +631,21 @@ export default function SalesOrderDetailClient({
                                 )
                               }
                             </td>
+                            {workspace.capabilities.canViewMargin && (
+                              <td className="px-4 py-3 text-right align-top">
+                                <div className="min-w-[150px] space-y-1">
+                                  <p className="text-[10px] text-slate-500">
+                                    Cost: <span className="font-bold text-slate-700 dark:text-slate-200">{line.costTotal == null ? '—' : money(line.costTotal, order.currency)}</span>
+                                  </p>
+                                  <p className="text-[10px] text-slate-500">
+                                    Margin: <span className="font-bold text-slate-700 dark:text-slate-200">{line.marginAmount == null ? '—' : money(line.marginAmount, order.currency)}</span>
+                                  </p>
+                                  <p className="text-[10px] font-black text-slate-700 dark:text-slate-200">
+                                    {line.marginPercent == null ? '—' : line.marginPercent.toFixed(1) + '%'}
+                                  </p>
+                                </div>
+                              </td>
+                            )}
                           </tr>
                         ),
                       )
@@ -739,7 +791,8 @@ export default function SalesOrderDetailClient({
                             Math.max(
                               0,
                               line.quantity -
-                              line.deliveredQuantity,
+                              line.shippedQuantity -
+                              line.plannedQuantity,
                             );
 
                           return (
@@ -1453,6 +1506,24 @@ export default function SalesOrderDetailClient({
                   </span>
                 </div>
               </div>
+
+              {workspace.capabilities.canViewMargin && (
+                <div className="mt-4 space-y-2 border-t border-[var(--sami-border)] pt-4">
+                  <h3 className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">Cost / margin summary</h3>
+                  <Summary
+                    label="Cost total"
+                    value={order.costTotal == null ? '—' : money(order.costTotal, order.currency)}
+                  />
+                  <Summary
+                    label="Margin amount"
+                    value={order.marginAmount == null ? '—' : money(order.marginAmount, order.currency)}
+                  />
+                  <Summary
+                    label="Margin %"
+                    value={order.marginPercent == null ? '—' : order.marginPercent.toFixed(1) + '%'}
+                  />
+                </div>
+              )}
             </div>
 
             {
