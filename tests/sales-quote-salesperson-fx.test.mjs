@@ -48,15 +48,18 @@ test('foreign-currency quote submission requires a positive manual FX rate and u
 });
 
 test('selected salespeople are validated against workspace membership and persisted for create and edit', async () => {
-  const [commands, types] = await Promise.all([
+  const [commands, types, pipeline] = await Promise.all([
     source('lib/apps/sales/commands.ts'),
     source('lib/apps/sales/types.ts'),
+    source('lib/apps/sales/pipeline.ts'),
   ]);
 
   assert.match(types, /export type CreateSalesQuoteInput = \{[\s\S]{0,160}salespersonUserId\?: unknown/);
-  assert.match(commands, /assertActiveInternalWorkspaceSalesperson/);
-  assert.match(commands, /tu\.tenant_id = \$1[\s\S]{0,160}tu\.status = 'active'[\s\S]{0,120}tu\.member_type = 'internal'/);
-  assert.match(commands, /userId:\s*salespersonUserId/);
-  assert.match(commands, /salesperson_user_id = \$31/);
-  assert.match(commands, /const salespersonUserId = requestedSalespersonUserId \|\| context\.userId/);
+  assert.match(commands, /resolveSalesperson:\\s*\\(ctx: Awaited<ReturnType<typeof requireSalesContext>>, value: unknown\\) => Promise<string \\| null>/);
+  assert.match(commands, /resolveSalesperson:\\s*resolveActiveSalesperson/);
+  assert.match(pipeline, /export async function resolveActiveSalesperson/);
+  assert.match(pipeline, /tu\\.tenant_id = \\$1[\\s\\S]{0,160}tu\\.status = 'active'[\\s\\S]{0,120}tu\\.member_type = 'internal'/);
+  assert.match(commands, /userId:\\s*salespersonUserId/);
+  assert.match(commands, /salesperson_user_id = \\$31/);
+  assert.equal((commands.match(/deps\\.resolveSalesperson\\(context, input\\.salespersonUserId\\)/g) || []).length, 2);
 });

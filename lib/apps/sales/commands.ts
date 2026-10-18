@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { assertSalesQuoteApprovalSatisfied, requestAdvancedSalesQuoteApproval, reviewAdvancedSalesQuoteApproval } from '@/lib/apps/sales/approvals';
+import { resolveActiveSalesperson } from '@/lib/apps/sales/pipeline';
 import { salesQuoteRequiresLegacyApproval } from '@/lib/apps/sales/approval-policy';
 import { markSalesOpportunityWonFromAcceptedQuote } from '@/lib/apps/sales/opportunity-conversion';
 
@@ -298,6 +299,21 @@ import {
 import type {
   CreateSalesQuoteInput,
 } from '@/lib/apps/sales/types';
+
+
+type NormalizedOptionalQuoteItem = {
+  catalogItemId: string | null;
+  externalProductId: string | null;
+  sortOrder: number;
+  description: string;
+  sku: string | null;
+  unit: string;
+  quantity: number;
+  unitPrice: number;
+  unitCost: number;
+  taxName: string | null;
+  taxRate: number;
+};
 
 
 type NormalizedQuoteLine = {
@@ -1175,6 +1191,81 @@ async function normalizeQuoteLines(
 }
 
 
+async function insertOptionalItems(
+  client: PoolClient,
+  companyId: string,
+  quoteId: string,
+  items: NormalizedOptionalQuoteItem[],
+  userId?: string,
+) {
+  for (const item of items) {
+    await client.query(
+      `
+        INSERT INTO sales_quote_optional_items (
+          quote_id, company_id, catalog_item_id, external_product_id,
+          sort_order, description, sku_snapshot, unit, quantity, unit_price,
+          unit_cost, tax_name_snapshot, tax_rate, is_selected, selected_at,
+          created_by, updated_by
+        )
+        VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,FALSE,NULL,$14,$14
+        )
+      `,
+      [
+        quoteId, companyId, item.catalogItemId, item.externalProductId,
+        item.sortOrder, item.description, item.sku, item.unit, item.quantity,
+        item.unitPrice, item.unitCost, item.taxName, item.taxRate, userId || null,
+      ],
+    );
+  }
+}
+
+
+function normalizeOptionalQuoteItems(
+  value: unknown,
+  context: Awaited<ReturnType<typeof requireSalesContext>>,
+): NormalizedOptionalQuoteItem[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > 100) {
+    throw new SalesError('INVALID_INPUT', 'Optional products must be an array with no more than 100 items.');
+  }
+  const canUseCatalog = crossPermission(context, 'invoicing.catalog.view', 'invoicing.catalog.manage');
+  const canManageMargin = crossPermission(context, SALES_PERMISSIONS.MARGIN_MANAGE);
+  return value.map((raw, index) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      throw new SalesError('INVALID_INPUT', 'Optional product ' + (index + 1) + ' is invalid.');
+    }
+    const item = raw as Record<string, unknown>;
+    const catalogItemId = optionalUuid(item.catalogItemId);
+    const externalProductId = optionalUuid(item.externalProductId);
+    if ((catalogItemId || externalProductId) && !canUseCatalog) {
+      throw new SalesError('SALES_PERMISSION_REQUIRED', 'Catalog access is required to use saved optional products.');
+    }
+    const description = cleanText(item.description, 4000);
+    if (!description) throw new SalesError('INVALID_INPUT', 'Every optional product needs a description.');
+    if (item.unitCost !== undefined && item.unitCost !== null && item.unitCost !== '' && !canManageMargin) {
+      throw new SalesError('SALES_PERMISSION_REQUIRED', 'Sales margin-management permission is required to override optional-product cost.');
+    }
+    const sortValue = Number(item.sortOrder);
+    return {
+      catalogItemId,
+      externalProductId,
+      sortOrder: Number.isInteger(sortValue) && sortValue >= 0 ? sortValue : index,
+      description,
+      sku: nullableText(item.sku, 180),
+      unit: cleanText(item.unit || 'unit', 60) || 'unit',
+      quantity: numberInput(item.quantity ?? 1, 'Optional product quantity', { min: 0.0001, max: 1_000_000 }),
+      unitPrice: numberInput(item.unitPrice ?? 0, 'Optional product unit price', { min: 0, max: 1_000_000_000 }),
+      unitCost: item.unitCost === undefined || item.unitCost === null || item.unitCost === ''
+        ? 0
+        : numberInput(item.unitCost, 'Optional product unit cost', { min: 0, max: 1_000_000_000 }),
+      taxName: nullableText(item.taxName, 180),
+      taxRate: numberInput(item.taxRate ?? 0, 'Optional product tax rate', { min: 0, max: 100 }),
+    };
+  });
+}
+
+
 async function insertQuoteLines(
   client:
     PoolClient,
@@ -1184,6 +1275,8 @@ async function insertQuoteLines(
     string,
   lines:
     NormalizedQuoteLine[],
+  optionalItems: NormalizedOptionalQuoteItem[] = [],
+  userId?: string,
 ) {
   for (
     const line
@@ -1246,6 +1339,7 @@ async function insertQuoteLines(
       ],
     );
   }
+  await insertOptionalItems(client, companyId, quoteId, optionalItems, userId);
 }
 
 
@@ -1417,6 +1511,7 @@ type SalesQuoteAuthoringDependencies = {
   salesQuoteRequiresLegacyApproval: typeof salesQuoteRequiresLegacyApproval;
   nextSalesNumber: typeof nextSalesNumber;
   resolveSalesAssignmentForUser: typeof resolveSalesAssignmentForUser;
+  resolveSalesperson: (ctx: Awaited<ReturnType<typeof requireSalesContext>>, value: unknown) => Promise<string | null>;
   insertQuoteLines: typeof insertQuoteLines;
   recordSalesActivity: typeof recordSalesActivity;
   emitSalesAutomationEvent: typeof emitSalesAutomationEvent;
@@ -1442,6 +1537,7 @@ const defaultSalesQuoteAuthoringDependencies: SalesQuoteAuthoringDependencies = 
   salesQuoteRequiresLegacyApproval,
   nextSalesNumber,
   resolveSalesAssignmentForUser,
+  resolveSalesperson: resolveActiveSalesperson,
   insertQuoteLines,
   recordSalesActivity,
   emitSalesAutomationEvent,
@@ -1453,35 +1549,6 @@ const defaultSalesQuoteAuthoringDependencies: SalesQuoteAuthoringDependencies = 
   nullableText,
   numberInput,
 };
-
-async function assertActiveInternalWorkspaceSalesperson(
-  context: Awaited<ReturnType<typeof requireSalesContext>>,
-  userId: string,
-) {
-  const result = await queryControl(
-    `
-      SELECT 1
-      FROM tenant_users tu
-      INNER JOIN users u ON u.id = tu.user_id
-      WHERE tu.tenant_id = $1
-        AND tu.user_id = $2::uuid
-        AND tu.status = 'active'
-        AND tu.member_type = 'internal'
-        AND tu.deleted_at IS NULL
-        AND u.deleted_at IS NULL
-      LIMIT 1
-    `,
-    [context.tenantId, userId],
-  );
-
-  if (result.rows.length !== 1) {
-    throw new SalesError(
-      'INVALID_INPUT',
-      'Choose an active internal workspace member as the salesperson.',
-    );
-  }
-}
-
 
 /**
  * Transaction-level quotation creation primitive. The public production entry
@@ -1634,11 +1701,9 @@ export async function createSalesQuoteTransaction(
         }
       : input;
 
-    const requestedSalespersonUserId = deps.optionalUuid(quoteInput.salespersonUserId);
-    const salespersonUserId = requestedSalespersonUserId || context.userId;
-    if (requestedSalespersonUserId) {
-      await assertActiveInternalWorkspaceSalesperson(context, salespersonUserId);
-    }
+    const salespersonUserId = input.salespersonUserId
+      ? (await deps.resolveSalesperson(context, input.salespersonUserId)) || context.userId
+      : context.userId;
 
     const template =
       await deps.resolveTemplate(
@@ -1749,6 +1814,8 @@ export async function createSalesQuoteTransaction(
           currency,
         },
       );
+
+    const optionalItems = normalizeOptionalQuoteItems(input.optionalItems, context);
 
     const shippingTotal =
       deps.numberInput(
@@ -1987,6 +2054,8 @@ export async function createSalesQuoteTransaction(
       context.companyId,
       quoteId,
       lines,
+      optionalItems,
+      context.userId,
     );
 
     await client.query(
@@ -2183,11 +2252,9 @@ export async function updateSalesQuoteDraftTransaction(
       );
     }
 
-    const requestedSalespersonUserId = deps.optionalUuid(input.salespersonUserId);
-    const salespersonUserId = requestedSalespersonUserId || context.userId;
-    if (requestedSalespersonUserId) {
-      await assertActiveInternalWorkspaceSalesperson(context, salespersonUserId);
-    }
+    const salespersonUserId = input.salespersonUserId
+      ? (await deps.resolveSalesperson(context, input.salespersonUserId)) || context.userId
+      : context.userId;
     const salespersonAssignment = await deps.resolveSalesAssignmentForUser(client, {
       companyId: context.companyId,
       userId: salespersonUserId,
@@ -2702,6 +2769,29 @@ export async function duplicateSalesQuote(
       ],
     );
 
+  const optionalItems =
+    await context.pool.query(
+      `
+        SELECT
+          catalog_item_id,
+          external_product_id,
+          sort_order,
+          description,
+          sku_snapshot,
+          unit,
+          quantity,
+          unit_price,
+          unit_cost,
+          tax_name_snapshot,
+          tax_rate
+        FROM sales_quote_optional_items
+        WHERE quote_id = $1
+          AND company_id = $2
+        ORDER BY sort_order, id
+      `,
+      [quoteId, context.companyId],
+    );
+
   const row =
     quote.rows[0];
 
@@ -2754,6 +2844,22 @@ export async function duplicateSalesQuote(
       row.terms,
     internalNotes:
       row.internal_notes,
+    optionalItems:
+      optionalItems.rows.map(item => ({
+        catalogItemId: item.catalog_item_id || undefined,
+        externalProductId: item.external_product_id || undefined,
+        sortOrder: Number(item.sort_order || 0),
+        description: item.description,
+        sku: item.sku_snapshot,
+        unit: item.unit,
+        quantity: Number(item.quantity),
+        unitPrice: money(item.unit_price),
+        unitCost: crossPermission(context, SALES_PERMISSIONS.MARGIN_MANAGE)
+          ? money(item.unit_cost)
+          : undefined,
+        taxName: item.tax_name_snapshot,
+        taxRate: Number(item.tax_rate),
+      })),
     lines:
       lines.rows.map(
         line => ({

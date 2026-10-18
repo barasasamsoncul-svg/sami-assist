@@ -72,19 +72,20 @@ async function currentPolicies(client: Queryable, companyId: string) {
 }
 
 
-async function cancelPendingSalesQuoteApproval(
+export async function cancelPendingSalesQuoteApproval(
   client: Queryable,
   companyId: string,
   quoteId: string,
   status: 'cancelled' | 'superseded',
-) {
-  return client.query(
+): Promise<string[]> {
+  const result = await client.query(
     `UPDATE sales_quote_approval_requests
      SET status=$3, completed_at=NOW(), updated_at=NOW()
      WHERE company_id=$1 AND quote_id=$2 AND status='pending'
      RETURNING id`,
     [companyId, quoteId, status],
   );
+  return result.rows.map(row => String(row.id));
 }
 
 export async function saveSalesQuoteApprovalPolicy(input: Record<string, unknown>) {
@@ -274,10 +275,10 @@ export async function cancelSalesQuoteApprovalTransaction(
       quoteId,
       'cancelled',
     );
-    if (cancelledRequest.rows.length !== 1) {
+    if (cancelledRequest.length !== 1) {
       throw new SalesError('QUOTE_STATE_INVALID', 'The approval request is no longer pending.');
     }
-    const requestId = String(cancelledRequest.rows[0].id);
+    const requestId = cancelledRequest[0];
 
     await client.query(
       `UPDATE sales_quotes
@@ -495,7 +496,7 @@ export async function reviewAdvancedSalesQuoteApprovalTransaction(
         quoteId,
         'superseded',
       );
-      if (supersededRequest.rows.length !== 1) {
+      if (supersededRequest.length !== 1) {
         throw new SalesError('QUOTE_STATE_INVALID', 'The stale approval request is no longer pending.');
       }
       await client.query(`UPDATE sales_quotes SET approval_status='draft',approval_requested_at=NULL,approval_requested_by=NULL,updated_at=NOW() WHERE id=$1 AND company_id=$2`, [quoteId, context.companyId]);

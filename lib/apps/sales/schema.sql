@@ -1186,45 +1186,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_pipeline_stages_code
 CREATE INDEX IF NOT EXISTS idx_sales_pipeline_stages_company
   ON public.sales_pipeline_stages(company_id, is_active, sequence, name);
 
-ALTER TABLE public.sales_quotes
-  ADD COLUMN IF NOT EXISTS stage_id UUID REFERENCES public.sales_pipeline_stages(id) ON DELETE SET NULL;
-ALTER TABLE public.sales_quotes
-  ADD COLUMN IF NOT EXISTS expected_close_date DATE;
-ALTER TABLE public.sales_quotes
-  ADD COLUMN IF NOT EXISTS probability_override NUMERIC(5,2)
-    CHECK (
-      probability_override IS NULL
-      OR (probability_override >= 0 AND probability_override <= 100)
-    );
-ALTER TABLE public.sales_quotes
-  ADD COLUMN IF NOT EXISTS stage_entered_at TIMESTAMPTZ;
-ALTER TABLE public.sales_quotes
-  ADD COLUMN IF NOT EXISTS last_stage_change_at TIMESTAMPTZ;
-
-CREATE INDEX IF NOT EXISTS idx_sales_quotes_stage
-  ON public.sales_quotes(company_id, stage_id, quote_date DESC)
-  WHERE deleted_at IS NULL;
-
-CREATE INDEX IF NOT EXISTS idx_sales_quotes_expected_close
-  ON public.sales_quotes(company_id, expected_close_date)
-  WHERE deleted_at IS NULL AND expected_close_date IS NOT NULL;
-
-CREATE TABLE IF NOT EXISTS public.sales_quote_stage_history (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  company_id UUID NOT NULL,
-  quote_id UUID NOT NULL REFERENCES public.sales_quotes(id) ON DELETE CASCADE,
-  from_stage_id UUID REFERENCES public.sales_pipeline_stages(id) ON DELETE SET NULL,
-  to_stage_id UUID REFERENCES public.sales_pipeline_stages(id) ON DELETE SET NULL,
-  from_probability NUMERIC(5,2),
-  to_probability NUMERIC(5,2),
-  reason TEXT,
-  changed_by UUID,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_sales_quote_stage_history_quote
-  ON public.sales_quote_stage_history(company_id, quote_id, created_at DESC);
-
 -- Advanced quote approval workflow (Sales 3.4.2).
 CREATE TABLE IF NOT EXISTS public.sales_quote_approval_policies (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

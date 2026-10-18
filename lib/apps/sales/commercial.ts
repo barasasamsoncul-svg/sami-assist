@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { salesQuoteRequiresLegacyApproval } from '@/lib/apps/sales/approval-policy';
+import { cancelPendingSalesQuoteApproval } from '@/lib/apps/sales/approvals';
 
 import type {
   PoolClient,
@@ -1076,6 +1077,8 @@ export async function createSalesQuoteRevision(
       ],
     );
 
+    const cancelledApprovalRequestIds = await cancelPendingSalesQuoteApproval(client, context.companyId, quoteId, 'superseded');
+
     const policy =
       settings.rows[0] ||
       {};
@@ -1189,6 +1192,7 @@ export async function createSalesQuoteRevision(
           currentRevision:
             nextRevision,
           reason,
+          cancelledApprovalRequestIds,
         },
       },
     );

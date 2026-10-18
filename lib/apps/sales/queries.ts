@@ -618,22 +618,8 @@ export async function getSalesWorkspaceData():
             quote.approval_status,
             quote.sales_order_id,
             quote.latest_invoice_id,
-            quote.created_at,
-            quote.stage_id,
-            quote.expected_close_date,
-            quote.probability_override,
-            stage.code AS stage_code,
-            stage.name AS stage_name,
-            COALESCE(
-              quote.probability_override,
-              stage.probability,
-              0
-            ) AS probability
+            quote.created_at
           FROM sales_quotes quote
-          LEFT JOIN sales_pipeline_stages stage
-            ON stage.id = quote.stage_id
-           AND stage.company_id = quote.company_id
-           AND stage.deleted_at IS NULL
           WHERE quote.company_id = $1
             AND quote.deleted_at IS NULL
           ORDER BY
@@ -1226,38 +1212,6 @@ export async function getSalesWorkspaceData():
             row.latest_invoice_id
               ? String(
                   row.latest_invoice_id,
-                )
-              : null,
-          stageId:
-            row.stage_id
-              ? String(
-                  row.stage_id,
-                )
-              : null,
-          stageCode:
-            row.stage_code
-              ? String(
-                  row.stage_code,
-                )
-              : null,
-          stageName:
-            row.stage_name
-              ? String(
-                  row.stage_name,
-                )
-              : null,
-          probability:
-            Number(
-              row.probability ||
-              0,
-            ),
-          expectedCloseDate:
-            row.expected_close_date
-              ? String(
-                  row.expected_close_date,
-                ).slice(
-                  0,
-                  10,
                 )
               : null,
           createdAt:
@@ -2153,38 +2107,6 @@ export async function getSalesQuoteDetail(
       row.latest_invoice_id
         ? String(
             row.latest_invoice_id,
-          )
-        : null,
-    stageId:
-      row.stage_id
-        ? String(
-            row.stage_id,
-          )
-        : null,
-    stageCode:
-      row.stage_code
-        ? String(
-            row.stage_code,
-          )
-        : null,
-    stageName:
-      row.stage_name
-        ? String(
-            row.stage_name,
-          )
-        : null,
-    probability:
-      Number(
-        row.probability ||
-        0,
-      ),
-    expectedCloseDate:
-      row.expected_close_date
-        ? String(
-            row.expected_close_date,
-          ).slice(
-            0,
-            10,
           )
         : null,
     createdAt:
@@ -4128,14 +4050,8 @@ export async function getSalesQuoteRegisterPage(input: Record<string, unknown> =
           quote.customer_name, quote.customer_email, quote.total_amount, quote.current_revision,
           quote.template_id, quote.pricelist_id, quote.margin_amount, quote.margin_percent,
           quote.reference, quote.approval_status, quote.sales_order_id, quote.latest_invoice_id,
-          quote.created_at, quote.stage_id, quote.expected_close_date,
-          quote.probability_override, stage.code AS stage_code, stage.name AS stage_name,
-          COALESCE(quote.probability_override, stage.probability, 0) AS probability
+          quote.created_at
         FROM quote_rows quote
-        LEFT JOIN sales_pipeline_stages stage
-          ON stage.id = quote.stage_id
-         AND stage.company_id = quote.company_id
-         AND stage.deleted_at IS NULL
         WHERE TRUE
           ${searchSql}
           ${statusSql}
@@ -4221,11 +4137,6 @@ export async function getSalesQuoteRegisterPage(input: Record<string, unknown> =
     approvalStatus: String(row.approval_status || 'not_required'),
     salesOrderId: row.sales_order_id ? String(row.sales_order_id) : null,
     latestInvoiceId: row.latest_invoice_id ? String(row.latest_invoice_id) : null,
-    stageId: row.stage_id ? String(row.stage_id) : null,
-    stageCode: row.stage_code ? String(row.stage_code) : null,
-    stageName: row.stage_name ? String(row.stage_name) : null,
-    probability: Number(row.probability || 0),
-    expectedCloseDate: row.expected_close_date ? String(row.expected_close_date).slice(0, 10) : null,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
   }));
 
