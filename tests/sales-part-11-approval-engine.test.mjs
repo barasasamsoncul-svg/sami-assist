@@ -188,7 +188,5 @@ test('approval request pagination uses an explicit bounded offset and limit and 
   assert.match(loader, /Math\.min\(rawLimit, 100\)/);
   assert.match(loader, /OFFSET \$2 LIMIT \$3/);
   assert.match(loader, /\[context\.companyId, offset, limit\]/);
-  for (const field of ['policies', 'requests', 'totalCount', 'hasMore', 'offset', 'limit']) {
-    assert.match(loader, new RegExp('\\b' + field + '\\s*:'));
-  }
+  assert.match(loader, /return \{\s*policies: policies\.rows,\s*requests,\s*offset,\s*limit,\s*totalCount,\s*hasMore:/);
 });
