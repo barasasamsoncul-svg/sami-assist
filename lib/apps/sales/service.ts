@@ -144,7 +144,11 @@ export {
 
 export { getSalesLeadAssignmentRules, saveSalesLeadAssignmentRule, deleteSalesLeadAssignmentRule } from '@/lib/apps/sales/lead-assignment-rules';
 
-export { getSalesQuoteApprovalData, saveSalesQuoteApprovalPolicy } from '@/lib/apps/sales/approvals';
+export {
+  cancelSalesQuoteApproval,
+  getSalesQuoteApprovalData,
+  saveSalesQuoteApprovalPolicy,
+} from '@/lib/apps/sales/approvals';
 
 
 export {
