@@ -24,6 +24,14 @@ import {
   postSalesFulfillmentToInventory,
 } from '@/lib/apps/sales/inventory';
 
+import {
+  emitSalesAutomationEvent,
+} from '@/lib/apps/sales/commands';
+
+import {
+  reverseSalesOrderCommissionsForReturn,
+} from '@/lib/apps/sales/organization';
+
 import { salesOrderDepositIdempotencyKey } from '@/lib/apps/sales/deposit-rules';
 
 import {
@@ -1350,6 +1358,24 @@ export async function recordSalesOrderDeposit(
 
     await client.query('COMMIT');
 
+    await emitSalesAutomationEvent(context, {
+      triggerKey: 'sales.deposit.received',
+      recordType: 'sales_order',
+      recordId: orderId,
+      idempotencySeed:
+        'deposit-received:' +
+        orderId +
+        ':' +
+        String(deposit.paymentId),
+      payload: {
+        amount: money(deposit.amount),
+        currency: String(order.currency || 'KES').toUpperCase(),
+        paymentId: String(deposit.paymentId),
+        retainerId: String(deposit.retainerId),
+        depositStatus: 'received',
+      },
+    });
+
     return {
       orderId,
       ...deposit,
@@ -1525,6 +1551,21 @@ export async function applySalesOrderDeposit(
 
       await client.query('COMMIT');
 
+      await emitSalesAutomationEvent(context, {
+        triggerKey: 'sales.deposit.applied',
+        recordType: 'sales_order',
+        recordId: orderId,
+        idempotencySeed:
+          'deposit-applied:' + orderId + ':' + invoiceId + ':' + nextStatus,
+        payload: {
+          invoiceId,
+          paymentId,
+          depositStatus: nextStatus,
+          allocatedAmount: existingAmount,
+          reused: true,
+        },
+      });
+
       return {
         orderId,
         depositStatus: nextStatus,
@@ -1592,6 +1633,21 @@ export async function applySalesOrderDeposit(
     );
 
     await client.query('COMMIT');
+
+    await emitSalesAutomationEvent(context, {
+      triggerKey: 'sales.deposit.applied',
+      recordType: 'sales_order',
+      recordId: orderId,
+      idempotencySeed:
+        'deposit-applied:' + orderId + ':' + invoiceId + ':' + nextStatus,
+      payload: {
+        invoiceId,
+        paymentId,
+        depositStatus: nextStatus,
+        allocatedAmount: requested,
+        reused: false,
+      },
+    });
 
     return {
       orderId,
@@ -2054,6 +2110,10 @@ export async function createSalesShipment(
       'COMMIT',
     );
 
+    // Shipment creation changes planned quantities only; it does not change delivered quantities
+    // or fulfillment_status. Emit fulfillment.changed from committed fulfillment status transitions,
+    // not from shipment creation alone.
+
     return {
       shipmentId,
       shipmentNumber,
@@ -2120,6 +2180,7 @@ export async function updateSalesShipmentStatus(
 
   const client =
     await context.pool.connect();
+  let fulfillmentSnapshot: Awaited<ReturnType<typeof recalculateOrderFulfillment>> | null = null;
 
   try {
     await client.query(
@@ -2404,7 +2465,7 @@ export async function updateSalesShipmentStatus(
         }
       }
 
-      await recalculateOrderFulfillment(
+      fulfillmentSnapshot = await recalculateOrderFulfillment(
         client,
         {
           companyId: context.companyId,
@@ -2564,6 +2625,27 @@ export async function updateSalesShipmentStatus(
     await client.query(
       'COMMIT',
     );
+
+    if (fulfillmentSnapshot) {
+      const orderId = String(row.sales_order_id);
+      await emitSalesAutomationEvent(context, {
+        triggerKey: 'sales.order.fulfillment.changed',
+        recordType: 'sales_order',
+        recordId: orderId,
+        idempotencySeed:
+          'fulfillment:' +
+          orderId +
+          ':' +
+          fulfillmentSnapshot.fulfillmentStatus +
+          ':' +
+          fulfillmentSnapshot.deliveredQuantity,
+        payload: {
+          fulfillmentStatus: fulfillmentSnapshot.fulfillmentStatus,
+          orderedQuantity: fulfillmentSnapshot.orderedQuantity,
+          deliveredQuantity: fulfillmentSnapshot.deliveredQuantity,
+        },
+      });
+    }
 
     return {
       shipmentId,
@@ -3213,18 +3295,12 @@ const returnId =
       );
     }
 
-    await recalculateOrderFulfillment(
+    const fulfillmentSnapshot = await recalculateOrderFulfillment(
       client,
       {
-        companyId:
-          context.companyId,
-        orderId:
-          String(
-            returnRow
-              .sales_order_id,
-          ),
-        userId:
-          context.userId,
+        companyId: context.companyId,
+        orderId: String(returnRow.sales_order_id),
+        userId: context.userId,
       },
     );
 
@@ -3276,6 +3352,25 @@ const returnId =
     await client.query(
       'COMMIT',
     );
+
+    const orderId = String(returnRow.sales_order_id);
+    await emitSalesAutomationEvent(context, {
+      triggerKey: 'sales.order.fulfillment.changed',
+      recordType: 'sales_order',
+      recordId: orderId,
+      idempotencySeed:
+        'fulfillment:' +
+        orderId +
+        ':' +
+        fulfillmentSnapshot.fulfillmentStatus +
+        ':' +
+        fulfillmentSnapshot.deliveredQuantity,
+      payload: {
+        fulfillmentStatus: fulfillmentSnapshot.fulfillmentStatus,
+        orderedQuantity: fulfillmentSnapshot.orderedQuantity,
+        deliveredQuantity: fulfillmentSnapshot.deliveredQuantity,
+      },
+    });
 
     return {
       returnId,
@@ -3425,6 +3520,12 @@ const returnId = requireUuid(input.returnId, 'Sales return').toLowerCase();
         string;
       quantity:
         number;
+      currency:
+        string;
+      invoiceItemQuantity:
+        number;
+      invoiceItemLineTotal:
+        number;
     };
 
     const byInvoice =
@@ -3472,6 +3573,8 @@ const returnId = requireUuid(input.returnId, 'Sales return').toLowerCase();
               invoice_item.id,
               invoice_item.invoice_id,
               invoice_item.quantity,
+              invoice_item.line_total,
+              invoice.currency,
               COALESCE(
                 (
                   SELECT SUM(
@@ -3612,6 +3715,9 @@ const returnId = requireUuid(input.returnId, 'Sales return').toLowerCase();
               invoiceItem.id,
             ),
           quantity,
+          currency: String(invoiceItem.currency || 'KES').toUpperCase(),
+          invoiceItemQuantity: Number(invoiceItem.quantity || 0),
+          invoiceItemLineTotal: Number(invoiceItem.line_total || 0),
         });
 
         byInvoice.set(
@@ -3846,6 +3952,36 @@ const returnId = requireUuid(input.returnId, 'Sales return').toLowerCase();
       });
     }
 
+    const returnedAmountsByCurrency = new Map<string, number>();
+    for (const lines of byInvoice.values()) {
+      for (const line of lines) {
+        if (line.invoiceItemQuantity <= 0) continue;
+        const creditedLineValue = money(
+          line.invoiceItemLineTotal * (line.quantity / line.invoiceItemQuantity),
+        );
+        if (creditedLineValue <= 0) continue;
+        returnedAmountsByCurrency.set(
+          line.currency,
+          money((returnedAmountsByCurrency.get(line.currency) || 0) + creditedLineValue),
+        );
+      }
+    }
+
+    const commissionReversals = await reverseSalesOrderCommissionsForReturn(
+      serializationClient,
+      {
+        companyId: context.companyId,
+        orderId: String(returnRow.sales_order_id),
+        userId: context.userId,
+        returnedValueByCurrency: Array.from(returnedAmountsByCurrency, ([currency, amount]) => ({
+          currency,
+          amount,
+        })),
+        returnId,
+        reason: 'Sales return ' + String(returnRow.return_number) + ': ' + String(returnRow.reason),
+      },
+    );
+
     const returnState = await serializationClient.query(
       `
         UPDATE sales_returns
@@ -3881,6 +4017,7 @@ const returnId = requireUuid(input.returnId, 'Sales return').toLowerCase();
         String(returnState.rows[0]?.status || returnRow.status),
       credits:
         createdCredits,
+      commissionReversals,
     };
   } finally {
     try {
