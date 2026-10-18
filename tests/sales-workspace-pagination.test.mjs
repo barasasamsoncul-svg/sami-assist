@@ -24,7 +24,9 @@ test('Sales quotation register searches and filters on the server before paging'
   assert.match(implementation, /quote\.approval_status/);
   assert.match(implementation, /LIMIT \$4 OFFSET \$5/);
   assert.match(implementation, /limit \+ 1/);
-  assert.match(implementation, /totalCount: Number\(count\.rows\[0\]/);
+  assert.match(implementation, /totalCount: Number\(count\.rows\[0\]\?\.all_count \|\| 0\)/);
+  assert.match(implementation, /filteredTotalCount: Number\(count\.rows\[0\]\?\.total \|\| 0\)/);
+  assert.match(implementation, /FROM quote_rows quote\s+WHERE TRUE\s+\$\{searchSql\}/);
   assert.match(implementation, /hasMore/);
   assert.match(implementation, /AS awaiting_response/);
   assert.match(implementation, /AS needs_approval/);
@@ -78,4 +80,21 @@ test('Sales API exposes register paging without accepting caller-provided SQL or
   assert.match(client, /quoteRegisterQueueCounts\?\.\[option\.key\]/);
   assert.match(client, /orderRegisterQueueCounts\?\.\[option\.key\]/);
   assert.match(packageJson.scripts['test:sales'], /tests\/sales-workspace-pagination\.test\.mjs/);
+});
+
+
+test('Sales workspace exposes bounded salesperson choices and only permits pipeline moves with manage permission', async () => {
+  const queries = await source('lib/apps/sales/queries.ts');
+  const workspaceStart = queries.indexOf('export async function getSalesWorkspaceData(');
+  const workspaceEnd = queries.indexOf('\nexport async function ', workspaceStart + 20);
+  const workspace = queries.slice(workspaceStart, workspaceEnd);
+  const capabilitiesStart = queries.indexOf('function salesCapabilities(');
+  const capabilitiesEnd = queries.indexOf('function invoicingTablesAvailable(', capabilitiesStart);
+  const capabilities = queries.slice(capabilitiesStart, capabilitiesEnd);
+
+  assert.match(workspace, /ORDER BY tu\.is_owner DESC,[\s\S]{0,200}LIMIT 500/);
+  assert.match(workspace, /AND tu\.user_id = \$2/);
+  assert.match(workspace, /defaultSalesperson: defaultSalesperson\.rows\[0\]/);
+  assert.match(capabilities, /canMovePipeline:\s*can\([\s\S]*?SALES_PERMISSIONS\s*\.PIPELINE_MANAGE\s*\),/);
+  assert.doesNotMatch(capabilities.slice(capabilities.indexOf('canMovePipeline:'), capabilities.indexOf('canManagePipelineStages:')), /PIPELINE_VIEW/);
 });
