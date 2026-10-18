@@ -201,6 +201,7 @@ type PipelineAction =
   | { action: 'convert_lead'; leadId: string; pipelineId: string; name: string; expectedValue: string; currency: string; expectedCloseDate: string | null }
   | { action: 'update_opportunity'; opportunityId: string; name: string; customerName: string; contactName: string; email: string; phone: string; expectedValue: string; currency: string; expectedCloseDate: string | null; source: string; notes: string; salespersonUserId: string | null }
   | { action: 'move_opportunity'; opportunityId: string; stageId: string; reason?: string }
+  | { action: 'create_billing_customer_for_opportunity'; opportunityId: string }
   | { action: 'save_pipeline_view'; name: string; viewType: 'leads' | 'opportunities'; statusView: string; scoreView: 'all' | 'high' | 'medium' | 'low'; searchQuery: string }
   | { action: 'delete_pipeline_view'; viewId: string }
   | { action: 'save_lead_assignment_rule'; ruleId: string | null; name: string; sourceMatch: string | null; salesTeamId: string; priority: number; isActive: boolean }
@@ -2298,6 +2299,22 @@ export default function SalesPipelineManager({
                     </Link>
                   ) : (
                     <span className="text-slate-400">No quotation yet</span>
+                  )}
+                  {opportunity.billing_customer_id ? (
+                    <span className="text-emerald-700 dark:text-emerald-300">Billing customer linked</span>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void action({
+                        action: 'create_billing_customer_for_opportunity',
+                        opportunityId: opportunity.id,
+                      })}
+                      className="text-blue-600 hover:underline disabled:opacity-60"
+                      aria-label={'Create billing customer for ' + opportunity.name}
+                    >
+                      Create billing customer
+                    </button>
                   )}
                   {canManagePipeline && opportunity.stage_type === 'open' ? (
                     <button
