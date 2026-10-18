@@ -2510,7 +2510,10 @@ test('Sales order saved views persist per-company and per-user queue filters thr
   assert.match(types, /export type SalesOrderStatusView[\s\S]*'awaiting_fulfillment'[\s\S]*'invoiced'/);
   assert.match(types, /export type SalesSavedOrderView/);
   assert.match(schema, /sales_order_saved_views[\s\S]*'awaiting_fulfillment'[\s\S]*'invoiced'/);
-  assert.match(savedViews, /requireSalesContext\(SALES_PERMISSIONS\.ORDER_VIEW\)/);
+  assert.match(savedViews, /function canViewOrders\([\s\S]*?SALES_PERMISSIONS\.ORDER_VIEW[\s\S]*?\|\|[\s\S]*?SALES_PERMISSIONS\.ORDER_MANAGE/);
+  assert.match(savedViews, /requireSalesContext\(\)/);
+  assert.match(savedViews, /canViewOrders\(context\)/);
+  assert.doesNotMatch(savedViews, /requireSalesContext\(SALES_PERMISSIONS\.ORDER_VIEW\)/);
   assert.match(savedViews, /WHERE company_id = \$1[\s\S]*AND user_id = \$2/);
   assert.match(savedViews, /UPDATE sales_order_saved_views[\s\S]*deleted_at = NOW\(\)/);
   assert.ok(savedViews.includes('getSalesSavedOrderViews'));
