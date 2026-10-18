@@ -86,6 +86,8 @@ export type SalesOrderPdfOptions = {
   salespersonName?: string | null;
   logoImageXObject?: SalesPdfLogoImageXObject | null;
   documentTitle?: 'SALES ORDER' | 'PROFORMA INVOICE';
+  /** Remove cost and margin snapshots before composing an order PDF. */
+  maskCosts?: boolean;
 };
 
 const WIN_ANSI_SPECIALS: Record<string, number> = {
@@ -669,30 +671,46 @@ export function renderSalesOrderPdf(
   order: NonNullable<Order>,
   options: SalesOrderPdfOptions = {},
 ) {
+  const pdfOrder = options.maskCosts
+    ? {
+        ...order,
+        costTotal: null,
+        marginAmount: null,
+        marginPercent: null,
+        lines: pdfOrder.lines.map(item => ({
+          ...item,
+          unitCost: null,
+          costTotal: null,
+          marginAmount: null,
+          marginPercent: null,
+        })),
+      }
+    : order;
+
   const document: PdfDocument = {
     documentTitle: options.documentTitle || 'SALES ORDER',
-    documentNumber: String(order.orderNumber || ''),
-    status: String(order.status || ''),
-    issueDate: order.orderDate ? String(order.orderDate) : null,
+    documentNumber: String(pdfOrder.orderNumber || ''),
+    status: String(pdfOrder.status || ''),
+    issueDate: pdfOrder.orderDate ? String(pdfOrder.orderDate) : null,
     validUntil: null,
-    reference: order.reference ? String(order.reference) : order.quoteNumber ? String(order.quoteNumber) : null,
-    currency: String(order.currency || 'KES'),
-    subtotal: Number(order.subtotal || 0),
-    discountTotal: Number(order.discountTotal || 0),
-    taxTotal: Number(order.taxTotal || 0),
-    shippingTotal: Number(order.shippingTotal || 0),
-    depositRequiredAmount: Number(order.depositRequiredAmount || 0),
-    totalAmount: Number(order.totalAmount || 0),
-    notes: order.notes ? String(order.notes) : null,
-    terms: order.terms ? String(order.terms) : null,
+    reference: pdfOrder.reference ? String(pdfOrder.reference) : pdfOrder.quoteNumber ? String(pdfOrder.quoteNumber) : null,
+    currency: String(pdfOrder.currency || 'KES'),
+    subtotal: Number(pdfOrder.subtotal || 0),
+    discountTotal: Number(pdfOrder.discountTotal || 0),
+    taxTotal: Number(pdfOrder.taxTotal || 0),
+    shippingTotal: Number(pdfOrder.shippingTotal || 0),
+    depositRequiredAmount: Number(pdfOrder.depositRequiredAmount || 0),
+    totalAmount: Number(pdfOrder.totalAmount || 0),
+    notes: pdfOrder.notes ? String(pdfOrder.notes) : null,
+    terms: pdfOrder.terms ? String(pdfOrder.terms) : null,
     acceptedAt: null,
     salespersonName: options.salespersonName || null,
     customer: {
-      name: String(order.customerName || ''),
-      email: order.customerEmail ? String(order.customerEmail) : null,
-      phone: order.customerPhone ? String(order.customerPhone) : null,
-      taxId: order.customerTaxId ? String(order.customerTaxId) : null,
-      billingAddress: order.billingAddress ? String(order.billingAddress) : null,
+      name: String(pdfOrder.customerName || ''),
+      email: pdfOrder.customerEmail ? String(pdfOrder.customerEmail) : null,
+      phone: pdfOrder.customerPhone ? String(pdfOrder.customerPhone) : null,
+      taxId: pdfOrder.customerTaxId ? String(pdfOrder.customerTaxId) : null,
+      billingAddress: pdfOrder.billingAddress ? String(pdfOrder.billingAddress) : null,
     },
     company: {
       name: String(options.company?.name || 'SaMi'),
@@ -707,7 +725,7 @@ export function renderSalesOrderPdf(
       secondaryColor: options.template?.secondaryColor ? String(options.template.secondaryColor) : null,
       footerText: options.template?.footerText ? String(options.template.footerText) : null,
     },
-    lines: order.lines.map(item => {
+    lines: pdfOrder.lines.map(item => {
       const gross = Number(item.quantity || 0) * Number(item.unitPrice || 0);
       const discountValue = Number(item.discountValue || 0);
       const discountAmount = item.discountType === 'fixed'
