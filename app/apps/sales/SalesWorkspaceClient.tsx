@@ -3515,6 +3515,11 @@ function Settings({
                     'requireBillingCustomerForInvoice',
                   ) ===
                     'on',
+                creditLimitEnforced:
+                  form.get(
+                    'creditLimitEnforced',
+                  ) ===
+                    'on',
                 lockConfirmedOrders:
                   form.get(
                     'lockConfirmedOrders',
@@ -3726,6 +3731,14 @@ function Settings({
             defaultChecked={
               data.settings
                 .requireBillingCustomerForInvoice
+            }
+          />
+          <Check
+            name="creditLimitEnforced"
+            label="Enforce customer credit limits"
+            defaultChecked={
+              data.settings
+                .creditLimitEnforced
             }
           />
           <Check

@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS public.sales_settings (
     CHECK (invoice_policy IN ('ordered','delivered')),
   lock_confirmed_orders BOOLEAN NOT NULL DEFAULT TRUE,
   require_quote_approval BOOLEAN NOT NULL DEFAULT FALSE,
+  credit_limit_enforced BOOLEAN NOT NULL DEFAULT FALSE,
   quote_approval_threshold NUMERIC(18,2) NOT NULL DEFAULT 0 CHECK (quote_approval_threshold >= 0),
   updated_by UUID,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

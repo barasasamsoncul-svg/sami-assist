@@ -576,6 +576,7 @@ export type SalesWorkspaceData = {
     allowOnlineRejection: boolean;
     allowPartialInvoicing: boolean;
     requireBillingCustomerForInvoice: boolean;
+    creditLimitEnforced: boolean;
     invoicePolicy: 'ordered' | 'delivered';
     lockConfirmedOrders: boolean;
     requireQuoteApproval: boolean;
@@ -608,5 +609,6 @@ export type CreateSalesQuoteInput = {
   terms?: unknown;
   internalNotes?: unknown;
   optionalItems?: unknown;
+  overrideCreditLimit?: unknown;
   lines?: unknown;
 };

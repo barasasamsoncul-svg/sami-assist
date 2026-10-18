@@ -1664,6 +1664,8 @@ export async function getSalesWorkspaceData():
       requireBillingCustomerForInvoice:
         setting.require_billing_customer_for_invoice !==
         false,
+      creditLimitEnforced:
+        setting.credit_limit_enforced === true,
       invoicePolicy:
         setting.invoice_policy ===
           'delivered'

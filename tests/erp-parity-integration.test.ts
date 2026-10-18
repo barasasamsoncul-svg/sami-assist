@@ -2918,12 +2918,12 @@ integration(
 
       const { SALES_RUNTIME_MIGRATIONS } = await import('../lib/apps/runtime-migrations');
       const { getSamiModuleMigrationPlan } = await import('../lib/modules/migrations');
-      const plan = getSamiModuleMigrationPlan('sales', '1.0.0', '3.4.21');
+      const plan = getSamiModuleMigrationPlan('sales', '1.0.0', '3.4.22');
 
       assert.equal(plan.length, SALES_RUNTIME_MIGRATIONS.length,
         'the migration planner must include every registered Sales transition');
       assert.equal(plan[0].fromVersion, '1.0.0');
-      assert.equal(plan[plan.length - 1].toVersion, '3.4.21');
+      assert.equal(plan[plan.length - 1].toVersion, '3.4.22');
 
       for (let index = 0; index < plan.length; index += 1) {
         const migration = plan[index];
