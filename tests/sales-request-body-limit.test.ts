@@ -17,7 +17,7 @@ function fakeRequest(
 }
 
 function streamFrom(chunks: Uint8Array<ArrayBuffer>[]): ReadableStream<Uint8Array<ArrayBuffer>> {
-  return new ReadableStream<Uint8Array>({
+  return new ReadableStream<Uint8Array<ArrayBuffer>>({
     start(controller) {
       for (const chunk of chunks) controller.enqueue(chunk);
       controller.close();
