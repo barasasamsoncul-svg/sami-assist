@@ -3378,3 +3378,48 @@ test('Sales workspace search includes permission-scoped leads and opportunities 
   assert.match(provider, /results\.length[\s\S]*?20/);
   assert.match(invoicing, /searchInvoicingRecords/);
 });
+
+test('Sales quote, workspace, and order contracts expose salesperson, credit-limit, margin, and planned fulfillment fields', async () => {
+  const [types, queries] = await Promise.all([
+    source('lib/apps/sales/types.ts'),
+    source('lib/apps/sales/queries.ts'),
+  ]);
+
+  const inputStart = types.indexOf('export type CreateSalesQuoteInput =');
+  const inputEnd = types.indexOf('\n};', inputStart);
+  assert.ok(inputStart >= 0 && inputEnd > inputStart, 'CreateSalesQuoteInput must exist');
+  const quoteInput = types.slice(inputStart, inputEnd);
+  assert.match(quoteInput, /salespersonUserId\?: unknown/);
+  assert.doesNotMatch(quoteInput, /\bstageId\??:|\bexpectedCloseDate\??:|\bprobabilityOverride\??:/);
+
+  const quoteDetailStart = types.indexOf('export type SalesQuoteDetail =');
+  const quoteDetailEnd = types.indexOf('\n\nexport type SalesOrderLine', quoteDetailStart);
+  const quoteDetail = types.slice(quoteDetailStart, quoteDetailEnd);
+  assert.match(quoteDetail, /salespersonUserId: string \| null/);
+
+  const orderLineStart = types.indexOf('export type SalesOrderLine =');
+  const orderLineEnd = types.indexOf('\n\nexport type SalesOrderDetail', orderLineStart);
+  const orderLine = types.slice(orderLineStart, orderLineEnd);
+  assert.match(orderLine, /plannedQuantity: number/);
+  for (const field of ['unitCost', 'costTotal', 'marginAmount', 'marginPercent']) {
+    assert.match(orderLine, new RegExp(field + ': number \\\\| null'));
+  }
+
+  const orderDetailStart = types.indexOf('export type SalesOrderDetail =');
+  const orderDetailEnd = types.indexOf('\n\nexport type SalesPipelineStage', orderDetailStart);
+  const orderDetail = types.slice(orderDetailStart, orderDetailEnd);
+  for (const field of ['costTotal', 'marginAmount', 'marginPercent']) {
+    assert.match(orderDetail, new RegExp(field + ': number \\\\| null'));
+  }
+
+  const workspaceStart = types.indexOf('export type SalesWorkspaceData =');
+  const workspace = types.slice(workspaceStart);
+  assert.match(workspace, /salespeople: Array<\\{[\\s\\S]*?id: string;[\\s\\S]*?name: string;[\\s\\S]*?email: string;[\\s\\S]*?\\}>/);
+  assert.match(workspace, /currentSalespersonId: string \\\\| null/);
+  assert.match(workspace, /creditLimitEnforced: boolean/);
+  assert.doesNotMatch(workspace, /creditLimitEnforced\\?: boolean/);
+
+  assert.match(queries, /require_quote_approval,[\\s\\S]*?credit_limit_enforced,[\\s\\S]*?quote_approval_threshold[\\s\\S]*?FROM sales_settings/);
+  assert.match(queries, /creditLimitEnforced:[\\s\\S]*?setting\\.credit_limit_enforced === true/);
+  assert.match(queries, /currentSalespersonId: defaultSalesperson\\.rows\\[0\\][\\s\\S]*?String\\(defaultSalesperson\\.rows\\[0\\]\\.id\\)[\\s\\S]*?: null/);
+});
