@@ -261,6 +261,7 @@ export type SalesOrderLine = {
   creditedQuantity: number;
   invoiceableQuantity: number;
   unitPrice: number;
+  unitCost: number | null;
   costTotal: number | null;
   marginAmount: number | null;
   marginPercent: number | null;
@@ -414,6 +415,11 @@ export type SalesWorkspaceData = {
     name: string;
     currency: string;
   };
+  defaultSalesperson: {
+    id: string;
+    name: string;
+    email: string;
+  } | null;
   salespeople: Array<{
     id: string;
     name: string;
