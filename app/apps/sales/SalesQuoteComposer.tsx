@@ -109,6 +109,8 @@ function formatMoney(
 
 export default function SalesQuoteComposer({
   data,
+  salespeople,
+  currentSalespersonId,
   initialQuote =
     null,
   linkedOpportunity = null,
@@ -119,6 +121,10 @@ export default function SalesQuoteComposer({
 }: {
   data:
     SalesWorkspaceData;
+  salespeople:
+    SalesWorkspaceData['salespeople'];
+  currentSalespersonId:
+    string | null;
   initialQuote?:
     SalesQuoteDetail |
     null;
@@ -250,7 +256,9 @@ export default function SalesQuoteComposer({
     setSalespersonUserId,
   ] =
     useState(
-      initialQuote?.salespersonUserId ?? '',
+      initialQuote
+        ? initialQuote.salespersonUserId ?? ''
+        : currentSalespersonId ?? '',
     );
 
   const [
@@ -976,7 +984,7 @@ export default function SalesQuoteComposer({
                 className="mt-1 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
               >
                 <option value="">Self (me)</option>
-                {data.salespeople.map(person => (
+                {salespeople.map(person => (
                   <option key={person.id} value={person.id}>
                     {person.name}{person.email ? ' · ' + person.email : ''}
                   </option>
