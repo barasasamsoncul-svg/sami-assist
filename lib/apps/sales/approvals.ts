@@ -71,6 +71,22 @@ async function currentPolicies(client: Queryable, companyId: string) {
   return result.rows as Record<string, unknown>[];
 }
 
+
+async function cancelPendingSalesQuoteApproval(
+  client: Queryable,
+  companyId: string,
+  quoteId: string,
+  status: 'cancelled' | 'superseded',
+) {
+  return client.query(
+    `UPDATE sales_quote_approval_requests
+     SET status=$3, completed_at=NOW(), updated_at=NOW()
+     WHERE company_id=$1 AND quote_id=$2 AND status='pending'
+     RETURNING id`,
+    [companyId, quoteId, status],
+  );
+}
+
 export async function saveSalesQuoteApprovalPolicy(input: Record<string, unknown>) {
   const context = await requireSalesContext(SALES_PERMISSIONS.SETTINGS_MANAGE);
   const name = cleanText(input.name, 160);
@@ -164,8 +180,8 @@ export async function getSalesQuoteApprovalData(input: { offset?: unknown; limit
        LEFT JOIN sales_quote_approval_policies p ON p.id=r.policy_id
        WHERE r.company_id=$1 AND q.deleted_at IS NULL
        ORDER BY CASE WHEN r.status='pending' THEN 0 ELSE 1 END,r.requested_at DESC
-       LIMIT $2 OFFSET $3`,
-      [context.companyId, limit, offset],
+       OFFSET $2 LIMIT $3`,
+      [context.companyId, offset, limit],
     ),
     context.pool.query(
       `SELECT COUNT(*)::int AS total_count
@@ -252,14 +268,16 @@ export async function cancelSalesQuoteApprovalTransaction(
       throw new SalesError('SALES_PERMISSION_REQUIRED', 'Only the requester or a Sales quote editor can withdraw this approval request.');
     }
 
-    const requestId = String(approvalRequest.id);
-
-    await client.query(
-      `UPDATE sales_quote_approval_requests
-       SET status='cancelled', completed_at=NOW(), updated_at=NOW()
-       WHERE id=$1 AND company_id=$2 AND status='pending'`,
-      [requestId, context.companyId],
+    const cancelledRequest = await cancelPendingSalesQuoteApproval(
+      client,
+      context.companyId,
+      quoteId,
+      'cancelled',
     );
+    if (cancelledRequest.rows.length !== 1) {
+      throw new SalesError('QUOTE_STATE_INVALID', 'The approval request is no longer pending.');
+    }
+    const requestId = String(cancelledRequest.rows[0].id);
 
     await client.query(
       `UPDATE sales_quotes
@@ -312,8 +330,33 @@ export async function assertSalesQuoteApprovalSatisfied(client: Queryable, compa
     settings.rows[0]?.quote_approval_threshold,
     snapshot.quote.base_total_amount,
   );
-  if ((matching || legacyRequired) && String(snapshot.quote.approval_status || 'not_required') !== 'approved') {
+  const approvalStatus = String(snapshot.quote.approval_status || 'not_required');
+  if ((matching || legacyRequired) && approvalStatus !== 'approved') {
     throw new SalesError('QUOTE_STATE_INVALID', 'This quotation matches an approval policy and cannot proceed until all internal approval steps are complete.');
+  }
+
+  // Only quotes which currently require approval are subject to the approved
+  // request fingerprint check; legacy quotes whose requirements were superseded
+  // must not be blocked by an old approval record.
+  if (matching || legacyRequired) {
+    const latestApproved = await client.query(
+      `SELECT quote_fingerprint FROM sales_quote_approval_requests
+       WHERE company_id=$1 AND quote_id=$2 AND status='approved'
+       ORDER BY completed_at DESC NULLS LAST, id DESC
+       LIMIT 1`,
+      [companyId, quoteId],
+    );
+    const approvedFingerprint = latestApproved.rows[0]?.quote_fingerprint;
+    if (
+      approvalStatus === 'approved' &&
+      approvedFingerprint &&
+      String(approvedFingerprint) !== snapshot.fingerprint
+    ) {
+      throw new SalesError(
+        'QUOTE_STATE_INVALID',
+        'Quotation terms changed after approval. Resubmit for approval.',
+      );
+    }
   }
 }
 
@@ -446,7 +489,15 @@ export async function reviewAdvancedSalesQuoteApprovalTransaction(
       );
     }
     if (String(request.quote_fingerprint) !== snapshot.fingerprint) {
-      await client.query(`UPDATE sales_quote_approval_requests SET status='superseded',completed_at=NOW(),updated_at=NOW() WHERE id=$1 AND company_id=$2`, [request.id, context.companyId]);
+      const supersededRequest = await cancelPendingSalesQuoteApproval(
+        client,
+        context.companyId,
+        quoteId,
+        'superseded',
+      );
+      if (supersededRequest.rows.length !== 1) {
+        throw new SalesError('QUOTE_STATE_INVALID', 'The stale approval request is no longer pending.');
+      }
       await client.query(`UPDATE sales_quotes SET approval_status='draft',approval_requested_at=NULL,approval_requested_by=NULL,updated_at=NOW() WHERE id=$1 AND company_id=$2`, [quoteId, context.companyId]);
       await client.query('COMMIT');
       throw new SalesError('QUOTE_STATE_INVALID', 'Quotation terms changed after submission. The stale request was closed; submit the updated quotation for approval again.');
