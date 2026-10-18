@@ -1032,7 +1032,7 @@ export async function respondToPublicSalesQuote(
           const recipient = recipientResult.rows[0] as { email?: unknown; name?: unknown } | undefined;
           const recipientEmail = typeof recipient?.email === 'string' ? recipient.email.trim() : '';
           if (recipientEmail) {
-            await sendWorkspaceNotificationEmail(
+            const emailResult = await sendWorkspaceNotificationEmail(
               recipientEmail,
               typeof recipient?.name === 'string' && recipient.name.trim()
                 ? recipient.name.trim()
@@ -1045,6 +1045,12 @@ export async function respondToPublicSalesQuote(
                 audience: 'workspace',
               },
             );
+            if (!emailResult.success) {
+              console.warn('[SaMi Sales] Salesperson notification email was not delivered.', {
+                quoteId: String(quote.id),
+                salespersonUserId: String(salespersonUserId),
+              });
+            }
           }
         }
       } catch (error) {
