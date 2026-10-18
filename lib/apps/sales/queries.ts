@@ -2731,23 +2731,28 @@ export async function getSalesQuoteRevisionDiff(input: Record<string, unknown>) 
     throw new SalesError('INVALID_INPUT', 'Choose a valid quotation revision.');
   }
 
-  const currentQuoteResult = await context.pool.query(
-    `SELECT id, current_revision
-     FROM sales_quotes
-     WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL
-     LIMIT 1`,
-    [quoteId, context.companyId],
-  );
-  if (currentQuoteResult.rows.length !== 1) {
-    throw new SalesError('QUOTE_NOT_FOUND', 'Quotation was not found.');
-  }
-
-  const currentRevision = Math.max(1, Number(currentQuoteResult.rows[0].current_revision || 1));
-  if (rawRevisionNumber > currentRevision) {
-    throw new SalesError('INVALID_INPUT', 'That revision is newer than the quotation.');
-  }
-
-  const [selectedResult, previousResult] = await Promise.all([
+  const [currentQuoteResult, currentLinesResult, currentOptionalItemsResult, selectedResult] = await Promise.all([
+    context.pool.query(
+      `SELECT *
+       FROM sales_quotes
+       WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL
+       LIMIT 1`,
+      [quoteId, context.companyId],
+    ),
+    context.pool.query(
+      `SELECT *
+       FROM sales_quote_items
+       WHERE quote_id = $1 AND company_id = $2
+       ORDER BY sort_order, id`,
+      [quoteId, context.companyId],
+    ),
+    context.pool.query(
+      `SELECT *
+       FROM sales_quote_optional_items
+       WHERE quote_id = $1 AND company_id = $2
+       ORDER BY sort_order, id`,
+      [quoteId, context.companyId],
+    ),
     context.pool.query(
       `SELECT revision_number, snapshot
        FROM sales_quote_revisions
@@ -2755,30 +2760,30 @@ export async function getSalesQuoteRevisionDiff(input: Record<string, unknown>) 
        LIMIT 1`,
       [quoteId, context.companyId, rawRevisionNumber],
     ),
-    rawRevisionNumber > 1
-      ? context.pool.query(
-          `SELECT revision_number, snapshot
-           FROM sales_quote_revisions
-           WHERE quote_id = $1 AND company_id = $2 AND revision_number = $3
-           LIMIT 1`,
-          [quoteId, context.companyId, rawRevisionNumber - 1],
-        )
-      : Promise.resolve({ rows: [] as Array<Record<string, unknown>> }),
   ]);
 
+  if (currentQuoteResult.rows.length !== 1) {
+    throw new SalesError('QUOTE_NOT_FOUND', 'Quotation was not found.');
+  }
+  const currentRevision = Math.max(1, Number(currentQuoteResult.rows[0].current_revision || 1));
+  if (rawRevisionNumber >= currentRevision) {
+    throw new SalesError('INVALID_INPUT', 'Choose a saved previous revision to compare with the current quotation.');
+  }
   if (selectedResult.rows.length !== 1) {
     throw new SalesError('INVALID_INPUT', 'The selected quotation revision was not found.');
   }
 
   const selected = salesRevisionRecord(selectedResult.rows[0].snapshot);
-  const previous = previousResult.rows.length
-    ? salesRevisionRecord(previousResult.rows[0].snapshot)
-    : null;
+  const currentSnapshot = {
+    quote: currentQuoteResult.rows[0] as SalesRevisionRecord,
+    lines: currentLinesResult.rows as SalesRevisionRecord[],
+    optionalItems: currentOptionalItemsResult.rows as SalesRevisionRecord[],
+  };
   const changes: SalesRevisionChange[] = [];
 
-  if (previous) {
-    const oldQuote = salesRevisionRecord(previous.quote);
-    const newQuote = salesRevisionRecord(selected.quote);
+  {
+    const oldQuote = salesRevisionRecord(selected.quote);
+    const newQuote = salesRevisionRecord(currentSnapshot.quote);
     const canViewMargin = salesCapabilities(
       context.permissions.isOwner,
       context.permissions.permissionSet,
@@ -2856,7 +2861,7 @@ export async function getSalesQuoteRevisionDiff(input: Record<string, unknown>) 
         ['margin_percent', 'Margin percent'],
       );
     }
-    compareSalesRevisionCollection(changes, 'Line item', previous.lines, selected.lines, lineFields);
+    compareSalesRevisionCollection(changes, 'Line item', selected.lines, currentSnapshot.lines, lineFields);
 
     const optionalFields: Array<[string, string]> = [
       ['description', 'Description'],
@@ -2869,16 +2874,16 @@ export async function getSalesQuoteRevisionDiff(input: Record<string, unknown>) 
       ['is_selected', 'Selected'],
     ];
     if (canViewMargin) optionalFields.push(['unit_cost', 'Unit cost']);
-    compareSalesRevisionCollection(changes, 'Optional product', previous.optionalItems, selected.optionalItems, optionalFields);
+    compareSalesRevisionCollection(changes, 'Optional product', selected.optionalItems, currentSnapshot.optionalItems, optionalFields);
   }
 
   return {
     quoteId,
     revisionNumber: rawRevisionNumber,
-    previousRevisionNumber: previous ? rawRevisionNumber - 1 : null,
-    hasPreviousRevision: Boolean(previous),
+    comparedToRevisionNumber: currentRevision,
+    hasComparison: true,
     changes,
-    message: previous ? null : 'No earlier saved revision is available to compare against.',
+    message: null,
   };
 }
 
