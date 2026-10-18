@@ -11,6 +11,10 @@
     {
       "path": "/api/internal/invoicing/tick",
       "schedule": "15 5 * * *"
+    },
+    {
+      "path": "/api/internal/sales/expire-quotes",
+      "schedule": "0 * * * *"
     }
   ],
   "$schema": "https://openapi.vercel.sh/vercel.json",
