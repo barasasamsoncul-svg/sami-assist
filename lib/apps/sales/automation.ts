@@ -86,6 +86,46 @@ export const SALES_AUTOMATION_TRIGGERS:
     },
     {
       key:
+        'sales.quote.rejected',
+      name:
+        'Quotation rejected',
+      description:
+        'Run after a customer rejects a quotation from the public quote page.',
+      type:
+        'event',
+      moduleKey:
+        'sales',
+      resourceKey:
+        'quote',
+      requiredPermissions: [
+        SALES_PERMISSIONS
+          .QUOTE_VIEW,
+      ],
+      companyScoped:
+        true,
+    },
+    {
+      key:
+        'sales.quote.revision_requested',
+      name:
+        'Quotation revision requested',
+      description:
+        'Run after a customer requests changes to a quotation.',
+      type:
+        'event',
+      moduleKey:
+        'sales',
+      resourceKey:
+        'quote',
+      requiredPermissions: [
+        SALES_PERMISSIONS
+          .QUOTE_VIEW,
+      ],
+      companyScoped:
+        true,
+    },
+    {
+      key:
         'sales.order.created',
       name:
         'Sales order created',
@@ -191,6 +231,26 @@ export const SALES_AUTOMATION_TRIGGERS:
         'Sales deposit received',
       description:
         'Run after a customer deposit is recorded against a Sales order.',
+      type:
+        'event',
+      moduleKey:
+        'sales',
+      resourceKey:
+        'deposit',
+      requiredPermissions: [
+        SALES_PERMISSIONS
+          .ORDER_VIEW,
+      ],
+      companyScoped:
+        true,
+    },
+    {
+      key:
+        'sales.deposit.applied',
+      name:
+        'Sales deposit applied',
+      description:
+        'Run after a recorded Sales order deposit is applied to an invoice.',
       type:
         'event',
       moduleKey:

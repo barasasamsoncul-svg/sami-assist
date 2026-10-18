@@ -38,6 +38,7 @@ export {
   getSalesQuoteRegisterPage,
   getSalesWorkspaceData,
   searchSalesRecords,
+  searchSalesPipelineRecords,
 } from '@/lib/apps/sales/queries';
 
 export {
@@ -137,6 +138,7 @@ export {
   updateSalesOpportunityActivity,
   editSalesOpportunityActivity,
   convertSalesLeadToOpportunity,
+  createBillingCustomerForOpportunity,
   getSalesPipelineData,
   getSalesLeadAssignmentHistory,
   updateSalesOpportunity,

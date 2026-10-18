@@ -261,6 +261,7 @@ export type SalesOrderLine = {
   creditedQuantity: number;
   invoiceableQuantity: number;
   unitPrice: number;
+  unitCost: number | null;
   costTotal: number | null;
   marginAmount: number | null;
   marginPercent: number | null;
@@ -414,11 +415,17 @@ export type SalesWorkspaceData = {
     name: string;
     currency: string;
   };
+  defaultSalesperson: {
+    id: string;
+    name: string;
+    email: string;
+  } | null;
   salespeople: Array<{
     id: string;
     name: string;
     email: string;
   }>;
+  currentSalespersonId: string | null;
   capabilities: {
     canView: boolean;
     canCreate: boolean;
@@ -576,6 +583,7 @@ export type SalesWorkspaceData = {
     allowOnlineRejection: boolean;
     allowPartialInvoicing: boolean;
     requireBillingCustomerForInvoice: boolean;
+    creditLimitEnforced: boolean;
     invoicePolicy: 'ordered' | 'delivered';
     lockConfirmedOrders: boolean;
     requireQuoteApproval: boolean;
@@ -608,5 +616,6 @@ export type CreateSalesQuoteInput = {
   terms?: unknown;
   internalNotes?: unknown;
   optionalItems?: unknown;
+  overrideCreditLimit?: unknown;
   lines?: unknown;
 };

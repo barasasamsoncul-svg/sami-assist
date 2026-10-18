@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { assertSalesQuoteApprovalSatisfied, requestAdvancedSalesQuoteApproval, reviewAdvancedSalesQuoteApproval } from '@/lib/apps/sales/approvals';
+import { assertSalesQuoteApprovalSatisfied, cancelPendingSalesQuoteApproval, requestAdvancedSalesQuoteApproval, reviewAdvancedSalesQuoteApproval } from '@/lib/apps/sales/approvals';
 import { resolveActiveSalesperson } from '@/lib/apps/sales/pipeline';
 import { salesQuoteRequiresLegacyApproval } from '@/lib/apps/sales/approval-policy';
 import { markSalesOpportunityWonFromAcceptedQuote } from '@/lib/apps/sales/opportunity-conversion';
@@ -406,7 +406,7 @@ function salesAutomationRuntime(
 }
 
 
-async function emitSalesAutomationEvent(
+export async function emitSalesAutomationEvent(
   context:
     Awaited<
       ReturnType<
@@ -492,6 +492,17 @@ async function resolveCustomerSnapshot(
     optionalUuid(
       input.billingCustomerId,
     );
+  const suppliedCustomerEmail = nullableText(input.customerEmail, 255);
+
+  if (
+    suppliedCustomerEmail &&
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(suppliedCustomerEmail)
+  ) {
+    throw new SalesError(
+      'INVALID_INPUT',
+      'Enter a valid customer email.',
+    );
+  }
 
   if (
     billingCustomerId
@@ -632,11 +643,7 @@ async function resolveCustomerSnapshot(
     billingCustomerId:
       null,
     customerName,
-    customerEmail:
-      nullableText(
-        input.customerEmail,
-        255,
-      ),
+    customerEmail: suppliedCustomerEmail,
     customerPhone:
       nullableText(
         input.customerPhone,
@@ -662,6 +669,140 @@ async function resolveCustomerSnapshot(
   };
 }
 
+
+
+/**
+ * Enforce customer credit ceilings against open invoice exposure in company
+ * base currency. A bypass needs explicit override input and quote-approval
+ * permission; a NULL credit limit means no configured ceiling.
+ */
+
+/**
+ * Gets or creates a company-scoped system billing identity for walk-in invoices.
+ * Creation is permission-gated to invoice creation; Invoicing's createInvoice
+ * command still validates the customer record and snapshots its name on the invoice.
+ */
+async function getOrCreateSalesWalkInCustomer(
+  client: PoolClient,
+  context: Awaited<ReturnType<typeof requireSalesContext>>,
+) {
+  if (!crossPermission(context, 'invoicing.invoice.create')) {
+    throw new SalesError(
+      'SALES_PERMISSION_REQUIRED',
+      'Invoicing invoice-creation access is required for walk-in invoicing.',
+    );
+  }
+
+  const table = await client.query(
+    `SELECT to_regclass('public.invoicing_customers') IS NOT NULL AS ready`,
+  );
+  if (table.rows[0]?.ready !== true) {
+    throw new SalesError(
+      'INVOICING_REQUIRED',
+      'Install Invoicing before generating a walk-in invoice.',
+    );
+  }
+
+  const lockKey = 'sales-walk-in-customer:' + context.companyId;
+  await client.query('SELECT pg_advisory_lock(hashtext($1))', [lockKey]);
+  try {
+    const existing = await client.query(
+      `
+        SELECT id
+        FROM invoicing_customers
+        WHERE company_id = $1
+          AND status = 'active'
+          AND deleted_at IS NULL
+          AND metadata->>'samiSyntheticCustomer' = 'sales_walk_in'
+        ORDER BY created_at ASC
+        LIMIT 1
+      `,
+      [context.companyId],
+    );
+    if (existing.rows.length === 1) {
+      return { id: String(existing.rows[0].id) };
+    }
+
+    const created = await client.query(
+      `
+        INSERT INTO invoicing_customers (
+          company_id, customer_type, name, currency, status, notes,
+          created_by, updated_by, metadata
+        )
+        VALUES (
+          $1, 'individual', 'Walk-in / unnamed customer', $2, 'active',
+          'System-managed placeholder for Sales invoices without a required billing customer.',
+          $3, $3,
+          jsonb_build_object('samiSyntheticCustomer', 'sales_walk_in', 'sourceModule', 'sales')
+        )
+        RETURNING id
+      `,
+      [
+        context.companyId,
+        context.company.currentCompany.currency || 'KES',
+        context.userId,
+      ],
+    );
+    return { id: String(created.rows[0].id) };
+  } finally {
+    try {
+      await client.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]);
+    } catch {}
+  }
+}
+
+async function enforceSalesCustomerCreditLimit(
+  client: PoolClient,
+  context: Awaited<ReturnType<typeof requireSalesContext>>,
+  input: {
+    billingCustomerId: string | null;
+    totalBaseAmount: number;
+    creditLimitEnforced: unknown;
+    overrideCreditLimit: unknown;
+  },
+) {
+  if (input.creditLimitEnforced !== true || !input.billingCustomerId) return;
+  const agingView = await client.query(
+    `SELECT to_regclass('public.invoicing_aging_base') IS NOT NULL AS ready`,
+  );
+  if (agingView.rows[0]?.ready !== true) {
+    throw new SalesError('INVOICING_REQUIRED', 'Install or update Invoicing before enforcing customer credit limits.');
+  }
+  const result = await client.query(
+    `
+      SELECT customer.credit_limit,
+             COALESCE(SUM(aging.base_balance_due), 0)::numeric(19,4) AS outstanding_base
+      FROM invoicing_customers customer
+      LEFT JOIN invoicing_aging_base aging
+        ON aging.company_id = customer.company_id
+       AND aging.customer_id = customer.id
+      WHERE customer.id = $1
+        AND customer.company_id = $2
+        AND customer.deleted_at IS NULL
+      GROUP BY customer.credit_limit
+      LIMIT 1
+    `,
+    [input.billingCustomerId, context.companyId],
+  );
+  if (result.rows.length !== 1) {
+    throw new SalesError('INVALID_INPUT', 'The billing customer could not be found for credit-limit verification.');
+  }
+  const row = result.rows[0];
+  if (row.credit_limit === null || row.credit_limit === undefined) return;
+
+  const creditLimit = money(row.credit_limit);
+  const outstanding = money(row.outstanding_base || 0);
+  const proposedAmount = money(input.totalBaseAmount);
+  const projectedExposure = money(outstanding + proposedAmount);
+  if (projectedExposure <= creditLimit) return;
+  if (input.overrideCreditLimit === true && crossPermission(context, SALES_PERMISSIONS.QUOTE_APPROVE)) return;
+
+  throw new SalesError(
+    'CREDIT_LIMIT_EXCEEDED',
+    'The customer\'s outstanding balance plus this transaction would exceed their configured credit limit.',
+    { creditLimit, outstandingBalance: outstanding, proposedBaseAmount: proposedAmount, projectedExposure },
+  );
+}
 
 async function resolveTemplate(
   client:
@@ -1842,6 +1983,13 @@ export async function createSalesQuoteTransaction(
         exchangeRate.rate,
       );
 
+    await enforceSalesCustomerCreditLimit(client, context, {
+      billingCustomerId: customer.billingCustomerId,
+      totalBaseAmount: baseTotalAmount,
+      creditLimitEnforced: settings.credit_limit_enforced,
+      overrideCreditLimit: input.overrideCreditLimit,
+    });
+
     const approvalRequired =
       deps.salesQuoteRequiresLegacyApproval(
         settings.require_quote_approval,
@@ -2804,6 +2952,14 @@ export async function duplicateSalesQuote(
       )
         ? row.opportunity_id || undefined
         : undefined,
+    salespersonUserId:
+      crossPermission(
+        context,
+        SALES_PERMISSIONS.PIPELINE_VIEW,
+        SALES_PERMISSIONS.PIPELINE_MANAGE,
+      )
+        ? row.salesperson_user_id || undefined
+        : undefined,
     billingCustomerId:
       row.billing_customer_id,
     templateId:
@@ -3165,6 +3321,11 @@ export async function changeSalesQuoteStatus(
       );
     }
 
+    const cancelledApprovalRequestIds =
+      ['cancelled', 'rejected'].includes(nextStatus)
+        ? await cancelPendingSalesQuoteApproval(client, context.companyId, quoteId, 'cancelled')
+        : [];
+
     await client.query(
       `
         UPDATE sales_quotes
@@ -3252,6 +3413,7 @@ export async function changeSalesQuoteStatus(
           '.',
         metadata: {
           reason,
+          cancelledApprovalRequestIds,
         },
       },
     );
@@ -3415,7 +3577,7 @@ const defaultSalesOrderConversionDependencies: SalesOrderConversionDependencies 
  * without faking the persistence layer or unrelated module adapters.
  */
 export async function createSalesOrderFromQuoteTransaction(
-  input: { quoteId: string },
+  input: { quoteId: string; overrideCreditLimit?: unknown },
   context: Awaited<ReturnType<typeof requireSalesContext>>,
   overrides: Partial<SalesOrderConversionDependencies> = {},
 ) {
@@ -3636,6 +3798,19 @@ export async function createSalesOrderFromQuoteTransaction(
         'Complete internal quotation approval before creating a sales order.',
       );
     }
+
+    const creditSettings = (
+      await client.query(
+        `SELECT credit_limit_enforced FROM sales_settings WHERE company_id = $1 LIMIT 1`,
+        [context.companyId],
+      )
+    ).rows[0] || {};
+    await enforceSalesCustomerCreditLimit(client, context, {
+      billingCustomerId: row.billing_customer_id ? String(row.billing_customer_id) : null,
+      totalBaseAmount: money(row.base_total_amount ?? salesBaseAmount(row.total_amount, Number(row.exchange_rate || 1))),
+      creditLimitEnforced: creditSettings.credit_limit_enforced,
+      overrideCreditLimit: input.overrideCreditLimit,
+    });
 
     const orderNumber =
       await deps.nextSalesNumber(
@@ -4158,7 +4333,7 @@ export async function createSalesOrderFromQuote(
     );
 
   return createSalesOrderFromQuoteTransaction(
-    { quoteId },
+    { quoteId, overrideCreditLimit: input.overrideCreditLimit },
     context,
   );
 }
@@ -5372,6 +5547,7 @@ export async function createSalesOrderInvoiceTransaction(
               .billing_customer_id,
           )
         : null;
+    let isSyntheticWalkInCustomer = false;
 
     if (
       !billingCustomerId
@@ -5436,7 +5612,12 @@ export async function createSalesOrderInvoiceTransaction(
         ) {
           billingCustomerId =
             existingId;
+        } else if (settings.require_billing_customer_for_invoice === false) {
+          // Invoicing requires a customer foreign key, so only use a system walk-in when policy explicitly allows it.
+          billingCustomerId = (await getOrCreateSalesWalkInCustomer(client, context)).id;
+          isSyntheticWalkInCustomer = true;
         } else {
+          // Missing setting means the secure default: require a real billing customer.
           throw new SalesError(
             'BILLING_CUSTOMER_REQUIRED',
             'This sales order needs a billing customer before it can be invoiced. Create or link the customer in Invoicing, or grant customer-management access.',
@@ -5446,7 +5627,8 @@ export async function createSalesOrderInvoiceTransaction(
 
       if (
         billingCustomerId &&
-        orderRow.quote_id
+        orderRow.quote_id &&
+        !isSyntheticWalkInCustomer
       ) {
         await client.query(
           `
@@ -6376,7 +6558,8 @@ export async function updateSalesSettings(
           lock_confirmed_orders = $15,
           require_quote_approval = $16,
           quote_approval_threshold = $17,
-          updated_by = $18,
+          credit_limit_enforced = $18,
+          updated_by = $19,
           updated_at = NOW()
         WHERE company_id = $1
         RETURNING company_id
@@ -6443,6 +6626,7 @@ export async function updateSalesSettings(
               1_000_000_000_000,
           },
         ),
+        input.creditLimitEnforced === true,
         context.userId,
       ],
     );

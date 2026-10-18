@@ -955,7 +955,7 @@ test('Sales v3 is registered into manifests, migrations, Search and SaMi AI', as
 
   assert.match(
     manifest,
-    /key: "sales",[\s\S]*version: '3\.4\.20'/s,
+    /key: "sales",[\s\S]*version: '3\.4\.22'/s,
   );
 
   assert.match(
@@ -1421,7 +1421,7 @@ test('Sales 3.2 runs deposits, shipments, returns and forecasting through author
   ]);
 
   assert.match(runtimeMigrations, /SALES_3_1_0_TO_3_2_0/);
-  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.20'/s);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.22'/s);
 
   for (const table of [
     'sales_shipments',
@@ -1807,7 +1807,7 @@ test('Sales roadmap Part 10 locks multi-currency values and exposes Currency & F
   assert.match(migration, /exchange_rate NUMERIC\(19,8\)/);
   assert.match(migration, /base_total_amount/);
   assert.match(runtimeMigrations, /SALES_3_2_0_TO_3_3_0/);
-  assert.match(modules, /key: "sales"[\s\S]*version: '3\.4\.20'/);
+  assert.match(modules, /key: "sales"[\s\S]*version: '3\.4\.22'/);
 
   assert.match(commands, /resolveSalesExchangeRate/);
   assert.match(commands, /salesBaseAmount/);
@@ -1884,7 +1884,7 @@ test('Sales roadmap Part 11 owns tenant-scoped leads and opportunity pipeline', 
     source('app/apps/sales/SalesPipelineManager.tsx'),
   ]);
   assert.match(runtime,/SALES_3_3_0_TO_3_4_0/);
-  assert.match(manifest,/key: "sales"[\s\S]*version: '3\.4\.20'/);
+  assert.match(manifest,/key: "sales"[\s\S]*version: '3\.4\.22'/);
   for (const table of ['sales_pipeline_stages','sales_leads','sales_opportunities','sales_opportunity_stage_history']) {
     assert.match(migration,new RegExp('public\\.'+table));
     assert.match(schema,new RegExp('public\\.'+table));
@@ -1935,7 +1935,7 @@ test('Sales 3.4.1 migration is active and approval cannot be bypassed by accepta
     source('lib/apps/sales/delivery.ts'),
   ]);
 
-  assert.match(manifest, /key: "sales"[\s\S]*version: '3\.4\.20'/s);
+  assert.match(manifest, /key: "sales"[\s\S]*version: '3\.4\.22'/s);
   assert.match(migration, /fromVersion:[\s\S]*'3\.4\.0'/);
   assert.match(migration, /toVersion:[\s\S]*'3\.4\.1'/);
   assert.match(migration, /ADD COLUMN IF NOT EXISTS stage_id/);
@@ -1964,7 +1964,7 @@ test('Sales pipeline saved views persist user-scoped lead and opportunity filter
     source('app/apps/sales/SalesPipelineManager.tsx'),
   ]);
 
-  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.20'/s);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.22'/s);
   assert.ok(migration.includes("sales-3.4.10-to-3.4.11"));
   assert.ok(migration.includes("CREATE TABLE IF NOT EXISTS public.sales_pipeline_saved_views"));
   assert.ok(migration.includes("uq_sales_pipeline_saved_views_owner_name"));
@@ -2005,7 +2005,7 @@ test('Sales opportunities support tenant-scoped activity planning, editing, resc
     source('app/apps/sales/SalesPipelineManager.tsx'),
   ]);
 
-  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.20'/s);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.22'/s);
   assert.match(migration, /sales-3\.4\.11-to-3\.4\.12/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS public\.sales_opportunity_activities/);
   assert.match(migration, /idx_sales_opportunity_activities_due/);
@@ -2117,7 +2117,7 @@ test('Sales Priority 4 keeps dispatch, delivery, Inventory posting and invoice e
   assert.match(schema, /shipped_quantity NUMERIC\(18,4\)/);
   assert.match(schema, /CHECK \(delivered_quantity <= shipped_quantity\)/);
   assert.match(runtime, /SALES_3_4_3_TO_3_4_4/);
-  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.20'/s);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.22'/s);
 
   assert.match(operations, /const shouldRecordDelivery =[\s\S]*String\(row\.status\) !== 'delivered'/);
   assert.match(operations, /SET shipped_quantity = \$4/);
@@ -2147,7 +2147,7 @@ test('Sales Priority 9 supports searchable lead lifecycle, reassignment, disqual
     source('app/apps/sales/SalesPipelineManager.tsx'),
   ]);
 
-  assert.ok(manifest.includes('key: "sales"') && manifest.includes("version: '3.4.20'"));
+  assert.ok(manifest.includes('key: "sales"') && manifest.includes("version: '3.4.22'"));
   assert.ok(migration.includes("sales-3.4.5-to-3.4.6"));
   assert.ok(migration.includes("CREATE TABLE IF NOT EXISTS public.sales_lead_activities"));
   assert.match(runtime, /SALES_3_4_5_TO_3_4_6/);
@@ -2464,7 +2464,7 @@ test('Sales order register sorts by date, value, customer, and progress and pers
   assert.ok(migration.includes("'delivery_first'"));
   assert.match(registry, /SALES_3_4_9_TO_3_4_10/);
   assert.ok(registry.indexOf('SALES_3_4_8_TO_3_4_9,') < registry.indexOf('SALES_3_4_9_TO_3_4_10,'));
-  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.20'/s);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.22'/s);
   assert.ok(schema.includes("sort_by VARCHAR(40) NOT NULL DEFAULT 'newest'"));
   assert.ok(types.includes("export type SalesOrderSortBy"));
   assert.ok(types.includes("sortBy: SalesOrderSortBy"));
@@ -2506,11 +2506,14 @@ test('Sales order saved views persist per-company and per-user queue filters thr
   assert.ok(migration.includes("idx_sales_order_saved_views_owner"));
   assert.match(registry, /SALES_3_4_8_TO_3_4_9/);
   assert.ok(registry.indexOf('SALES_3_4_7_TO_3_4_8,') < registry.indexOf('SALES_3_4_8_TO_3_4_9,'));
-  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.20'/s);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.22'/s);
   assert.match(types, /export type SalesOrderStatusView[\s\S]*'awaiting_fulfillment'[\s\S]*'invoiced'/);
   assert.match(types, /export type SalesSavedOrderView/);
   assert.match(schema, /sales_order_saved_views[\s\S]*'awaiting_fulfillment'[\s\S]*'invoiced'/);
-  assert.match(savedViews, /requireSalesContext\(SALES_PERMISSIONS\.ORDER_VIEW\)/);
+  assert.match(savedViews, /function canViewOrders\([\s\S]*?SALES_PERMISSIONS\.ORDER_VIEW[\s\S]*?\|\|[\s\S]*?SALES_PERMISSIONS\.ORDER_MANAGE/);
+  assert.match(savedViews, /requireSalesContext\(\)/);
+  assert.match(savedViews, /canViewOrders\(context\)/);
+  assert.doesNotMatch(savedViews, /requireSalesContext\(SALES_PERMISSIONS\.ORDER_VIEW\)/);
   assert.match(savedViews, /WHERE company_id = \$1[\s\S]*AND user_id = \$2/);
   assert.match(savedViews, /UPDATE sales_order_saved_views[\s\S]*deleted_at = NOW\(\)/);
   assert.ok(savedViews.includes('getSalesSavedOrderViews'));
@@ -2546,7 +2549,7 @@ test('Sales expiry-aware quotation queues are saved-view compatible and migrate 
   assert.ok(migration.includes("'expiring_soon'"));
   assert.match(registry, /SALES_3_4_7_TO_3_4_8/);
   assert.ok(registry.indexOf('SALES_3_4_6_TO_3_4_7,') < registry.indexOf('SALES_3_4_7_TO_3_4_8,'));
-  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.20'/s);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.22'/s);
   assert.match(types, /SalesQuoteStatusView[\s\S]*'expired'[\s\S]*'expiring_soon'/);
   assert.match(schema, /sales_quote_saved_views[\s\S]*'expired'[\s\S]*'expiring_soon'/);
   assert.match(savedViews, /'expired'[\s\S]*'expiring_soon'/);
@@ -2576,7 +2579,7 @@ test('Sales saved quotation views persist company- and user-scoped filters throu
   assert.ok(migration.includes("idx_sales_quote_saved_views_owner"));
   assert.match(registry, /SALES_3_4_6_TO_3_4_7/);
   assert.ok(registry.indexOf('SALES_3_4_5_TO_3_4_6,') < registry.indexOf('SALES_3_4_6_TO_3_4_7,'));
-  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.20'/s);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.22'/s);
   assert.ok(schema.includes("CREATE TABLE IF NOT EXISTS public.sales_quote_saved_views"));
   assert.ok(schema.includes("uq_sales_quote_saved_views_owner_name"));
 
@@ -2738,7 +2741,7 @@ test('Sales lead scoring explains profile and engagement signals and persists sc
     source('lib/apps/sales/types.ts'),
   ]);
 
-  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.20'/s);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.22'/s);
   assert.match(scoring, /export function scoreSalesLead/);
   assert.match(scoring, /Company identified/);
   assert.match(scoring, /High-intent source identified/);
@@ -2813,7 +2816,7 @@ test('Sales lead-routing rules are tenant-scoped, priority ordered and migration
     source('lib/modules/first-party.ts'),
   ]);
 
-  assert.ok(manifest.includes('version: \'3.4.20\''));
+  assert.ok(manifest.includes('version: \'3.4.22\''));
   assert.ok(rules.includes('requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE)'));
   assert.ok(rules.includes('WHERE company_id=$1 AND deleted_at IS NULL'));
   assert.ok(rules.includes('A routing rule with that name or source match already exists.'));
@@ -2852,7 +2855,7 @@ test('Sales lead reassignment validates team membership and records reasoned his
     source('lib/modules/first-party.ts'),
   ]);
 
-  assert.ok(manifest.includes("version: '3.4.20'"));
+  assert.ok(manifest.includes("version: '3.4.22'"));
   assert.ok(schema.includes('CREATE TABLE IF NOT EXISTS public.sales_lead_assignment_history'));
   assert.ok(schema.includes('idx_sales_lead_assignment_history_timeline'));
   assert.ok(migration.includes('sales-3.4.14-to-3.4.15'));
@@ -3303,7 +3306,7 @@ test('Sales quote deposits validate, persist, display, and carry to confirmed or
   assert.match(migration, /toVersion: '3\.4\.17'/);
   assert.match(migration, /ADD COLUMN IF NOT EXISTS deposit_required_amount/);
   assert.match(runtimeMigrations, /SALES_3_4_16_TO_3_4_17/);
-  assert.match(firstParty, /version: '3\.4\.20'/);
+  assert.match(firstParty, /version: '3\.4\.22'/);
 });
 
 
@@ -3328,4 +3331,99 @@ test('Sales revision and approval engine use consistent currency-safe threshold 
   assert.match(approvals, /base_total_amount.*base_currency.*exchange_rate.*exchange_rate_date/);
   assert.doesNotMatch(approvals, /Number\(snapshot\.quote\.total_amount \|\| 0\) >=/);
   assert.doesNotMatch(approvals, /Number\(quote\.total_amount \|\| 0\) >=/);
+});
+
+test('Sales workspace search includes permission-scoped leads and opportunities with bounded, deduplicated top-20 results', async () => {
+  const [provider, queries, service, invoicing] = await Promise.all([
+    source('lib/apps/sales/search.ts'),
+    source('lib/apps/sales/queries.ts'),
+    source('lib/apps/sales/service.ts'),
+    source('lib/apps/invoicing/search.ts'),
+  ]);
+
+  const pipelineSearchStart = queries.indexOf('export async function searchSalesPipelineRecords(');
+  const pipelineSearchEnd = queries.indexOf('\nconst SALES_REGISTER_PAGE_SIZE', pipelineSearchStart);
+  assert.ok(pipelineSearchStart >= 0 && pipelineSearchEnd > pipelineSearchStart);
+  const pipelineSearch = queries.slice(pipelineSearchStart, pipelineSearchEnd);
+
+  assert.match(pipelineSearch, /getTenantPoolByTenantId\(tenantId\)/);
+  assert.match(pipelineSearch, /l\.company_id = \$1[\s\S]*?l\.deleted_at IS NULL/);
+  assert.match(pipelineSearch, /o\.company_id = \$1[\s\S]*?o\.deleted_at IS NULL/);
+  for (const field of [
+    'lead_number',
+    'name',
+    'company_name',
+    'contact_name',
+    'email',
+    'phone',
+    'opportunity_number',
+    'customer_name',
+  ]) {
+    assert.ok(pipelineSearch.includes(field), 'pipeline search must include ' + field);
+  }
+  assert.match(pipelineSearch, /LIMIT \$3/);
+  assert.match(service, /searchSalesPipelineRecords,[\s\S]*?from '@\/lib\/apps\/sales\/queries'/);
+
+  assert.match(provider, /searchSalesRecords/);
+  assert.match(provider, /searchSalesPipelineRecords/);
+  assert.match(provider, /Promise\.all/);
+  assert.match(provider, /SALES_PERMISSIONS\.PIPELINE_VIEW/);
+  assert.match(provider, /SALES_PERMISSIONS\.PIPELINE_MANAGE/);
+  assert.match(provider, /href:[\s\S]*?\/apps\/sales\/opportunities/);
+  assert.match(provider, /row\.kind[\s\S]*?'lead'[\s\S]*?'user-round'/);
+  assert.match(provider, /'trending-up'/);
+  assert.match(provider, /score:[\s\S]*?100 -[\s\S]*?index/);
+  assert.match(provider, /right\.result\.score[\s\S]*?left\.sourceOrder[\s\S]*?left\.sourceIndex/);
+  assert.match(provider, /JSON\.stringify\(\[[\s\S]*?item\.kind,[\s\S]*?item\.recordId/);
+  assert.match(provider, /results\.length[\s\S]*?20/);
+  assert.match(invoicing, /searchInvoicingRecords/);
+});
+
+test('Sales quote, workspace, and order contracts expose salesperson, credit-limit, margin, and planned fulfillment fields', async () => {
+  const [types, queries] = await Promise.all([
+    source('lib/apps/sales/types.ts'),
+    source('lib/apps/sales/queries.ts'),
+  ]);
+
+  const inputStart = types.indexOf('export type CreateSalesQuoteInput =');
+  const inputEnd = types.indexOf('\n};', inputStart);
+  assert.ok(inputStart >= 0 && inputEnd > inputStart, 'CreateSalesQuoteInput must exist');
+  const quoteInput = types.slice(inputStart, inputEnd);
+  assert.ok(quoteInput.includes('salespersonUserId?: unknown'));
+  assert.ok(!quoteInput.includes('stageId'));
+  assert.ok(!quoteInput.includes('expectedCloseDate'));
+  assert.ok(!quoteInput.includes('probabilityOverride'));
+
+  const quoteDetailStart = types.indexOf('export type SalesQuoteDetail =');
+  const quoteDetailEnd = types.indexOf('\n\nexport type SalesOrderLine', quoteDetailStart);
+  const quoteDetail = types.slice(quoteDetailStart, quoteDetailEnd);
+  assert.ok(quoteDetail.includes('salespersonUserId: string | null'));
+
+  const orderLineStart = types.indexOf('export type SalesOrderLine =');
+  const orderLineEnd = types.indexOf('\n\nexport type SalesOrderDetail', orderLineStart);
+  const orderLine = types.slice(orderLineStart, orderLineEnd);
+  assert.ok(orderLine.includes('plannedQuantity: number'));
+  for (const field of ['unitCost', 'costTotal', 'marginAmount', 'marginPercent']) {
+    assert.ok(orderLine.includes(field + ': number | null;'), field + ' must be nullable on SalesOrderLine');
+  }
+
+  const orderDetailStart = types.indexOf('export type SalesOrderDetail =');
+  const orderDetailEnd = types.indexOf('\n\nexport type SalesPipelineStage', orderDetailStart);
+  const orderDetail = types.slice(orderDetailStart, orderDetailEnd);
+  for (const field of ['costTotal', 'marginAmount', 'marginPercent']) {
+    assert.ok(orderDetail.includes(field + ': number | null;'), field + ' must be nullable on SalesOrderDetail');
+  }
+
+  const workspaceStart = types.indexOf('export type SalesWorkspaceData =');
+  const workspaceEnd = types.indexOf('\n};', workspaceStart);
+  const workspace = types.slice(workspaceStart, workspaceEnd);
+  assert.ok(workspace.includes('salespeople: Array<{'));
+  assert.ok(workspace.includes('currentSalespersonId: string | null;'));
+  assert.ok(workspace.includes('creditLimitEnforced: boolean;'));
+  assert.ok(!workspace.includes('creditLimitEnforced?: boolean;'));
+
+  assert.ok(queries.includes('require_quote_approval,\n            credit_limit_enforced,\n            quote_approval_threshold'));
+  assert.ok(queries.includes('creditLimitEnforced:\n        setting.credit_limit_enforced === true'));
+  assert.ok(queries.includes('currentSalespersonId: defaultSalesperson.rows[0]'));
+  assert.ok(queries.includes('String(defaultSalesperson.rows[0].id)'));
 });

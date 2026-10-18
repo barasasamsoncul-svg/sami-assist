@@ -32,15 +32,18 @@ test('Sales order detail returns margin values only for users with margin visibi
     source('app/apps/sales/SalesOrderDetailClient.tsx'),
   ]);
 
-  assert.match(query, /const canViewMargin = hasSalesPermission\([\s\S]*SALES_PERMISSIONS\.MARGIN_VIEW/);
-  assert.match(query, /costTotal:\s*canViewMargin\s*\? money\(row\.cost_total\)\s*:\s*null/);
-  assert.match(query, /marginAmount:\s*canViewMargin\s*\? money\(row\.margin_amount\)\s*:\s*null/);
-  assert.match(query, /marginPercent:\s*canViewMargin\s*\? money\(row\.margin_percent\)\s*:\s*null/);
-  assert.match(query, /costTotal:\s*canViewMargin\s*\? money\(line\.cost_total\)\s*:\s*null/);
-  assert.match(query, /marginAmount:\s*canViewMargin\s*\? money\(line\.margin_amount\)\s*:\s*null/);
-  assert.match(query, /marginPercent:\s*canViewMargin\s*\? money\(line\.margin_percent\)\s*:\s*null/);
+  assert.match(query, /const access = salesCapabilities\(/);
+  assert.match(query, /canViewMargin:\s*can\([\s\S]*?SALES_PERMISSIONS\s*\.MARGIN_VIEW/);
+  assert.match(query, /costTotal:\s*access\.canViewMargin\s*\? money\(row\.cost_total\)\s*:\s*null/);
+  assert.match(query, /marginAmount:\s*access\.canViewMargin\s*\? money\(row\.margin_amount\)\s*:\s*null/);
+  assert.match(query, /marginPercent:\s*access\.canViewMargin\s*\? money\(row\.margin_percent\)\s*:\s*null/);
+  assert.match(query, /unitCost:\s*access\.canViewMargin\s*\? money\(line\.unit_cost\)\s*:\s*null/);
+  assert.match(query, /costTotal:\s*access\.canViewMargin\s*\? money\(line\.cost_total\)\s*:\s*null/);
+  assert.match(query, /marginAmount:\s*access\.canViewMargin\s*\? money\(line\.margin_amount\)\s*:\s*null/);
+  assert.match(query, /marginPercent:\s*access\.canViewMargin\s*\? money\(line\.margin_percent\)\s*:\s*null/);
 
   const orderDetailType = types.slice(types.indexOf('export type SalesOrderDetail ='));
+  assert.match(orderDetailType, /unitCost: number \| null/);
   assert.match(orderDetailType, /costTotal: number \| null/);
   assert.match(orderDetailType, /marginAmount: number \| null/);
   assert.match(orderDetailType, /marginPercent: number \| null/);

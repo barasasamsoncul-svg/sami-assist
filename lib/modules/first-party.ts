@@ -1213,7 +1213,7 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
   defineSamiModule({
     key: "sales",
     name: "Sales",
-    version: '3.4.20',
+    version: '3.4.22',
     description: "Run multiple configurable sales pipelines, leads, opportunity forecasting, quotations, pricing, teams, deposits, shipping, returns, commissions, invoice handoff and secure customer order tracking.",
     category: "sales",
     icon: "shopping-cart",

@@ -7,6 +7,29 @@ import { cleanText, isoDate, nullableText, numberInput, optionalUuid, requireSal
 import { scoreSalesLead } from '@/lib/apps/sales/lead-scoring';
 import { terminalSalesOpportunityProbability } from '@/lib/apps/sales/pipeline-stage-rules';
 import { chooseBalancedSalesLeadAssignee, selectSalesLeadAssignmentRule } from '@/lib/apps/sales/lead-assignment';
+import { createInvoicingCustomer } from '@/lib/apps/invoicing/commands';
+import { hasAnyInvoicingPermission, INVOICING_PERMISSIONS } from '@/lib/apps/invoicing/context';
+
+function existingInvoicingCustomerId(error: unknown) {
+  if (!error || typeof error !== 'object') return null;
+
+  const source = error as {
+    code?: unknown;
+    details?: unknown;
+  };
+  const code = typeof source.code === 'string' ? source.code : '';
+  if (!['INVOICING_CUSTOMER_EXISTS', 'DUPLICATE_CUSTOMER'].includes(code)) {
+    return null;
+  }
+
+  const details = source.details && typeof source.details === 'object'
+    ? source.details as Record<string, unknown>
+    : null;
+  const existingCustomerId = details?.existingCustomerId;
+  return typeof existingCustomerId === 'string' && existingCustomerId.trim()
+    ? existingCustomerId.trim()
+    : null;
+}
 
 async function ensurePipelineStages(
   pool: Awaited<ReturnType<typeof requireSalesContext>>['pool'],
@@ -1449,6 +1472,48 @@ export async function convertSalesLeadToOpportunity(input: Record<string, unknow
         context.userId,
       ],
     );
+    const leadRow = lead.rows[0];
+    const canManageBillingCustomers = hasAnyInvoicingPermission(
+      context.permissions.isOwner,
+      context.permissions.permissionSet,
+      [INVOICING_PERMISSIONS.CUSTOMER_MANAGE],
+    );
+
+    if (
+      canManageBillingCustomers &&
+      (leadRow.email || leadRow.company_name || leadRow.contact_name)
+    ) {
+      // Billing-customer creation is best-effort: a Sales lead conversion must
+      // not fail because the optional Invoicing customer master could not be linked.
+      try {
+        let billingCustomerId: string | null = null;
+
+        try {
+          const customer = await createInvoicingCustomer({
+            name: leadRow.company_name || leadRow.name,
+            email: leadRow.email,
+            phone: leadRow.phone,
+          });
+          billingCustomerId = customer?.id ? String(customer.id) : null;
+        } catch (customerError) {
+          billingCustomerId = existingInvoicingCustomerId(customerError);
+          if (!billingCustomerId) throw customerError;
+        }
+
+        if (billingCustomerId) {
+          await client.query(
+            `UPDATE sales_opportunities
+             SET billing_customer_id=$3,updated_by=$4,updated_at=NOW()
+             WHERE id=$1 AND company_id=$2`,
+            [created.rows[0].id, context.companyId, billingCustomerId, context.userId],
+          );
+        }
+      } catch {
+        // Conversion and its audit history are the primary operation; billing
+        // master creation/linking remains recoverable from the opportunity UI.
+      }
+    }
+
     await client.query(
       `UPDATE sales_leads
        SET status='converted',converted_opportunity_id=$3,updated_by=$4,updated_at=NOW()
@@ -1463,6 +1528,86 @@ export async function convertSalesLeadToOpportunity(input: Record<string, unknow
     );
     await client.query('COMMIT');
     return created.rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Create or link an Invoicing billing customer for an existing opportunity.
+ * Customer-master failures are reported to the caller; repeated calls reuse
+ * the already-linked customer or resolve an Invoicing duplicate by its ID.
+ */
+export async function createBillingCustomerForOpportunity(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.PIPELINE_VIEW);
+  if (!hasAnyInvoicingPermission(
+    context.permissions.isOwner,
+    context.permissions.permissionSet,
+    [INVOICING_PERMISSIONS.CUSTOMER_MANAGE],
+  )) {
+    throw new SalesError(
+      'SALES_PERMISSION_REQUIRED',
+      'Invoicing customer-management access is required to create a billing customer.',
+      { permission: INVOICING_PERMISSIONS.CUSTOMER_MANAGE },
+    );
+  }
+
+  const opportunityId = requireUuid(input.opportunityId, 'Opportunity');
+  const client = await context.pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    const current = await client.query(
+      `SELECT id,billing_customer_id,name,customer_name,email,phone
+       FROM sales_opportunities
+       WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL
+       FOR UPDATE`,
+      [opportunityId, context.companyId],
+    );
+    const opportunity = current.rows[0];
+    if (!opportunity) {
+      throw new SalesError('INVALID_INPUT', 'Opportunity was not found.');
+    }
+
+    if (opportunity.billing_customer_id) {
+      const customerId = String(opportunity.billing_customer_id);
+      await client.query('COMMIT');
+      return { customerId };
+    }
+
+    let customerId: string | null = null;
+    try {
+      const customer = await createInvoicingCustomer({
+        name: cleanText(opportunity.customer_name, 255) || cleanText(opportunity.name, 255),
+        email: opportunity.email,
+        phone: opportunity.phone,
+      });
+      customerId = customer?.id ? String(customer.id) : null;
+    } catch (customerError) {
+      customerId = existingInvoicingCustomerId(customerError);
+      if (!customerId) throw customerError;
+    }
+
+    if (!customerId) {
+      throw new SalesError('INVALID_INPUT', 'Invoicing did not return a billing customer identifier.');
+    }
+
+    const updated = await client.query(
+      `UPDATE sales_opportunities
+       SET billing_customer_id=$3,updated_by=$4,updated_at=NOW()
+       WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL
+       RETURNING billing_customer_id`,
+      [opportunityId, context.companyId, customerId, context.userId],
+    );
+    if (!updated.rows[0]?.billing_customer_id) {
+      throw new SalesError('INVALID_INPUT', 'The billing customer could not be linked to this opportunity.');
+    }
+
+    await client.query('COMMIT');
+    return { customerId: String(updated.rows[0].billing_customer_id) };
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined);
     throw error;

@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS public.sales_settings (
     CHECK (invoice_policy IN ('ordered','delivered')),
   lock_confirmed_orders BOOLEAN NOT NULL DEFAULT TRUE,
   require_quote_approval BOOLEAN NOT NULL DEFAULT FALSE,
+  credit_limit_enforced BOOLEAN NOT NULL DEFAULT FALSE,
   quote_approval_threshold NUMERIC(18,2) NOT NULL DEFAULT 0 CHECK (quote_approval_threshold >= 0),
   updated_by UUID,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1156,36 +1157,6 @@ CREATE INDEX IF NOT EXISTS idx_sales_lead_activities_due
     ADD COLUMN IF NOT EXISTS opportunity_id UUID REFERENCES public.sales_opportunities(id) ON DELETE SET NULL;
   CREATE INDEX IF NOT EXISTS idx_sales_quotes_opportunity
     ON public.sales_quotes(company_id, opportunity_id) WHERE opportunity_id IS NOT NULL AND deleted_at IS NULL;
--- Sales 3.4 pipeline stages and quote-level pipeline columns.
-CREATE TABLE IF NOT EXISTS public.sales_pipeline_stages (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  company_id UUID NOT NULL,
-  code VARCHAR(60),
-  name VARCHAR(120) NOT NULL,
-  sequence INTEGER NOT NULL DEFAULT 10,
-  probability NUMERIC(5,2) NOT NULL DEFAULT 0 CHECK (probability BETWEEN 0 AND 100),
-  stage_type VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (stage_type IN ('open','won','lost')),
-  is_won BOOLEAN NOT NULL DEFAULT FALSE,
-  is_lost BOOLEAN NOT NULL DEFAULT FALSE,
-  fold_in_kanban BOOLEAN NOT NULL DEFAULT FALSE,
-  description TEXT,
-  color VARCHAR(20),
-  is_active BOOLEAN NOT NULL DEFAULT TRUE,
-  created_by UUID,
-  updated_by UUID,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  deleted_at TIMESTAMPTZ,
-  UNIQUE(company_id, name)
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_pipeline_stages_code
-  ON public.sales_pipeline_stages(company_id, LOWER(BTRIM(code)))
-  WHERE deleted_at IS NULL AND code IS NOT NULL;
-
-CREATE INDEX IF NOT EXISTS idx_sales_pipeline_stages_company
-  ON public.sales_pipeline_stages(company_id, is_active, sequence, name);
-
 -- Advanced quote approval workflow (Sales 3.4.2).
 CREATE TABLE IF NOT EXISTS public.sales_quote_approval_policies (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

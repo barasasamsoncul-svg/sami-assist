@@ -28,7 +28,7 @@ test('Sales multiple-pipeline migration preserves existing stages and isolates s
   assert.match(migration, /'Qualification'[\s\S]*'Won'[\s\S]*'Lost'/);
   assert.match(runtime, /SALES_3_4_17_TO_3_4_18/);
   assert.match(runtime, /SALES_3_4_17_TO_3_4_18,[\s\S]*\];/);
-  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.20'/);
+  assert.match(manifest, /key: "sales",[\s\S]*version: '3\.4\.22'/);
 });
 
 test('Sales creates company-scoped pipelines by cloning stages from the default pipeline', async () => {
@@ -78,4 +78,33 @@ test('Sales prevents moving or converting an opportunity into another company pi
   assert.match(pipeline, /current_stage\.pipeline_id AS current_pipeline_id/);
   assert.match(pipeline, /String\(current\.rows\[0\]\.current_pipeline_id\) !== String\(stage\.rows\[0\]\.pipeline_id\)/);
   assert.match(pipeline, /An opportunity cannot be moved to a stage in a different sales pipeline/);
+});
+
+test('Sales fresh-install schema smoke keeps the canonical multi-pipeline stages and removes stale quote pipeline schema', async () => {
+  const schema = await source('lib/apps/sales/schema.sql');
+
+  const pipelinesStart = schema.indexOf('CREATE TABLE IF NOT EXISTS public.sales_pipelines (');
+  const stagesStart = schema.indexOf('CREATE TABLE IF NOT EXISTS public.sales_pipeline_stages (');
+  const stageDefinitions = schema.match(/CREATE TABLE IF NOT EXISTS public\.sales_pipeline_stages\s*\(/g) || [];
+
+  assert.equal(stageDefinitions.length, 1, 'fresh installs must have one canonical sales_pipeline_stages definition');
+  assert.ok(pipelinesStart >= 0 && stagesStart > pipelinesStart, 'the parent pipeline table must be created before pipeline stages');
+
+  const stagesEnd = schema.indexOf('\n  );', stagesStart);
+  assert.ok(stagesEnd > stagesStart, 'canonical pipeline-stage definition must terminate');
+  const stagesDefinition = schema.slice(stagesStart, stagesEnd + 5);
+  assert.match(stagesDefinition, /pipeline_id UUID NOT NULL REFERENCES public\.sales_pipelines\(id\)/);
+  assert.doesNotMatch(stagesDefinition, /UNIQUE\s*\(\s*company_id\s*,\s*name\s*\)/);
+
+  assert.match(schema, /uq_sales_pipeline_stages_company_pipeline_name[\s\S]*?company_id, pipeline_id, LOWER\(BTRIM\(name\)\)/);
+  assert.match(schema, /salesperson_user_id UUID,/);
+  assert.match(schema, /credit_limit_enforced BOOLEAN NOT NULL DEFAULT FALSE/);
+  assert.doesNotMatch(schema, /CREATE TABLE IF NOT EXISTS public\.sales_quote_stage_history\s*\(/);
+
+  const quotesStart = schema.indexOf('CREATE TABLE IF NOT EXISTS public.sales_quotes (');
+  const quotesEnd = schema.indexOf('\n);', quotesStart);
+  assert.ok(quotesStart >= 0 && quotesEnd > quotesStart, 'sales_quotes table must be present in the fresh-install schema');
+  const quotesDefinition = schema.slice(quotesStart, quotesEnd + 3);
+  assert.match(quotesDefinition, /salesperson_user_id UUID,/);
+  assert.doesNotMatch(quotesDefinition, /\b(?:pipeline_id|stage_id|sales_pipeline_stage_id)\b/);
 });

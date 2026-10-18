@@ -1071,6 +1071,7 @@ integration(
           default_validity_days INTEGER NOT NULL DEFAULT 14,
           default_currency VARCHAR(3) NOT NULL DEFAULT 'KES',
           require_quote_approval BOOLEAN NOT NULL DEFAULT FALSE,
+          credit_limit_enforced BOOLEAN NOT NULL DEFAULT FALSE,
           quote_approval_threshold NUMERIC(14,2),
           terms_and_conditions TEXT,
           default_notes TEXT,
@@ -1284,6 +1285,15 @@ integration(
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
 
+        -- Public acceptance now supersedes stale requests after selected-item totals are recalculated.
+        CREATE TEMP TABLE sales_quote_approval_requests (
+          company_id UUID NOT NULL,
+          quote_id UUID NOT NULL,
+          status VARCHAR(30) NOT NULL,
+          completed_at TIMESTAMPTZ,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
         CREATE TEMP TABLE sales_delivery_log (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           company_id UUID NOT NULL,
@@ -1330,6 +1340,7 @@ integration(
           id UUID PRIMARY KEY,
           company_id UUID NOT NULL,
           reference TEXT,
+          currency VARCHAR(3) NOT NULL DEFAULT 'KES',
           invoice_date DATE NOT NULL DEFAULT CURRENT_DATE,
           status VARCHAR(30) NOT NULL DEFAULT 'posted',
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1341,8 +1352,41 @@ integration(
           company_id UUID NOT NULL,
           invoice_id UUID NOT NULL,
           quantity NUMERIC(18,4) NOT NULL,
+          line_total NUMERIC(18,2) NOT NULL DEFAULT 0,
           metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
           sort_order INTEGER NOT NULL DEFAULT 1
+        );
+
+        CREATE TEMP TABLE sales_commission_plans (
+          id UUID PRIMARY KEY,
+          company_id UUID NOT NULL
+        );
+
+        CREATE TEMP TABLE sales_commission_assignments (
+          id UUID PRIMARY KEY,
+          company_id UUID NOT NULL,
+          plan_id UUID NOT NULL
+        );
+
+        CREATE TEMP TABLE sales_commission_entries (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id UUID NOT NULL,
+          order_id UUID NOT NULL,
+          plan_id UUID NOT NULL,
+          assignment_id UUID NOT NULL,
+          user_id UUID,
+          team_id UUID,
+          basis VARCHAR(20) NOT NULL,
+          basis_amount NUMERIC(18,2) NOT NULL,
+          commission_amount NUMERIC(18,2) NOT NULL,
+          currency VARCHAR(3) NOT NULL,
+          status VARCHAR(20) NOT NULL,
+          source_event_key VARCHAR(255) NOT NULL,
+          metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+          reversed_at TIMESTAMPTZ,
+          created_by UUID,
+          updated_by UUID,
+          UNIQUE(company_id, source_event_key)
         );
 
         CREATE TEMP TABLE sales_returns (
@@ -2100,10 +2144,10 @@ integration(
       });
       await returnPool.query(
         `INSERT INTO invoicing_invoice_items
-           (id, company_id, invoice_id, quantity, metadata, sort_order)
+           (id, company_id, invoice_id, quantity, line_total, metadata, sort_order)
          VALUES
-           ($1, $2, $3, 0.4, $5::jsonb, 1),
-           ($4, $2, $6, 0.6, $5::jsonb, 1)`,
+           ($1, $2, $3, 0.4, 46.4, $5::jsonb, 1),
+           ($4, $2, $6, 0.6, 69.6, $5::jsonb, 1)`,
         [
           firstInvoiceItemId,
           companyId,
@@ -2194,6 +2238,25 @@ integration(
         0.5,
       );
 
+      const commissionPlanId = '11111111-1111-4111-8111-111111111111';
+      const commissionAssignmentId = '22222222-2222-4222-8222-222222222222';
+      const accruedCommissionEntryId = '33333333-3333-4333-8333-333333333333';
+      await returnPool.query(
+        'INSERT INTO sales_commission_plans (id, company_id) VALUES ($1, $2)',
+        [commissionPlanId, companyId],
+      );
+      await returnPool.query(
+        'INSERT INTO sales_commission_assignments (id, company_id, plan_id) VALUES ($1, $2, $3)',
+        [commissionAssignmentId, companyId, commissionPlanId],
+      );
+      await returnPool.query(
+        `INSERT INTO sales_commission_entries (
+           id, company_id, order_id, plan_id, assignment_id, basis, basis_amount,
+           commission_amount, currency, status, source_event_key
+         ) VALUES ($1, $2, $3, $4, $5, 'revenue', 116, 11.6, 'KES', 'accrued', 'original-order-commission-001')`,
+        [accruedCommissionEntryId, companyId, first.id, commissionPlanId, commissionAssignmentId],
+      );
+
       const creditNoteByInvoice = new Map([
         [firstInvoiceId, { id: firstCreditNoteId, number: 'CN-SALES-001', amount: 46.4 }],
         [secondInvoiceId, { id: secondCreditNoteId, number: 'CN-SALES-002', amount: 11.6 }],
@@ -2258,6 +2321,20 @@ integration(
       );
       assert.equal(issuedReturnCredits.status, 'credited');
       assert.equal(issuedReturnCredits.credits.length, 2);
+      assert.deepEqual(issuedReturnCredits.commissionReversals, [
+        { currency: 'KES', reversedCount: 1, reversedAmount: 5.8 },
+      ], 'crediting 58.00 of a 116.00 revenue basis reverses half of the 11.60 commission');
+      const commissionReversalRows = await returnPool.query(
+        `SELECT basis_amount, commission_amount, currency, status, source_event_key
+         FROM sales_commission_entries
+         WHERE company_id = $1 AND source_event_key LIKE $2`,
+        [companyId, 'sales-return:' + createdReturn.returnId + ':commission:%'],
+      );
+      assert.equal(commissionReversalRows.rows.length, 1);
+      assert.equal(Number(commissionReversalRows.rows[0].basis_amount), -58);
+      assert.equal(Number(commissionReversalRows.rows[0].commission_amount), -5.8);
+      assert.equal(commissionReversalRows.rows[0].currency, 'KES');
+      assert.equal(commissionReversalRows.rows[0].status, 'reversed');
       assert.equal(invoiceCreditCalls, 2);
       assert.deepEqual(
         creditRequests.map(request => [request.invoiceId, ...request.lineQuantities.map(quantity => Number(quantity.toFixed(4)))]),
@@ -2918,12 +2995,12 @@ integration(
 
       const { SALES_RUNTIME_MIGRATIONS } = await import('../lib/apps/runtime-migrations');
       const { getSamiModuleMigrationPlan } = await import('../lib/modules/migrations');
-      const plan = getSamiModuleMigrationPlan('sales', '1.0.0', '3.4.21');
+      const plan = getSamiModuleMigrationPlan('sales', '1.0.0', '3.4.22');
 
       assert.equal(plan.length, SALES_RUNTIME_MIGRATIONS.length,
         'the migration planner must include every registered Sales transition');
       assert.equal(plan[0].fromVersion, '1.0.0');
-      assert.equal(plan[plan.length - 1].toVersion, '3.4.21');
+      assert.equal(plan[plan.length - 1].toVersion, '3.4.22');
 
       for (let index = 0; index < plan.length; index += 1) {
         const migration = plan[index];
@@ -3716,7 +3793,7 @@ integration(
 );
 
 integration(
-  'Tenant provisioning: core and Documents schemas execute from an empty PostgreSQL database',
+  'Tenant provisioning: core, Documents, and Sales schemas execute from an empty PostgreSQL database',
   async () => {
     const pool =
       new Pool({
@@ -3816,6 +3893,77 @@ integration(
         documentsTrigger.rows.length,
         1,
         'Documents app should install its updated_at trigger after creating the table.',
+      );
+
+      const salesSql = await readFile(
+        path.join(
+          process.cwd(),
+          'lib',
+          'apps',
+          'sales',
+          'schema.sql',
+        ),
+        'utf8',
+      );
+
+      await client.query(salesSql);
+
+      const stageTable = await client.query(
+        "SELECT to_regclass('public.sales_pipeline_stages') AS relation",
+      );
+      assert.equal(
+        stageTable.rows[0]?.relation,
+        'sales_pipeline_stages',
+        'Sales schema must create pipeline stages on a fresh install.',
+      );
+
+      const stageIndexes = await client.query(
+        "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'sales_pipeline_stages'",
+      );
+      const pipelineScopedNameIndex = stageIndexes.rows.find(
+        (row) => row.indexname === 'uq_sales_pipeline_stages_company_pipeline_name',
+      );
+      assert.ok(
+        pipelineScopedNameIndex,
+        'fresh Sales installs must have the pipeline-scoped stage-name index.',
+      );
+      assert.match(
+        pipelineScopedNameIndex.indexdef,
+        /company_id,\s*pipeline_id,[\s\S]*lower\(btrim\(/i,
+      );
+      assert.ok(
+        !stageIndexes.rows.some((row) => row.indexname === 'sales_pipeline_stages_company_id_name_key'),
+        'fresh Sales installs must not have the obsolete company-wide stage-name uniqueness constraint.',
+      );
+
+      const salesColumns = await client.query(
+        "SELECT table_name, column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema = 'public' AND ((table_name = 'sales_quotes' AND column_name IN ('salesperson_user_id', 'pipeline_id', 'stage_id', 'sales_pipeline_stage_id')) OR (table_name = 'sales_settings' AND column_name = 'credit_limit_enforced'))",
+      );
+      const salesperson = salesColumns.rows.find(
+        (row) => row.table_name === 'sales_quotes' && row.column_name === 'salesperson_user_id',
+      );
+      assert.ok(salesperson, 'sales_quotes.salesperson_user_id must be preserved.');
+      assert.ok(
+        !salesColumns.rows.some(
+          (row) => row.table_name === 'sales_quotes' && ['pipeline_id', 'stage_id', 'sales_pipeline_stage_id'].includes(row.column_name),
+        ),
+        'fresh Sales installs must not create quote-level pipeline columns.',
+      );
+      const creditLimit = salesColumns.rows.find(
+        (row) => row.table_name === 'sales_settings' && row.column_name === 'credit_limit_enforced',
+      );
+      assert.ok(creditLimit, 'sales_settings.credit_limit_enforced must exist.');
+      assert.equal(creditLimit.data_type, 'boolean');
+      assert.equal(creditLimit.is_nullable, 'NO');
+      assert.match(String(creditLimit.column_default), /false/i);
+
+      const obsoleteQuoteStageHistory = await client.query(
+        "SELECT to_regclass('public.sales_quote_stage_history') AS relation",
+      );
+      assert.equal(
+        obsoleteQuoteStageHistory.rows[0]?.relation,
+        null,
+        'fresh Sales installs must not create obsolete quote-stage history.',
       );
 
       await client.query(

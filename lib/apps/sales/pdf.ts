@@ -4,93 +4,219 @@ import type {
   getPublicSalesQuote,
 } from '@/lib/apps/sales/public';
 
+import type {
+  getSalesOrderDetail,
+} from '@/lib/apps/sales/queries';
 
-type Quote =
-  Awaited<
-    ReturnType<
-      typeof getPublicSalesQuote
-    >
-  >;
+type Quote = Awaited<ReturnType<typeof getPublicSalesQuote>>;
+type Order = Awaited<ReturnType<typeof getSalesOrderDetail>>;
 
+type PdfLine = {
+  description: string;
+  sku?: string | null;
+  unit?: string | null;
+  quantity: number;
+  unitPrice: number;
+  discountAmount?: number;
+  taxRate?: number;
+  taxName?: string | null;
+  lineTotal: number;
+};
 
-function ascii(
-  value:
-    unknown,
-) {
-  return String(
-    value ??
-    '',
-  )
-    .normalize(
-      'NFKD',
-    )
-    .replace(
-      /[^\x20-\x7E]/g,
-      '?',
-    );
+type PdfCompany = {
+  name: string;
+  address?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  taxId?: string | null;
+  registrationNumber?: string | null;
+};
+
+type PdfTemplate = {
+  primaryColor?: string | null;
+  secondaryColor?: string | null;
+  footerText?: string | null;
+};
+
+type PdfCustomer = {
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  taxId?: string | null;
+  billingAddress?: string | null;
+};
+
+type PdfDocument = {
+  documentTitle: string;
+  documentNumber: string;
+  status: string;
+  issueDate: string | null;
+  validUntil: string | null;
+  reference: string | null;
+  currency: string;
+  subtotal: number;
+  discountTotal: number;
+  taxTotal: number;
+  shippingTotal: number;
+  depositRequiredAmount: number;
+  totalAmount: number;
+  notes: string | null;
+  terms: string | null;
+  acceptedAt: string | null;
+  salespersonName: string | null;
+  customer: PdfCustomer;
+  company: PdfCompany;
+  template: PdfTemplate;
+  lines: PdfLine[];
+};
+
+/**
+ * A JPEG payload that can be embedded as a PDF Image XObject.
+ * The supplied bytes must be the JPEG file contents, not a data URL.
+ */
+export type SalesPdfLogoImageXObject = {
+  width: number;
+  height: number;
+  jpegBytes: Uint8Array;
+};
+
+export type SalesOrderPdfOptions = {
+  company?: Partial<PdfCompany>;
+  template?: Partial<PdfTemplate>;
+  salespersonName?: string | null;
+  logoImageXObject?: SalesPdfLogoImageXObject | null;
+  documentTitle?: 'SALES ORDER' | 'PROFORMA INVOICE';
+  /** Remove cost and margin snapshots before composing an order PDF. */
+  maskCosts?: boolean;
+};
+
+const WIN_ANSI_SPECIALS: Record<string, number> = {
+  '€': 0x80,
+  '£': 0xa3,
+  '¥': 0xa5,
+  '‚': 0x82,
+  'ƒ': 0x83,
+  '„': 0x84,
+  '…': 0x85,
+  '†': 0x86,
+  '‡': 0x87,
+  'ˆ': 0x88,
+  '‰': 0x89,
+  'Š': 0x8a,
+  '‹': 0x8b,
+  'Œ': 0x8c,
+  'Ž': 0x8e,
+  '‘': 0x91,
+  '’': 0x92,
+  '“': 0x93,
+  '”': 0x94,
+  '•': 0x95,
+  '–': 0x96,
+  '—': 0x97,
+  '˜': 0x98,
+  '™': 0x99,
+  'š': 0x9a,
+  '›': 0x9b,
+  'œ': 0x9c,
+  'ž': 0x9e,
+  'Ÿ': 0x9f,
+};
+
+/**
+ * Encode text for the built-in Helvetica fonts using WinAnsiEncoding.
+ * TODO: embed a Unicode font for complete Unicode coverage.
+ */
+function ascii(value: unknown) {
+  return Array.from(String(value ?? '').normalize('NFC'))
+    .map(character => {
+      const mapped = WIN_ANSI_SPECIALS[character];
+      if (mapped !== undefined) return String.fromCharCode(mapped);
+
+      const codePoint = character.charCodeAt(0);
+      if (
+        (codePoint >= 0x20 && codePoint <= 0x7e) ||
+        (codePoint >= 0xa0 && codePoint <= 0xff)
+      ) {
+        return character;
+      }
+
+      return '?';
+    })
+    .join('');
 }
 
-
-function esc(
-  value:
-    unknown,
-) {
-  return ascii(
-    value,
-  )
-    .replace(
-      /\\/g,
-      '\\\\',
-    )
-    .replace(
-      /\(/g,
-      '\\(',
-    )
-    .replace(
-      /\)/g,
-      '\\)',
-    );
+function esc(value: unknown) {
+  return ascii(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)');
 }
 
+/**
+ * Wrap words without dropping content. Overlong tokens are split at maxChars.
+ */
+export function wrap(textValue: unknown, maxChars: number): string[] {
+  const limit = Number.isFinite(maxChars) ? Math.max(1, Math.floor(maxChars)) : 1;
+  const paragraphs = String(textValue ?? '').replace(/\r\n?/g, '\n').split('\n');
+  const output: string[] = [];
 
-function money(
-  value:
-    number,
-) {
-  return Number(
-    value ||
-    0,
-  ).toLocaleString(
-    'en-US',
-    {
-      minimumFractionDigits:
-        2,
-      maximumFractionDigits:
-        2,
-    },
-  );
+  for (const paragraph of paragraphs) {
+    const words = paragraph.trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) {
+      output.push('');
+      continue;
+    }
+
+    let currentLine = '';
+    for (const rawWord of words) {
+      let word = rawWord;
+
+      if (word.length > limit) {
+        if (currentLine) {
+          output.push(currentLine);
+          currentLine = '';
+        }
+
+        while (word.length > limit) {
+          output.push(word.slice(0, limit));
+          word = word.slice(limit);
+        }
+      }
+
+      if (!word) continue;
+      if (!currentLine) {
+        currentLine = word;
+      } else if (currentLine.length + word.length + 1 <= limit) {
+        currentLine += ' ' + word;
+      } else {
+        output.push(currentLine);
+        currentLine = word;
+      }
+    }
+
+    if (currentLine) output.push(currentLine);
+  }
+
+  return output.length ? output : [''];
 }
 
+function money(value: number) {
+  return Number(value || 0).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
 
 function text(
-  x:
-    number,
-  y:
-    number,
-  value:
-    unknown,
-  size =
-    8,
-  bold =
-    false,
+  x: number,
+  y: number,
+  value: unknown,
+  size = 8,
+  bold = false,
 ) {
   return (
     'BT /' +
-    (
-      bold
-        ? 'F2'
-        : 'F1'
-    ) +
+    (bold ? 'F2' : 'F1') +
     ' ' +
     size +
     ' Tf 1 0 0 1 ' +
@@ -98,793 +224,527 @@ function text(
     ' ' +
     y +
     ' Tm (' +
-    esc(
-      value,
-    ) +
+    esc(value) +
     ') Tj ET\n'
   );
 }
 
-
-function line(
-  y:
-    number,
-) {
-  return (
-    '0.86 0.89 0.93 RG 0.7 w 36 ' +
-    y +
-    ' m 559 ' +
-    y +
-    ' l S\n'
-  );
+function line(y: number) {
+  return '0.86 0.89 0.93 RG 0.7 w 36 ' + y + ' m 559 ' + y + ' l S\n';
 }
 
+function rgbFromHex(value: string | null | undefined, fallback = '#164a9f') {
+  const normalized = String(value || fallback).trim();
+  const match = /^#?([0-9a-f]{6})$/i.exec(normalized);
+  const hex = match?.[1] || fallback.slice(1);
+
+  return [0, 2, 4]
+    .map(offset => (parseInt(hex.slice(offset, offset + 2), 16) / 255).toFixed(3))
+    .join(' ');
+}
+
+function metadataForLine(item: PdfLine) {
+  if (!item.sku && !item.taxName) return '';
+  return [
+    item.sku ? 'SKU ' + item.sku : '',
+    item.unit || '',
+    item.taxName || '',
+  ].filter(Boolean).join(' | ');
+}
+
+function rowHeight(item: PdfLine) {
+  const descriptionLines = wrap(item.description, 46);
+  return Math.max(20, descriptionLines.length * 8 + (metadataForLine(item) ? 8 : 0) + 8);
+}
+
+/**
+ * Keep no more than 18 document lines per page. The last page reserves room
+ * for totals, terms and signature consent; preceding pages can use more space.
+ */
+function pageHeight(rows: PdfLine[]) {
+  return rows.reduce((height, item) => height + rowHeight(item), 0);
+}
+
+/**
+ * Keep no more than 18 document lines per page. The last page reserves room
+ * for totals, terms and signature consent; preceding pages can use more space.
+ */
+function paginateRows(rows: PdfLine[]) {
+  if (rows.length === 0) return [[] as PdfLine[]];
+
+  const pages: PdfLine[][] = [];
+  let current: PdfLine[] = [];
+  let currentHeight = 0;
+
+  for (const item of rows) {
+    const height = rowHeight(item);
+    if (current.length > 0 && (current.length >= 18 || currentHeight + height > 465)) {
+      pages.push(current);
+      current = [];
+      currentHeight = 0;
+    }
+
+    current.push(item);
+    currentHeight += height;
+  }
+
+  if (current.length > 0) pages.push(current);
+
+  const lastPage = pages[pages.length - 1];
+  if (lastPage && pageHeight(lastPage) > 280) {
+    const tailPage = pages.pop() || [];
+    const finalRows: PdfLine[] = [];
+    let finalHeight = 0;
+
+    while (tailPage.length > 0 && finalRows.length < 18) {
+      const candidate = tailPage[tailPage.length - 1];
+      const candidateHeight = rowHeight(candidate);
+      if (finalRows.length > 0 && finalHeight + candidateHeight > 280) break;
+
+      finalRows.unshift(tailPage.pop() as PdfLine);
+      finalHeight += candidateHeight;
+    }
+
+    if (tailPage.length > 0) pages.push(tailPage);
+    pages.push(finalRows);
+
+    // Avoid leaving an almost-empty page immediately before the final summary.
+    const middleIndex = pages.length - 2;
+    if (middleIndex > 0 && pages[middleIndex].length < 6) {
+      const previous = pages[middleIndex - 1];
+      const middle = pages[middleIndex];
+
+      while (previous.length > middle.length + 1 && previous.length > 1) {
+        const candidate = previous[previous.length - 1];
+        if (pageHeight(middle) + rowHeight(candidate) > 465) break;
+        middle.unshift(previous.pop() as PdfLine);
+      }
+    }
+  }
+
+  const finalRows = pages[pages.length - 1];
+  if (pages.length > 1 && finalRows && finalRows.length < 6) {
+    const previous = pages[pages.length - 2];
+    let finalHeight = pageHeight(finalRows);
+
+    while (previous.length > finalRows.length + 1 && previous.length > 1) {
+      const candidate = previous[previous.length - 1];
+      const candidateHeight = rowHeight(candidate);
+      if (finalHeight + candidateHeight > 280 || finalRows.length >= 18) break;
+      finalRows.unshift(previous.pop() as PdfLine);
+      finalHeight += candidateHeight;
+    }
+  }
+
+  return pages.length > 0 ? pages : [[] as PdfLine[]];
+}
 
 function pageStream(
-  quote:
-    Quote,
-  rows:
-    Quote['lines'],
-  page:
-    number,
-  pageCount:
-    number,
-  finalPage:
-    boolean,
+  document: PdfDocument,
+  rows: PdfLine[],
+  page: number,
+  pageCount: number,
+  finalPage: boolean,
+  hasLogo: boolean,
 ) {
-  let out =
-    '0.07 0.27 0.60 rg 0 754 595 88 re f\n';
+  let out = rgbFromHex(document.template.primaryColor) + ' rg 0 754 595 88 re f\n';
+  out += '1 1 1 rg\n';
 
-  out +=
-    '1 1 1 rg\n';
+  const companyNameLines = wrap(document.company.name, 43);
+  out += text(36, 812, companyNameLines[0], 16, true);
+  if (companyNameLines.length > 1) out += text(36, 799, companyNameLines[1], 8, true);
 
-  out +=
-    text(
-      36,
-      808,
-      quote.company.name,
-      17,
-      true,
-    );
+  if (document.company.address) {
+    const addressLines = wrap(document.company.address, 63);
+    const addressY = companyNameLines.length > 1 ? 786 : 793;
+    out += text(36, addressY, addressLines[0], 7);
+    if (addressLines.length > 1) out += text(36, addressY - 10, addressLines[1], 6.5);
+  }
 
-  out +=
-    text(
-      36,
-      784,
-      'QUOTATION',
-      8,
-      true,
-    );
+  out += text(36, 763, document.documentTitle, 8, true);
+  out += text(390, 811, document.documentNumber, 12, true);
+  out += text(390, 791, document.status.replaceAll('_', ' ').toUpperCase(), 7, true);
 
-  out +=
-    text(
-      405,
-      808,
-      quote.quoteNumber,
-      13,
-      true,
-    );
+  if (hasLogo) {
+    out += 'q 62 0 0 30 496 767 cm /Logo Do Q\n';
+  }
 
-  out +=
-    text(
-      405,
-      787,
-      quote.status
-        .replaceAll(
-          '_',
-          ' ',
-        )
-        .toUpperCase(),
-      7,
-      true,
-    );
+  out += '0 0 0 rg\n';
+  out += text(520, 739, String(page + 1) + '/' + pageCount, 6);
 
-  out +=
-    text(
-      522,
-      765,
-      (
-        page +
-        1
-      ) +
-      '/' +
-      pageCount,
-      6,
-    );
+  out += text(36, 726, 'PREPARED FOR', 7, true);
+  out += text(36, 708, wrap(document.customer.name, 42)[0], 11, true);
 
-  out +=
-    '0 0 0 rg\n';
+  let customerY = 692;
+  const customerDetails = [
+    document.customer.email,
+    document.customer.phone,
+    document.customer.taxId ? 'Tax / PIN: ' + document.customer.taxId : null,
+    document.customer.billingAddress,
+  ];
 
-  out +=
-    text(
-      36,
-      724,
-      'PREPARED FOR',
-      7,
-      true,
-    );
-
-  out +=
-    text(
-      36,
-      706,
-      quote.customer.name,
-      11,
-      true,
-    );
-
-  let customerY =
-    690;
-
-  for (
-    const value
-    of [
-      quote.customer.email,
-      quote.customer.phone,
-      quote.customer.taxId
-        ? 'Tax / PIN: ' +
-          quote.customer.taxId
-        : null,
-      quote.customer.billingAddress,
-    ]
-  ) {
-    if (
-      value
-    ) {
-      out +=
-        text(
-          36,
-          customerY,
-          String(
-            value,
-          ).slice(
-            0,
-            70,
-          ),
-          7,
-        );
-
-      customerY -=
-        11;
+  for (const detail of customerDetails) {
+    if (!detail) continue;
+    for (const wrapped of wrap(detail, 65)) {
+      out += text(36, customerY, wrapped, 7);
+      customerY -= 10;
+      if (customerY < 646) break;
     }
   }
 
-  out +=
-    text(
-      355,
-      724,
-      'QUOTE DETAILS',
-      7,
-      true,
+  out += text(355, 726, document.documentTitle === 'QUOTATION' ? 'QUOTE DETAILS' : document.documentTitle === 'PROFORMA INVOICE' ? 'PROFORMA DETAILS' : 'ORDER DETAILS', 7, true);
+  let detailsY = 708;
+  const validityWindow = document.validUntil
+    ? String(document.issueDate || '') + ' - ' + document.validUntil
+    : null;
+
+  for (const [label, value] of [
+    ['Date', document.issueDate],
+    ['Validity window', validityWindow],
+    ['Currency', document.currency],
+    ['Reference', document.reference],
+    ['Salesperson', document.salespersonName],
+  ] as Array<[string, string | null]>) {
+    if (!value) continue;
+    const detailLines = wrap(label + ': ' + value, 35);
+    for (const detailLine of detailLines) {
+      out += text(355, detailsY, detailLine, 6.5);
+      detailsY -= 10;
+    }
+  }
+
+  out += '0.05 0.08 0.15 rg 36 606 523 21 re f\n1 1 1 rg\n';
+
+  for (const [x, label] of [
+    [42, 'Description'],
+    [302, 'Qty'],
+    [350, 'Price'],
+    [420, 'Discount'],
+    [478, 'Tax'],
+    [522, 'Amount'],
+  ] as const) {
+    out += text(x, 613, label, 6, true);
+  }
+
+  out += '0 0 0 rg\n';
+  let y = 583;
+
+  for (const item of rows) {
+    const firstY = y;
+    const descriptionLines = wrap(item.description, 46);
+
+    descriptionLines.forEach((descriptionLine, index) => {
+      out += text(42, firstY - index * 8, descriptionLine, 7, index === 0);
+    });
+
+    out += text(302, firstY, item.quantity, 6.5);
+    out += text(350, firstY, money(item.unitPrice), 6.5);
+    out += text(420, firstY, (item.discountAmount || 0) > 0 ? money(item.discountAmount || 0) : '-', 6.5);
+    out += text(478, firstY, (item.taxRate || 0) > 0 ? String(item.taxRate) + '%' : '-', 6.5);
+    out += text(522, firstY, money(item.lineTotal), 6.5, true);
+
+    const metadata = metadataForLine(item);
+    if (metadata) out += text(42, firstY - descriptionLines.length * 8, wrap(metadata, 72)[0], 5.5);
+
+    const height = rowHeight(item);
+    out += line(firstY - height + 2);
+    y = firstY - height;
+  }
+
+  if (finalPage) {
+    const summaryY = Math.min(245, y - 8);
+    const summaryRows: Array<[string, number]> = [
+      ['Subtotal', document.subtotal],
+      ['Discount', -document.discountTotal],
+      ['Tax', document.taxTotal],
+      ['Shipping', document.shippingTotal],
+      ...(document.depositRequiredAmount > 0
+        ? [['Deposit / advance due on order', document.depositRequiredAmount] as [string, number]]
+        : []),
+      ['TOTAL', document.totalAmount],
+    ];
+
+    const summaryRowsHeight = summaryRows.reduce(
+      (height, [label]) => height + (label === 'TOTAL' ? 17 : 13),
+      0,
     );
+    const summaryTop = summaryY + 27;
+    const summaryBottom = summaryY - summaryRowsHeight - 8;
 
-  let detailsY =
-    706;
-
-  for (
-    const [
-      label,
-      value,
-    ]
-    of [
-      [
-        'Quote date',
-        quote.quoteDate,
-      ],
-      [
-        'Valid until',
-        quote.validUntil,
-      ],
-      [
-        'Currency',
-        quote.currency,
-      ],
-      [
-        'Reference',
-        quote.reference,
-      ],
-    ] as const
-  ) {
-    if (
-      value
-    ) {
-      out +=
-        text(
-          355,
-          detailsY,
-          label +
-          ': ' +
-          String(
-            value,
-          ).slice(
-            0,
-            32,
-          ),
-          7,
-        );
-
-      detailsY -=
-        13;
-    }
-  }
-
-  out +=
-    '0.05 0.08 0.15 rg 36 590 523 22 re f\n1 1 1 rg\n';
-
-  for (
-    const [
-      x,
-      label,
-    ]
-    of [
-      [
-        42,
-        'Description',
-      ],
-      [
-        302,
-        'Qty',
-      ],
-      [
-        350,
-        'Price',
-      ],
-      [
-        420,
-        'Discount',
-      ],
-      [
-        478,
-        'Tax',
-      ],
-      [
-        522,
-        'Amount',
-      ],
-    ] as const
-  ) {
-    out +=
-      text(
-        x,
-        597,
-        label,
-        6,
-        true,
-      );
-  }
-
-  out +=
-    '0 0 0 rg\n';
-
-  let y =
-    563;
-
-  for (
-    const item
-    of rows
-  ) {
-    out +=
-      text(
-        42,
-        y,
-        item.description.slice(
-          0,
-          43,
-        ),
-        7,
-        true,
-      );
-
-    out +=
-      text(
-        302,
-        y,
-        item.quantity,
-        6.5,
-      );
-
-    out +=
-      text(
-        350,
-        y,
-        money(
-          item.unitPrice,
-        ),
-        6.5,
-      );
-
-    out +=
-      text(
-        420,
-        y,
-        item.discountAmount >
-          0
-          ? money(
-              item.discountAmount,
-            )
-          : '-',
-        6.5,
-      );
-
-    out +=
-      text(
-        478,
-        y,
-        item.taxRate >
-          0
-          ? item.taxRate +
-            '%'
-          : '-',
-        6.5,
-      );
-
-    out +=
-      text(
-        522,
-        y,
-        money(
-          item.lineTotal,
-        ),
-        6.5,
-        true,
-      );
-
-    if (
-      item.sku ||
-      item.taxName
-    ) {
-      out +=
-        text(
-          42,
-          y -
-            11,
-          [
-            item.sku
-              ? 'SKU ' +
-                item.sku
-              : '',
-            item.unit,
-            item.taxName ||
-            '',
-          ]
-            .filter(
-              Boolean,
-            )
-            .join(
-              ' | ',
-            )
-            .slice(
-              0,
-              72,
-            ),
-          5.5,
-        );
+    if (document.template.secondaryColor) {
+      out += rgbFromHex(document.template.secondaryColor, '#0f172a') +
+        ' RG 0.9 w 350 ' + summaryBottom + ' 209 ' +
+        (summaryTop - summaryBottom) + ' re S\n';
     }
 
-    out +=
-      line(
-        y -
-          18,
-      );
+    out += '0 0 0 rg\n';
+    out += text(360, summaryY + 18, 'COMMERCIAL SUMMARY', 7, true);
 
-    y -=
-      32;
-  }
-
-  if (
-    finalPage
-  ) {
-    let summaryY =
-      Math.min(
-        244,
-        y -
-          6,
-      );
-
-    out +=
-      text(
-        360,
-        summaryY +
-          18,
-        'COMMERCIAL SUMMARY',
-        7,
-        true,
-      );
-
-    for (
-      const [
-        label,
-        value,
-      ]
-      of [
-        [
-          'Subtotal',
-          quote.subtotal,
-        ],
-        [
-          'Discount',
-          -quote.discountTotal,
-        ],
-        [
-          'Tax',
-          quote.taxTotal,
-        ],
-        [
-          'Shipping',
-          quote.shippingTotal,
-        ],
-        ...(quote.depositRequiredAmount > 0
-          ? [[
-              'Deposit / advance due on order',
-              quote.depositRequiredAmount,
-            ] as const]
-          : []),
-        [
-          'TOTAL',
-          quote.totalAmount,
-        ],
-      ] as const
-    ) {
-      out +=
-        text(
-          360,
-          summaryY,
-          label,
-          label ===
-            'TOTAL'
-            ? 8
-            : 7,
-          label ===
-            'TOTAL',
-        );
-
-      out +=
-        text(
-          466,
-          summaryY,
-          quote.currency +
-          ' ' +
-          money(
-            value,
-          ),
-          label ===
-            'TOTAL'
-            ? 8
-            : 7,
-          label ===
-            'TOTAL',
-        );
-
-      summaryY -=
-        label ===
-          'TOTAL'
-          ? 17
-          : 13;
+    let drawSummaryY = summaryY;
+    for (const [label, value] of summaryRows) {
+      const isTotal = label === 'TOTAL';
+      out += text(360, drawSummaryY, label, isTotal ? 8 : 7, isTotal);
+      out += text(466, drawSummaryY, document.currency + ' ' + money(value), isTotal ? 8 : 7, isTotal);
+      drawSummaryY -= isTotal ? 17 : 13;
     }
 
-    let notesY =
-      142;
+    let notesY = Math.min(137, summaryBottom - 20);
+    for (const [heading, value] of [
+      ['NOTES', document.notes],
+      ['TERMS & CONDITIONS', document.terms],
+    ] as Array<[string, string | null]>) {
+      if (!value || notesY < 76) continue;
 
-    for (
-      const [
-        heading,
-        value,
-      ]
-      of [
-        [
-          'NOTES',
-          quote.notes,
-        ],
-        [
-          'TERMS & CONDITIONS',
-          quote.terms,
-        ],
-      ] as const
-    ) {
-      if (
-        !value
-      ) {
-        continue;
+      out += text(36, notesY, heading, 6.5, true);
+      notesY -= 10;
+
+      for (const wrappedLine of wrap(value, 92)) {
+        if (notesY < 74) break;
+        out += text(36, notesY, wrappedLine, 6);
+        notesY -= 8;
       }
 
-      out +=
-        text(
-          36,
-          notesY,
-          heading,
-          6.5,
-          true,
-        );
+      notesY -= 4;
+    }
 
-      notesY -=
-        11;
-
-      const words =
-        String(
-          value,
-        )
-          .replace(
-            /\s+/g,
-            ' ',
-          )
-          .trim();
-
-      for (
-        let index =
-          0;
-        index <
-          words.length &&
-        notesY >
-          48;
-        index +=
-          90
-      ) {
-        out +=
-          text(
-            36,
-            notesY,
-            words.slice(
-              index,
-              index +
-                90,
-            ),
-            6,
-          );
-
-        notesY -=
-          9;
-      }
-
-      notesY -=
-        4;
+    out += line(53);
+    out += text(36, 58, 'Accepted by: __________ Date: __________', 7);
+    if (document.acceptedAt) {
+      out += text(36, 43, 'e-signature consent recorded at ' + document.acceptedAt, 5.5);
     }
   }
 
-  out +=
-    line(
-      38,
-    );
-
-  out +=
-    text(
-      36,
-      24,
-      quote.template.footerText ||
-      'Prepared securely with SaMi Sales',
-      6,
-    );
+  out += line(34);
+  out += text(36, 20, document.template.footerText || 'Prepared securely with SaMi Sales', 6);
 
   return out;
 }
 
-
-export function renderSalesQuotePdf(
-  quote:
-    Quote,
-) {
-  const pages:
-    Quote['lines'][] =
-      [];
-
-  for (
-    let index =
-      0;
-    index <
-      quote.lines.length;
-    index +=
-      9
-  ) {
-    pages.push(
-      quote.lines.slice(
-        index,
-        index +
-          9,
-      ),
-    );
+function renderPdf(document: PdfDocument, logoImageXObject: SalesPdfLogoImageXObject | null = null) {
+  if (logoImageXObject) {
+    if (
+      !Number.isInteger(logoImageXObject.width) ||
+      !Number.isInteger(logoImageXObject.height) ||
+      logoImageXObject.width <= 0 ||
+      logoImageXObject.height <= 0 ||
+      !logoImageXObject.jpegBytes ||
+      logoImageXObject.jpegBytes.length === 0
+    ) {
+      throw new Error('Invalid PDF logo Image XObject; expected JPEG bytes and positive dimensions.');
+    }
   }
 
-  if (
-    pages.length ===
-      0
-  ) {
-    pages.push(
-      [],
-    );
-  }
-
-  const streams =
-    pages.map(
-      (
-        rows,
-        index,
-      ) =>
-        pageStream(
-          quote,
-          rows,
-          index,
-          pages.length,
-          index ===
-            pages.length -
-              1,
-        ),
-    );
-
-  const objects =
-    new Map<
-      number,
-      string
-    >();
-
-  const pageIds =
-    streams.map(
-      (
-        _stream,
-        index,
-      ) =>
-        5 +
-        index *
-        2,
-    );
-
-  objects.set(
-    1,
-    '<< /Type /Catalog /Pages 2 0 R >>',
+  const pages = paginateRows(document.lines);
+  const streams = pages.map((rows, index) =>
+    pageStream(document, rows, index, pages.length, index === pages.length - 1, Boolean(logoImageXObject)),
   );
 
+  const objects = new Map<number, string>();
+  const pageIds = streams.map((_stream, index) => 5 + index * 2);
+  const logoObjectId = logoImageXObject ? 5 + streams.length * 2 : null;
+
+  objects.set(1, '<< /Type /Catalog /Pages 2 0 R >>');
   objects.set(
     2,
-    '<< /Type /Pages /Kids [' +
-    pageIds
-      .map(
-        id =>
-          id +
-          ' 0 R',
-      )
-      .join(
-        ' ',
-      ) +
-    '] /Count ' +
-    streams.length +
-    ' >>',
+    '<< /Type /Pages /Kids [' + pageIds.map(id => id + ' 0 R').join(' ') +
+      '] /Count ' + streams.length + ' >>',
   );
+  objects.set(3, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+  objects.set(4, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
 
-  objects.set(
-    3,
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-  );
+  streams.forEach((stream, index) => {
+    const pageId = pageIds[index];
+    const contentId = pageId + 1;
+    const logoResource = logoObjectId ? ' /XObject << /Logo ' + logoObjectId + ' 0 R >>' : '';
 
-  objects.set(
-    4,
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>',
-  );
+    objects.set(
+      pageId,
+      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >>' +
+        logoResource + ' >> /Contents ' + contentId + ' 0 R >>',
+    );
+    objects.set(
+      contentId,
+      '<< /Length ' + Buffer.byteLength(stream, 'binary') + ' >>\nstream\n' + stream + 'endstream',
+    );
+  });
 
-  streams.forEach(
-    (
-      stream,
-      index,
-    ) => {
-      const pageId =
-        pageIds[index];
+  if (logoImageXObject && logoObjectId) {
+    const imageBytes = Buffer.from(logoImageXObject.jpegBytes);
+    objects.set(
+      logoObjectId,
+      '<< /Type /XObject /Subtype /Image /Width ' + logoImageXObject.width +
+        ' /Height ' + logoImageXObject.height +
+        ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' +
+        imageBytes.length + ' >>\nstream\n' + imageBytes.toString('binary') + '\nendstream',
+    );
+  }
 
-      const contentId =
-        pageId +
-        1;
+  const maxId = Math.max(...objects.keys());
+  let output = '%PDF-1.4\n%SaMi\n';
+  const offsets = new Array<number>(maxId + 1).fill(0);
 
-      objects.set(
-        pageId,
-        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ' +
-        contentId +
-        ' 0 R >>',
-      );
+  for (let id = 1; id <= maxId; id += 1) {
+    const body = objects.get(id);
+    if (body === undefined) continue;
 
-      objects.set(
-        contentId,
-        '<< /Length ' +
-        Buffer.byteLength(
-          stream,
-          'ascii',
-        ) +
-        ' >>\nstream\n' +
-        stream +
-        'endstream',
-      );
+    offsets[id] = Buffer.byteLength(output, 'binary');
+    output += id + ' 0 obj\n' + body + '\nendobj\n';
+  }
+
+  const xref = Buffer.byteLength(output, 'binary');
+  output += 'xref\n0 ' + (maxId + 1) + '\n0000000000 65535 f \n';
+
+  for (let id = 1; id <= maxId; id += 1) {
+    output += String(offsets[id]).padStart(10, '0') + ' 00000 n \n';
+  }
+
+  output += 'trailer\n<< /Size ' + (maxId + 1) +
+    ' /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF\n';
+
+  return Buffer.from(output, 'binary');
+}
+
+type QuotePdfInput = Quote & {
+  acceptedAt?: string | null;
+  salespersonName?: string | null;
+};
+
+export function renderSalesQuotePdf(
+  quote: QuotePdfInput,
+  logoImageXObject: SalesPdfLogoImageXObject | null = null,
+) {
+  const document: PdfDocument = {
+    documentTitle: 'QUOTATION',
+    documentNumber: String(quote.quoteNumber || ''),
+    status: String(quote.status || ''),
+    issueDate: quote.quoteDate ? String(quote.quoteDate) : null,
+    validUntil: quote.validUntil ? String(quote.validUntil) : null,
+    reference: quote.reference ? String(quote.reference) : null,
+    currency: String(quote.currency || 'KES'),
+    subtotal: Number(quote.subtotal || 0),
+    discountTotal: Number(quote.discountTotal || 0),
+    taxTotal: Number(quote.taxTotal || 0),
+    shippingTotal: Number(quote.shippingTotal || 0),
+    depositRequiredAmount: Number(quote.depositRequiredAmount || 0),
+    totalAmount: Number(quote.totalAmount || 0),
+    notes: quote.notes ? String(quote.notes) : null,
+    terms: quote.terms ? String(quote.terms) : null,
+    acceptedAt: quote.acceptedAt ? String(quote.acceptedAt) : null,
+    salespersonName: quote.salespersonName ? String(quote.salespersonName) : null,
+    customer: {
+      name: String(quote.customer.name || ''),
+      email: quote.customer.email ? String(quote.customer.email) : null,
+      phone: quote.customer.phone ? String(quote.customer.phone) : null,
+      taxId: quote.customer.taxId ? String(quote.customer.taxId) : null,
+      billingAddress: quote.customer.billingAddress ? String(quote.customer.billingAddress) : null,
     },
-  );
+    company: {
+      name: String(quote.company.name || ''),
+      address: quote.company.address ? String(quote.company.address) : null,
+      email: quote.company.email ? String(quote.company.email) : null,
+      phone: quote.company.phone ? String(quote.company.phone) : null,
+      taxId: quote.company.taxId ? String(quote.company.taxId) : null,
+      registrationNumber: quote.company.registrationNumber ? String(quote.company.registrationNumber) : null,
+    },
+    template: {
+      primaryColor: quote.template.primaryColor ? String(quote.template.primaryColor) : '#164a9f',
+      secondaryColor: quote.template.secondaryColor ? String(quote.template.secondaryColor) : null,
+      footerText: quote.template.footerText ? String(quote.template.footerText) : null,
+    },
+    lines: quote.lines.map(item => ({
+      description: String(item.description || ''),
+      sku: item.sku ? String(item.sku) : null,
+      unit: item.unit ? String(item.unit) : null,
+      quantity: Number(item.quantity || 0),
+      unitPrice: Number(item.unitPrice || 0),
+      discountAmount: Number(item.discountAmount || 0),
+      taxRate: Number(item.taxRate || 0),
+      taxName: item.taxName ? String(item.taxName) : null,
+      lineTotal: Number(item.lineTotal || 0),
+    })),
+  };
 
-  const maxId =
-    Math.max(
-      ...objects.keys(),
-    );
+  return renderPdf(document, logoImageXObject);
+}
 
-  let output =
-    '%PDF-1.4\n%SaMi\n';
+export function renderSalesOrderPdf(
+  order: NonNullable<Order>,
+  options: SalesOrderPdfOptions = {},
+) {
+  const pdfOrder = options.maskCosts
+    ? {
+        ...order,
+        costTotal: null,
+        marginAmount: null,
+        marginPercent: null,
+        lines: order.lines.map(item => ({
+          ...item,
+          unitCost: null,
+          costTotal: null,
+          marginAmount: null,
+          marginPercent: null,
+        })),
+      }
+    : order;
 
-  const offsets =
-    new Array<number>(
-      maxId +
-        1,
-    ).fill(
-      0,
-    );
+  const document: PdfDocument = {
+    documentTitle: options.documentTitle || 'SALES ORDER',
+    documentNumber: String(pdfOrder.orderNumber || ''),
+    status: String(pdfOrder.status || ''),
+    issueDate: pdfOrder.orderDate ? String(pdfOrder.orderDate) : null,
+    validUntil: null,
+    reference: pdfOrder.reference ? String(pdfOrder.reference) : pdfOrder.quoteNumber ? String(pdfOrder.quoteNumber) : null,
+    currency: String(pdfOrder.currency || 'KES'),
+    subtotal: Number(pdfOrder.subtotal || 0),
+    discountTotal: Number(pdfOrder.discountTotal || 0),
+    taxTotal: Number(pdfOrder.taxTotal || 0),
+    shippingTotal: Number(pdfOrder.shippingTotal || 0),
+    depositRequiredAmount: Number(pdfOrder.depositRequiredAmount || 0),
+    totalAmount: Number(pdfOrder.totalAmount || 0),
+    notes: pdfOrder.notes ? String(pdfOrder.notes) : null,
+    terms: pdfOrder.terms ? String(pdfOrder.terms) : null,
+    acceptedAt: null,
+    salespersonName: options.salespersonName || null,
+    customer: {
+      name: String(pdfOrder.customerName || ''),
+      email: pdfOrder.customerEmail ? String(pdfOrder.customerEmail) : null,
+      phone: pdfOrder.customerPhone ? String(pdfOrder.customerPhone) : null,
+      taxId: pdfOrder.customerTaxId ? String(pdfOrder.customerTaxId) : null,
+      billingAddress: pdfOrder.billingAddress ? String(pdfOrder.billingAddress) : null,
+    },
+    company: {
+      name: String(options.company?.name || 'SaMi'),
+      address: options.company?.address ? String(options.company.address) : null,
+      email: options.company?.email ? String(options.company.email) : null,
+      phone: options.company?.phone ? String(options.company.phone) : null,
+      taxId: options.company?.taxId ? String(options.company.taxId) : null,
+      registrationNumber: options.company?.registrationNumber ? String(options.company.registrationNumber) : null,
+    },
+    template: {
+      primaryColor: options.template?.primaryColor ? String(options.template.primaryColor) : '#164a9f',
+      secondaryColor: options.template?.secondaryColor ? String(options.template.secondaryColor) : null,
+      footerText: options.template?.footerText ? String(options.template.footerText) : null,
+    },
+    lines: pdfOrder.lines.map(item => {
+      const gross = Number(item.quantity || 0) * Number(item.unitPrice || 0);
+      const discountValue = Number(item.discountValue || 0);
+      const discountAmount = item.discountType === 'fixed'
+        ? Math.min(gross, discountValue)
+        : gross * discountValue / 100;
 
-  for (
-    let id =
-      1;
-    id <=
-      maxId;
-    id +=
-      1
-  ) {
-    const body =
-      objects.get(
-        id,
-      );
+      return {
+        description: String(item.description || ''),
+        sku: item.sku ? String(item.sku) : null,
+        unit: item.unit ? String(item.unit) : null,
+        quantity: Number(item.quantity || 0),
+        unitPrice: Number(item.unitPrice || 0),
+        discountAmount,
+        taxRate: Number(item.taxRate || 0),
+        taxName: item.taxName ? String(item.taxName) : null,
+        lineTotal: Number(item.lineTotal || 0),
+      };
+    }),
+  };
 
-    if (
-      body ===
-        undefined
-    ) {
-      continue;
-    }
-
-    offsets[id] =
-      Buffer.byteLength(
-        output,
-        'binary',
-      );
-
-    output +=
-      id +
-      ' 0 obj\n' +
-      body +
-      '\nendobj\n';
-  }
-
-  const xref =
-    Buffer.byteLength(
-      output,
-      'binary',
-    );
-
-  output +=
-    'xref\n0 ' +
-    (
-      maxId +
-        1
-    ) +
-    '\n0000000000 65535 f \n';
-
-  for (
-    let id =
-      1;
-    id <=
-      maxId;
-    id +=
-      1
-  ) {
-    output +=
-      String(
-        offsets[id],
-      )
-        .padStart(
-          10,
-          '0',
-        ) +
-      ' 00000 n \n';
-  }
-
-  output +=
-    'trailer\n<< /Size ' +
-    (
-      maxId +
-        1
-    ) +
-    ' /Root 1 0 R >>\nstartxref\n' +
-    xref +
-    '\n%%EOF\n';
-
-  return Buffer.from(
-    output,
-    'binary',
-  );
+  return renderPdf(document, options.logoImageXObject || null);
 }

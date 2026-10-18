@@ -2,6 +2,7 @@ import 'server-only';
 
 import {
   cleanText,
+  hasSalesPermission,
   requireSalesContext,
   requireUuid,
   SALES_PERMISSIONS,
@@ -33,6 +34,23 @@ const ALLOWED_STATUS_VIEWS = new Set<SalesQuoteStatusView>([
 ]);
 
 const MAX_SAVED_VIEWS = 25;
+
+function canViewOrders(
+  context: Awaited<ReturnType<typeof requireSalesContext>>,
+) {
+  return (
+    hasSalesPermission(
+      context.permissions.isOwner,
+      context.permissions.permissionSet,
+      SALES_PERMISSIONS.ORDER_VIEW,
+    ) ||
+    hasSalesPermission(
+      context.permissions.isOwner,
+      context.permissions.permissionSet,
+      SALES_PERMISSIONS.ORDER_MANAGE,
+    )
+  );
+}
 
 type SavedQuoteViewRow = {
   id: string;
@@ -223,7 +241,13 @@ function mapSavedOrderView(row: SavedOrderViewRow): SalesSavedOrderView {
 
 
 export async function getSalesSavedOrderViews(): Promise<SalesSavedOrderView[]> {
-  const context = await requireSalesContext(SALES_PERMISSIONS.ORDER_VIEW);
+  const context = await requireSalesContext();
+  if (!canViewOrders(context)) {
+    throw new SalesError(
+      'SALES_PERMISSION_REQUIRED',
+      'You do not have permission to view Sales orders.',
+    );
+  }
 
   const result = await context.pool.query<SavedOrderViewRow>(
     `
@@ -245,7 +269,13 @@ export async function getSalesSavedOrderViews(): Promise<SalesSavedOrderView[]> 
 export async function saveSalesSavedOrderView(
   input: Record<string, unknown>,
 ): Promise<SalesSavedOrderView> {
-  const context = await requireSalesContext(SALES_PERMISSIONS.ORDER_VIEW);
+  const context = await requireSalesContext();
+  if (!canViewOrders(context)) {
+    throw new SalesError(
+      'SALES_PERMISSION_REQUIRED',
+      'You do not have permission to view Sales orders.',
+    );
+  }
   const name = cleanText(input.name, 80);
   const rawStatusView = cleanText(input.statusView, 40) || 'all';
   const rawSortBy = cleanText(input.sortBy, 40) || 'newest';
@@ -330,7 +360,13 @@ export async function saveSalesSavedOrderView(
 export async function deleteSalesSavedOrderView(
   input: Record<string, unknown>,
 ) {
-  const context = await requireSalesContext(SALES_PERMISSIONS.ORDER_VIEW);
+  const context = await requireSalesContext();
+  if (!canViewOrders(context)) {
+    throw new SalesError(
+      'SALES_PERMISSION_REQUIRED',
+      'You do not have permission to view Sales orders.',
+    );
+  }
   const viewId = requireUuid(input.viewId, 'Saved sales order view');
 
   const result = await context.pool.query<{ id: string }>(

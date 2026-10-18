@@ -2077,6 +2077,8 @@ export default function SalesWorkspaceClient({
                       data={
                         initialData
                       }
+                      salespeople={initialData.salespeople}
+                      currentSalespersonId={initialData.currentSalespersonId}
                       busy={
                         busy
                       }
@@ -3151,6 +3153,8 @@ export default function SalesWorkspaceClient({
                 <SalesQuoteComposer
                   key={linkedOpportunity?.id || 'standalone-new-quote'}
                   data={initialData}
+                  salespeople={initialData.salespeople}
+                  currentSalespersonId={initialData.currentSalespersonId}
                   linkedOpportunity={linkedOpportunity}
                   busy={busy}
                   onSave={saveQuote}
@@ -3515,6 +3519,11 @@ function Settings({
                     'requireBillingCustomerForInvoice',
                   ) ===
                     'on',
+                creditLimitEnforced:
+                  form.get(
+                    'creditLimitEnforced',
+                  ) ===
+                    'on',
                 lockConfirmedOrders:
                   form.get(
                     'lockConfirmedOrders',
@@ -3726,6 +3735,14 @@ function Settings({
             defaultChecked={
               data.settings
                 .requireBillingCustomerForInvoice
+            }
+          />
+          <Check
+            name="creditLimitEnforced"
+            label="Enforce customer credit limits"
+            defaultChecked={
+              data.settings
+                .creditLimitEnforced ?? false
             }
           />
           <Check
