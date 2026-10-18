@@ -98,3 +98,29 @@ test('Sales workspace exposes bounded salesperson choices and only permits pipel
   assert.match(capabilities, /canMovePipeline:\s*can\([\s\S]*?SALES_PERMISSIONS\s*\.PIPELINE_MANAGE,\s*\),/);
   assert.doesNotMatch(capabilities.slice(capabilities.indexOf('canMovePipeline:'), capabilities.indexOf('canManagePipelineStages:')), /PIPELINE_VIEW/);
 });
+
+ 
+test('Saved Sales order views accept either order-view or order-manage permission', async () => {
+  const views = await source('lib/apps/sales/saved-views.ts');
+  const helperStart = views.indexOf('function canViewOrders(');
+  const helperEnd = views.indexOf('\n}', helperStart);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart, 'canViewOrders helper must be present');
+  const helper = views.slice(helperStart, helperEnd + 2);
+  assert.match(helper, /SALES_PERMISSIONS\.ORDER_VIEW/);
+  assert.match(helper, /\|\|/);
+  assert.match(helper, /SALES_PERMISSIONS\.ORDER_MANAGE/);
+
+  for (const functionName of [
+    'getSalesSavedOrderViews',
+    'saveSalesSavedOrderView',
+    'deleteSalesSavedOrderView',
+  ]) {
+    const start = views.indexOf('export async function ' + functionName + '(');
+    const end = views.indexOf('\nexport async function ', start + 10);
+    assert.ok(start >= 0 && end > start, functionName + ' must be present');
+    const implementation = views.slice(start, end);
+    assert.match(implementation, /requireSalesContext\(\)/);
+    assert.match(implementation, /canViewOrders\(context\)/);
+    assert.doesNotMatch(implementation, /requireSalesContext\(SALES_PERMISSIONS\.ORDER_VIEW\)/);
+  }
+});
