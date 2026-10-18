@@ -320,6 +320,20 @@ function paginateRows(rows: PdfLine[]) {
     }
   }
 
+  const finalRows = pages[pages.length - 1];
+  if (pages.length > 1 && finalRows && finalRows.length < 6) {
+    const previous = pages[pages.length - 2];
+    let finalHeight = pageHeight(finalRows);
+
+    while (previous.length > finalRows.length + 1 && previous.length > 1) {
+      const candidate = previous[previous.length - 1];
+      const candidateHeight = rowHeight(candidate);
+      if (finalHeight + candidateHeight > 280 || finalRows.length >= 18) break;
+      finalRows.unshift(previous.pop() as PdfLine);
+      finalHeight += candidateHeight;
+    }
+  }
+
   return pages.length > 0 ? pages : [[] as PdfLine[]];
 }
 
