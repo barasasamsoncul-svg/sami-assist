@@ -131,10 +131,14 @@ export default function SalesOrderDetailClient({
     useRef<string | null>(null);
 
   useEffect(() => {
-    if (
-      !order.marginCommissionStale ||
-      staleCommissionWarningShownFor.current === order.id
-    ) {
+    if (!order.marginCommissionStale) {
+      if (staleCommissionWarningShownFor.current === order.id) {
+        staleCommissionWarningShownFor.current = null;
+      }
+      return;
+    }
+
+    if (staleCommissionWarningShownFor.current === order.id) {
       return;
     }
 
@@ -813,7 +817,7 @@ export default function SalesOrderDetailClient({
                                     remaining
                                   } {
                                     line.unit
-                                  } not yet delivered
+                                  } not yet shipped or assigned to a shipment
                                 </span>
                               </span>
                               <input
