@@ -144,6 +144,106 @@ export const SALES_AUTOMATION_TRIGGERS:
       companyScoped:
         true,
     },
+    {
+      key:
+        'sales.return.created',
+      name:
+        'Sales return created',
+      description:
+        'Run after a Sales return is created for an order.',
+      type:
+        'event',
+      moduleKey:
+        'sales',
+      resourceKey:
+        'return',
+      requiredPermissions: [
+        SALES_PERMISSIONS
+          .ORDER_VIEW,
+      ],
+      companyScoped:
+        true,
+    },
+    {
+      key:
+        'sales.return.received',
+      name:
+        'Sales return received',
+      description:
+        'Run after returned goods are received against a Sales return.',
+      type:
+        'event',
+      moduleKey:
+        'sales',
+      resourceKey:
+        'return',
+      requiredPermissions: [
+        SALES_PERMISSIONS
+          .ORDER_VIEW,
+      ],
+      companyScoped:
+        true,
+    },
+    {
+      key:
+        'sales.deposit.received',
+      name:
+        'Sales deposit received',
+      description:
+        'Run after a customer deposit is recorded against a Sales order.',
+      type:
+        'event',
+      moduleKey:
+        'sales',
+      resourceKey:
+        'deposit',
+      requiredPermissions: [
+        SALES_PERMISSIONS
+          .ORDER_VIEW,
+      ],
+      companyScoped:
+        true,
+    },
+    {
+      key:
+        'sales.shipment.shipped',
+      name:
+        'Sales shipment shipped',
+      description:
+        'Run after a Sales shipment is marked as shipped.',
+      type:
+        'event',
+      moduleKey:
+        'sales',
+      resourceKey:
+        'shipment',
+      requiredPermissions: [
+        SALES_PERMISSIONS
+          .ORDER_VIEW,
+      ],
+      companyScoped:
+        true,
+    },
+    {
+      key:
+        'sales.shipment.delivered',
+      name:
+        'Sales shipment delivered',
+      description:
+        'Run after a Sales shipment is marked as delivered.',
+      type:
+        'event',
+      moduleKey:
+        'sales',
+      resourceKey:
+        'shipment',
+      requiredPermissions: [
+        SALES_PERMISSIONS
+          .ORDER_VIEW,
+      ],
+      companyScoped:
+        true,
+    },
   ];
 
 
