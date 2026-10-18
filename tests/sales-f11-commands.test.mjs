@@ -60,7 +60,8 @@ test('credit enforcement checks base-currency exposure and requires quote-approv
   assert.match(commands, /input\.overrideCreditLimit === true/);
   assert.match(commands, /crossPermission\([\s\S]{0,120}SALES_PERMISSIONS\.QUOTE_APPROVE/);
   assert.equal((commands.match(/await enforceSalesCustomerCreditLimit\(/g) || []).length, 2);
-  assert.match(types, /creditLimitEnforced\?: boolean/);
+  assert.match(types, /creditLimitEnforced: boolean/);
+  assert.doesNotMatch(types, /creditLimitEnforced\?: boolean/);
   assert.match(schema, /credit_limit_enforced BOOLEAN NOT NULL DEFAULT FALSE/);
   assert.match(migration, /ADD COLUMN IF NOT EXISTS credit_limit_enforced BOOLEAN NOT NULL DEFAULT FALSE/);
   assert.match(registry, /SALES_3_4_21_TO_3_4_22/);
