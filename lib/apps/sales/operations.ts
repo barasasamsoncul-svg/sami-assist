@@ -3968,6 +3968,8 @@ const returnId = requireUuid(input.returnId, 'Sales return').toLowerCase();
       });
     }
 
+    // Use each source invoice line's persisted total (after discounts/tax),
+    // prorated by the quantity actually credited on this return.
     const returnedAmountsByCurrency = new Map<string, number>();
     for (const lines of byInvoice.values()) {
       for (const line of lines) {
