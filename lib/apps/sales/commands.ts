@@ -15,7 +15,6 @@ import {
   createInvoice,
   createInvoicingCatalogItem,
   createInvoicingCustomer,
-  getOrCreateSalesWalkInCustomer,
   updateInvoicingCatalogItem,
   updateInvoicingCustomer,
 } from '@/lib/apps/invoicing/commands';
@@ -677,6 +676,81 @@ async function resolveCustomerSnapshot(
  * base currency. A bypass needs explicit override input and quote-approval
  * permission; a NULL credit limit means no configured ceiling.
  */
+
+/**
+ * Gets or creates a company-scoped system billing identity for walk-in invoices.
+ * Creation is permission-gated to invoice creation; Invoicing's createInvoice
+ * command still validates the customer record and snapshots its name on the invoice.
+ */
+async function getOrCreateSalesWalkInCustomer(
+  client: PoolClient,
+  context: Awaited<ReturnType<typeof requireSalesContext>>,
+) {
+  if (!crossPermission(context, 'invoicing.invoice.create')) {
+    throw new SalesError(
+      'SALES_PERMISSION_REQUIRED',
+      'Invoicing invoice-creation access is required for walk-in invoicing.',
+    );
+  }
+
+  const table = await client.query(
+    `SELECT to_regclass('public.invoicing_customers') IS NOT NULL AS ready`,
+  );
+  if (table.rows[0]?.ready !== true) {
+    throw new SalesError(
+      'INVOICING_REQUIRED',
+      'Install Invoicing before generating a walk-in invoice.',
+    );
+  }
+
+  const lockKey = 'sales-walk-in-customer:' + context.companyId;
+  await client.query('SELECT pg_advisory_lock(hashtext($1))', [lockKey]);
+  try {
+    const existing = await client.query(
+      `
+        SELECT id
+        FROM invoicing_customers
+        WHERE company_id = $1
+          AND status = 'active'
+          AND deleted_at IS NULL
+          AND metadata->>'samiSyntheticCustomer' = 'sales_walk_in'
+        ORDER BY created_at ASC
+        LIMIT 1
+      `,
+      [context.companyId],
+    );
+    if (existing.rows.length === 1) {
+      return { id: String(existing.rows[0].id) };
+    }
+
+    const created = await client.query(
+      `
+        INSERT INTO invoicing_customers (
+          company_id, customer_type, name, currency, status, notes,
+          created_by, updated_by, metadata
+        )
+        VALUES (
+          $1, 'individual', 'Walk-in / unnamed customer', $2, 'active',
+          'System-managed placeholder for Sales invoices without a required billing customer.',
+          $3, $3,
+          jsonb_build_object('samiSyntheticCustomer', 'sales_walk_in', 'sourceModule', 'sales')
+        )
+        RETURNING id
+      `,
+      [
+        context.companyId,
+        context.company.currentCompany.currency || 'KES',
+        context.userId,
+      ],
+    );
+    return { id: String(created.rows[0].id) };
+  } finally {
+    try {
+      await client.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]);
+    } catch {}
+  }
+}
+
 async function enforceSalesCustomerCreditLimit(
   client: PoolClient,
   context: Awaited<ReturnType<typeof requireSalesContext>>,
@@ -5190,14 +5264,12 @@ type SalesOrderInvoiceDependencies = {
   createInvoicingCustomer: (
     input: Parameters<typeof createInvoicingCustomer>[0],
   ) => Promise<{ id: string }>;
-  getOrCreateSalesWalkInCustomer: typeof getOrCreateSalesWalkInCustomer;
   emitSalesAutomationEvent: typeof emitSalesAutomationEvent;
 };
 
 const defaultSalesOrderInvoiceDependencies: SalesOrderInvoiceDependencies = {
   createInvoice,
   createInvoicingCustomer,
-  getOrCreateSalesWalkInCustomer,
   emitSalesAutomationEvent,
 };
 
@@ -5542,7 +5614,7 @@ export async function createSalesOrderInvoiceTransaction(
             existingId;
         } else if (settings.require_billing_customer_for_invoice === false) {
           // Invoicing requires a customer foreign key, so only use a system walk-in when policy explicitly allows it.
-          billingCustomerId = (await deps.getOrCreateSalesWalkInCustomer()).id;
+          billingCustomerId = (await getOrCreateSalesWalkInCustomer(client, context)).id;
           isSyntheticWalkInCustomer = true;
         } else {
           // Missing setting means the secure default: require a real billing customer.

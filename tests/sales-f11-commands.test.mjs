@@ -24,17 +24,14 @@ test('cancelled and rejected quote status changes cancel pending approval reques
 });
 
 test('the walk-in invoice fallback is only used when the billing customer setting is explicitly false', async () => {
-  const [commands, invoicing] = await Promise.all([
-    source('lib/apps/sales/commands.ts'),
-    source('lib/apps/invoicing/commands.ts'),
-  ]);
+  const commands = await source('lib/apps/sales/commands.ts');
   assert.match(commands, /settings\.require_billing_customer_for_invoice === false/);
   assert.match(commands, /getOrCreateSalesWalkInCustomer/);
   assert.match(commands, /!isSyntheticWalkInCustomer/);
   assert.match(commands, /BILLING_CUSTOMER_REQUIRED/);
-  assert.match(invoicing, /export async function getOrCreateSalesWalkInCustomer/);
-  assert.ok(invoicing.includes('Walk-in / unnamed customer'));
-  assert.match(invoicing, /INVOICING_PERMISSIONS\.INVOICE_CREATE/);
+  assert.match(commands, /async function getOrCreateSalesWalkInCustomer/);
+  assert.ok(commands.includes('Walk-in / unnamed customer'));
+  assert.match(commands, /crossPermission\(context, 'invoicing\.invoice\.create'\)/);
 });
 
 test('duplicate quote copies salesperson only with pipeline access and preserves F10 optional products and deposit values', async () => {

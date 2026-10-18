@@ -3252,57 +3252,6 @@ async function applyInvoiceAdvancesDuringCreate(
 }
 
 
-
-/**
- * Gets or creates a company-scoped system identity for Sales walk-in invoices.
- * Called only when Sales policy explicitly permits a missing billing customer.
- */
-export async function getOrCreateSalesWalkInCustomer() {
-  const context = await requireInvoicingContext(INVOICING_PERMISSIONS.INVOICE_CREATE);
-  await ensureCompanyDefaults(context.pool, context.companyId, context.userId);
-  const client = await context.pool.connect();
-  const lockKey = 'invoicing:sales-walk-in-customer:' + context.companyId;
-  try {
-    await client.query('BEGIN');
-    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [lockKey]);
-    const existing = await client.query(
-      `
-        SELECT id FROM invoicing_customers
-        WHERE company_id = $1 AND status = 'active' AND deleted_at IS NULL
-          AND metadata->>'samiSyntheticCustomer' = 'sales_walk_in'
-        ORDER BY created_at ASC LIMIT 1
-      `,
-      [context.companyId],
-    );
-    if (existing.rows.length === 1) {
-      await client.query('COMMIT');
-      return { id: String(existing.rows[0].id) };
-    }
-    const created = await client.query(
-      `
-        INSERT INTO invoicing_customers (
-          company_id, customer_type, name, currency, status, notes,
-          created_by, updated_by, metadata
-        )
-        VALUES (
-          $1, 'individual', 'Walk-in / unnamed customer', $2, 'active',
-          'System-managed placeholder for Sales invoices without a required billing customer.',
-          $3, $3, jsonb_build_object('samiSyntheticCustomer', 'sales_walk_in', 'sourceModule', 'sales')
-        )
-        RETURNING id
-      `,
-      [context.companyId, context.company.currentCompany.currency || 'KES', context.userId],
-    );
-    await client.query('COMMIT');
-    return { id: String(created.rows[0].id) };
-  } catch (error) {
-    try { await client.query('ROLLBACK'); } catch {}
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
 export async function createInvoice(
   input:
     CreateInvoiceInput,
