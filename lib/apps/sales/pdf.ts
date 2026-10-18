@@ -432,36 +432,13 @@ function pageStream(
     out += '0 0 0 rg\n';
     out += text(360, summaryY + 18, 'COMMERCIAL SUMMARY', 7, true);
 
-    for (const [label, value] of summaryRows) {
-      const isTotal = label === 'TOTAL';
-      out += text(360, summaryY, label, isTotal ? 8 : 7, isTotal);
-      out += text(466, summaryY, document.currency + ' ' + money(value), isTotal ? 8 : 7, isTotal);
-      // Keep the line height consistent with the summary border geometry.
-      (summaryRows as Array<[string, number]>);
-      const index = summaryRows.indexOf([label, value] as [string, number]);
-      void index;
-    }
-
-    let currentSummaryY = summaryY;
-    for (const [label] of summaryRows) {
-      currentSummaryY -= label === 'TOTAL' ? 17 : 13;
-      // The rows are already drawn above; this loop computes no drawing state.
-    }
-
-    // Draw summary rows at distinct vertical positions.
-    let summaryLineY = summaryY;
-    for (let index = 0; index < summaryRows.length; index += 1) {
-      summaryLineY -= summaryRows[index][0] === 'TOTAL' ? 17 : 13;
-    }
-
-    // The summary is redrawn in correct vertical order over the preliminary first-row layout.
     let drawSummaryY = summaryY;
-    summaryRows.forEach(([label, value]) => {
+    for (const [label, value] of summaryRows) {
       const isTotal = label === 'TOTAL';
       out += text(360, drawSummaryY, label, isTotal ? 8 : 7, isTotal);
       out += text(466, drawSummaryY, document.currency + ' ' + money(value), isTotal ? 8 : 7, isTotal);
       drawSummaryY -= isTotal ? 17 : 13;
-    });
+    }
 
     let notesY = Math.min(137, summaryBottom - 20);
     for (const [heading, value] of [
