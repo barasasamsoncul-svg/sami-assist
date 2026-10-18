@@ -681,6 +681,8 @@ export default function SalesQuoteDetailClient({
                 data={
                   workspace
                 }
+                salespeople={workspace.salespeople}
+                currentSalespersonId={workspace.currentSalespersonId}
                 initialQuote={
                   quote
                 }
