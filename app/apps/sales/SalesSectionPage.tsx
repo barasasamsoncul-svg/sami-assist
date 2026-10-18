@@ -73,6 +73,41 @@ export type {
   SalesRouteView,
 } from '@/lib/apps/sales/navigation';
 
+function ReportUnavailable({
+  name,
+}: {
+  name: string;
+}) {
+  return (
+    <section
+      role="status"
+      className="sami-surface rounded-[24px] border border-dashed border-[var(--sami-border)] p-4 sm:p-5"
+    >
+      <p className="text-sm font-black">{name} unavailable</p>
+      <p className="mt-1 text-xs text-slate-500">
+        This report could not be loaded. Other Sales reports remain available.
+      </p>
+    </section>
+  );
+}
+
+
+function settledReportValue<T>(
+  result: PromiseSettledResult<T> | undefined,
+  name: string,
+): T | null {
+  if (!result) {
+    return null;
+  }
+
+  if (result.status === 'rejected') {
+    console.error('[SaMi Sales] Report failed to load: ' + name, result.reason);
+    return null;
+  }
+
+  return result.value;
+}
+
 
 export function buildSalesSidebarItems(
   data:
@@ -211,7 +246,7 @@ export default async function SalesSectionPage({
 
   const reportsAvailable = view === 'reports' && data.capabilities.canViewReports;
   const reportData = reportsAvailable
-    ? await Promise.all([
+    ? await Promise.allSettled([
         getSalesManagementInsights(),
         getSalesOpportunityFunnelData(),
         getSalesOpportunityRiskQueue(),
@@ -226,22 +261,22 @@ export default async function SalesSectionPage({
         getSalesTargetAttainmentReport(),
         getSalesQuotationEffectivenessReport(),
         getSalesCommercialMarginQualityReport(),
-      ])
+      ] as const)
     : null;
-  const managementInsights = reportData?.[0] ?? null;
-  const opportunityFunnel = reportData?.[1] ?? null;
-  const opportunityRiskQueue = reportData?.[2] ?? null;
-  const pipelineOutcomeReport = reportData?.[3] ?? null;
-  const pipelineVelocityReport = reportData?.[4] ?? null;
-  const activityExecutionReport = reportData?.[5] ?? null;
-  const representativePerformance = reportData?.[6] ?? null;
-  const leadSourceEffectiveness = reportData?.[7] ?? null;
-  const commissionPerformance = reportData?.[8] ?? null;
-  const productPerformance = reportData?.[9] ?? null;
-  const returnFulfillmentQuality = reportData?.[10] ?? null;
-  const targetAttainmentReport = reportData?.[11] ?? null;
-  const quotationEffectiveness = reportData?.[12] ?? null;
-  const commercialMarginQuality = reportData?.[13] ?? null;
+  const managementInsights = settledReportValue(reportData?.[0], 'Management insights');
+  const opportunityFunnel = settledReportValue(reportData?.[1], 'Opportunity funnel');
+  const opportunityRiskQueue = settledReportValue(reportData?.[2], 'Opportunity risk queue');
+  const pipelineOutcomeReport = settledReportValue(reportData?.[3], 'Pipeline outcomes');
+  const pipelineVelocityReport = settledReportValue(reportData?.[4], 'Pipeline velocity');
+  const activityExecutionReport = settledReportValue(reportData?.[5], 'Activity execution');
+  const representativePerformance = settledReportValue(reportData?.[6], 'Representative performance');
+  const leadSourceEffectiveness = settledReportValue(reportData?.[7], 'Lead source effectiveness');
+  const commissionPerformance = settledReportValue(reportData?.[8], 'Commission performance');
+  const productPerformance = settledReportValue(reportData?.[9], 'Product performance');
+  const returnFulfillmentQuality = settledReportValue(reportData?.[10], 'Return fulfillment quality');
+  const targetAttainmentReport = settledReportValue(reportData?.[11], 'Target attainment');
+  const quotationEffectiveness = settledReportValue(reportData?.[12], 'Quotation effectiveness');
+  const commercialMarginQuality = settledReportValue(reportData?.[13], 'Commercial margin quality');
 
   return (
     <SalesModuleShell
@@ -287,32 +322,96 @@ export default async function SalesSectionPage({
     >
       {view === 'approvals' ? (
         <SalesApprovalsManager />
-      ) : managementInsights && opportunityFunnel && opportunityRiskQueue && pipelineOutcomeReport && pipelineVelocityReport && activityExecutionReport && representativePerformance && leadSourceEffectiveness && commissionPerformance && productPerformance && returnFulfillmentQuality && targetAttainmentReport && quotationEffectiveness && commercialMarginQuality ? (
+      ) : reportsAvailable ? (
         <>
-          <SalesManagementInsights
-            data={managementInsights}
-            currency={data.company.currency}
-            metrics={{
-              quoteCount: data.metrics.quoteCount,
-              acceptedCount: data.metrics.acceptedCount,
-              convertedCount: data.metrics.convertedCount,
-            }}
-          />
-          <SalesOpportunityFunnel rows={opportunityFunnel} riskRows={opportunityRiskQueue} />
-          <SalesPipelineOutcomes
-            summaries={pipelineOutcomeReport.summaries}
-            lossReasons={pipelineOutcomeReport.lossReasons}
-          />
-          <SalesPipelineVelocity transitions={pipelineVelocityReport.transitions} />
-          <SalesActivityExecution report={activityExecutionReport} />
-          <SalesRepresentativePerformance rows={representativePerformance.rows} />
-          <SalesLeadSourceEffectiveness report={leadSourceEffectiveness} />
-          <SalesCommissionPerformance rows={commissionPerformance.rows} />
-          <SalesProductPerformance rows={productPerformance.rows} />
-          <SalesReturnFulfillmentQuality report={returnFulfillmentQuality} />
-          <SalesTargetAttainmentReport report={targetAttainmentReport} />
-          <SalesQuotationEffectiveness report={quotationEffectiveness} />
-          <SalesCommercialMarginQuality report={commercialMarginQuality} />
+          {managementInsights ? (
+            <SalesManagementInsights
+              data={managementInsights}
+              currency={data.company.currency}
+              metrics={{
+                quoteCount: data.metrics.quoteCount,
+                acceptedCount: data.metrics.acceptedCount,
+                convertedCount: data.metrics.convertedCount,
+              }}
+            />
+          ) : (
+            <ReportUnavailable name="Management insights" />
+          )}
+
+          {opportunityFunnel && opportunityRiskQueue ? (
+            <SalesOpportunityFunnel rows={opportunityFunnel} riskRows={opportunityRiskQueue} />
+          ) : (
+            <ReportUnavailable name="Opportunity funnel and risk queue" />
+          )}
+
+          {pipelineOutcomeReport ? (
+            <SalesPipelineOutcomes
+              summaries={pipelineOutcomeReport.summaries}
+              lossReasons={pipelineOutcomeReport.lossReasons}
+            />
+          ) : (
+            <ReportUnavailable name="Pipeline outcomes" />
+          )}
+
+          {pipelineVelocityReport ? (
+            <SalesPipelineVelocity transitions={pipelineVelocityReport.transitions} />
+          ) : (
+            <ReportUnavailable name="Pipeline velocity" />
+          )}
+
+          {activityExecutionReport ? (
+            <SalesActivityExecution report={activityExecutionReport} />
+          ) : (
+            <ReportUnavailable name="Activity execution" />
+          )}
+
+          {representativePerformance ? (
+            <SalesRepresentativePerformance rows={representativePerformance.rows} />
+          ) : (
+            <ReportUnavailable name="Representative performance" />
+          )}
+
+          {leadSourceEffectiveness ? (
+            <SalesLeadSourceEffectiveness report={leadSourceEffectiveness} />
+          ) : (
+            <ReportUnavailable name="Lead source effectiveness" />
+          )}
+
+          {commissionPerformance ? (
+            <SalesCommissionPerformance rows={commissionPerformance.rows} />
+          ) : (
+            <ReportUnavailable name="Commission performance" />
+          )}
+
+          {productPerformance ? (
+            <SalesProductPerformance rows={productPerformance.rows} />
+          ) : (
+            <ReportUnavailable name="Product performance" />
+          )}
+
+          {returnFulfillmentQuality ? (
+            <SalesReturnFulfillmentQuality report={returnFulfillmentQuality} />
+          ) : (
+            <ReportUnavailable name="Return fulfillment quality" />
+          )}
+
+          {targetAttainmentReport ? (
+            <SalesTargetAttainmentReport report={targetAttainmentReport} />
+          ) : (
+            <ReportUnavailable name="Target attainment" />
+          )}
+
+          {quotationEffectiveness ? (
+            <SalesQuotationEffectiveness report={quotationEffectiveness} />
+          ) : (
+            <ReportUnavailable name="Quotation effectiveness" />
+          )}
+
+          {commercialMarginQuality ? (
+            <SalesCommercialMarginQuality report={commercialMarginQuality} />
+          ) : (
+            <ReportUnavailable name="Commercial margin quality" />
+          )}
         </>
       ) : (
         <SalesWorkspaceClient
