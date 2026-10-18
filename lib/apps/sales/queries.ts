@@ -915,6 +915,7 @@ export async function getSalesWorkspaceData():
             [context.companyId],
           )
         : Promise.resolve({ rows: [] }),
+      // TODO: Cap raised to 500 — re-check performance.
       access.canCreate || access.canEdit
         ? queryControl(
             `
@@ -934,7 +935,6 @@ export async function getSalesWorkspaceData():
                 AND tu.deleted_at IS NULL
                 AND u.deleted_at IS NULL
               ORDER BY tu.is_owner DESC, LOWER(COALESCE(NULLIF(BTRIM(u.full_name), ''), u.email)), u.id
-              -- TODO: Cap raised to 500 — re-check performance
               LIMIT 500
             `,
             [context.tenantId],
