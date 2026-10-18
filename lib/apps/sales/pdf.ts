@@ -259,39 +259,68 @@ function rowHeight(item: PdfLine) {
  * Keep no more than 18 document lines per page. The last page reserves room
  * for totals, terms and signature consent; preceding pages can use more space.
  */
+function pageHeight(rows: PdfLine[]) {
+  return rows.reduce((height, item) => height + rowHeight(item), 0);
+}
+
+/**
+ * Keep no more than 18 document lines per page. The last page reserves room
+ * for totals, terms and signature consent; preceding pages can use more space.
+ */
 function paginateRows(rows: PdfLine[]) {
   if (rows.length === 0) return [[] as PdfLine[]];
 
   const pages: PdfLine[][] = [];
-  let end = rows.length;
+  let current: PdfLine[] = [];
+  let currentHeight = 0;
 
-  while (end > 0) {
-    const finalPage = pages.length === 0;
-    const maxHeight = finalPage ? 280 : 465;
-    let start = end;
-    let height = 0;
-
-    while (start > 0 && end - start < 18) {
-      const candidateHeight = rowHeight(rows[start - 1]);
-      if (start < end && height + candidateHeight > maxHeight) break;
-      if (height + candidateHeight > maxHeight) {
-        if (start === end) {
-          height = candidateHeight;
-          start -= 1;
-        }
-        break;
-      }
-
-      height += candidateHeight;
-      start -= 1;
+  for (const item of rows) {
+    const height = rowHeight(item);
+    if (current.length > 0 && (current.length >= 18 || currentHeight + height > 465)) {
+      pages.push(current);
+      current = [];
+      currentHeight = 0;
     }
 
-    if (start === end) start -= 1;
-    pages.unshift(rows.slice(start, end));
-    end = start;
+    current.push(item);
+    currentHeight += height;
   }
 
-  return pages;
+  if (current.length > 0) pages.push(current);
+
+  const lastPage = pages[pages.length - 1];
+  if (lastPage && pageHeight(lastPage) > 280) {
+    const tailPage = pages.pop() || [];
+    const finalRows: PdfLine[] = [];
+    let finalHeight = 0;
+
+    while (tailPage.length > 0 && finalRows.length < 18) {
+      const candidate = tailPage[tailPage.length - 1];
+      const candidateHeight = rowHeight(candidate);
+      if (finalRows.length > 0 && finalHeight + candidateHeight > 280) break;
+
+      finalRows.unshift(tailPage.pop() as PdfLine);
+      finalHeight += candidateHeight;
+    }
+
+    if (tailPage.length > 0) pages.push(tailPage);
+    pages.push(finalRows);
+
+    // Avoid leaving an almost-empty page immediately before the final summary.
+    const middleIndex = pages.length - 2;
+    if (middleIndex > 0 && pages[middleIndex].length < 6) {
+      const previous = pages[middleIndex - 1];
+      const middle = pages[middleIndex];
+
+      while (previous.length > middle.length + 1 && previous.length > 1) {
+        const candidate = previous[previous.length - 1];
+        if (pageHeight(middle) + rowHeight(candidate) > 465) break;
+        middle.unshift(previous.pop() as PdfLine);
+      }
+    }
+  }
+
+  return pages.length > 0 ? pages : [[] as PdfLine[]];
 }
 
 function pageStream(
@@ -307,12 +336,13 @@ function pageStream(
 
   const companyNameLines = wrap(document.company.name, 43);
   out += text(36, 812, companyNameLines[0], 16, true);
-  if (companyNameLines.length > 1) out += text(36, 799, companyNameLines.slice(1).join(' '), 8, true);
+  if (companyNameLines.length > 1) out += text(36, 799, companyNameLines[1], 8, true);
 
   if (document.company.address) {
     const addressLines = wrap(document.company.address, 63);
-    out += text(36, companyNameLines.length > 1 ? 786 : 793, addressLines[0], 7);
-    if (addressLines.length > 1) out += text(36, 782, addressLines.slice(1).join(' '), 6.5);
+    const addressY = companyNameLines.length > 1 ? 786 : 793;
+    out += text(36, addressY, addressLines[0], 7);
+    if (addressLines.length > 1) out += text(36, addressY - 10, addressLines[1], 6.5);
   }
 
   out += text(36, 763, document.documentTitle, 8, true);
