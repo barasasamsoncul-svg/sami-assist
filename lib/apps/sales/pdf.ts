@@ -677,7 +677,7 @@ export function renderSalesOrderPdf(
         costTotal: null,
         marginAmount: null,
         marginPercent: null,
-        lines: pdfOrder.lines.map(item => ({
+        lines: order.lines.map(item => ({
           ...item,
           unitCost: null,
           costTotal: null,
