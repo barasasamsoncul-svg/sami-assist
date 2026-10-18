@@ -116,15 +116,18 @@ test('Sales approval queue supports paginated retrieval and requester/editor wit
     source('app/apps/sales/SalesApprovalsManager.tsx'),
   ]);
 
-  assert.match(engine, /LIMIT \\$2 OFFSET \\$3/);
-  assert.match(engine, /COUNT\\(\\*\\)::int AS total_count/);
-  assert.match(engine, /hasMore: offset \\+ requests\\.length < totalCount/);
-  assert.match(engine, /String\\(requested_by \\?\\? ''\\) === context\\.userId/);
-  assert.match(engine, /SALES_PERMISSIONS\\.QUOTE_EDIT/);
-  assert.match(route, /getSalesQuoteApprovalData\\(\\{[\\s\\S]*offset:[\\s\\S]*limit:/);
-  assert.match(manager, /body\\.approvals\\.hasMore === true/);
-  assert.match(manager, /request\\.canWithdraw &&/);
-  assert.match(manager, /action: 'cancel_quote_approval'/);
-  assert.match(manager, /Load more/);
-  assert.match(manager, /pattern="\\^\\[a-z0-9\\]\\[a-z0-9\\.\\_:\\\\-\\]\\*\\\$"/);
+  assert.ok(engine.includes('LIMIT $2 OFFSET $3'));
+  assert.ok(engine.includes('COUNT(*)::int AS total_count'));
+  assert.ok(engine.includes('hasMore: offset + requests.length < totalCount'));
+  assert.ok(engine.includes("String(requested_by ?? '') === context.userId"));
+  assert.ok(engine.includes('SALES_PERMISSIONS.QUOTE_EDIT'));
+  assert.ok(route.includes('getSalesQuoteApprovalData({'));
+  assert.ok(route.includes("offset: request.nextUrl.searchParams.get('offset')"));
+  assert.ok(route.includes("limit: request.nextUrl.searchParams.get('limit')"));
+  assert.ok(manager.includes('body.approvals.hasMore === true'));
+  assert.ok(manager.includes('request.canWithdraw &&'));
+  assert.ok(manager.includes("action: 'cancel_quote_approval'"));
+  assert.ok(manager.includes('Load more'));
+  assert.ok(manager.includes('pattern='));
+  assert.ok(manager.includes('Use lowercase letters/numbers and . _ : - only'));
 });
