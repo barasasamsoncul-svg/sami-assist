@@ -15,6 +15,10 @@ import {
   renderSalesQuotePdf,
 } from '@/lib/apps/sales/pdf';
 
+import {
+  queryControl,
+} from '@/lib/db/control';
+
 
 export const runtime =
   'nodejs';
@@ -102,11 +106,12 @@ export async function GET(
           ],
         ),
         quote.salespersonUserId
-          ? context.pool.query(
+          ? queryControl(
               `
                 SELECT
                   COALESCE(
                     NULLIF(BTRIM(u.full_name), ''),
+                    NULLIF(BTRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''),
                     u.email
                   ) AS salesperson_name
                 FROM tenant_users tenant_user
@@ -114,6 +119,10 @@ export async function GET(
                   ON u.id = tenant_user.user_id
                 WHERE tenant_user.tenant_id = $1
                   AND tenant_user.user_id = $2
+                  AND tenant_user.status = 'active'
+                  AND tenant_user.member_type = 'internal'
+                  AND tenant_user.deleted_at IS NULL
+                  AND u.deleted_at IS NULL
                 LIMIT 1
               `,
               [
