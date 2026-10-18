@@ -305,10 +305,6 @@ function salesCapabilities(
       can(
         SALES_PERMISSIONS
           .PIPELINE_MANAGE,
-      ) ||
-      can(
-        SALES_PERMISSIONS
-          .PIPELINE_VIEW,
       ),
     canManagePipelineStages:
       can(
@@ -583,6 +579,9 @@ export async function getSalesWorkspaceData():
             rows: [],
           }),
 
+      /**
+       * Workspace quote preview is capped at 250 rows to keep initial payloads bounded.
+       */
       context.pool.query(
         `
           SELECT
@@ -632,6 +631,9 @@ export async function getSalesWorkspaceData():
         ],
       ),
 
+      /**
+       * Workspace order preview is capped at 250 rows to keep initial payloads bounded.
+       */
       access
         .canViewOrders
         ? context.pool.query(
@@ -932,10 +934,35 @@ export async function getSalesWorkspaceData():
                 AND tu.deleted_at IS NULL
                 AND u.deleted_at IS NULL
               ORDER BY tu.is_owner DESC, LOWER(COALESCE(NULLIF(BTRIM(u.full_name), ''), u.email)), u.id
+              -- TODO: Cap raised to 500 — re-check performance
+              LIMIT 500
             `,
             [context.tenantId],
           )
         : Promise.resolve({ rows: [] }),
+
+      queryControl(
+        `
+          SELECT
+            u.id,
+            COALESCE(
+              NULLIF(BTRIM(COALESCE(u.full_name, '')), ''),
+              NULLIF(BTRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''),
+              u.email
+            ) AS name,
+            u.email
+          FROM tenant_users tu
+          INNER JOIN users u ON u.id = tu.user_id
+          WHERE tu.tenant_id = $1
+            AND tu.user_id = $2
+            AND tu.status = 'active'
+            AND tu.member_type = 'internal'
+            AND tu.deleted_at IS NULL
+            AND u.deleted_at IS NULL
+          LIMIT 1
+        `,
+        [context.tenantId, context.userId],
+      ),
     ]);
 
   const metric =
@@ -992,6 +1019,13 @@ export async function getSalesWorkspaceData():
       name: String(row.name || row.email),
       email: String(row.email),
     })),
+    defaultSalesperson: defaultSalesperson.rows[0]
+      ? {
+          id: String(defaultSalesperson.rows[0].id),
+          name: String(defaultSalesperson.rows[0].name || defaultSalesperson.rows[0].email),
+          email: String(defaultSalesperson.rows[0].email),
+        }
+      : null,
 
     capabilities:
       access,
@@ -2835,10 +2869,9 @@ export async function getSalesOrderDetail(
       ? 'delivered'
       : 'ordered';
 
-  const canViewMargin = hasSalesPermission(
+  const access = salesCapabilities(
     context.permissions.isOwner,
     context.permissions.permissionSet,
-    SALES_PERMISSIONS.MARGIN_VIEW,
   );
 
   const [
@@ -2920,20 +2953,7 @@ export async function getSalesOrderDetail(
             line.unit,
             line.quantity,
             line.shipped_quantity,
-            COALESCE(
-              (
-                SELECT SUM(shipment_item.quantity)
-                FROM sales_shipment_items shipment_item
-                INNER JOIN sales_shipments shipment
-                  ON shipment.id = shipment_item.shipment_id
-                 AND shipment.company_id = shipment_item.company_id
-                WHERE shipment_item.sales_order_line_id = line.id
-                  AND shipment_item.company_id = line.company_id
-                  AND shipment.status NOT IN ('cancelled', 'failed')
-                  AND shipment.inventory_posted_at IS NULL
-              ),
-              0
-            ) AS planned_quantity,
+            COALESCE(planned_shipments.planned_quantity, 0) AS planned_quantity,
             line.delivered_quantity,
             line.invoiced_quantity,
             line.returned_quantity,
@@ -2949,6 +2969,17 @@ export async function getSalesOrderDetail(
             line.tax_rate,
             line.line_total
           FROM sales_order_items_v2 line
+          LEFT JOIN LATERAL (
+            SELECT COALESCE(SUM(shipment_item.quantity), 0) AS planned_quantity
+            FROM sales_shipment_items shipment_item
+            INNER JOIN sales_shipments shipment
+              ON shipment.id = shipment_item.shipment_id
+             AND shipment.company_id = shipment_item.company_id
+            WHERE shipment_item.sales_order_line_id = line.id
+              AND shipment_item.company_id = line.company_id
+              AND shipment.inventory_posted_at IS NULL
+              AND shipment.status NOT IN ('cancelled', 'failed')
+          ) planned_shipments ON TRUE
           WHERE line.sales_order_id = $1
             AND line.company_id = $2
           ORDER BY
@@ -3248,15 +3279,15 @@ export async function getSalesOrderDetail(
         row.total_amount,
       ),
     costTotal:
-      canViewMargin
+      access.canViewMargin
         ? money(row.cost_total)
         : null,
     marginAmount:
-      canViewMargin
+      access.canViewMargin
         ? money(row.margin_amount)
         : null,
     marginPercent:
-      canViewMargin
+      access.canViewMargin
         ? money(row.margin_percent)
         : null,
     marginCommissionStale:
@@ -3473,16 +3504,20 @@ export async function getSalesOrderDetail(
               money(
                 line.unit_price,
               ),
+            unitCost:
+              access.canViewMargin
+                ? money(line.unit_cost)
+                : null,
             costTotal:
-              canViewMargin
+              access.canViewMargin
                 ? money(line.cost_total)
                 : null,
             marginAmount:
-              canViewMargin
+              access.canViewMargin
                 ? money(line.margin_amount)
                 : null,
             marginPercent:
-              canViewMargin
+              access.canViewMargin
                 ? money(line.margin_percent)
                 : null,
             discountType:
@@ -4130,7 +4165,13 @@ export async function getSalesQuoteRegisterPage(input: Record<string, unknown> =
   }));
 
   return {
-    rows, offset, limit, totalCount: Number(count.rows[0]?.total || 0), hasMore, nextOffset: offset + rows.length,
+    rows,
+    offset,
+    limit,
+    totalCount: Number(count.rows[0]?.all_count || 0),
+    filteredTotalCount: Number(count.rows[0]?.total || 0),
+    hasMore,
+    nextOffset: offset + rows.length,
     queueCounts: {
       all: Number(count.rows[0]?.all_count || 0),
       draft: Number(count.rows[0]?.draft || 0),
