@@ -3332,3 +3332,49 @@ test('Sales revision and approval engine use consistent currency-safe threshold 
   assert.doesNotMatch(approvals, /Number\(snapshot\.quote\.total_amount \|\| 0\) >=/);
   assert.doesNotMatch(approvals, /Number\(quote\.total_amount \|\| 0\) >=/);
 });
+
+test('Sales workspace search includes permission-scoped leads and opportunities with bounded, deduplicated top-20 results', async () => {
+  const [provider, queries, service, invoicing] = await Promise.all([
+    source('lib/apps/sales/search.ts'),
+    source('lib/apps/sales/queries.ts'),
+    source('lib/apps/sales/service.ts'),
+    source('lib/apps/invoicing/search.ts'),
+  ]);
+
+  const pipelineSearchStart = queries.indexOf('export async function searchSalesPipelineRecords(');
+  const pipelineSearchEnd = queries.indexOf('\nconst SALES_REGISTER_PAGE_SIZE', pipelineSearchStart);
+  assert.ok(pipelineSearchStart >= 0 && pipelineSearchEnd > pipelineSearchStart);
+  const pipelineSearch = queries.slice(pipelineSearchStart, pipelineSearchEnd);
+
+  assert.match(pipelineSearch, /getTenantPoolByTenantId\(tenantId\)/);
+  assert.match(pipelineSearch, /l\.company_id = \$1[\s\S]*?l\.deleted_at IS NULL/);
+  assert.match(pipelineSearch, /o\.company_id = \$1[\s\S]*?o\.deleted_at IS NULL/);
+  for (const field of [
+    'lead_number',
+    'name',
+    'company_name',
+    'contact_name',
+    'email',
+    'phone',
+    'opportunity_number',
+    'customer_name',
+  ]) {
+    assert.ok(pipelineSearch.includes(field), 'pipeline search must include ' + field);
+  }
+  assert.match(pipelineSearch, /LIMIT \$3/);
+  assert.match(service, /searchSalesPipelineRecords,[\s\S]*?from '@\/lib\/apps\/sales\/queries'/);
+
+  assert.match(provider, /searchSalesRecords/);
+  assert.match(provider, /searchSalesPipelineRecords/);
+  assert.match(provider, /Promise\.all/);
+  assert.match(provider, /SALES_PERMISSIONS\.PIPELINE_VIEW/);
+  assert.match(provider, /SALES_PERMISSIONS\.PIPELINE_MANAGE/);
+  assert.match(provider, /href:[\s\S]*?\/apps\/sales\/opportunities/);
+  assert.match(provider, /row\.kind[\s\S]*?'lead'[\s\S]*?'user-round'/);
+  assert.match(provider, /'trending-up'/);
+  assert.match(provider, /score:[\s\S]*?100 -[\s\S]*?index/);
+  assert.match(provider, /right\.result\.score[\s\S]*?left\.sourceOrder[\s\S]*?left\.sourceIndex/);
+  assert.match(provider, /JSON\.stringify\(\[[\s\S]*?item\.kind,[\s\S]*?item\.recordId/);
+  assert.match(provider, /results\.length[\s\S]*?20/);
+  assert.match(invoicing, /searchInvoicingRecords/);
+});
