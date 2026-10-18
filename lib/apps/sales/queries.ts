@@ -3965,6 +3965,106 @@ export async function searchSalesRecords(
   );
 }
 
+
+export async function searchSalesPipelineRecords(
+  tenantId: string,
+  companyId: string,
+  query: string,
+  limit = 15,
+) {
+  const pool = await getTenantPoolByTenantId(tenantId);
+  const safeLimit = Math.max(
+    1,
+    Math.min(50, Math.floor(Number(limit) || 15)),
+  );
+  const q = '%' + query.trim().slice(0, 120) + '%';
+
+  const result = await pool.query(
+    `
+      SELECT *
+      FROM (
+        SELECT
+          'lead' AS kind,
+          l.id,
+          l.lead_number AS number,
+          l.name AS title,
+          COALESCE(
+            NULLIF(l.company_name, ''),
+            NULLIF(l.contact_name, ''),
+            NULLIF(l.email, '')
+          ) AS subtitle,
+          CONCAT_WS(
+            ' · ',
+            NULLIF(l.lead_number, ''),
+            NULLIF(l.contact_name, ''),
+            NULLIF(l.email, ''),
+            NULLIF(l.phone, '')
+          ) AS description,
+          l.status AS badge,
+          l.created_at
+        FROM sales_leads l
+        WHERE l.company_id = $1
+          AND l.deleted_at IS NULL
+          AND (
+            l.lead_number ILIKE $2
+            OR l.name ILIKE $2
+            OR COALESCE(l.company_name, '') ILIKE $2
+            OR COALESCE(l.contact_name, '') ILIKE $2
+            OR COALESCE(l.email, '') ILIKE $2
+            OR COALESCE(l.phone, '') ILIKE $2
+          )
+
+        UNION ALL
+
+        SELECT
+          'opportunity' AS kind,
+          o.id,
+          o.opportunity_number AS number,
+          o.name AS title,
+          COALESCE(
+            NULLIF(o.customer_name, ''),
+            NULLIF(o.contact_name, '')
+          ) AS subtitle,
+          o.opportunity_number AS description,
+          COALESCE(
+            NULLIF(stage.name, ''),
+            CASE
+              WHEN o.won_at IS NOT NULL THEN 'Won'
+              WHEN o.lost_at IS NOT NULL THEN 'Lost'
+              ELSE 'Opportunity'
+            END
+          ) AS badge,
+          o.created_at
+        FROM sales_opportunities o
+        LEFT JOIN sales_pipeline_stages stage
+          ON stage.id = o.stage_id
+          AND stage.company_id = o.company_id
+          AND stage.deleted_at IS NULL
+        WHERE o.company_id = $1
+          AND o.deleted_at IS NULL
+          AND (
+            o.opportunity_number ILIKE $2
+            OR o.name ILIKE $2
+            OR COALESCE(o.customer_name, '') ILIKE $2
+          )
+      ) records
+      ORDER BY created_at DESC
+      LIMIT $3
+    `,
+    [companyId, q, safeLimit],
+  );
+
+  return result.rows.map(row => ({
+    kind: String(row.kind) as 'lead' | 'opportunity',
+    id: String(row.id),
+    number: String(row.number),
+    title: String(row.title),
+    subtitle: row.subtitle == null ? null : String(row.subtitle),
+    description: row.description == null ? null : String(row.description),
+    badge: row.badge == null ? null : String(row.badge),
+  }));
+}
+
 const SALES_REGISTER_PAGE_SIZE = 250;
 
 function normalizeSalesRegisterOffset(value: unknown) {
