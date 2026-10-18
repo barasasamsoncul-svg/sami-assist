@@ -85,7 +85,7 @@ export async function GET(
     ] =
       await Promise.all([
         context.pool.query(
-          \`
+          `
             SELECT
               name,
               email,
@@ -96,13 +96,13 @@ export async function GET(
             FROM companies
             WHERE id = $1
             LIMIT 1
-          \`,
+          `,
           [
             context.companyId,
           ],
         ),
         context.pool.query(
-          \`
+          `
             SELECT
               primary_color,
               secondary_color,
@@ -110,13 +110,13 @@ export async function GET(
             FROM sales_settings
             WHERE company_id = $1
             LIMIT 1
-          \`,
+          `,
           [
             context.companyId,
           ],
         ),
         context.pool.query(
-          \`
+          `
             SELECT
               salesperson_user_id
             FROM sales_orders_v2
@@ -124,18 +124,18 @@ export async function GET(
               AND company_id = $2
               AND deleted_at IS NULL
             LIMIT 1
-          \`,
+          `,
           [
             orderId,
             context.companyId,
           ],
         ),
         context.pool.query(
-          \`
+          `
             SELECT
               to_regclass('public.invoicing_invoices')
                 IS NOT NULL AS invoices_ready
-          \`,
+          `,
         ),
       ]);
 
@@ -146,7 +146,7 @@ export async function GET(
     const invoiceStatusResult =
       invoicingInvoicesReady
         ? await context.pool.query(
-            \`
+            `
               SELECT EXISTS (
                 SELECT 1
                 FROM sales_order_invoice_batches batch
@@ -166,7 +166,7 @@ export async function GET(
                     'written_off'
                   )
               ) AS has_confirmed_invoice
-            \`,
+            `,
             [
               orderId,
               context.companyId,
@@ -200,7 +200,7 @@ export async function GET(
     const salespersonResult =
       salespersonUserId
         ? await queryControl(
-            \`
+            `
               SELECT
                 COALESCE(
                   NULLIF(BTRIM(u.full_name), ''),
@@ -217,7 +217,7 @@ export async function GET(
                 AND tenant_user.deleted_at IS NULL
                 AND u.deleted_at IS NULL
               LIMIT 1
-            \`,
+            `,
             [
               context.tenantId,
               salespersonUserId,
