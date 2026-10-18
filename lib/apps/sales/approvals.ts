@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import type { PoolClient } from 'pg';
 import {
   cleanText,
+  hasSalesPermission,
   nullableText,
   numberInput,
   optionalUuid,
@@ -141,9 +142,13 @@ export async function saveSalesQuoteApprovalPolicy(input: Record<string, unknown
   } finally { client.release(); }
 }
 
-export async function getSalesQuoteApprovalData() {
+export async function getSalesQuoteApprovalData(input: { offset?: unknown; limit?: unknown } = {}) {
   const context = await requireSalesContext(SALES_PERMISSIONS.QUOTE_VIEW);
-  const [policies, queue] = await Promise.all([
+  const rawOffset = Number(input.offset ?? 0);
+  const rawLimit = Number(input.limit ?? 50);
+  const offset = Number.isSafeInteger(rawOffset) && rawOffset >= 0 ? Math.min(rawOffset, 1_000_000) : 0;
+  const limit = Number.isSafeInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 50;
+  const [policies, queue, count] = await Promise.all([
     context.pool.query(
       `SELECT p.id,p.name,p.is_active,p.priority,p.min_quote_total,p.max_discount_percent,p.min_margin_percent,p.currency_code,
         COALESCE(json_agg(json_build_object('id',s.id,'stepOrder',s.step_order,'approverUserId',s.approver_user_id,'approverRoleKey',s.approver_role_key,'requiredApprovals',s.required_approvals) ORDER BY s.step_order) FILTER (WHERE s.id IS NOT NULL),'[]'::json) AS steps
@@ -152,27 +157,55 @@ export async function getSalesQuoteApprovalData() {
       [context.companyId],
     ),
     context.pool.query(
-      `SELECT r.id AS request_id,r.quote_id,r.policy_id,r.status,r.current_step_order,r.requested_at,r.quote_fingerprint,
+      `SELECT r.id AS request_id,r.quote_id,r.policy_id,r.status,r.current_step_order,r.requested_at,r.requested_by,r.quote_fingerprint,
         q.quote_number,q.customer_name,q.currency,q.total_amount,p.name AS policy_name,
         COALESCE((SELECT json_agg(json_build_object('stepOrder',d.step_order,'reviewerUserId',d.reviewer_user_id,'decision',d.decision,'reason',d.reason,'decidedAt',d.decided_at) ORDER BY d.step_order,d.decided_at) FROM sales_quote_approval_decisions d WHERE d.request_id=r.id AND d.company_id=r.company_id),'[]'::json) AS decisions
        FROM sales_quote_approval_requests r JOIN sales_quotes q ON q.id=r.quote_id AND q.company_id=r.company_id
        LEFT JOIN sales_quote_approval_policies p ON p.id=r.policy_id
        WHERE r.company_id=$1 AND q.deleted_at IS NULL
-       ORDER BY CASE WHEN r.status='pending' THEN 0 ELSE 1 END,r.requested_at DESC LIMIT 100`,
+       ORDER BY CASE WHEN r.status='pending' THEN 0 ELSE 1 END,r.requested_at DESC
+       LIMIT $2 OFFSET $3`,
+      [context.companyId, limit, offset],
+    ),
+    context.pool.query(
+      `SELECT COUNT(*)::int AS total_count
+       FROM sales_quote_approval_requests r
+       JOIN sales_quotes q ON q.id=r.quote_id AND q.company_id=r.company_id
+       WHERE r.company_id=$1 AND q.deleted_at IS NULL`,
       [context.companyId],
     ),
   ]);
-  return { policies: policies.rows, requests: queue.rows };
+  const totalCount = Number(count.rows[0]?.total_count ?? 0);
+  const canEditQuotes = hasSalesPermission(
+    context.permissions.isOwner,
+    context.permissions.permissionSet,
+    SALES_PERMISSIONS.QUOTE_EDIT,
+  );
+  const requests = queue.rows.map((row: Record<string, unknown>) => {
+    const { requested_by, ...request } = row;
+    return {
+      ...request,
+      canWithdraw: canEditQuotes || String(requested_by ?? '') === context.userId,
+    };
+  });
+  return {
+    policies: policies.rows,
+    requests,
+    offset,
+    limit,
+    totalCount,
+    hasMore: offset + requests.length < totalCount,
+  };
 }
 
 
 /**
  * Cancels a pending internal approval request for a draft quotation.
- * The quote editor permission is required; both the request and quote state
- * are changed atomically, with an approval-history entry for auditability.
+ * The requester or a user with quote-edit permission may withdraw it.
+ * Request and quote state are changed atomically with an audit-history entry.
  */
 export async function cancelSalesQuoteApproval(input: Record<string, unknown>) {
-  const context = await requireSalesContext(SALES_PERMISSIONS.QUOTE_EDIT);
+  const context = await requireSalesContext();
   return cancelSalesQuoteApprovalTransaction(input, context);
 }
 
@@ -198,7 +231,7 @@ export async function cancelSalesQuoteApprovalTransaction(
     }
 
     const requestResult = await client.query(
-      `SELECT id FROM sales_quote_approval_requests
+      `SELECT id, requested_by FROM sales_quote_approval_requests
        WHERE company_id=$1 AND quote_id=$2 AND status='pending'
        FOR UPDATE`,
       [context.companyId, quoteId],
@@ -208,7 +241,18 @@ export async function cancelSalesQuoteApprovalTransaction(
       throw new SalesError('QUOTE_STATE_INVALID', 'No active approval request exists for this quotation.');
     }
 
-    const requestId = String(requestResult.rows[0].id);
+    const approvalRequest = requestResult.rows[0] as { id: string; requested_by?: string | null };
+    const isRequester = String(approvalRequest.requested_by ?? '') === context.userId;
+    const canEditQuotes = hasSalesPermission(
+      context.permissions.isOwner,
+      context.permissions.permissionSet,
+      SALES_PERMISSIONS.QUOTE_EDIT,
+    );
+    if (!isRequester && !canEditQuotes) {
+      throw new SalesError('SALES_PERMISSION_REQUIRED', 'Only the requester or a Sales quote editor can withdraw this approval request.');
+    }
+
+    const requestId = String(approvalRequest.id);
 
     await client.query(
       `UPDATE sales_quote_approval_requests
