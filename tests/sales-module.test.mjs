@@ -861,6 +861,12 @@ test('Sales workspace includes professional operating surfaces, tutorials and ov
 });
 
 
+test('public quotation responses enforce the shared request-size boundary', async () => {
+  const api = await source('app/api/public/sales/[tenantId]/[token]/route.ts');
+  assert.match(api, /parseSalesRequestBody\(request\)/);
+  assert.match(api, /error instanceof SalesRequestBodyError/);
+});
+
 test('Sales API exposes the complete quotation-to-cash action surface', async () => {
   const api =
     await source(
