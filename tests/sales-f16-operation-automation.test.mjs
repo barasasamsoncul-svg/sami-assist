@@ -40,8 +40,11 @@ test('receiving a sales return emits the recalculated fulfillment state after co
   );
   const commit = fn.indexOf("await client.query(\n      'COMMIT',\n    );");
   const event = fn.indexOf("triggerKey: 'sales.order.fulfillment.changed'");
+  const returnReceivedEvent = fn.indexOf("triggerKey: 'sales.return.received'");
   assert.match(fn, /const fulfillmentSnapshot = await recalculateOrderFulfillment/);
-  assert.ok(commit >= 0 && event > commit, 'return fulfillment automation must be post-commit');
+  assert.ok(commit >= 0 && returnReceivedEvent > commit, 'return.received automation must be post-commit');
+  assert.ok(returnReceivedEvent < event, 'return.received is emitted before the fulfillment-change notification');
+  assert.ok(event > commit, 'return fulfillment automation must be post-commit');
   assert.match(fn, /'fulfillment:'\s*\+\s*orderId\s*\+\s*':'\s*\+\s*fulfillmentSnapshot\.fulfillmentStatus/);
 });
 
