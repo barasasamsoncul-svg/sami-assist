@@ -10,16 +10,19 @@ async function source(file) {
 }
 
 test('quote composer exposes a salesperson selector and includes the selected user in its save payload', async () => {
-  const [composer, types, queries] = await Promise.all([
+  const [composer, types, queries, workspace] = await Promise.all([
     source('app/apps/sales/SalesQuoteComposer.tsx'),
     source('lib/apps/sales/types.ts'),
     source('lib/apps/sales/queries.ts'),
+    source('app/apps/sales/SalesWorkspaceClient.tsx'),
   ]);
 
-  assert.match(composer, /initialQuote\?\.salespersonUserId \?\? ''/);
+  assert.match(composer, /initialQuote\s*\?\s*initialQuote\.salespersonUserId \?\? ''\s*:\s*currentSalespersonId \?\? ''/);
   assert.match(composer, /aria-label="Salesperson"/);
   assert.match(composer, /<option value="">Self \(me\)<\/option>/);
-  assert.match(composer, /data\.salespeople\.map\(person =>/);
+  assert.match(composer, /salespeople\.map\(person =>/);
+  assert.match(workspace, /salespeople=\{initialData\.salespeople\}/);
+  assert.match(workspace, /currentSalespersonId=\{initialData\.currentSalespersonId\}/);
   assert.match(composer, /salespersonUserId: salespersonUserId \|\| undefined/);
   assert.match(types, /salespeople: Array<\{[\s\S]{0,100}id: string;[\s\S]{0,100}name: string;[\s\S]{0,100}email: string;/);
   assert.match(types, /salespersonUserId: string \| null/);
