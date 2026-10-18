@@ -2611,6 +2611,205 @@ export async function recordSalesOrderCommissionEntries(
   return created;
 }
 
+export type SalesOrderCommissionReversalSummary = {
+  currency: string;
+  reversedCount: number;
+  reversedAmount: number;
+};
+
+/**
+ * Reverse the commission share attributable to a return for one currency.
+ * Reversal rows are append-only and idempotent per (return, original accrual).
+ */
+export async function reverseSalesOrderCommissionShare(
+  client: PoolClient,
+  input: {
+    companyId: string;
+    orderId: string;
+    userId: string;
+    currency: string;
+    returnedAmount: number;
+    reason: string;
+    returnId: string;
+  },
+): Promise<{ reversedCount: number; reversedAmount: number }> {
+  const currency = cleanText(input.currency, 3).toUpperCase();
+  if (!/^[A-Z]{3}$/.test(currency)) {
+    throw new SalesError('INVALID_INPUT', 'Choose a valid currency for the commission reversal.');
+  }
+
+  if (!Number.isFinite(input.returnedAmount) || input.returnedAmount < 0) {
+    throw new SalesError('INVALID_INPUT', 'Returned commission basis must be a non-negative amount.');
+  }
+
+  const returnedAmount = money(input.returnedAmount);
+  if (returnedAmount <= 0) {
+    return { reversedCount: 0, reversedAmount: 0 };
+  }
+
+  const entries = await client.query(
+    `
+      SELECT
+        entry.id::text AS id,
+        entry.plan_id::text AS plan_id,
+        entry.assignment_id::text AS assignment_id,
+        entry.user_id::text AS user_id,
+        entry.team_id::text AS team_id,
+        entry.basis,
+        entry.basis_amount,
+        entry.commission_amount,
+        entry.currency
+      FROM sales_commission_entries entry
+      INNER JOIN sales_commission_assignments assignment
+        ON assignment.id = entry.assignment_id
+       AND assignment.plan_id = entry.plan_id
+       AND assignment.company_id = entry.company_id
+      INNER JOIN sales_commission_plans plan
+        ON plan.id = entry.plan_id
+       AND plan.company_id = entry.company_id
+      WHERE entry.company_id = $1
+        AND entry.order_id = $2
+        AND entry.currency = $3
+        AND entry.status = 'accrued'
+      ORDER BY entry.id
+      FOR UPDATE OF entry
+    `,
+    [input.companyId, input.orderId, currency],
+  );
+
+  let reversedCount = 0;
+  let reversedAmount = 0;
+  const reason = cleanText(input.reason, 500) || 'Sales return';
+
+  for (const entry of entries.rows) {
+    const basisAmount = money(entry.basis_amount);
+    // Zero or negative commission bases cannot produce a meaningful share.
+    if (basisAmount <= 0) continue;
+
+    const reversalAmount = money(
+      Number(entry.commission_amount || 0) * (returnedAmount / basisAmount),
+    );
+    if (reversalAmount <= 0) continue;
+
+    const sourceEventKey =
+      'sales-return:' + input.returnId + ':commission:' + String(entry.id);
+
+    const inserted = await client.query(
+      `
+        INSERT INTO sales_commission_entries (
+          company_id,
+          order_id,
+          plan_id,
+          assignment_id,
+          user_id,
+          team_id,
+          basis,
+          basis_amount,
+          commission_amount,
+          currency,
+          status,
+          source_event_key,
+          metadata,
+          reversed_at,
+          created_by,
+          updated_by
+        )
+        VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+          'reversed',$11,$12::jsonb,NOW(),$13,$13
+        )
+        ON CONFLICT (company_id, source_event_key)
+        DO NOTHING
+        RETURNING id
+      `,
+      [
+        input.companyId,
+        input.orderId,
+        String(entry.plan_id),
+        String(entry.assignment_id),
+        entry.user_id ? String(entry.user_id) : null,
+        entry.team_id ? String(entry.team_id) : null,
+        String(entry.basis),
+        -returnedAmount,
+        -reversalAmount,
+        currency,
+        sourceEventKey,
+        JSON.stringify({
+          reason,
+          returnId: input.returnId,
+          reversesEntryId: String(entry.id),
+          returnedAmount,
+          originalBasisAmount: basisAmount,
+          reversalAmount,
+        }),
+        input.userId,
+      ],
+    );
+
+    // Count only new rows. A retry with the same returnId is a no-op.
+    if (inserted.rows.length > 0) {
+      reversedCount += 1;
+      reversedAmount = money(reversedAmount + reversalAmount);
+    }
+  }
+
+  return { reversedCount, reversedAmount };
+}
+
+/**
+ * Apply currency-specific commission reversals for a single Sales return.
+ */
+export async function reverseSalesOrderCommissionsForReturn(
+  client: PoolClient,
+  input: {
+    companyId: string;
+    orderId: string;
+    userId: string;
+    returnedValueByCurrency: Array<{ currency: string; amount: number }>;
+    returnId: string;
+    reason: string;
+  },
+): Promise<SalesOrderCommissionReversalSummary[]> {
+  const amountsByCurrency = new Map<string, number>();
+
+  for (const item of input.returnedValueByCurrency) {
+    const currency = cleanText(item.currency, 3).toUpperCase();
+    if (!/^[A-Z]{3}$/.test(currency)) {
+      throw new SalesError('INVALID_INPUT', 'Choose a valid currency for the commission reversal.');
+    }
+    if (!Number.isFinite(item.amount) || item.amount < 0) {
+      throw new SalesError('INVALID_INPUT', 'Returned value must be a non-negative amount.');
+    }
+    amountsByCurrency.set(
+      currency,
+      money((amountsByCurrency.get(currency) || 0) + money(item.amount)),
+    );
+  }
+
+  const summaries: SalesOrderCommissionReversalSummary[] = [];
+
+  for (const [currency, amount] of amountsByCurrency) {
+    const result = await reverseSalesOrderCommissionShare(client, {
+      companyId: input.companyId,
+      orderId: input.orderId,
+      userId: input.userId,
+      currency,
+      returnedAmount: amount,
+      reason: input.reason,
+      returnId: input.returnId,
+    });
+
+    summaries.push({
+      currency,
+      reversedCount: result.reversedCount,
+      reversedAmount: result.reversedAmount,
+    });
+  }
+
+  return summaries;
+}
+
+
 export async function reverseSalesOrderCommissions(
   client:
     PoolClient,
