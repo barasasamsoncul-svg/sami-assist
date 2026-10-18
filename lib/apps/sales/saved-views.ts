@@ -52,17 +52,6 @@ function canViewOrders(
   );
 }
 
-function assertCanViewOrders(
-  context: Awaited<ReturnType<typeof requireSalesContext>>,
-) {
-  if (!canViewOrders(context)) {
-    throw new SalesError(
-      'SALES_PERMISSION_REQUIRED',
-      'You do not have permission to view Sales orders.',
-    );
-  }
-}
-
 type SavedQuoteViewRow = {
   id: string;
   name: string;
@@ -253,7 +242,12 @@ function mapSavedOrderView(row: SavedOrderViewRow): SalesSavedOrderView {
 
 export async function getSalesSavedOrderViews(): Promise<SalesSavedOrderView[]> {
   const context = await requireSalesContext();
-  assertCanViewOrders(context);
+  if (!canViewOrders(context)) {
+    throw new SalesError(
+      'SALES_PERMISSION_REQUIRED',
+      'You do not have permission to view Sales orders.',
+    );
+  }
 
   const result = await context.pool.query<SavedOrderViewRow>(
     `
@@ -276,7 +270,12 @@ export async function saveSalesSavedOrderView(
   input: Record<string, unknown>,
 ): Promise<SalesSavedOrderView> {
   const context = await requireSalesContext();
-  assertCanViewOrders(context);
+  if (!canViewOrders(context)) {
+    throw new SalesError(
+      'SALES_PERMISSION_REQUIRED',
+      'You do not have permission to view Sales orders.',
+    );
+  }
   const name = cleanText(input.name, 80);
   const rawStatusView = cleanText(input.statusView, 40) || 'all';
   const rawSortBy = cleanText(input.sortBy, 40) || 'newest';
@@ -362,7 +361,12 @@ export async function deleteSalesSavedOrderView(
   input: Record<string, unknown>,
 ) {
   const context = await requireSalesContext();
-  assertCanViewOrders(context);
+  if (!canViewOrders(context)) {
+    throw new SalesError(
+      'SALES_PERMISSION_REQUIRED',
+      'You do not have permission to view Sales orders.',
+    );
+  }
   const viewId = requireUuid(input.viewId, 'Saved sales order view');
 
   const result = await context.pool.query<{ id: string }>(
