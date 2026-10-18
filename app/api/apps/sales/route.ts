@@ -58,6 +58,7 @@ import {
   updateSalesOpportunityActivity,
   editSalesOpportunityActivity,
   convertSalesLeadToOpportunity,
+  createBillingCustomerForOpportunity,
   updateSalesOpportunity,
   moveSalesOpportunity,
   getSalesOrderDetail,
@@ -669,6 +670,8 @@ export async function POST(
           editSalesOpportunityActivity,
         convert_lead:
           convertSalesLeadToOpportunity,
+        create_billing_customer_for_opportunity:
+          createBillingCustomerForOpportunity,
         update_opportunity:
           updateSalesOpportunity,
         move_opportunity:
