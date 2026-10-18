@@ -55,11 +55,11 @@ test('selected salespeople are validated against workspace membership and persis
   ]);
 
   assert.match(types, /export type CreateSalesQuoteInput = \{[\s\S]{0,160}salespersonUserId\?: unknown/);
-  assert.match(commands, /resolveSalesperson:\\s*\\(ctx: Awaited<ReturnType<typeof requireSalesContext>>, value: unknown\\) => Promise<string \\| null>/);
-  assert.match(commands, /resolveSalesperson:\\s*resolveActiveSalesperson/);
+  assert.match(commands, /resolveSalesperson:\s*\(ctx: Awaited<ReturnType<typeof requireSalesContext>>, value: unknown\) => Promise<string \| null>/);
+  assert.match(commands, /resolveSalesperson:\s*resolveActiveSalesperson/);
   assert.match(pipeline, /export async function resolveActiveSalesperson/);
-  assert.match(pipeline, /tu\\.tenant_id = \\$1[\\s\\S]{0,160}tu\\.status = 'active'[\\s\\S]{0,120}tu\\.member_type = 'internal'/);
-  assert.match(commands, /userId:\\s*salespersonUserId/);
-  assert.match(commands, /salesperson_user_id = \\$31/);
-  assert.equal((commands.match(/deps\\.resolveSalesperson\\(context, input\\.salespersonUserId\\)/g) || []).length, 2);
+  assert.match(pipeline, /tu\.tenant_id = \$1[\s\S]{0,160}tu\.status = 'active'[\s\S]{0,120}tu\.member_type = 'internal'/);
+  assert.match(commands, /userId:\s*salespersonUserId/);
+  assert.match(commands, /salesperson_user_id = \$31/);
+  assert.equal((commands.match(/deps\.resolveSalesperson\(context, input\.salespersonUserId\)/g) || []).length, 2);
 });

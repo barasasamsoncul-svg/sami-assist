@@ -1772,22 +1772,8 @@ export async function getSalesQuoteDetail(
             quote.acceptance_signature_consent_text,
             quote.rejected_at,
             quote.converted_at,
-            quote.created_at,
-            quote.stage_id,
-            quote.expected_close_date,
-            quote.probability_override,
-            stage.code AS stage_code,
-            stage.name AS stage_name,
-            COALESCE(
-              quote.probability_override,
-              stage.probability,
-              0
-            ) AS probability
+            quote.created_at
           FROM sales_quotes quote
-          LEFT JOIN sales_pipeline_stages stage
-            ON stage.id = quote.stage_id
-           AND stage.company_id = quote.company_id
-           AND stage.deleted_at IS NULL
           WHERE quote.id = $1
             AND quote.company_id = $2
             AND quote.deleted_at IS NULL
