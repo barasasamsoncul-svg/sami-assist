@@ -257,12 +257,16 @@ export type SalesOrderLine = {
   unit: string;
   quantity: number;
   shippedQuantity: number;
+  plannedQuantity: number;
   deliveredQuantity: number;
   invoicedQuantity: number;
   returnedQuantity: number;
   creditedQuantity: number;
   invoiceableQuantity: number;
   unitPrice: number;
+  costTotal: number | null;
+  marginAmount: number | null;
+  marginPercent: number | null;
   discountType: 'percent' | 'fixed';
   discountValue: number;
   taxName: string | null;
@@ -284,6 +288,10 @@ export type SalesOrderDetail =
     discountTotal: number;
     taxTotal: number;
     shippingTotal: number;
+    costTotal: number | null;
+    marginAmount: number | null;
+    marginPercent: number | null;
+    marginCommissionStale: boolean;
     depositType: 'none' | 'percent' | 'fixed';
     depositValue: number;
     depositRequiredAmount: number;
