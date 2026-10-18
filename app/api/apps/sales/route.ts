@@ -323,7 +323,15 @@ export async function GET(
     }
 
     const approvals = request.nextUrl.searchParams.get('approvals');
-    if (approvals === '1') return json({ success: true, approvals: await getSalesQuoteApprovalData() });
+    if (approvals === '1') {
+      return json({
+        success: true,
+        approvals: await getSalesQuoteApprovalData({
+          offset: request.nextUrl.searchParams.get('offset'),
+          limit: request.nextUrl.searchParams.get('limit'),
+        }),
+      });
+    }
 
     const register = request.nextUrl.searchParams.get('register');
     if (register === 'quotes') {
