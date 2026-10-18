@@ -61,7 +61,9 @@ test('revision comparison endpoint is company-scoped, read-only, and hides margi
   assert.match(queries, /FROM sales_quote_revisions[\s\S]{0,180}quote_id = \$1 AND company_id = \$2 AND revision_number = \$3/);
   assert.match(queries, /salesCapabilities\([\s\S]{0,150}\)\.canViewMargin/);
   assert.match(queries, /if \(canViewMargin\)[\s\S]{0,230}margin_percent/);
-  assert.match(queries, /hasPreviousRevision: Boolean\(previous\)/);
+  assert.match(queries, /comparedToRevisionNumber: currentRevision/);
+  assert.match(queries, /hasComparison: true/);
+  assert.match(queries, /currentSnapshot\.lines/);
 });
 
 test('quote revision rows request a comparison and render added, removed, and changed values in an accessible modal', async () => {
