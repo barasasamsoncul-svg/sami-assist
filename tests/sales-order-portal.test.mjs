@@ -33,7 +33,7 @@ test('Sales customer order portal uses hashed expiring tokens with explicit rota
   assert.match(migration, /fromVersion: '3.4.15'/);
   assert.match(migration, /toVersion: '3.4.16'/);
   assert.match(runtime, /SALES_3_4_15_TO_3_4_16/);
-  assert.match(manifest, /version: '3.4.20'/);
+  assert.match(manifest, /version: '3.4.22'/);
   assert.match(schema, /uq_sales_orders_v2_public_portal_token/);
 
   assert.match(portal, /randomBytes\(32\)/);
