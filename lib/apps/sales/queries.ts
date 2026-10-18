@@ -2672,8 +2672,10 @@ function compareSalesRevisionCollection(
       ? sortOrder + ':product:' + productId
       : sortOrder + ':manual:' + (sku || String(item.description ?? ''));
   };
-  const beforeMap = new Map(before.map((item, index) => [keyFor(item, index), { item, index }]));
-  const afterMap = new Map(after.map((item, index) => [keyFor(item, index), { item, index }]));
+  const beforeMap = new Map<string, { item: SalesRevisionRecord; index: number }>();
+  const afterMap = new Map<string, { item: SalesRevisionRecord; index: number }>();
+  before.forEach((item, index) => beforeMap.set(keyFor(item, index), { item, index }));
+  after.forEach((item, index) => afterMap.set(keyFor(item, index), { item, index }));
 
   for (const [key, current] of beforeMap) {
     const next = afterMap.get(key);
@@ -2774,11 +2776,10 @@ export async function getSalesQuoteRevisionDiff(input: Record<string, unknown>) 
   if (previous) {
     const oldQuote = salesRevisionRecord(previous.quote);
     const newQuote = salesRevisionRecord(selected.quote);
-    const canViewMargin = hasSalesPermission(
+    const canViewMargin = salesCapabilities(
       context.permissions.isOwner,
       context.permissions.permissionSet,
-      SALES_PERMISSIONS.MARGIN_VIEW,
-    );
+    ).canViewMargin;
     const quoteFields: Array<[string, string]> = [
       ['customer_name', 'Customer'],
       ['customer_email', 'Customer email'],
