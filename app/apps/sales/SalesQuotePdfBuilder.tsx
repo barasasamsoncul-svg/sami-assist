@@ -151,18 +151,6 @@ export default function SalesQuotePdfBuilder({
     }
   }
 
-  const primary =
-    selectedTemplate
-      ?.primaryColor ||
-    data.settings
-      .primaryColor;
-
-  const secondary =
-    selectedTemplate
-      ?.secondaryColor ||
-    data.settings
-      .secondaryColor;
-
   return (
     <section className="space-y-4">
       <div className="sami-surface rounded-[24px] p-4 sm:p-5">
@@ -381,124 +369,15 @@ export default function SalesQuotePdfBuilder({
           {
             selectedQuote
               ? (
-                  <div className="mt-4 overflow-hidden rounded-2xl border border-[var(--sami-border)] bg-white text-slate-900 shadow-sm">
-                    <div
-                      className="h-2"
-                      style={{
-                        backgroundColor:
-                          primary,
-                      }}
+                  <div className="mt-4 space-y-2">
+                    <iframe
+                      src={'/api/apps/sales/quotes/' + selectedQuote.id + '/pdf'}
+                      className="h-[720px] w-full rounded-2xl border"
+                      title="Quotation PDF preview"
                     />
-                    <div className="p-5 sm:p-7">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p
-                            className="text-xs font-black uppercase tracking-[0.16em]"
-                            style={{
-                              color:
-                                primary,
-                            }}
-                          >
-                            {
-                              data.company.name
-                            }
-                          </p>
-                          <h4 className="mt-2 text-2xl font-black">
-                            QUOTATION
-                          </h4>
-                          <p className="mt-1 text-xs text-slate-500">
-                            {
-                              selectedQuote.quoteNumber
-                            }
-                          </p>
-                        </div>
-                        <div className="text-right text-xs">
-                          <p className="font-black">
-                            {
-                              selectedQuote.quoteDate
-                            }
-                          </p>
-                          <p className="text-slate-500">
-                            Valid until {
-                              selectedQuote.validUntil ||
-                              '—'
-                            }
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="mt-6 grid gap-4 border-y border-slate-200 py-4 sm:grid-cols-2">
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                            Prepared for
-                          </p>
-                          <p className="mt-1 text-sm font-black">
-                            {
-                              selectedQuote.customerName
-                            }
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            {
-                              selectedQuote.customerEmail ||
-                              'No email'
-                            }
-                          </p>
-                        </div>
-                        <div className="sm:text-right">
-                          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                            Commercial total
-                          </p>
-                          <p
-                            className="mt-1 text-xl font-black"
-                            style={{
-                              color:
-                                secondary,
-                            }}
-                          >
-                            {
-                              new Intl.NumberFormat(
-                                'en-KE',
-                                {
-                                  style:
-                                    'currency',
-                                  currency:
-                                    selectedQuote.currency,
-                                  maximumFractionDigits:
-                                    2,
-                                },
-                              ).format(
-                                selectedQuote.totalAmount,
-                              )
-                            }
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="mt-6 rounded-xl border border-slate-200 p-4">
-                        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                          Commercial document
-                        </p>
-                        <p className="mt-2 text-sm text-slate-600">
-                          Line items, discounts, taxes, shipping, notes and terms are rendered securely from the saved quotation by the Sales PDF service.
-                        </p>
-                      </div>
-
-                      <p
-                        className="mt-8 border-t border-slate-200 pt-4 text-center text-[10px]"
-                        style={{
-                          color:
-                            secondary,
-                        }}
-                      >
-                        {
-                          selectedTemplate
-                            ?.footerText ||
-                          data.settings
-                            .footerText ||
-                          'Generated by SaMi Sales'
-                        }
-                      </p>
-                    </div>
+                    <p className="text-xs text-slate-500">
+                      This preview is rendered by the same server-side PDF service customers receive.
+                    </p>
                   </div>
                 )
               : (

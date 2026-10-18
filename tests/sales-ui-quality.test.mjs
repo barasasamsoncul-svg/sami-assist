@@ -58,3 +58,14 @@ test('Sales workspace report and KPI amounts preserve their base currency', asyn
   assert.ok(workspace.includes("item.customerName + ' · ' + item.currency"));
   assert.equal((workspace.match(/money\(\s*item\.amount,\s*item\.currency/g) || []).length, 3);
 });
+
+test('Quotation PDF builder previews the same server-rendered PDF customers receive', async () => {
+  const builder = await source('app/apps/sales/SalesQuotePdfBuilder.tsx');
+
+  assert.match(builder, /<iframe[\s\S]{0,180}src=\{'\/api\/apps\/sales\/quotes\/' \+ selectedQuote\.id \+ '\/pdf'\}/);
+  assert.match(builder, /className="h-\[720px\] w-full rounded-2xl border"/);
+  assert.match(builder, /title="Quotation PDF preview"/);
+  assert.match(builder, /This preview is rendered by the same server-side PDF service customers receive\./);
+  assert.doesNotMatch(builder, /Commercial document/);
+  assert.doesNotMatch(builder, /Line items, discounts, taxes, shipping, notes and terms are rendered securely/);
+});
