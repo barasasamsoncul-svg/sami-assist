@@ -5,6 +5,10 @@ import {
 } from '@/lib/db/tenant';
 
 import {
+  queryControl,
+} from '@/lib/db/control';
+
+import {
   ensureSalesDefaults,
   hasSalesPermission,
   money,
@@ -426,6 +430,7 @@ export async function getSalesWorkspaceData():
     billingCustomers,
     catalogItems,
     taxRates,
+    salespeople,
   ] =
     await Promise.all([
       context.pool.query(
@@ -920,6 +925,27 @@ export async function getSalesWorkspaceData():
             [context.companyId],
           )
         : Promise.resolve({ rows: [] }),
+      queryControl(
+        `
+          SELECT
+            u.id,
+            COALESCE(
+              NULLIF(BTRIM(COALESCE(u.full_name, '')), ''),
+              NULLIF(BTRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''),
+              u.email
+            ) AS name,
+            u.email
+          FROM tenant_users tu
+          INNER JOIN users u ON u.id = tu.user_id
+          WHERE tu.tenant_id = $1
+            AND tu.status = 'active'
+            AND tu.member_type = 'internal'
+            AND tu.deleted_at IS NULL
+            AND u.deleted_at IS NULL
+          ORDER BY tu.is_owner DESC, LOWER(COALESCE(NULLIF(BTRIM(u.full_name), ''), u.email)), u.id
+        `,
+        [context.tenantId],
+      ),
     ]);
 
   const metric =
@@ -970,6 +996,12 @@ export async function getSalesWorkspaceData():
           'KES',
         ),
     },
+
+    salespeople: salespeople.rows.map(row => ({
+      id: String(row.id),
+      name: String(row.name || row.email),
+      email: String(row.email),
+    })),
 
     capabilities:
       access,
@@ -1723,6 +1755,7 @@ export async function getSalesQuoteDetail(
           SELECT
             quote.id,
             quote.billing_customer_id,
+            quote.salesperson_user_id,
             quote.quote_number,
             CASE
               WHEN quote.status IN (
@@ -2137,6 +2170,10 @@ export async function getSalesQuoteDetail(
         ? String(
             row.billing_customer_id,
           )
+        : null,
+    salespersonUserId:
+      row.salesperson_user_id
+        ? String(row.salesperson_user_id)
         : null,
     customerPhone:
       row.customer_phone
