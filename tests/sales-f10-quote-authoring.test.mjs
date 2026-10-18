@@ -69,4 +69,31 @@ test('quote-level pipeline fields are removed and a 3.4.20-to-3.4.21 decommissio
     assert.match(migration, new RegExp('DROP COLUMN IF EXISTS ' + column));
   }
   assert.match(registry, /SALES_3_4_20_TO_3_4_21/);
+  assert.ok(
+    registry.indexOf('SALES_3_4_19_TO_3_4_20,') <
+      registry.indexOf('SALES_3_4_20_TO_3_4_21,'),
+    '3.4.20-to-3.4.21 must follow 3.4.19-to-3.4.20 in the runtime registry',
+  );
+  assert.match(migration, /fromVersion:\s*'3\.4\.20'[\s\S]*toVersion:\s*'3\.4\.21'/);
+});
+
+test('Sales 3.4.20 upgrade schema prerequisites are present in the canonical fresh-install schema', async () => {
+  const schema = await source('lib/apps/sales/schema.sql');
+  const quoteTable = schema.slice(
+    schema.indexOf('CREATE TABLE IF NOT EXISTS public.sales_quotes'),
+    schema.indexOf('CREATE TABLE IF NOT EXISTS public.sales_quote_items'),
+  );
+  assert.match(quoteTable, /salesperson_user_id UUID/);
+
+  const orderColumns = schema.slice(
+    schema.indexOf('ALTER TABLE public.sales_orders_v2'),
+    schema.indexOf('ALTER TABLE public.sales_order_items_v2'),
+  );
+  for (const column of [
+    'cost_total NUMERIC(18,2) NOT NULL DEFAULT 0',
+    'margin_amount NUMERIC(18,2) NOT NULL DEFAULT 0',
+    'margin_percent NUMERIC(9,4) NOT NULL DEFAULT 0',
+  ]) {
+    assert.ok(orderColumns.includes('ADD COLUMN IF NOT EXISTS ' + column), column);
+  }
 });
