@@ -1285,6 +1285,15 @@ integration(
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
 
+        -- Public acceptance now supersedes stale requests after selected-item totals are recalculated.
+        CREATE TEMP TABLE sales_quote_approval_requests (
+          company_id UUID NOT NULL,
+          quote_id UUID NOT NULL,
+          status VARCHAR(30) NOT NULL,
+          completed_at TIMESTAMPTZ,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
         CREATE TEMP TABLE sales_delivery_log (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           company_id UUID NOT NULL,
