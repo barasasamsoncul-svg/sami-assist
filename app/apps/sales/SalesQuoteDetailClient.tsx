@@ -50,8 +50,8 @@ type RevisionDiffChange = {
 type RevisionDiffResponse = {
   quoteId: string;
   revisionNumber: number;
-  previousRevisionNumber: number | null;
-  hasPreviousRevision: boolean;
+  comparedToRevisionNumber: number;
+  hasComparison: boolean;
   changes: RevisionDiffChange[];
   message: string | null;
   loading: boolean;
@@ -353,8 +353,8 @@ export default function SalesQuoteDetailClient({
     setRevisionDiff({
       quoteId: quote.id,
       revisionNumber,
-      previousRevisionNumber: null,
-      hasPreviousRevision: false,
+      comparedToRevisionNumber: quote.currentRevision,
+      hasComparison: false,
       changes: [],
       message: 'Loading revision comparison…',
       loading: true,
@@ -427,9 +427,7 @@ export default function SalesQuoteDetailClient({
                 </h2>
                 <p className="mt-1 text-xs text-slate-500">
                   Revision {revisionDiff.revisionNumber}
-                  {revisionDiff.previousRevisionNumber !== null
-                    ? ' compared with revision ' + revisionDiff.previousRevisionNumber
-                    : ''}
+                  {' compared with current revision ' + revisionDiff.comparedToRevisionNumber}
                 </p>
               </div>
               <button
@@ -444,7 +442,7 @@ export default function SalesQuoteDetailClient({
             <div className="max-h-[calc(90vh-90px)] overflow-auto p-4 sm:p-5">
               {revisionDiff.loading ? (
                 <p className="py-8 text-center text-sm text-slate-500">Loading revision comparison…</p>
-              ) : revisionDiff.message && !revisionDiff.hasPreviousRevision ? (
+              ) : revisionDiff.message && !revisionDiff.hasComparison ? (
                 <p className="rounded-xl border border-[var(--sami-border)] p-4 text-sm text-slate-500">{revisionDiff.message}</p>
               ) : revisionDiff.changes.length === 0 ? (
                 <p className="rounded-xl border border-[var(--sami-border)] p-4 text-sm text-slate-500">No quotation, line-item, or optional-product changes were found between these revisions.</p>
