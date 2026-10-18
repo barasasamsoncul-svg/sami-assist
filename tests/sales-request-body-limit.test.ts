@@ -8,7 +8,7 @@ import {
 } from '../lib/apps/sales/request-body';
 
 function fakeRequest(
-  stream: ReadableStream<Uint8Array> | null,
+  stream: ReadableStream<Uint8Array<ArrayBuffer>> | null,
   contentLength?: string,
 ): Pick<Request, 'headers' | 'body'> {
   const headers = new Headers();
@@ -16,7 +16,7 @@ function fakeRequest(
   return { headers, body: stream };
 }
 
-function streamFrom(chunks: Uint8Array[]): ReadableStream<Uint8Array> {
+function streamFrom(chunks: Uint8Array<ArrayBuffer>[]): ReadableStream<Uint8Array<ArrayBuffer>> {
   return new ReadableStream<Uint8Array>({
     start(controller) {
       for (const chunk of chunks) controller.enqueue(chunk);
@@ -25,7 +25,7 @@ function streamFrom(chunks: Uint8Array[]): ReadableStream<Uint8Array> {
   });
 }
 
-const encode = (value: string) => new TextEncoder().encode(value);
+const encode = (value: string): Uint8Array<ArrayBuffer> => new TextEncoder().encode(value);
 
 test('parses valid JSON within the byte limit', async () => {
   assert.deepEqual(
