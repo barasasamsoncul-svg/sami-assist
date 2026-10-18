@@ -13,6 +13,7 @@ import {
   hasSalesPermission,
   money,
   requireSalesContext,
+  requireUuid,
   SALES_PERMISSIONS,
   SalesError,
 } from '@/lib/apps/sales/context';
@@ -1750,6 +1751,7 @@ export async function getSalesQuoteDetail(
     revisions,
     optionalItems,
     customerRevisionRequests,
+    activeApprovalRequest,
   ] =
     await Promise.all([
       context.pool.query(
@@ -1984,6 +1986,18 @@ export async function getSalesQuoteDetail(
         `,
         [context.companyId, quoteId],
       ),
+      context.pool.query(
+        `
+          SELECT requested_by
+          FROM sales_quote_approval_requests
+          WHERE company_id = $1
+            AND quote_id = $2
+            AND status = 'pending'
+          ORDER BY requested_at DESC
+          LIMIT 1
+        `,
+        [context.companyId, quoteId],
+      ),
     ]);
 
   if (
@@ -1996,7 +2010,16 @@ export async function getSalesQuoteDetail(
   const row =
     quote.rows[0];
 
+  const canWithdrawApproval =
+    hasSalesPermission(
+      context.permissions.isOwner,
+      context.permissions.permissionSet,
+      SALES_PERMISSIONS.QUOTE_EDIT,
+    ) ||
+    String(activeApprovalRequest.rows[0]?.requested_by ?? '') === context.userId;
+
   return {
+    canWithdrawApproval,
     id:
       String(
         row.id,
