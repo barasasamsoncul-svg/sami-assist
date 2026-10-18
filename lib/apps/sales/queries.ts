@@ -925,27 +925,29 @@ export async function getSalesWorkspaceData():
             [context.companyId],
           )
         : Promise.resolve({ rows: [] }),
-      queryControl(
-        `
-          SELECT
-            u.id,
-            COALESCE(
-              NULLIF(BTRIM(COALESCE(u.full_name, '')), ''),
-              NULLIF(BTRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''),
-              u.email
-            ) AS name,
-            u.email
-          FROM tenant_users tu
-          INNER JOIN users u ON u.id = tu.user_id
-          WHERE tu.tenant_id = $1
-            AND tu.status = 'active'
-            AND tu.member_type = 'internal'
-            AND tu.deleted_at IS NULL
-            AND u.deleted_at IS NULL
-          ORDER BY tu.is_owner DESC, LOWER(COALESCE(NULLIF(BTRIM(u.full_name), ''), u.email)), u.id
-        `,
-        [context.tenantId],
-      ),
+      access.canCreate || access.canEdit
+        ? queryControl(
+            `
+              SELECT
+                u.id,
+                COALESCE(
+                  NULLIF(BTRIM(COALESCE(u.full_name, '')), ''),
+                  NULLIF(BTRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''),
+                  u.email
+                ) AS name,
+                u.email
+              FROM tenant_users tu
+              INNER JOIN users u ON u.id = tu.user_id
+              WHERE tu.tenant_id = $1
+                AND tu.status = 'active'
+                AND tu.member_type = 'internal'
+                AND tu.deleted_at IS NULL
+                AND u.deleted_at IS NULL
+              ORDER BY tu.is_owner DESC, LOWER(COALESCE(NULLIF(BTRIM(u.full_name), ''), u.email)), u.id
+            `,
+            [context.tenantId],
+          )
+        : Promise.resolve({ rows: [] }),
     ]);
 
   const metric =
