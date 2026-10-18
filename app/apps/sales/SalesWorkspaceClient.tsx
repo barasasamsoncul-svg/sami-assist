@@ -2083,6 +2083,7 @@ export default function SalesWorkspaceClient({
                       onSave={
                         saveQuote
                       }
+                      onLocalError={showError}
                       onCancel={
                         () =>
                           setComposerOpen(
@@ -3180,6 +3181,7 @@ export default function SalesWorkspaceClient({
                   linkedOpportunity={linkedOpportunity}
                   busy={busy}
                   onSave={saveQuote}
+                  onLocalError={showError}
                   onCancel={() => {
                     router.push(
                       linkedOpportunityId
