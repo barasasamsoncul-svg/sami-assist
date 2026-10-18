@@ -72,6 +72,10 @@ test('return credits prorate invoice line totals by credited quantity and revers
   assert.match(fn, /line\.invoiceItemLineTotal\s*\*\s*\(line\.quantity\s*\/\s*line\.invoiceItemQuantity\)/);
   assert.match(fn, /returnedValueByCurrency:\s*Array\.from\(returnedAmountsByCurrency/);
   assert.match(fn, /reverseSalesOrderCommissionsForReturn\(/);
+  const reversalStart = fn.indexOf('const commissionReversals');
+  const reversalBegin = fn.indexOf("await serializationClient.query('BEGIN')", reversalStart);
+  const reversalCommit = fn.indexOf("await serializationClient.query('COMMIT')", reversalStart);
+  assert.ok(reversalStart >= 0 && reversalBegin > reversalStart && reversalCommit > reversalBegin, 'commission reversal batch must be transactional');
   assert.match(fn, /commissionReversals/);
   assert.match(fn, /commissionReversals,\s*\n\s*};/);
 });
