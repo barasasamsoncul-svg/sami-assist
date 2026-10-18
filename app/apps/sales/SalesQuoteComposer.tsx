@@ -257,11 +257,7 @@ export default function SalesQuoteComposer({
     manualExchangeRate,
     setManualExchangeRate,
   ] =
-    useState(
-      initialQuote && initialQuote.currency !== data.company.currency
-        ? String(initialQuote.exchangeRate || '')
-        : '',
-    );
+    useState('');
 
   const [
     quoteDate,
