@@ -38,6 +38,24 @@ import type {
   SalesWorkspaceData,
 } from '@/lib/apps/sales/types';
 
+type RevisionDiffChange = {
+  type: 'added' | 'removed' | 'changed';
+  section: string;
+  label: string;
+  field: string;
+  before: string | null;
+  after: string | null;
+};
+
+type RevisionDiffResponse = {
+  quoteId: string;
+  revisionNumber: number;
+  previousRevisionNumber: number | null;
+  hasPreviousRevision: boolean;
+  changes: RevisionDiffChange[];
+  message: string | null;
+  loading: boolean;
+};
 
 function money(
   value:
@@ -116,6 +134,9 @@ export default function SalesQuoteDetailClient({
     useState(
       false,
     );
+
+  const [revisionDiff, setRevisionDiff] = useState<RevisionDiffResponse | null>(null);
+  const [revisionDiffBusy, setRevisionDiffBusy] = useState<number | null>(null);
 
   const [
     pending,
@@ -327,6 +348,48 @@ export default function SalesQuoteDetailClient({
     }
   }
 
+  async function loadRevisionDiff(revisionNumber: number) {
+    setRevisionDiffBusy(revisionNumber);
+    setRevisionDiff({
+      quoteId: quote.id,
+      revisionNumber,
+      previousRevisionNumber: null,
+      hasPreviousRevision: false,
+      changes: [],
+      message: 'Loading revision comparison…',
+      loading: true,
+    });
+
+    try {
+      const params = new URLSearchParams({
+        revisionDiff: '1',
+        quoteId: quote.id,
+        revisionNumber: String(revisionNumber),
+      });
+      const response = await fetch('/api/apps/sales?' + params.toString(), {
+        method: 'GET',
+        cache: 'no-store',
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      });
+      const body = await response.json().catch(() => ({})) as {
+        success?: boolean;
+        error?: string;
+        revisionDiff?: Omit<RevisionDiffResponse, 'loading'>;
+      };
+      if (!response.ok || body.success !== true || !body.revisionDiff) {
+        throw new Error(body.error || 'SaMi could not compare this quotation revision.');
+      }
+      setRevisionDiff({ ...body.revisionDiff, loading: false });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'SaMi could not compare this quotation revision.';
+      setRevisionDiff(null);
+      showError('Revision comparison failed', message);
+    } finally {
+      setRevisionDiffBusy(null);
+    }
+  }
+
   const canEdit =
     workspace
       .capabilities
@@ -348,6 +411,87 @@ export default function SalesQuoteDetailClient({
           closeOverlay
         }
       />
+
+      {revisionDiff && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 p-3 sm:p-6" role="presentation">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sales-revision-diff-title"
+            className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-[var(--sami-border)] p-4 sm:p-5">
+              <div>
+                <h2 id="sales-revision-diff-title" className="text-base font-black">
+                  Compare with previous revision
+                </h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Revision {revisionDiff.revisionNumber}
+                  {revisionDiff.previousRevisionNumber !== null
+                    ? ' compared with revision ' + revisionDiff.previousRevisionNumber
+                    : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close revision comparison"
+                onClick={() => setRevisionDiff(null)}
+                className="rounded-lg border border-[var(--sami-border)] px-3 py-2 text-xs font-black"
+              >
+                Close
+              </button>
+            </div>
+            <div className="max-h-[calc(90vh-90px)] overflow-auto p-4 sm:p-5">
+              {revisionDiff.loading ? (
+                <p className="py-8 text-center text-sm text-slate-500">Loading revision comparison…</p>
+              ) : revisionDiff.message && !revisionDiff.hasPreviousRevision ? (
+                <p className="rounded-xl border border-[var(--sami-border)] p-4 text-sm text-slate-500">{revisionDiff.message}</p>
+              ) : revisionDiff.changes.length === 0 ? (
+                <p className="rounded-xl border border-[var(--sami-border)] p-4 text-sm text-slate-500">No quotation, line-item, or optional-product changes were found between these revisions.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[760px] text-left text-xs">
+                    <thead className="border-b border-[var(--sami-border)] text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+                      <tr>
+                        <th className="px-3 py-3">Change</th>
+                        <th className="px-3 py-3">Section / item</th>
+                        <th className="px-3 py-3">Field</th>
+                        <th className="px-3 py-3">Previous value</th>
+                        <th className="px-3 py-3">This revision</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--sami-border)]">
+                      {revisionDiff.changes.map((change, index) => (
+                        <tr key={change.type + '-' + change.section + '-' + change.label + '-' + change.field + '-' + index}>
+                          <td className="px-3 py-3">
+                            <span className={
+                              'inline-flex rounded-full px-2 py-1 text-[10px] font-black uppercase ' +
+                              (change.type === 'added'
+                                ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                                : change.type === 'removed'
+                                  ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300'
+                                  : 'bg-blue-500/10 text-blue-700 dark:text-blue-300')
+                            }>
+                              {change.type}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3">
+                            <span className="font-bold">{change.section}</span>
+                            <span className="mt-1 block text-slate-500">{change.label}</span>
+                          </td>
+                          <td className="px-3 py-3 font-semibold">{change.field}</td>
+                          <td className="max-w-[260px] whitespace-pre-wrap break-words px-3 py-3 text-slate-500">{change.before ?? '—'}</td>
+                          <td className="max-w-[260px] whitespace-pre-wrap break-words px-3 py-3">{change.after ?? '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
 
       <div className="space-y-4">
         <section className="sami-surface rounded-[26px] p-4 sm:p-5">
@@ -948,6 +1092,14 @@ export default function SalesQuoteDetailClient({
                                   : ''
                               }
                             </p>
+                            <button
+                              type="button"
+                              disabled={isBusy || revisionDiffBusy !== null}
+                              onClick={() => void loadRevisionDiff(revision.revisionNumber)}
+                              className="mt-3 h-9 rounded-lg border border-[var(--sami-border)] px-3 text-[11px] font-black disabled:opacity-60"
+                            >
+                              {revisionDiffBusy === revision.revisionNumber ? 'Comparing…' : 'Compare with previous revision'}
+                            </button>
                           </div>
                         ),
                       )
@@ -1352,6 +1504,49 @@ export default function SalesQuoteDetailClient({
             }
 
             {
+              quote.approvalStatus === 'pending' &&
+              quote.canWithdrawApproval &&
+              (
+                <form
+                  className="sami-surface rounded-[24px] border border-amber-500/30 p-4"
+                  onSubmit={
+                    async event => {
+                      event.preventDefault();
+                      const form = new FormData(event.currentTarget);
+                      await run(
+                        {
+                          action: 'cancel_quote_approval',
+                          quoteId: quote.id,
+                          reason: form.get('reason'),
+                        },
+                        'Approval request withdrawn.',
+                      );
+                    }
+                  }
+                >
+                  <h2 className="text-sm font-black">Withdraw approval request</h2>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Withdraw the pending internal approval request and return this quotation to draft review.
+                  </p>
+                  <textarea
+                    name="reason"
+                    rows={2}
+                    maxLength={2000}
+                    placeholder="Reason for withdrawal (optional)"
+                    className="mt-3 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 py-2 text-sm"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isBusy}
+                    className="mt-2 h-11 w-full rounded-xl border border-amber-500/40 text-xs font-black disabled:opacity-60"
+                  >
+                    Withdraw approval request
+                  </button>
+                </form>
+              )
+            }
+
+            {
               workspace
                 .capabilities
                 .canSend &&
@@ -1582,6 +1777,25 @@ export default function SalesQuoteDetailClient({
                           new FormData(
                             event.currentTarget,
                           );
+                        const rawExchangeRate = form.get('exchangeRate');
+                        const enteredRate = typeof rawExchangeRate === 'string'
+                          ? rawExchangeRate.trim()
+                          : '';
+
+                        if (
+                          quote.currency !== workspace.company.currency &&
+                          (
+                            !enteredRate ||
+                            !Number.isFinite(Number(enteredRate)) ||
+                            Number(enteredRate) <= 0
+                          )
+                        ) {
+                          showError(
+                            'Exchange rate required',
+                            'Enter the exchange rate to ' + workspace.company.currency + ' before saving.',
+                          );
+                          return;
+                        }
 
                         confirmAction({
                           title:
@@ -1629,7 +1843,6 @@ export default function SalesQuoteDetailClient({
                             type="number"
                             min="0.00000001"
                             step="0.00000001"
-                            required
                             placeholder={
                               '1 ' +
                               quote.currency +
@@ -1638,6 +1851,9 @@ export default function SalesQuoteDetailClient({
                             }
                             className="mt-2 h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm"
                           />
+                          <span className="mt-1 block text-[11px] text-slate-500">
+                            Required when the quotation currency differs from the company currency.
+                          </span>
                         </label>
                       )
                     }
