@@ -3738,7 +3738,7 @@ function Settings({
             label="Enforce customer credit limits"
             defaultChecked={
               data.settings
-                .creditLimitEnforced
+                .creditLimitEnforced ?? false
             }
           />
           <Check
