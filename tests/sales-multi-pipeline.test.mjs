@@ -85,26 +85,26 @@ test('Sales fresh-install schema smoke keeps the canonical multi-pipeline stages
 
   const pipelinesStart = schema.indexOf('CREATE TABLE IF NOT EXISTS public.sales_pipelines (');
   const stagesStart = schema.indexOf('CREATE TABLE IF NOT EXISTS public.sales_pipeline_stages (');
-  const stageDefinitions = schema.match(/CREATE TABLE IF NOT EXISTS public\\.sales_pipeline_stages\\s*\\(/g) || [];
+  const stageDefinitions = schema.match(/CREATE TABLE IF NOT EXISTS public\.sales_pipeline_stages\s*\(/g) || [];
 
   assert.equal(stageDefinitions.length, 1, 'fresh installs must have one canonical sales_pipeline_stages definition');
   assert.ok(pipelinesStart >= 0 && stagesStart > pipelinesStart, 'the parent pipeline table must be created before pipeline stages');
 
-  const stagesEnd = schema.indexOf('\\n  );', stagesStart);
+  const stagesEnd = schema.indexOf('\n  );', stagesStart);
   assert.ok(stagesEnd > stagesStart, 'canonical pipeline-stage definition must terminate');
   const stagesDefinition = schema.slice(stagesStart, stagesEnd + 5);
-  assert.match(stagesDefinition, /pipeline_id UUID NOT NULL REFERENCES public\\.sales_pipelines\\(id\\)/);
-  assert.doesNotMatch(stagesDefinition, /UNIQUE\\s*\\(\\s*company_id\\s*,\\s*name\\s*\\)/);
+  assert.match(stagesDefinition, /pipeline_id UUID NOT NULL REFERENCES public\.sales_pipelines\(id\)/);
+  assert.doesNotMatch(stagesDefinition, /UNIQUE\s*\(\s*company_id\s*,\s*name\s*\)/);
 
-  assert.match(schema, /uq_sales_pipeline_stages_company_pipeline_name[\\s\\S]*?company_id, pipeline_id, LOWER\\(BTRIM\\(name\\)\\)/);
+  assert.match(schema, /uq_sales_pipeline_stages_company_pipeline_name[\s\S]*?company_id, pipeline_id, LOWER\(BTRIM\(name\)\)/);
   assert.match(schema, /salesperson_user_id UUID,/);
   assert.match(schema, /credit_limit_enforced BOOLEAN NOT NULL DEFAULT FALSE/);
-  assert.doesNotMatch(schema, /CREATE TABLE IF NOT EXISTS public\\.sales_quote_stage_history\\s*\\(/);
+  assert.doesNotMatch(schema, /CREATE TABLE IF NOT EXISTS public\.sales_quote_stage_history\s*\(/);
 
   const quotesStart = schema.indexOf('CREATE TABLE IF NOT EXISTS public.sales_quotes (');
-  const quotesEnd = schema.indexOf('\\n);', quotesStart);
+  const quotesEnd = schema.indexOf('\n);', quotesStart);
   assert.ok(quotesStart >= 0 && quotesEnd > quotesStart, 'sales_quotes table must be present in the fresh-install schema');
   const quotesDefinition = schema.slice(quotesStart, quotesEnd + 3);
   assert.match(quotesDefinition, /salesperson_user_id UUID,/);
-  assert.doesNotMatch(quotesDefinition, /\\b(?:pipeline_id|stage_id|sales_pipeline_stage_id)\\b/);
+  assert.doesNotMatch(quotesDefinition, /\b(?:pipeline_id|stage_id|sales_pipeline_stage_id)\b/);
 });
