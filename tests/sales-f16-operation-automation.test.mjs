@@ -70,7 +70,7 @@ test('return credits prorate invoice line totals by credited quantity and revers
   assert.match(fn, /returnedValueByCurrency:\s*Array\.from\(returnedAmountsByCurrency/);
   assert.match(fn, /reverseSalesOrderCommissionsForReturn\(/);
   assert.match(fn, /commissionReversals/);
-  assert.match(fn, /commissionReversals,\s*$/);
+  assert.match(fn, /commissionReversals,\s*\n\s*};/);
 });
 
 test('deposit received and applied events are post-commit and use stable order/invoice idempotency seeds', async () => {
