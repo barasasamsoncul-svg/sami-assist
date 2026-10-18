@@ -576,7 +576,7 @@ export type SalesWorkspaceData = {
     allowOnlineRejection: boolean;
     allowPartialInvoicing: boolean;
     requireBillingCustomerForInvoice: boolean;
-    creditLimitEnforced: boolean;
+    creditLimitEnforced?: boolean;
     invoicePolicy: 'ordered' | 'delivered';
     lockConfirmedOrders: boolean;
     requireQuoteApproval: boolean;
