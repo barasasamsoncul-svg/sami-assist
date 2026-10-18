@@ -432,6 +432,7 @@ export async function getSalesWorkspaceData():
     catalogItems,
     taxRates,
     salespeople,
+    defaultSalesperson,
   ] =
     await Promise.all([
       context.pool.query(
