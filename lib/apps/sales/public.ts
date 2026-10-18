@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { dispatchBusinessAutomationEventSafely } from '@/lib/automation/business-events';
+import type { SamiAutomationRuntimeContext } from '@/lib/automation/types';
 import { assertSalesQuoteApprovalSatisfied } from '@/lib/apps/sales/approvals';
 import { SALES_QUOTE_ELECTRONIC_SIGNATURE_CONSENT } from '@/lib/apps/sales/signature';
 
@@ -10,6 +12,9 @@ import {
 import { expirePublicSalesQuoteWithAudit } from '@/lib/apps/sales/public-quote-expiry';
 
 import crypto from 'crypto';
+
+import { queryControl } from '@/lib/db/control';
+import { sendWorkspaceNotificationEmail } from '@/lib/services/email';
 
 import {
   getTenantPoolByTenantId,
@@ -58,6 +63,23 @@ function assertToken(
       'Quote was not found.',
     );
   }
+}
+
+
+function publicSalesAutomationRuntime(
+  tenantId: string,
+  companyId: string,
+  userId: unknown,
+): SamiAutomationRuntimeContext {
+  return {
+    userId: userId ?? null,
+    sessionId: 'public-quote',
+    tenantId,
+    companyId,
+    accessibleModuleKeys: ['sales'],
+    permissionSet: new Set<string>(),
+    isOwner: false,
+  } as unknown as SamiAutomationRuntimeContext;
 }
 
 
@@ -856,6 +878,7 @@ export async function respondToPublicSalesQuote(
             q.quote_number,
             q.status,
             q.approval_status,
+            q.approval_requested_by,
             q.valid_until,
             COALESCE(
               s.allow_online_acceptance,
@@ -978,7 +1001,74 @@ export async function respondToPublicSalesQuote(
         content: 'Customer requested changes to quotation ' + String(quote.quote_number) + '.',
         metadata: { requesterName: requesterName.trim(), requesterEmail: requesterEmail || null, reason: revisionReason.trim() },
       });
+      try {
+        const salespersonResult = await client.query(
+          `SELECT salesperson_user_id
+           FROM sales_quotes
+           WHERE id=$1 AND company_id=$2
+           LIMIT 1`,
+          [quote.id, quote.company_id],
+        );
+        const salespersonUserId = salespersonResult.rows[0]?.salesperson_user_id;
+        if (salespersonUserId) {
+          const recipientResult = await queryControl(
+            `SELECT u.email,
+                    COALESCE(
+                      NULLIF(BTRIM(COALESCE(u.full_name,'')),''),
+                      NULLIF(BTRIM(CONCAT_WS(' ',u.first_name,u.last_name)),''),
+                      u.email
+                    ) AS name
+             FROM tenant_users tu
+             INNER JOIN users u ON u.id=tu.user_id
+             WHERE tu.tenant_id=$1
+               AND tu.user_id=$2
+               AND tu.status='active'
+               AND tu.member_type='internal'
+               AND tu.deleted_at IS NULL
+               AND u.deleted_at IS NULL
+             LIMIT 1`,
+            [tenantId, salespersonUserId],
+          );
+          const recipient = recipientResult.rows[0] as { email?: unknown; name?: unknown } | undefined;
+          const recipientEmail = typeof recipient?.email === 'string' ? recipient.email.trim() : '';
+          if (recipientEmail) {
+            await sendWorkspaceNotificationEmail(
+              recipientEmail,
+              typeof recipient?.name === 'string' && recipient.name.trim()
+                ? recipient.name.trim()
+                : recipientEmail,
+              {
+                title: 'Customer requested a quotation revision',
+                message: 'Quotation ' + String(quote.quote_number) + ' has a revision request from ' + requesterName.trim() + '. Reason: ' + revisionReason.trim(),
+                actionHref: '/apps/sales/quotes/' + String(quote.id),
+                actionLabel: 'Review quotation',
+                audience: 'workspace',
+              },
+            );
+          }
+        }
+      } catch (error) {
+        console.warn('[SaMi Sales] Could not email the salesperson about a customer quotation revision.', {
+          quoteId: String(quote.id),
+          error,
+        });
+      }
       await client.query('COMMIT');
+      await dispatchBusinessAutomationEventSafely({
+        runtime: publicSalesAutomationRuntime(tenantId, String(quote.company_id), quote.approval_requested_by ?? null),
+        moduleKey: 'sales',
+        triggerKey: 'sales.quote.revision_requested',
+        recordType: 'quote',
+        recordId: String(quote.id),
+        payload: {
+          quoteId: String(quote.id),
+          quoteNumber: String(quote.quote_number),
+          requesterName: requesterName.trim(),
+          requesterEmail: requesterEmail || null,
+          reason: revisionReason.trim(),
+        },
+        idempotencySeed: 'revision_requested:' + String(quote.id),
+      });
       return { id: String(quote.id), status: current, response: 'revision_requested' };
     }
 
@@ -1437,6 +1527,18 @@ export async function respondToPublicSalesQuote(
         ],
       );
 
+      await client.query(
+        `UPDATE sales_quote_approval_requests
+         SET status='superseded', completed_at=NOW(), updated_at=NOW()
+         WHERE company_id=$1 AND quote_id=$2 AND status='pending'`,
+        [quote.company_id, quote.id],
+      );
+      await dependencies.assertSalesQuoteApprovalSatisfied(
+        client,
+        String(quote.company_id),
+        String(quote.id),
+      );
+
       await dependencies.recordSalesActivity(
         client,
         {
@@ -1585,6 +1687,37 @@ export async function respondToPublicSalesQuote(
     await client.query(
       'COMMIT',
     );
+
+    if (next === 'accepted') {
+      await dispatchBusinessAutomationEventSafely({
+        runtime: publicSalesAutomationRuntime(tenantId, String(quote.company_id), quote.approval_requested_by ?? null),
+        moduleKey: 'sales',
+        triggerKey: 'sales.quote.accepted',
+        recordType: 'quote',
+        recordId: String(quote.id),
+        payload: {
+          quoteId: String(quote.id),
+          quoteNumber: String(quote.quote_number),
+          acceptedByName: signerName,
+          acceptedByEmail: signerEmail,
+        },
+        idempotencySeed: 'accepted:' + String(quote.id),
+      });
+    } else {
+      await dispatchBusinessAutomationEventSafely({
+        runtime: publicSalesAutomationRuntime(tenantId, String(quote.company_id), quote.approval_requested_by ?? null),
+        moduleKey: 'sales',
+        triggerKey: 'sales.quote.rejected',
+        recordType: 'quote',
+        recordId: String(quote.id),
+        payload: {
+          quoteId: String(quote.id),
+          quoteNumber: String(quote.quote_number),
+          reason,
+        },
+        idempotencySeed: 'rejected:' + String(quote.id),
+      });
+    }
 
     return {
       id:
