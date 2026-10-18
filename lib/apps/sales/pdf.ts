@@ -376,7 +376,7 @@ function pageStream(
     }
   }
 
-  out += text(355, 726, document.documentTitle === 'QUOTATION' ? 'QUOTE DETAILS' : 'ORDER DETAILS', 7, true);
+  out += text(355, 726, document.documentTitle === 'QUOTATION' ? 'QUOTE DETAILS' : document.documentTitle === 'PROFORMA INVOICE' ? 'PROFORMA DETAILS' : 'ORDER DETAILS', 7, true);
   let detailsY = 708;
   const validityWindow = document.validUntil
     ? String(document.issueDate || '') + ' - ' + document.validUntil
