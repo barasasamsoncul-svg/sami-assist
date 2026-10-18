@@ -34,6 +34,7 @@ export {
   getSalesOrderDetail,
   getSalesOrderRegisterPage,
   getSalesQuoteDetail,
+  getSalesQuoteRevisionDiff,
   getSalesQuoteRegisterPage,
   getSalesWorkspaceData,
   searchSalesRecords,

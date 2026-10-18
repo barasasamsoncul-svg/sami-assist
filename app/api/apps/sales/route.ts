@@ -63,6 +63,7 @@ import {
   getSalesOrderDetail,
   getSalesOrganizationData,
   getSalesQuoteDetail,
+  getSalesQuoteRevisionDiff,
   getSalesQuoteApprovalData,
   getSalesSavedQuoteViews,
   saveSalesSavedQuoteView,
@@ -281,6 +282,17 @@ export async function GET(
     NextRequest,
 ) {
   try {
+    const revisionDiff = request.nextUrl.searchParams.get('revisionDiff');
+    if (revisionDiff === '1') {
+      return json({
+        success: true,
+        revisionDiff: await getSalesQuoteRevisionDiff({
+          quoteId: request.nextUrl.searchParams.get('quoteId'),
+          revisionNumber: request.nextUrl.searchParams.get('revisionNumber'),
+        }),
+      });
+    }
+
     const savedViews = request.nextUrl.searchParams.get('savedViews');
     if (savedViews === '1') {
       return json({

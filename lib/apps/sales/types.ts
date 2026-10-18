@@ -176,6 +176,7 @@ export type SalesOrderSummary = {
 
 export type SalesQuoteDetail =
   SalesQuoteSummary & {
+    canWithdrawApproval: boolean;
     billingCustomerId: string | null;
     salespersonUserId: string | null;
     customerPhone: string | null;
