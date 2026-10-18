@@ -23,7 +23,8 @@ test('pending quote detail exposes the authorized Withdraw approval request form
   assert.ok(review >= 0 && withdraw > review && delivery > withdraw);
   assert.match(detail, /quote\.approvalStatus === 'pending'[\s\S]{0,100}quote\.canWithdrawApproval/);
   assert.match(detail, /action: 'cancel_quote_approval'/);
-  assert.match(queries, /canWithdrawApproval[\s\S]{0,200}String\(activeApprovalRequest\.rows\[0\]\?\.requested_by \?\? ''\) === context\.userId/);
+  assert.match(queries, /canWithdrawApproval =\s*activeApprovalRequest\.rows\.length === 1/);
+  assert.match(queries, /String\(activeApprovalRequest\.rows\[0\]\?\.requested_by \?\? ''\) === context\.userId/);
   assert.match(queries, /FROM sales_quote_approval_requests[\s\S]{0,170}status = 'pending'/);
   assert.match(types, /canWithdrawApproval: boolean/);
   assert.match(approvals, /Only the requester or a Sales quote editor can withdraw this approval request/);
