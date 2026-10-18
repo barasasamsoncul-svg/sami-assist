@@ -66,7 +66,7 @@ test('approval engine enforces sequential assigned reviewers and records immutab
   assert.match(engine, /quote_fingerprint/);
   assert.match(engine, /optionalLines/);
   assert.match(commercial, /Optional products cannot be changed unless the quotation is a draft outside the approval workflow/);
-  assert.match(engine, /status='superseded'/);
+  assert.match(engine, /cancelPendingSalesQuoteApproval\([\s\S]{0,150}'superseded'/);
   assert.match(engine, /INSERT INTO sales_quote_approval_decisions/);
   assert.match(migration, /UNIQUE\(request_id, step_order, reviewer_user_id\)/);
 });
