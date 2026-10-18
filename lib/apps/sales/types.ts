@@ -141,11 +141,6 @@ export type SalesQuoteSummary = {
   approvalStatus: string;
   salesOrderId: string | null;
   latestInvoiceId: string | null;
-  stageId: string | null;
-  stageCode: string | null;
-  stageName: string | null;
-  probability: number;
-  expectedCloseDate: string | null;
   createdAt: string | null;
 };
 
@@ -612,5 +607,6 @@ export type CreateSalesQuoteInput = {
   notes?: unknown;
   terms?: unknown;
   internalNotes?: unknown;
+  optionalItems?: unknown;
   lines?: unknown;
 };

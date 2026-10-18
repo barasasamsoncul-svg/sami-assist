@@ -228,7 +228,7 @@ async function nextPipelineNumber(client: PoolClient, companyId:string, userId:s
 }
 
 
-async function resolveActiveSalesperson(
+export async function resolveActiveSalesperson(
   context: Awaited<ReturnType<typeof requireSalesContext>>,
   value: unknown,
 ) {

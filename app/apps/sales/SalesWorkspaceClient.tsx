@@ -2317,9 +2317,6 @@ export default function SalesWorkspaceClient({
                           Customer
                         </th>
                         <th className="px-4 py-3">
-                          Stage
-                        </th>
-                        <th className="px-4 py-3">
                           Status
                         </th>
                         <th className="px-4 py-3">
@@ -2342,7 +2339,7 @@ export default function SalesWorkspaceClient({
                               <tr>
                                 <td
                                   colSpan={
-                                    8
+                                    7
                                   }
                                   className="px-4 py-10 text-center text-sm text-slate-500"
                                 >
@@ -2411,31 +2408,7 @@ export default function SalesWorkspaceClient({
                                       }
                                     </p>
                                   </td>
-                                  <td className="px-4 py-3">
-                                    {
-                                      quote.stageName
-                                        ? (
-                                            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-slate-600 dark:text-slate-300">
-                                              {
-                                                quote.stageName
-                                              }
-                                              <span className="text-slate-400">
-                                                {
-                                                  Math.round(
-                                                    quote.probability,
-                                                  )
-                                                }
-                                                %
-                                              </span>
-                                            </span>
-                                          )
-                                        : (
-                                            <span className="text-xs text-slate-400">
-                                              —
-                                            </span>
-                                          )
-                                    }
-                                  </td>
+                                  
                                   <td className="px-4 py-3">
                                     <Status
                                       value={
