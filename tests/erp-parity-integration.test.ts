@@ -1071,6 +1071,7 @@ integration(
           default_validity_days INTEGER NOT NULL DEFAULT 14,
           default_currency VARCHAR(3) NOT NULL DEFAULT 'KES',
           require_quote_approval BOOLEAN NOT NULL DEFAULT FALSE,
+          credit_limit_enforced BOOLEAN NOT NULL DEFAULT FALSE,
           quote_approval_threshold NUMERIC(14,2),
           terms_and_conditions TEXT,
           default_notes TEXT,
