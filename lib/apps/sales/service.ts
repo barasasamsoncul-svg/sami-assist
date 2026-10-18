@@ -38,6 +38,7 @@ export {
   getSalesQuoteRegisterPage,
   getSalesWorkspaceData,
   searchSalesRecords,
+  searchSalesPipelineRecords,
 } from '@/lib/apps/sales/queries';
 
 export {
