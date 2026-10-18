@@ -97,3 +97,13 @@ test('Sales 3.4.20 upgrade schema prerequisites are present in the canonical fre
     assert.ok(orderColumns.includes('ADD COLUMN IF NOT EXISTS ' + column), column);
   }
 });
+
+test('quote composer preserves an existing template and applies selected template terms', async () => {
+  const composer = await source('app/apps/sales/SalesQuoteComposer.tsx');
+  assert.match(composer, /initialQuote\?\.templateId/);
+  assert.match(composer, /initialQuote\?\.notes\s*\?\?/);
+  assert.match(composer, /initialTemplate\?\.notes\s*\?\?/);
+  assert.match(composer, /initialTemplate\?\.terms\s*\?\?/);
+  assert.match(composer, /setNotes\(selectedTemplate\.notes\s*\?\?/);
+  assert.match(composer, /setTerms\(selectedTemplate\.terms\s*\?\?/);
+});
