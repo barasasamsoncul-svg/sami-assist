@@ -3978,20 +3978,32 @@ const returnId = requireUuid(input.returnId, 'Sales return').toLowerCase();
       }
     }
 
-    const commissionReversals = await reverseSalesOrderCommissionsForReturn(
-      serializationClient,
-      {
-        companyId: context.companyId,
-        orderId: String(returnRow.sales_order_id),
-        userId: context.userId,
-        returnedValueByCurrency: Array.from(returnedAmountsByCurrency, ([currency, amount]) => ({
-          currency,
-          amount,
-        })),
-        returnId,
-        reason: 'Sales return ' + String(returnRow.return_number) + ': ' + String(returnRow.reason),
-      },
-    );
+    const commissionReversals = await (async () => {
+      await serializationClient.query('BEGIN');
+      try {
+        const summaries = await reverseSalesOrderCommissionsForReturn(
+          serializationClient,
+          {
+            companyId: context.companyId,
+            orderId: String(returnRow.sales_order_id),
+            userId: context.userId,
+            returnedValueByCurrency: Array.from(returnedAmountsByCurrency, ([currency, amount]) => ({
+              currency,
+              amount,
+            })),
+            returnId,
+            reason: 'Sales return ' + String(returnRow.return_number) + ': ' + String(returnRow.reason),
+          },
+        );
+        await serializationClient.query('COMMIT');
+        return summaries;
+      } catch (error) {
+        try {
+          await serializationClient.query('ROLLBACK');
+        } catch {}
+        throw error;
+      }
+    })();
 
     const returnState = await serializationClient.query(
       `
