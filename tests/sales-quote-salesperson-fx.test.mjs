@@ -41,8 +41,8 @@ test('foreign-currency quote submission requires a positive manual FX rate and u
   assert.match(composer, /Enter the exchange rate to '\s*\+ data\.company\.currency \+ ' before saving\.'/);
   assert.match(composer, /onLocalError\?\./);
   assert.match(composer, /label=\{[\s\S]{0,220}Manual FX rate to[\s\S]{0,220}required/);
-  assert.match(workspace, /onLocalError=\{showError\}/);
-  assert.match(detail, /onLocalError=\{showError\}/);
+  assert.match(workspace, /onLocalError=\{\(message\) => showError\('Exchange rate required', message\)\}/);
+  assert.match(detail, /onLocalError=\{\(message\) => showError\('Exchange rate required', message\)\}/);
 });
 
 test('selected salespeople are validated against workspace membership and persisted for create and edit', async () => {
