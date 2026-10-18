@@ -3793,7 +3793,7 @@ integration(
 );
 
 integration(
-  'Tenant provisioning: core and Documents schemas execute from an empty PostgreSQL database',
+  'Tenant provisioning: core, Documents, and Sales schemas execute from an empty PostgreSQL database',
   async () => {
     const pool =
       new Pool({
@@ -3893,6 +3893,77 @@ integration(
         documentsTrigger.rows.length,
         1,
         'Documents app should install its updated_at trigger after creating the table.',
+      );
+
+      const salesSql = await readFile(
+        path.join(
+          process.cwd(),
+          'lib',
+          'apps',
+          'sales',
+          'schema.sql',
+        ),
+        'utf8',
+      );
+
+      await client.query(salesSql);
+
+      const stageTable = await client.query(
+        "SELECT to_regclass('public.sales_pipeline_stages') AS relation",
+      );
+      assert.equal(
+        stageTable.rows[0]?.relation,
+        'sales_pipeline_stages',
+        'Sales schema must create pipeline stages on a fresh install.',
+      );
+
+      const stageIndexes = await client.query(
+        "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'sales_pipeline_stages'",
+      );
+      const pipelineScopedNameIndex = stageIndexes.rows.find(
+        (row) => row.indexname === 'uq_sales_pipeline_stages_company_pipeline_name',
+      );
+      assert.ok(
+        pipelineScopedNameIndex,
+        'fresh Sales installs must have the pipeline-scoped stage-name index.',
+      );
+      assert.match(
+        pipelineScopedNameIndex.indexdef,
+        /company_id, pipeline_id, lower\(btrim\(name\)\)/i,
+      );
+      assert.ok(
+        !stageIndexes.rows.some((row) => row.indexname === 'sales_pipeline_stages_company_id_name_key'),
+        'fresh Sales installs must not have the obsolete company-wide stage-name uniqueness constraint.',
+      );
+
+      const salesColumns = await client.query(
+        "SELECT table_name, column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema = 'public' AND ((table_name = 'sales_quotes' AND column_name IN ('salesperson_user_id', 'pipeline_id', 'stage_id', 'sales_pipeline_stage_id')) OR (table_name = 'sales_settings' AND column_name = 'credit_limit_enforced'))",
+      );
+      const salesperson = salesColumns.rows.find(
+        (row) => row.table_name === 'sales_quotes' && row.column_name === 'salesperson_user_id',
+      );
+      assert.ok(salesperson, 'sales_quotes.salesperson_user_id must be preserved.');
+      assert.ok(
+        !salesColumns.rows.some(
+          (row) => row.table_name === 'sales_quotes' && ['pipeline_id', 'stage_id', 'sales_pipeline_stage_id'].includes(row.column_name),
+        ),
+        'fresh Sales installs must not create quote-level pipeline columns.',
+      );
+      const creditLimit = salesColumns.rows.find(
+        (row) => row.table_name === 'sales_settings' && row.column_name === 'credit_limit_enforced',
+      );
+      assert.ok(creditLimit, 'sales_settings.credit_limit_enforced must exist.');
+      assert.equal(creditLimit.data_type, 'boolean');
+      assert.equal(creditLimit.is_nullable, 'NO');
+      assert.match(String(creditLimit.column_default), /false/i);
+
+      const obsoleteQuoteStageHistory = await client.query(
+        "SELECT to_regclass('public.sales_quote_stage_history') AS relation",
+      );
+      assert.equal(
+        obsoleteQuoteStageHistory.rows[0]?.relation,
+        null,
+        'fresh Sales installs must not create obsolete quote-stage history.',
       );
 
       await client.query(
