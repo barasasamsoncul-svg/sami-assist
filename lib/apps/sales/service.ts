@@ -137,6 +137,7 @@ export {
   updateSalesOpportunityActivity,
   editSalesOpportunityActivity,
   convertSalesLeadToOpportunity,
+  createBillingCustomerForOpportunity,
   getSalesPipelineData,
   getSalesLeadAssignmentHistory,
   updateSalesOpportunity,
