@@ -406,7 +406,7 @@ function salesAutomationRuntime(
 }
 
 
-async function emitSalesAutomationEvent(
+export async function emitSalesAutomationEvent(
   context:
     Awaited<
       ReturnType<
