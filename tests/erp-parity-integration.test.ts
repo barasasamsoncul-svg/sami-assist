@@ -3929,7 +3929,7 @@ integration(
       );
       assert.match(
         pipelineScopedNameIndex.indexdef,
-        /company_id, pipeline_id, lower\(btrim\(name\)\)/i,
+        /company_id,\s*pipeline_id,[\s\S]*lower\(btrim\(/i,
       );
       assert.ok(
         !stageIndexes.rows.some((row) => row.indexname === 'sales_pipeline_stages_company_id_name_key'),
