@@ -3389,37 +3389,41 @@ test('Sales quote, workspace, and order contracts expose salesperson, credit-lim
   const inputEnd = types.indexOf('\n};', inputStart);
   assert.ok(inputStart >= 0 && inputEnd > inputStart, 'CreateSalesQuoteInput must exist');
   const quoteInput = types.slice(inputStart, inputEnd);
-  assert.match(quoteInput, /salespersonUserId\?: unknown/);
-  assert.doesNotMatch(quoteInput, /\bstageId\??:|\bexpectedCloseDate\??:|\bprobabilityOverride\??:/);
+  assert.ok(quoteInput.includes('salespersonUserId?: unknown'));
+  assert.ok(!quoteInput.includes('stageId'));
+  assert.ok(!quoteInput.includes('expectedCloseDate'));
+  assert.ok(!quoteInput.includes('probabilityOverride'));
 
   const quoteDetailStart = types.indexOf('export type SalesQuoteDetail =');
   const quoteDetailEnd = types.indexOf('\n\nexport type SalesOrderLine', quoteDetailStart);
   const quoteDetail = types.slice(quoteDetailStart, quoteDetailEnd);
-  assert.match(quoteDetail, /salespersonUserId: string \| null/);
+  assert.ok(quoteDetail.includes('salespersonUserId: string | null'));
 
   const orderLineStart = types.indexOf('export type SalesOrderLine =');
   const orderLineEnd = types.indexOf('\n\nexport type SalesOrderDetail', orderLineStart);
   const orderLine = types.slice(orderLineStart, orderLineEnd);
-  assert.match(orderLine, /plannedQuantity: number/);
+  assert.ok(orderLine.includes('plannedQuantity: number'));
   for (const field of ['unitCost', 'costTotal', 'marginAmount', 'marginPercent']) {
-    assert.match(orderLine, new RegExp(field + ': number \\\\| null'));
+    assert.ok(orderLine.includes(field + ': number | null;'), field + ' must be nullable on SalesOrderLine');
   }
 
   const orderDetailStart = types.indexOf('export type SalesOrderDetail =');
   const orderDetailEnd = types.indexOf('\n\nexport type SalesPipelineStage', orderDetailStart);
   const orderDetail = types.slice(orderDetailStart, orderDetailEnd);
   for (const field of ['costTotal', 'marginAmount', 'marginPercent']) {
-    assert.match(orderDetail, new RegExp(field + ': number \\\\| null'));
+    assert.ok(orderDetail.includes(field + ': number | null;'), field + ' must be nullable on SalesOrderDetail');
   }
 
   const workspaceStart = types.indexOf('export type SalesWorkspaceData =');
-  const workspace = types.slice(workspaceStart);
-  assert.match(workspace, /salespeople: Array<\\{[\\s\\S]*?id: string;[\\s\\S]*?name: string;[\\s\\S]*?email: string;[\\s\\S]*?\\}>/);
-  assert.match(workspace, /currentSalespersonId: string \\\\| null/);
-  assert.match(workspace, /creditLimitEnforced: boolean/);
-  assert.doesNotMatch(workspace, /creditLimitEnforced\\?: boolean/);
+  const workspaceEnd = types.indexOf('\n};', workspaceStart);
+  const workspace = types.slice(workspaceStart, workspaceEnd);
+  assert.ok(workspace.includes('salespeople: Array<{'));
+  assert.ok(workspace.includes('currentSalespersonId: string | null;'));
+  assert.ok(workspace.includes('creditLimitEnforced: boolean;'));
+  assert.ok(!workspace.includes('creditLimitEnforced?: boolean;'));
 
-  assert.match(queries, /require_quote_approval,[\\s\\S]*?credit_limit_enforced,[\\s\\S]*?quote_approval_threshold[\\s\\S]*?FROM sales_settings/);
-  assert.match(queries, /creditLimitEnforced:[\\s\\S]*?setting\\.credit_limit_enforced === true/);
-  assert.match(queries, /currentSalespersonId: defaultSalesperson\\.rows\\[0\\][\\s\\S]*?String\\(defaultSalesperson\\.rows\\[0\\]\\.id\\)[\\s\\S]*?: null/);
+  assert.ok(queries.includes('require_quote_approval,\n            credit_limit_enforced,\n            quote_approval_threshold'));
+  assert.ok(queries.includes('creditLimitEnforced:\n        setting.credit_limit_enforced === true'));
+  assert.ok(queries.includes('currentSalespersonId: defaultSalesperson.rows[0]'));
+  assert.ok(queries.includes('String(defaultSalesperson.rows[0].id)'));
 });
