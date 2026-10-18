@@ -86,6 +86,46 @@ export const SALES_AUTOMATION_TRIGGERS:
     },
     {
       key:
+        'sales.quote.rejected',
+      name:
+        'Quotation rejected',
+      description:
+        'Run after a customer rejects a quotation from the public quote page.',
+      type:
+        'event',
+      moduleKey:
+        'sales',
+      resourceKey:
+        'quote',
+      requiredPermissions: [
+        SALES_PERMISSIONS
+          .QUOTE_VIEW,
+      ],
+      companyScoped:
+        true,
+    },
+    {
+      key:
+        'sales.quote.revision_requested',
+      name:
+        'Quotation revision requested',
+      description:
+        'Run after a customer requests changes to a quotation.',
+      type:
+        'event',
+      moduleKey:
+        'sales',
+      resourceKey:
+        'quote',
+      requiredPermissions: [
+        SALES_PERMISSIONS
+          .QUOTE_VIEW,
+      ],
+      companyScoped:
+        true,
+    },
+    {
+      key:
         'sales.order.created',
       name:
         'Sales order created',
