@@ -2615,6 +2615,270 @@ export async function getSalesQuoteDetail(
 }
 
 
+
+type SalesRevisionRecord = Record<string, unknown>;
+type SalesRevisionChange = {
+  type: 'added' | 'removed' | 'changed';
+  section: string;
+  label: string;
+  field: string;
+  before: string | null;
+  after: string | null;
+};
+
+function salesRevisionRecord(value: unknown): SalesRevisionRecord {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as SalesRevisionRecord;
+  }
+  if (typeof value === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as SalesRevisionRecord;
+      }
+    } catch {}
+  }
+  return {};
+}
+
+function salesRevisionValue(value: unknown): string | null {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'object') {
+    try { return JSON.stringify(value); } catch { return String(value); }
+  }
+  return String(value);
+}
+
+function salesRevisionItemLabel(item: SalesRevisionRecord, index: number): string {
+  const description = String(item.description ?? '').trim();
+  const sku = String(item.sku_snapshot ?? item.sku ?? '').trim();
+  return description || (sku ? 'SKU ' + sku : 'Line ' + (index + 1));
+}
+
+function compareSalesRevisionCollection(
+  changes: SalesRevisionChange[],
+  section: string,
+  beforeItems: unknown,
+  afterItems: unknown,
+  fields: Array<[string, string]>,
+) {
+  const before = Array.isArray(beforeItems) ? beforeItems.map(salesRevisionRecord) : [];
+  const after = Array.isArray(afterItems) ? afterItems.map(salesRevisionRecord) : [];
+  const keyFor = (item: SalesRevisionRecord, index: number) => {
+    const sortOrder = String(item.sort_order ?? index);
+    const productId = String(item.catalog_item_id ?? '');
+    const sku = String(item.sku_snapshot ?? '');
+    return productId
+      ? sortOrder + ':product:' + productId
+      : sortOrder + ':manual:' + (sku || String(item.description ?? ''));
+  };
+  const beforeMap = new Map(before.map((item, index) => [keyFor(item, index), { item, index }]));
+  const afterMap = new Map(after.map((item, index) => [keyFor(item, index), { item, index }]));
+
+  for (const [key, current] of beforeMap) {
+    const next = afterMap.get(key);
+    if (!next) {
+      changes.push({
+        type: 'removed',
+        section,
+        label: salesRevisionItemLabel(current.item, current.index),
+        field: section === 'Line item' ? 'Line item' : 'Optional product',
+        before: salesRevisionValue(current.item.description) ?? salesRevisionItemLabel(current.item, current.index),
+        after: null,
+      });
+      continue;
+    }
+    const label = salesRevisionItemLabel(next.item, next.index);
+    for (const [field, fieldLabel] of fields) {
+      const oldValue = current.item[field];
+      const newValue = next.item[field];
+      if (salesRevisionValue(oldValue) !== salesRevisionValue(newValue)) {
+        changes.push({
+          type: 'changed',
+          section,
+          label,
+          field: fieldLabel,
+          before: salesRevisionValue(oldValue),
+          after: salesRevisionValue(newValue),
+        });
+      }
+    }
+  }
+
+  for (const [key, current] of afterMap) {
+    if (beforeMap.has(key)) continue;
+    changes.push({
+      type: 'added',
+      section,
+      label: salesRevisionItemLabel(current.item, current.index),
+      field: section === 'Line item' ? 'Line item' : 'Optional product',
+      before: null,
+      after: salesRevisionValue(current.item.description) ?? salesRevisionItemLabel(current.item, current.index),
+    });
+  }
+}
+
+export async function getSalesQuoteRevisionDiff(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.QUOTE_VIEW);
+  const quoteId = requireUuid(input.quoteId, 'Quotation');
+  const rawRevisionNumber = Number(input.revisionNumber);
+  if (!Number.isSafeInteger(rawRevisionNumber) || rawRevisionNumber < 1 || rawRevisionNumber > 100_000) {
+    throw new SalesError('INVALID_INPUT', 'Choose a valid quotation revision.');
+  }
+
+  const currentQuoteResult = await context.pool.query(
+    `SELECT id, current_revision
+     FROM sales_quotes
+     WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL
+     LIMIT 1`,
+    [quoteId, context.companyId],
+  );
+  if (currentQuoteResult.rows.length !== 1) {
+    throw new SalesError('QUOTE_NOT_FOUND', 'Quotation was not found.');
+  }
+
+  const currentRevision = Math.max(1, Number(currentQuoteResult.rows[0].current_revision || 1));
+  if (rawRevisionNumber > currentRevision) {
+    throw new SalesError('INVALID_INPUT', 'That revision is newer than the quotation.');
+  }
+
+  const [selectedResult, previousResult] = await Promise.all([
+    context.pool.query(
+      `SELECT revision_number, snapshot
+       FROM sales_quote_revisions
+       WHERE quote_id = $1 AND company_id = $2 AND revision_number = $3
+       LIMIT 1`,
+      [quoteId, context.companyId, rawRevisionNumber],
+    ),
+    rawRevisionNumber > 1
+      ? context.pool.query(
+          `SELECT revision_number, snapshot
+           FROM sales_quote_revisions
+           WHERE quote_id = $1 AND company_id = $2 AND revision_number = $3
+           LIMIT 1`,
+          [quoteId, context.companyId, rawRevisionNumber - 1],
+        )
+      : Promise.resolve({ rows: [] as Array<Record<string, unknown>> }),
+  ]);
+
+  if (selectedResult.rows.length !== 1) {
+    throw new SalesError('INVALID_INPUT', 'The selected quotation revision was not found.');
+  }
+
+  const selected = salesRevisionRecord(selectedResult.rows[0].snapshot);
+  const previous = previousResult.rows.length
+    ? salesRevisionRecord(previousResult.rows[0].snapshot)
+    : null;
+  const changes: SalesRevisionChange[] = [];
+
+  if (previous) {
+    const oldQuote = salesRevisionRecord(previous.quote);
+    const newQuote = salesRevisionRecord(selected.quote);
+    const canViewMargin = hasSalesPermission(
+      context.permissions.isOwner,
+      context.permissions.permissionSet,
+      SALES_PERMISSIONS.MARGIN_VIEW,
+    );
+    const quoteFields: Array<[string, string]> = [
+      ['customer_name', 'Customer'],
+      ['customer_email', 'Customer email'],
+      ['customer_phone', 'Customer phone'],
+      ['customer_tax_id', 'Customer tax ID'],
+      ['billing_address', 'Billing address'],
+      ['shipping_address', 'Shipping address'],
+      ['quote_date', 'Quotation date'],
+      ['valid_until', 'Valid until'],
+      ['currency', 'Currency'],
+      ['exchange_rate', 'Exchange rate'],
+      ['reference', 'Reference'],
+      ['template_id', 'Quotation template'],
+      ['pricelist_id', 'Pricelist'],
+      ['salesperson_user_id', 'Salesperson'],
+      ['sales_team_id', 'Sales team'],
+      ['territory_id', 'Territory'],
+      ['subtotal', 'Subtotal'],
+      ['discount_total', 'Discount total'],
+      ['tax_total', 'Tax total'],
+      ['shipping_total', 'Shipping total'],
+      ['total_amount', 'Total'],
+      ['deposit_type', 'Deposit type'],
+      ['deposit_value', 'Deposit value'],
+      ['notes', 'Customer notes'],
+      ['terms', 'Terms and conditions'],
+      ['internal_notes', 'Internal notes'],
+    ];
+    if (canViewMargin) {
+      quoteFields.push(
+        ['cost_total', 'Cost total'],
+        ['margin_amount', 'Margin'],
+        ['margin_percent', 'Margin percent'],
+      );
+    }
+    for (const [field, label] of quoteFields) {
+      const beforeValue = oldQuote[field];
+      const afterValue = newQuote[field];
+      if (salesRevisionValue(beforeValue) !== salesRevisionValue(afterValue)) {
+        changes.push({
+          type: 'changed',
+          section: 'Quotation',
+          label,
+          field: label,
+          before: salesRevisionValue(beforeValue),
+          after: salesRevisionValue(afterValue),
+        });
+      }
+    }
+
+    const lineFields: Array<[string, string]> = [
+      ['description', 'Description'],
+      ['sku_snapshot', 'SKU'],
+      ['unit', 'Unit'],
+      ['quantity', 'Quantity'],
+      ['unit_price', 'Unit price'],
+      ['discount_type', 'Discount type'],
+      ['discount_value', 'Discount value'],
+      ['discount_amount', 'Discount amount'],
+      ['tax_name_snapshot', 'Tax'],
+      ['tax_rate', 'Tax rate'],
+      ['tax_amount', 'Tax amount'],
+      ['subtotal', 'Subtotal'],
+      ['line_total', 'Line total'],
+    ];
+    if (canViewMargin) {
+      lineFields.push(
+        ['unit_cost', 'Unit cost'],
+        ['cost_total', 'Cost total'],
+        ['margin_amount', 'Margin'],
+        ['margin_percent', 'Margin percent'],
+      );
+    }
+    compareSalesRevisionCollection(changes, 'Line item', previous.lines, selected.lines, lineFields);
+
+    const optionalFields: Array<[string, string]> = [
+      ['description', 'Description'],
+      ['sku_snapshot', 'SKU'],
+      ['unit', 'Unit'],
+      ['quantity', 'Quantity'],
+      ['unit_price', 'Unit price'],
+      ['tax_name_snapshot', 'Tax'],
+      ['tax_rate', 'Tax rate'],
+      ['is_selected', 'Selected'],
+    ];
+    if (canViewMargin) optionalFields.push(['unit_cost', 'Unit cost']);
+    compareSalesRevisionCollection(changes, 'Optional product', previous.optionalItems, selected.optionalItems, optionalFields);
+  }
+
+  return {
+    quoteId,
+    revisionNumber: rawRevisionNumber,
+    previousRevisionNumber: previous ? rawRevisionNumber - 1 : null,
+    hasPreviousRevision: Boolean(previous),
+    changes,
+    message: previous ? null : 'No earlier saved revision is available to compare against.',
+  };
+}
+
+
 export async function getSalesOrderDetail(
   orderId:
     string,
