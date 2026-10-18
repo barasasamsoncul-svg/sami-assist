@@ -2589,6 +2589,12 @@ export async function getSalesOrderDetail(
       ? 'delivered'
       : 'ordered';
 
+  const canViewMargin = hasSalesPermission(
+    context.permissions.isOwner,
+    context.permissions.permissionSet,
+    SALES_PERMISSIONS.MARGIN_VIEW,
+  );
+
   const [
     order,
     lines,
@@ -2602,6 +2608,22 @@ export async function getSalesOrderDetail(
         `
           SELECT
             o.*,
+            (
+              EXISTS (
+                SELECT 1
+                FROM sales_returns received_return
+                WHERE received_return.sales_order_id = o.id
+                  AND received_return.company_id = o.company_id
+                  AND received_return.status = 'received'
+              )
+              AND EXISTS (
+                SELECT 1
+                FROM sales_commission_entries commission_entry
+                WHERE commission_entry.order_id = o.id
+                  AND commission_entry.company_id = o.company_id
+                  AND commission_entry.status = 'accrued'
+              )
+            ) AS margin_commission_stale,
             q.quote_number,
             q.billing_customer_id,
             COALESCE(
@@ -2645,29 +2667,47 @@ export async function getSalesOrderDetail(
       context.pool.query(
         `
           SELECT
-            id,
-            catalog_item_id,
-            description,
-            sku_snapshot,
-            unit,
-            quantity,
-            shipped_quantity,
-            delivered_quantity,
-            invoiced_quantity,
-            returned_quantity,
-            credited_quantity,
-            unit_price,
-            discount_type,
-            discount_value,
-            tax_name_snapshot,
-            tax_rate,
-            line_total
-          FROM sales_order_items_v2
-          WHERE sales_order_id = $1
-            AND company_id = $2
+            line.id,
+            line.catalog_item_id,
+            line.description,
+            line.sku_snapshot,
+            line.unit,
+            line.quantity,
+            line.shipped_quantity,
+            COALESCE(
+              (
+                SELECT SUM(shipment_item.quantity)
+                FROM sales_shipment_items shipment_item
+                INNER JOIN sales_shipments shipment
+                  ON shipment.id = shipment_item.shipment_id
+                 AND shipment.company_id = shipment_item.company_id
+                WHERE shipment_item.sales_order_line_id = line.id
+                  AND shipment_item.company_id = line.company_id
+                  AND shipment.status NOT IN ('cancelled', 'failed')
+                  AND shipment.inventory_posted_at IS NULL
+              ),
+              0
+            ) AS planned_quantity,
+            line.delivered_quantity,
+            line.invoiced_quantity,
+            line.returned_quantity,
+            line.credited_quantity,
+            line.unit_price,
+            line.unit_cost,
+            line.cost_total,
+            line.margin_amount,
+            line.margin_percent,
+            line.discount_type,
+            line.discount_value,
+            line.tax_name_snapshot,
+            line.tax_rate,
+            line.line_total
+          FROM sales_order_items_v2 line
+          WHERE line.sales_order_id = $1
+            AND line.company_id = $2
           ORDER BY
-            sort_order,
-            id
+            line.sort_order,
+            line.id
         `,
         [
           orderId,
@@ -2961,6 +3001,20 @@ export async function getSalesOrderDetail(
       money(
         row.total_amount,
       ),
+    costTotal:
+      canViewMargin
+        ? money(row.cost_total)
+        : null,
+    marginAmount:
+      canViewMargin
+        ? money(row.margin_amount)
+        : null,
+    marginPercent:
+      canViewMargin
+        ? money(row.margin_percent)
+        : null,
+    marginCommissionStale:
+      row.margin_commission_stale === true,
     deliveredPercent:
       orderedQuantity >
         0
@@ -3147,6 +3201,8 @@ export async function getSalesOrderDetail(
             quantity,
             shippedQuantity:
               Number(line.shipped_quantity || 0),
+            plannedQuantity:
+              Number(line.planned_quantity || 0),
             deliveredQuantity:
               delivered,
             invoicedQuantity:
@@ -3171,6 +3227,18 @@ export async function getSalesOrderDetail(
               money(
                 line.unit_price,
               ),
+            costTotal:
+              canViewMargin
+                ? money(line.cost_total)
+                : null,
+            marginAmount:
+              canViewMargin
+                ? money(line.margin_amount)
+                : null,
+            marginPercent:
+              canViewMargin
+                ? money(line.margin_percent)
+                : null,
             discountType:
               line.discount_type ===
                 'fixed'
