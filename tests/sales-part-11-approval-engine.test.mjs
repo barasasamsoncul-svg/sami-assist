@@ -116,7 +116,7 @@ test('Sales approval queue supports paginated retrieval and requester/editor wit
     source('app/apps/sales/SalesApprovalsManager.tsx'),
   ]);
 
-  assert.ok(engine.includes('LIMIT $2 OFFSET $3'));
+  assert.ok(engine.includes('OFFSET $2 LIMIT $3'));
   assert.ok(engine.includes('COUNT(*)::int AS total_count'));
   assert.ok(engine.includes('hasMore: offset + requests.length < totalCount'));
   assert.ok(engine.includes("String(requested_by ?? '') === context.userId"));
@@ -130,4 +130,65 @@ test('Sales approval queue supports paginated retrieval and requester/editor wit
   assert.ok(manager.includes('Load more'));
   assert.ok(manager.includes('pattern='));
   assert.ok(manager.includes('Use lowercase letters/numbers and . _ : - only'));
+});
+
+test('Sales approval requests can be cancelled or superseded through one pending-only helper', async () => {
+  const [engine, service, route, manager] = await Promise.all([
+    source('lib/apps/sales/approvals.ts'),
+    source('lib/apps/sales/service.ts'),
+    source('app/api/apps/sales/route.ts'),
+    source('app/apps/sales/SalesApprovalsManager.tsx'),
+  ]);
+
+  const helperStart = engine.indexOf('async function cancelPendingSalesQuoteApproval(');
+  const helperEnd = engine.indexOf('\n}', helperStart);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart);
+  const helper = engine.slice(helperStart, helperEnd);
+  assert.match(helper, /UPDATE sales_quote_approval_requests/);
+  assert.match(helper, /WHERE company_id=\$1 AND quote_id=\$2 AND status='pending'/);
+  assert.match(helper, /SET status=\$3, completed_at=NOW\(\), updated_at=NOW\(\)/);
+  assert.match(helper, /RETURNING id/);
+
+  assert.match(engine, /export async function cancelSalesQuoteApproval\(input: Record<string, unknown>\)/);
+  assert.match(engine, /cancelPendingSalesQuoteApproval\([\s\S]{0,150}'cancelled'/);
+  assert.match(engine, /cancelPendingSalesQuoteApproval\([\s\S]{0,150}'superseded'/);
+  assert.match(service, /cancelSalesQuoteApproval/);
+  assert.match(route, /cancel_quote_approval:\s*cancelSalesQuoteApproval/);
+  assert.match(manager, /action: 'cancel_quote_approval'/);
+});
+
+test('approval satisfaction rejects approved quotes whose stored approval fingerprint is stale', async () => {
+  const engine = await source('lib/apps/sales/approvals.ts');
+  const start = engine.indexOf('export async function assertSalesQuoteApprovalSatisfied(');
+  const end = engine.indexOf('\n}\n', start) + 2;
+  assert.ok(start >= 0 && end > start);
+  const guard = engine.slice(start, end);
+
+  assert.match(guard, /if \(\(matching \|\| legacyRequired\) && approvalStatus !== 'approved'\)/);
+  const approvedQuery = guard.indexOf('SELECT quote_fingerprint FROM sales_quote_approval_requests');
+  const statusGuard = guard.indexOf("if ((matching || legacyRequired) && approvalStatus !== 'approved')");
+  assert.ok(approvedQuery > statusGuard, 'fingerprint comparison must follow the normal approval requirement guard');
+  assert.match(guard, /status='approved'/);
+  assert.match(guard, /ORDER BY completed_at DESC NULLS LAST, id DESC/);
+  assert.match(guard, /approvalStatus === 'approved'/);
+  assert.match(guard, /String\(approvedFingerprint\) !== snapshot\.fingerprint/);
+  assert.match(guard, /Quotation terms changed after approval\. Resubmit for approval\./);
+  assert.match(guard, /if \(matching \|\| legacyRequired\) \{/,
+    'stale fingerprints from obsolete/superseded legacy approval requirements must not regress unrelated quotes');
+});
+
+test('approval request pagination uses an explicit bounded offset and limit and returns paging metadata', async () => {
+  const engine = await source('lib/apps/sales/approvals.ts');
+  const start = engine.indexOf('export async function getSalesQuoteApprovalData(');
+  const end = engine.indexOf('\n}\n', start) + 2;
+  assert.ok(start >= 0 && end > start);
+  const loader = engine.slice(start, end);
+
+  assert.match(loader, /Math\.min\(rawOffset, 1_000_000\)/);
+  assert.match(loader, /Math\.min\(rawLimit, 100\)/);
+  assert.match(loader, /OFFSET \$2 LIMIT \$3/);
+  assert.match(loader, /\[context\.companyId, offset, limit\]/);
+  for (const field of ['policies', 'requests', 'totalCount', 'hasMore', 'offset', 'limit']) {
+    assert.match(loader, new RegExp('\\b' + field + '\\s*:'));
+  }
 });
