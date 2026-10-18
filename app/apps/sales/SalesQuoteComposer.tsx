@@ -1059,7 +1059,6 @@ export default function SalesQuoteComposer({
                       .currency
                   }
                   type="number"
-                  required
                   value={
                     manualExchangeRate
                   }
@@ -1067,6 +1066,9 @@ export default function SalesQuoteComposer({
                     setManualExchangeRate
                   }
                 />
+                <span className="mt-1 block text-[11px] text-slate-500">
+                  Required before saving when the quotation currency differs from the company currency.
+                </span>
               )
             }
             <Input
