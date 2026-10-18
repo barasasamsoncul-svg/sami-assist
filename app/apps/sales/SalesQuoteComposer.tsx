@@ -156,6 +156,15 @@ export default function SalesQuoteComposer({
   onLocalError?:
     (message: string) => void;
 }) {
+  const initialTemplateId =
+    initialQuote?.templateId &&
+    data.templates.some(template => template.id === initialQuote.templateId)
+      ? initialQuote.templateId
+      : data.templates.find(template => template.isDefault)?.id ||
+        data.templates[0]?.id ||
+        '';
+  const initialTemplate = data.templates.find(template => template.id === initialTemplateId);
+
   const [
     customerId,
     setCustomerId,
@@ -337,10 +346,9 @@ export default function SalesQuoteComposer({
     setNotes,
   ] =
     useState(
-      initialQuote
-        ?.notes ||
-      data.settings
-        .defaultNotes ||
+      initialQuote?.notes ??
+      initialTemplate?.notes ??
+      data.settings.defaultNotes ??
       '',
     );
 
@@ -349,10 +357,9 @@ export default function SalesQuoteComposer({
     setTerms,
   ] =
     useState(
-      initialQuote
-        ?.terms ||
-      data.settings
-        .termsAndConditions ||
+      initialQuote?.terms ??
+      initialTemplate?.terms ??
+      data.settings.termsAndConditions ??
       '',
     );
 
@@ -370,17 +377,7 @@ export default function SalesQuoteComposer({
     templateId,
     setTemplateId,
   ] =
-    useState(
-      data.templates
-        .find(
-          item =>
-            item.isDefault,
-        )
-        ?.id ||
-      data.templates[0]
-        ?.id ||
-      '',
-    );
+    useState(initialTemplateId);
 
   const [
     pricelistId,
@@ -1185,13 +1182,15 @@ export default function SalesQuoteComposer({
                     value={
                       templateId
                     }
-                    onChange={
-                      event =>
-                        setTemplateId(
-                          event.target
-                            .value,
-                        )
-                    }
+                    onChange={event => {
+                      const selectedId = event.target.value;
+                      setTemplateId(selectedId);
+                      const selectedTemplate = data.templates.find(template => template.id === selectedId);
+                      if (selectedTemplate) {
+                        setNotes(selectedTemplate.notes ?? data.settings.defaultNotes ?? '');
+                        setTerms(selectedTemplate.terms ?? data.settings.termsAndConditions ?? '');
+                      }
+                    }}
                     className="mt-1 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
                   >
                     {
