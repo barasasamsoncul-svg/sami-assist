@@ -4,6 +4,11 @@ import {
 } from 'next/server';
 
 import {
+  parseSalesRequestBody,
+  SalesRequestBodyError,
+} from '@/lib/apps/sales/request-body';
+
+import {
   SalesError,
 } from '@/lib/apps/sales/context';
 
@@ -58,12 +63,7 @@ export async function POST(
     } =
       await params;
 
-    const body =
-      await request
-        .json()
-        .catch(
-          () => ({}),
-        );
+    const body = await parseSalesRequestBody(request);
 
     const payload =
       body &&
@@ -123,6 +123,13 @@ export async function POST(
   } catch (
     error
   ) {
+    if (error instanceof SalesRequestBodyError) {
+      return json(
+        { success: false, code: error.code, error: error.message },
+        error.status,
+      );
+    }
+
     if (
       error instanceof
         SalesError
