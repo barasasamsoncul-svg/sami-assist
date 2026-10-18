@@ -16,6 +16,7 @@ import {
   applySalesQuoteTemplate,
   approveSalesReturn,
   cancelSalesOrder,
+  cancelSalesQuoteApproval,
   changeSalesQuoteStatus,
   convertSalesQuoteToInvoice,
   createSalesCatalogItem,
@@ -726,6 +727,8 @@ export async function POST(
           bulkInvoiceSalesOrders,
         send_quote:
           sendSalesQuote,
+        cancel_quote_approval:
+          cancelSalesQuoteApproval,
         change_quote_status:
           changeSalesQuoteStatus,
         request_quote_approval:

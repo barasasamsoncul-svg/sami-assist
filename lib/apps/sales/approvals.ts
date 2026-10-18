@@ -165,6 +165,97 @@ export async function getSalesQuoteApprovalData() {
   return { policies: policies.rows, requests: queue.rows };
 }
 
+
+/**
+ * Cancels a pending internal approval request for a draft quotation.
+ * The quote editor permission is required; both the request and quote state
+ * are changed atomically, with an approval-history entry for auditability.
+ */
+export async function cancelSalesQuoteApproval(input: Record<string, unknown>) {
+  const context = await requireSalesContext(SALES_PERMISSIONS.QUOTE_EDIT);
+  return cancelSalesQuoteApprovalTransaction(input, context);
+}
+
+export async function cancelSalesQuoteApprovalTransaction(
+  input: Record<string, unknown>,
+  context: Awaited<ReturnType<typeof requireSalesContext>>,
+) {
+  const quoteId = requireUuid(input.quoteId, 'Quote');
+  const reason = nullableText(input.reason, 2000) || 'Internal approval request cancelled.';
+  const client = await context.pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const snapshot = await quoteSnapshot(client, context.companyId, quoteId, true);
+    const quote = snapshot.quote;
+
+    if (String(quote.status) !== 'draft' || String(quote.approval_status) !== 'pending') {
+      throw new SalesError(
+        'QUOTE_STATE_INVALID',
+        'Only draft quotations with a pending internal approval request can be cancelled.',
+      );
+    }
+
+    const requestResult = await client.query(
+      `SELECT id FROM sales_quote_approval_requests
+       WHERE company_id=$1 AND quote_id=$2 AND status='pending'
+       FOR UPDATE`,
+      [context.companyId, quoteId],
+    );
+
+    if (requestResult.rows.length !== 1) {
+      throw new SalesError('QUOTE_STATE_INVALID', 'No active approval request exists for this quotation.');
+    }
+
+    const requestId = String(requestResult.rows[0].id);
+
+    await client.query(
+      `UPDATE sales_quote_approval_requests
+       SET status='cancelled', completed_at=NOW(), updated_at=NOW()
+       WHERE id=$1 AND company_id=$2 AND status='pending'`,
+      [requestId, context.companyId],
+    );
+
+    await client.query(
+      `UPDATE sales_quotes
+       SET approval_status='draft',
+           approval_requested_at=NULL,
+           approval_requested_by=NULL,
+           approved_at=NULL,
+           approved_by=NULL,
+           approval_rejected_at=NULL,
+           approval_rejected_by=NULL,
+           approval_rejection_reason=NULL,
+           updated_by=$3,
+           updated_at=NOW()
+       WHERE id=$1 AND company_id=$2`,
+      [quoteId, context.companyId, context.userId],
+    );
+
+    await client.query(
+      `INSERT INTO sales_quote_approval_history
+         (quote_id, company_id, from_status, to_status, reason, changed_by)
+       VALUES ($1, $2, 'pending', 'draft', $3, $4)`,
+      [quoteId, context.companyId, reason, context.userId],
+    );
+
+    await client.query('COMMIT');
+
+    return {
+      id: quoteId,
+      approvalStatus: 'draft',
+      requestId,
+      cancelled: true,
+    };
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch {}
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function assertSalesQuoteApprovalSatisfied(client: Queryable, companyId: string, quoteId: string) {
   const snapshot = await quoteSnapshot(client, companyId, quoteId);
   const matching = (await currentPolicies(client, companyId)).find(policy => policyMatches(policy, snapshot.quote));
