@@ -107,3 +107,24 @@ test('approval policy and queue are available in the Sales UI', async () => {
   assert.match(detail, /No approval required/);
   assert.match(workspace, /Quote approvals/);
 });
+
+
+test('Sales approval queue supports paginated retrieval and requester/editor withdrawal', async () => {
+  const [engine, route, manager] = await Promise.all([
+    source('lib/apps/sales/approvals.ts'),
+    source('app/api/apps/sales/route.ts'),
+    source('app/apps/sales/SalesApprovalsManager.tsx'),
+  ]);
+
+  assert.match(engine, /LIMIT \\$2 OFFSET \\$3/);
+  assert.match(engine, /COUNT\\(\\*\\)::int AS total_count/);
+  assert.match(engine, /hasMore: offset \\+ requests\\.length < totalCount/);
+  assert.match(engine, /String\\(requested_by \\?\\? ''\\) === context\\.userId/);
+  assert.match(engine, /SALES_PERMISSIONS\\.QUOTE_EDIT/);
+  assert.match(route, /getSalesQuoteApprovalData\\(\\{[\\s\\S]*offset:[\\s\\S]*limit:/);
+  assert.match(manager, /body\\.approvals\\.hasMore === true/);
+  assert.match(manager, /request\\.canWithdraw &&/);
+  assert.match(manager, /action: 'cancel_quote_approval'/);
+  assert.match(manager, /Load more/);
+  assert.match(manager, /pattern="\\^\\[a-z0-9\\]\\[a-z0-9\\.\\_:\\\\-\\]\\*\\\$"/);
+});
