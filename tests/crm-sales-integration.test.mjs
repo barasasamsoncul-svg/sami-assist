@@ -384,3 +384,30 @@ test('CRM relationship health ranks accounts from scoped engagement, coverage an
   assert.ok(workspace.includes("section === 'health'"));
   assert.ok(workspaceClient.includes('CrmRelationshipHealthPanel'));
 });
+
+
+test('CRM reports expose company-scoped relationship coverage, lifecycle, activity trends and CSV export', async () => {
+  const [route, panel, workspace, client] = await Promise.all([
+    source('app/api/apps/crm/reports/route.ts'),
+    source('app/apps/crm/CrmReportsPanel.tsx'),
+    source('app/apps/crm/CrmWorkspace.tsx'),
+    source('app/apps/crm/CrmWorkspaceClient.tsx'),
+  ]);
+
+  assert.ok(route.includes("requireEnterpriseModuleTableContext('crm', 'crm_accounts', 'view')"));
+  assert.ok(route.includes("requireEnterpriseModuleTableContext('crm', 'crm_contacts', 'view')"));
+  assert.ok(route.includes("requireEnterpriseModuleTableContext('crm', 'crm_interactions', 'view')"));
+  assert.ok(route.includes('accounts.companyId !== contacts.companyId'));
+  assert.ok(route.includes('a.company_id = $1'));
+  assert.ok(route.includes('i.company_id = $1'));
+  assert.ok(route.includes("INTERVAL '5 months'"));
+  assert.ok(route.includes('overdue_followups'));
+  assert.ok(route.includes('accounts_created_30_days'));
+  assert.ok(panel.includes('/api/apps/crm/reports'));
+  assert.ok(panel.includes('Export CSV'));
+  assert.ok(panel.includes('URL.createObjectURL'));
+  assert.ok(panel.includes('Six-month interaction trend'));
+  assert.ok(workspace.includes("section === 'reports'"));
+  assert.ok(workspace.includes("key: 'reports'"));
+  assert.ok(client.includes('CrmReportsPanel'));
+});
