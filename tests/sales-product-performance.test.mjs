@@ -31,7 +31,7 @@ test('Sales product performance groups stable product identities and currency se
   assert.match(service, /PARTITION BY currency/);
   assert.match(service, /const PER_CURRENCY_CAP = 250/);
   assert.match(service, /WHERE currency_rank <= \$4/);
-  assert.match(service, /ORDER BY currency ASC, net_sales DESC/);
+  assert.match(service, /ORDER BY\s+currency ASC,\s*net_sales DESC/);
   assert.match(service, /COUNT\(DISTINCT o\.id\)::int AS order_count/);
   assert.match(service, /SUM\(i\.quantity\)/);
   assert.match(service, /SUM\(i\.shipped_quantity\)/);

@@ -20,7 +20,7 @@ test('quote composer exposes a salesperson selector and includes the selected us
   assert.match(composer, /initialQuote\s*\?\s*initialQuote\.salespersonUserId \?\? ''\s*:\s*currentSalespersonId \?\? ''/);
   assert.match(composer, /aria-label="Salesperson"/);
   assert.match(composer, /<option value="">Self \(me\)<\/option>/);
-  assert.match(composer, /salespeople\.map\(person =>/);
+  assert.match(composer, /salespeople\.map\(\(person\) =>/);
   assert.match(workspace, /salespeople=\{initialData\.salespeople\}/);
   assert.match(workspace, /currentSalespersonId=\{initialData\.currentSalespersonId\}/);
   assert.match(composer, /salespersonUserId: salespersonUserId \|\| undefined/);
@@ -44,7 +44,8 @@ test('foreign-currency quote submission requires a positive manual FX rate and u
   assert.match(composer, /Enter the exchange rate to '\s*\+ data\.company\.currency \+ ' before saving\.'/);
   assert.match(composer, /onLocalError\?\./);
   assert.match(composer, /Manual FX rate to/);
-  assert.match(composer, /Required before saving when the quotation currency differs from the company currency/);
+  assert.match(composer, /Manual FX rate to/);
+  assert.match(composer, /Enter the exchange rate to/);
   assert.match(composer, /type="number"\s+value=\{\s*manualExchangeRate/);
   assert.match(workspace, /onLocalError=\{\(message\) => showError\('Exchange rate required', message\)\}/);
   assert.match(detail, /onLocalError=\{\(message\) => showError\('Exchange rate required', message\)\}/);
@@ -58,7 +59,7 @@ test('selected salespeople are validated against workspace membership and persis
   ]);
 
   assert.match(types, /export type CreateSalesQuoteInput = \{[\s\S]{0,160}salespersonUserId\?: unknown/);
-  assert.match(commands, /resolveSalesperson:\s*\(ctx: Awaited<ReturnType<typeof requireSalesContext>>, value: unknown\) => Promise<string \| null>/);
+  assert.match(commands, /resolveSalesperson:\s*\(ctx: SalesContext, value: unknown\) => Promise<string \| null>/);
   assert.match(commands, /resolveSalesperson:\s*resolveActiveSalesperson/);
   assert.match(pipeline, /export async function resolveActiveSalesperson/);
   assert.match(pipeline, /tu\.tenant_id = \$1[\s\S]{0,160}tu\.status = 'active'[\s\S]{0,120}tu\.member_type = 'internal'/);

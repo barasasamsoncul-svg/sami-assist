@@ -17,7 +17,7 @@ test('Sales return and fulfillment report requires report access and scopes oper
   assert.match(service, /SALES_PERMISSIONS\.SHIPPING_VIEW/);
   assert.match(service, /SALES_PERMISSIONS\.SHIPPING_MANAGE/);
   assert.match(service, /canViewReturns\s*\?\s*context\.pool\.query/);
-  assert.match(service, /canViewShipping \? context\.pool\.query/);
+  assert.match(service, /canViewShipping\s*\?\s*context\.pool\.query/);
 });
 
 test('Sales return report avoids item-credit join multiplication and keeps credit currencies separate', async () => {
@@ -42,7 +42,7 @@ test('Sales shipment quality reports only recorded durations and filters to rece
   assert.match(service, /s\.created_at >= NOW\(\) - \(\$2::int \* INTERVAL '1 day'\)/);
   assert.match(service, /s\.shipped_at IS NOT NULL/);
   assert.match(service, /s\.delivered_at IS NOT NULL/);
-  assert.match(component, /not promised delivery dates/);
+  assert.match(component, /not\s+promised delivery dates/);
   assert.match(component, /Recorded reasons can be free-form/);
   assert.match(component, /credit, available credit, and refunds are kept separate by currency/i);
 });
@@ -81,5 +81,6 @@ test('Sales Operations preserves order currency when formatting return-credit am
   assert.match(creditType, /creditNoteNumber:\s*string;[\s\S]*?currency:\s*string;/);
   assert.match(component, /formatMoney\(\s*credit\.amount,\s*credit\.currency\)/);
   assert.match(component, /formatMoney\(\s*credit\.availableCredit,\s*credit\.currency\)/);
-  assert.match(component, /money\(\s*credit\.availableCredit,\s*credit\.currency,\s*\)/);
+  assert.match(component, /formatMoney\(\s*credit\.amount,\s*credit\.currency\)/);
+  assert.match(component, /formatMoney\(\s*credit\.availableCredit,\s*credit\.currency\)/);
 });

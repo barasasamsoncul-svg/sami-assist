@@ -34,7 +34,7 @@ test('Sales win/loss analytics includes trailing 90-day closures and avoids mixi
   assert.match(service, /AS won_value/);
   assert.match(service, /AS lost_value/);
   assert.match(service, /100\.0 \* COUNT\(\*\) FILTER/);
-  assert.match(service, /NULLIF\(COUNT\(\*\) FILTER/);
+  assert.match(service, /NULLIF\(\s*COUNT\(\*\) FILTER/);
   assert.match(service, /AVG\([\s\S]*o\.won_at - o\.created_at/);
   assert.match(service, /percentile_cont\(0\.5\) WITHIN GROUP/);
   assert.match(service, /AS average_days_to_lose/);

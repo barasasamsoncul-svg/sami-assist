@@ -31,8 +31,9 @@ test('Sales target UI formats monetary values in company currency and keeps orde
   const ui = await source('app/apps/sales/SalesOrganizationManager.tsx');
   const pkg = await source('package.json');
   assert.match(ui, /companyCurrency: string/);
-  assert.match(ui, /target\.metric === 'orders'[\s\S]*?target\.actualValue\.toLocaleString\(\)[\s\S]*?money\(\s*target\.actualValue,\s*data\.companyCurrency/s);
-  assert.match(ui, /target\.metric === 'orders'[\s\S]*?target\.targetValue\.toLocaleString\(\)[\s\S]*?money\(\s*target\.targetValue,\s*data\.companyCurrency/s);
+  assert.match(ui, /const isOrder = target\.metric === 'orders'/);
+  assert.match(ui, /isOrder\s*\?\s*target\.actualValue\.toLocaleString\(\)\s*:\s*formatMoney\(target\.actualValue,\s*data\.companyCurrency\)/);
+  assert.match(ui, /isOrder\s*\?\s*target\.targetValue\.toLocaleString\(\)\s*:\s*formatMoney\(\s*target\.targetValue,\s*data\.companyCurrency/);
   assert.match(ui, /Revenue and margin targets use company currency/);
   assert.match(pkg, /tests\/sales-target-attainment\.test\.mjs/);
 });

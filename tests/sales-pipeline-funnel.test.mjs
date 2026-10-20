@@ -39,7 +39,7 @@ test('Sales opportunity funnel reports counts and correct value by open, won and
   assert.match(service, /GROUP BY[\s\S]{0,500}UPPER\(COALESCE\(/);
   assert.match(service, /BTRIM\(o\.currency\)/);
   assert.match(service, /ORDER BY s\.sequence ASC/);
-  assert.match(component, /Open pipeline value/);
+  assert.match(component, /if \(row\.stageType === 'open'\) return row\.pipelineValue/);
   assert.match(component, /Won value/);
   assert.match(component, /Lost value/);
   assert.match(component, /Weighted value/);
@@ -66,7 +66,7 @@ test('Sales funnel highlights overdue closes and opportunities aging in their cu
   assert.match(component, /Overdue close/);
   assert.match(component, /30\+ days in stage/);
   assert.match(component, /formatMoney\(row\.overdueValue,\s*currency\)/);
-  assert.match(component, /money\(row\.staleValue, currency\)/);
+  assert.match(component, /formatMoney\(row\.staleValue,\s*currency\)/);
 });
 
 test('Sales Reports render stage funnel data without changing other Sales route views', async () => {
@@ -111,7 +111,8 @@ test('Sales opportunity risk queue is company and tenant scoped and prioritizes 
   assert.match(riskService, /AS overdue/);
   assert.match(riskService, /AS missing_close_date/);
   assert.match(riskService, /AS stale/);
-  assert.match(riskService, /LIMIT 50/);
+  assert.match(riskService, /const RISK_QUEUE_LIMIT = 50/);
+  assert.match(riskService, /LIMIT \$5/);
   assert.match(riskService, /ORDER BY[\s\S]*CASE[\s\S]*expected_close_date < CURRENT_DATE/);
 });
 
@@ -128,6 +129,6 @@ test('Sales Reports render actionable risk records with reasons, owner, close da
   assert.match(component, /30\+ days in stage/);
   assert.match(component, /salespersonName/);
   assert.match(component, /expectedCloseDate/);
-  assert.match(component, /money\(row\.expectedValue, row\.currency\)/);
+  assert.match(component, /formatMoney\(row\.expectedValue,\s*row\.currency\)/);
   assert.match(component, /Open opportunities/);
 });
