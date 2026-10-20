@@ -14,11 +14,14 @@ test('quote revisions supersede pending approval requests and record the closed 
   ]);
   assert.match(approvals, /export async function cancelPendingSalesQuoteApproval/);
   assert.match(approvals, /return result\.rows\.map\(\(row\) => String\(row\.id\)\)/);
-  const revisionInsert = commercial.indexOf('INSERT INTO sales_quote_revisions');
-  const cancel = commercial.indexOf("cancelPendingSalesQuoteApproval(client, context.companyId, quoteId, 'superseded')", revisionInsert);
-  const quoteUpdate = commercial.indexOf('UPDATE sales_quotes', revisionInsert);
+  const revisionStart = commercial.indexOf('export async function createSalesQuoteRevision(');
+  const revisionEnd = commercial.indexOf('\n/* -------------------------------------------------------------------------- */', revisionStart + 30);
+  const revision = commercial.slice(revisionStart, revisionEnd);
+  const revisionInsert = revision.indexOf('INSERT INTO sales_quote_revisions');
+  const cancel = revision.indexOf('cancelPendingSalesQuoteApproval(');
+  const quoteUpdate = revision.indexOf('UPDATE sales_quotes');
   assert.ok(revisionInsert >= 0 && cancel > revisionInsert && quoteUpdate > cancel);
-  assert.match(commercial, /type:\s*'sales\.quote\.revised'[\s\S]*?metadata:\s*\{[\s\S]*?cancelledApprovalRequestIds/);
+  assert.match(revision, /type:\s*'sales\.quote\.revised'[\s\S]*?metadata:\s*\{[\s\S]*?cancelledApprovalRequestIds/);
 });
 
 test('quote authoring resolves an explicitly selected active salesperson through the shared pipeline resolver', async () => {

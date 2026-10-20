@@ -32,7 +32,7 @@ test('Sales expiry uses locked 500-row batches and writes status, history, and a
   assert.match(expiry, /await client\.query\('ROLLBACK'\)/);
 });
 
-l=>l.replace("hourly internal cron route","daily internal cron route")
+test('daily internal cron route is authenticated and tracked as a platform job', async () => {
   const route = await source('app/api/internal/sales/expire-quotes/route.ts');
   const vercel = JSON.parse(await source('vercel.json'));
   assert.match(route, /process\.env\.CRON_SECRET/);

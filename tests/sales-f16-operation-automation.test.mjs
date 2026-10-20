@@ -45,7 +45,7 @@ test('receiving a sales return emits the recalculated fulfillment state after co
   assert.ok(commit >= 0 && returnReceivedEvent > commit, 'return.received automation must be post-commit');
   assert.ok(returnReceivedEvent < event, 'return.received is emitted before the fulfillment-change notification');
   assert.ok(event > commit, 'return fulfillment automation must be post-commit');
-  assert.match(fn, /'fulfillment:'\s*\+\s*fulfillmentOrderId\s*\+\s*':'\s*\+\s*fulfillmentSnapshot\.fulfillmentStatus/);
+  assert.match(fn, /'fulfillment:'\s*\+\s*orderId\s*\+\s*':'\s*\+\s*fulfillmentSnapshot\.fulfillmentStatus/);
 });
 
 test('shipment creation documents that planned quantities do not dispatch fulfillment-changed', async () => {

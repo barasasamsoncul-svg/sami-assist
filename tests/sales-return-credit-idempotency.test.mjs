@@ -52,7 +52,7 @@ test('Sales return-credit issuance serializes retries and preserves refund lifec
   assert.match(credit, /!\[\s*'received',\s*'credited',\s*'partially_refunded',\s*'refunded',?\s*\]\.includes/, 'allow idempotent recovery of a return whose refund already completed');
   assert.ok(invoiceCredit > lock && unlock > invoiceCredit, 'hold the lock over cross-module credit creation and recovery');
   assert.ok(
-    compact.includes("status = CASE WHEN status IN ('partially_refunded', 'refunded') THEN status WHEN $4::boolean THEN 'credited' ELSE status END"),
+  assert.match(compact, /status = CASE WHEN status IN \('partially_refunded'\s*,\s*'refunded'\) THEN status WHEN \$4::boolean THEN 'credited' ELSE status END/);
     'do not overwrite a refund state or mark an un-invoiced return as credited',
   );
   assert.ok(compact.includes("credited_at = CASE WHEN $4::boolean THEN COALESCE(credited_at, NOW()) ELSE credited_at END"));
