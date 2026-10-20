@@ -266,9 +266,48 @@ test('CRM data quality detects candidate duplicates, protects account merges, an
   assert.ok(qualityPanel.includes('/api/apps/crm/duplicate-candidates'));
   assert.ok(qualityPanel.includes('/api/apps/crm/accounts/merge'));
   assert.ok(qualityPanel.includes('Type the name of the account to retire'));
-  assert.ok(qualityPanel.includes('Contact duplicates are flagged for review only'));
+  assert.ok(qualityPanel.includes('/api/apps/crm/contacts/merge'));
   assert.ok(workspace.includes("section === 'data-quality'"));
   assert.ok(workspace.includes("label: 'Data quality'"));
   assert.ok(client.includes('CrmDataQualityPanel'));
   assert.ok(profile.includes('<CrmAccountOwnerPanel'));
+});
+
+
+test('CRM contact merging preserves relationship integrity and writes a merge audit trail', async () => {
+  const [schema, runtimeSchema, mergeRoute, duplicateRoute, qualityPanel] = await Promise.all([
+    source('lib/apps/crm/schema.sql'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+    source('app/api/apps/crm/contacts/merge/route.ts'),
+    source('app/api/apps/crm/duplicate-candidates/route.ts'),
+    source('app/apps/crm/CrmDataQualityPanel.tsx'),
+  ]);
+
+  assert.ok(schema.includes('CREATE TABLE IF NOT EXISTS public.crm_contact_merge_history'));
+  assert.ok(runtimeSchema.includes('CREATE TABLE IF NOT EXISTS public.crm_contact_merge_history'));
+  assert.ok(schema.includes('survivor_snapshot JSONB NOT NULL'));
+  assert.ok(schema.includes('source_snapshot JSONB NOT NULL'));
+  assert.ok(schema.includes('moved_interaction_count INTEGER NOT NULL DEFAULT 0'));
+
+  assert.ok(duplicateRoute.includes("THEN 'shared_email'"));
+  assert.ok(duplicateRoute.includes("LOWER(BTRIM(c1.email)) = LOWER(BTRIM(c2.email))"));
+  assert.ok(mergeRoute.includes("requireEnterpriseModuleTableContext('crm', 'crm_contacts', 'edit')"));
+  assert.ok(mergeRoute.includes("requireEnterpriseModuleTableContext('crm', 'crm_interactions', 'edit')"));
+  assert.ok(mergeRoute.includes('FOR UPDATE'));
+  assert.ok(mergeRoute.includes('CONTACT_ACCOUNT_CONFLICT'));
+  assert.ok(mergeRoute.includes('CONTACT_INTERACTION_ACCOUNT_CONFLICT'));
+  assert.ok(mergeRoute.includes('SOURCE_NAME_CONFIRMATION_MISMATCH'));
+  assert.ok(mergeRoute.includes("SET deleted_at = NOW()"));
+  assert.ok(mergeRoute.includes('SET contact_id = $3'));
+  assert.ok(mergeRoute.includes('do_not_contact = $14'));
+  assert.ok(mergeRoute.includes('crm_contact_merge_history'));
+  assert.ok(mergeRoute.includes("await client.query('BEGIN')"));
+  assert.ok(mergeRoute.includes("await client.query('COMMIT')"));
+  assert.ok(mergeRoute.includes("await client.query('ROLLBACK')"));
+
+  assert.ok(qualityPanel.includes('/api/apps/crm/contacts/merge'));
+  assert.ok(qualityPanel.includes('Select surviving contact'));
+  assert.ok(qualityPanel.includes('Type the name of the contact to retire'));
+  assert.ok(qualityPanel.includes('Account relationship conflict · merge blocked'));
+  assert.ok(!qualityPanel.includes('Contact duplicates are flagged for review only'));
 });

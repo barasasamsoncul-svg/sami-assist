@@ -104,6 +104,8 @@ export async function GET() {
            c1.account_id AS left_account_id, c2.account_id AS right_account_id,
            a1.account_name AS left_account_name, a2.account_name AS right_account_name,
            CASE
+             WHEN NULLIF(LOWER(BTRIM(c1.email)), '') IS NOT NULL
+              AND LOWER(BTRIM(c1.email)) = LOWER(BTRIM(c2.email)) THEN 'shared_email'
              WHEN NULLIF(REGEXP_REPLACE(COALESCE(NULLIF(BTRIM(c1.phone), ''), NULLIF(BTRIM(c1.mobile), ''), ''), '[^0-9]', '', 'g'), '') IS NOT NULL
               AND REGEXP_REPLACE(COALESCE(NULLIF(BTRIM(c1.phone), ''), NULLIF(BTRIM(c1.mobile), ''), ''), '[^0-9]', '', 'g') = REGEXP_REPLACE(COALESCE(NULLIF(BTRIM(c2.phone), ''), NULLIF(BTRIM(c2.mobile), ''), ''), '[^0-9]', '', 'g') THEN 'shared_phone'
              ELSE 'same_name_same_account'
@@ -118,7 +120,8 @@ export async function GET() {
          WHERE c1.company_id = $1
            AND c1.deleted_at IS NULL
            AND (
-             (NULLIF(REGEXP_REPLACE(COALESCE(NULLIF(BTRIM(c1.phone), ''), NULLIF(BTRIM(c1.mobile), ''), ''), '[^0-9]', '', 'g'), '') IS NOT NULL
+             (NULLIF(LOWER(BTRIM(c1.email)), '') IS NOT NULL AND LOWER(BTRIM(c1.email)) = LOWER(BTRIM(c2.email)))
+             OR (NULLIF(REGEXP_REPLACE(COALESCE(NULLIF(BTRIM(c1.phone), ''), NULLIF(BTRIM(c1.mobile), ''), ''), '[^0-9]', '', 'g'), '') IS NOT NULL
                AND REGEXP_REPLACE(COALESCE(NULLIF(BTRIM(c1.phone), ''), NULLIF(BTRIM(c1.mobile), ''), ''), '[^0-9]', '', 'g') = REGEXP_REPLACE(COALESCE(NULLIF(BTRIM(c2.phone), ''), NULLIF(BTRIM(c2.mobile), ''), ''), '[^0-9]', '', 'g'))
              OR (c1.account_id IS NOT NULL AND c1.account_id = c2.account_id
                AND REGEXP_REPLACE(LOWER(BTRIM(c1.first_name || ' ' || c1.last_name)), '[^[:alnum:]]', '', 'g')

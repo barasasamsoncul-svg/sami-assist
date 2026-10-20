@@ -2284,6 +2284,24 @@ CREATE INDEX IF NOT EXISTS idx_crm_interactions_due_queue
   ON public.crm_interactions(company_id, owner_user_id, due_at)
   WHERE deleted_at IS NULL AND status = 'planned';
 
+CREATE TABLE IF NOT EXISTS public.crm_contact_merge_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  survivor_contact_id UUID NOT NULL REFERENCES public.crm_contacts(id) ON DELETE RESTRICT,
+  source_contact_id UUID NOT NULL REFERENCES public.crm_contacts(id) ON DELETE RESTRICT,
+  survivor_snapshot JSONB NOT NULL,
+  source_snapshot JSONB NOT NULL,
+  merged_account_id UUID REFERENCES public.crm_accounts(id) ON DELETE SET NULL,
+  moved_interaction_count INTEGER NOT NULL DEFAULT 0,
+  merged_by UUID NOT NULL,
+  merged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (survivor_contact_id <> source_contact_id),
+  CHECK (moved_interaction_count >= 0),
+  UNIQUE (company_id, source_contact_id)
+);
+CREATE INDEX IF NOT EXISTS idx_crm_contact_merge_history_survivor
+  ON public.crm_contact_merge_history(company_id, survivor_contact_id, merged_at DESC);
+
 CREATE TABLE IF NOT EXISTS public.crm_account_owner_history (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
