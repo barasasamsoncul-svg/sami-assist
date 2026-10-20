@@ -1080,21 +1080,21 @@ integration(
           footer_text TEXT
         );
 
-        CREATE TEMP TABLE products (
+        CREATE TABLE public.products (
           id UUID PRIMARY KEY,
           company_id UUID NOT NULL,
           product_type TEXT NOT NULL DEFAULT 'stockable',
           deleted_at TIMESTAMPTZ
         );
 
-        CREATE TEMP TABLE warehouses (
+        CREATE TABLE public.warehouses (
           id UUID PRIMARY KEY,
           company_id UUID NOT NULL,
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           deleted_at TIMESTAMPTZ
         );
 
-        CREATE TEMP TABLE stock_levels (
+        CREATE TABLE public.stock_levels (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           company_id UUID NOT NULL,
           product_id UUID NOT NULL,
@@ -1107,7 +1107,7 @@ integration(
           deleted_at TIMESTAMPTZ
         );
 
-        CREATE TEMP TABLE stock_movements (
+        CREATE TABLE public.stock_movements (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           company_id UUID NOT NULL,
           product_id UUID NOT NULL,
@@ -1121,7 +1121,7 @@ integration(
           deleted_at TIMESTAMPTZ
         );
 
-        CREATE TEMP TABLE stock_reservations (
+        CREATE TABLE public.stock_reservations (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           company_id UUID NOT NULL,
           product_id UUID NOT NULL,

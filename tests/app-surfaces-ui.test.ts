@@ -207,7 +207,10 @@ test(
         moduleKey ===
           'accounting'
           ? /AccountingModuleShell/
-          : /AppSurfaceShell/,
+          : moduleKey ===
+              'crm'
+            ? /CrmModuleShell/
+            : /AppSurfaceShell/,
         moduleKey +
           ' must compose its own standalone app surface.',
       );
@@ -354,6 +357,22 @@ test(
           path +
             ' must preserve Sales-specific shell behavior',
         );
+      } else if (
+        path ===
+          'app/apps/sales/quotes/[quoteId]/page.tsx'
+      ) {
+        assert.match(
+          source,
+          /SalesSectionPage/,
+          path +
+            ' must delegate quote detail to the Sales-owned shell and workspace',
+        );
+        assert.match(
+          source,
+          /view="quotes"/,
+          path +
+            ' must preserve the quotation view context',
+        );
       } else {
         assert.match(
           source,
@@ -468,19 +487,31 @@ test(
           'utf8',
         );
 
-      assert.match(
-        source,
-        /appSidebarItems=/,
-        path +
-          ' must supply its module-specific sidebar navigation.',
-      );
+      if (
+        path ===
+          'app/apps/sales/quotes/[quoteId]/page.tsx'
+      ) {
+        assert.match(
+          source,
+          /SalesSectionPage/,
+          path +
+            ' must delegate sidebar ownership to the Sales section surface.',
+        );
+      } else {
+        assert.match(
+          source,
+          /appSidebarItems=/,
+          path +
+            ' must supply its module-specific sidebar navigation.',
+        );
 
-      assert.match(
-        source,
-        /activeSidebarKey=/,
-        path +
-          ' must identify the active module-sidebar section.',
-      );
+        assert.match(
+          source,
+          /activeSidebarKey=/,
+          path +
+            ' must identify the active module-sidebar section.',
+        );
+      }
     }
 
     const enterprise =

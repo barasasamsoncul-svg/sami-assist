@@ -13,7 +13,9 @@ test('Sales management insights group historical quote and order amounts by reco
   const service = await source('lib/apps/sales/management-insights.ts');
   assert.match(service, /base_currency AS currency/);
   assert.match(service, /GROUP BY status, base_currency/);
-  assert.match(service, /GROUP BY 1, base_currency ORDER BY 1, base_currency/);
+  assert.match(service, /GROUP BY status,\s*base_currency/);
+  assert.match(service, /GROUP BY customer_name,\s*base_currency/);
+  assert.match(service, /GROUP BY base_currency\s+ORDER BY base_currency/);
   assert.match(service, /GROUP BY customer_name, base_currency/);
   assert.match(service, /GROUP BY base_currency\s+ORDER BY base_currency/);
   assert.match(service, /GROUP BY months\.month_start, currencies\.currency/);
@@ -28,7 +30,7 @@ test('Sales management insights group historical quote and order amounts by reco
 test('Sales management insights render each currency in KPIs, follow-up items, and breakdown rows', async () => {
   const component = await source('app/apps/sales/SalesManagementInsights.tsx');
   assert.match(component, /formatCurrencyBreakdown\(summary\.openQuoteValueByCurrency, currency\)/);
-  assert.match(component, /formatCurrencyBreakdown\(data\.orderSummary\.bookedOrderValueByCurrency, currency\)/);
+  assert.match(component, /formatCurrencyBreakdown\(\s*data\.orderSummary\.bookedOrderValueByCurrency,/);
   assert.match(component, /formatMoney\(item\.amount, item\.currency\)/);
   assert.match(component, /row\.month \+ '-' \+ row\.currency/);
   assert.match(component, /grouped by recorded base currency/);

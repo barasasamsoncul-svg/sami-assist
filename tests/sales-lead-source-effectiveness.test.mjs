@@ -12,7 +12,7 @@ test('Sales lead source effectiveness is company scoped and report-permission ga
   const service = await source('lib/apps/sales/lead-source-effectiveness.ts');
   assert.match(service, /requireSalesContext\(SALES_PERMISSIONS\.QUOTE_VIEW\)/);
   assert.match(service, /SALES_PERMISSIONS\.REPORT_VIEW/);
-  assert.match(service, /if \(!canViewReports\) return EMPTY_REPORT/);
+  assert.match(service, /if \(!canViewReports\) \{\s*return \{ \.\.\.EMPTY_REPORT, asOf \};\s*\}/);
   assert.match(service, /l\.company_id = \$1/);
   assert.match(service, /l\.deleted_at IS NULL/);
   assert.match(service, /o\.company_id = \$1/);
@@ -23,7 +23,8 @@ test('Sales lead source effectiveness is company scoped and report-permission ga
 
 test('Sales lead source conversion uses a recent lead cohort and accurate conversion timing', async () => {
   const service = await source('lib/apps/sales/lead-source-effectiveness.ts');
-  assert.match(service, /l\.created_at >= NOW\(\) - INTERVAL '90 days'/);
+  assert.match(service, /const REPORT_WINDOW_DAYS = 90/);
+  assert.match(service, /l\.created_at >= NOW\(\) - \(\$2::int \* INTERVAL '1 day'\)/);
   assert.match(service, /COALESCE\(NULLIF\(BTRIM\(l\.source\), ''\), 'Unspecified'\)/);
   assert.match(service, /status = 'new'/);
   assert.match(service, /status = 'contacted'/);
@@ -44,8 +45,11 @@ test('Sales lead source value analysis keeps pipeline outcomes separated by curr
   assert.match(service, /AS overdue_opportunity_count/);
   assert.match(service, /AS won_value/);
   assert.match(service, /AS lost_value/);
-  assert.match(component, /Opportunity value by lead source/);
-  assert.match(component, /kept separate by currency/);
+  assert.match(component, /Lead source effectiveness/);
+  assert.match(component, /row\.currency/);
+  assert.match(component, /formatMoney\(/);
+  assert.match(component, /const currencies = Array\.from\(new Set\(report\.values\.map\(\(row\) => row\.currency\)\)\)/);
+  assert.match(component, /formatMoney\([^,\n]+,\s*row\.currency\)/);
 });
 
 test('Sales Reports loads and renders lead-source conversion and value attribution', async () => {

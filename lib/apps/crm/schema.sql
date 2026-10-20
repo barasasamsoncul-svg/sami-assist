@@ -34,3 +34,201 @@ CREATE TABLE IF NOT EXISTS public.crm_activities (
 );
 CREATE INDEX IF NOT EXISTS idx_leads_stage ON public.leads(stage);
 CREATE INDEX IF NOT EXISTS idx_opportunities_lead ON public.opportunities(lead_id);
+
+-- CRM owns relationship records; Sales owns leads and opportunities.
+CREATE TABLE IF NOT EXISTS public.crm_accounts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  account_name VARCHAR(255) NOT NULL,
+  account_type VARCHAR(30) NOT NULL DEFAULT 'prospect',
+  lifecycle_stage VARCHAR(30) NOT NULL DEFAULT 'lead',
+  source VARCHAR(120),
+  website VARCHAR(500),
+  industry VARCHAR(160),
+  email VARCHAR(320),
+  phone VARCHAR(80),
+  invoicing_customer_id UUID,
+  employee_count INTEGER,
+  annual_revenue NUMERIC(19,4) NOT NULL DEFAULT 0,
+  owner_user_id UUID,
+  notes TEXT,
+  created_by UUID,
+  updated_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
+  CHECK (account_type IN ('prospect','customer','partner','competitor')),
+  CHECK (lifecycle_stage IN ('lead','qualified','customer','inactive')),
+  CHECK (employee_count IS NULL OR employee_count >= 0),
+  CHECK (annual_revenue >= 0)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_crm_accounts_company_name
+  ON public.crm_accounts(company_id, LOWER(BTRIM(account_name)))
+  WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_crm_accounts_company_lifecycle
+  ON public.crm_accounts(company_id, lifecycle_stage, LOWER(account_name))
+  WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_crm_accounts_company_invoicing_customer
+  ON public.crm_accounts(company_id, invoicing_customer_id)
+  WHERE invoicing_customer_id IS NOT NULL AND deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS public.crm_contacts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  account_id UUID REFERENCES public.crm_accounts(id) ON DELETE SET NULL,
+  first_name VARCHAR(160) NOT NULL,
+  last_name VARCHAR(160) NOT NULL DEFAULT '',
+  job_title VARCHAR(160),
+  department VARCHAR(160),
+  email VARCHAR(320),
+  phone VARCHAR(80),
+  mobile VARCHAR(80),
+  contact_role VARCHAR(30) NOT NULL DEFAULT 'other',
+  preferred_channel VARCHAR(20) NOT NULL DEFAULT 'email',
+  is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+  do_not_contact BOOLEAN NOT NULL DEFAULT FALSE,
+  owner_user_id UUID,
+  notes TEXT,
+  created_by UUID,
+  updated_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
+  CHECK (contact_role IN ('decision_maker','influencer','champion','buyer','user','other')),
+  CHECK (preferred_channel IN ('email','phone','sms','whatsapp','none'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_crm_contacts_company_email
+  ON public.crm_contacts(company_id, LOWER(BTRIM(email)))
+  WHERE deleted_at IS NULL AND NULLIF(BTRIM(email),'') IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_crm_contacts_company_account
+  ON public.crm_contacts(company_id, account_id, LOWER(last_name), LOWER(first_name))
+  WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS public.crm_interactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  account_id UUID REFERENCES public.crm_accounts(id) ON DELETE SET NULL,
+  contact_id UUID REFERENCES public.crm_contacts(id) ON DELETE SET NULL,
+  interaction_type VARCHAR(20) NOT NULL DEFAULT 'note',
+  subject VARCHAR(255) NOT NULL,
+  description TEXT,
+  status VARCHAR(20) NOT NULL DEFAULT 'completed',
+  occurred_at TIMESTAMPTZ,
+  due_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  outcome VARCHAR(255),
+  owner_user_id UUID,
+  created_by UUID,
+  updated_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
+  CHECK (interaction_type IN ('call','email','meeting','note','task','sms','whatsapp','other')),
+  CHECK (status IN ('planned','completed','cancelled'))
+);
+CREATE INDEX IF NOT EXISTS idx_crm_interactions_account_timeline
+  ON public.crm_interactions(company_id, account_id, created_at DESC)
+  WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_crm_interactions_contact_timeline
+  ON public.crm_interactions(company_id, contact_id, created_at DESC)
+  WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_crm_interactions_due_queue
+  ON public.crm_interactions(company_id, owner_user_id, due_at)
+  WHERE deleted_at IS NULL AND status = 'planned';
+
+CREATE TABLE IF NOT EXISTS public.crm_contact_merge_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  survivor_contact_id UUID NOT NULL REFERENCES public.crm_contacts(id) ON DELETE RESTRICT,
+  source_contact_id UUID NOT NULL REFERENCES public.crm_contacts(id) ON DELETE RESTRICT,
+  survivor_snapshot JSONB NOT NULL,
+  source_snapshot JSONB NOT NULL,
+  merged_account_id UUID REFERENCES public.crm_accounts(id) ON DELETE SET NULL,
+  moved_interaction_count INTEGER NOT NULL DEFAULT 0,
+  moved_interaction_snapshots JSONB NOT NULL DEFAULT '[]'::jsonb,
+  recovery_snapshot_version SMALLINT NOT NULL DEFAULT 0,
+  reversed_at TIMESTAMPTZ,
+  reversed_by UUID,
+  merged_by UUID NOT NULL,
+  merged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (survivor_contact_id <> source_contact_id),
+  CHECK (moved_interaction_count >= 0)
+);
+ALTER TABLE public.crm_contact_merge_history
+  ADD COLUMN IF NOT EXISTS moved_interaction_snapshots JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS recovery_snapshot_version SMALLINT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS reversed_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS reversed_by UUID;
+ALTER TABLE public.crm_contact_merge_history
+  DROP CONSTRAINT IF EXISTS crm_contact_merge_history_company_id_source_contact_id_key;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_crm_contact_merge_history_active_source
+  ON public.crm_contact_merge_history(company_id, source_contact_id)
+  WHERE reversed_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_crm_contact_merge_history_survivor
+  ON public.crm_contact_merge_history(company_id, survivor_contact_id, merged_at DESC);
+
+CREATE TABLE IF NOT EXISTS public.crm_account_owner_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  account_id UUID NOT NULL REFERENCES public.crm_accounts(id) ON DELETE CASCADE,
+  previous_owner_user_id UUID,
+  new_owner_user_id UUID,
+  changed_by UUID NOT NULL,
+  changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (previous_owner_user_id IS DISTINCT FROM new_owner_user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_crm_account_owner_history_account
+  ON public.crm_account_owner_history(company_id, account_id, changed_at DESC);
+
+CREATE TABLE IF NOT EXISTS public.crm_account_merge_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  survivor_account_id UUID NOT NULL REFERENCES public.crm_accounts(id) ON DELETE RESTRICT,
+  source_account_id UUID NOT NULL REFERENCES public.crm_accounts(id) ON DELETE RESTRICT,
+  survivor_snapshot JSONB NOT NULL,
+  source_snapshot JSONB NOT NULL,
+  moved_contact_count INTEGER NOT NULL DEFAULT 0,
+  moved_interaction_count INTEGER NOT NULL DEFAULT 0,
+  moved_contact_snapshots JSONB NOT NULL DEFAULT '[]'::jsonb,
+  moved_interaction_snapshots JSONB NOT NULL DEFAULT '[]'::jsonb,
+  recovery_snapshot_version SMALLINT NOT NULL DEFAULT 0,
+  reversed_at TIMESTAMPTZ,
+  reversed_by UUID,
+  merged_by UUID NOT NULL,
+  merged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (survivor_account_id <> source_account_id),
+  CHECK (moved_contact_count >= 0 AND moved_interaction_count >= 0)
+);
+ALTER TABLE public.crm_account_merge_history
+  ADD COLUMN IF NOT EXISTS moved_contact_snapshots JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS moved_interaction_snapshots JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS recovery_snapshot_version SMALLINT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS reversed_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS reversed_by UUID;
+ALTER TABLE public.crm_account_merge_history
+  DROP CONSTRAINT IF EXISTS crm_account_merge_history_company_id_source_account_id_key;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_crm_account_merge_history_active_source
+  ON public.crm_account_merge_history(company_id, source_account_id)
+  WHERE reversed_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_crm_account_merge_history_survivor
+  ON public.crm_account_merge_history(company_id, survivor_account_id, merged_at DESC);
+
+CREATE TABLE IF NOT EXISTS public.crm_account_saved_views (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  owner_user_id UUID NOT NULL,
+  view_name VARCHAR(80) NOT NULL,
+  filters JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
+  CHECK (char_length(BTRIM(view_name)) BETWEEN 2 AND 80),
+  CHECK (jsonb_typeof(filters) = 'object')
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_crm_account_saved_views_owner_name
+  ON public.crm_account_saved_views(company_id, owner_user_id, LOWER(BTRIM(view_name)))
+  WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_crm_account_saved_views_owner
+  ON public.crm_account_saved_views(company_id, owner_user_id, updated_at DESC)
+  WHERE deleted_at IS NULL;
+

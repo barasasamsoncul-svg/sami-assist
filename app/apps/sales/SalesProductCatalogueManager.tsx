@@ -575,10 +575,7 @@ export default function SalesProductCatalogueManager({
       <div className="sami-surface rounded-[24px] p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">
-              Roadmap Part 7
-            </p>
-            <h2 className="mt-1 text-xl font-black">Product catalogue</h2>
+<h2 className="mt-1 text-xl font-black">Product catalogue</h2>
             <p className="mt-1 max-w-3xl text-sm text-slate-500 dark:text-slate-400">
               Maintain the shared product and service catalogue from Sales. The same
               item identity is reused by quotations and downstream invoices.

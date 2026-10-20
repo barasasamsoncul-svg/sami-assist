@@ -168,10 +168,7 @@ export default function SalesTemplatesManager({
       <div className="sami-surface rounded-[24px] p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">
-              Roadmap Part 5
-            </p>
-            <h2 className="mt-1 text-xl font-black">Quotation templates</h2>
+<h2 className="mt-1 text-xl font-black">Quotation templates</h2>
             <p className="mt-1 max-w-3xl text-sm text-slate-500 dark:text-slate-400">
               Create reusable quotation presentation defaults for notes, commercial terms,
               footer copy and document branding. Templates stay separate from global Sales

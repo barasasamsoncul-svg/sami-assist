@@ -24,14 +24,17 @@ test('Sales activity execution combines lead and opportunity activities inside t
 
 test('Sales activity execution tracks overdue, unscheduled, upcoming, and recent completed work', async () => {
   const service = await source('lib/apps/sales/activity-execution.ts');
-  assert.match(service, /due_date < CURRENT_DATE/);
+  assert.match(service, /due_date < \$3::date/);
   assert.match(service, /due_date IS NULL/);
-  assert.match(service, /due_date BETWEEN CURRENT_DATE AND CURRENT_DATE \+ 7/);
-  assert.match(service, /completed_at >= NOW\(\) - INTERVAL '30 days'/);
+  assert.match(service, /due_date BETWEEN \$3::date AND \$3::date \+ 7/);
+  assert.match(service, /completed_at >= \$2::timestamptz - INTERVAL '30 days'/);
   assert.match(service, /completed_at::date <= due_date/);
   assert.match(service, /AS completed_on_time_last_30_count/);
   assert.match(service, /AS days_overdue/);
-  assert.match(service, /LIMIT 25/);
+  assert.match(service, /const DEFAULT_QUEUE_LIMIT = 25/);
+  assert.match(service, /const MAX_QUEUE_LIMIT = 200/);
+  assert.match(service, /LIMIT \$7 OFFSET \$8/);
+  assert.match(service, /queueLimit \+ 1/);
 });
 
 test('Sales activity report resolves assignees only from active internal tenant users', async () => {

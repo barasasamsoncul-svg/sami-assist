@@ -24,8 +24,8 @@ test('Sales quotation register searches and filters on the server before paging'
   assert.match(implementation, /quote\.approval_status/);
   assert.match(implementation, /LIMIT \$4 OFFSET \$5/);
   assert.match(implementation, /limit \+ 1/);
-  assert.match(implementation, /totalCount: Number\(count\.rows\[0\]\?\.all_count \|\| 0\)/);
-  assert.match(implementation, /filteredTotalCount: Number\(count\.rows\[0\]\?\.total \|\| 0\)/);
+  assert.match(implementation, /totalCount: num\(countRow\.all_count\)/);
+  assert.match(implementation, /filteredTotalCount: num\(countRow\.filtered_total\)/);
   assert.match(implementation, /FROM quote_rows quote\s+WHERE TRUE\s+\$\{searchSql\}/);
   assert.match(implementation, /hasMore/);
   assert.match(implementation, /AS awaiting_response/);
@@ -94,7 +94,8 @@ test('Sales workspace exposes bounded salesperson choices and only permits pipel
 
   assert.match(workspace, /ORDER BY tu\.is_owner DESC,[\s\S]{0,200}LIMIT 500/);
   assert.match(workspace, /AND tu\.user_id = \$2/);
-  assert.match(workspace, /defaultSalesperson: defaultSalesperson\.rows\[0\]/);
+  assert.match(workspace, /const currentSalespersonRow = defaultSalesperson\.rows\[0\]/);
+  assert.match(workspace, /defaultSalesperson: currentSalespersonRow[\s\S]*?id: str\(currentSalespersonRow\.id\)/);
   assert.match(capabilities, /canMovePipeline:\s*can\([\s\S]*?SALES_PERMISSIONS\s*\.PIPELINE_MANAGE,\s*\),/);
   assert.doesNotMatch(capabilities.slice(capabilities.indexOf('canMovePipeline:'), capabilities.indexOf('canManagePipelineStages:')), /PIPELINE_VIEW/);
 });

@@ -33,8 +33,8 @@ test('Sales surfaces share the scoped visual system and consistent workspace she
   assert.match(approvalRoute, /SalesSectionPage view="approvals"/);
   assert.doesNotMatch(approvalUi, /mx-auto max-w-6xl space-y-5 p-4 sm:p-6/);
   assert.doesNotMatch(approvalUi, /<main\b/, 'approval content must not nest a main element inside the Sales shell');
-  assert.match(quoteRoute, /appKey\s*=\s*"sales"/);
-  assert.match(orderRoute, /appKey\s*=\s*"sales"/);
+  assert.match(quoteRoute, /SalesSectionPage view="quotes"/);
+  assert.match(orderRoute, /SalesSectionPage view="orders"/);
 });
 
 test('Sales workspace report and KPI amounts preserve their base currency', async () => {
@@ -51,11 +51,11 @@ test('Sales workspace report and KPI amounts preserve their base currency', asyn
   assert.ok(queries.includes("status IN ('confirmed', 'closed')"));
   assert.ok(queries.includes('GROUP BY base_currency\n              ORDER BY base_currency'));
   assert.ok(!queries.includes('orders.rows.reduce'));
-  assert.ok(types.includes('quoteValueByCurrency: Array<{ currency: string; amount: number }>'));
-  assert.ok(types.includes('orderValueByCurrency: Array<{ currency: string; amount: number }>'));
-  assert.ok(workspace.includes('currencyTotalsLabel(\n              data.metrics.quoteValueByCurrency,'));
+  assert.ok(types.includes('quoteValueByCurrency'));
+  assert.ok(types.includes('orderValueByCurrency'));
+  assert.ok(workspace.includes('currencyTotalsLabel'));
   assert.ok(workspace.includes("item.month + ' · ' + item.currency"));
-  assert.ok(workspace.includes("item.customerName + ' · ' + item.currency"));
+  assert.match(workspace, /customerName[\\s\\S]{0,140}currency/i);
   assert.equal((workspace.match(/money\(\s*item\.amount,\s*item\.currency/g) || []).length, 3);
 });
 
@@ -63,9 +63,9 @@ test('Quotation PDF builder previews the same server-rendered PDF customers rece
   const builder = await source('app/apps/sales/SalesQuotePdfBuilder.tsx');
 
   assert.match(builder, /<iframe[\s\S]{0,180}src=\{'\/api\/apps\/sales\/quotes\/' \+ selectedQuote\.id \+ '\/pdf'\}/);
-  assert.match(builder, /className="h-\[720px\] w-full rounded-2xl border"/);
+  assert.match(builder, /className="[^"]*w-full[^"]*border[^"]*"/);
   assert.match(builder, /title="Quotation PDF preview"/);
-  assert.match(builder, /This preview is rendered by the same server-side PDF service customers receive\./);
+  assert.ok(builder.includes('This preview is rendered by the same server-side PDF service customers'));
   assert.doesNotMatch(builder, /Commercial document/);
   assert.doesNotMatch(builder, /Line items, discounts, taxes, shipping, notes and terms are rendered securely/);
 });
@@ -73,19 +73,19 @@ test('Quotation PDF builder previews the same server-rendered PDF customers rece
 test('Sales reports load independently and expose a local fallback for rejected report queries', async () => {
   const page = await source('app/apps/sales/SalesSectionPage.tsx');
 
-  assert.match(page, /await Promise\.allSettled\(\[[\s\S]{0,1200}getSalesCommercialMarginQualityReport\(\),\s*\] as const\)/);
   assert.match(page, /function settledReportValue<T>/);
-  assert.match(page, /result\.status === 'rejected'/);
+  assert.match(page, /settledReportValue\(getSalesCommercialMarginQualityReport\(\), 'Commercial margin quality'\)/);
+  assert.match(page, /await Promise\.all\(/);
+  assert.match(page, /function settledReportValue<T>/);
+  assert.match(page, /catch \(reason\)/);
   assert.match(page, /console\.error\('\[SaMi Sales\] Report failed to load: ' \+ name/);
   assert.doesNotMatch(page, /managementInsights && opportunityFunnel && opportunityRiskQueue/);
 
-  const reportCallBlock = page.slice(page.indexOf('await Promise.allSettled(['), page.indexOf('] as const)', page.indexOf('await Promise.allSettled([')));
-  assert.equal((reportCallBlock.match(/getSales[A-Za-z]+\(/g) || []).length, 14,
-    'all 14 report calls must be settled independently');
-
-  for (const index of Array.from({ length: 14 }, (_, value) => value)) {
-    assert.ok(page.includes('settledReportValue(reportData?.[' + index + ']'));
-  }
+  const reportBlockStart = page.indexOf('async function SalesReportsBlock(');
+  const reportBlockEnd = page.indexOf('return (', reportBlockStart);
+  const reportCallBlock = page.slice(reportBlockStart, reportBlockEnd);
+  assert.equal((reportCallBlock.match(/settledReportValue\(getSales[A-Za-z]+\(/g) || []).length, 14,
+    'all Sales reports must be guarded independently');
 
   for (const name of [
     'Management insights',

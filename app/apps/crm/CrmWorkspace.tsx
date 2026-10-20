@@ -1,210 +1,98 @@
-import type {
-  CSSProperties,
-} from 'react';
-
-import Link from 'next/link';
-
-import {
-  ArrowLeft,
-} from 'lucide-react';
-
-import AppSurfaceShell from '@/app/components/apps/AppSurfaceShell';
-import SamiAppIconTile from '@/app/components/apps/SamiAppIconTile';
-import styles from '@/app/apps/[appKey]/EnterpriseModuleWorkspaceShell.module.css';
-
-import {
-  SAMI_PERMISSIONS,
-} from '@/lib/auth/permission-catalog';
-
-import {
-  loadStandaloneEnterpriseApp,
-} from '@/app/apps/_shared/loadStandaloneEnterpriseApp';
-
+import { loadStandaloneEnterpriseApp } from '@/app/apps/_shared/loadStandaloneEnterpriseApp';
+import { SAMI_PERMISSIONS } from '@/lib/auth/permission-catalog';
+import CrmModuleShell from '@/app/apps/crm/CrmModuleShell';
 import CrmWorkspaceClient from '@/app/apps/crm/CrmWorkspaceClient';
 
 const MODULE_KEY = 'crm';
+const CRM_TABLE_LABELS: Record<string, string> = {
+  crm_accounts: 'Accounts',
+  crm_contacts: 'Contacts',
+  crm_interactions: 'Interactions',
+};
 
 export default async function CrmWorkspace({
   section,
+  accountId,
 }: {
   section?: string | null;
+  accountId?: string | null;
 }) {
+  const followUpsView = section === 'follow-ups';
+  const segmentsView = section === 'segments';
+  const dataQualityView = section === 'data-quality';
+  const mergeHistoryView = section === 'merge-history';
+  const relationshipHealthView = section === 'health';
+  const reportsView = section === 'reports';
   const {
     session,
     account,
     shell,
-    app,
     data,
     notifications,
     resolved,
     can,
-    visual,
-    uiProfile,
-  } =
-    await loadStandaloneEnterpriseApp(
-      MODULE_KEY,
-      section,
-    );
+  } = await loadStandaloneEnterpriseApp(MODULE_KEY, followUpsView || segmentsView || dataQualityView || mergeHistoryView || relationshipHealthView ? undefined : section);
 
-  const appBaseHref =
-    '/apps/crm';
+  const crmData = {
+    ...data,
+    tables: data.tables.map((table) => ({
+      ...table,
+      label: CRM_TABLE_LABELS[table.key] || table.label,
+    })),
+  };
 
+  const appBaseHref = '/apps/crm';
   const appSidebarItems = [
-    {
-      key: 'overview',
-      label: 'Overview',
-      href: appBaseHref,
-      description: 'KPIs, priorities and current operating state.',
-    },
-    ...data.tables
-      .filter(
-        table =>
-          !table.settingTable,
-      )
-      .map(
-        table => ({
-          key: table.key,
-          label: table.label,
-          href:
-            appBaseHref +
-            '/' +
-            encodeURIComponent(
-              table.key,
-            ),
-          description:
-            'Open ' +
-            table.label.toLowerCase() +
-            ' records.',
-          badge: table.count,
-        }),
-      ),
-    ...(
-      data.capabilities.canReport
-        ? [{
-            key: 'reports',
-            label: 'Reports',
-            href:
-              appBaseHref +
-              '/reports',
-            description: 'Module analysis and operational reporting.',
-          }]
-        : []
-    ),
-    {
-      key: 'activity',
-      label: 'Activity',
-      href:
-        appBaseHref +
-        '/activity',
-      description: 'Recent module changes and user actions.',
-    },
-    ...(
-      data.capabilities.canManageSettings &&
-      data.tables.some(
-        table =>
-          table.settingTable,
-      )
-        ? [{
-            key: 'settings',
-            label: 'Settings',
-            href:
-              appBaseHref +
-              '/settings',
-            description: 'Module defaults, policy and configuration.',
-          }]
-        : []
-    ),
+    { key: 'overview', label: 'Overview', href: appBaseHref, description: 'Relationship coverage, priorities and connected business activity.', sectionLabel: 'Overview' },
+    ...crmData.tables.filter((table) => !table.settingTable).map((table) => ({
+      key: table.key,
+      label: table.label,
+      href: appBaseHref + '/' + encodeURIComponent(table.key),
+      description: 'Open ' + table.label.toLowerCase() + ' records.',
+      badge: table.count,
+      sectionLabel: 'Relationships',
+    })),
+    { key: 'segments', label: 'Account segments', href: appBaseHref + '/segments', description: 'Filter accounts by lifecycle, owner, source and engagement; save reusable views.', sectionLabel: 'Relationships' },
+    { key: 'data-quality', label: 'Data quality', href: appBaseHref + '/data-quality', description: 'Review duplicate accounts and contacts and safely merge duplicate accounts.', sectionLabel: 'Relationships' },
+    { key: 'merge-history', label: 'Merge history', href: appBaseHref + '/merge-history', description: 'Review account and contact merge records and safely recover eligible changes.', sectionLabel: 'Relationships' },
+    { key: 'health', label: 'Relationship health', href: appBaseHref + '/health', description: 'Prioritize accounts by engagement, contact coverage and overdue follow-ups.', sectionLabel: 'Insights' },
+    { key: 'follow-ups', label: 'Follow-ups', href: appBaseHref + '/follow-ups', description: 'Manage overdue, today and upcoming CRM activities.', sectionLabel: 'Activity' },
+    ...(data.capabilities.canReport ? [{ key: 'reports', label: 'Reports', href: appBaseHref + '/reports', description: 'Relationship coverage and engagement reporting.', sectionLabel: 'Insights' }] : []),
+    { key: 'activity', label: 'Activity', href: appBaseHref + '/activity', description: 'Recent module changes and user actions.', sectionLabel: 'Insights' },
+    ...(data.capabilities.canManageSettings && crmData.tables.some((table) => table.settingTable) ? [{ key: 'settings', label: 'Settings', href: appBaseHref + '/settings', description: 'Module defaults, policy and configuration.', sectionLabel: 'Configuration' }] : []),
   ];
 
-  const activeSidebarKey =
-    resolved.view === 'records'
-      ? resolved.tableKey
-      : resolved.view;
+  const accessibleModuleKeys = shell.accessibleModules.map((module) => module.registryKey);
+  const activeSidebarKey = accountId ? 'crm_accounts' : reportsView ? 'reports' : relationshipHealthView ? 'health' : mergeHistoryView ? 'merge-history' : dataQualityView ? 'data-quality' : segmentsView ? 'segments' : followUpsView ? 'follow-ups' : resolved.view === 'records' ? (resolved.tableKey || 'crm_accounts') : resolved.view;
 
   return (
-    <AppSurfaceShell
-      appKey={app.registryKey}
-      appCategory={app.category}
-      appIconKey={app.iconKey}
-      profile={uiProfile}
+    <CrmModuleShell
       user={session.user}
       tenant={account.tenant}
-      membership={account.membership}
-      subscription={shell.subscription}
       modules={shell.accessibleModules}
       appSidebarItems={appSidebarItems}
       activeSidebarKey={activeSidebarKey}
       sidebarCapabilities={{
         aiEnabled: shell.aiAvailable,
-        filesEnabled:
-          can(
-            SAMI_PERMISSIONS.FILES_VIEW,
-          ),
-        notificationsEnabled:
-          can(
-            SAMI_PERMISSIONS.NOTIFICATIONS_VIEW,
-          ),
+        notificationsEnabled: can(SAMI_PERMISSIONS.NOTIFICATIONS_VIEW),
       }}
-      unreadNotifications={
-        notifications?.unreadCount ||
-        0
-      }
-      title={app.name}
-      description={app.description}
-      contextLabel={data.company.name}
-      actions={
-        <div className="flex items-center gap-2">
-          <SamiAppIconTile
-            appKey={app.registryKey}
-            category={app.category}
-            iconKey={app.iconKey}
-            size="sm"
-          />
-
-          <Link
-            href="/apps"
-            className={[
-              'inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold shadow-[var(--sami-shadow-sm)] transition hover:-translate-y-px',
-              visual.border,
-              visual.soft,
-              visual.text,
-            ].join(' ')}
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span className="hidden sm:inline">
-              All Apps
-            </span>
-          </Link>
-        </div>
-      }
+      unreadNotifications={notifications?.unreadCount || 0}
+      companyName={data.company.name}
     >
-      <div
-        className={styles.enterpriseWorkspace}
-        data-module={MODULE_KEY}
-        data-archetype={uiProfile.archetype}
-        data-navigation={uiProfile.navigation}
-        data-density={uiProfile.density}
-        data-header={uiProfile.header}
-        style={{
-          '--sami-module-accent':
-            uiProfile.accent,
-          '--sami-module-secondary':
-            uiProfile.secondary,
-        } as CSSProperties}
-      >
-        <CrmWorkspaceClient
-          initialData={data}
-          userId={session.user.id}
-          initialView={resolved.view}
-          initialTableKey={resolved.tableKey}
-          accessibleModuleKeys={
-            shell.accessibleModules.map(
-              module =>
-                module.registryKey,
-            )
-          }
-        />
-      </div>
-    </AppSurfaceShell>
+      <CrmWorkspaceClient
+        initialData={crmData}
+        userId={session.user.id}
+        initialView={resolved.view}
+        initialTableKey={resolved.tableKey}
+        accessibleModuleKeys={accessibleModuleKeys}
+        accountId={accountId || null}
+        followUpsView={followUpsView}
+        segmentsView={segmentsView}
+        dataQualityView={dataQualityView}
+        mergeHistoryView={mergeHistoryView}
+        relationshipHealthView={relationshipHealthView}
+        reportsView={reportsView}
+      />
+    </CrmModuleShell>
   );
 }

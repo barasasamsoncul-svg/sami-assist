@@ -46,7 +46,7 @@ test('lead conversion best-effort links a billing customer only when customer-ma
   assert.match(fn, /email: leadRow\.email/);
   assert.match(fn, /phone: leadRow\.phone/);
   assert.match(fn, /billingCustomerId = existingInvoicingCustomerId\(customerError\)/);
-  assert.match(fn, /catch \{\s*\/\/ Conversion and its audit history are the primary operation/);
+  assert.match(fn, /catch \(customerError\) \{[\s\S]*?existingInvoicingCustomerId\(customerError\)/);
 });
 
 test('opportunity billing-customer command enforces Invoicing permission and company-scoped idempotent linking', async () => {

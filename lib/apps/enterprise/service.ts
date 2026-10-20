@@ -281,13 +281,14 @@ const IDENTIFIER =
 
 
 const SENSITIVE_COLUMN =
-  /(password|passwd|secret|token|credential|private|otp|verification|salt|hash|api[_-]?key|access[_-]?key|refresh[_-]?key|session[_-]?key)/i;
+  /(password|passwd|secret|token|credential|private|otp|verification|salt|hash|api[_-]?key|access[_-]?key|refresh[_-]?key|session[_-]?key|invoicing_customer_id)/i;
 
 
 const SYSTEM_COLUMNS =
   new Set([
     'id',
     'company_id',
+    'invoicing_customer_id',
     'tenant_id',
     'created_at',
     'updated_at',
