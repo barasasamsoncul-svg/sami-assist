@@ -40,7 +40,7 @@ test('Sales win/loss analytics includes trailing 90-day closures and avoids mixi
   assert.match(service, /AS average_days_to_lose/);
   assert.match(component, /new Set\(\[/);
   assert.match(component, /row\.currency/);
-  assert.match(component, /row\\.currency/);\n  assert.match(component, /new Set/);
+  assert.ok(component.includes('currency'));
   assert.match(component, /row\.winRate == null \? '—'/);
 });
 

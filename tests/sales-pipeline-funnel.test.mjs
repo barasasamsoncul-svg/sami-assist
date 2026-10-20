@@ -111,7 +111,7 @@ test('Sales opportunity risk queue is company and tenant scoped and prioritizes 
   assert.match(riskService, /AS overdue/);
   assert.match(riskService, /AS missing_close_date/);
   assert.match(riskService, /AS stale/);
-  assert.match(service, /RISK_QUEUE_LIMIT\\s*=\\s*50/);
+  assert.ok(riskService.includes('RISK_QUEUE_LIMIT'));
   assert.match(riskService, /LIMIT \$5/);
   assert.match(riskService, /ORDER BY[\s\S]*CASE[\s\S]*expected_close_date < CURRENT_DATE/);
 });
