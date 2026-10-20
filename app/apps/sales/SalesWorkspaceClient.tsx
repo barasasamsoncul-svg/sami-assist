@@ -1282,61 +1282,7 @@ export default function SalesWorkspaceClient({
       />
 
       <div className="space-y-4">
-        <section className="sami-surface overflow-hidden rounded-[26px]">
-          <div className="flex flex-col gap-4 border-b border-[var(--sami-border)] p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-blue-600 dark:text-blue-300">
-                {initialData.company.name}
-              </p>
-              <h1 className="mt-1 text-xl font-black tracking-[-0.03em] sm:text-2xl">
-                Sales command center
-              </h1>
-              <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500 dark:text-slate-400">
-                Quotations, pipeline stages, pricing, teams, deposits, shipping, returns,
-                commissions, customer responses, forecasting, fulfillment and invoice
-                handoff in one controlled flow.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {initialData.capabilities.canCreate ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setView('quotes');
-                    setComposerOpen(true);
-                  }}
-                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-3.5 text-xs font-black text-white"
-                >
-                  <Plus className="h-4 w-4" /> New quotation
-                </button>
-              ) : null}
-              {initialData.capabilities.canManageSettings ? (
-                <Link
-                  href="/apps/sales/approvals"
-                  className="inline-flex h-10 items-center rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black"
-                >
-                  Quote approvals
-                </Link>
-              ) : null}
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() =>
-                  startTransition(() => {
-                    router.refresh();
-                  })
-                }
-                className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black disabled:opacity-60"
-              >
-                <RefreshCw className={['h-4 w-4', pending ? 'animate-spin' : ''].join(' ')} />
-                Refresh
-              </button>
-            </div>
-          </div>
-        </section>
-
-        {view === 'overview' ? <Overview data={initialData} /> : null}
+                {view === 'overview' ? <Overview data={initialData} /> : null}
 
         {view === 'pipeline' && initialData.capabilities.canViewPipeline ? (
           <SalesPipelineBoard
