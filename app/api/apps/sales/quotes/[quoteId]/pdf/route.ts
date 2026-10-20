@@ -94,14 +94,34 @@ export async function GET(
         context.pool.query(
           `
             SELECT
-              primary_color,
-              secondary_color,
-              footer_text
-            FROM sales_settings
-            WHERE company_id = $1
+              COALESCE(
+                NULLIF(BTRIM(template.primary_color), ''),
+                NULLIF(BTRIM(settings.primary_color), ''),
+                '#164a9f'
+              ) AS primary_color,
+              COALESCE(
+                NULLIF(BTRIM(template.secondary_color), ''),
+                NULLIF(BTRIM(settings.secondary_color), ''),
+                '#0f172a'
+              ) AS secondary_color,
+              COALESCE(
+                NULLIF(BTRIM(template.footer_text), ''),
+                NULLIF(BTRIM(settings.footer_text), '')
+              ) AS footer_text
+            FROM sales_quotes pdf_quote
+            LEFT JOIN sales_quote_templates template
+              ON template.id = pdf_quote.template_id
+              AND template.company_id = pdf_quote.company_id
+              AND template.deleted_at IS NULL
+            LEFT JOIN sales_settings settings
+              ON settings.company_id = pdf_quote.company_id
+            WHERE pdf_quote.id = $1
+              AND pdf_quote.company_id = $2
+              AND pdf_quote.deleted_at IS NULL
             LIMIT 1
           `,
           [
+            quoteId,
             context.companyId,
           ],
         ),
