@@ -150,6 +150,7 @@ test('CRM Customer 360 uses a dedicated Sales-style module shell and stays permi
 });
 
 
+
 test('CRM follow-up queue is company-scoped, paginated and uses CRM-only completion actions', async () => {
   const [route, panel, workspace, client, interactions] = await Promise.all([
     source('app/api/apps/crm/follow-ups/route.ts'),
@@ -159,22 +160,21 @@ test('CRM follow-up queue is company-scoped, paginated and uses CRM-only complet
     source('app/api/apps/crm/interactions/route.ts'),
   ]);
 
-  assert.match(route, /requireEnterpriseModuleTableContext\\('crm', 'crm_interactions', 'view'\\)/);
+  assert.ok(route.includes("requireEnterpriseModuleTableContext('crm', 'crm_interactions', 'view')"));
   assert.ok(route.includes('i.company_id = $1'));
   assert.ok(route.includes('i.deleted_at IS NULL'));
   assert.ok(route.includes('LIMIT $4 OFFSET $5'));
-  assert.match(route, /due_today/);
-  assert.match(route, /completed_recently/);
+  assert.ok(route.includes('due_today'));
+  assert.ok(route.includes('completed_recently'));
   assert.ok(route.includes('ILIKE $3'));
-  assert.ok(route.includes('LIMIT $4 OFFSET $5'));
-  assert.match(panel, /\\/api\\/apps\\/crm\\/follow-ups\\?/);
-  assert.match(panel, /Overdue/);
-  assert.match(panel, /Due today/);
-  assert.match(panel, /Upcoming/);
-  assert.match(panel, /method: 'PATCH'/);
-  assert.match(panel, /canEdit && item.status === 'planned'/);
-  assert.match(interactions, /requireEnterpriseModuleTableContext\\('crm', 'crm_interactions', 'edit'\\)/);
-  assert.match(workspace, /section === 'follow-ups'/);
-  assert.match(workspace, /label: 'Follow-ups'/);
-  assert.match(client, /CrmFollowUpsPanel/);
+  assert.ok(panel.includes('/api/apps/crm/follow-ups?'));
+  assert.ok(panel.includes('Overdue'));
+  assert.ok(panel.includes('Due today'));
+  assert.ok(panel.includes('Upcoming'));
+  assert.ok(panel.includes("method: 'PATCH'"));
+  assert.ok(panel.includes("canEdit && item.status === 'planned'"));
+  assert.ok(interactions.includes("requireEnterpriseModuleTableContext('crm', 'crm_interactions', 'edit')"));
+  assert.ok(workspace.includes("section === 'follow-ups'"));
+  assert.ok(workspace.includes("label: 'Follow-ups'"));
+  assert.ok(client.includes('CrmFollowUpsPanel'));
 });
