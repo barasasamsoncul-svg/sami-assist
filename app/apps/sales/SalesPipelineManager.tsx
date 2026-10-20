@@ -942,7 +942,7 @@ export default function SalesPipelineManager({
       />
 
       <header className="sami-surface rounded-[24px] p-5">
-        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">Roadmap Part 11</p>
+        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">PIPELINE MANAGEMENT</p>
         <h2 className="mt-1 text-xl font-black">Leads &amp; Opportunities</h2>
         <p className="mt-1 text-sm text-slate-500">
           Qualify prospects with realistic deal value and expected close dates, then create a quotation without losing customer context.
