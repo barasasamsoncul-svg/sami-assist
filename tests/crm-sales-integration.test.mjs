@@ -354,3 +354,31 @@ test('CRM merge history exposes company-scoped audit and guarded recovery only f
   assert.ok(workspace.includes("key: 'merge-history'"));
   assert.ok(client.includes('CrmMergeHistoryPanel'));
 });
+
+
+test('CRM relationship health ranks accounts from scoped engagement, coverage and overdue activity', async () => {
+  const [healthRoute, healthPanel, workspace, workspaceClient] = await Promise.all([
+    source('app/api/apps/crm/relationship-health/route.ts'),
+    source('app/apps/crm/CrmRelationshipHealthPanel.tsx'),
+    source('app/apps/crm/CrmWorkspace.tsx'),
+    source('app/apps/crm/CrmWorkspaceClient.tsx'),
+  ]);
+
+  assert.ok(healthRoute.includes("requireEnterpriseModuleTableContext('crm', 'crm_accounts', 'view')"));
+  assert.ok(healthRoute.includes("requireEnterpriseModuleTableContext('crm', 'crm_contacts', 'view')"));
+  assert.ok(healthRoute.includes("requireEnterpriseModuleTableContext('crm', 'crm_interactions', 'view')"));
+  assert.ok(healthRoute.includes("WHERE company_id = $1 AND deleted_at IS NULL AND account_id IS NOT NULL"));
+  assert.ok(healthRoute.includes("INTERVAL '90 days'"));
+  assert.ok(healthRoute.includes('overdue_followups'));
+  assert.ok(healthRoute.includes('health_score'));
+  assert.ok(healthRoute.includes('attention_reasons'));
+  assert.ok(healthRoute.includes('LIMIT 250'));
+
+  assert.ok(healthPanel.includes('/api/apps/crm/relationship-health'));
+  assert.ok(healthPanel.includes('No activity for 30+ days'));
+  assert.ok(healthPanel.includes('Overdue follow-ups'));
+  assert.ok(healthPanel.includes('This is an explainable operational score'));
+  assert.ok(workspace.includes("key: 'health'"));
+  assert.ok(workspace.includes("section === 'health'"));
+  assert.ok(workspaceClient.includes('CrmRelationshipHealthPanel'));
+});
