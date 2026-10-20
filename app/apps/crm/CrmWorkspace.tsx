@@ -22,6 +22,7 @@ export default async function CrmWorkspace({
   const dataQualityView = section === 'data-quality';
   const mergeHistoryView = section === 'merge-history';
   const relationshipHealthView = section === 'health';
+  const reportsView = section === 'reports';
   const {
     session,
     account,
@@ -30,7 +31,7 @@ export default async function CrmWorkspace({
     notifications,
     resolved,
     can,
-  } = await loadStandaloneEnterpriseApp(MODULE_KEY, followUpsView || segmentsView || dataQualityView || mergeHistoryView || relationshipHealthView ? undefined : section);
+  } = await loadStandaloneEnterpriseApp(MODULE_KEY, followUpsView || segmentsView || dataQualityView || mergeHistoryView || relationshipHealthView || reportsView ? undefined : section);
 
   const crmData = {
     ...data,
@@ -62,7 +63,7 @@ export default async function CrmWorkspace({
   ];
 
   const accessibleModuleKeys = shell.accessibleModules.map((module) => module.registryKey);
-  const activeSidebarKey = accountId ? 'crm_accounts' : relationshipHealthView ? 'health' : mergeHistoryView ? 'merge-history' : dataQualityView ? 'data-quality' : segmentsView ? 'segments' : followUpsView ? 'follow-ups' : resolved.view === 'records' ? (resolved.tableKey || 'crm_accounts') : resolved.view;
+  const activeSidebarKey = accountId ? 'crm_accounts' : reportsView ? 'reports' : relationshipHealthView ? 'health' : mergeHistoryView ? 'merge-history' : dataQualityView ? 'data-quality' : segmentsView ? 'segments' : followUpsView ? 'follow-ups' : resolved.view === 'records' ? (resolved.tableKey || 'crm_accounts') : resolved.view;
 
   return (
     <CrmModuleShell
@@ -90,6 +91,7 @@ export default async function CrmWorkspace({
         dataQualityView={dataQualityView}
         mergeHistoryView={mergeHistoryView}
         relationshipHealthView={relationshipHealthView}
+        reportsView={reportsView}
       />
     </CrmModuleShell>
   );
