@@ -156,6 +156,15 @@ export async function POST(request: NextRequest) {
       throw new AccountMergeError('BILLING_IDENTITY_CONFLICT', 'Both accounts are linked to different Invoicing customers. Merge is blocked; resolve the billing identity first.', 409);
     }
 
+    await client.query(
+      'SELECT id FROM public.crm_contacts WHERE company_id = $1 AND account_id = $2 AND deleted_at IS NULL ORDER BY id FOR UPDATE',
+      [accountContext.companyId, sourceId],
+    );
+    await client.query(
+      'SELECT id FROM public.crm_interactions WHERE company_id = $1 AND account_id = $2 AND deleted_at IS NULL ORDER BY id FOR UPDATE',
+      [accountContext.companyId, sourceId],
+    );
+
     const contactsCount = await client.query(
       'SELECT COUNT(*)::int AS count FROM public.crm_contacts WHERE company_id = $1 AND account_id = $2 AND deleted_at IS NULL',
       [accountContext.companyId, sourceId],
