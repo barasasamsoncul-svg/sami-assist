@@ -51,8 +51,8 @@ test('Sales workspace report and KPI amounts preserve their base currency', asyn
   assert.ok(queries.includes("status IN ('confirmed', 'closed')"));
   assert.ok(queries.includes('GROUP BY base_currency\n              ORDER BY base_currency'));
   assert.ok(!queries.includes('orders.rows.reduce'));
-  assert.ok(types.includes('quoteValueByCurrency: Array<{ currency: string; amount: number }>'));
-  assert.ok(types.includes('orderValueByCurrency: Array<{ currency: string; amount: number }>'));
+  assert.match(types, /quoteValueByCurrency: SalesCurrencyAmount\\[\\]/);
+  assert.match(types, /orderValueByCurrency: SalesCurrencyAmount\\[\\]/);
   assert.ok(workspace.includes('currencyTotalsLabel(\n              data.metrics.quoteValueByCurrency,'));
   assert.ok(workspace.includes("item.month + ' · ' + item.currency"));
   assert.ok(workspace.includes("item.customerName + ' · ' + item.currency"));

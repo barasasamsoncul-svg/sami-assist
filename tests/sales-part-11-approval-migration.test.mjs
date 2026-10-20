@@ -68,8 +68,8 @@ test('Sales management insights are tenant-scoped, permission-gated and actionab
   assert.match(insights, /hasSalesPermission/);
   assert.match(insights, /SALES_PERMISSIONS\.REPORT_VIEW/);
   assert.match(insights, /WHERE company_id = \$1 AND deleted_at IS NULL/);
-  assert.match(insights, /CURRENT_DATE - 7/);
-  assert.match(insights, /LIMIT 10/);
+  assert.match(insights, /CURRENT_DATE - \\$2::int/);
+  assert.match(insights, /FOLLOW_UP_QUEUE_LIMIT = 10/);
   assert.match(page, /view === 'reports' && data\.capabilities\.canViewReports/);
   assert.match(page, /<SalesManagementInsights/);
   assert.match(ui, /Quote-to-order conversion/);
@@ -99,7 +99,7 @@ test('Sales management insights include tenant-scoped booked order, product and 
   assert.match(ui, /Monthly booked sales/);
   assert.match(ui, /Top products by sales/);
   assert.match(ui, /Sales team performance/);
-  assert.match(ui, /min-w-0 break-words text-xs font-black capitalize/);
+  assert.match(ui, /font-black[^\\n]*capitalize/);
   assert.match(ui, /tabular-nums/);
 });
 

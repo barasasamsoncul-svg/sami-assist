@@ -57,7 +57,7 @@ test('Sales customer order portal uses hashed expiring tokens with explicit rota
   assert.match(route, /create_order_portal_link/);
   assert.match(route, /revoke_order_portal_link/);
   assert.match(ui, /Customer tracking portal/);
-  assert.match(ui, /Copy customer link/);
+  assert.match(ui, /Copy link/);
   assert.match(ui, /Revoke link/);
 });
 

@@ -288,10 +288,7 @@ export default function SalesPricelistsManager({
     <section className="space-y-4">
       {/* Header */}
       <div className="sami-surface rounded-[24px] p-4 sm:p-5">
-        <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">
-          Roadmap Part 8
-        </p>
-        <h2 className="mt-1 text-xl font-black">Pricelists</h2>
+<h2 className="mt-1 text-xl font-black">Pricelists</h2>
         <p className="mt-1 max-w-3xl text-sm text-slate-500 dark:text-slate-400">
           Control customer scope, currency, validity and precedence separately from the
           advanced product and quantity rules in Part 9.
