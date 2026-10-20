@@ -52,7 +52,7 @@ export default async function CrmWorkspace({
   ];
 
   const accessibleModuleKeys = shell.accessibleModules.map((module) => module.registryKey);
-  const activeSidebarKey = accountId ? 'crm_accounts' : resolved.view === 'records' ? resolved.tableKey : resolved.view;
+  const activeSidebarKey = accountId ? 'crm_accounts' : resolved.view === 'records' ? (resolved.tableKey || 'crm_accounts') : resolved.view;
 
   return (
     <CrmModuleShell
