@@ -5,6 +5,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  type FormEvent,
 } from 'react';
 
 import Link from 'next/link';
@@ -212,13 +213,13 @@ export default function CrmRelationshipTimelinePanel({
       ].slice(0, 100));
     } else {
       setSalesActivities([]);
-      if (salesEnabled && salesResult.status === 'rejected' && !error) {
+      if (salesEnabled && salesResult.status === 'rejected') {
         setError((current) => current || 'Sales activity history could not be loaded; CRM interactions remain available.');
       }
     }
 
     setLoading(false);
-  }, [salesEnabled, error]);
+  }, [salesEnabled]);
 
   useEffect(() => {
     void load();
@@ -270,7 +271,7 @@ export default function CrmRelationshipTimelinePanel({
     }).slice(0, 30);
   }, [interactions, salesActivities]);
 
-  const createInteraction = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
+  const createInteraction = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSaving(true);
     setError(null);
