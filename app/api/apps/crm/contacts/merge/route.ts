@@ -208,6 +208,11 @@ export async function POST(request: NextRequest) {
       [contactContext.companyId, sourceId],
     );
     const movedInteractionCount = Number(interactionCountResult.rows[0]?.count || 0);
+    const interactionSnapshotsResult = await client.query(
+      "SELECT COALESCE(jsonb_agg(jsonb_build_object('id', id, 'contact_id', contact_id, 'account_id', account_id, 'updated_at', updated_at, 'updated_by', updated_by) ORDER BY id), '[]'::jsonb) AS snapshots FROM public.crm_interactions WHERE company_id = $1 AND contact_id = ANY($2::uuid[]) AND deleted_at IS NULL",
+      [contactContext.companyId, [survivorId, sourceId]],
+    );
+    const movedInteractionSnapshots = interactionSnapshotsResult.rows[0]?.snapshots || [];
 
     let hasOtherPrimary = false;
     if (mergedAccountId) {
@@ -288,12 +293,13 @@ export async function POST(request: NextRequest) {
     await client.query(
       `INSERT INTO public.crm_contact_merge_history (
          company_id, survivor_contact_id, source_contact_id, survivor_snapshot,
-         source_snapshot, merged_account_id, moved_interaction_count, merged_by
-       ) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::uuid, $7, $8)`,
+         source_snapshot, merged_account_id, moved_interaction_count,
+         moved_interaction_snapshots, recovery_snapshot_version, merged_by
+       ) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::uuid, $7, $8::jsonb, 1, $9)`,
       [
         contactContext.companyId, survivorId, sourceId,
         JSON.stringify(survivor), JSON.stringify(source), mergedAccountId,
-        movedInteractionCount, contactContext.userId,
+        movedInteractionCount, JSON.stringify(movedInteractionSnapshots), contactContext.userId,
       ],
     );
 
