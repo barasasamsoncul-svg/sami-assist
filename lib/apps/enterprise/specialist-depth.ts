@@ -2293,12 +2293,25 @@ CREATE TABLE IF NOT EXISTS public.crm_contact_merge_history (
   source_snapshot JSONB NOT NULL,
   merged_account_id UUID REFERENCES public.crm_accounts(id) ON DELETE SET NULL,
   moved_interaction_count INTEGER NOT NULL DEFAULT 0,
+  moved_interaction_snapshots JSONB NOT NULL DEFAULT '[]'::jsonb,
+  recovery_snapshot_version SMALLINT NOT NULL DEFAULT 0,
+  reversed_at TIMESTAMPTZ,
+  reversed_by UUID,
   merged_by UUID NOT NULL,
   merged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CHECK (survivor_contact_id <> source_contact_id),
-  CHECK (moved_interaction_count >= 0),
-  UNIQUE (company_id, source_contact_id)
+  CHECK (moved_interaction_count >= 0)
 );
+ALTER TABLE public.crm_contact_merge_history
+  ADD COLUMN IF NOT EXISTS moved_interaction_snapshots JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS recovery_snapshot_version SMALLINT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS reversed_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS reversed_by UUID;
+ALTER TABLE public.crm_contact_merge_history
+  DROP CONSTRAINT IF EXISTS crm_contact_merge_history_company_id_source_contact_id_key;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_crm_contact_merge_history_active_source
+  ON public.crm_contact_merge_history(company_id, source_contact_id)
+  WHERE reversed_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_crm_contact_merge_history_survivor
   ON public.crm_contact_merge_history(company_id, survivor_contact_id, merged_at DESC);
 
@@ -2324,12 +2337,27 @@ CREATE TABLE IF NOT EXISTS public.crm_account_merge_history (
   source_snapshot JSONB NOT NULL,
   moved_contact_count INTEGER NOT NULL DEFAULT 0,
   moved_interaction_count INTEGER NOT NULL DEFAULT 0,
+  moved_contact_snapshots JSONB NOT NULL DEFAULT '[]'::jsonb,
+  moved_interaction_snapshots JSONB NOT NULL DEFAULT '[]'::jsonb,
+  recovery_snapshot_version SMALLINT NOT NULL DEFAULT 0,
+  reversed_at TIMESTAMPTZ,
+  reversed_by UUID,
   merged_by UUID NOT NULL,
   merged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CHECK (survivor_account_id <> source_account_id),
-  CHECK (moved_contact_count >= 0 AND moved_interaction_count >= 0),
-  UNIQUE (company_id, source_account_id)
+  CHECK (moved_contact_count >= 0 AND moved_interaction_count >= 0)
 );
+ALTER TABLE public.crm_account_merge_history
+  ADD COLUMN IF NOT EXISTS moved_contact_snapshots JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS moved_interaction_snapshots JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS recovery_snapshot_version SMALLINT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS reversed_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS reversed_by UUID;
+ALTER TABLE public.crm_account_merge_history
+  DROP CONSTRAINT IF EXISTS crm_account_merge_history_company_id_source_account_id_key;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_crm_account_merge_history_active_source
+  ON public.crm_account_merge_history(company_id, source_account_id)
+  WHERE reversed_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_crm_account_merge_history_survivor
   ON public.crm_account_merge_history(company_id, survivor_account_id, merged_at DESC);
 
