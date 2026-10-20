@@ -31,7 +31,7 @@ export default async function CrmWorkspace({
     notifications,
     resolved,
     can,
-  } = await loadStandaloneEnterpriseApp(MODULE_KEY, followUpsView || segmentsView || dataQualityView || mergeHistoryView || relationshipHealthView || reportsView ? undefined : section);
+  } = await loadStandaloneEnterpriseApp(MODULE_KEY, followUpsView || segmentsView || dataQualityView || mergeHistoryView || relationshipHealthView ? undefined : section);
 
   const crmData = {
     ...data,
