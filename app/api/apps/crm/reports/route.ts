@@ -40,9 +40,9 @@ function errorResponse(error: unknown) {
 export async function GET() {
   try {
     const [accounts, contacts, interactions] = await Promise.all([
-      requireEnterpriseModuleTableContext('crm', 'crm_accounts', 'view'),
-      requireEnterpriseModuleTableContext('crm', 'crm_contacts', 'view'),
-      requireEnterpriseModuleTableContext('crm', 'crm_interactions', 'view'),
+      requireEnterpriseModuleTableContext('crm', 'crm_accounts', 'report'),
+      requireEnterpriseModuleTableContext('crm', 'crm_contacts', 'report'),
+      requireEnterpriseModuleTableContext('crm', 'crm_interactions', 'report'),
     ]);
 
     if (
