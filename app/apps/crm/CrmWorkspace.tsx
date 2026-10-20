@@ -21,6 +21,7 @@ export default async function CrmWorkspace({
   const segmentsView = section === 'segments';
   const dataQualityView = section === 'data-quality';
   const mergeHistoryView = section === 'merge-history';
+  const relationshipHealthView = section === 'health';
   const {
     session,
     account,
@@ -29,7 +30,7 @@ export default async function CrmWorkspace({
     notifications,
     resolved,
     can,
-  } = await loadStandaloneEnterpriseApp(MODULE_KEY, followUpsView || segmentsView || dataQualityView || mergeHistoryView ? undefined : section);
+  } = await loadStandaloneEnterpriseApp(MODULE_KEY, followUpsView || segmentsView || dataQualityView || mergeHistoryView || relationshipHealthView ? undefined : section);
 
   const crmData = {
     ...data,
@@ -53,6 +54,7 @@ export default async function CrmWorkspace({
     { key: 'segments', label: 'Account segments', href: appBaseHref + '/segments', description: 'Filter accounts by lifecycle, owner, source and engagement; save reusable views.', sectionLabel: 'Relationships' },
     { key: 'data-quality', label: 'Data quality', href: appBaseHref + '/data-quality', description: 'Review duplicate accounts and contacts and safely merge duplicate accounts.', sectionLabel: 'Relationships' },
     { key: 'merge-history', label: 'Merge history', href: appBaseHref + '/merge-history', description: 'Review account and contact merge records and safely recover eligible changes.', sectionLabel: 'Relationships' },
+    { key: 'health', label: 'Relationship health', href: appBaseHref + '/health', description: 'Prioritize accounts by engagement, contact coverage and overdue follow-ups.', sectionLabel: 'Insights' },
     { key: 'follow-ups', label: 'Follow-ups', href: appBaseHref + '/follow-ups', description: 'Manage overdue, today and upcoming CRM activities.', sectionLabel: 'Activity' },
     ...(data.capabilities.canReport ? [{ key: 'reports', label: 'Reports', href: appBaseHref + '/reports', description: 'Relationship coverage and engagement reporting.', sectionLabel: 'Insights' }] : []),
     { key: 'activity', label: 'Activity', href: appBaseHref + '/activity', description: 'Recent module changes and user actions.', sectionLabel: 'Insights' },
@@ -60,7 +62,7 @@ export default async function CrmWorkspace({
   ];
 
   const accessibleModuleKeys = shell.accessibleModules.map((module) => module.registryKey);
-  const activeSidebarKey = accountId ? 'crm_accounts' : mergeHistoryView ? 'merge-history' : dataQualityView ? 'data-quality' : segmentsView ? 'segments' : followUpsView ? 'follow-ups' : resolved.view === 'records' ? (resolved.tableKey || 'crm_accounts') : resolved.view;
+  const activeSidebarKey = accountId ? 'crm_accounts' : relationshipHealthView ? 'health' : mergeHistoryView ? 'merge-history' : dataQualityView ? 'data-quality' : segmentsView ? 'segments' : followUpsView ? 'follow-ups' : resolved.view === 'records' ? (resolved.tableKey || 'crm_accounts') : resolved.view;
 
   return (
     <CrmModuleShell
@@ -87,6 +89,7 @@ export default async function CrmWorkspace({
         segmentsView={segmentsView}
         dataQualityView={dataQualityView}
         mergeHistoryView={mergeHistoryView}
+        relationshipHealthView={relationshipHealthView}
       />
     </CrmModuleShell>
   );
