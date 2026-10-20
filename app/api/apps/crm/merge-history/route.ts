@@ -187,14 +187,14 @@ export async function POST(request: NextRequest) {
       const interactionSnapshots = asArray(history.moved_interaction_snapshots);
       if (contactSnapshots.length) {
         const ids = contactSnapshots.map((s) => String(s.id || ''));
-        const rows = await client.query("SELECT id, account_id, updated_at, deleted_at FROM public.crm_contacts WHERE company_id=$1 AND id=ANY($2::uuid[])", [context.companyId, ids]);
+        const rows = await client.query("SELECT id, account_id, updated_at, deleted_at FROM public.crm_contacts WHERE company_id=$1 AND id=ANY($2::uuid[]) ORDER BY id FOR UPDATE", [context.companyId, ids]);
         if (rows.rows.length !== ids.length || rows.rows.some((r: Record<string, unknown>) => r.deleted_at || String(r.account_id) !== survivorId || editedAfterMerge(r.updated_at, history.merged_at))) {
           throw new MergeHistoryError('RECOVERY_RELATIONSHIPS_CHANGED', 'One or more moved contacts were changed, deleted or reassigned. Recovery was blocked.', 409);
         }
       }
       if (interactionSnapshots.length) {
         const ids = interactionSnapshots.map((s) => String(s.id || ''));
-        const rows = await client.query("SELECT id, account_id, updated_at, deleted_at FROM public.crm_interactions WHERE company_id=$1 AND id=ANY($2::uuid[])", [context.companyId, ids]);
+        const rows = await client.query("SELECT id, account_id, updated_at, deleted_at FROM public.crm_interactions WHERE company_id=$1 AND id=ANY($2::uuid[]) ORDER BY id FOR UPDATE", [context.companyId, ids]);
         if (rows.rows.length !== ids.length || rows.rows.some((r: Record<string, unknown>) => r.deleted_at || String(r.account_id) !== survivorId || editedAfterMerge(r.updated_at, history.merged_at))) {
           throw new MergeHistoryError('RECOVERY_RELATIONSHIPS_CHANGED', 'One or more moved interactions were changed, deleted or reassigned. Recovery was blocked.', 409);
         }
@@ -227,7 +227,7 @@ export async function POST(request: NextRequest) {
       const interactionSnapshots = asArray(history.moved_interaction_snapshots);
       if (interactionSnapshots.length) {
         const ids = interactionSnapshots.map((s) => String(s.id || ''));
-        const rows = await client.query("SELECT id, contact_id, account_id, updated_at, deleted_at FROM public.crm_interactions WHERE company_id=$1 AND id=ANY($2::uuid[])", [context.companyId, ids]);
+        const rows = await client.query("SELECT id, contact_id, account_id, updated_at, deleted_at FROM public.crm_interactions WHERE company_id=$1 AND id=ANY($2::uuid[]) ORDER BY id FOR UPDATE", [context.companyId, ids]);
         if (rows.rows.length !== ids.length || rows.rows.some((r: Record<string, unknown>) =>
           r.deleted_at || String(r.contact_id) !== survivorId || editedAfterMerge(r.updated_at, history.merged_at) ||
           (history.merged_account_id ? String(r.account_id) !== String(history.merged_account_id) : r.account_id !== null))) {
