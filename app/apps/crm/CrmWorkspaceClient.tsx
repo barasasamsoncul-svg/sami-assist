@@ -11,6 +11,7 @@ import CrmAccountSegmentsPanel from '@/app/apps/crm/CrmAccountSegmentsPanel';
 import CrmDataQualityPanel from '@/app/apps/crm/CrmDataQualityPanel';
 import CrmMergeHistoryPanel from '@/app/apps/crm/CrmMergeHistoryPanel';
 import CrmRelationshipHealthPanel from '@/app/apps/crm/CrmRelationshipHealthPanel';
+import CrmReportsPanel from '@/app/apps/crm/CrmReportsPanel';
 
 import type { EnterpriseWorkspaceData } from '@/lib/apps/enterprise/service';
 import type { StandaloneEnterpriseWorkspaceView } from '@/app/apps/_shared/loadStandaloneEnterpriseApp';
@@ -27,6 +28,7 @@ export default function CrmWorkspaceClient({
   dataQualityView,
   mergeHistoryView,
   relationshipHealthView,
+  reportsView,
 }: {
   initialData: EnterpriseWorkspaceData;
   userId: string;
@@ -39,6 +41,7 @@ export default function CrmWorkspaceClient({
   dataQualityView: boolean;
   mergeHistoryView: boolean;
   relationshipHealthView: boolean;
+  reportsView: boolean;
 }) {
   if (accountId) {
     return (
@@ -70,6 +73,10 @@ export default function CrmWorkspaceClient({
 
   if (relationshipHealthView) {
     return <CrmRelationshipHealthPanel />;
+  }
+
+  if (reportsView) {
+    return <CrmReportsPanel />;
   }
 
   const accountTable = initialData.tables.find((table) => table.key === 'crm_accounts');
