@@ -52,7 +52,7 @@ export async function GET() {
     }
 
     const result = await accounts.pool.query(
-      \`WITH activity_stats AS (
+      `WITH activity_stats AS (
          SELECT
            COALESCE(i.account_id, c.account_id) AS account_id,
            MAX(COALESCE(i.occurred_at, i.created_at)) AS last_activity_at,
@@ -131,7 +131,7 @@ export async function GET() {
        ORDER BY
          CASE WHEN overdue_followups > 0 THEN 0 ELSE 1 END,
          health_score ASC, last_activity_at ASC NULLS FIRST, LOWER(account_name)
-       LIMIT 250\`,
+       LIMIT 250`,
       [accounts.companyId],
     );
 
