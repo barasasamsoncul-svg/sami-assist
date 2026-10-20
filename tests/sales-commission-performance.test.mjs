@@ -44,7 +44,7 @@ test('Sales commission performance resolves active tenant salespeople and keeps 
   assert.match(service, /const PER_CURRENCY_CAP = 250/);
   assert.match(service, /WHERE currency_rank <= \$4/);
   assert.match(service, /ORDER BY\s+currency ASC,\s*accrued_amount DESC/);
-  assert.match(ui, /new Set\(rows\.map\(row => row\.currency\)\)/);
+  assert.match(ui, /new Set\(rows\.map\(\(row\) => row\.currency\)\)/);
   assert.match(ui, /currency totals are never combined/);
 });
 

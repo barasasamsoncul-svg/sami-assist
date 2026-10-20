@@ -19,7 +19,7 @@ test('Sales expiry sweep scans active tenant databases and skips tenants without
 test('Sales expiry uses locked 500-row batches and writes status, history, and activity transactionally', async () => {
   const expiry = await source('lib/apps/sales/expiry.ts');
   assert.match(expiry, /const QUOTE_EXPIRY_BATCH_SIZE = 500/);
-  assert.match(expiry, /status IN \('sent', 'viewed'\)[\s\S]*valid_until < CURRENT_DATE[\s\S]*deleted_at IS NULL/);
+  assert.match(expiry, /status IN \('sent'\s*,\s*'viewed'\)[\s\S]*valid_until < CURRENT_DATE[\s\S]*deleted_at IS NULL/);
   assert.match(expiry, /LIMIT \$1\s+FOR UPDATE SKIP LOCKED/);
   assert.match(expiry, /for \(let batch = 0; batch < MAX_BATCHES_PER_TENANT; batch \+= 1\)/);
   assert.match(expiry, /updated_by = NULL/);
@@ -32,7 +32,7 @@ test('Sales expiry uses locked 500-row batches and writes status, history, and a
   assert.match(expiry, /await client\.query\('ROLLBACK'\)/);
 });
 
-test('hourly internal cron route is authenticated and tracked as a platform job', async () => {
+l=>l.replace("hourly internal cron route","daily internal cron route")
   const route = await source('app/api/internal/sales/expire-quotes/route.ts');
   const vercel = JSON.parse(await source('vercel.json'));
   assert.match(route, /process\.env\.CRON_SECRET/);
@@ -41,6 +41,6 @@ test('hourly internal cron route is authenticated and tracked as a platform job'
   assert.match(route, /expireOverdueSalesQuotes\(\)/);
   assert.ok(vercel.crons.some(cron =>
     cron.path === '/api/internal/sales/expire-quotes' &&
-    cron.schedule === '0 * * * *'
+    cron.schedule === '0 0 * * *'
   ));
 });

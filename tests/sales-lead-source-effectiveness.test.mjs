@@ -48,7 +48,8 @@ test('Sales lead source value analysis keeps pipeline outcomes separated by curr
   assert.match(component, /Lead source effectiveness/);
   assert.match(component, /row\.currency/);
   assert.match(component, /formatMoney\(/);
-  assert.match(component, /kept separate by currency/);
+  assert.match(component, /const currencies = Array\.from\(new Set\(report\.values\.map\(\(row\) => row\.currency\)\)\)/);
+  assert.match(component, /formatMoney\([^,\n]+,\s*row\.currency\)/);
 });
 
 test('Sales Reports loads and renders lead-source conversion and value attribution', async () => {

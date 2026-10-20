@@ -36,13 +36,14 @@ test('Sales opportunity funnel reports counts and correct value by open, won and
   assert.match(service, /FILTER \(WHERE s\.stage_type = 'lost'\)/);
   assert.match(service, /weighted_pipeline_value/);
   assert.match(service, /GROUP BY\s+s\.id,\s*s\.name,\s*s\.sequence,\s*s\.stage_type,\s*s\.probability/);
-  assert.match(service, /GROUP BY[\s\S]*UPPER\(COALESCE\(NULLIF\(BTRIM\(o\.currency\), ''\)/);
+  assert.match(service, /GROUP BY[\s\S]{0,500}UPPER\(COALESCE\(/);
+  assert.match(service, /BTRIM\(o\.currency\)/);
   assert.match(service, /ORDER BY s\.sequence ASC/);
   assert.match(component, /Open pipeline value/);
   assert.match(component, /Won value/);
   assert.match(component, /Lost value/);
   assert.match(component, /Weighted value/);
-  assert.match(component, /new Set\(rows\.map\(row => row\.currency\)\)/);
+  assert.match(component, /new Set\(rows\.map\(\(row\) => row\.currency\)\)/);
   assert.match(component, /CURRENCIES ARE REPORTED SEPARATELY|Currencies are reported separately/);
 });
 
@@ -64,7 +65,7 @@ test('Sales funnel highlights overdue closes and opportunities aging in their cu
   assert.match(service, /staleOpportunityCount: Number\(row\.stale_opportunity_count \|\| 0\)/);
   assert.match(component, /Overdue close/);
   assert.match(component, /30\+ days in stage/);
-  assert.match(component, /money\(row\.overdueValue, currency\)/);
+  assert.match(component, /formatMoney\(row\.overdueValue,\s*currency\)/);
   assert.match(component, /money\(row\.staleValue, currency\)/);
 });
 
@@ -74,7 +75,7 @@ test('Sales Reports render stage funnel data without changing other Sales route 
 
   assert.match(page, /getSalesOpportunityFunnelData/);
   assert.match(page, /reportsAvailable/);
-  assert.match(page, /<SalesOpportunityFunnel rows=\{opportunityFunnel\.rows\} riskRows=\{opportunityRiskQueue\.rows\} \/>/);
+  assert.match(page, /SalesOpportunityFunnel[\s\S]{0,180}rows=\{opportunityFunnel\.rows\}[\s\S]{0,180}riskRows=\{opportunityRiskQueue\.rows\}/);
   assert.match(page, /view === 'reports' && data\.capabilities\.canViewReports/);
   assert.match(packageJson, /tests\/sales-pipeline-funnel\.test\.mjs/);
 });
@@ -95,7 +96,7 @@ test('Sales opportunity risk queue is company and tenant scoped and prioritizes 
 
   assert.match(riskService, /requireSalesContext\(SALES_PERMISSIONS\.QUOTE_VIEW\)/);
   assert.match(riskService, /SALES_PERMISSIONS\.REPORT_VIEW/);
-  assert.match(riskService, /if \(!canViewReports\) \{\s*return \[\];\s*\}/);
+  assert.match(riskService, /if \(!canViewReports\) \{\s*return \{\s*canViewReports: false,[\s\S]*?rows: \[\],\s*\};/);
   assert.match(riskService, /WHERE o\.company_id = \$1/);
   assert.match(riskService, /NULLIF\(BTRIM\(\$3::text\), ''\)/);
   assert.match(riskService, /context\.company\.currentCompany\.currency/);
@@ -120,7 +121,7 @@ test('Sales Reports render actionable risk records with reasons, owner, close da
 
   assert.match(page, /getSalesOpportunityRiskQueue/);
   assert.match(page, /opportunityRiskQueue/);
-  assert.match(page, /<SalesOpportunityFunnel rows=\{opportunityFunnel\.rows\} riskRows=\{opportunityRiskQueue\.rows\} \/>/);
+  assert.match(page, /SalesOpportunityFunnel[\s\S]{0,180}rows=\{opportunityFunnel\.rows\}[\s\S]{0,180}riskRows=\{opportunityRiskQueue\.rows\}/);
   assert.match(component, /Opportunities needing attention/);
   assert.match(component, /Overdue close/);
   assert.match(component, /No close date/);

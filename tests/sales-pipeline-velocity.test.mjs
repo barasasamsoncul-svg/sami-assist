@@ -51,7 +51,7 @@ test('Sales pipeline velocity ranks bottlenecks by median dwell time and caps th
   assert.match(component, /Pipeline stage velocity/);
   assert.match(component, /slowest median transitions appear first/i);
   assert.match(component, /Median time/);
-  assert.match(component, /Average time/);
+  assert.match(component, /Median time in stage/);
   assert.match(component, /Longest/);
 });
 

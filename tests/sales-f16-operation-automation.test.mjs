@@ -26,7 +26,7 @@ test('shipment status transitions emit fulfillment automation only after commit'
   const commit = fn.search(/await client\.query\(\s*'COMMIT'\s*,?\s*\)/);
   const event = fn.indexOf("triggerKey: 'sales.order.fulfillment.changed'");
   assert.ok(commit >= 0 && event > commit, 'shipment fulfillment automation must be post-commit');
-  assert.match(fn, /fulfillment:'\s*\+\s*orderId\s*\+\s*':'\s*\+\s*fulfillmentSnapshot\.fulfillmentStatus\s*\+\s*':'\s*\+\s*fulfillmentSnapshot\.deliveredQuantity/);
+  assert.match(fn, /'fulfillment:'\s*\+\s*fulfillmentOrderId\s*\+\s*':'\s*\+\s*fulfillmentSnapshot\.fulfillmentStatus\s*\+\s*':'\s*\+\s*fulfillmentSnapshot\.deliveredQuantity/);
   assert.match(fn, /orderedQuantity: fulfillmentSnapshot\.orderedQuantity/);
   assert.match(fn, /deliveredQuantity: fulfillmentSnapshot\.deliveredQuantity/);
 });
@@ -45,7 +45,7 @@ test('receiving a sales return emits the recalculated fulfillment state after co
   assert.ok(commit >= 0 && returnReceivedEvent > commit, 'return.received automation must be post-commit');
   assert.ok(returnReceivedEvent < event, 'return.received is emitted before the fulfillment-change notification');
   assert.ok(event > commit, 'return fulfillment automation must be post-commit');
-  assert.match(fn, /'fulfillment:'\s*\+\s*orderId\s*\+\s*':'\s*\+\s*fulfillmentSnapshot\.fulfillmentStatus/);
+  assert.match(fn, /'fulfillment:'\s*\+\s*fulfillmentOrderId\s*\+\s*':'\s*\+\s*fulfillmentSnapshot\.fulfillmentStatus/);
 });
 
 test('shipment creation documents that planned quantities do not dispatch fulfillment-changed', async () => {
@@ -72,7 +72,7 @@ test('return credits prorate invoice line totals by credited quantity and revers
   assert.match(fn, /invoice\.currency/);
   assert.match(fn, /invoiceItemLineTotal:\s*Number\(invoiceItem\.line_total \|\| 0\)/);
   assert.match(fn, /line\.invoiceItemLineTotal\s*\*\s*\(line\.quantity\s*\/\s*line\.invoiceItemQuantity\)/);
-  assert.match(fn, /returnedValueByCurrency:\s*Array\.from\(returnedAmountsByCurrency/);
+  assert.match(fn, /returnedValueByCurrency:\s*Array\.from\(\s*returnedAmountsByCurrency,\s*\(\[currency, amount\]\)/);
   assert.match(fn, /reverseSalesOrderCommissionsForReturn\(/);
   const reversalStart = fn.indexOf('const commissionReversals');
   const reversalBegin = fn.indexOf("await serializationClient.query('BEGIN')", reversalStart);
