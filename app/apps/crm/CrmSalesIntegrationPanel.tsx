@@ -83,7 +83,7 @@ function displayMoney(
       maximumFractionDigits: 2,
     }).format(amount);
   } catch {
-    return \`\${code} \${amount.toLocaleString('en-KE', { maximumFractionDigits: 2 })}\`;
+    return `${code} ${amount.toLocaleString('en-KE', { maximumFractionDigits: 2 })}`;
   }
 }
 
@@ -226,7 +226,7 @@ export default function CrmSalesIntegrationPanel({
           disabled={loading}
           className="inline-flex h-10 shrink-0 items-center justify-center gap-2 self-start rounded-xl border border-slate-300 px-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          <RefreshCw className={\`h-4 w-4 \${loading ? 'animate-spin' : ''}\`} />
+          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           Refresh
         </button>
       </div>
@@ -309,7 +309,7 @@ export default function CrmSalesIntegrationPanel({
                       {displayMoney(opportunity.expected_value, opportunity.currency)}
                     </p>
                     <p className="mt-0.5 text-xs text-slate-600">
-                      {Number.isFinite(Number(opportunity.probability)) ? \`\${Number(opportunity.probability)}% probability\` : 'Probability not set'}
+                      {Number.isFinite(Number(opportunity.probability)) ? `${Number(opportunity.probability)}% probability` : 'Probability not set'}
                     </p>
                   </div>
                 </div>
@@ -330,7 +330,7 @@ export default function CrmSalesIntegrationPanel({
           {overdue.length ? (
             <div className="divide-y divide-slate-100">
               {overdue.map((activity) => (
-                <div key={\`\${activity.activity_type || 'activity'}-\${activity.id}\`} className="px-4 py-3">
+                <div key={`${activity.activity_type || 'activity'}-${activity.id}`} className="px-4 py-3">
                   <p className="text-sm font-semibold text-slate-900">{activity.subject || activity.activity_type || 'Follow-up'}</p>
                   <p className="mt-0.5 truncate text-xs text-slate-600">
                     {activity.lead_name || activity.opportunity_name || activity.lead_contact_name || activity.opportunity_contact_name || 'Sales record'}
@@ -351,7 +351,7 @@ export default function CrmSalesIntegrationPanel({
 
       <div className="flex flex-col gap-2 border-t border-slate-200 pt-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs text-slate-500">
-          {loadedAt ? \`Refreshed \${new Date(loadedAt).toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' })}\` : 'Sales data refreshes when this workspace is opened.'}
+          {loadedAt ? `Refreshed ${new Date(loadedAt).toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' })}` : 'Sales data refreshes when this workspace is opened.'}
         </p>
         <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm font-semibold">
           <Link href="/apps/sales/pipeline" className="text-blue-700 hover:underline">Pipeline</Link>
