@@ -10,6 +10,7 @@ import CrmFollowUpsPanel from '@/app/apps/crm/CrmFollowUpsPanel';
 import CrmAccountSegmentsPanel from '@/app/apps/crm/CrmAccountSegmentsPanel';
 import CrmDataQualityPanel from '@/app/apps/crm/CrmDataQualityPanel';
 import CrmMergeHistoryPanel from '@/app/apps/crm/CrmMergeHistoryPanel';
+import CrmRelationshipHealthPanel from '@/app/apps/crm/CrmRelationshipHealthPanel';
 
 import type { EnterpriseWorkspaceData } from '@/lib/apps/enterprise/service';
 import type { StandaloneEnterpriseWorkspaceView } from '@/app/apps/_shared/loadStandaloneEnterpriseApp';
@@ -25,6 +26,7 @@ export default function CrmWorkspaceClient({
   segmentsView,
   dataQualityView,
   mergeHistoryView,
+  relationshipHealthView,
 }: {
   initialData: EnterpriseWorkspaceData;
   userId: string;
@@ -36,6 +38,7 @@ export default function CrmWorkspaceClient({
   segmentsView: boolean;
   dataQualityView: boolean;
   mergeHistoryView: boolean;
+  relationshipHealthView: boolean;
 }) {
   if (accountId) {
     return (
@@ -63,6 +66,10 @@ export default function CrmWorkspaceClient({
 
   if (mergeHistoryView) {
     return <CrmMergeHistoryPanel canRecover={initialData.capabilities.canEdit} />;
+  }
+
+  if (relationshipHealthView) {
+    return <CrmRelationshipHealthPanel />;
   }
 
   const accountTable = initialData.tables.find((table) => table.key === 'crm_accounts');
