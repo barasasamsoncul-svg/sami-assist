@@ -255,7 +255,7 @@ export default function CrmSalesIntegrationPanel({
             <UsersRound className="h-4 w-4 text-slate-500" />
           </div>
           <p className="mt-2 text-2xl font-semibold tabular-nums text-slate-950">
-            {loading && !pipeline ? '—' : leads.length.toLocaleString('en-KE')}
+            {!pipeline ? '—' : leads.length.toLocaleString('en-KE')}
           </p>
           <Link href="/apps/sales/pipeline" className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-blue-700 hover:underline">
             Review leads <ArrowUpRight className="h-3.5 w-3.5" />
@@ -267,7 +267,7 @@ export default function CrmSalesIntegrationPanel({
             <BriefcaseBusiness className="h-4 w-4 text-slate-500" />
           </div>
           <p className="mt-2 text-2xl font-semibold tabular-nums text-slate-950">
-            {loading && !pipeline ? '—' : opportunities.length.toLocaleString('en-KE')}
+            {!pipeline ? '—' : opportunities.length.toLocaleString('en-KE')}
           </p>
           <Link href="/apps/sales/opportunities" className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-blue-700 hover:underline">
             View opportunities <ArrowUpRight className="h-3.5 w-3.5" />
@@ -279,7 +279,7 @@ export default function CrmSalesIntegrationPanel({
             <Clock3 className="h-4 w-4 text-slate-500" />
           </div>
           <p className="mt-2 text-2xl font-semibold tabular-nums text-slate-950">
-            {loading && !pipeline ? '—' : overdue.length.toLocaleString('en-KE')}
+            {!pipeline ? '—' : overdue.length.toLocaleString('en-KE')}
           </p>
           <p className="mt-2 text-xs text-slate-500">Showing up to five due items below</p>
         </div>
