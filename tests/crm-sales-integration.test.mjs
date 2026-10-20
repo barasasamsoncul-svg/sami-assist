@@ -96,17 +96,17 @@ test('CRM syncs the existing shared customer master into company-scoped CRM acco
     source('lib/apps/invoicing/schema.sql'),
   ]);
 
-  assert.match(sync, /FROM public\\.invoicing_customers/);
-  assert.match(sync, /company_id = \\$1 AND deleted_at IS NULL/);
+  assert.match(sync, /FROM public\.invoicing_customers/);
+  assert.match(sync, /company_id = \$1 AND deleted_at IS NULL/);
   assert.match(sync, /pg_advisory_xact_lock/);
   assert.match(sync, /invoicing_customer_id/);
   assert.match(sync, /external_crm_contact_id/);
-  assert.match(sync, /INSERT INTO public\\.crm_accounts/);
-  assert.match(sync, /INSERT INTO public\\.crm_contacts/);
+  assert.match(sync, /INSERT INTO public\.crm_accounts/);
+  assert.match(sync, /INSERT INTO public\.crm_contacts/);
   assert.match(sync, /ON CONFLICT DO NOTHING/);
   assert.match(sync, /deleted_at IS NULL/);
   assert.match(workspace, /syncSharedCustomerMasterForCrm/);
-  assert.match(workspace, /INVOICING_PERMISSIONS\\.CUSTOMER_MANAGE/);
+  assert.match(workspace, /INVOICING_PERMISSIONS\.CUSTOMER_MANAGE/);
   assert.ok(
     workspace.indexOf('await syncSharedCustomerMasterForCrm();') <
     workspace.indexOf('await loadStandaloneEnterpriseApp('),
