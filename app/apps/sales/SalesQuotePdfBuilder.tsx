@@ -121,7 +121,7 @@ export default function SalesQuotePdfBuilder({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">
-              Roadmap Part 6
+              QUOTATION DOCUMENT DESIGN
             </p>
             <h2 className="mt-1 text-xl font-black">Quote / PDF Builder</h2>
             <p className="mt-1 max-w-3xl text-sm text-slate-500 dark:text-slate-400">
