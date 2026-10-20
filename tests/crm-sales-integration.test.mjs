@@ -336,8 +336,10 @@ test('CRM merge history exposes company-scoped audit and guarded recovery only f
   assert.ok(accountMerge.includes('moved_contact_snapshots, moved_interaction_snapshots,'));
   assert.ok(accountMerge.includes('recovery_snapshot_version, merged_by'));
   assert.ok(accountMerge.includes('jsonb_agg(jsonb_build_object'));
+  assert.ok(accountMerge.includes('WHERE company_id = $1 AND account_id = $2 AND deleted_at IS NULL ORDER BY id FOR UPDATE'));
   assert.ok(contactMerge.includes('moved_interaction_snapshots, recovery_snapshot_version'));
   assert.ok(contactMerge.includes('jsonb_agg(jsonb_build_object'));
+  assert.ok(contactMerge.includes('WHERE company_id = $1 AND contact_id = ANY($2::uuid[]) AND deleted_at IS NULL ORDER BY id FOR UPDATE'));
   assert.ok(historyRoute.includes("requireEnterpriseModuleTableContext('crm', 'crm_accounts', mode)"));
   assert.ok(historyRoute.includes("requireEnterpriseModuleTableContext('crm', 'crm_contacts', mode)"));
   assert.ok(historyRoute.includes("requireEnterpriseModuleTableContext('crm', 'crm_interactions', mode)"));
