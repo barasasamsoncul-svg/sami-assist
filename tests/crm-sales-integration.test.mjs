@@ -367,7 +367,9 @@ test('CRM relationship health ranks accounts from scoped engagement, coverage an
   assert.ok(healthRoute.includes("requireEnterpriseModuleTableContext('crm', 'crm_accounts', 'view')"));
   assert.ok(healthRoute.includes("requireEnterpriseModuleTableContext('crm', 'crm_contacts', 'view')"));
   assert.ok(healthRoute.includes("requireEnterpriseModuleTableContext('crm', 'crm_interactions', 'view')"));
-  assert.ok(healthRoute.includes("WHERE company_id = $1 AND deleted_at IS NULL AND account_id IS NOT NULL"));
+  assert.ok(healthRoute.includes('COALESCE(i.account_id, c.account_id)'));
+  assert.ok(healthRoute.includes('c.company_id = i.company_id'));
+  assert.ok(healthRoute.includes("WHERE i.company_id = $1 AND i.deleted_at IS NULL"));
   assert.ok(healthRoute.includes("INTERVAL '90 days'"));
   assert.ok(healthRoute.includes('overdue_followups'));
   assert.ok(healthRoute.includes('health_score'));
