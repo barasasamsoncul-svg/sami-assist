@@ -7,15 +7,9 @@ export {
   getSalesSavedQuoteViews,
   saveSalesSavedQuoteView,
   deleteSalesSavedQuoteView,
-} from '@/lib/apps/sales/saved-views';
-
-export {
   getSalesSavedOrderViews,
   saveSalesSavedOrderView,
   deleteSalesSavedOrderView,
-} from '@/lib/apps/sales/saved-views';
-
-export {
   getSalesSavedPipelineViews,
   saveSalesSavedPipelineView,
   deleteSalesSavedPipelineView,
@@ -28,7 +22,6 @@ export {
 export {
   bulkInvoiceSalesOrders,
 } from '@/lib/apps/sales/bulk-invoice';
-
 
 export {
   getSalesOrderDetail,
@@ -69,14 +62,12 @@ export {
   respondToPublicSalesQuote,
 } from '@/lib/apps/sales/public';
 
-
 export {
   createSalesQuoteRevision,
   getSalesCommercialData,
   saveSalesPricelist,
   saveSalesQuoteOptionalItems,
 } from '@/lib/apps/sales/commercial';
-
 
 export {
   getSalesOrganizationData,
@@ -89,12 +80,10 @@ export {
   saveSalesTerritory,
 } from '@/lib/apps/sales/organization';
 
-
 export {
   createSalesOrderPortalLink,
   revokeSalesOrderPortalLink,
 } from '@/lib/apps/sales/order-portal';
-
 
 export {
   applySalesOrderDeposit,
@@ -110,13 +99,11 @@ export {
   updateSalesShipmentStatus,
 } from '@/lib/apps/sales/operations';
 
-
 export {
   getSalesCurrencyData,
   saveSalesCurrency,
   saveSalesExchangeRate,
 } from '@/lib/apps/sales/currencies';
-
 
 export {
   createSalesPipeline,
@@ -145,14 +132,17 @@ export {
   moveSalesOpportunity,
 } from '@/lib/apps/sales/pipeline';
 
-export { getSalesLeadAssignmentRules, saveSalesLeadAssignmentRule, deleteSalesLeadAssignmentRule } from '@/lib/apps/sales/lead-assignment-rules';
+export {
+  getSalesLeadAssignmentRules,
+  saveSalesLeadAssignmentRule,
+  deleteSalesLeadAssignmentRule,
+} from '@/lib/apps/sales/lead-assignment-rules';
 
 export {
   cancelSalesQuoteApproval,
   getSalesQuoteApprovalData,
   saveSalesQuoteApprovalPolicy,
 } from '@/lib/apps/sales/approvals';
-
 
 export {
   createSalesProductVariant,

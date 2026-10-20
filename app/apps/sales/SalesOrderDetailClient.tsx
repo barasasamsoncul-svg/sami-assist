@@ -1,19 +1,17 @@
 'use client';
 
-import {
-  useEffect,
-  useRef,
-  useState,
-  useTransition,
-} from 'react';
-
 import Link from 'next/link';
-
+import { useRouter } from 'next/navigation';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import {
   AlertTriangle,
   BadgeDollarSign,
+  ChevronDown,
+  ChevronRight,
   Copy,
   Link2,
+  Loader2,
+  Package,
   PackageCheck,
   Receipt,
   RotateCcw,
@@ -21,114 +19,90 @@ import {
   X,
 } from 'lucide-react';
 
-import {
-  useRouter,
-} from 'next/navigation';
-
 import SaMiOverlay from '@/app/components/SaMiOverlay';
-
-import {
-  useSaMiOverlay,
-} from '@/app/components/useSaMiOverlay';
+import { useSaMiOverlay } from '@/app/components/useSaMiOverlay';
 
 import type {
   SalesOrderDetail,
   SalesWorkspaceData,
 } from '@/lib/apps/sales/types';
 
+/* -------------------------------------------------------------------------- */
+/*  Formatting                                                                */
+/* -------------------------------------------------------------------------- */
 
-function money(
-  value:
-    number,
-  currency:
-    string,
-) {
+function formatMoney(value: number, currency: string): string {
   try {
-    return new Intl
-      .NumberFormat(
-        'en-KE',
-        {
-          style:
-            'currency',
-          currency,
-          maximumFractionDigits:
-            2,
-        },
-      )
-      .format(
-        value,
-      );
+    return new Intl.NumberFormat('en-KE', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 2,
+    }).format(value);
   } catch {
-    return (
-      currency +
-      ' ' +
-      value.toLocaleString()
-    );
+    return currency + ' ' + value.toLocaleString();
   }
 }
 
+function statusTone(status: string): string {
+  switch (status) {
+    case 'confirmed':
+    case 'active':
+    case 'fulfilled':
+    case 'invoiced':
+    case 'received':
+      return 'bg-emerald-50 text-emerald-700 ring-emerald-500/20 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-500/30';
+    case 'closed':
+    case 'delivered':
+    case 'applied':
+    case 'credited':
+    case 'refunded':
+      return 'bg-slate-100 text-slate-700 ring-slate-500/20 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-500/30';
+    case 'cancelled':
+    case 'failed':
+    case 'rejected':
+      return 'bg-red-50 text-red-700 ring-red-500/20 dark:bg-red-950/40 dark:text-red-300 dark:ring-red-500/30';
+    case 'pending':
+    case 'partial':
+    case 'partial_delivered':
+    case 'partial_invoiced':
+    case 'in_transit':
+    case 'shipped':
+    case 'approved':
+    case 'requested':
+      return 'bg-amber-50 text-amber-700 ring-amber-500/20 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-500/30';
+    default:
+      return 'bg-slate-100 text-slate-700 ring-slate-500/20 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-500/30';
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Root                                                                      */
+/* -------------------------------------------------------------------------- */
 
 export default function SalesOrderDetailClient({
   order,
   workspace,
 }: {
-  order:
-    SalesOrderDetail;
-  workspace:
-    SalesWorkspaceData;
+  order: SalesOrderDetail;
+  workspace: SalesWorkspaceData;
 }) {
-  const router =
-    useRouter();
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const inFlight = useRef(false);
 
-  const [
-    busy,
-    setBusy,
-  ] =
-    useState(
-      false,
-    );
+  const invoiceIdempotencyKey = useRef<string | null>(null);
 
-  const [
-    pending,
-    startTransition,
-  ] =
-    useTransition();
-
-  const inFlight =
-    useRef(
-      false,
-    );
-
-  // Retain the invoice idempotency key across failed attempts. A fresh key on
-  // every click would let a network retry accidentally create another invoice.
-  const invoiceIdempotencyKey =
-    useRef<string | null>(
-      null,
-    );
-
-  // Retain the shipment request key until a successful response so a retry
-  // after a lost network response does not create a second shipment.
   const [customerPortalUrl, setCustomerPortalUrl] = useState<string | null>(null);
 
-  const shipmentIdempotencyKey =
-    useRef<{
-      orderId: string;
-      key: string;
-    } | null>(
-      null,
-    );
+  const shipmentIdempotencyKey = useRef<{ orderId: string; key: string } | null>(
+    null,
+  );
 
-  const {
-    overlay,
-    closeOverlay,
-    showSuccess,
-    showError,
-    showWarning,
-  } =
+  const { overlay, closeOverlay, showSuccess, showError, showWarning } =
     useSaMiOverlay();
 
-  const staleCommissionWarningShownFor =
-    useRef<string | null>(null);
+  const staleCommissionWarningShownFor = useRef<string | null>(null);
 
   useEffect(() => {
     if (!order.marginCommissionStale) {
@@ -137,11 +111,7 @@ export default function SalesOrderDetailClient({
       }
       return;
     }
-
-    if (staleCommissionWarningShownFor.current === order.id) {
-      return;
-    }
-
+    if (staleCommissionWarningShownFor.current === order.id) return;
     staleCommissionWarningShownFor.current = order.id;
     showWarning(
       'Commission reversal needs attention',
@@ -149,120 +119,62 @@ export default function SalesOrderDetailClient({
     );
   }, [order.id, order.marginCommissionStale, showWarning]);
 
-  const isBusy =
-    busy ||
-    pending;
+  const isBusy = busy || pending;
 
   async function run(
-    payload:
-      Record<
-        string,
-        unknown
-      >,
-    message:
-      string,
-  ) {
-    if (
-      inFlight.current
-    ) {
+    payload: Record<string, unknown>,
+    message: string,
+  ): Promise<Record<string, unknown> | null> {
+    if (inFlight.current) {
       showWarning(
         'Action already in progress',
         'Another Sales action is still being saved.',
       );
       return null;
     }
-
-    inFlight.current =
-      true;
-
-    setBusy(
-      true,
-    );
+    inFlight.current = true;
+    setBusy(true);
 
     try {
-      const response =
-        await fetch(
-          '/api/apps/sales',
-          {
-            method:
-              'POST',
-            credentials:
-              'same-origin',
-            cache:
-              'no-store',
-            headers: {
-              'Content-Type':
-                'application/json',
-            },
-            body:
-              JSON.stringify(
-                payload,
-              ),
-          },
-        );
+      const response = await fetch('/api/apps/sales', {
+        method: 'POST',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
-      const body =
-        await response
-          .json()
-          .catch(
-            () => ({}),
-          ) as {
-            success?:
-              boolean;
-            error?:
-              string;
-            result?:
-              Record<
-                string,
-                unknown
-              >;
-          };
+      const body = (await response.json().catch(() => ({}))) as {
+        success?: boolean;
+        error?: string;
+        result?: Record<string, unknown>;
+      };
 
-      if (
-        !response.ok ||
-        body.success !==
-          true
-      ) {
-        throw new Error(
-          body.error ||
-          'SaMi could not complete the Sales action.',
-        );
+      if (!response.ok || body.success !== true) {
+        throw new Error(body.error || 'SaMi could not complete the Sales action.');
       }
 
-      showSuccess(
-        'Action completed',
-        message,
-      );
+      showSuccess('Action completed', message);
+      startTransition(() => router.refresh());
 
-      startTransition(
-        () => {
-          router.refresh();
-        },
-      );
-
-      return body.result ||
-        {};
-    } catch (
-      error
-    ) {
+      return body.result || {};
+    } catch (error) {
       showError(
         'Sales action failed',
-        error instanceof
-          Error
+        error instanceof Error
           ? error.message
           : 'SaMi could not complete the Sales action.',
       );
-
       return null;
     } finally {
-      inFlight.current =
-        false;
-
-      setBusy(
-        false,
-      );
+      inFlight.current = false;
+      setBusy(false);
     }
   }
+
+  /* ------------------------------------------------------------------------ */
+  /*  Portal link                                                             */
+  /* ------------------------------------------------------------------------ */
 
   async function createCustomerPortalLink() {
     const result = await run(
@@ -270,14 +182,25 @@ export default function SalesOrderDetailClient({
       'Customer tracking link created. Any previous link has been invalidated.',
     );
     if (!result) return;
+
     const tenantId = typeof result.tenantId === 'string' ? result.tenantId : '';
     const token = typeof result.token === 'string' ? result.token : '';
     if (!tenantId || !token) {
-      showError('Link unavailable', 'SaMi did not return a valid customer portal link. Please try again.');
+      showError(
+        'Link unavailable',
+        'SaMi did not return a valid customer portal link. Please try again.',
+      );
       return;
     }
+
     setCustomerPortalUrl(
-      new URL('/order/' + encodeURIComponent(tenantId) + '/' + encodeURIComponent(token), window.location.origin).toString(),
+      new URL(
+        '/order/' +
+          encodeURIComponent(tenantId) +
+          '/' +
+          encodeURIComponent(token),
+        window.location.origin,
+      ).toString(),
     );
   }
 
@@ -285,7 +208,10 @@ export default function SalesOrderDetailClient({
     if (!customerPortalUrl) return;
     try {
       await navigator.clipboard.writeText(customerPortalUrl);
-      showSuccess('Link copied', 'The customer order tracking link is ready to share.');
+      showSuccess(
+        'Link copied',
+        'The customer order tracking link is ready to share.',
+      );
     } catch {
       showWarning('Copy unavailable', 'Select the link field and copy it manually.');
     }
@@ -299,2048 +225,1285 @@ export default function SalesOrderDetailClient({
     if (result) setCustomerPortalUrl(null);
   }
 
+  /* ------------------------------------------------------------------------ */
+  /*  Render                                                                  */
+  /* ------------------------------------------------------------------------ */
+
   return (
     <>
-      <SaMiOverlay
-        {...overlay}
-        onClose={
-          closeOverlay
-        }
-      />
+      <SaMiOverlay {...overlay} onClose={closeOverlay} />
 
-      <div className="space-y-4">
-        {workspace.capabilities.canManageOrders && (
-          <section className="sami-surface rounded-[22px] p-4 sm:p-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Link2 className="h-4 w-4 text-blue-600" />
-                  <h2 className="text-sm font-black">Customer tracking portal</h2>
-                </div>
-                <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
-                  Share a read-only order and shipment status page with the customer. Links expire after 90 days; rotating a link invalidates the previous one.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button type="button" disabled={isBusy} onClick={() => void createCustomerPortalLink()} className="inline-flex h-9 items-center gap-2 rounded-xl bg-blue-600 px-3 text-xs font-black text-white disabled:opacity-60">
-                  <Link2 className="h-4 w-4" />
-                  {customerPortalUrl ? 'Rotate link' : 'Generate link'}
-                </button>
-                <button type="button" disabled={isBusy} onClick={() => void revokeCustomerPortalLink()} className="inline-flex h-9 items-center rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black disabled:opacity-60">
-                  Revoke link
-                </button>
-              </div>
-            </div>
-            {customerPortalUrl && (
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                <input aria-label="Customer order tracking link" readOnly value={customerPortalUrl} onFocus={event => event.currentTarget.select()} className="h-10 min-w-0 flex-1 rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-xs" />
-                <button type="button" onClick={() => void copyCustomerPortalLink()} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black">
-                  <Copy className="h-4 w-4" />
-                  Copy customer link
-                </button>
-              </div>
-            )}
-          </section>
-        )}
-        <section className="sami-surface rounded-[26px] p-4 sm:p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-blue-600 dark:text-blue-300">
-                Sales order
+      <section className="space-y-4">
+        {/* ------------------------------------------------------------------ */}
+        {/* Page header                                                        */}
+        {/* ------------------------------------------------------------------ */}
+        <header className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-800">
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+                Sales · Order
               </p>
-
-              <h1 className="mt-1 text-xl font-black sm:text-2xl">
-                {
-                  order.orderNumber
-                }
+              <h1 className="mt-1 text-xl font-black tracking-tight">
+                {order.orderNumber}
               </h1>
-
-              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                {
-                  order.customerName
-                }
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                {order.customerName}
                 {' · '}
-                {
-                  money(
-                    order.totalAmount,
-                    order.currency,
-                  )
-                }
+                {formatMoney(order.totalAmount, order.currency)}
               </p>
-
-              <div className="mt-2 flex flex-wrap gap-2">
-                <State
-                  label="Order"
-                  value={
-                    order.status
-                  }
-                />
-                <State
-                  label="Fulfillment"
-                  value={
-                    order.fulfillmentStatus
-                  }
-                />
-                <State
-                  label="Invoice"
-                  value={
-                    order.invoiceStatus
-                  }
-                />
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <StateChip label="Order" value={order.status} />
+                <StateChip label="Fulfillment" value={order.fulfillmentStatus} />
+                <StateChip label="Invoice" value={order.invoiceStatus} />
               </div>
             </div>
 
             <div className="flex flex-wrap gap-2">
               <Link
                 href="/apps/sales"
-                className="inline-flex h-10 items-center rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black"
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
               >
-                Sales
+                Back to Sales
               </Link>
-
-              {
-                order.quoteId &&
-                (
-                  <Link
-                    href={
-                      '/apps/sales/quotes/' +
-                      order.quoteId
-                    }
-                    className="inline-flex h-10 items-center rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black"
-                  >
-                    Source quotation
-                  </Link>
-                )
-              }
+              {order.quoteId ? (
+                <Link
+                  href={'/apps/sales/quotes/' + order.quoteId}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Source quotation
+                  <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+                </Link>
+              ) : null}
             </div>
           </div>
-        </section>
 
-        {order.marginCommissionStale && (
-          <div role="alert" className="flex items-start gap-3 rounded-2xl border border-amber-400/60 bg-amber-50 p-4 text-amber-950 dark:border-amber-500/40 dark:bg-amber-950/30 dark:text-amber-100">
-            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+          {/* KPI strip */}
+          <div className="grid gap-3 px-5 py-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Kpi label="Order date" value={order.orderDate} />
+            <Kpi
+              label="Delivered"
+              value={`${order.deliveredPercent}%`}
+              tone={order.deliveredPercent === 100 ? 'success' : 'warning'}
+            />
+            <Kpi
+              label="Invoiced"
+              value={`${order.invoicedPercent}%`}
+              tone={order.invoicedPercent === 100 ? 'success' : 'warning'}
+            />
+            <Kpi
+              label="Deposit"
+              value={order.depositStatus.replaceAll('_', ' ')}
+              tone={order.depositStatus === 'received' ? 'success' : 'default'}
+            />
+          </div>
+        </header>
+
+        {order.marginCommissionStale ? (
+          <div
+            role="alert"
+            className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200"
+          >
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             <div>
-              <p className="text-sm font-black">Received return with accrued commissions</p>
+              <p className="font-black">
+                Received return with accrued commissions
+              </p>
               <p className="mt-1 text-xs leading-5">
-                This order has a received return while one or more commission entries remain accrued. Processing the related reversal will change those commission rows; review the commission ledger after the reversal is completed.
+                This order has a received return while commission entries remain
+                accrued. Processing the reversal will change those commission
+                rows; review the commission ledger after the reversal completes.
               </p>
             </div>
           </div>
-        )}
+        ) : null}
 
-        <section className="grid gap-4 xl:grid-cols-[1fr_390px]">
+        {/* ------------------------------------------------------------------ */}
+        {/* Customer portal                                                    */}
+        {/* ------------------------------------------------------------------ */}
+        {workspace.capabilities.canManageOrders ? (
+          <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-300">
+                  <Link2 className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <div>
+                  <h2 className="text-sm font-black">Customer tracking portal</h2>
+                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                    Read-only order and shipment status page. Links expire after
+                    90 days; rotating a link invalidates the previous one.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={() => void createCustomerPortalLink()}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-slate-950 px-3 text-xs font-black text-white transition hover:bg-slate-800 disabled:opacity-60 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                >
+                  <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  {customerPortalUrl ? 'Rotate link' : 'Generate link'}
+                </button>
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={() => void revokeCustomerPortalLink()}
+                  className="inline-flex h-9 items-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Revoke link
+                </button>
+              </div>
+            </div>
+
+            {customerPortalUrl ? (
+              <div className="flex flex-col gap-2 px-5 py-4 sm:flex-row">
+                <input
+                  aria-label="Customer order tracking link"
+                  readOnly
+                  value={customerPortalUrl}
+                  onFocus={(event) => event.currentTarget.select()}
+                  className="h-10 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                />
+                <button
+                  type="button"
+                  onClick={() => void copyCustomerPortalLink()}
+                  className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                  Copy link
+                </button>
+              </div>
+            ) : (
+              <p className="px-5 pb-4 text-xs text-slate-500 dark:text-slate-400">
+                No active tracking link. Generate one to share status with the
+                customer.
+              </p>
+            )}
+          </div>
+        ) : null}
+
+        {/* ------------------------------------------------------------------ */}
+        {/* Main two-column layout                                             */}
+        {/* ------------------------------------------------------------------ */}
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+          {/* ------------------------ Left column ------------------------ */}
           <div className="space-y-4">
-            <form
-              className="sami-surface overflow-hidden rounded-[24px]"
-              onSubmit={
-                async event => {
+            {/* Fulfillment */}
+            <Section title="Order fulfillment" icon={<Truck className="h-4 w-4" />}>
+              <form
+                onSubmit={async (event) => {
                   event.preventDefault();
-
-                  const form =
-                    new FormData(
-                      event.currentTarget,
-                    );
-
+                  const form = new FormData(event.currentTarget);
                   await run(
                     {
-                      action:
-                        'update_fulfillment',
-                      orderId:
-                        order.id,
-                      lines:
-                        order.lines.map(
-                          line => ({
-                            lineId:
-                              line.id,
-                            deliveredQuantity:
-                              form.get(
-                                'delivered-' +
-                                line.id,
-                              ),
-                          }),
-                        ),
+                      action: 'update_fulfillment',
+                      orderId: order.id,
+                      lines: order.lines.map((line) => ({
+                        lineId: line.id,
+                        deliveredQuantity: form.get('delivered-' + line.id),
+                      })),
                     },
                     'Fulfillment quantities updated.',
                   );
-                }
-              }
-            >
-              <div className="flex flex-col gap-3 border-b border-[var(--sami-border)] p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="text-sm font-black">
-                    Order fulfillment
-                  </h2>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Ordered, shipped, delivered and invoiceable quantities remain independently traceable.
-                  </p>
+                }}
+              >
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[980px] text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-[10px] uppercase tracking-[0.08em] text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                        <th className="px-3 py-3 font-black">Item</th>
+                        <th className="px-2 py-3 text-right font-black">Ordered</th>
+                        <th className="px-2 py-3 text-right font-black">Shipped</th>
+                        <th className="px-2 py-3 text-right font-black">Delivered</th>
+                        <th className="px-2 py-3 text-right font-black">Invoiced</th>
+                        <th className="px-2 py-3 text-right font-black">Returned</th>
+                        <th className="px-2 py-3 text-right font-black">Invoiceable</th>
+                        <th className="px-3 py-3 text-right font-black">Line total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                      {order.lines.map((line) => (
+                        <tr key={line.id}>
+                          <td className="px-3 py-3">
+                            <p className="font-bold">{line.description}</p>
+                            <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                              {[line.sku, line.unit].filter(Boolean).join(' · ')}
+                            </p>
+                          </td>
+                          <td className="px-2 py-3 text-right tabular-nums">
+                            {line.quantity}
+                          </td>
+                          <td className="px-2 py-3 text-right tabular-nums">
+                            {line.shippedQuantity}
+                          </td>
+                          <td className="px-2 py-3 text-right tabular-nums">
+                            {workspace.capabilities.canManageOrders &&
+                            !['cancelled', 'closed'].includes(order.status) ? (
+                              <input
+                                name={'delivered-' + line.id}
+                                type="number"
+                                min={line.deliveredQuantity}
+                                max={line.quantity}
+                                step="0.0001"
+                                defaultValue={line.deliveredQuantity}
+                                className="h-9 w-20 rounded-lg border border-slate-200 bg-white px-2 text-right text-xs tabular-nums focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-slate-500 dark:focus:ring-slate-800"
+                              />
+                            ) : (
+                              line.deliveredQuantity
+                            )}
+                          </td>
+                          <td className="px-2 py-3 text-right tabular-nums">
+                            {line.invoicedQuantity}
+                          </td>
+                          <td className="px-2 py-3 text-right tabular-nums">
+                            {line.returnedQuantity}
+                          </td>
+                          <td className="px-2 py-3 text-right font-black tabular-nums text-indigo-700 dark:text-indigo-300">
+                            {line.invoiceableQuantity}
+                          </td>
+                          <td className="px-3 py-3 text-right font-bold tabular-nums">
+                            {formatMoney(line.lineTotal, order.currency)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
 
-                {
-                  workspace
-                    .capabilities
-                    .canManageOrders &&
-                  order.status !==
-                    'cancelled' &&
-                  order.status !==
-                    'closed' &&
-                  (
+                {workspace.capabilities.canManageOrders &&
+                !['cancelled', 'closed'].includes(order.status) ? (
+                  <div className="flex justify-end border-t border-slate-200 px-4 py-3 dark:border-slate-800">
                     <button
                       type="submit"
-                      disabled={
-                        isBusy
-                      }
-                      className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 text-xs font-black text-white disabled:opacity-60"
+                      disabled={isBusy}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-slate-950 px-3 text-xs font-black text-white transition hover:bg-slate-800 disabled:opacity-60 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
                     >
-                      <Truck className="h-4 w-4" />
+                      {busy ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                      ) : (
+                        <Package className="h-3.5 w-3.5" aria-hidden="true" />
+                      )}
                       Save fulfillment
                     </button>
-                  )
-                }
-              </div>
+                  </div>
+                ) : null}
+              </form>
+            </Section>
 
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1120px] text-sm">
-                  <thead className="border-b border-[var(--sami-border)] text-left text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
-                    <tr>
-                      <th className="px-4 py-3">
-                        Item
-                      </th>
-                      <th className="px-4 py-3 text-right">
-                        Ordered
-                      </th>
-                      <th className="px-4 py-3 text-right">
-                        Shipped
-                      </th>
-                      <th className="px-4 py-3 text-right">
-                        Delivered
-                      </th>
-                      <th className="px-4 py-3 text-right">
-                        Invoiced
-                      </th>
-                      <th className="px-4 py-3 text-right">
-                        Returned
-                      </th>
-                      <th className="px-4 py-3 text-right">
-                        Credited
-                      </th>
-                      <th className="px-4 py-3 text-right">
-                        Invoiceable
-                      </th>
-                      <th className="px-4 py-3 text-right">
-                        Value
-                      </th>
-                      {workspace.capabilities.canViewMargin && (
-                        <th className="px-4 py-3 text-right">
-                          Cost / Margin
-                        </th>
-                      )}
-                    </tr>
-                  </thead>
+            {/* Create shipment */}
+            {workspace.capabilities.canManageShipping &&
+            order.status !== 'cancelled' ? (
+              <Section
+                title="Create shipment"
+                icon={<PackageCheck className="h-4 w-4" />}
+                subtitle="Split an order across multiple carrier shipments. Inventory posts when the shipment is dispatched."
+              >
+                <form
+                  onSubmit={async (event) => {
+                    event.preventDefault();
+                    const form = new FormData(event.currentTarget);
+                    const lines = order.lines
+                      .map((line) => ({
+                        lineId: line.id,
+                        quantity: Number(form.get('ship-' + line.id) || 0),
+                      }))
+                      .filter((line) => line.quantity > 0);
 
-                  <tbody className="divide-y divide-[var(--sami-border)]">
-                    {
-                      order.lines.map(
-                        line => (
-                          <tr
-                            key={
-                              line.id
-                            }
-                          >
-                            <td className="px-4 py-3">
-                              <p className="font-bold">
-                                {
-                                  line.description
-                                }
-                              </p>
-                              <p className="mt-1 text-[10px] text-slate-400">
-                                {
-                                  [
-                                    line.sku,
-                                    line.unit,
-                                  ]
-                                    .filter(
-                                      Boolean,
-                                    )
-                                    .join(
-                                      ' · ',
-                                    )
-                                }
-                              </p>
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              {
-                                line.quantity
-                              }
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              {line.shippedQuantity}
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              {
-                                workspace
-                                  .capabilities
-                                  .canManageOrders &&
-                                order.status !==
-                                  'cancelled' &&
-                                order.status !==
-                                  'closed'
-                                  ? (
-                                      <input
-                                        name={
-                                          'delivered-' +
-                                          line.id
-                                        }
-                                        type="number"
-                                        min={
-                                          line.deliveredQuantity
-                                        }
-                                        max={
-                                          line.quantity
-                                        }
-                                        step="0.0001"
-                                        defaultValue={
-                                          line.deliveredQuantity
-                                        }
-                                        className="h-9 w-24 rounded-lg border border-[var(--sami-border)] bg-transparent px-2 text-right"
-                                      />
-                                    )
-                                  : line.deliveredQuantity
-                              }
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              {
-                                line.invoicedQuantity
-                              }
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              {
-                                line.returnedQuantity
-                              }
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              {
-                                line.creditedQuantity
-                              }
-                            </td>
-                            <td className="px-4 py-3 text-right font-black text-blue-700 dark:text-blue-300">
-                              {
-                                line.invoiceableQuantity
-                              }
-                            </td>
-                            <td className="px-4 py-3 text-right font-black">
-                              {
-                                money(
-                                  line.lineTotal,
-                                  order.currency,
+                    const idempotencyKey =
+                      shipmentIdempotencyKey.current?.orderId === order.id
+                        ? shipmentIdempotencyKey.current.key
+                        : globalThis.crypto?.randomUUID?.() ||
+                          'sales-shipment-' +
+                            order.id +
+                            '-' +
+                            Date.now().toString(36) +
+                            '-' +
+                            Math.random().toString(36).slice(2);
+
+                    shipmentIdempotencyKey.current = {
+                      orderId: order.id,
+                      key: idempotencyKey,
+                    };
+
+                    const result = await run(
+                      {
+                        action: 'create_shipment',
+                        orderId: order.id,
+                        idempotencyKey,
+                        carrier: form.get('carrier'),
+                        serviceLevel: form.get('serviceLevel'),
+                        trackingNumber: form.get('trackingNumber'),
+                        trackingUrl: form.get('trackingUrl'),
+                        lines,
+                      },
+                      'Shipment created. Mark it dispatched when goods leave Inventory.',
+                    );
+
+                    if (result) {
+                      shipmentIdempotencyKey.current = null;
+                      event.currentTarget.reset();
+                    }
+                  }}
+                >
+                  <div className="grid gap-3 p-5 sm:grid-cols-2">
+                    <FieldInput name="carrier" label="Carrier" />
+                    <FieldInput name="serviceLevel" label="Service level" />
+                    <FieldInput name="trackingNumber" label="Tracking number" />
+                    <FieldInput name="trackingUrl" label="Tracking URL" />
+                  </div>
+
+                  <ul className="divide-y divide-slate-200 border-t border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+                    {order.lines.map((line) => {
+                      const remaining = Math.max(
+                        0,
+                        line.quantity - line.shippedQuantity - line.plannedQuantity,
+                      );
+                      return (
+                        <li
+                          key={line.id}
+                          className="flex items-center justify-between gap-3 px-5 py-3"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-bold">
+                              {line.description}
+                            </p>
+                            <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                              Up to {remaining} {line.unit} unassigned
+                            </p>
+                          </div>
+                          <input
+                            name={'ship-' + line.id}
+                            type="number"
+                            min="0"
+                            max={remaining}
+                            step="0.0001"
+                            defaultValue="0"
+                            className="h-9 w-24 rounded-lg border border-slate-200 bg-white px-2 text-right text-xs tabular-nums focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-slate-500 dark:focus:ring-slate-800"
+                          />
+                        </li>
+                      );
+                    })}
+                  </ul>
+
+                  <div className="flex justify-end border-t border-slate-200 px-4 py-3 dark:border-slate-800">
+                    <button
+                      type="submit"
+                      disabled={isBusy}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-slate-950 px-3 text-xs font-black text-white transition hover:bg-slate-800 disabled:opacity-60 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                    >
+                      Create shipment
+                    </button>
+                  </div>
+                </form>
+              </Section>
+            ) : null}
+
+            {/* Shipments list */}
+            {order.shipments.length > 0 ? (
+              <Section
+                title="Shipments & tracking"
+                icon={<Truck className="h-4 w-4" />}
+              >
+                <ul className="divide-y divide-slate-200 dark:divide-slate-800">
+                  {order.shipments.map((shipment) => (
+                    <li key={shipment.id} className="px-5 py-4">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-black">
+                            {shipment.shipmentNumber}
+                          </p>
+                          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                            {[shipment.carrier, shipment.serviceLevel, shipment.trackingNumber]
+                              .filter(Boolean)
+                              .join(' · ') || 'No tracking details'}
+                          </p>
+                        </div>
+                        <StateChip label="Shipment" value={shipment.status} />
+                      </div>
+
+                      {workspace.capabilities.canManageShipping &&
+                      !['delivered', 'cancelled'].includes(shipment.status) ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {shipment.status === 'ready' ? (
+                            <SmallAction
+                              disabled={isBusy}
+                              onClick={() =>
+                                void run(
+                                  {
+                                    action: 'update_shipment_status',
+                                    shipmentId: shipment.id,
+                                    status: 'shipped',
+                                  },
+                                  'Shipment posted to Inventory and marked shipped.',
                                 )
                               }
-                            </td>
-                            {workspace.capabilities.canViewMargin && (
-                              <td className="px-4 py-3 text-right align-top">
-                                <div className="min-w-[150px] space-y-1">
-                                  <p className="text-[10px] text-slate-500">
-                                    Cost: <span className="font-bold text-slate-700 dark:text-slate-200">{line.costTotal == null ? '—' : money(line.costTotal, order.currency)}</span>
-                                  </p>
-                                  <p className="text-[10px] text-slate-500">
-                                    Margin: <span className="font-bold text-slate-700 dark:text-slate-200">{line.marginAmount == null ? '—' : money(line.marginAmount, order.currency)}</span>
-                                  </p>
-                                  <p className="text-[10px] font-black text-slate-700 dark:text-slate-200">
-                                    {line.marginPercent == null ? '—' : line.marginPercent.toFixed(1) + '%'}
-                                  </p>
-                                </div>
-                              </td>
-                            )}
-                          </tr>
-                        ),
-                      )
-                    }
-                  </tbody>
-                </table>
-              </div>
-            </form>
+                            >
+                              Mark shipped
+                            </SmallAction>
+                          ) : null}
 
-            {
-              workspace
-                .capabilities
-                .canManageShipping &&
-              order.status !==
-                'cancelled' &&
-              (
+                          {['ready', 'shipped'].includes(shipment.status) ? (
+                            <SmallAction
+                              disabled={isBusy}
+                              onClick={() =>
+                                void run(
+                                  {
+                                    action: 'update_shipment_status',
+                                    shipmentId: shipment.id,
+                                    status: 'in_transit',
+                                  },
+                                  'Shipment marked in transit.',
+                                )
+                              }
+                            >
+                              In transit
+                            </SmallAction>
+                          ) : null}
+
+                          {['ready', 'shipped', 'in_transit'].includes(
+                            shipment.status,
+                          ) ? (
+                            <SmallAction
+                              disabled={isBusy}
+                              onClick={() =>
+                                void run(
+                                  {
+                                    action: 'update_shipment_status',
+                                    shipmentId: shipment.id,
+                                    status: 'delivered',
+                                  },
+                                  'Shipment marked delivered.',
+                                )
+                              }
+                            >
+                              Delivered
+                            </SmallAction>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </Section>
+            ) : null}
+
+            {/* Returns */}
+            {order.returns.length > 0 ? (
+              <Section
+                title="Returns, credits & refunds"
+                icon={<RotateCcw className="h-4 w-4" />}
+              >
+                <ul className="divide-y divide-slate-200 dark:divide-slate-800">
+                  {order.returns.map((item) => (
+                    <li key={item.id} className="px-5 py-4">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-black">{item.returnNumber}</p>
+                          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                            {item.reason}
+                          </p>
+                        </div>
+                        <StateChip label="Return" value={item.status} />
+                      </div>
+
+                      {workspace.capabilities.canManageReturns ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {item.status === 'requested' ? (
+                            <SmallAction
+                              disabled={isBusy}
+                              onClick={() =>
+                                void run(
+                                  { action: 'approve_return', returnId: item.id },
+                                  'Return approved.',
+                                )
+                              }
+                            >
+                              Approve
+                            </SmallAction>
+                          ) : null}
+                          {item.status === 'approved' ? (
+                            <SmallAction
+                              disabled={isBusy}
+                              onClick={() =>
+                                void run(
+                                  { action: 'receive_return', returnId: item.id },
+                                  'Returned stock received and Inventory reversed.',
+                                )
+                              }
+                            >
+                              Receive stock
+                            </SmallAction>
+                          ) : null}
+                          {item.status === 'received' ? (
+                            <SmallAction
+                              disabled={isBusy}
+                              onClick={() =>
+                                void run(
+                                  { action: 'issue_return_credit', returnId: item.id },
+                                  'Credit note created for invoiced returned quantities.',
+                                )
+                              }
+                            >
+                              Issue credit
+                            </SmallAction>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      {item.credits.length > 0 ? (
+                        <ul className="mt-3 space-y-2">
+                          {item.credits.map((credit) => (
+                            <li
+                              key={credit.id}
+                              className="flex flex-col gap-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/40 sm:flex-row sm:items-center sm:justify-between"
+                            >
+                              <div>
+                                <p className="text-[11px] font-black">
+                                  {credit.creditNoteNumber}
+                                </p>
+                                <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                                  Available refund{' '}
+                                  {formatMoney(credit.availableCredit, order.currency)}
+                                </p>
+                              </div>
+
+                              {workspace.capabilities.canManageReturns &&
+                              credit.availableCredit > 0 ? (
+                                <SmallAction
+                                  disabled={isBusy}
+                                  onClick={() =>
+                                    void run(
+                                      {
+                                        action: 'refund_return_credit',
+                                        returnCreditId: credit.id,
+                                        amount: credit.availableCredit,
+                                        method: 'bank',
+                                        reason: 'Refund for Sales return',
+                                        idempotencyKey:
+                                          globalThis.crypto?.randomUUID?.(),
+                                      },
+                                      'Available customer credit refunded.',
+                                    )
+                                  }
+                                >
+                                  Refund
+                                </SmallAction>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </Section>
+            ) : null}
+
+            {/* Create return */}
+            {workspace.capabilities.canManageReturns &&
+            order.status !== 'cancelled' &&
+            order.lines.some((line) => line.deliveredQuantity > 0) ? (
+              <Section
+                title="Create return"
+                icon={<RotateCcw className="h-4 w-4" />}
+                subtitle="Receiving the return reverses Inventory; invoice credits are created separately."
+              >
                 <form
-                  className="sami-surface rounded-[24px] p-4"
-                  onSubmit={
-                    async event => {
-                      event.preventDefault();
+                  onSubmit={async (event) => {
+                    event.preventDefault();
+                    const form = new FormData(event.currentTarget);
+                    const lines = order.lines
+                      .map((line) => ({
+                        lineId: line.id,
+                        quantity: Number(form.get('return-' + line.id) || 0),
+                      }))
+                      .filter((line) => line.quantity > 0);
 
-                      const form =
-                        new FormData(
-                          event.currentTarget,
-                        );
-
-                      const lines =
-                        order.lines
-                          .map(
-                            line => ({
-                              lineId:
-                                line.id,
-                              quantity:
-                                Number(
-                                  form.get(
-                                    'ship-' +
-                                    line.id,
-                                  ) ||
-                                  0,
-                                ),
-                            }),
-                          )
-                          .filter(
-                            line =>
-                              line.quantity >
-                              0,
-                          );
-
-                      const idempotencyKey =
-                        shipmentIdempotencyKey.current?.orderId === order.id
-                          ? shipmentIdempotencyKey.current.key
-                          : (
-                              globalThis.crypto?.randomUUID?.() ||
-                              (
-                                'sales-shipment-' +
-                                order.id +
-                                '-' +
-                                Date.now().toString(36) +
-                                '-' +
-                                Math.random().toString(36).slice(2)
-                              )
-                            );
-
-                      shipmentIdempotencyKey.current = {
+                    const result = await run(
+                      {
+                        action: 'create_return',
                         orderId: order.id,
-                        key: idempotencyKey,
-                      };
-
-                      const result =
-                        await run(
-                          {
-                            action:
-                              'create_shipment',
-                            orderId:
-                              order.id,
-                            idempotencyKey,
-                            carrier:
-                              form.get(
-                                'carrier',
-                              ),
-                            serviceLevel:
-                              form.get(
-                                'serviceLevel',
-                              ),
-                            trackingNumber:
-                              form.get(
-                                'trackingNumber',
-                              ),
-                            trackingUrl:
-                              form.get(
-                                'trackingUrl',
-                              ),
-                            lines,
-                          },
-                          'Shipment created. Mark it shipped when goods leave Inventory.',
-                        );
-
-                      if (result) {
-                        shipmentIdempotencyKey.current = null;
-                        event.currentTarget
-                          .reset();
-                      }
-                    }
-                  }
+                        reason: form.get('returnReason'),
+                        lines,
+                      },
+                      'Return request created.',
+                    );
+                    if (result) event.currentTarget.reset();
+                  }}
                 >
-                  <div className="flex items-center gap-2">
-                    <PackageCheck className="h-4 w-4 text-blue-600" />
-                    <div>
-                      <h2 className="text-sm font-black">
-                        Create shipment
-                      </h2>
-                      <p className="mt-1 text-xs text-slate-500">
-                        Split an order across multiple carrier shipments. Inventory posts only when the shipment is marked shipped/in transit/delivered.
-                      </p>
-                    </div>
+                  <div className="px-5 py-4">
+                    <label className="block">
+                      <span className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
+                        Return reason
+                      </span>
+                      <textarea
+                        name="returnReason"
+                        required
+                        rows={3}
+                        placeholder="Reason for return"
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-slate-500 dark:focus:ring-slate-800"
+                      />
+                    </label>
                   </div>
 
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    <Field
-                      name="carrier"
-                      label="Carrier"
-                    />
-                    <Field
-                      name="serviceLevel"
-                      label="Service level"
-                    />
-                    <Field
-                      name="trackingNumber"
-                      label="Tracking number"
-                    />
-                    <Field
-                      name="trackingUrl"
-                      label="Tracking URL"
-                    />
-                  </div>
-
-                  <div className="mt-4 space-y-2">
-                    {
-                      order.lines.map(
-                        line => {
-                          const remaining =
-                            Math.max(
-                              0,
-                              line.quantity -
-                              line.shippedQuantity -
-                              line.plannedQuantity,
-                            );
-
-                          return (
-                            <label
-                              key={
-                                line.id
-                              }
-                              className="flex items-center justify-between gap-3 rounded-xl border border-[var(--sami-border)] p-3"
-                            >
-                              <span className="min-w-0">
-                                <span className="block truncate text-xs font-black">
-                                  {
-                                    line.description
-                                  }
-                                </span>
-                                <span className="mt-1 block text-[10px] text-slate-500">
-                                  Up to {
-                                    remaining
-                                  } {
-                                    line.unit
-                                  } not yet shipped or assigned to a shipment
-                                </span>
-                              </span>
-                              <input
-                                name={
-                                  'ship-' +
-                                  line.id
-                                }
-                                type="number"
-                                min="0"
-                                max={
-                                  remaining
-                                }
-                                step="0.0001"
-                                defaultValue="0"
-                                className="h-10 w-28 rounded-lg border border-[var(--sami-border)] bg-transparent px-2 text-right text-sm"
-                              />
-                            </label>
-                          );
-                        },
-                      )
-                    }
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={
-                      isBusy
-                    }
-                    className="mt-4 h-10 rounded-xl bg-blue-600 px-4 text-xs font-black text-white disabled:opacity-60"
-                  >
-                    Create shipment
-                  </button>
-                </form>
-              )
-            }
-
-            {
-              order.shipments.length >
-                0 &&
-              (
-                <div className="sami-surface rounded-[24px] p-4">
-                  <h2 className="text-sm font-black">
-                    Shipments & tracking
-                  </h2>
-
-                  <div className="mt-3 space-y-2">
-                    {
-                      order.shipments.map(
-                        shipment => (
-                          <div
-                            key={
-                              shipment.id
-                            }
-                            className="rounded-xl border border-[var(--sami-border)] p-3"
-                          >
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                              <div>
-                                <p className="text-xs font-black">
-                                  {
-                                    shipment.shipmentNumber
-                                  }
-                                </p>
-                                <p className="mt-1 text-[10px] text-slate-500">
-                                  {
-                                    [
-                                      shipment.carrier,
-                                      shipment.serviceLevel,
-                                      shipment.trackingNumber,
-                                    ]
-                                      .filter(
-                                        Boolean,
-                                      )
-                                      .join(
-                                        ' · ',
-                                      ) ||
-                                    'No tracking details'
-                                  }
-                                </p>
-                              </div>
-                              <State
-                                label="Shipment"
-                                value={
-                                  shipment.status
-                                }
-                              />
-                            </div>
-
-                            {
-                              workspace
-                                .capabilities
-                                .canManageShipping &&
-                              ![
-                                'delivered',
-                                'cancelled',
-                              ].includes(
-                                shipment.status,
-                              ) &&
-                              (
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                  {
-                                    shipment.status ===
-                                      'ready' &&
-                                    (
-                                      <SmallAction
-                                        disabled={
-                                          isBusy
-                                        }
-                                        onClick={
-                                          () =>
-                                            void run(
-                                              {
-                                                action:
-                                                  'update_shipment_status',
-                                                shipmentId:
-                                                  shipment.id,
-                                                status:
-                                                  'shipped',
-                                              },
-                                              'Shipment posted to Inventory and marked shipped.',
-                                            )
-                                        }
-                                      >
-                                        Mark shipped
-                                      </SmallAction>
-                                    )
-                                  }
-                                  {
-                                    [
-                                      'ready',
-                                      'shipped',
-                                    ].includes(
-                                      shipment.status,
-                                    ) &&
-                                    (
-                                      <SmallAction
-                                        disabled={
-                                          isBusy
-                                        }
-                                        onClick={
-                                          () =>
-                                            void run(
-                                              {
-                                                action:
-                                                  'update_shipment_status',
-                                                shipmentId:
-                                                  shipment.id,
-                                                status:
-                                                  'in_transit',
-                                              },
-                                              'Shipment marked in transit.',
-                                            )
-                                        }
-                                      >
-                                        In transit
-                                      </SmallAction>
-                                    )
-                                  }
-                                  {
-                                    [
-                                      'ready',
-                                      'shipped',
-                                      'in_transit',
-                                    ].includes(
-                                      shipment.status,
-                                    ) &&
-                                    (
-                                      <SmallAction
-                                        disabled={
-                                          isBusy
-                                        }
-                                        onClick={
-                                          () =>
-                                            void run(
-                                              {
-                                                action:
-                                                  'update_shipment_status',
-                                                shipmentId:
-                                                  shipment.id,
-                                                status:
-                                                  'delivered',
-                                              },
-                                              'Shipment marked delivered.',
-                                            )
-                                        }
-                                      >
-                                        Delivered
-                                      </SmallAction>
-                                    )
-                                  }
-                                </div>
-                              )
-                            }
+                  <ul className="divide-y divide-slate-200 border-t border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+                    {order.lines
+                      .filter((line) => line.deliveredQuantity > 0)
+                      .map((line) => (
+                        <li
+                          key={line.id}
+                          className="flex items-center justify-between gap-3 px-5 py-3"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-bold">
+                              {line.description}
+                            </p>
+                            <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                              Delivered {line.deliveredQuantity} {line.unit}
+                            </p>
                           </div>
-                        ),
-                      )
-                    }
+                          <input
+                            name={'return-' + line.id}
+                            type="number"
+                            min="0"
+                            max={line.deliveredQuantity}
+                            step="0.0001"
+                            defaultValue="0"
+                            className="h-9 w-24 rounded-lg border border-slate-200 bg-white px-2 text-right text-xs tabular-nums focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-slate-500 dark:focus:ring-slate-800"
+                          />
+                        </li>
+                      ))}
+                  </ul>
+
+                  <div className="flex justify-end border-t border-slate-200 px-4 py-3 dark:border-slate-800">
+                    <button
+                      type="submit"
+                      disabled={isBusy}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                    >
+                      Create return request
+                    </button>
                   </div>
-                </div>
-              )
-            }
-
-            {
-              workspace
-                .capabilities
-                .canManageReturns &&
-              order.status !==
-                'cancelled' &&
-              order.lines.some(
-                line =>
-                  line.deliveredQuantity >
-                  0,
-              ) &&
-              (
-                <form
-                  className="sami-surface rounded-[24px] p-4"
-                  onSubmit={
-                    async event => {
-                      event.preventDefault();
-
-                      const form =
-                        new FormData(
-                          event.currentTarget,
-                        );
-
-                      const lines =
-                        order.lines
-                          .map(
-                            line => ({
-                              lineId:
-                                line.id,
-                              quantity:
-                                Number(
-                                  form.get(
-                                    'return-' +
-                                    line.id,
-                                  ) ||
-                                  0,
-                                ),
-                            }),
-                          )
-                          .filter(
-                            line =>
-                              line.quantity >
-                              0,
-                          );
-
-                      const result =
-                        await run(
-                          {
-                            action:
-                              'create_return',
-                            orderId:
-                              order.id,
-                            reason:
-                              form.get(
-                                'returnReason',
-                              ),
-                            lines,
-                          },
-                          'Return request created.',
-                        );
-
-                      if (
-                        result
-                      ) {
-                        event.currentTarget
-                          .reset();
-                      }
-                    }
-                  }
-                >
-                  <div className="flex items-center gap-2">
-                    <RotateCcw className="h-4 w-4 text-blue-600" />
-                    <div>
-                      <h2 className="text-sm font-black">
-                        Create return
-                      </h2>
-                      <p className="mt-1 text-xs text-slate-500">
-                        Use this workflow instead of lowering delivered quantities. Receiving the return reverses Inventory; invoice credits are created separately.
-                      </p>
-                    </div>
-                  </div>
-
-                  <textarea
-                    name="returnReason"
-                    required
-                    rows={3}
-                    placeholder="Reason for return"
-                    className="mt-4 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 py-2 text-sm"
-                  />
-
-                  <div className="mt-3 space-y-2">
-                    {
-                      order.lines
-                        .filter(
-                          line =>
-                            line.deliveredQuantity >
-                            0,
-                        )
-                        .map(
-                          line => (
-                            <label
-                              key={
-                                line.id
-                              }
-                              className="flex items-center justify-between gap-3 rounded-xl border border-[var(--sami-border)] p-3"
-                            >
-                              <span className="min-w-0">
-                                <span className="block truncate text-xs font-black">
-                                  {
-                                    line.description
-                                  }
-                                </span>
-                                <span className="mt-1 block text-[10px] text-slate-500">
-                                  Currently delivered {
-                                    line.deliveredQuantity
-                                  } {
-                                    line.unit
-                                  }
-                                </span>
-                              </span>
-                              <input
-                                name={
-                                  'return-' +
-                                  line.id
-                                }
-                                type="number"
-                                min="0"
-                                max={
-                                  line.deliveredQuantity
-                                }
-                                step="0.0001"
-                                defaultValue="0"
-                                className="h-10 w-28 rounded-lg border border-[var(--sami-border)] bg-transparent px-2 text-right text-sm"
-                              />
-                            </label>
-                          ),
-                        )
-                    }
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={
-                      isBusy
-                    }
-                    className="mt-4 h-10 rounded-xl border border-[var(--sami-border)] px-4 text-xs font-black disabled:opacity-60"
-                  >
-                    Create return request
-                  </button>
                 </form>
-              )
-            }
+              </Section>
+            ) : null}
 
-            {
-              order.returns.length >
-                0 &&
-              (
-                <div className="sami-surface rounded-[24px] p-4">
-                  <h2 className="text-sm font-black">
-                    Returns, credits & refunds
-                  </h2>
-
-                  <div className="mt-3 space-y-3">
-                    {
-                      order.returns.map(
-                        item => (
-                          <div
-                            key={
-                              item.id
-                            }
-                            className="rounded-xl border border-[var(--sami-border)] p-3"
-                          >
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                              <div>
-                                <p className="text-xs font-black">
-                                  {
-                                    item.returnNumber
-                                  }
-                                </p>
-                                <p className="mt-1 text-[10px] text-slate-500">
-                                  {
-                                    item.reason
-                                  }
-                                </p>
-                              </div>
-                              <State
-                                label="Return"
-                                value={
-                                  item.status
-                                }
-                              />
-                            </div>
-
-                            {
-                              workspace
-                                .capabilities
-                                .canManageReturns &&
-                              (
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                  {
-                                    item.status ===
-                                      'requested' &&
-                                    (
-                                      <SmallAction
-                                        disabled={
-                                          isBusy
-                                        }
-                                        onClick={
-                                          () =>
-                                            void run(
-                                              {
-                                                action:
-                                                  'approve_return',
-                                                returnId:
-                                                  item.id,
-                                              },
-                                              'Return approved.',
-                                            )
-                                        }
-                                      >
-                                        Approve
-                                      </SmallAction>
-                                    )
-                                  }
-                                  {
-                                    item.status ===
-                                      'approved' &&
-                                    (
-                                      <SmallAction
-                                        disabled={
-                                          isBusy
-                                        }
-                                        onClick={
-                                          () =>
-                                            void run(
-                                              {
-                                                action:
-                                                  'receive_return',
-                                                returnId:
-                                                  item.id,
-                                              },
-                                              'Returned stock received and Inventory reversed.',
-                                            )
-                                        }
-                                      >
-                                        Receive stock
-                                      </SmallAction>
-                                    )
-                                  }
-                                  {
-                                    item.status ===
-                                      'received' &&
-                                    (
-                                      <SmallAction
-                                        disabled={
-                                          isBusy
-                                        }
-                                        onClick={
-                                          () =>
-                                            void run(
-                                              {
-                                                action:
-                                                  'issue_return_credit',
-                                                returnId:
-                                                  item.id,
-                                              },
-                                              'Credit note created for invoiced returned quantities.',
-                                            )
-                                        }
-                                      >
-                                        Issue credit
-                                      </SmallAction>
-                                    )
-                                  }
-                                </div>
-                              )
-                            }
-
-                            {
-                              item.credits.length >
-                                0 &&
-                              (
-                                <div className="mt-3 space-y-2">
-                                  {
-                                    item.credits.map(
-                                      credit => (
-                                        <div
-                                          key={
-                                            credit.id
-                                          }
-                                          className="flex flex-col gap-2 rounded-lg bg-slate-500/5 p-2.5 sm:flex-row sm:items-center sm:justify-between"
-                                        >
-                                          <div>
-                                            <p className="text-[10px] font-black">
-                                              {
-                                                credit.creditNoteNumber
-                                              }
-                                            </p>
-                                            <p className="mt-1 text-[10px] text-slate-500">
-                                              Available refund {
-                                                money(
-                                                  credit.availableCredit,
-                                                  order.currency,
-                                                )
-                                              }
-                                            </p>
-                                          </div>
-
-                                          {
-                                            workspace
-                                              .capabilities
-                                              .canManageReturns &&
-                                            credit.availableCredit >
-                                              0 &&
-                                            (
-                                              <SmallAction
-                                                disabled={
-                                                  isBusy
-                                                }
-                                                onClick={
-                                                  () =>
-                                                    void run(
-                                                      {
-                                                        action:
-                                                          'refund_return_credit',
-                                                        returnCreditId:
-                                                          credit.id,
-                                                        amount:
-                                                          credit.availableCredit,
-                                                        method:
-                                                          'bank',
-                                                        reason:
-                                                          'Refund for Sales return',
-                                                        idempotencyKey:
-                                                          globalThis.crypto
-                                                            ?.randomUUID?.(),
-                                                      },
-                                                      'Available customer credit refunded.',
-                                                    )
-                                                }
-                                              >
-                                                Refund
-                                              </SmallAction>
-                                            )
-                                          }
-                                        </div>
-                                      ),
-                                    )
-                                  }
-                                </div>
-                              )
-                            }
-                          </div>
-                        ),
-                      )
-                    }
-                  </div>
-                </div>
-              )
-            }
-
-            <div className="grid gap-4 lg:grid-cols-2">
-              <InfoCard
-                title="Billing address"
-                value={
-                  order.billingAddress
-                }
-              />
-              <InfoCard
-                title="Shipping address"
-                value={
-                  order.shippingAddress
-                }
-              />
-              <InfoCard
-                title="Notes"
-                value={
-                  order.notes
-                }
-              />
-              <InfoCard
-                title="Terms"
-                value={
-                  order.terms
-                }
-              />
+            {/* Addresses & notes */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <InfoCard title="Billing address" value={order.billingAddress} />
+              <InfoCard title="Shipping address" value={order.shippingAddress} />
+              <InfoCard title="Notes" value={order.notes} />
+              <InfoCard title="Terms" value={order.terms} />
             </div>
 
-            <div className="sami-surface rounded-[24px] p-4">
-              <h2 className="text-sm font-black">
-                Order history
-              </h2>
-
-              <div className="mt-3 space-y-2">
-                {
-                  order.history.map(
-                    item => (
-                      <div
-                        key={
-                          item.id
-                        }
-                        className="border-b border-[var(--sami-border)] pb-2 last:border-0"
-                      >
+            {/* History */}
+            <Section title="Order history" icon={<ChevronRight className="h-4 w-4" />}>
+              {order.history.length === 0 ? (
+                <p className="px-5 py-6 text-xs text-slate-500 dark:text-slate-400">
+                  No status history yet.
+                </p>
+              ) : (
+                <ol className="divide-y divide-slate-200 dark:divide-slate-800">
+                  {order.history.map((item) => (
+                    <li key={item.id} className="flex items-start gap-3 px-5 py-3">
+                      <span
+                        aria-hidden="true"
+                        className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-slate-300 dark:bg-slate-600"
+                      />
+                      <div className="min-w-0">
                         <p className="text-xs font-black">
-                          {
-                            item.fromStatus
-                              ? item.fromStatus +
-                                ' → '
-                              : ''
-                          }
-                          {
-                            item.toStatus
-                          }
+                          {item.fromStatus ? item.fromStatus + ' → ' : ''}
+                          {item.toStatus}
                         </p>
-                        <p className="mt-1 text-[10px] text-slate-400">
-                          {
-                            item.createdAt
-                          }
-                          {
-                            item.reason
-                              ? ' · ' +
-                                item.reason
-                              : ''
-                          }
+                        <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                          {item.createdAt}
+                          {item.reason ? ' · ' + item.reason : ''}
                         </p>
                       </div>
-                    ),
-                  )
-                }
-              </div>
-            </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </Section>
           </div>
 
+          {/* ------------------------ Right rail ------------------------ */}
           <aside className="space-y-4">
-            <div className="sami-surface rounded-[24px] p-4">
-              <h2 className="text-sm font-black">
-                Order summary
-              </h2>
-
-              <div className="mt-3 space-y-2 text-sm">
-                <Summary
-                  label="Subtotal"
-                  value={
-                    money(
-                      order.subtotal,
-                      order.currency,
-                    )
-                  }
-                />
-                <Summary
-                  label="Discount"
-                  value={
-                    '− ' +
-                    money(
-                      order.discountTotal,
-                      order.currency,
-                    )
-                  }
-                />
-                <Summary
-                  label="Tax"
-                  value={
-                    money(
-                      order.taxTotal,
-                      order.currency,
-                    )
-                  }
-                />
-                <Summary
-                  label="Shipping"
-                  value={
-                    money(
-                      order.shippingTotal,
-                      order.currency,
-                    )
-                  }
-                />
-                <div className="flex items-center justify-between border-t border-[var(--sami-border)] pt-3">
-                  <span className="font-black">
+            {/* Summary */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+              <h2 className="text-sm font-black">Order summary</h2>
+              <dl className="mt-3 space-y-2 text-sm">
+                <SummaryRow label="Subtotal" value={formatMoney(order.subtotal, order.currency)} />
+                <SummaryRow label="Discount" value={'− ' + formatMoney(order.discountTotal, order.currency)} />
+                <SummaryRow label="Tax" value={formatMoney(order.taxTotal, order.currency)} />
+                <SummaryRow label="Shipping" value={formatMoney(order.shippingTotal, order.currency)} />
+                <div className="flex items-baseline justify-between border-t border-slate-200 pt-3 dark:border-slate-800">
+                  <dt className="text-xs font-black uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
                     Total
-                  </span>
-                  <span className="text-lg font-black text-blue-700 dark:text-blue-300">
-                    {
-                      money(
-                        order.totalAmount,
-                        order.currency,
-                      )
-                    }
-                  </span>
+                  </dt>
+                  <dd className="text-lg font-black tabular-nums text-slate-900 dark:text-slate-100">
+                    {formatMoney(order.totalAmount, order.currency)}
+                  </dd>
                 </div>
-              </div>
+              </dl>
 
-              {workspace.capabilities.canViewMargin && (
-                <div className="mt-4 space-y-2 border-t border-[var(--sami-border)] pt-4">
-                  <h3 className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">Cost / margin summary</h3>
-                  <Summary
+              {workspace.capabilities.canViewMargin ? (
+                <dl className="mt-4 space-y-2 border-t border-slate-200 pt-4 text-sm dark:border-slate-800">
+                  <p className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
+                    Cost &amp; margin
+                  </p>
+                  <SummaryRow
                     label="Cost total"
-                    value={order.costTotal == null ? '—' : money(order.costTotal, order.currency)}
+                    value={order.costTotal == null ? '—' : formatMoney(order.costTotal, order.currency)}
                   />
-                  <Summary
-                    label="Margin amount"
-                    value={order.marginAmount == null ? '—' : money(order.marginAmount, order.currency)}
+                  <SummaryRow
+                    label="Margin"
+                    value={order.marginAmount == null ? '—' : formatMoney(order.marginAmount, order.currency)}
                   />
-                  <Summary
+                  <SummaryRow
                     label="Margin %"
                     value={order.marginPercent == null ? '—' : order.marginPercent.toFixed(1) + '%'}
                   />
-                </div>
-              )}
+                </dl>
+              ) : null}
             </div>
 
-            {
-              workspace
-                .capabilities
-                .canManageDeposits &&
-              (
-                <div className="sami-surface rounded-[24px] p-4">
-                  <div className="flex items-center gap-2">
-                    <BadgeDollarSign className="h-4 w-4 text-blue-600" />
-                    <h2 className="text-sm font-black">
-                      Customer deposit
-                    </h2>
-                  </div>
+            {/* Deposit */}
+            {workspace.capabilities.canManageDeposits ? (
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-300">
+                    <BadgeDollarSign className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <h2 className="text-sm font-black">Customer deposit</h2>
+                </div>
 
-                  <div className="mt-3 space-y-2 text-sm">
-                    <Summary
-                      label="Required"
-                      value={
-                        money(
-                          order.depositRequiredAmount,
-                          order.currency,
-                        )
-                      }
-                    />
-                    <Summary
-                      label="Received"
-                      value={
-                        money(
-                          order.depositReceivedAmount,
-                          order.currency,
-                        )
-                      }
-                    />
-                    <Summary
-                      label="Status"
-                      value={
-                        order.depositStatus
-                      }
-                    />
-                  </div>
+                <dl className="mt-3 space-y-2 text-sm">
+                  <SummaryRow
+                    label="Required"
+                    value={formatMoney(order.depositRequiredAmount, order.currency)}
+                  />
+                  <SummaryRow
+                    label="Received"
+                    value={formatMoney(order.depositReceivedAmount, order.currency)}
+                  />
+                  <SummaryRow label="Status" value={order.depositStatus.replaceAll('_', ' ')} />
+                </dl>
 
-                  {
-                    order.depositReceivedAmount <=
-                      0 &&
-                    (
-                      <>
-                        <form
-                          className="mt-4 space-y-3 border-t border-[var(--sami-border)] pt-4"
-                          onSubmit={
-                            async event => {
-                              event.preventDefault();
-
-                              const form =
-                                new FormData(
-                                  event.currentTarget,
-                                );
-
-                              await run(
-                                {
-                                  action:
-                                    'set_deposit_requirement',
-                                  orderId:
-                                    order.id,
-                                  depositType:
-                                    form.get(
-                                      'depositType',
-                                    ),
-                                  depositValue:
-                                    form.get(
-                                      'depositValue',
-                                    ),
-                                },
-                                'Deposit requirement updated.',
-                              );
-                            }
-                          }
-                        >
-                          <label className="block">
-                            <span className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
-                              Requirement
-                            </span>
-                            <select
-                              name="depositType"
-                              defaultValue={
-                                order.depositType
-                              }
-                              className="mt-1 h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-2 text-xs"
-                            >
-                              <option value="none">
-                                No deposit
-                              </option>
-                              <option value="percent">
-                                Percentage
-                              </option>
-                              <option value="fixed">
-                                Fixed amount
-                              </option>
-                            </select>
-                          </label>
-
-                          <Field
-                            name="depositValue"
-                            label="Percent or fixed amount"
-                            type="number"
-                            defaultValue={
-                              String(
-                                order.depositValue,
-                              )
-                            }
-                          />
-
-                          <button
-                            type="submit"
-                            disabled={
-                              isBusy
-                            }
-                            className="h-10 w-full rounded-xl border border-[var(--sami-border)] text-xs font-black disabled:opacity-60"
-                          >
-                            Save deposit requirement
-                          </button>
-                        </form>
-
-                        {
-                          order.depositRequiredAmount >
-                            0 &&
-                          (
-                            <form
-                              className="mt-4 space-y-3 border-t border-[var(--sami-border)] pt-4"
-                              onSubmit={
-                                async event => {
-                                  event.preventDefault();
-
-                                  const form =
-                                    new FormData(
-                                      event.currentTarget,
-                                    );
-
-                                  await run(
-                                    {
-                                      action:
-                                        'record_order_deposit',
-                                      orderId:
-                                        order.id,
-                                      amount:
-                                        form.get(
-                                          'depositAmount',
-                                        ),
-                                      method:
-                                        form.get(
-                                          'depositMethod',
-                                        ),
-                                      reference:
-                                        form.get(
-                                          'depositReference',
-                                        ),
-                                      idempotencyKey:
-                                        globalThis.crypto
-                                          ?.randomUUID?.(),
-                                    },
-                                    'Customer deposit recorded through Invoicing.',
-                                  );
-                                }
-                              }
-                            >
-                              <Field
-                                name="depositAmount"
-                                label="Amount received"
-                                type="number"
-                                defaultValue={
-                                  String(
-                                    order.depositRequiredAmount,
-                                  )
-                                }
-                                required
-                              />
-                              <Field
-                                name="depositMethod"
-                                label="Payment method"
-                                defaultValue="bank"
-                                required
-                              />
-                              <Field
-                                name="depositReference"
-                                label="Payment reference"
-                              />
-
-                              <button
-                                type="submit"
-                                disabled={
-                                  isBusy
-                                }
-                                className="h-10 w-full rounded-xl bg-blue-600 text-xs font-black text-white disabled:opacity-60"
-                              >
-                                Record deposit
-                              </button>
-                            </form>
-                          )
-                        }
-                      </>
-                    )
-                  }
-
-                  {
-                    order.depositPaymentId &&
-                    order.invoices.some(
-                      item =>
-                        Boolean(
-                          item.invoiceId,
-                        ),
-                    ) &&
-                    order.depositStatus !==
-                      'applied' &&
-                    (
-                      <form
-                        className="mt-4 space-y-3 border-t border-[var(--sami-border)] pt-4"
-                        onSubmit={
-                          async event => {
-                            event.preventDefault();
-
-                            const form =
-                              new FormData(
-                                event.currentTarget,
-                              );
-
-                            await run(
-                              {
-                                action:
-                                  'apply_order_deposit',
-                                orderId:
-                                  order.id,
-                                invoiceId:
-                                  form.get(
-                                    'depositInvoiceId',
-                                  ),
-                                amount:
-                                  form.get(
-                                    'depositApplyAmount',
-                                  ) ||
-                                  undefined,
-                              },
-                              'Deposit allocated to the selected invoice.',
-                            );
-                          }
-                        }
-                      >
-                        <p className="text-[10px] leading-4 text-slate-500">
-                          Confirm the invoice in Invoicing first, then apply the customer deposit against its open balance.
-                        </p>
-
-                        <select
-                          name="depositInvoiceId"
-                          required
-                          className="h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-2 text-xs"
-                        >
-                          <option value="">
-                            Choose invoice
-                          </option>
+                {order.depositReceivedAmount <= 0 ? (
+                  <>
+                    <form
+                      className="mt-4 space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800"
+                      onSubmit={async (event) => {
+                        event.preventDefault();
+                        const form = new FormData(event.currentTarget);
+                        await run(
                           {
-                            order.invoices
-                              .filter(
-                                item =>
-                                  Boolean(
-                                    item.invoiceId,
-                                  ),
-                              )
-                              .map(
-                                item => (
-                                  <option
-                                    key={
-                                      item.batchId
-                                    }
-                                    value={
-                                      item.invoiceId ||
-                                      ''
-                                    }
-                                  >
-                                    {
-                                      item.sourceReference
-                                    }
-                                  </option>
-                                ),
-                              )
-                          }
-                        </select>
+                            action: 'set_deposit_requirement',
+                            orderId: order.id,
+                            depositType: form.get('depositType'),
+                            depositValue: form.get('depositValue'),
+                          },
+                          'Deposit requirement updated.',
+                        );
+                      }}
+                    >
+                      <label className="block">
+                        <span className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
+                          Requirement
+                        </span>
+                        <div className="relative mt-1">
+                          <select
+                            name="depositType"
+                            defaultValue={order.depositType}
+                            className="h-9 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-3 pr-8 text-xs font-bold focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-slate-500 dark:focus:ring-slate-800"
+                          >
+                            <option value="none">No deposit</option>
+                            <option value="percent">Percentage</option>
+                            <option value="fixed">Fixed amount</option>
+                          </select>
+                          <ChevronDown
+                            aria-hidden="true"
+                            className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
+                          />
+                        </div>
+                      </label>
+                      <FieldInput
+                        name="depositValue"
+                        label="Percent or fixed amount"
+                        type="number"
+                        step="0.01"
+                        defaultValue={String(order.depositValue)}
+                      />
+                      <button
+                        type="submit"
+                        disabled={isBusy}
+                        className="h-9 w-full rounded-xl border border-slate-200 bg-white text-xs font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                      >
+                        Save deposit requirement
+                      </button>
+                    </form>
 
-                        <Field
-                          name="depositApplyAmount"
-                          label="Amount to apply (blank = maximum)"
+                    {order.depositRequiredAmount > 0 ? (
+                      <form
+                        className="mt-4 space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800"
+                        onSubmit={async (event) => {
+                          event.preventDefault();
+                          const form = new FormData(event.currentTarget);
+                          await run(
+                            {
+                              action: 'record_order_deposit',
+                              orderId: order.id,
+                              amount: form.get('depositAmount'),
+                              method: form.get('depositMethod'),
+                              reference: form.get('depositReference'),
+                              idempotencyKey: globalThis.crypto?.randomUUID?.(),
+                            },
+                            'Customer deposit recorded through Invoicing.',
+                          );
+                        }}
+                      >
+                        <FieldInput
+                          name="depositAmount"
+                          label="Amount received"
                           type="number"
+                          step="0.01"
+                          defaultValue={String(order.depositRequiredAmount)}
+                          required
                         />
-
+                        <FieldInput
+                          name="depositMethod"
+                          label="Payment method"
+                          defaultValue="bank"
+                          required
+                        />
+                        <FieldInput name="depositReference" label="Payment reference" />
                         <button
                           type="submit"
-                          disabled={
-                            isBusy
-                          }
-                          className="h-10 w-full rounded-xl border border-[var(--sami-border)] text-xs font-black disabled:opacity-60"
+                          disabled={isBusy}
+                          className="h-9 w-full rounded-xl bg-slate-950 text-xs font-black text-white transition hover:bg-slate-800 disabled:opacity-60 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
                         >
-                          Apply deposit to invoice
+                          Record deposit
                         </button>
                       </form>
-                    )
-                  }
-                </div>
-              )
-            }
+                    ) : null}
+                  </>
+                ) : null}
 
-            <div className="sami-soft-surface rounded-[24px] p-4">
-              <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
-                Invoice policy
-              </p>
-              <p className="mt-2 text-sm font-black">
-                {
-                  workspace.settings
-                    .invoicePolicy ===
-                    'delivered'
-                    ? 'Delivered quantities'
-                    : 'Ordered quantities'
-                }
-              </p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">
-                {
-                  workspace.settings
-                    .allowPartialInvoicing
-                    ? 'Partial invoicing is allowed.'
-                    : 'Partial invoicing is disabled.'
-                }
-              </p>
-            </div>
-
-            {
-              workspace
-                .capabilities
-                .canManageOrders &&
-              order.status !==
-                'cancelled' &&
-              order.lines.some(
-                line =>
-                  line.invoiceableQuantity >
-                  0,
-              ) &&
-              (
-                <form
-                  className="sami-surface rounded-[24px] p-4"
-                  onSubmit={
-                    async event => {
+                {order.depositPaymentId &&
+                order.invoices.some((item) => Boolean(item.invoiceId)) &&
+                order.depositStatus !== 'applied' ? (
+                  <form
+                    className="mt-4 space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800"
+                    onSubmit={async (event) => {
                       event.preventDefault();
-
-                      const form =
-                        new FormData(
-                          event.currentTarget,
-                        );
-
-                      const lines =
-                        order.lines
-                          .map(
-                            line => ({
-                              lineId:
-                                line.id,
-                              quantity:
-                                Number(
-                                  form.get(
-                                    'invoice-' +
-                                    line.id,
-                                  ) ||
-                                  0,
-                                ),
-                            }),
-                          )
-                          .filter(
-                            line =>
-                              line.quantity >
-                              0,
-                          );
-
-                      const idempotencyKey =
-                        invoiceIdempotencyKey.current ||
-                        globalThis.crypto?.randomUUID?.() ||
-                        (
-                          'sales-invoice-' +
-                          order.id +
-                          '-' +
-                          Date.now().toString(36) +
-                          '-' +
-                          Math.random().toString(36).slice(2)
-                        );
-
-                      invoiceIdempotencyKey.current =
-                        idempotencyKey;
-
-                      const result = await run(
+                      const form = new FormData(event.currentTarget);
+                      await run(
                         {
-                          action:
-                            'create_order_invoice',
-                          orderId:
-                            order.id,
-                          idempotencyKey,
-                          exchangeRate:
-                            order.currency ===
-                              workspace.company.currency
-                              ? 1
-                              : Number(
-                                  form.get(
-                                    'exchangeRate',
-                                  ) ||
-                                  0,
-                                ),
-                          lines,
+                          action: 'apply_order_deposit',
+                          orderId: order.id,
+                          invoiceId: form.get('depositInvoiceId'),
+                          amount: form.get('depositApplyAmount') || undefined,
                         },
-                        'Draft invoice created from the sales order.',
+                        'Deposit allocated to the selected invoice.',
                       );
+                    }}
+                  >
+                    <p className="text-[10px] leading-4 text-slate-500 dark:text-slate-400">
+                      Confirm the invoice in Invoicing first, then apply the
+                      customer deposit against its open balance.
+                    </p>
+                    <div className="relative">
+                      <select
+                        name="depositInvoiceId"
+                        required
+                        className="h-9 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-3 pr-8 text-xs font-bold focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-slate-500 dark:focus:ring-slate-800"
+                      >
+                        <option value="">Choose invoice</option>
+                        {order.invoices
+                          .filter((item) => Boolean(item.invoiceId))
+                          .map((item) => (
+                            <option key={item.batchId} value={item.invoiceId || ''}>
+                              {item.sourceReference}
+                            </option>
+                          ))}
+                      </select>
+                      <ChevronDown
+                        aria-hidden="true"
+                        className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
+                      />
+                    </div>
+                    <FieldInput
+                      name="depositApplyAmount"
+                      label="Amount to apply (blank = maximum)"
+                      type="number"
+                      step="0.01"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isBusy}
+                      className="h-9 w-full rounded-xl border border-slate-200 bg-white text-xs font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                    >
+                      Apply deposit to invoice
+                    </button>
+                  </form>
+                ) : null}
+              </div>
+            ) : null}
 
-                      if (result) {
-                        invoiceIdempotencyKey.current = null;
-                      }
-                    }
-                  }
+            {/* Invoice creation */}
+            {workspace.capabilities.canManageOrders &&
+            order.status !== 'cancelled' &&
+            order.lines.some((line) => line.invoiceableQuantity > 0) ? (
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-300">
+                    <Receipt className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <h2 className="text-sm font-black">Create invoice</h2>
+                </div>
+                <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                  Choose remaining invoiceable quantities. SaMi prevents
+                  duplicate batches and over-invoicing.
+                </p>
+
+                <form
+                  className="mt-3 space-y-3"
+                  onSubmit={async (event) => {
+                    event.preventDefault();
+                    const form = new FormData(event.currentTarget);
+                    const lines = order.lines
+                      .map((line) => ({
+                        lineId: line.id,
+                        quantity: Number(form.get('invoice-' + line.id) || 0),
+                      }))
+                      .filter((line) => line.quantity > 0);
+
+                    const idempotencyKey =
+                      invoiceIdempotencyKey.current ||
+                      globalThis.crypto?.randomUUID?.() ||
+                      'sales-invoice-' +
+                        order.id +
+                        '-' +
+                        Date.now().toString(36) +
+                        '-' +
+                        Math.random().toString(36).slice(2);
+
+                    invoiceIdempotencyKey.current = idempotencyKey;
+
+                    const result = await run(
+                      {
+                        action: 'create_order_invoice',
+                        orderId: order.id,
+                        idempotencyKey,
+                        exchangeRate:
+                          order.currency === workspace.company.currency
+                            ? 1
+                            : Number(form.get('exchangeRate') || 0),
+                        lines,
+                      },
+                      'Draft invoice created from the sales order.',
+                    );
+
+                    if (result) invoiceIdempotencyKey.current = null;
+                  }}
                 >
-                  <div className="flex items-center gap-2">
-                    <Receipt className="h-4 w-4 text-blue-600" />
-                    <h2 className="text-sm font-black">
-                      Create invoice
-                    </h2>
-                  </div>
+                  <ul className="space-y-2">
+                    {order.lines
+                      .filter((line) => line.invoiceableQuantity > 0)
+                      .map((line) => (
+                        <li
+                          key={line.id}
+                          className="rounded-xl border border-slate-200 p-3 dark:border-slate-800"
+                        >
+                          <p className="text-[10px] font-black">
+                            {line.description}
+                          </p>
+                          <input
+                            name={'invoice-' + line.id}
+                            type="number"
+                            min={workspace.settings.allowPartialInvoicing ? '0' : String(line.invoiceableQuantity)}
+                            max={line.invoiceableQuantity}
+                            step="0.0001"
+                            defaultValue={line.invoiceableQuantity}
+                            className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs tabular-nums focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-slate-500 dark:focus:ring-slate-800"
+                          />
+                        </li>
+                      ))}
+                  </ul>
 
-                  <p className="mt-1 text-xs leading-5 text-slate-500">
-                    Choose remaining invoiceable quantities. SaMi prevents duplicate batches and over-invoicing.
-                  </p>
-
-                  <div className="mt-3 space-y-2">
-                    {
-                      order.lines
-                        .filter(
-                          line =>
-                            line.invoiceableQuantity >
-                            0,
-                        )
-                        .map(
-                          line => (
-                            <label
-                              key={
-                                line.id
-                              }
-                              className="block rounded-xl border border-[var(--sami-border)] p-3"
-                            >
-                              <span className="text-[10px] font-black">
-                                {
-                                  line.description
-                                }
-                              </span>
-                              <input
-                                name={
-                                  'invoice-' +
-                                  line.id
-                                }
-                                type="number"
-                                min={
-                                  workspace
-                                    .settings
-                                    .allowPartialInvoicing
-                                    ? '0'
-                                    : String(
-                                        line.invoiceableQuantity,
-                                      )
-                                }
-                                max={
-                                  line.invoiceableQuantity
-                                }
-                                step="0.0001"
-                                defaultValue={
-                                  line.invoiceableQuantity
-                                }
-                                className="mt-2 h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm"
-                              />
-                            </label>
-                          ),
-                        )
-                    }
-                  </div>
-
-                  {
-                    order.currency !==
-                      workspace.company.currency &&
-                    (
-                      <label className="mt-3 block rounded-xl border border-[var(--sami-border)] p-3">
-                        <span className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
-                          Exchange rate
-                        </span>
-                        <input
-                          name="exchangeRate"
-                          type="number"
-                          min="0.00000001"
-                          step="0.00000001"
-                          required
-                          placeholder={
-                            '1 ' +
-                            order.currency +
-                            ' in ' +
-                            workspace.company.currency
-                          }
-                          className="mt-2 h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm"
-                        />
-                        <span className="mt-1 block text-[10px] leading-4 text-slate-400">
-                          The rate is snapshotted on the invoice and used for accounting postings.
-                        </span>
-                      </label>
-                    )
-                  }
+                  {order.currency !== workspace.company.currency ? (
+                    <label className="block rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+                      <span className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
+                        Exchange rate
+                      </span>
+                      <input
+                        name="exchangeRate"
+                        type="number"
+                        min="0.00000001"
+                        step="0.00000001"
+                        required
+                        placeholder={
+                          '1 ' + order.currency + ' in ' + workspace.company.currency
+                        }
+                        className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs tabular-nums focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-slate-500 dark:focus:ring-slate-800"
+                      />
+                      <span className="mt-1 block text-[10px] leading-4 text-slate-500 dark:text-slate-400">
+                        The rate is snapshotted on the invoice and used for
+                        accounting postings.
+                      </span>
+                    </label>
+                  ) : null}
 
                   <button
                     type="submit"
-                    disabled={
-                      isBusy
-                    }
-                    className="mt-3 h-11 w-full rounded-xl bg-blue-600 text-xs font-black text-white disabled:opacity-60"
+                    disabled={isBusy}
+                    className="h-10 w-full rounded-xl bg-slate-950 text-xs font-black text-white transition hover:bg-slate-800 disabled:opacity-60 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
                   >
                     Create draft invoice
                   </button>
                 </form>
-              )
-            }
-
-            <div className="sami-surface rounded-[24px] p-4">
-              <h2 className="text-sm font-black">
-                Invoice batches
-              </h2>
-
-              <div className="mt-3 space-y-2">
-                {
-                  order.invoices.length ===
-                    0
-                    ? (
-                        <p className="text-xs text-slate-500">
-                          No invoices created from this order yet.
-                        </p>
-                      )
-                    : order.invoices.map(
-                        batch => (
-                          <div
-                            key={
-                              batch.batchId
-                            }
-                            className="rounded-xl border border-[var(--sami-border)] p-3"
-                          >
-                            <p className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
-                              {
-                                batch.status
-                              }
-                            </p>
-                            <p className="mt-1 text-xs font-bold">
-                              {
-                                batch.sourceReference
-                              }
-                            </p>
-                            {
-                              batch.invoiceId &&
-                              (
-                                <Link
-                                  href={
-                                    '/apps/invoicing/' +
-                                    batch.invoiceId
-                                  }
-                                  className="mt-2 inline-block text-xs font-black text-blue-700 hover:underline dark:text-blue-300"
-                                >
-                                  Open invoice
-                                </Link>
-                              )
-                            }
-                          </div>
-                        ),
-                      )
-                }
               </div>
+            ) : null}
+
+            {/* Invoice batches */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+              <h2 className="text-sm font-black">Invoice batches</h2>
+              {order.invoices.length === 0 ? (
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  No invoices created from this order yet.
+                </p>
+              ) : (
+                <ul className="mt-3 space-y-2">
+                  {order.invoices.map((batch) => (
+                    <li
+                      key={batch.batchId}
+                      className="rounded-xl border border-slate-200 p-3 dark:border-slate-800"
+                    >
+                      <p className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
+                        {batch.status}
+                      </p>
+                      <p className="mt-1 text-xs font-bold">
+                        {batch.sourceReference}
+                      </p>
+                      {batch.invoiceId ? (
+                        <Link
+                          href={'/apps/invoicing/' + batch.invoiceId}
+                          className="mt-1 inline-flex items-center gap-1 text-xs font-black text-indigo-700 hover:underline dark:text-indigo-300"
+                        >
+                          Open invoice
+                          <ChevronRight className="h-3 w-3" aria-hidden="true" />
+                        </Link>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
-            {
-              workspace
-                .capabilities
-                .canManageOrders &&
-              order.status !==
-                'cancelled' &&
-              order.invoicedPercent ===
-                0 &&
-              (
+            {/* Cancel order */}
+            {workspace.capabilities.canManageOrders &&
+            order.status !== 'cancelled' &&
+            order.invoicedPercent === 0 ? (
+              <div className="rounded-2xl border border-red-200 bg-white p-5 dark:border-red-900/60 dark:bg-slate-900">
+                <h2 className="text-sm font-black text-red-700 dark:text-red-300">
+                  Cancel sales order
+                </h2>
                 <form
-                  className="sami-surface rounded-[24px] p-4"
-                  onSubmit={
-                    async event => {
-                      event.preventDefault();
-
-                      const form =
-                        new FormData(
-                          event.currentTarget,
-                        );
-
-                      await run(
-                        {
-                          action:
-                            'cancel_order',
-                          orderId:
-                            order.id,
-                          reason:
-                            form.get(
-                              'reason',
-                            ),
-                        },
-                        'Sales order cancelled.',
-                      );
-                    }
-                  }
+                  className="mt-3 space-y-3"
+                  onSubmit={async (event) => {
+                    event.preventDefault();
+                    const form = new FormData(event.currentTarget);
+                    await run(
+                      {
+                        action: 'cancel_order',
+                        orderId: order.id,
+                        reason: form.get('reason'),
+                      },
+                      'Sales order cancelled.',
+                    );
+                  }}
                 >
-                  <h2 className="text-sm font-black text-red-700 dark:text-red-300">
-                    Cancel sales order
-                  </h2>
-
                   <textarea
                     name="reason"
                     required
-                    rows={
-                      3
-                    }
+                    rows={3}
                     placeholder="Cancellation reason"
-                    className="mt-3 w-full rounded-xl border border-red-500/30 bg-transparent px-3 py-2 text-sm"
+                    className="w-full rounded-xl border border-red-200 bg-white px-3 py-2 text-sm focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-200 dark:border-red-900 dark:bg-slate-950 dark:text-slate-100"
                   />
-
                   <button
                     type="submit"
-                    disabled={
-                      isBusy
-                    }
-                    className="mt-2 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-red-500/30 text-xs font-black text-red-700 disabled:opacity-60 dark:text-red-300"
+                    disabled={isBusy}
+                    className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-red-300 bg-red-50 text-xs font-black text-red-700 transition hover:bg-red-100 disabled:opacity-60 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300 dark:hover:bg-red-950/60"
                   >
-                    <X className="h-4 w-4" />
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
                     Cancel order
                   </button>
                 </form>
-              )
-            }
+              </div>
+            ) : null}
           </aside>
-        </section>
-      </div>
+        </div>
+      </section>
     </>
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Sub-components                                                            */
+/* -------------------------------------------------------------------------- */
 
-function Field({
+function Kpi({
+  label,
+  value,
+  tone = 'default',
+}: {
+  label: string;
+  value: string;
+  tone?: 'default' | 'success' | 'warning';
+}) {
+  const valueTone =
+    tone === 'success'
+      ? 'text-emerald-700 dark:text-emerald-400'
+      : tone === 'warning'
+        ? 'text-amber-700 dark:text-amber-400'
+        : 'text-slate-900 dark:text-slate-100';
+
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
+        {label}
+      </p>
+      <p className={`mt-1 text-sm font-black capitalize tabular-nums ${valueTone}`}>
+        {value.replaceAll('_', ' ')}
+      </p>
+    </div>
+  );
+}
+
+function Section({
+  title,
+  icon,
+  subtitle,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex items-center gap-2 border-b border-slate-200 px-5 py-4 dark:border-slate-800">
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+          {icon}
+        </span>
+        <div>
+          <h2 className="text-sm font-black">{title}</h2>
+          {subtitle ? (
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              {subtitle}
+            </p>
+          ) : null}
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function FieldInput({
   name,
   label,
-  type =
-    'text',
+  type = 'text',
   defaultValue,
-  required =
-    false,
+  required = false,
+  step,
 }: {
-  name:
-    string;
-  label:
-    string;
-  type?:
-    string;
-  defaultValue?:
-    string;
-  required?:
-    boolean;
+  name: string;
+  label: string;
+  type?: string;
+  defaultValue?: string;
+  required?: boolean;
+  step?: string;
 }) {
   return (
     <label className="block">
-      <span className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
-        {
-          label
-        }
+      <span className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
+        {label}
       </span>
       <input
-        name={
-          name
-        }
-        type={
-          type
-        }
-        defaultValue={
-          defaultValue
-        }
-        required={
-          required
-        }
-        min={
-          type ===
-            'number'
-            ? '0'
-            : undefined
-        }
-        step={
-          type ===
-            'number'
-            ? '0.01'
-            : undefined
-        }
-        className="mt-1 h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-2 text-xs"
+        name={name}
+        type={type}
+        defaultValue={defaultValue}
+        required={required}
+        min={type === 'number' ? '0' : undefined}
+        step={type === 'number' ? step ?? '0.01' : undefined}
+        className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs tabular-nums focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-slate-500 dark:focus:ring-slate-800"
       />
     </label>
   );
 }
-
 
 function SmallAction({
   children,
   disabled,
   onClick,
 }: {
-  children:
-    React.ReactNode;
-  disabled:
-    boolean;
-  onClick:
-    () =>
-      void;
+  children: React.ReactNode;
+  disabled: boolean;
+  onClick: () => void;
 }) {
   return (
     <button
       type="button"
-      disabled={
-        disabled
-      }
-      onClick={
-        onClick
-      }
-      className="h-9 rounded-lg border border-[var(--sami-border)] px-3 text-[10px] font-black disabled:opacity-50"
+      disabled={disabled}
+      onClick={onClick}
+      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
     >
-      {
-        children
-      }
+      {children}
     </button>
   );
 }
 
-
-function State({
-  label,
-  value,
-}: {
-  label:
-    string;
-  value:
-    string;
-}) {
+function StateChip({ label, value }: { label: string; value: string }) {
   return (
-    <span className="rounded-full bg-blue-500/10 px-2.5 py-1 text-[10px] font-black text-blue-700 ring-1 ring-inset ring-blue-500/20 dark:text-blue-300">
-      {
-        label
-      }
-      {': '}
-      {
-        value.replaceAll(
-          '_',
-          ' ',
-        )
-      }
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.06em] ring-1 ${statusTone(value)}`}
+    >
+      <span className="opacity-70">{label}</span>
+      <span aria-hidden="true">·</span>
+      <span>{value.replaceAll('_', ' ')}</span>
     </span>
   );
 }
-
 
 function InfoCard({
   title,
   value,
 }: {
-  title:
-    string;
-  value:
-    string |
-    null;
+  title: string;
+  value: string | null;
 }) {
   return (
-    <div className="sami-surface rounded-[22px] p-4">
-      <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
-        {
-          title
-        }
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+      <p className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
+        {title}
       </p>
-      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600 dark:text-slate-300">
-        {
-          value ||
-          '—'
-        }
+      <p className="mt-1.5 whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-300">
+        {value || '—'}
       </p>
     </div>
   );
 }
 
-
-function Summary({
-  label,
-  value,
-}: {
-  label:
-    string;
-  value:
-    string;
-}) {
+function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-slate-500">
-        {
-          label
-        }
-      </span>
-      <span className="font-bold">
-        {
-          value
-        }
-      </span>
+    <div className="flex items-baseline justify-between gap-3">
+      <dt className="text-slate-500 dark:text-slate-400">{label}</dt>
+      <dd className="font-bold tabular-nums">{value}</dd>
     </div>
   );
 }

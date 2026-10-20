@@ -33,20 +33,53 @@ export type SalesLeadSourceValueRow = {
 };
 
 export type SalesLeadSourceEffectivenessReport = {
+  canViewReports: boolean;
+  windowDays: number;
+  sourceLimit: number;
+  asOf: string;
   sources: SalesLeadSourceSummaryRow[];
   values: SalesLeadSourceValueRow[];
 };
 
-const EMPTY_REPORT: SalesLeadSourceEffectivenessReport = { sources: [], values: [] };
+const REPORT_WINDOW_DAYS = 90;
+const SOURCE_LIMIT = 30;
+
+const EMPTY_REPORT: SalesLeadSourceEffectivenessReport = {
+  canViewReports: false,
+  windowDays: REPORT_WINDOW_DAYS,
+  sourceLimit: SOURCE_LIMIT,
+  asOf: '',
+  sources: [],
+  values: [],
+};
+
+function roundTenths(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.round(n * 10) / 10 : null;
+}
+
+function toNum(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
 
 export async function getSalesLeadSourceEffectiveness(): Promise<SalesLeadSourceEffectivenessReport> {
   const context = await requireSalesContext(SALES_PERMISSIONS.QUOTE_VIEW);
+  const asOf = new Date().toISOString();
+  const companyCurrency = String(
+    context.company.currentCompany.currency || 'KES',
+  ).toUpperCase();
+
   const canViewReports = hasSalesPermission(
     context.permissions.isOwner,
     context.permissions.permissionSet,
     SALES_PERMISSIONS.REPORT_VIEW,
   );
-  if (!canViewReports) return EMPTY_REPORT;
+
+  if (!canViewReports) {
+    return { ...EMPTY_REPORT, asOf };
+  }
 
   const [sourceResult, valueResult] = await Promise.all([
     context.pool.query(
@@ -61,7 +94,7 @@ export async function getSalesLeadSourceEffectiveness(): Promise<SalesLeadSource
           FROM sales_leads l
           WHERE l.company_id = $1
             AND l.deleted_at IS NULL
-            AND l.created_at >= NOW() - INTERVAL '90 days'
+            AND l.created_at >= NOW() - ($2::int * INTERVAL '1 day')
         )
         SELECT
           l.source,
@@ -72,24 +105,28 @@ export async function getSalesLeadSourceEffectiveness(): Promise<SalesLeadSource
           COUNT(*) FILTER (WHERE l.status = 'converted')::int AS converted_count,
           COUNT(*) FILTER (WHERE l.status = 'disqualified')::int AS disqualified_count,
           ROUND(
-            100.0 * COUNT(*) FILTER (WHERE l.status = 'converted') / NULLIF(COUNT(*), 0),
+            100.0 * COUNT(*) FILTER (WHERE l.status = 'converted')
+              / NULLIF(COUNT(*), 0),
             1
           ) AS conversion_rate,
-          ROUND(AVG(
-            GREATEST(0, EXTRACT(EPOCH FROM (o.created_at - l.created_at)) / 86400.0)
-          ) FILTER (
-            WHERE l.status = 'converted' AND o.created_at IS NOT NULL
-          )::numeric, 1) AS average_days_to_convert
+          ROUND(
+            AVG(
+              GREATEST(0, EXTRACT(EPOCH FROM (o.created_at - l.created_at)) / 86400.0)
+            ) FILTER (
+              WHERE l.status = 'converted' AND o.created_at IS NOT NULL
+            )::numeric,
+            1
+          ) AS average_days_to_convert
         FROM lead_cohort l
         LEFT JOIN sales_opportunities o
           ON o.id = l.converted_opportunity_id
-          AND o.company_id = $1
-          AND o.deleted_at IS NULL
+         AND o.company_id = $1
+         AND o.deleted_at IS NULL
         GROUP BY l.source
         ORDER BY lead_count DESC, conversion_rate DESC, l.source ASC
-        LIMIT 30
+        LIMIT $3
       `,
-      [context.companyId],
+      [context.companyId, REPORT_WINDOW_DAYS, SOURCE_LIMIT],
     ),
     context.pool.query(
       `
@@ -101,13 +138,13 @@ export async function getSalesLeadSourceEffectiveness(): Promise<SalesLeadSource
           FROM sales_leads l
           WHERE l.company_id = $1
             AND l.deleted_at IS NULL
-            AND l.created_at >= NOW() - INTERVAL '90 days'
+            AND l.created_at >= NOW() - ($2::int * INTERVAL '1 day')
         )
         SELECT
           l.source,
           UPPER(COALESCE(
             NULLIF(BTRIM(o.currency), ''),
-            NULLIF(BTRIM($2::text), ''),
+            NULLIF(BTRIM($3::text), ''),
             'KES'
           )) AS currency,
           COUNT(o.id)::int AS opportunity_count,
@@ -135,43 +172,51 @@ export async function getSalesLeadSourceEffectiveness(): Promise<SalesLeadSource
         FROM lead_cohort l
         LEFT JOIN sales_opportunities o
           ON o.id = l.converted_opportunity_id
-          AND o.company_id = $1
-          AND o.deleted_at IS NULL
+         AND o.company_id = $1
+         AND o.deleted_at IS NULL
         LEFT JOIN sales_pipeline_stages s
           ON s.id = o.stage_id
-          AND s.company_id = o.company_id
-          AND s.deleted_at IS NULL
+         AND s.company_id = o.company_id
+         AND s.deleted_at IS NULL
         GROUP BY l.source, currency
         ORDER BY l.source ASC, currency ASC
       `,
-      [context.companyId, context.company.currentCompany.currency],
+      [
+        context.companyId,
+        REPORT_WINDOW_DAYS,
+        context.company.currentCompany.currency,
+      ],
     ),
   ]);
 
   return {
-    sources: sourceResult.rows.map(row => ({
+    canViewReports: true,
+    windowDays: REPORT_WINDOW_DAYS,
+    sourceLimit: SOURCE_LIMIT,
+    asOf,
+    sources: sourceResult.rows.map((row) => ({
       source: String(row.source || 'Unspecified'),
-      leadCount: Number(row.lead_count || 0),
-      newCount: Number(row.new_count || 0),
-      contactedCount: Number(row.contacted_count || 0),
-      qualifiedCount: Number(row.qualified_count || 0),
-      convertedCount: Number(row.converted_count || 0),
-      disqualifiedCount: Number(row.disqualified_count || 0),
-      conversionRate: Number(row.conversion_rate || 0),
-      averageDaysToConvert: row.average_days_to_convert == null ? null : Number(row.average_days_to_convert),
+      leadCount: toNum(row.lead_count),
+      newCount: toNum(row.new_count),
+      contactedCount: toNum(row.contacted_count),
+      qualifiedCount: toNum(row.qualified_count),
+      convertedCount: toNum(row.converted_count),
+      disqualifiedCount: toNum(row.disqualified_count),
+      conversionRate: toNum(row.conversion_rate),
+      averageDaysToConvert: roundTenths(row.average_days_to_convert),
     })),
-    values: valueResult.rows.map(row => ({
+    values: valueResult.rows.map((row) => ({
       source: String(row.source || 'Unspecified'),
-      currency: String(row.currency || context.company.currentCompany.currency || 'KES').toUpperCase(),
-      opportunityCount: Number(row.opportunity_count || 0),
-      openOpportunityCount: Number(row.open_opportunity_count || 0),
-      openPipelineValue: Number(row.open_pipeline_value || 0),
-      weightedPipelineValue: Number(row.weighted_pipeline_value || 0),
-      overdueOpportunityCount: Number(row.overdue_opportunity_count || 0),
-      wonCount: Number(row.won_count || 0),
-      wonValue: Number(row.won_value || 0),
-      lostCount: Number(row.lost_count || 0),
-      lostValue: Number(row.lost_value || 0),
+      currency: String(row.currency || companyCurrency).toUpperCase(),
+      opportunityCount: toNum(row.opportunity_count),
+      openOpportunityCount: toNum(row.open_opportunity_count),
+      openPipelineValue: toNum(row.open_pipeline_value),
+      weightedPipelineValue: toNum(row.weighted_pipeline_value),
+      overdueOpportunityCount: toNum(row.overdue_opportunity_count),
+      wonCount: toNum(row.won_count),
+      wonValue: toNum(row.won_value),
+      lostCount: toNum(row.lost_count),
+      lostValue: toNum(row.lost_value),
     })),
   };
 }

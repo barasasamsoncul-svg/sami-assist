@@ -5,6 +5,19 @@ export type RequireOpportunityUuid = (
   label: string,
 ) => string;
 
+/**
+ * Advance the linked opportunity to the pipeline's Won stage when a quote is
+ * converted to a sales order.
+ *
+ * Design notes
+ * - Soft-deleted opportunities never block an order from being created.
+ * - Missing or misconfigured Won stages are a soft failure: the order still
+ *   proceeds and the operator can repair the pipeline separately.
+ * - If the opportunity is already Won, we still refresh probability /
+ *   timestamps but do not emit a duplicate stage-history row.
+ * - Everything runs inside the caller's transaction; this helper never BEGINs
+ *   or COMMITs.
+ */
 export async function markSalesOpportunityWonFromAcceptedQuote(
   client: PoolClient,
   input: {
@@ -19,15 +32,17 @@ export async function markSalesOpportunityWonFromAcceptedQuote(
   requireUuid: RequireOpportunityUuid,
 ): Promise<void> {
   const rawOpportunityId =
-    typeof input.opportunityId === 'string'
-      ? input.opportunityId.trim()
-      : '';
+    typeof input.opportunityId === 'string' ? input.opportunityId.trim() : '';
 
   if (!rawOpportunityId) return;
 
-  const opportunityId =
-    requireUuid(rawOpportunityId, 'Opportunity');
-  const current = await client.query(
+  const opportunityId = requireUuid(rawOpportunityId, 'Opportunity');
+
+  const current = await client.query<{
+    stage_id: string;
+    pipeline_id: string;
+    stage_type: string;
+  }>(
     `SELECT
        opportunity.stage_id,
        current_stage.pipeline_id,
@@ -43,12 +58,21 @@ export async function markSalesOpportunityWonFromAcceptedQuote(
     [opportunityId, input.companyId],
   );
 
-  // A soft-deleted CRM opportunity must not prevent a valid accepted quote
-  // from becoming an order.
+  // Soft-deleted / not-found opportunities must not block quote conversion.
   if (!current.rows[0]) return;
 
   const currentStageType = String(current.rows[0].stage_type || 'open');
+  const currentStageId = String(current.rows[0].stage_id);
+  const pipelineId = String(current.rows[0].pipeline_id);
+  const reason =
+    'Accepted quotation ' +
+    input.quoteNumber +
+    ' converted to sales order ' +
+    input.orderNumber +
+    '.';
+
   if (currentStageType === 'won') {
+    // Already Won — refresh bookkeeping only; no stage transition to record.
     await client.query(
       `UPDATE sales_opportunities
        SET probability = 100,
@@ -63,7 +87,7 @@ export async function markSalesOpportunityWonFromAcceptedQuote(
     return;
   }
 
-  const wonStage = await client.query(
+  const wonStage = await client.query<{ id: string }>(
     `SELECT id
      FROM sales_pipeline_stages
      WHERE company_id = $1
@@ -76,19 +100,13 @@ export async function markSalesOpportunityWonFromAcceptedQuote(
        id ASC
      LIMIT 1
      FOR UPDATE`,
-    [input.companyId, current.rows[0].pipeline_id],
+    [input.companyId, pipelineId],
   );
-  if (!wonStage.rows[0]) {
-    // Keep quote-to-order available even if a custom pipeline is misconfigured.
-    // The user can repair the Won stage and move the opportunity manually.
-    return;
-  }
+
+  // Missing Won stage → soft failure; the order still commits.
+  if (!wonStage.rows[0]) return;
 
   const wonStageId = String(wonStage.rows[0].id);
-  const currentStageId = String(current.rows[0].stage_id);
-  const reason =
-    'Accepted quotation ' + input.quoteNumber +
-    ' converted to sales order ' + input.orderNumber + '.';
 
   await client.query(
     `UPDATE sales_opportunities

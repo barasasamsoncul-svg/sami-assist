@@ -30,6 +30,9 @@ export type RecordPublicSalesQuoteActivity = (
  * cannot write an expiry history record for a transition that did not happen.
  * This function deliberately does not BEGIN or COMMIT; the caller must wrap the
  * state change and audit records in its existing transaction.
+ *
+ * Returns `true` when the transition succeeded, `false` when the quote was no
+ * longer in the expected source status (caller can then re-read state).
  */
 export async function expirePublicSalesQuoteWithAudit(
   client: PoolClient,
@@ -44,23 +47,17 @@ export async function expirePublicSalesQuoteWithAudit(
   recordActivity: RecordPublicSalesQuoteActivity,
 ): Promise<boolean> {
   const changed = await client.query(
-    `
-      UPDATE sales_quotes
-      SET
-        status = 'expired',
-        expired_at = COALESCE(expired_at, NOW()),
-        public_enabled = FALSE,
-        updated_at = NOW()
-      WHERE id = $1
-        AND company_id = $2
-        AND status = $3::varchar(30)
-      RETURNING id
-    `,
-    [
-      input.quoteId,
-      input.companyId,
-      input.fromStatus,
-    ],
+    `UPDATE sales_quotes
+     SET
+       status = 'expired',
+       expired_at = COALESCE(expired_at, NOW()),
+       public_enabled = FALSE,
+       updated_at = NOW()
+     WHERE id = $1
+       AND company_id = $2
+       AND status = $3::varchar(30)
+     RETURNING id`,
+    [input.quoteId, input.companyId, input.fromStatus],
   );
 
   if (changed.rows.length !== 1) {
@@ -68,17 +65,9 @@ export async function expirePublicSalesQuoteWithAudit(
   }
 
   await client.query(
-    `
-      INSERT INTO sales_quote_status_history (
-        quote_id,
-        company_id,
-        from_status,
-        to_status,
-        reason,
-        changed_by
-      )
-      VALUES ($1, $2, $3, 'expired', $4, NULL)
-    `,
+    `INSERT INTO sales_quote_status_history
+       (quote_id, company_id, from_status, to_status, reason, changed_by)
+     VALUES ($1,$2,$3,'expired',$4,NULL)`,
     [
       input.quoteId,
       input.companyId,
@@ -96,9 +85,7 @@ export async function expirePublicSalesQuoteWithAudit(
     metadata: {
       reason: 'validity_expired',
       source: input.source,
-      ...(input.attemptedAction
-        ? { attemptedAction: input.attemptedAction }
-        : {}),
+      ...(input.attemptedAction ? { attemptedAction: input.attemptedAction } : {}),
     },
   });
 

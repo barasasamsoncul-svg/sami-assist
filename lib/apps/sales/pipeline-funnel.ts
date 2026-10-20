@@ -6,6 +6,10 @@ import {
   SALES_PERMISSIONS,
 } from '@/lib/apps/sales/context';
 
+/* -------------------------------------------------------------------------- */
+/*  Funnel                                                                    */
+/* -------------------------------------------------------------------------- */
+
 export type SalesOpportunityFunnelRow = {
   stageId: string;
   stageName: string;
@@ -24,15 +28,36 @@ export type SalesOpportunityFunnelRow = {
   staleValue: number;
 };
 
-export async function getSalesOpportunityFunnelData(): Promise<SalesOpportunityFunnelRow[]> {
+export type SalesOpportunityFunnelReport = {
+  canViewReports: boolean;
+  staleAfterDays: number;
+  asOf: string;
+  rows: SalesOpportunityFunnelRow[];
+};
+
+const STALE_AFTER_DAYS = 30;
+
+export async function getSalesOpportunityFunnelData(): Promise<SalesOpportunityFunnelReport> {
   const context = await requireSalesContext(SALES_PERMISSIONS.QUOTE_VIEW);
+  const asOf = new Date().toISOString();
+  const companyCurrency = String(
+    context.company.currentCompany.currency || 'KES',
+  ).toUpperCase();
+
   const canViewReports = hasSalesPermission(
     context.permissions.isOwner,
     context.permissions.permissionSet,
     SALES_PERMISSIONS.REPORT_VIEW,
   );
 
-  if (!canViewReports) return [];
+  if (!canViewReports) {
+    return {
+      canViewReports: false,
+      staleAfterDays: STALE_AFTER_DAYS,
+      asOf,
+      rows: [],
+    };
+  }
 
   const result = await context.pool.query(
     `
@@ -81,21 +106,23 @@ export async function getSalesOpportunityFunnelData(): Promise<SalesOpportunityF
         ) AS overdue_value,
         COUNT(o.id) FILTER (
           WHERE s.stage_type = 'open'
-            AND COALESCE(stage_age.last_stage_at, o.created_at) < NOW() - INTERVAL '30 days'
+            AND COALESCE(stage_age.last_stage_at, o.created_at)
+                < NOW() - ($3::int * INTERVAL '1 day')
         )::int AS stale_opportunity_count,
         COALESCE(
           SUM(o.expected_value) FILTER (
             WHERE s.stage_type = 'open'
-              AND COALESCE(stage_age.last_stage_at, o.created_at) < NOW() - INTERVAL '30 days'
+              AND COALESCE(stage_age.last_stage_at, o.created_at)
+                  < NOW() - ($3::int * INTERVAL '1 day')
           ),
           0
         ) AS stale_value
       FROM sales_pipeline_stages s
       LEFT JOIN sales_opportunities o
         ON o.stage_id = s.id
-        AND o.company_id = s.company_id
-        AND o.company_id = $1
-        AND o.deleted_at IS NULL
+       AND o.company_id = s.company_id
+       AND o.company_id = $1
+       AND o.deleted_at IS NULL
       LEFT JOIN LATERAL (
         SELECT MAX(h.created_at) AS last_stage_at
         FROM sales_opportunity_stage_history h
@@ -105,32 +132,45 @@ export async function getSalesOpportunityFunnelData(): Promise<SalesOpportunityF
       ) stage_age ON TRUE
       WHERE s.company_id = $1
         AND s.deleted_at IS NULL
-      GROUP BY s.id, s.name, s.sequence, s.stage_type, s.probability,
-        UPPER(COALESCE(NULLIF(BTRIM(o.currency), ''), NULLIF(BTRIM($2::text), ''), 'KES'))
+      GROUP BY
+        s.id, s.name, s.sequence, s.stage_type, s.probability,
+        UPPER(COALESCE(
+          NULLIF(BTRIM(o.currency), ''),
+          NULLIF(BTRIM($2::text), ''),
+          'KES'
+        ))
       ORDER BY s.sequence ASC, s.name ASC, currency ASC
     `,
-    [context.companyId, context.company.currentCompany.currency],
+    [context.companyId, context.company.currentCompany.currency, STALE_AFTER_DAYS],
   );
 
-  return result.rows.map(row => ({
-    stageId: String(row.stage_id),
-    stageName: String(row.stage_name),
-    sequence: Number(row.sequence || 0),
-    stageType: String(row.stage_type) as 'open' | 'won' | 'lost',
-    stageProbability: Number(row.stage_probability || 0),
-    currency: String(row.currency || 'KES').toUpperCase(),
-    opportunityCount: Number(row.opportunity_count || 0),
-    pipelineValue: Number(row.pipeline_value || 0),
-    weightedPipelineValue: Number(row.weighted_pipeline_value || 0),
-    wonValue: Number(row.won_value || 0),
-    lostValue: Number(row.lost_value || 0),
-    overdueOpportunityCount: Number(row.overdue_opportunity_count || 0),
-    overdueValue: Number(row.overdue_value || 0),
-    staleOpportunityCount: Number(row.stale_opportunity_count || 0),
-    staleValue: Number(row.stale_value || 0),
-  }));
+  return {
+    canViewReports: true,
+    staleAfterDays: STALE_AFTER_DAYS,
+    asOf,
+    rows: result.rows.map((row) => ({
+      stageId: String(row.stage_id),
+      stageName: String(row.stage_name),
+      sequence: Number(row.sequence || 0),
+      stageType: String(row.stage_type) as 'open' | 'won' | 'lost',
+      stageProbability: Number(row.stage_probability || 0),
+      currency: String(row.currency || companyCurrency).toUpperCase(),
+      opportunityCount: Number(row.opportunity_count || 0),
+      pipelineValue: Number(row.pipeline_value || 0),
+      weightedPipelineValue: Number(row.weighted_pipeline_value || 0),
+      wonValue: Number(row.won_value || 0),
+      lostValue: Number(row.lost_value || 0),
+      overdueOpportunityCount: Number(row.overdue_opportunity_count || 0),
+      overdueValue: Number(row.overdue_value || 0),
+      staleOpportunityCount: Number(row.stale_opportunity_count || 0),
+      staleValue: Number(row.stale_value || 0),
+    })),
+  };
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Risk queue                                                                */
+/* -------------------------------------------------------------------------- */
 
 export type SalesOpportunityRiskRow = {
   opportunityId: string;
@@ -149,15 +189,38 @@ export type SalesOpportunityRiskRow = {
   stale: boolean;
 };
 
-export async function getSalesOpportunityRiskQueue(): Promise<SalesOpportunityRiskRow[]> {
+export type SalesOpportunityRiskQueueReport = {
+  canViewReports: boolean;
+  staleAfterDays: number;
+  limit: number;
+  asOf: string;
+  rows: SalesOpportunityRiskRow[];
+};
+
+const RISK_QUEUE_LIMIT = 50;
+
+export async function getSalesOpportunityRiskQueue(): Promise<SalesOpportunityRiskQueueReport> {
   const context = await requireSalesContext(SALES_PERMISSIONS.QUOTE_VIEW);
+  const asOf = new Date().toISOString();
+  const companyCurrency = String(
+    context.company.currentCompany.currency || 'KES',
+  ).toUpperCase();
+
   const canViewReports = hasSalesPermission(
     context.permissions.isOwner,
     context.permissions.permissionSet,
     SALES_PERMISSIONS.REPORT_VIEW,
   );
 
-  if (!canViewReports) return [];
+  if (!canViewReports) {
+    return {
+      canViewReports: false,
+      staleAfterDays: STALE_AFTER_DAYS,
+      limit: RISK_QUEUE_LIMIT,
+      asOf,
+      rows: [],
+    };
+  }
 
   const result = await context.pool.query(
     `
@@ -165,24 +228,35 @@ export async function getSalesOpportunityRiskQueue(): Promise<SalesOpportunityRi
         o.id AS opportunity_id,
         o.opportunity_number,
         o.name AS opportunity_name,
-        COALESCE(NULLIF(BTRIM(o.customer_name), ''), NULLIF(BTRIM(o.contact_name), ''), 'Customer not set') AS customer_name,
+        COALESCE(
+          NULLIF(BTRIM(o.customer_name), ''),
+          NULLIF(BTRIM(o.contact_name), ''),
+          'Customer not set'
+        ) AS customer_name,
         s.name AS stage_name,
-        UPPER(COALESCE(NULLIF(BTRIM(o.currency), ''), NULLIF(BTRIM($3::text), ''), 'KES')) AS currency,
+        UPPER(COALESCE(
+          NULLIF(BTRIM(o.currency), ''),
+          NULLIF(BTRIM($3::text), ''),
+          'KES'
+        )) AS currency,
         o.expected_value,
         o.probability,
         o.expected_close_date::text AS expected_close_date,
         COALESCE(owner.name, 'Unassigned') AS salesperson_name,
         GREATEST(
           0,
-          FLOOR(EXTRACT(EPOCH FROM (NOW() - COALESCE(stage_age.last_stage_at, o.created_at))) / 86400)
+          FLOOR(EXTRACT(EPOCH FROM (
+            NOW() - COALESCE(stage_age.last_stage_at, o.created_at)
+          )) / 86400)
         )::int AS days_in_stage,
         (o.expected_close_date < CURRENT_DATE) AS overdue,
         (o.expected_close_date IS NULL) AS missing_close_date,
-        (COALESCE(stage_age.last_stage_at, o.created_at) < NOW() - INTERVAL '30 days') AS stale
+        (COALESCE(stage_age.last_stage_at, o.created_at)
+          < NOW() - ($4::int * INTERVAL '1 day')) AS stale
       FROM sales_opportunities o
       INNER JOIN sales_pipeline_stages s
         ON s.id = o.stage_id
-        AND s.company_id = o.company_id
+       AND s.company_id = o.company_id
       LEFT JOIN LATERAL (
         SELECT MAX(h.created_at) AS last_stage_at
         FROM sales_opportunity_stage_history h
@@ -213,12 +287,14 @@ export async function getSalesOpportunityRiskQueue(): Promise<SalesOpportunityRi
         AND (
           o.expected_close_date < CURRENT_DATE
           OR o.expected_close_date IS NULL
-          OR COALESCE(stage_age.last_stage_at, o.created_at) < NOW() - INTERVAL '30 days'
+          OR COALESCE(stage_age.last_stage_at, o.created_at)
+              < NOW() - ($4::int * INTERVAL '1 day')
         )
       ORDER BY
         CASE
           WHEN o.expected_close_date < CURRENT_DATE THEN 0
-          WHEN COALESCE(stage_age.last_stage_at, o.created_at) < NOW() - INTERVAL '30 days' THEN 1
+          WHEN COALESCE(stage_age.last_stage_at, o.created_at)
+                < NOW() - ($4::int * INTERVAL '1 day') THEN 1
           WHEN o.expected_close_date IS NULL THEN 2
           ELSE 3
         END,
@@ -226,25 +302,39 @@ export async function getSalesOpportunityRiskQueue(): Promise<SalesOpportunityRi
         days_in_stage DESC,
         o.expected_value DESC,
         o.id ASC
-      LIMIT 50
+      LIMIT $5
     `,
-    [context.companyId, context.tenantId, context.company.currentCompany.currency],
+    [
+      context.companyId,
+      context.tenantId,
+      context.company.currentCompany.currency,
+      STALE_AFTER_DAYS,
+      RISK_QUEUE_LIMIT,
+    ],
   );
 
-  return result.rows.map(row => ({
-    opportunityId: String(row.opportunity_id),
-    opportunityNumber: String(row.opportunity_number),
-    opportunityName: String(row.opportunity_name),
-    customerName: String(row.customer_name || 'Customer not set'),
-    stageName: String(row.stage_name),
-    currency: String(row.currency || 'KES').toUpperCase(),
-    expectedValue: Number(row.expected_value || 0),
-    probability: Number(row.probability || 0),
-    expectedCloseDate: row.expected_close_date ? String(row.expected_close_date).slice(0, 10) : null,
-    salespersonName: String(row.salesperson_name || 'Unassigned'),
-    daysInStage: Number(row.days_in_stage || 0),
-    overdue: row.overdue === true,
-    missingCloseDate: row.missing_close_date === true,
-    stale: row.stale === true,
-  }));
+  return {
+    canViewReports: true,
+    staleAfterDays: STALE_AFTER_DAYS,
+    limit: RISK_QUEUE_LIMIT,
+    asOf,
+    rows: result.rows.map((row) => ({
+      opportunityId: String(row.opportunity_id),
+      opportunityNumber: String(row.opportunity_number),
+      opportunityName: String(row.opportunity_name),
+      customerName: String(row.customer_name || 'Customer not set'),
+      stageName: String(row.stage_name),
+      currency: String(row.currency || companyCurrency).toUpperCase(),
+      expectedValue: Number(row.expected_value || 0),
+      probability: Number(row.probability || 0),
+      expectedCloseDate: row.expected_close_date
+        ? String(row.expected_close_date).slice(0, 10)
+        : null,
+      salespersonName: String(row.salesperson_name || 'Unassigned'),
+      daysInStage: Number(row.days_in_stage || 0),
+      overdue: row.overdue === true,
+      missingCloseDate: row.missing_close_date === true,
+      stale: row.stale === true,
+    })),
+  };
 }

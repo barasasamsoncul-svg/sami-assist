@@ -27,19 +27,46 @@ export type SalesPipelineLossReason = {
 };
 
 export type SalesPipelineOutcomeReport = {
+  canViewReports: boolean;
+  windowDays: number;
+  lossReasonLimit: number;
+  asOf: string;
   summaries: SalesPipelineOutcomeSummary[];
   lossReasons: SalesPipelineLossReason[];
 };
 
+const REPORT_WINDOW_DAYS = 90;
+const LOSS_REASON_LIMIT = 5;
+
+function roundTenths(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.round(number * 10) / 10 : null;
+}
+
 export async function getSalesPipelineOutcomeReport(): Promise<SalesPipelineOutcomeReport> {
   const context = await requireSalesContext(SALES_PERMISSIONS.QUOTE_VIEW);
+  const asOf = new Date().toISOString();
+  const companyCurrency = String(
+    context.company.currentCompany.currency || 'KES',
+  ).toUpperCase();
+
   const canViewReports = hasSalesPermission(
     context.permissions.isOwner,
     context.permissions.permissionSet,
     SALES_PERMISSIONS.REPORT_VIEW,
   );
 
-  if (!canViewReports) return { summaries: [], lossReasons: [] };
+  if (!canViewReports) {
+    return {
+      canViewReports: false,
+      windowDays: REPORT_WINDOW_DAYS,
+      lossReasonLimit: LOSS_REASON_LIMIT,
+      asOf,
+      summaries: [],
+      lossReasons: [],
+    };
+  }
 
   const [summaryResult, lossReasonResult] = await Promise.all([
     context.pool.query(
@@ -50,15 +77,24 @@ export async function getSalesPipelineOutcomeReport(): Promise<SalesPipelineOutc
             NULLIF(BTRIM($2::text), ''),
             'KES'
           )) AS currency,
-          COUNT(*) FILTER (WHERE s.stage_type IN ('won', 'lost'))::int AS closed_count,
-          COUNT(*) FILTER (WHERE s.stage_type = 'won' AND o.won_at IS NOT NULL)::int AS won_count,
-          COUNT(*) FILTER (WHERE s.stage_type = 'lost' AND o.lost_at IS NOT NULL)::int AS lost_count,
+          COUNT(*) FILTER (WHERE s.stage_type IN ('won','lost'))::int AS closed_count,
+          COUNT(*) FILTER (
+            WHERE s.stage_type = 'won' AND o.won_at IS NOT NULL
+          )::int AS won_count,
+          COUNT(*) FILTER (
+            WHERE s.stage_type = 'lost' AND o.lost_at IS NOT NULL
+          )::int AS lost_count,
           ROUND(
-            100.0 * COUNT(*) FILTER (WHERE s.stage_type = 'won' AND o.won_at IS NOT NULL)
-            / NULLIF(COUNT(*) FILTER (
+            100.0 * COUNT(*) FILTER (
+              WHERE s.stage_type = 'won' AND o.won_at IS NOT NULL
+            )
+            / NULLIF(
+              COUNT(*) FILTER (
                 WHERE (s.stage_type = 'won' AND o.won_at IS NOT NULL)
                    OR (s.stage_type = 'lost' AND o.lost_at IS NOT NULL)
-              ), 0),
+              ),
+              0
+            ),
             1
           ) AS win_rate,
           COALESCE(SUM(o.expected_value) FILTER (
@@ -85,18 +121,20 @@ export async function getSalesPipelineOutcomeReport(): Promise<SalesPipelineOutc
         FROM sales_opportunities o
         INNER JOIN sales_pipeline_stages s
           ON s.id = o.stage_id
-          AND s.company_id = o.company_id
+         AND s.company_id = o.company_id
         WHERE o.company_id = $1
           AND o.deleted_at IS NULL
           AND s.deleted_at IS NULL
           AND (
-            (s.stage_type = 'won' AND o.won_at >= NOW() - INTERVAL '90 days')
-            OR (s.stage_type = 'lost' AND o.lost_at >= NOW() - INTERVAL '90 days')
+            (s.stage_type = 'won'
+             AND o.won_at >= NOW() - ($3::int * INTERVAL '1 day'))
+            OR (s.stage_type = 'lost'
+                AND o.lost_at >= NOW() - ($3::int * INTERVAL '1 day'))
           )
         GROUP BY 1
         ORDER BY currency
       `,
-      [context.companyId, context.company.currentCompany.currency],
+      [context.companyId, context.company.currentCompany.currency, REPORT_WINDOW_DAYS],
     ),
     context.pool.query(
       `
@@ -112,12 +150,12 @@ export async function getSalesPipelineOutcomeReport(): Promise<SalesPipelineOutc
           FROM sales_opportunities o
           INNER JOIN sales_pipeline_stages s
             ON s.id = o.stage_id
-            AND s.company_id = o.company_id
+           AND s.company_id = o.company_id
           WHERE o.company_id = $1
             AND o.deleted_at IS NULL
             AND s.deleted_at IS NULL
             AND s.stage_type = 'lost'
-            AND o.lost_at >= NOW() - INTERVAL '90 days'
+            AND o.lost_at >= NOW() - ($3::int * INTERVAL '1 day')
         ),
         ranked_reasons AS (
           SELECT
@@ -134,28 +172,37 @@ export async function getSalesPipelineOutcomeReport(): Promise<SalesPipelineOutc
         )
         SELECT currency, reason, opportunity_count, lost_value
         FROM ranked_reasons
-        WHERE reason_rank <= 5
+        WHERE reason_rank <= $4
         ORDER BY currency, opportunity_count DESC, lost_value DESC, reason ASC
       `,
-      [context.companyId, context.company.currentCompany.currency],
+      [
+        context.companyId,
+        context.company.currentCompany.currency,
+        REPORT_WINDOW_DAYS,
+        LOSS_REASON_LIMIT,
+      ],
     ),
   ]);
 
   return {
-    summaries: summaryResult.rows.map(row => ({
-      currency: String(row.currency || context.company.currentCompany.currency || 'KES').toUpperCase(),
+    canViewReports: true,
+    windowDays: REPORT_WINDOW_DAYS,
+    lossReasonLimit: LOSS_REASON_LIMIT,
+    asOf,
+    summaries: summaryResult.rows.map((row) => ({
+      currency: String(row.currency || companyCurrency).toUpperCase(),
       closedCount: Number(row.closed_count || 0),
       wonCount: Number(row.won_count || 0),
       lostCount: Number(row.lost_count || 0),
-      winRate: row.win_rate == null ? null : Number(row.win_rate),
+      winRate: roundTenths(row.win_rate),
       wonValue: Number(row.won_value || 0),
       lostValue: Number(row.lost_value || 0),
-      averageDaysToWin: row.average_days_to_win == null ? null : Number(row.average_days_to_win),
-      medianDaysToWin: row.median_days_to_win == null ? null : Number(row.median_days_to_win),
-      averageDaysToLose: row.average_days_to_lose == null ? null : Number(row.average_days_to_lose),
+      averageDaysToWin: roundTenths(row.average_days_to_win),
+      medianDaysToWin: roundTenths(row.median_days_to_win),
+      averageDaysToLose: roundTenths(row.average_days_to_lose),
     })),
-    lossReasons: lossReasonResult.rows.map(row => ({
-      currency: String(row.currency || context.company.currentCompany.currency || 'KES').toUpperCase(),
+    lossReasons: lossReasonResult.rows.map((row) => ({
+      currency: String(row.currency || companyCurrency).toUpperCase(),
       reason: String(row.reason || 'Reason not recorded'),
       opportunityCount: Number(row.opportunity_count || 0),
       lostValue: Number(row.lost_value || 0),

@@ -6,7 +6,12 @@ import { recordSalesActivity } from '@/lib/apps/sales/context';
 import { queryControl } from '@/lib/db/control';
 import { getTenantPoolByTenantId } from '@/lib/db/tenant';
 
-const SALES_QUOTE_EXPIRY_BATCH_SIZE = 500;
+/* -------------------------------------------------------------------------- */
+/*  Constants                                                                 */
+/* -------------------------------------------------------------------------- */
+
+const QUOTE_EXPIRY_BATCH_SIZE = 500;
+const MAX_BATCHES_PER_TENANT = 10_000;
 
 type ExpiringSalesQuote = {
   id: string;
@@ -15,10 +20,24 @@ type ExpiringSalesQuote = {
   status: 'sent' | 'viewed';
 };
 
-async function expireOverdueSalesQuotesForPool(pool: Pool): Promise<number> {
-  let expired = 0;
+type TenantFailure = {
+  tenantId: string;
+  message: string;
+};
 
-  while (true) {
+type ExpireOverdueResult = {
+  expired: number;
+  failedTenantIds: string[];
+};
+
+/* -------------------------------------------------------------------------- */
+/*  Per-tenant expiry loop                                                    */
+/* -------------------------------------------------------------------------- */
+
+async function expireOverdueSalesQuotesForPool(pool: Pool): Promise<number> {
+  let total = 0;
+
+  for (let batch = 0; batch < MAX_BATCHES_PER_TENANT; batch += 1) {
     const client: PoolClient = await pool.connect();
     let batchExpired = 0;
 
@@ -26,21 +45,19 @@ async function expireOverdueSalesQuotesForPool(pool: Pool): Promise<number> {
       await client.query('BEGIN');
 
       const overdue = await client.query<ExpiringSalesQuote>(
-        `
-          SELECT
-            id::text AS id,
-            company_id::text AS company_id,
-            quote_number,
-            status
-          FROM sales_quotes
-          WHERE status IN ('sent', 'viewed')
-            AND valid_until < CURRENT_DATE
-            AND deleted_at IS NULL
-          ORDER BY valid_until ASC, id ASC
-          LIMIT $1
-          FOR UPDATE SKIP LOCKED
-        `,
-        [SALES_QUOTE_EXPIRY_BATCH_SIZE],
+        `SELECT
+           id::text AS id,
+           company_id::text AS company_id,
+           quote_number,
+           status
+         FROM sales_quotes
+         WHERE status IN ('sent','viewed')
+           AND valid_until < CURRENT_DATE
+           AND deleted_at IS NULL
+         ORDER BY valid_until ASC, id ASC
+         LIMIT $1
+         FOR UPDATE SKIP LOCKED`,
+        [QUOTE_EXPIRY_BATCH_SIZE],
       );
 
       if (overdue.rows.length === 0) {
@@ -53,42 +70,30 @@ async function expireOverdueSalesQuotesForPool(pool: Pool): Promise<number> {
         const companyId = String(quote.company_id);
         const quoteNumber = String(quote.quote_number);
 
-        const updated = await client.query(
-          `
-            UPDATE sales_quotes
-            SET
-              status = 'expired',
-              expired_at = COALESCE(expired_at, NOW()),
-              public_enabled = FALSE,
-              updated_by = NULL,
-              updated_at = NOW()
-            WHERE id = $1
-              AND company_id = $2
-              AND status = $3::varchar(30)
-              AND valid_until < CURRENT_DATE
-              AND deleted_at IS NULL
-            RETURNING id
-          `,
+        const updated = await client.query<{ id: string }>(
+          `UPDATE sales_quotes
+           SET
+             status = 'expired',
+             expired_at = COALESCE(expired_at, NOW()),
+             public_enabled = FALSE,
+             updated_by = NULL,
+             updated_at = NOW()
+           WHERE id = $1
+             AND company_id = $2
+             AND status = $3::varchar(30)
+             AND valid_until < CURRENT_DATE
+             AND deleted_at IS NULL
+           RETURNING id`,
           [quoteId, companyId, quote.status],
         );
 
-        // Keep history and activity aligned with an actual persisted transition.
-        if (updated.rows.length !== 1) {
-          continue;
-        }
+        // Only write history/activity when the transition actually persisted.
+        if (updated.rows.length !== 1) continue;
 
         await client.query(
-          `
-            INSERT INTO sales_quote_status_history (
-              quote_id,
-              company_id,
-              from_status,
-              to_status,
-              reason,
-              changed_by
-            )
-            VALUES ($1, $2, $3, 'expired', $4, NULL)
-          `,
+          `INSERT INTO sales_quote_status_history
+             (quote_id, company_id, from_status, to_status, reason, changed_by)
+           VALUES ($1, $2, $3, 'expired', $4, NULL)`,
           [
             quoteId,
             companyId,
@@ -113,12 +118,15 @@ async function expireOverdueSalesQuotesForPool(pool: Pool): Promise<number> {
       }
 
       await client.query('COMMIT');
-      expired += batchExpired;
+      total += batchExpired;
+
+      // If we didn't fill a batch, there's nothing left to do.
+      if (overdue.rows.length < QUOTE_EXPIRY_BATCH_SIZE) break;
     } catch (error) {
       try {
         await client.query('ROLLBACK');
       } catch {
-        // Preserve the original database/audit error.
+        /* preserve original error */
       }
       throw error;
     } finally {
@@ -126,32 +134,40 @@ async function expireOverdueSalesQuotesForPool(pool: Pool): Promise<number> {
     }
   }
 
-  return expired;
+  return total;
 }
+
+/* -------------------------------------------------------------------------- */
+/*  Scheduled entry point                                                     */
+/* -------------------------------------------------------------------------- */
 
 /**
  * Expire overdue quotes across all active tenant databases.
  *
- * Missing Sales tables are skipped for tenants that have not installed Sales.
- * A tenant failure is surfaced after attempting the remaining tenants, allowing
- * successful tenants to finish while making the scheduled job report failure.
+ * Behaviour
+ * - Tenants without a Sales module (or without a `sales_quotes` table) are
+ *   silently skipped — this job is not responsible for module provisioning.
+ * - A tenant failure does not block other tenants; the whole run fails after
+ *   the remaining tenants have been attempted, so operations see the failure
+ *   while correctly expiring everything else.
+ * - Each batch and each quote transition is guarded by a compare-and-set on
+ *   `(id, status, valid_until < CURRENT_DATE)` to remain idempotent under
+ *   concurrent runs or customer-side acceptance.
  */
-export async function expireOverdueSalesQuotes(): Promise<{ expired: number }> {
+export async function expireOverdueSalesQuotes(): Promise<ExpireOverdueResult> {
   const tenantResult = await queryControl(
-    `
-      SELECT td.tenant_id::text AS tenant_id
-      FROM tenant_databases td
-      INNER JOIN tenants t
-        ON t.id = td.tenant_id
-      WHERE LOWER(COALESCE(td.status, '')) = 'active'
-        AND LOWER(COALESCE(t.status, '')) = 'active'
-        AND t.deleted_at IS NULL
-      ORDER BY td.tenant_id
-    `,
+    `SELECT td.tenant_id::text AS tenant_id
+     FROM tenant_databases td
+     INNER JOIN tenants t
+       ON t.id = td.tenant_id
+     WHERE LOWER(COALESCE(td.status, '')) = 'active'
+       AND LOWER(COALESCE(t.status, '')) = 'active'
+       AND t.deleted_at IS NULL
+     ORDER BY td.tenant_id`,
   );
 
   let expired = 0;
-  const failures: string[] = [];
+  const failures: TenantFailure[] = [];
 
   for (const row of tenantResult.rows) {
     const tenantId = String(row.tenant_id || '').trim();
@@ -159,30 +175,37 @@ export async function expireOverdueSalesQuotes(): Promise<{ expired: number }> {
 
     try {
       const pool = await getTenantPoolByTenantId(tenantId);
-      const salesTable = await pool.query(
+
+      const salesTable = await pool.query<{ ready: boolean }>(
         `SELECT to_regclass('public.sales_quotes') IS NOT NULL AS ready`,
       );
 
-      if (salesTable.rows[0]?.ready !== true) {
-        continue;
-      }
+      if (salesTable.rows[0]?.ready !== true) continue;
 
       expired += await expireOverdueSalesQuotesForPool(pool);
     } catch (error) {
-      failures.push(tenantId);
+      const message =
+        error instanceof Error ? error.message : 'Unknown database error';
+      failures.push({ tenantId, message });
       console.error(
         '[SaMi Sales] Quote expiry failed for tenant:',
         tenantId,
-        error instanceof Error ? error.message : 'Unknown database error',
+        message,
       );
     }
   }
 
   if (failures.length > 0) {
+    const summary = failures
+      .map((failure) => failure.tenantId + ': ' + failure.message)
+      .join('; ');
     throw new Error(
-      'Sales quote expiry failed for ' + failures.length + ' tenant database(s).',
+      'Sales quote expiry failed for ' +
+        failures.length +
+        ' tenant database(s): ' +
+        summary,
     );
   }
 
-  return { expired };
+  return { expired, failedTenantIds: [] };
 }

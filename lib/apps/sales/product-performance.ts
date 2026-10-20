@@ -22,24 +22,44 @@ export type SalesProductPerformanceRow = {
   marginAmount: number;
 };
 
-const EMPTY_REPORT: { rows: SalesProductPerformanceRow[] } = { rows: [] };
+export type SalesProductPerformanceReport = {
+  rows: SalesProductPerformanceRow[];
+  windowDays: number;
+  perCurrencyCap: number;
+  asOf: string;
+};
 
-export async function getSalesProductPerformance(): Promise<{ rows: SalesProductPerformanceRow[] }> {
+const REPORT_WINDOW_DAYS = 90;
+const PER_CURRENCY_CAP = 250;
+const EMPTY_ROWS: SalesProductPerformanceRow[] = [];
+
+export async function getSalesProductPerformance(): Promise<SalesProductPerformanceReport> {
   const context = await requireSalesContext(SALES_PERMISSIONS.QUOTE_VIEW);
+  const asOf = new Date().toISOString();
+
   const canViewReports = hasSalesPermission(
     context.permissions.isOwner,
     context.permissions.permissionSet,
     SALES_PERMISSIONS.REPORT_VIEW,
   );
-  if (!canViewReports) return EMPTY_REPORT;
+  if (!canViewReports) {
+    return {
+      rows: EMPTY_ROWS,
+      windowDays: REPORT_WINDOW_DAYS,
+      perCurrencyCap: PER_CURRENCY_CAP,
+      asOf,
+    };
+  }
 
   const result = await context.pool.query(
     `
       WITH product_rollup AS (
         SELECT
           CASE
-            WHEN i.catalog_item_id IS NOT NULL THEN 'catalog:' || i.catalog_item_id::text
-            WHEN i.external_product_id IS NOT NULL THEN 'external:' || i.external_product_id::text
+            WHEN i.catalog_item_id IS NOT NULL
+              THEN 'catalog:' || i.catalog_item_id::text
+            WHEN i.external_product_id IS NOT NULL
+              THEN 'external:' || i.external_product_id::text
             ELSE 'description:' || LOWER(BTRIM(i.description))
           END AS product_key,
           COALESCE(MAX(NULLIF(BTRIM(i.description), '')), 'Unnamed product') AS product_name,
@@ -61,40 +81,66 @@ export async function getSalesProductPerformance(): Promise<{ rows: SalesProduct
         FROM sales_order_items_v2 i
         INNER JOIN sales_orders_v2 o
           ON o.id = i.sales_order_id
-          AND o.company_id = i.company_id
-          AND o.deleted_at IS NULL
+         AND o.company_id = i.company_id
+         AND o.deleted_at IS NULL
         WHERE i.company_id = $1
           AND o.company_id = $1
           AND o.deleted_at IS NULL
           AND o.status IN ('confirmed', 'closed')
-          AND o.order_date >= CURRENT_DATE - INTERVAL '90 days'
-        GROUP BY product_key, currency
+          AND o.order_date >= CURRENT_DATE - ($3::int * INTERVAL '1 day')
+        GROUP BY
+          CASE
+            WHEN i.catalog_item_id IS NOT NULL
+              THEN 'catalog:' || i.catalog_item_id::text
+            WHEN i.external_product_id IS NOT NULL
+              THEN 'external:' || i.external_product_id::text
+            ELSE 'description:' || LOWER(BTRIM(i.description))
+          END,
+          UPPER(COALESCE(
+            NULLIF(BTRIM(o.currency), ''),
+            NULLIF(BTRIM($2::text), ''),
+            'KES'
+          ))
       ),
       ranked_products AS (
         SELECT product_rollup.*,
           ROW_NUMBER() OVER (
             PARTITION BY currency
-            ORDER BY net_sales DESC, order_count DESC, product_name ASC,
-              sku ASC NULLS LAST, product_key ASC
+            ORDER BY net_sales DESC,
+                     order_count DESC,
+                     product_name ASC,
+                     sku ASC NULLS LAST,
+                     product_key ASC
           ) AS currency_rank
         FROM product_rollup
       )
       SELECT *
       FROM ranked_products
-      WHERE currency_rank <= 250
-      ORDER BY currency ASC, net_sales DESC, order_count DESC, product_name ASC,
-        currency_rank ASC
+      WHERE currency_rank <= $4
+      ORDER BY currency ASC,
+               net_sales DESC,
+               order_count DESC,
+               product_name ASC,
+               currency_rank ASC
     `,
-
-    [context.companyId, context.company.currentCompany.currency],
+    [
+      context.companyId,
+      context.company.currentCompany.currency,
+      REPORT_WINDOW_DAYS,
+      PER_CURRENCY_CAP,
+    ],
   );
 
+  const defaultCurrency = String(
+    context.company.currentCompany.currency || 'KES',
+  ).toUpperCase();
+
   return {
-    rows: result.rows.map(row => ({
+    rows: result.rows.map((row) => ({
       productKey: String(row.product_key || 'unknown'),
       productName: String(row.product_name || 'Unnamed product'),
       sku: row.sku == null ? null : String(row.sku),
-      currency: String(row.currency || context.company.currentCompany.currency || 'KES').toUpperCase(),
+      currency: String(row.currency || defaultCurrency).toUpperCase(),
       lineCount: Number(row.line_count || 0),
       orderCount: Number(row.order_count || 0),
       quantityOrdered: Number(row.quantity_ordered || 0),
@@ -105,5 +151,8 @@ export async function getSalesProductPerformance(): Promise<{ rows: SalesProduct
       discountAmount: Number(row.discount_amount || 0),
       marginAmount: Number(row.margin_amount || 0),
     })),
+    windowDays: REPORT_WINDOW_DAYS,
+    perCurrencyCap: PER_CURRENCY_CAP,
+    asOf,
   };
 }

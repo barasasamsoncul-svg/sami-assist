@@ -1,8 +1,6 @@
 import 'server-only';
 
-import {
-  getTenantPoolByTenantId,
-} from '@/lib/db/tenant';
+import { getTenantPoolByTenantId } from '@/lib/db/tenant';
 
 import {
   deliverSalesQuote,
@@ -21,458 +19,251 @@ import type {
   SamiAutomationTriggerDefinition,
 } from '@/lib/automation/types';
 
+/* -------------------------------------------------------------------------- */
+/*  Triggers                                                                  */
+/* -------------------------------------------------------------------------- */
 
-export const SALES_AUTOMATION_TRIGGERS:
-  SamiAutomationTriggerDefinition[] = [
-    {
-      key:
-        'sales.quote.created',
-      name:
-        'Quotation created',
-      description:
-        'Run after a Sales quotation is created in the current company.',
-      type:
-        'event',
-      moduleKey:
-        'sales',
-      resourceKey:
-        'quote',
-      requiredPermissions: [
-        SALES_PERMISSIONS
-          .QUOTE_VIEW,
-      ],
-      companyScoped:
-        true,
-    },
-    {
-      key:
-        'sales.quote.sent',
-      name:
-        'Quotation sent',
-      description:
-        'Run after a Sales quotation is delivered to the customer.',
-      type:
-        'event',
-      moduleKey:
-        'sales',
-      resourceKey:
-        'quote',
-      requiredPermissions: [
-        SALES_PERMISSIONS
-          .QUOTE_VIEW,
-      ],
-      companyScoped:
-        true,
-    },
-    {
-      key:
-        'sales.quote.accepted',
-      name:
-        'Quotation accepted',
-      description:
-        'Run after a quotation is recorded as accepted.',
-      type:
-        'event',
-      moduleKey:
-        'sales',
-      resourceKey:
-        'quote',
-      requiredPermissions: [
-        SALES_PERMISSIONS
-          .QUOTE_VIEW,
-      ],
-      companyScoped:
-        true,
-    },
-    {
-      key:
-        'sales.quote.rejected',
-      name:
-        'Quotation rejected',
-      description:
-        'Run after a customer rejects a quotation from the public quote page.',
-      type:
-        'event',
-      moduleKey:
-        'sales',
-      resourceKey:
-        'quote',
-      requiredPermissions: [
-        SALES_PERMISSIONS
-          .QUOTE_VIEW,
-      ],
-      companyScoped:
-        true,
-    },
-    {
-      key:
-        'sales.quote.revision_requested',
-      name:
-        'Quotation revision requested',
-      description:
-        'Run after a customer requests changes to a quotation.',
-      type:
-        'event',
-      moduleKey:
-        'sales',
-      resourceKey:
-        'quote',
-      requiredPermissions: [
-        SALES_PERMISSIONS
-          .QUOTE_VIEW,
-      ],
-      companyScoped:
-        true,
-    },
-    {
-      key:
-        'sales.order.created',
-      name:
-        'Sales order created',
-      description:
-        'Run after an accepted quotation becomes a Sales order.',
-      type:
-        'event',
-      moduleKey:
-        'sales',
-      resourceKey:
-        'order',
-      requiredPermissions: [
-        SALES_PERMISSIONS
-          .ORDER_VIEW,
-      ],
-      companyScoped:
-        true,
-    },
-    {
-      key:
-        'sales.order.fulfillment.changed',
-      name:
-        'Sales order fulfillment changed',
-      description:
-        'Run after delivered quantities change on a Sales order.',
-      type:
-        'event',
-      moduleKey:
-        'sales',
-      resourceKey:
-        'order',
-      requiredPermissions: [
-        SALES_PERMISSIONS
-          .ORDER_VIEW,
-      ],
-      companyScoped:
-        true,
-    },
-    {
-      key:
-        'sales.invoice.created',
-      name:
-        'Sales invoice created',
-      description:
-        'Run after Sales hands an order batch to Invoicing.',
-      type:
-        'event',
-      moduleKey:
-        'sales',
-      resourceKey:
-        'order',
-      requiredPermissions: [
-        SALES_PERMISSIONS
-          .ORDER_VIEW,
-      ],
-      companyScoped:
-        true,
-    },
-    {
-      key:
-        'sales.return.created',
-      name:
-        'Sales return created',
-      description:
-        'Run after a Sales return is created for an order.',
-      type:
-        'event',
-      moduleKey:
-        'sales',
-      resourceKey:
-        'return',
-      requiredPermissions: [
-        SALES_PERMISSIONS
-          .ORDER_VIEW,
-      ],
-      companyScoped:
-        true,
-    },
-    {
-      key:
-        'sales.return.received',
-      name:
-        'Sales return received',
-      description:
-        'Run after returned goods are received against a Sales return.',
-      type:
-        'event',
-      moduleKey:
-        'sales',
-      resourceKey:
-        'return',
-      requiredPermissions: [
-        SALES_PERMISSIONS
-          .ORDER_VIEW,
-      ],
-      companyScoped:
-        true,
-    },
-    {
-      key:
-        'sales.deposit.received',
-      name:
-        'Sales deposit received',
-      description:
-        'Run after a customer deposit is recorded against a Sales order.',
-      type:
-        'event',
-      moduleKey:
-        'sales',
-      resourceKey:
-        'deposit',
-      requiredPermissions: [
-        SALES_PERMISSIONS
-          .ORDER_VIEW,
-      ],
-      companyScoped:
-        true,
-    },
-    {
-      key:
-        'sales.deposit.applied',
-      name:
-        'Sales deposit applied',
-      description:
-        'Run after a recorded Sales order deposit is applied to an invoice.',
-      type:
-        'event',
-      moduleKey:
-        'sales',
-      resourceKey:
-        'deposit',
-      requiredPermissions: [
-        SALES_PERMISSIONS
-          .ORDER_VIEW,
-      ],
-      companyScoped:
-        true,
-    },
-    {
-      key:
-        'sales.shipment.shipped',
-      name:
-        'Sales shipment shipped',
-      description:
-        'Run after a Sales shipment is marked as shipped.',
-      type:
-        'event',
-      moduleKey:
-        'sales',
-      resourceKey:
-        'shipment',
-      requiredPermissions: [
-        SALES_PERMISSIONS
-          .ORDER_VIEW,
-      ],
-      companyScoped:
-        true,
-    },
-    {
-      key:
-        'sales.shipment.delivered',
-      name:
-        'Sales shipment delivered',
-      description:
-        'Run after a Sales shipment is marked as delivered.',
-      type:
-        'event',
-      moduleKey:
-        'sales',
-      resourceKey:
-        'shipment',
-      requiredPermissions: [
-        SALES_PERMISSIONS
-          .ORDER_VIEW,
-      ],
-      companyScoped:
-        true,
-    },
-  ];
+export const SALES_AUTOMATION_TRIGGERS: SamiAutomationTriggerDefinition[] = [
+  {
+    key: 'sales.quote.created',
+    name: 'Quotation created',
+    description: 'Run after a Sales quotation is created in the current company.',
+    type: 'event',
+    moduleKey: 'sales',
+    resourceKey: 'quote',
+    requiredPermissions: [SALES_PERMISSIONS.QUOTE_VIEW],
+    companyScoped: true,
+  },
+  {
+    key: 'sales.quote.sent',
+    name: 'Quotation sent',
+    description: 'Run after a Sales quotation is delivered to the customer.',
+    type: 'event',
+    moduleKey: 'sales',
+    resourceKey: 'quote',
+    requiredPermissions: [SALES_PERMISSIONS.QUOTE_VIEW],
+    companyScoped: true,
+  },
+  {
+    key: 'sales.quote.accepted',
+    name: 'Quotation accepted',
+    description: 'Run after a quotation is recorded as accepted.',
+    type: 'event',
+    moduleKey: 'sales',
+    resourceKey: 'quote',
+    requiredPermissions: [SALES_PERMISSIONS.QUOTE_VIEW],
+    companyScoped: true,
+  },
+  {
+    key: 'sales.quote.rejected',
+    name: 'Quotation rejected',
+    description: 'Run after a customer rejects a quotation from the public quote page.',
+    type: 'event',
+    moduleKey: 'sales',
+    resourceKey: 'quote',
+    requiredPermissions: [SALES_PERMISSIONS.QUOTE_VIEW],
+    companyScoped: true,
+  },
+  {
+    key: 'sales.quote.revision_requested',
+    name: 'Quotation revision requested',
+    description: 'Run after a customer requests changes to a quotation.',
+    type: 'event',
+    moduleKey: 'sales',
+    resourceKey: 'quote',
+    requiredPermissions: [SALES_PERMISSIONS.QUOTE_VIEW],
+    companyScoped: true,
+  },
+  {
+    key: 'sales.order.created',
+    name: 'Sales order created',
+    description: 'Run after an accepted quotation becomes a Sales order.',
+    type: 'event',
+    moduleKey: 'sales',
+    resourceKey: 'order',
+    requiredPermissions: [SALES_PERMISSIONS.ORDER_VIEW],
+    companyScoped: true,
+  },
+  {
+    key: 'sales.order.fulfillment.changed',
+    name: 'Sales order fulfillment changed',
+    description: 'Run after delivered quantities change on a Sales order.',
+    type: 'event',
+    moduleKey: 'sales',
+    resourceKey: 'order',
+    requiredPermissions: [SALES_PERMISSIONS.ORDER_VIEW],
+    companyScoped: true,
+  },
+  {
+    key: 'sales.invoice.created',
+    name: 'Sales invoice created',
+    description: 'Run after Sales hands an order batch to Invoicing.',
+    type: 'event',
+    moduleKey: 'sales',
+    resourceKey: 'order',
+    requiredPermissions: [SALES_PERMISSIONS.ORDER_VIEW],
+    companyScoped: true,
+  },
+  {
+    key: 'sales.return.created',
+    name: 'Sales return created',
+    description: 'Run after a Sales return is created for an order.',
+    type: 'event',
+    moduleKey: 'sales',
+    resourceKey: 'return',
+    requiredPermissions: [SALES_PERMISSIONS.ORDER_VIEW],
+    companyScoped: true,
+  },
+  {
+    key: 'sales.return.received',
+    name: 'Sales return received',
+    description: 'Run after returned goods are received against a Sales return.',
+    type: 'event',
+    moduleKey: 'sales',
+    resourceKey: 'return',
+    requiredPermissions: [SALES_PERMISSIONS.ORDER_VIEW],
+    companyScoped: true,
+  },
+  {
+    key: 'sales.deposit.received',
+    name: 'Sales deposit received',
+    description: 'Run after a customer deposit is recorded against a Sales order.',
+    type: 'event',
+    moduleKey: 'sales',
+    resourceKey: 'deposit',
+    requiredPermissions: [SALES_PERMISSIONS.ORDER_VIEW],
+    companyScoped: true,
+  },
+  {
+    key: 'sales.deposit.applied',
+    name: 'Sales deposit applied',
+    description: 'Run after a recorded Sales order deposit is applied to an invoice.',
+    type: 'event',
+    moduleKey: 'sales',
+    resourceKey: 'deposit',
+    requiredPermissions: [SALES_PERMISSIONS.ORDER_VIEW],
+    companyScoped: true,
+  },
+  {
+    key: 'sales.shipment.shipped',
+    name: 'Sales shipment shipped',
+    description: 'Run after a Sales shipment is marked as shipped.',
+    type: 'event',
+    moduleKey: 'sales',
+    resourceKey: 'shipment',
+    requiredPermissions: [SALES_PERMISSIONS.ORDER_VIEW],
+    companyScoped: true,
+  },
+  {
+    key: 'sales.shipment.delivered',
+    name: 'Sales shipment delivered',
+    description: 'Run after a Sales shipment is marked as delivered.',
+    type: 'event',
+    moduleKey: 'sales',
+    resourceKey: 'shipment',
+    requiredPermissions: [SALES_PERMISSIONS.ORDER_VIEW],
+    companyScoped: true,
+  },
+];
 
+/* -------------------------------------------------------------------------- */
+/*  Actions                                                                   */
+/* -------------------------------------------------------------------------- */
 
-export const SALES_AUTOMATION_ACTIONS:
-  SamiAutomationActionDefinition[] = [
-    {
-      key:
-        'sales.quote.send',
-      name:
-        'Send Sales quotation',
-      description:
-        'Deliver a quotation through email, SMS or WhatsApp using the same Sales delivery service.',
-      moduleKey:
-        'sales',
-      operation:
-        'write',
-      resourceKey:
-        'quote',
-      requiredPermissions: [
-        SALES_PERMISSIONS
-          .QUOTE_SEND,
-      ],
-      approvalPolicy:
-        'always',
-      inputSchema: {
-        type:
-          'object',
-        additionalProperties:
-          false,
-        properties: {
-          quoteId: {
-            type:
-              'string',
-          },
-          channels: {
-            type:
-              'array',
-            minItems:
-              1,
-            maxItems:
-              3,
-            items: {
-              type:
-                'string',
-              enum: [
-                'email',
-                'sms',
-                'whatsapp',
-              ],
-            },
+export const SALES_AUTOMATION_ACTIONS: SamiAutomationActionDefinition[] = [
+  {
+    key: 'sales.quote.send',
+    name: 'Send Sales quotation',
+    description:
+      'Deliver a quotation through email, SMS or WhatsApp using the same Sales delivery service.',
+    moduleKey: 'sales',
+    operation: 'write',
+    resourceKey: 'quote',
+    requiredPermissions: [SALES_PERMISSIONS.QUOTE_SEND],
+    approvalPolicy: 'always',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        quoteId: { type: 'string' },
+        channels: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 3,
+          items: {
+            type: 'string',
+            enum: ['email', 'sms', 'whatsapp'],
           },
         },
-        required: [
-          'quoteId',
-          'channels',
-        ],
       },
+      required: ['quoteId', 'channels'],
     },
-  ];
+  },
+];
 
+/* -------------------------------------------------------------------------- */
+/*  Helpers                                                                   */
+/* -------------------------------------------------------------------------- */
 
-async function companyName(
-  runtime:
-    SamiAutomationRuntimeContext,
-) {
-  const pool =
-    await getTenantPoolByTenantId(
-      runtime.tenantId,
-    );
+async function resolveCompanyContext(runtime: SamiAutomationRuntimeContext) {
+  const pool = await getTenantPoolByTenantId(runtime.tenantId);
 
-  const company =
-    await pool.query(
-      `
-        SELECT name
-        FROM companies
-        WHERE id = $1
-          AND deleted_at
-              IS NULL
-        LIMIT 1
-      `,
-      [
-        runtime.companyId,
-      ],
-    );
+  const company = await pool.query(
+    `SELECT name FROM companies
+     WHERE id = $1 AND deleted_at IS NULL
+     LIMIT 1`,
+    [runtime.companyId],
+  );
 
   return {
     pool,
-    name:
-      String(
-        company.rows[0]
-          ?.name ||
-        'SaMi workspace',
-      ),
+    name: String(company.rows[0]?.name || 'SaMi workspace'),
   };
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Action handlers                                                           */
+/* -------------------------------------------------------------------------- */
 
-export const SALES_AUTOMATION_ACTION_HANDLERS =
-  new Map<
-    string,
-    SamiAutomationActionHandler
-  >([
-    [
-      'sales.quote.send',
-      async (
-        runtime,
-        input,
-      ) => {
-        const quoteId =
-          typeof input.quoteId ===
-            'string' &&
-          UUID_RE.test(
-            input.quoteId,
-          )
-            ? input.quoteId
-            : '';
+export const SALES_AUTOMATION_ACTION_HANDLERS = new Map<
+  string,
+  SamiAutomationActionHandler
+>([
+  [
+    'sales.quote.send',
+    async (runtime, input) => {
+      const quoteId =
+        typeof input.quoteId === 'string' && UUID_RE.test(input.quoteId)
+          ? input.quoteId
+          : '';
 
-        if (
-          !quoteId
-        ) {
-          throw new Error(
-            'Choose a valid quotation.',
-          );
-        }
+      if (!quoteId) {
+        throw new Error('Choose a valid quotation.');
+      }
 
-        const channels =
-          normalizeSalesQuoteDeliveryChannels(
-            input.channels,
-          );
+      const channels = normalizeSalesQuoteDeliveryChannels(input.channels);
 
-        if (
-          channels.length ===
-            0
-        ) {
-          throw new Error(
-            'Choose at least one quotation delivery channel.',
-          );
-        }
+      if (channels.length === 0) {
+        throw new Error('Choose at least one quotation delivery channel.');
+      }
 
-        const company =
-          await companyName(
-            runtime,
-          );
+      const company = await resolveCompanyContext(runtime);
 
-        const result =
-          await deliverSalesQuote({
-            pool:
-              company.pool,
-            tenantId:
-              runtime.tenantId,
-            companyId:
-              runtime.companyId,
-            companyName:
-              company.name,
-            userId:
-              runtime.userId,
-            quoteId,
-            channels,
-          });
+      const result = await deliverSalesQuote({
+        pool: company.pool,
+        tenantId: runtime.tenantId,
+        companyId: runtime.companyId,
+        companyName: company.name,
+        userId: runtime.userId,
+        quoteId,
+        channels,
+      });
 
-        return {
-          quoteId,
-          channels,
-          ...result,
-        } as
-          Record<
-            string,
-            unknown
-          >;
-      },
-    ],
-  ]);
+      return {
+        quoteId,
+        channels,
+        ...result,
+      } as Record<string, unknown>;
+    },
+  ],
+]);

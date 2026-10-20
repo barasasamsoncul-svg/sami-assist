@@ -23,14 +23,34 @@ type SalesLeadScoreInput = {
   last_completed_engagement_at?: Date | string | null;
 };
 
-function hasText(value: unknown) {
+const HIGH_INTENT_SOURCE_PATTERN =
+  /referr|website|web form|inbound|demo|pricing|quote request|contact form|organic/;
+const MEDIUM_INTENT_SOURCE_PATTERN =
+  /campaign|event|social|advertis|partner|email marketing|linkedin|facebook/;
+
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+const HIGH_BAND_THRESHOLD = 75;
+const MEDIUM_BAND_THRESHOLD = 45;
+
+function hasText(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+function sourceBand(source: string): 'high' | 'medium' | 'recorded' | null {
+  const normalized = source.trim().toLowerCase();
+  if (!normalized) return null;
+  if (HIGH_INTENT_SOURCE_PATTERN.test(normalized)) return 'high';
+  if (MEDIUM_INTENT_SOURCE_PATTERN.test(normalized)) return 'medium';
+  return 'recorded';
 }
 
 /**
  * Explainable 0–100 lead score using contact completeness, source intent,
  * and completed customer conversations. The model intentionally avoids
  * treating a lead's current status as evidence of its own quality.
+ *
+ * Pass `now` for deterministic tests; production callers omit it.
  */
 export function scoreSalesLead(
   lead: SalesLeadScoreInput,
@@ -43,20 +63,22 @@ export function scoreSalesLead(
 
   if (hasText(lead.company_name)) add('company', 'Company identified', 15);
   if (hasText(lead.contact_name)) add('contact', 'Contact identified', 10);
-  if (hasText(lead.email) && String(lead.email).includes('@')) {
+
+  if (hasText(lead.email) && lead.email.includes('@')) {
     add('email', 'Email available', 15);
   }
   if (hasText(lead.phone)) add('phone', 'Phone available', 10);
   if (hasText(lead.notes)) add('notes', 'Qualification notes captured', 5);
 
-  const source = hasText(lead.source) ? String(lead.source).trim() : '';
-  const normalizedSource = source.toLowerCase();
-  if (normalizedSource && /referr|website|web form|inbound|demo|pricing|quote request|contact form|organic/.test(normalizedSource)) {
-    add('source_high_intent', 'High-intent source identified', 20);
-  } else if (normalizedSource && /campaign|event|social|advertis|partner|email marketing|linkedin|facebook/.test(normalizedSource)) {
-    add('source_medium_intent', 'Marketing source identified', 10);
-  } else if (normalizedSource) {
-    add('source', 'Lead source recorded', 5);
+  if (hasText(lead.source)) {
+    const band = sourceBand(lead.source);
+    if (band === 'high') {
+      add('source_high_intent', 'High-intent source identified', 20);
+    } else if (band === 'medium') {
+      add('source_medium_intent', 'Marketing source identified', 10);
+    } else if (band === 'recorded') {
+      add('source', 'Lead source recorded', 5);
+    }
   }
 
   const completedEngagements = Number(lead.completed_engagement_count);
@@ -66,20 +88,32 @@ export function scoreSalesLead(
   add('completed_engagement', 'Completed call, email or meeting', engagementPoints);
 
   if (lead.last_completed_engagement_at) {
-    const lastEngagement = lead.last_completed_engagement_at instanceof Date
-      ? lead.last_completed_engagement_at
-      : new Date(String(lead.last_completed_engagement_at));
+    const lastEngagement =
+      lead.last_completed_engagement_at instanceof Date
+        ? lead.last_completed_engagement_at
+        : new Date(String(lead.last_completed_engagement_at));
     const elapsed = now.getTime() - lastEngagement.getTime();
-    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
-    if (Number.isFinite(lastEngagement.getTime()) && elapsed >= 0 && elapsed <= thirtyDaysMs) {
+    if (
+      Number.isFinite(lastEngagement.getTime()) &&
+      elapsed >= 0 &&
+      elapsed <= THIRTY_DAYS_MS
+    ) {
       add('recent_engagement', 'Customer interaction in the last 30 days', 10);
     }
   }
 
-  const score = Math.min(100, factors.reduce((total, factor) => total + factor.points, 0));
+  const score = Math.min(
+    100,
+    factors.reduce((total, factor) => total + factor.points, 0),
+  );
   return {
     score,
-    band: score >= 75 ? 'high' : score >= 45 ? 'medium' : 'low',
+    band:
+      score >= HIGH_BAND_THRESHOLD
+        ? 'high'
+        : score >= MEDIUM_BAND_THRESHOLD
+          ? 'medium'
+          : 'low',
     factors,
   };
 }

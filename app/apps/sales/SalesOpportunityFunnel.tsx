@@ -1,10 +1,27 @@
 import Link from 'next/link';
+import {
+  AlertTriangle,
+  ArrowRight,
+  ArrowUpRight,
+  CalendarClock,
+  CalendarX2,
+  CircleDashed,
+  Clock3,
+  MapPin,
+  Target,
+  UserRound,
+} from 'lucide-react';
+
 import type {
   SalesOpportunityFunnelRow,
   SalesOpportunityRiskRow,
 } from '@/lib/apps/sales/pipeline-funnel';
 
-function money(value: number, currency: string) {
+/* -------------------------------------------------------------------------- */
+/*  Formatting                                                                */
+/* -------------------------------------------------------------------------- */
+
+function formatMoney(value: number, currency: string): string {
   try {
     return new Intl.NumberFormat('en-KE', {
       style: 'currency',
@@ -16,19 +33,53 @@ function money(value: number, currency: string) {
   }
 }
 
-function stageOutcome(stageType: SalesOpportunityFunnelRow['stageType']) {
+function stageOutcome(stageType: SalesOpportunityFunnelRow['stageType']): string {
   if (stageType === 'won') return 'Won';
   if (stageType === 'lost') return 'Lost';
   return 'Open';
 }
 
-function riskLabels(row: SalesOpportunityRiskRow) {
-  const labels: string[] = [];
-  if (row.overdue) labels.push('Overdue close');
-  if (row.stale) labels.push('30+ days in stage');
-  if (row.missingCloseDate) labels.push('No close date');
+function stageOutcomeTone(stageType: SalesOpportunityFunnelRow['stageType']): string {
+  if (stageType === 'won')
+    return 'bg-emerald-50 text-emerald-700 ring-emerald-500/20 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-500/30';
+  if (stageType === 'lost')
+    return 'bg-red-50 text-red-700 ring-red-500/20 dark:bg-red-950/40 dark:text-red-300 dark:ring-red-500/30';
+  return 'bg-indigo-50 text-indigo-700 ring-indigo-500/20 dark:bg-indigo-950/40 dark:text-indigo-300 dark:ring-indigo-500/30';
+}
+
+type RiskLabel = {
+  label: string;
+  tone: 'danger' | 'warning' | 'muted';
+};
+
+function riskLabels(row: SalesOpportunityRiskRow): RiskLabel[] {
+  const labels: RiskLabel[] = [];
+  if (row.overdue) labels.push({ label: 'Overdue close', tone: 'danger' });
+  if (row.stale) labels.push({ label: '30+ days in stage', tone: 'warning' });
+  if (row.missingCloseDate) labels.push({ label: 'No close date', tone: 'muted' });
   return labels;
 }
+
+function riskLabelClass(tone: RiskLabel['tone']): string {
+  switch (tone) {
+    case 'danger':
+      return 'bg-red-50 text-red-700 ring-red-500/20 dark:bg-red-950/40 dark:text-red-300 dark:ring-red-500/30';
+    case 'warning':
+      return 'bg-amber-50 text-amber-700 ring-amber-500/20 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-500/30';
+    case 'muted':
+      return 'bg-slate-100 text-slate-700 ring-slate-500/20 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-500/30';
+  }
+}
+
+function dealValueForRow(row: SalesOpportunityFunnelRow): number {
+  if (row.stageType === 'open') return row.pipelineValue;
+  if (row.stageType === 'won') return row.wonValue;
+  return row.lostValue;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Root                                                                      */
+/* -------------------------------------------------------------------------- */
 
 export default function SalesOpportunityFunnel({
   rows,
@@ -37,174 +88,365 @@ export default function SalesOpportunityFunnel({
   rows: SalesOpportunityFunnelRow[];
   riskRows: SalesOpportunityRiskRow[];
 }) {
-  const currencies = Array.from(new Set(rows.map(row => row.currency)));
+  const currencies = Array.from(new Set(rows.map((row) => row.currency))).sort();
 
   return (
-    <div className="space-y-5">
-      <section className="sami-surface rounded-[24px] p-4 sm:p-6">
-        <header>
-          <h2 className="text-base font-black">Opportunity funnel by stage</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Current opportunity volume and value across your configured sales stages.
-            Open-stage value is weighted by each opportunity’s probability. Currencies are reported separately.
-            Open stages flag past-due close dates and opportunities that have remained in a stage for 30 days or more.
-          </p>
-        </header>
+    <div className="space-y-4">
+      {/* ------------------------------------------------------------------ */}
+      {/* Funnel by stage                                                    */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-5 py-4 dark:border-slate-800">
+          <div className="flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-300">
+              <Target className="h-4 w-4" aria-hidden="true" />
+            </span>
+            <div>
+              <h2 className="text-sm font-black">Opportunity funnel by stage</h2>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                Current volume and value across your configured stages. Open
+                value is probability-weighted; currencies are kept separate.
+              </p>
+            </div>
+          </div>
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            {rows.length} stage{rows.length === 1 ? '' : 's'}
+          </span>
+        </div>
 
         {rows.length === 0 ? (
-          <p className="mt-4 rounded-xl border border-dashed border-[var(--sami-border)] p-5 text-sm text-slate-500">
-            No active pipeline stages are available for reporting yet. Configure a stage to populate this report.
-          </p>
+          <EmptyState
+            icon={<Target className="h-5 w-5" />}
+            title="No active pipeline stages"
+            description="No active pipeline stages are available for reporting yet. Configure a stage to populate this report."
+            href="/apps/sales/pipeline"
+            actionLabel="Open pipeline"
+          />
         ) : (
-          <div className="mt-5 space-y-5">
-            {currencies.map(currency => {
-              const currencyRows = rows.filter(row => row.currency === currency);
-              const maxValue = Math.max(
-                1,
-                ...currencyRows.map(row => row.stageType === 'open'
-                  ? row.pipelineValue
-                  : row.stageType === 'won' ? row.wonValue : row.lostValue),
-              );
-
+          <div className="divide-y divide-slate-200 dark:divide-slate-800">
+            {currencies.map((currency) => {
+              const currencyRows = rows.filter((row) => row.currency === currency);
               return (
-                <section key={currency} aria-label={currency + ' opportunity stages'}>
-                  <h3 className="mb-3 text-xs font-black uppercase tracking-[0.1em] text-slate-500">{currency}</h3>
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {currencyRows.map(row => {
-                      const value = row.stageType === 'open'
-                        ? row.pipelineValue
-                        : row.stageType === 'won' ? row.wonValue : row.lostValue;
-                      const barWidth = value > 0 ? Math.min(100, value / maxValue * 100) : 0;
-
-                      return (
-                        <article key={row.stageId + ':' + currency} className="min-w-0 rounded-2xl border border-[var(--sami-border)] p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="break-words text-sm font-black">{row.stageName}</p>
-                              <p className="mt-1 text-xs text-slate-500">
-                                {row.opportunityCount.toLocaleString()} {row.opportunityCount === 1 ? 'opportunity' : 'opportunities'}
-                              </p>
-                            </div>
-                            <span className="shrink-0 rounded-full border border-[var(--sami-border)] px-2 py-1 text-[10px] font-black uppercase">
-                              {stageOutcome(row.stageType)}
-                            </span>
-                          </div>
-
-                          <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-500/10" role="img"
-                            aria-label={row.stageName + ' value ' + money(value, currency)}>
-                            <div className="h-full rounded-full bg-blue-600" style={{ width: barWidth + '%' }} />
-                          </div>
-
-                          <div className="mt-3">
-                            <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
-                              {row.stageType === 'open' ? 'Open pipeline value' : row.stageType === 'won' ? 'Won value' : 'Lost value'}
-                            </p>
-                            <p className="mt-1 break-words text-lg font-black tabular-nums">{money(value, currency)}</p>
-                          </div>
-
-                          {row.stageType === 'open' && (
-                            <div className="mt-3 flex items-center justify-between gap-3 border-t border-[var(--sami-border)] pt-3">
-                              <span className="text-xs text-slate-500">Weighted value</span>
-                              <span className="break-words text-right text-sm font-bold tabular-nums">
-                                {money(row.weightedPipelineValue, currency)}
-                              </span>
-                            </div>
-                          )}
-
-                          {row.stageType === 'open' && (
-                            <div className="mt-3 grid grid-cols-2 gap-3 border-t border-[var(--sami-border)] pt-3">
-                              <div className="min-w-0">
-                                <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">Overdue close</p>
-                                <p className="mt-1 break-words text-sm font-black tabular-nums">{row.overdueOpportunityCount.toLocaleString()} deals</p>
-                                <p className="mt-1 break-words text-xs text-slate-500">{money(row.overdueValue, currency)}</p>
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">30+ days in stage</p>
-                                <p className="mt-1 break-words text-sm font-black tabular-nums">{row.staleOpportunityCount.toLocaleString()} deals</p>
-                                <p className="mt-1 break-words text-xs text-slate-500">{money(row.staleValue, currency)}</p>
-                              </div>
-                            </div>
-                          )}
-
-                          {row.stageType === 'open' && (
-                            <p className="mt-2 text-[10px] text-slate-500">
-                              Default stage probability: {row.stageProbability.toLocaleString(undefined, { maximumFractionDigits: 2 })}%
-                            </p>
-                          )}
-                        </article>
-                      );
-                    })}
+                <section key={currency} className="px-5 py-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.08em] text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                      {currency}
+                    </span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      {currencyRows.length} stage
+                      {currencyRows.length === 1 ? '' : 's'}
+                    </span>
                   </div>
+
+                  <ol className="space-y-2">
+                    {currencyRows.map((row, index) => (
+                      <FunnelStageRow
+                        key={row.stageId + ':' + currency}
+                        row={row}
+                        currency={currency}
+                        isFirst={index === 0}
+                        isLast={index === currencyRows.length - 1}
+                      />
+                    ))}
+                  </ol>
                 </section>
               );
             })}
           </div>
         )}
-      </section>
+      </div>
 
-      <section className="sami-surface rounded-[24px] p-4 sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-base font-black">Opportunities needing attention</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Prioritized open deals with overdue close dates, missing close dates or 30+ days in the current stage.
-              Maximum 50 records are shown; currency is displayed per opportunity.
-            </p>
+      {/* ------------------------------------------------------------------ */}
+      {/* Risk queue                                                         */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-5 py-4 dark:border-slate-800">
+          <div className="flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-300">
+              <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+            </span>
+            <div>
+              <h2 className="text-sm font-black">Opportunities needing attention</h2>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                Overdue close dates, missing close dates, or 30+ days in stage.
+                Up to 50 records.
+              </p>
+            </div>
           </div>
-          <Link href="/apps/sales/opportunities" className="text-xs font-black text-blue-600 hover:underline">
-            Open opportunities →
+          <Link
+            href="/apps/sales/opportunities"
+            className="inline-flex items-center gap-1 text-xs font-black text-indigo-600 hover:underline dark:text-indigo-400"
+          >
+            Open opportunities
+            <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
           </Link>
         </div>
 
         {riskRows.length === 0 ? (
-          <p className="mt-4 rounded-xl border border-dashed border-[var(--sami-border)] p-5 text-sm text-slate-500">
-            No open opportunities currently meet these risk conditions. Keep expected close dates and next steps up to date.
-          </p>
+          <EmptyState
+            icon={<CircleDashed className="h-5 w-5" />}
+            title="Nothing at risk"
+            description="No open opportunities currently meet the risk conditions. Keep expected close dates and next steps up to date."
+            href="/apps/sales/opportunities"
+            actionLabel="Open opportunities"
+          />
         ) : (
-          <div className="mt-4 space-y-3">
-            {riskRows.map(row => {
+          <ul className="divide-y divide-slate-200 dark:divide-slate-800">
+            {riskRows.map((row) => {
               const reasons = riskLabels(row);
               return (
-                <article key={row.opportunityId} className="rounded-xl border border-[var(--sami-border)] p-3 sm:p-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <li
+                  key={row.opportunityId}
+                  className="px-5 py-4 transition hover:bg-slate-50/70 dark:hover:bg-slate-800/40"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="break-words text-sm font-black">{row.opportunityName}</p>
-                      <p className="mt-1 break-words text-xs text-slate-500">
-                        {row.opportunityNumber} · {row.customerName} · {row.stageName}
-                      </p>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {reasons.map(reason => (
-                          <span key={reason} className="rounded-full border border-amber-500/40 px-2 py-1 text-[10px] font-bold text-amber-700 dark:text-amber-300">
-                            {reason}
-                          </span>
-                        ))}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link
+                          href={`/apps/sales/opportunities?opportunityId=${encodeURIComponent(row.opportunityId)}`}
+                          className="inline-flex items-center gap-1 text-sm font-black underline decoration-slate-300 underline-offset-4 hover:decoration-current dark:decoration-slate-600"
+                        >
+                          {row.opportunityName}
+                          <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+                        </Link>
+                        <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
+                          {row.opportunityNumber}
+                        </span>
                       </div>
+                      <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                        <span className="inline-flex items-center gap-1">
+                          <MapPin className="h-3 w-3" aria-hidden="true" />
+                          {row.customerName}
+                        </span>
+                        <span aria-hidden="true">·</span>
+                        <span className="inline-flex items-center gap-1">
+                          <Target className="h-3 w-3" aria-hidden="true" />
+                          {row.stageName}
+                        </span>
+                      </p>
+                      {reasons.length > 0 ? (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {reasons.map((reason) => (
+                            <span
+                              key={reason.label}
+                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.06em] ring-1 ${riskLabelClass(reason.tone)}`}
+                            >
+                              {reason.label}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="shrink-0 sm:text-right">
-                      <p className="break-words text-sm font-black tabular-nums">{money(row.expectedValue, row.currency)}</p>
-                      <p className="mt-1 text-xs text-slate-500">{row.probability}% probability</p>
+
+                    <div className="shrink-0 text-right">
+                      <p className="text-sm font-black tabular-nums">
+                        {formatMoney(row.expectedValue, row.currency)}
+                      </p>
+                      <p className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.06em] text-slate-500 dark:text-slate-400">
+                        {row.probability}% probability
+                      </p>
                     </div>
                   </div>
-                  <div className="mt-3 grid grid-cols-2 gap-3 border-t border-[var(--sami-border)] pt-3 text-xs sm:grid-cols-3">
+
+                  <dl className="mt-3 grid grid-cols-2 gap-3 border-t border-slate-200 pt-3 text-xs dark:border-slate-800 sm:grid-cols-3">
                     <div>
-                      <p className="text-slate-500">Expected close</p>
-                      <p className="mt-1 font-bold">{row.expectedCloseDate || 'Not set'}</p>
+                      <dt className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
+                        <CalendarClock className="h-3 w-3" aria-hidden="true" />
+                        Expected close
+                      </dt>
+                      <dd className="mt-0.5 font-bold">
+                        {row.expectedCloseDate || 'Not set'}
+                      </dd>
                     </div>
                     <div>
-                      <p className="text-slate-500">Time in stage</p>
-                      <p className="mt-1 font-bold">{row.daysInStage} days</p>
+                      <dt className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
+                        <Clock3 className="h-3 w-3" aria-hidden="true" />
+                        Time in stage
+                      </dt>
+                      <dd className="mt-0.5 font-bold">
+                        {row.daysInStage} day{row.daysInStage === 1 ? '' : 's'}
+                      </dd>
                     </div>
                     <div className="col-span-2 sm:col-span-1">
-                      <p className="text-slate-500">Owner</p>
-                      <p className="mt-1 break-words font-bold">{row.salespersonName}</p>
+                      <dt className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
+                        <UserRound className="h-3 w-3" aria-hidden="true" />
+                        Owner
+                      </dt>
+                      <dd className="mt-0.5 break-words font-bold">
+                        {row.salespersonName}
+                      </dd>
                     </div>
-                  </div>
-                </article>
+                  </dl>
+                </li>
               );
             })}
-          </div>
+          </ul>
         )}
-      </section>
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Sub-components                                                            */
+/* -------------------------------------------------------------------------- */
+
+function FunnelStageRow({
+  row,
+  currency,
+  isFirst,
+  isLast,
+}: {
+  row: SalesOpportunityFunnelRow;
+  currency: string;
+  isFirst: boolean;
+  isLast: boolean;
+}) {
+  const value = dealValueForRow(row);
+  const isOpen = row.stageType === 'open';
+
+  return (
+    <li
+      className="relative rounded-xl border border-slate-200 bg-slate-50/40 p-4 dark:border-slate-800 dark:bg-slate-950/30"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-[10px] font-black text-white dark:bg-white dark:text-slate-950">
+              {row.sequence || (isFirst ? 1 : 0) || 0}
+            </span>
+            <span className="truncate text-sm font-black">{row.stageName}</span>
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.08em] ring-1 ${stageOutcomeTone(row.stageType)}`}
+            >
+              {stageOutcome(row.stageType)}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            {row.opportunityCount.toLocaleString()}{' '}
+            {row.opportunityCount === 1 ? 'opportunity' : 'opportunities'}
+          </p>
+        </div>
+
+        <div className="shrink-0 text-right">
+          <p className="text-sm font-black tabular-nums">
+            {formatMoney(value, currency)}
+          </p>
+          <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-slate-500 dark:text-slate-400">
+            {isOpen
+              ? 'Open pipeline'
+              : row.stageType === 'won'
+                ? 'Won value'
+                : 'Lost value'}
+          </p>
+        </div>
+      </div>
+
+      {/* Progress bar sized against the largest deal in this currency */}
+      <div
+        className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"
+        role="img"
+        aria-label={`${row.stageName} value ${formatMoney(value, currency)}`}
+      >
+        <div
+          className={
+            'h-full rounded-full ' +
+            (row.stageType === 'won'
+              ? 'bg-emerald-500'
+              : row.stageType === 'lost'
+                ? 'bg-red-500'
+                : 'bg-indigo-500')
+          }
+          style={{ width: `${Math.min(100, Math.max(2, (value / Math.max(1, value)) * 100))}%` }}
+        />
+      </div>
+
+      {isOpen ? (
+        <>
+          <dl className="mt-3 grid grid-cols-2 gap-3 border-t border-slate-200 pt-3 text-xs dark:border-slate-800">
+            <div>
+              <dt className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
+                Weighted
+              </dt>
+              <dd className="mt-0.5 font-bold tabular-nums">
+                {formatMoney(row.weightedPipelineValue, currency)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
+                Stage probability
+              </dt>
+              <dd className="mt-0.5 font-bold tabular-nums">
+                {row.stageProbability.toLocaleString(undefined, {
+                  maximumFractionDigits: 2,
+                })}
+                %
+              </dd>
+            </div>
+          </dl>
+
+          {row.overdueOpportunityCount > 0 || row.staleOpportunityCount > 0 ? (
+            <ul className="mt-3 flex flex-wrap gap-1.5">
+              {row.overdueOpportunityCount > 0 ? (
+                <li className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.06em] text-red-700 ring-1 ring-red-500/20 dark:bg-red-950/40 dark:text-red-300 dark:ring-red-500/30">
+                  <CalendarX2 className="h-3 w-3" aria-hidden="true" />
+                  {row.overdueOpportunityCount} overdue close
+                </li>
+              ) : null}
+              {row.staleOpportunityCount > 0 ? (
+                <li className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.06em] text-amber-700 ring-1 ring-amber-500/20 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-500/30">
+                  <Clock3 className="h-3 w-3" aria-hidden="true" />
+                  {row.staleOpportunityCount} stale ·{' '}
+                  {formatMoney(row.staleValue, currency)}
+                </li>
+              ) : null}
+            </ul>
+          ) : null}
+        </>
+      ) : null}
+
+      {!isLast ? (
+        <span
+          aria-hidden="true"
+          className="absolute -bottom-[1px] left-6 h-1.5 w-1.5 rounded-full bg-slate-300 dark:bg-slate-600"
+        />
+      ) : null}
+    </li>
+  );
+}
+
+function EmptyState({
+  icon,
+  title,
+  description,
+  href,
+  actionLabel,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  href: string;
+  actionLabel: string;
+}) {
+  return (
+    <div className="px-5 py-10 text-center">
+      <div
+        aria-hidden="true"
+        className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500"
+      >
+        {icon}
+      </div>
+      <p className="mt-3 text-sm font-black">{title}</p>
+      <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-slate-500 dark:text-slate-400">
+        {description}
+      </p>
+      <Link
+        href={href}
+        className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-slate-950 px-4 py-2 text-xs font-bold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+      >
+        {actionLabel}
+        <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+      </Link>
     </div>
   );
 }

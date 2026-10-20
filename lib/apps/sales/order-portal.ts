@@ -9,14 +9,17 @@ import {
   SalesError,
 } from '@/lib/apps/sales/context';
 
-import {
-  getTenantPoolByTenantId,
-} from '@/lib/db/tenant';
+import { getTenantPoolByTenantId } from '@/lib/db/tenant';
+
+/* -------------------------------------------------------------------------- */
+/*  Constants & helpers                                                       */
+/* -------------------------------------------------------------------------- */
 
 const PORTAL_TOKEN_PATTERN = /^[a-f0-9]{64}$/i;
 const PORTAL_LINK_TTL_DAYS = 90;
+const TTL_DAYS_SQL = `($4::int * INTERVAL '1 day')`;
 
-function tokenHash(token: string) {
+function tokenHash(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
@@ -26,11 +29,25 @@ function iso(value: unknown): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-/**
- * Issues a one-time, read-only customer tracking link.
- * Only a SHA-256 token hash is stored; rotating a link invalidates the prior one.
- */
-export async function createSalesOrderPortalLink(input: Record<string, unknown>) {
+function safeTrackingUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string' || !raw) return null;
+  try {
+    const parsed = new URL(raw);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:'
+      ? parsed.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Portal link issue                                                         */
+/* -------------------------------------------------------------------------- */
+
+export async function createSalesOrderPortalLink(
+  input: Record<string, unknown>,
+) {
   const context = await requireSalesContext(SALES_PERMISSIONS.ORDER_MANAGE);
   const orderId = requireUuid(input.orderId, 'Sales order');
   const token = crypto.randomBytes(32).toString('hex');
@@ -59,7 +76,7 @@ export async function createSalesOrderPortalLink(input: Record<string, unknown>)
       `UPDATE sales_orders_v2
        SET public_portal_token_hash = $3,
            public_portal_token_created_at = NOW(),
-           public_portal_token_expires_at = NOW() + ($4::int * INTERVAL '1 day'),
+           public_portal_token_expires_at = NOW() + ${TTL_DAYS_SQL},
            public_portal_token_revoked_at = NULL,
            updated_by = $5,
            updated_at = NOW()
@@ -70,15 +87,19 @@ export async function createSalesOrderPortalLink(input: Record<string, unknown>)
 
     await client.query(
       `INSERT INTO activities
-        (company_id, user_id, model, record_id, type, content, metadata)
-       VALUES ($1, $2, 'sales.order', $3, 'sales.order.portal_link_created',
-         $4, $5::jsonb)`,
+         (company_id, user_id, model, record_id, type, content, metadata)
+       VALUES ($1, $2, 'sales.order', $3, 'sales.order.portal_link_created', $4, $5::jsonb)`,
       [
         context.companyId,
         context.userId,
         orderId,
-        'Issued a customer tracking link for sales order ' + String(order.rows[0].order_number) + '.',
-        JSON.stringify({ expiresAt: iso(updated.rows[0]?.public_portal_token_expires_at), ttlDays: PORTAL_LINK_TTL_DAYS }),
+        'Issued a customer tracking link for sales order ' +
+          String(order.rows[0].order_number) +
+          '.',
+        JSON.stringify({
+          expiresAt: iso(updated.rows[0]?.public_portal_token_expires_at),
+          ttlDays: PORTAL_LINK_TTL_DAYS,
+        }),
       ],
     );
 
@@ -92,14 +113,21 @@ export async function createSalesOrderPortalLink(input: Record<string, unknown>)
       expiresInDays: PORTAL_LINK_TTL_DAYS,
     };
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => undefined);
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      /* ignore rollback failure */
+    }
     throw error;
   } finally {
     client.release();
   }
 }
 
-/** Revokes a previously issued link. Repeating a revocation is safe. */
+/* -------------------------------------------------------------------------- */
+/*  Portal link revoke                                                        */
+/* -------------------------------------------------------------------------- */
+
 export async function revokeSalesOrderPortalLink(input: Record<string, unknown>) {
   const context = await requireSalesContext(SALES_PERMISSIONS.ORDER_MANAGE);
   const orderId = requireUuid(input.orderId, 'Sales order');
@@ -131,30 +159,39 @@ export async function revokeSalesOrderPortalLink(input: Record<string, unknown>)
 
     await client.query(
       `INSERT INTO activities
-        (company_id, user_id, model, record_id, type, content, metadata)
-       VALUES ($1, $2, 'sales.order', $3, 'sales.order.portal_link_revoked',
-         $4, '{}'::jsonb)`,
+         (company_id, user_id, model, record_id, type, content, metadata)
+       VALUES ($1, $2, 'sales.order', $3, 'sales.order.portal_link_revoked', $4, '{}'::jsonb)`,
       [
         context.companyId,
         context.userId,
         orderId,
-        'Revoked the customer tracking link for sales order ' + String(result.rows[0].order_number) + '.',
+        'Revoked the customer tracking link for sales order ' +
+          String(result.rows[0].order_number) +
+          '.',
       ],
     );
 
     await client.query('COMMIT');
     return { orderId, revoked: true };
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => undefined);
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      /* ignore rollback failure */
+    }
     throw error;
   } finally {
     client.release();
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Public read                                                               */
+/* -------------------------------------------------------------------------- */
+
 /**
  * Public order data intentionally excludes contact details, internal notes,
- * invoice IDs, margin/cost values and user identifiers.
+ * invoice IDs, margin/cost values, and user identifiers.
  */
 export async function getPublicSalesOrderPortal(tenantId: string, token: string) {
   if (typeof token !== 'string' || !PORTAL_TOKEN_PATTERN.test(token)) {
@@ -175,6 +212,7 @@ export async function getPublicSalesOrderPortal(tenantId: string, token: string)
      LIMIT 1`,
     [tokenHash(token)],
   );
+
   const order = result.rows[0];
   if (!order) {
     throw new SalesError('ORDER_NOT_FOUND', 'Sales order was not found.');
@@ -199,30 +237,6 @@ export async function getPublicSalesOrderPortal(tenantId: string, token: string)
       [order.id, order.company_id],
     ),
   ]);
-
-  const shipments = shipmentResult.rows.map((row: Record<string, unknown>) => {
-    let trackingUrl: string | null = null;
-    const rawTrackingUrl = typeof row.tracking_url === 'string' ? row.tracking_url : '';
-    if (rawTrackingUrl) {
-      try {
-        const parsed = new URL(rawTrackingUrl);
-        if (parsed.protocol === 'https:' || parsed.protocol === 'http:') trackingUrl = parsed.toString();
-      } catch {
-        trackingUrl = null;
-      }
-    }
-    return {
-      shipmentNumber: String(row.shipment_number || ''),
-      status: String(row.status || ''),
-      carrier: row.carrier ? String(row.carrier) : null,
-      serviceLevel: row.service_level ? String(row.service_level) : null,
-      trackingNumber: row.tracking_number ? String(row.tracking_number) : null,
-      trackingUrl,
-      shippedAt: iso(row.shipped_at),
-      deliveredAt: iso(row.delivered_at),
-      createdAt: iso(row.created_at),
-    };
-  });
 
   return {
     order: {
@@ -251,6 +265,16 @@ export async function getPublicSalesOrderPortal(tenantId: string, token: string)
       subtotal: Number(row.subtotal || 0),
       lineTotal: Number(row.line_total || 0),
     })),
-    shipments,
+    shipments: shipmentResult.rows.map((row: Record<string, unknown>) => ({
+      shipmentNumber: String(row.shipment_number || ''),
+      status: String(row.status || ''),
+      carrier: row.carrier ? String(row.carrier) : null,
+      serviceLevel: row.service_level ? String(row.service_level) : null,
+      trackingNumber: row.tracking_number ? String(row.tracking_number) : null,
+      trackingUrl: safeTrackingUrl(row.tracking_url),
+      shippedAt: iso(row.shipped_at),
+      deliveredAt: iso(row.delivered_at),
+      createdAt: iso(row.created_at),
+    })),
   };
 }
