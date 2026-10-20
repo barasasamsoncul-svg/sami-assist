@@ -684,3 +684,91 @@ main[data-sami-app="sales"] :where(.sami-soft-surface) {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Sales contrast and selected-control visibility                             */
+/* Scoped to Sales so other SaMi apps keep their own visual language.         */
+/* -------------------------------------------------------------------------- */
+main[data-sami-app="sales"] :where(.text-slate-400, .text-slate-500) {
+  color: #475569;
+}
+
+.dark main[data-sami-app="sales"] :where(.text-slate-400, .text-slate-500) {
+  color: #cbd5e1;
+}
+
+/* Form controls need a visible boundary on both light and dark surfaces. */
+main[data-sami-app="sales"] :where(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]):not([type="color"]),
+  select,
+  textarea
+) {
+  border-color: #64748b;
+}
+
+.dark main[data-sami-app="sales"] :where(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]):not([type="color"]),
+  select,
+  textarea
+) {
+  border-color: #64748b;
+}
+
+main[data-sami-app="sales"] :where(input[type="checkbox"], input[type="radio"]) {
+  accent-color: #1d4ed8;
+}
+
+/* Make selected filters and view switches unmistakable, not just slightly tinted. */
+main[data-sami-app="sales"] :where(button[aria-pressed="true"], [role="tab"][aria-selected="true"]) {
+  color: #ffffff;
+  background-color: #1d4ed8;
+  border-color: #1d4ed8;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.24);
+  font-weight: 800;
+}
+
+main[data-sami-app="sales"] :where(button[aria-pressed="false"], [role="tab"][aria-selected="false"]) {
+  color: #334155;
+  border-color: #64748b;
+}
+
+.dark main[data-sami-app="sales"] :where(button[aria-pressed="false"], [role="tab"][aria-selected="false"]) {
+  color: #e2e8f0;
+  border-color: #64748b;
+}
+
+main[data-sami-app="sales"] :where(button[aria-pressed="false"], [role="tab"][aria-selected="false"]):hover {
+  color: #1e40af;
+  background-color: #eff6ff;
+  border-color: #2563eb;
+}
+
+.dark main[data-sami-app="sales"] :where(button[aria-pressed="false"], [role="tab"][aria-selected="false"]):hover {
+  color: #f8fafc;
+  background-color: #1e3a8a;
+  border-color: #93c5fd;
+}
+
+main[data-sami-app="sales"] a[aria-current="page"] {
+  color: #1e40af;
+  background-color: #dbeafe;
+}
+
+.dark main[data-sami-app="sales"] a[aria-current="page"] {
+  color: #eff6ff;
+  background-color: rgba(30, 64, 175, 0.42);
+}
+
+main[data-sami-app="sales"] :where(button, a, input, select, textarea, [role="tab"]):focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 3px;
+}
+
+.dark main[data-sami-app="sales"] :where(button, a, input, select, textarea, [role="tab"]):focus-visible {
+  outline-color: #93c5fd;
+}
+
+main[data-sami-app="sales"] button:disabled {
+  cursor: not-allowed;
+}
+
