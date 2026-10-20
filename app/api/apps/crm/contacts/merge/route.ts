@@ -203,6 +203,10 @@ export async function POST(request: NextRequest) {
       throw new ContactMergeError('CONTACT_INTERACTION_ACCOUNT_CONFLICT', 'One or more CRM interactions are linked to a different account. Resolve those relationships before merging these contacts.', 409);
     }
 
+    await client.query(
+      'SELECT id FROM public.crm_interactions WHERE company_id = $1 AND contact_id = ANY($2::uuid[]) AND deleted_at IS NULL ORDER BY id FOR UPDATE',
+      [contactContext.companyId, [survivorId, sourceId]],
+    );
     const interactionCountResult = await client.query(
       'SELECT COUNT(*)::int AS count FROM public.crm_interactions WHERE company_id = $1 AND contact_id = $2 AND deleted_at IS NULL',
       [contactContext.companyId, sourceId],
