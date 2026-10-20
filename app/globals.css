@@ -687,23 +687,66 @@ main[data-sami-app="sales"] :where(.sami-soft-surface) {
 
 /* -------------------------------------------------------------------------- */
 /* Sales contrast and selected-control visibility                             */
-/* Scoped to Sales so other SaMi apps keep their own visual language.         */
+/* The shared theme layer normalizes legacy utility colors with !important.  */
+/* Reassert accessible Sales-specific contrast above that normalization.      */
 /* -------------------------------------------------------------------------- */
-main[data-sami-app="sales"] :where(.text-slate-400, .text-slate-500) {
-  color: #475569;
+main[data-sami-app="sales"] :where(
+  .text-slate-300,
+  .text-slate-400,
+  .text-slate-500,
+  .text-zinc-300,
+  .text-zinc-400,
+  .text-zinc-500
+) {
+  color: #475569 !important;
 }
 
-.dark main[data-sami-app="sales"] :where(.text-slate-400, .text-slate-500) {
-  color: #cbd5e1;
+main[data-sami-app="sales"] :where(
+  .text-slate-600,
+  .text-slate-700,
+  .text-zinc-600,
+  .text-zinc-700
+) {
+  color: #334155 !important;
 }
 
-/* Form controls need a visible boundary on both light and dark surfaces. */
+.dark main[data-sami-app="sales"] :where(
+  .text-slate-300,
+  .text-slate-400,
+  .text-slate-500,
+  .text-zinc-300,
+  .text-zinc-400,
+  .text-zinc-500
+) {
+  color: #cbd5e1 !important;
+}
+
+.dark main[data-sami-app="sales"] :where(
+  .text-slate-600,
+  .text-slate-700,
+  .text-zinc-600,
+  .text-zinc-700
+) {
+  color: #e2e8f0 !important;
+}
+
+/* Placeholder copy and form boundaries remain legible in both themes. */
+main[data-sami-app="sales"] :where(input, textarea)::placeholder {
+  color: #64748b !important;
+  opacity: 1 !important;
+}
+
+.dark main[data-sami-app="sales"] :where(input, textarea)::placeholder {
+  color: #cbd5e1 !important;
+  opacity: 1 !important;
+}
+
 main[data-sami-app="sales"] :where(
   input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]):not([type="color"]),
   select,
   textarea
 ) {
-  border-color: #64748b;
+  border-color: #64748b !important;
 }
 
 .dark main[data-sami-app="sales"] :where(
@@ -711,7 +754,7 @@ main[data-sami-app="sales"] :where(
   select,
   textarea
 ) {
-  border-color: #64748b;
+  border-color: #64748b !important;
 }
 
 main[data-sami-app="sales"] :where(input[type="checkbox"], input[type="radio"]) {
@@ -720,7 +763,7 @@ main[data-sami-app="sales"] :where(input[type="checkbox"], input[type="radio"]) 
 
 /* Make selected filters and view switches unmistakable, not just slightly tinted. */
 main[data-sami-app="sales"] :where(button[aria-pressed="true"], [role="tab"][aria-selected="true"]) {
-  color: #ffffff;
+  color: #ffffff !important;
   background-color: #1d4ed8;
   border-color: #1d4ed8;
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.24);
@@ -728,34 +771,34 @@ main[data-sami-app="sales"] :where(button[aria-pressed="true"], [role="tab"][ari
 }
 
 main[data-sami-app="sales"] :where(button[aria-pressed="false"], [role="tab"][aria-selected="false"]) {
-  color: #334155;
-  border-color: #64748b;
+  color: #334155 !important;
+  border-color: #64748b !important;
 }
 
 .dark main[data-sami-app="sales"] :where(button[aria-pressed="false"], [role="tab"][aria-selected="false"]) {
-  color: #e2e8f0;
-  border-color: #64748b;
+  color: #e2e8f0 !important;
+  border-color: #64748b !important;
 }
 
 main[data-sami-app="sales"] :where(button[aria-pressed="false"], [role="tab"][aria-selected="false"]):hover {
-  color: #1e40af;
+  color: #1e40af !important;
   background-color: #eff6ff;
-  border-color: #2563eb;
+  border-color: #2563eb !important;
 }
 
 .dark main[data-sami-app="sales"] :where(button[aria-pressed="false"], [role="tab"][aria-selected="false"]):hover {
-  color: #f8fafc;
+  color: #f8fafc !important;
   background-color: #1e3a8a;
-  border-color: #93c5fd;
+  border-color: #93c5fd !important;
 }
 
 main[data-sami-app="sales"] a[aria-current="page"] {
-  color: #1e40af;
+  color: #1e40af !important;
   background-color: #dbeafe;
 }
 
 .dark main[data-sami-app="sales"] a[aria-current="page"] {
-  color: #eff6ff;
+  color: #eff6ff !important;
   background-color: rgba(30, 64, 175, 0.42);
 }
 
@@ -770,5 +813,6 @@ main[data-sami-app="sales"] :where(button, a, input, select, textarea, [role="ta
 
 main[data-sami-app="sales"] button:disabled {
   cursor: not-allowed;
+  opacity: 0.65;
 }
 
