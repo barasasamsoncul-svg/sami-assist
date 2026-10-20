@@ -63,6 +63,7 @@ export default function SalesQuotePdfBuilder({
       '',
   );
   const [applying, setApplying] = useState(false);
+  const [previewRevision, setPreviewRevision] = useState(0);
 
   const selectedQuote = useMemo(
     () => data.quotes.find((quote) => quote.id === quoteId) || null,
@@ -96,6 +97,7 @@ export default function SalesQuotePdfBuilder({
         quoteId: selectedQuote.id,
         templateId: selectedTemplate.id,
       });
+      setPreviewRevision((revision) => revision + 1);
       showSuccess(
         'Template applied',
         selectedTemplate.name + ' is now attached to ' + selectedQuote.quoteNumber + '.',
@@ -308,6 +310,7 @@ export default function SalesQuotePdfBuilder({
           {selectedQuote ? (
             <div className="mt-4 space-y-2">
               <iframe
+                key={selectedQuote.id + ':' + previewRevision}
                 src={'/api/apps/sales/quotes/' + selectedQuote.id + '/pdf'}
                 className="h-[720px] w-full rounded-2xl border border-[var(--sami-border)] bg-white"
                 title="Quotation PDF preview"
