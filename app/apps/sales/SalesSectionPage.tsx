@@ -3,6 +3,7 @@ import { Suspense } from 'react';
 
 import SalesModuleShell from '@/app/apps/sales/SalesModuleShell';
 import SalesWorkspaceClient from '@/app/apps/sales/SalesWorkspaceClient';
+import SalesQuoteDetailClient from '@/app/apps/sales/SalesQuoteDetailClient';
 import SalesApprovalsManager from '@/app/apps/sales/SalesApprovalsManager';
 import SalesManagementInsights from '@/app/apps/sales/SalesManagementInsights';
 import SalesOpportunityFunnel from '@/app/apps/sales/SalesOpportunityFunnel';
@@ -37,7 +38,7 @@ import { SAMI_PERMISSIONS } from '@/lib/auth/permission-catalog';
 import { requirePageSession } from '@/lib/auth/require-page-session';
 import { resolveWorkspaceShellAccess } from '@/lib/auth/workspace-shell';
 import { getWorkspaceNotificationSummary } from '@/lib/services/workspace-notifications';
-import { getSalesWorkspaceData } from '@/lib/apps/sales/service';
+import { getSalesQuoteDetail, getSalesWorkspaceData } from '@/lib/apps/sales/service';
 import {
   canAccessSalesView,
   getSalesParentView,
@@ -296,10 +297,14 @@ async function SalesReportsBlock({
 
 export default async function SalesSectionPage({
   view,
+  quoteId,
 }: {
   view: SalesRouteView;
+  quoteId?: string;
 }) {
-  const currentPath = getSalesRoutePath(view);
+  const currentPath = quoteId
+    ? '/apps/sales/quotes/' + quoteId
+    : getSalesRoutePath(view);
 
   const session = await requirePageSession(currentPath);
 
@@ -325,6 +330,37 @@ export default async function SalesSectionPage({
 
   if (!canAccessSalesView(data.capabilities, view)) {
     notFound();
+  }
+
+  // ------------------------------------------------------------------------
+  // Quote detail — one shell mount, one sidebar, same convention as siblings.
+  // ------------------------------------------------------------------------
+  if (quoteId) {
+    const quote = await getSalesQuoteDetail(quoteId);
+
+    if (!quote) {
+      notFound();
+    }
+
+    return (
+      <SalesModuleShell
+        user={session.user}
+        tenant={accountContext.tenant}
+        modules={shell.accessibleModules}
+        appSidebarItems={buildSalesSidebarItems(data)}
+        activeSidebarKey={getSalesParentView(view)}
+        sidebarCapabilities={{
+          aiEnabled: shell.aiAvailable,
+          notificationsEnabled: permissionContext.permissionSet.has(
+            SAMI_PERMISSIONS.NOTIFICATIONS_VIEW,
+          ),
+        }}
+        unreadNotifications={notificationResult?.unreadCount || 0}
+        companyName={data.company.name}
+      >
+        <SalesQuoteDetailClient quote={quote} workspace={data} />
+      </SalesModuleShell>
+    );
   }
 
   const reportsAvailable = view === 'reports' && data.capabilities.canViewReports;
