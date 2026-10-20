@@ -87,3 +87,26 @@ test('CRM links accounts to existing Invoicing customers without exposing raw li
   assert.match(panel, /does not create duplicate billing customers/i);
   assert.match(client, /CrmCustomerLinkPanel/);
 });
+
+
+test('CRM relationship timeline validates company-scoped records and keeps Sales activity read-only', async () => {
+  const [route, panel, client, schema] = await Promise.all([
+    source('app/api/apps/crm/interactions/route.ts'),
+    source('app/apps/crm/CrmRelationshipTimelinePanel.tsx'),
+    source('app/apps/crm/CrmWorkspaceClient.tsx'),
+    source('lib/apps/crm/schema.sql'),
+  ]);
+
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS public\.crm_interactions/);
+  assert.match(route, /requireEnterpriseModuleTableContext\('crm', 'crm_interactions', 'view'\)/);
+  assert.match(route, /requireEnterpriseModuleTableContext\('crm', 'crm_interactions', 'create'\)/);
+  assert.match(route, /requireEnterpriseModuleTableContext\('crm', 'crm_interactions', 'edit'\)/);
+  assert.match(route, /company_id = \$1/);
+  assert.match(route, /CRM_RELATIONSHIP_MISMATCH/);
+  assert.match(route, /status = 'planned'/);
+  assert.match(route, /sameOrigin\(request\)/);
+  assert.match(panel, /\/api\/apps\/crm\/interactions/);
+  assert.match(panel, /Sales · read-only/);
+  assert.match(panel, /does not send a message or make a call/i);
+  assert.match(client, /CrmRelationshipTimelinePanel/);
+});

@@ -6,6 +6,8 @@ import CrmSalesIntegrationPanel from '@/app/apps/crm/CrmSalesIntegrationPanel';
 
 import CrmCustomerLinkPanel from '@/app/apps/crm/CrmCustomerLinkPanel';
 
+import CrmRelationshipTimelinePanel from '@/app/apps/crm/CrmRelationshipTimelinePanel';
+
 import type {
   EnterpriseWorkspaceData,
 } from '@/lib/apps/enterprise/service';
@@ -36,6 +38,11 @@ export default function CrmWorkspaceClient({
           />
           <CrmCustomerLinkPanel
             enabled={accessibleModuleKeys.includes('invoicing')}
+          />
+          <CrmRelationshipTimelinePanel
+            salesEnabled={accessibleModuleKeys.includes('sales')}
+            canCreate={initialData.capabilities.canCreate}
+            canEdit={initialData.capabilities.canEdit}
           />
         </>
       ) : null}
