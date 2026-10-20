@@ -1,3 +1,80 @@
+import 'server-only';
+
+import { NextRequest, NextResponse } from 'next/server';
+import { CompanyContextError } from '@/lib/auth/company-context';
+import { TenantContextError } from '@/lib/auth/tenant-context';
+import { EnterpriseModuleError, requireEnterpriseModuleTableContext } from '@/lib/apps/enterprise/service';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+const PAGE_SIZE = 25;
+const MAX_PAGE = 10000;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const LIFECYCLE_STAGES = new Set(['', 'lead', 'qualified', 'customer', 'inactive']);
+const ACCOUNT_TYPES = new Set(['', 'prospect', 'customer', 'partner', 'competitor']);
+const ENGAGEMENT_STATES = new Set(['all', 'engaged', 'not_engaged']);
+
+function json(body: Record<string, unknown>, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate', Pragma: 'no-cache' },
+  });
+}
+function errorResponse(error: unknown) {
+  if (error instanceof EnterpriseModuleError) {
+    const status = error.code === 'MODULE_PERMISSION_REQUIRED' || error.code === 'TABLE_NOT_ALLOWED'
+      ? 403
+      : error.code === 'MODULE_NOT_INSTALLED' || error.code === 'RECORD_NOT_FOUND'
+        ? 404
+        : error.code === 'WORKSPACE_SUSPENDED'
+          ? 402
+          : error.code === 'WORKSPACE_CONTEXT_CHANGED'
+            ? 409
+            : error.code === 'TABLE_NOT_READY'
+              ? 503 : 400;
+    return json({ success: false, code: error.code, error: error.message }, status);
+  }
+  if (error instanceof CompanyContextError || error instanceof TenantContextError) {
+    const statuses: Record<string, number> = {
+      UNAUTHENTICATED: 401, NO_WORKSPACE_SELECTED: 409, WORKSPACE_ACCESS_DENIED: 403,
+      WORKSPACE_DATABASE_UNAVAILABLE: 503, NO_COMPANY_ACCESS: 403, INVALID_COMPANY_ID: 400,
+      COMPANY_ACCESS_DENIED: 403, EMPTY_COMPANY_SELECTION: 400, TOO_MANY_COMPANIES: 400,
+      SESSION_UPDATE_FAILED: 500,
+    };
+    return json({ success: false, code: error.code, error: error.message }, statuses[error.code] ?? 500);
+  }
+  console.error('[SaMi CRM account segments] request failed:', error);
+  return json({ success: false, code: 'CRM_ACCOUNT_SEGMENTS_FAILED', error: 'SaMi could not load account segments.' }, 500);
+}
+function bounded(value: string | null, max: number) {
+  return (value || '').replace(/\u0000/g, '').trim().slice(0, max);
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const context = await requireEnterpriseModuleTableContext('crm', 'crm_accounts', 'view');
+    const query = bounded(request.nextUrl.searchParams.get('q'), 100);
+    const lifecycleStage = bounded(request.nextUrl.searchParams.get('lifecycleStage'), 30).toLowerCase();
+    const accountType = bounded(request.nextUrl.searchParams.get('accountType'), 30).toLowerCase();
+    const industry = bounded(request.nextUrl.searchParams.get('industry'), 160);
+    const source = bounded(request.nextUrl.searchParams.get('source'), 120);
+    const ownerUserId = bounded(request.nextUrl.searchParams.get('ownerUserId'), 64).toLowerCase();
+    const engagement = bounded(request.nextUrl.searchParams.get('engagement'), 30).toLowerCase() || 'all';
+    const requestedPage = Number(request.nextUrl.searchParams.get('page') || '1');
+
+    if (!LIFECYCLE_STAGES.has(lifecycleStage) || !ACCOUNT_TYPES.has(accountType) || !ENGAGEMENT_STATES.has(engagement)) {
+      return json({ success: false, code: 'INVALID_FILTER', error: 'Choose a valid account segment filter.' }, 400);
+    }
+    if (ownerUserId && ownerUserId !== 'unassigned' && !UUID_RE.test(ownerUserId)) {
+      return json({ success: false, code: 'INVALID_OWNER', error: 'Choose a valid account owner.' }, 400);
+    }
+    if (!Number.isInteger(requestedPage) || requestedPage < 1 || requestedPage > MAX_PAGE) {
+      return json({ success: false, code: 'INVALID_PAGE', error: 'Choose a valid account page.' }, 400);
+    }
+
+    const searchPattern = '%' + query + '%';
+    const offset = (requestedPage - 1) * PAGE_SIZE;
     const where = `
       a.company_id = $1 AND a.deleted_at IS NULL
       AND ($2::text = '%%' OR a.account_name ILIKE $2 OR COALESCE(a.email, '') ILIKE $2 OR COALESCE(a.phone, '') ILIKE $2)

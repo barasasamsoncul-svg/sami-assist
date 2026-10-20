@@ -66,7 +66,13 @@ function date(value: string | null | undefined) {
   return parsed.toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 function sameFilters(a: SegmentFilters, b: SegmentFilters) {
-  return JSON.stringify(a) === JSON.stringify(b);
+  return a.search === b.search &&
+    a.lifecycleStage === b.lifecycleStage &&
+    a.accountType === b.accountType &&
+    a.industry === b.industry &&
+    a.source === b.source &&
+    a.ownerUserId === b.ownerUserId &&
+    a.engagement === b.engagement;
 }
 
 export default function CrmAccountSegmentsPanel() {
