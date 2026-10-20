@@ -54,14 +54,19 @@ export async function GET() {
     const result = await accounts.pool.query(
       \`WITH activity_stats AS (
          SELECT
-           account_id,
-           MAX(COALESCE(occurred_at, created_at)) AS last_activity_at,
-           COUNT(*) FILTER (WHERE COALESCE(occurred_at, created_at) >= NOW() - INTERVAL '90 days')::int AS activity_90_days,
-           COUNT(*) FILTER (WHERE status = 'planned' AND due_at IS NOT NULL AND due_at >= NOW())::int AS future_followups,
-           COUNT(*) FILTER (WHERE status = 'planned' AND due_at IS NOT NULL AND due_at < NOW())::int AS overdue_followups
-         FROM public.crm_interactions
-         WHERE company_id = $1 AND deleted_at IS NULL AND account_id IS NOT NULL
-         GROUP BY account_id
+           COALESCE(i.account_id, c.account_id) AS account_id,
+           MAX(COALESCE(i.occurred_at, i.created_at)) AS last_activity_at,
+           COUNT(*) FILTER (WHERE COALESCE(i.occurred_at, i.created_at) >= NOW() - INTERVAL '90 days')::int AS activity_90_days,
+           COUNT(*) FILTER (WHERE i.status = 'planned' AND i.due_at IS NOT NULL AND i.due_at >= NOW())::int AS future_followups,
+           COUNT(*) FILTER (WHERE i.status = 'planned' AND i.due_at IS NOT NULL AND i.due_at < NOW())::int AS overdue_followups
+         FROM public.crm_interactions i
+         LEFT JOIN public.crm_contacts c
+           ON c.id = i.contact_id
+          AND c.company_id = i.company_id
+          AND c.deleted_at IS NULL
+         WHERE i.company_id = $1 AND i.deleted_at IS NULL
+           AND COALESCE(i.account_id, c.account_id) IS NOT NULL
+         GROUP BY COALESCE(i.account_id, c.account_id)
        ),
        contact_stats AS (
          SELECT account_id,
