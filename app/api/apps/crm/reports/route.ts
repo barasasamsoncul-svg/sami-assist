@@ -119,7 +119,7 @@ export async function GET() {
         completed: Number(row.completed || 0),
         planned: Number(row.planned || 0),
       })),
-      scope: 'Current CRM company; active records only.',
+      scope: 'Current CRM company; non-deleted records only.',
     });
   } catch (error) {
     return errorResponse(error);
