@@ -112,7 +112,7 @@ export default function CrmReportsPanel() {
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--sami-muted)]">CRM performance</p>
           <h1 className="mt-1 text-xl font-black text-[var(--sami-text)]">Reports and insights</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--sami-muted)]">Review relationship coverage, follow-up workload, account lifecycle and recent interaction volume. Counts are limited to active records in the selected company; this report does not duplicate Sales pipeline forecasting.</p>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--sami-muted)]">Review relationship coverage, follow-up workload, account lifecycle and recent interaction volume. Counts include non-deleted CRM records in the selected company; this report does not duplicate Sales pipeline forecasting.</p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           <button type="button" onClick={exportCsv} disabled={loading || !payload?.summary} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-sm font-bold text-[var(--sami-text)] disabled:opacity-50"><Download className="h-4 w-4" />Export CSV</button>
@@ -135,7 +135,7 @@ export default function CrmReportsPanel() {
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(280px,1fr)]">
         <article className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-5">
-          <div className="mb-4"><h2 className="text-base font-black text-[var(--sami-text)]">Six-month interaction trend</h2><p className="mt-1 text-xs text-[var(--sami-muted)]">Logged interactions grouped by occurrence month, including planned and completed records.</p></div>
+          <div className="mb-4"><h2 className="text-base font-black text-[var(--sami-text)]">Six-month interaction trend</h2><p className="mt-1 text-xs text-[var(--sami-muted)]">Interactions grouped by occurrence time, falling back to record creation time; planned and completed records are included.</p></div>
           {loading ? <p className="text-sm text-[var(--sami-muted)]">Loading activity trend…</p> : (payload?.monthlyActivity || []).length ? <div className="space-y-4">
             {(payload?.monthlyActivity || []).map((row) => <div key={row.month} className="grid grid-cols-[58px_minmax(0,1fr)_36px] items-center gap-3">
               <span className="text-xs font-semibold text-[var(--sami-muted)]">{monthLabel(row.month)}</span>
