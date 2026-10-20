@@ -18,6 +18,7 @@ export default async function CrmWorkspace({
   accountId?: string | null;
 }) {
   const followUpsView = section === 'follow-ups';
+  const segmentsView = section === 'segments';
   const {
     session,
     account,
@@ -26,7 +27,7 @@ export default async function CrmWorkspace({
     notifications,
     resolved,
     can,
-  } = await loadStandaloneEnterpriseApp(MODULE_KEY, followUpsView ? undefined : section);
+  } = await loadStandaloneEnterpriseApp(MODULE_KEY, followUpsView || segmentsView ? undefined : section);
 
   const crmData = {
     ...data,
@@ -47,6 +48,7 @@ export default async function CrmWorkspace({
       badge: table.count,
       sectionLabel: 'Relationships',
     })),
+    { key: 'segments', label: 'Account segments', href: appBaseHref + '/segments', description: 'Filter accounts by lifecycle, owner, source and engagement; save reusable views.', sectionLabel: 'Relationships' },
     { key: 'follow-ups', label: 'Follow-ups', href: appBaseHref + '/follow-ups', description: 'Manage overdue, today and upcoming CRM activities.', sectionLabel: 'Activity' },
     ...(data.capabilities.canReport ? [{ key: 'reports', label: 'Reports', href: appBaseHref + '/reports', description: 'Relationship coverage and engagement reporting.', sectionLabel: 'Insights' }] : []),
     { key: 'activity', label: 'Activity', href: appBaseHref + '/activity', description: 'Recent module changes and user actions.', sectionLabel: 'Insights' },
@@ -54,7 +56,7 @@ export default async function CrmWorkspace({
   ];
 
   const accessibleModuleKeys = shell.accessibleModules.map((module) => module.registryKey);
-  const activeSidebarKey = accountId ? 'crm_accounts' : followUpsView ? 'follow-ups' : resolved.view === 'records' ? (resolved.tableKey || 'crm_accounts') : resolved.view;
+  const activeSidebarKey = accountId ? 'crm_accounts' : segmentsView ? 'segments' : followUpsView ? 'follow-ups' : resolved.view === 'records' ? (resolved.tableKey || 'crm_accounts') : resolved.view;
 
   return (
     <CrmModuleShell
@@ -78,6 +80,7 @@ export default async function CrmWorkspace({
         accessibleModuleKeys={accessibleModuleKeys}
         accountId={accountId || null}
         followUpsView={followUpsView}
+        segmentsView={segmentsView}
       />
     </CrmModuleShell>
   );

@@ -178,3 +178,37 @@ test('CRM follow-up queue is company-scoped, paginated and uses CRM-only complet
   assert.ok(workspace.includes("label: 'Follow-ups'"));
   assert.ok(client.includes('CrmFollowUpsPanel'));
 });
+
+
+test('CRM account segments support validated server filters and private saved views', async () => {
+  const [schema, runtimeSchema, viewsRoute, segmentsRoute, panel, workspace, client] = await Promise.all([
+    source('lib/apps/crm/schema.sql'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+    source('app/api/apps/crm/account-views/route.ts'),
+    source('app/api/apps/crm/account-segments/route.ts'),
+    source('app/apps/crm/CrmAccountSegmentsPanel.tsx'),
+    source('app/apps/crm/CrmWorkspace.tsx'),
+    source('app/apps/crm/CrmWorkspaceClient.tsx'),
+  ]);
+
+  assert.ok(schema.includes('CREATE TABLE IF NOT EXISTS public.crm_account_saved_views'));
+  assert.ok(runtimeSchema.includes('CREATE TABLE IF NOT EXISTS public.crm_account_saved_views'));
+  assert.ok(viewsRoute.includes("requireEnterpriseModuleTableContext('crm', 'crm_accounts', 'view')"));
+  assert.ok(viewsRoute.includes('company_id = $1 AND owner_user_id = $2'));
+  assert.ok(viewsRoute.includes('sec-fetch-site'));
+  assert.ok(viewsRoute.includes('SAVED_VIEW_NOT_FOUND'));
+  assert.ok(segmentsRoute.includes("requireEnterpriseModuleTableContext('crm', 'crm_accounts', 'view')"));
+  assert.ok(segmentsRoute.includes('a.company_id = $1 AND a.deleted_at IS NULL'));
+  assert.ok(segmentsRoute.includes("INTERVAL '90 days'"));
+  assert.ok(segmentsRoute.includes('LIMIT $9 OFFSET $10'));
+  assert.ok(segmentsRoute.includes('owner_user_id'));
+  assert.ok(panel.includes('/api/apps/crm/account-views'));
+  assert.ok(panel.includes('/api/apps/crm/account-segments?'));
+  assert.ok(panel.includes('Save new'));
+  assert.ok(panel.includes('Update'));
+  assert.ok(panel.includes('Delete'));
+  assert.ok(panel.includes('not_engaged'));
+  assert.ok(workspace.includes("section === 'segments'"));
+  assert.ok(workspace.includes("label: 'Account segments'"));
+  assert.ok(client.includes('CrmAccountSegmentsPanel'));
+});

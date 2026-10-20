@@ -136,3 +136,22 @@ CREATE INDEX IF NOT EXISTS idx_crm_interactions_due_queue
   ON public.crm_interactions(company_id, owner_user_id, due_at)
   WHERE deleted_at IS NULL AND status = 'planned';
 
+CREATE TABLE IF NOT EXISTS public.crm_account_saved_views (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  owner_user_id UUID NOT NULL,
+  view_name VARCHAR(80) NOT NULL,
+  filters JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
+  CHECK (char_length(BTRIM(view_name)) BETWEEN 2 AND 80),
+  CHECK (jsonb_typeof(filters) = 'object')
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_crm_account_saved_views_owner_name
+  ON public.crm_account_saved_views(company_id, owner_user_id, LOWER(BTRIM(view_name)))
+  WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_crm_account_saved_views_owner
+  ON public.crm_account_saved_views(company_id, owner_user_id, updated_at DESC)
+  WHERE deleted_at IS NULL;
+
