@@ -12,7 +12,7 @@ test('Sales product performance is company scoped and report-permission gated', 
   const service = await source('lib/apps/sales/product-performance.ts');
   assert.match(service, /requireSalesContext\(SALES_PERMISSIONS\.QUOTE_VIEW\)/);
   assert.match(service, /SALES_PERMISSIONS\.REPORT_VIEW/);
-  assert.match(service, /if \(!canViewReports\) return EMPTY_REPORT/);
+  assert.match(service, /if \(!canViewReports\) \{\s*return \{\s*rows: EMPTY_ROWS,[\s\S]*?asOf,\s*\};/);
   assert.match(service, /i\.company_id = \$1/);
   assert.match(service, /o\.company_id = \$1/);
   assert.match(service, /o\.deleted_at IS NULL/);
@@ -25,7 +25,9 @@ test('Sales product performance groups stable product identities and currency se
   assert.match(service, /i\.catalog_item_id IS NOT NULL/);
   assert.match(service, /i\.external_product_id IS NOT NULL/);
   assert.match(service, /ELSE 'description:'/);
-  assert.match(service, /GROUP BY product_key, currency/);
+  assert.match(service, /THEN 'catalog:' \|\| i\.catalog_item_id::text/);
+  assert.match(service, /THEN 'external:' \|\| i\.external_product_id::text/);
+  assert.match(service, /PARTITION BY currency/);
   assert.match(service, /PARTITION BY currency/);
   assert.match(service, /WHERE currency_rank <= 250/);
   assert.match(service, /ORDER BY currency ASC, net_sales DESC/);
@@ -43,7 +45,8 @@ test('Sales product performance uses a trailing 90-day order cohort and renders 
   const service = await source('lib/apps/sales/product-performance.ts');
   const page = await source('app/apps/sales/SalesSectionPage.tsx');
   const packageJson = await source('package.json');
-  assert.match(service, /o\.order_date >= CURRENT_DATE - INTERVAL '90 days'/);
+  assert.match(service, /const REPORT_WINDOW_DAYS = 90/);
+  assert.match(service, /o\.order_date >= CURRENT_DATE - \(\$3::int \* INTERVAL '1 day'\)/);
   assert.match(page, /getSalesProductPerformance/);
   assert.match(page, /<SalesProductPerformance rows=\{productPerformance\.rows\} \/>/);
   assert.match(packageJson, /tests\/sales-product-performance\.test\.mjs/);

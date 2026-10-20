@@ -14,7 +14,7 @@ test('Sales pipeline velocity is report-permission gated and scoped to the activ
 
   assert.match(service, /requireSalesContext\(SALES_PERMISSIONS\.QUOTE_VIEW\)/);
   assert.match(service, /SALES_PERMISSIONS\.REPORT_VIEW/);
-  assert.match(service, /if \(!canViewReports\) return \{ transitions: \[\] \}/);
+  assert.match(service, /if \(!canViewReports\) \{\s*return \{\s*\.\.\.EMPTY_REPORT,\s*asOf\s*\};/);
   assert.match(service, /h\.company_id = \$1/);
   assert.match(service, /o\.company_id = h\.company_id/);
   assert.match(service, /o\.deleted_at IS NULL/);
@@ -31,7 +31,8 @@ test('Sales pipeline velocity uses event history to calculate source-stage dwell
   assert.match(service, /ORDER BY h\.created_at, h\.id/);
   assert.match(service, /previous_to_stage_id = from_stage_id/);
   assert.match(service, /opportunity_created_at/);
-  assert.match(service, /created_at >= NOW\(\) - INTERVAL '90 days'/);
+  assert.match(service, /const REPORT_WINDOW_DAYS = 90/);
+  assert.match(service, /created_at >= NOW\(\) - \(\$2::int \* INTERVAL '1 day'\)/);
   assert.match(service, /from_stage_id IS NOT NULL/);
   assert.match(service, /from_stage_id <> to_stage_id/);
   assert.match(service, /percentile_cont\(0\.5\) WITHIN GROUP/);
@@ -44,7 +45,8 @@ test('Sales pipeline velocity ranks bottlenecks by median dwell time and caps th
   const component = await source('app/apps/sales/SalesPipelineVelocity.tsx');
 
   assert.match(service, /ORDER BY[\s\S]*percentile_cont\(0\.5\) WITHIN GROUP[\s\S]*COUNT\(\*\) DESC/);
-  assert.match(service, /LIMIT 15/);
+  assert.match(service, /const ROW_LIMIT = 15/);
+  assert.match(service, /LIMIT \$3/);
   assert.match(service, /COUNT\(DISTINCT t\.opportunity_id\)::int AS opportunity_count/);
   assert.match(component, /Pipeline stage velocity/);
   assert.match(component, /slowest median transitions appear first/i);

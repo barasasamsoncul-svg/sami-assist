@@ -15,7 +15,8 @@ test('Sales quotation effectiveness is report-permission gated and company scope
   assert.match(service, /if \(!canViewReports\) return/);
   assert.match(service, /q\.company_id = \$1/);
   assert.match(service, /q\.deleted_at IS NULL/);
-  assert.match(service, /q\.quote_date >= CURRENT_DATE - INTERVAL '90 days'/);
+  assert.match(service, /const REPORT_WINDOW_DAYS = 90/);
+  assert.match(service, /q\.quote_date >= CURRENT_DATE - \(\$3::int \* INTERVAL '1 day'\)/);
   assert.match(service, /q\.quote_date <= CURRENT_DATE/);
 });
 
@@ -40,7 +41,8 @@ test('Sales quotation effectiveness keeps transaction currencies separate and re
   assert.match(service, /tu\.tenant_id = \$1/);
   assert.match(service, /tu\.status = 'active'/);
   assert.match(service, /tu\.member_type = 'internal'/);
-  assert.match(component, /Amounts remain separated by quotation currency/);
+  assert.match(component, /new Set\(rows\.map\(\(row\) => row\.currency\)\)/);
+  assert.match(component, /money\([^,\n]+,\s*row\.currency\)/);
   assert.match(component, /Salesperson quote effectiveness/);
   assert.match(component, /Quotation template effectiveness/);
 });

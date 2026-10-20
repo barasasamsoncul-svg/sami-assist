@@ -12,7 +12,7 @@ test('Sales representative performance is company scoped and report-permission g
   const service = await source('lib/apps/sales/representative-performance.ts');
   assert.match(service, /requireSalesContext\(SALES_PERMISSIONS\.QUOTE_VIEW\)/);
   assert.match(service, /SALES_PERMISSIONS\.REPORT_VIEW/);
-  assert.match(service, /if \(!canViewReports\) return \{ rows: \[\] \}/);
+  assert.match(service, /if \(!canViewReports\) \{\s*return \{ rows: EMPTY_ROWS, windowDays: REPORT_WINDOW_DAYS, asOf \};\s*\}/);
   assert.match(service, /o\.company_id = \$1/);
   assert.match(service, /o\.deleted_at IS NULL/);
   assert.match(service, /s\.deleted_at IS NULL/);
@@ -26,7 +26,9 @@ test('Sales representative performance measures open, weighted and overdue pipel
   assert.match(service, /AS weighted_pipeline_value/);
   assert.match(service, /LEAST\(100, GREATEST\(0, COALESCE\(o\.probability, s\.probability, 0\)\)\)/);
   assert.match(service, /o\.expected_close_date < CURRENT_DATE/);
-  assert.match(service, /o\.won_at >= NOW\(\) - INTERVAL '90 days'/);
+  assert.match(service, /const REPORT_WINDOW_DAYS = 90/);
+  assert.match(service, /o\.won_at >= NOW\(\) - \(\$3::int \* INTERVAL '1 day'\)/);
+  assert.match(service, /o\.lost_at >= NOW\(\) - \(\$3::int \* INTERVAL '1 day'\)/);
   assert.match(service, /o\.lost_at >= NOW\(\) - INTERVAL '90 days'/);
   assert.match(service, /AS win_rate_90_days/);
   assert.match(service, /GROUP BY o\.salesperson_user_id, currency/);

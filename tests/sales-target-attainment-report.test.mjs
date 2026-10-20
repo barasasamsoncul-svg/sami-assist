@@ -24,7 +24,7 @@ test('Sales targets use bounded periods and count only confirmed non-cancelled o
   assert.match(service, /target\.period_end >= CURRENT_DATE - INTERVAL '90 days'/);
   assert.match(service, /target\.period_start <= CURRENT_DATE \+ INTERVAL '90 days'/);
   assert.match(service, /sales_order\.status IN \('confirmed', 'closed'\)/);
-  assert.match(service, /sales_order\.order_date BETWEEN target\.period_start AND LEAST\(target\.period_end, CURRENT_DATE\)/);
+  assert.match(service, /sales_order\.order_date\s+BETWEEN target\.period_start AND LEAST\(target\.period_end, CURRENT_DATE\)/);
   assert.match(service, /target\.target_scope = 'company'/);
   assert.match(service, /sales_order\.sales_team_id = target\.team_id/);
   assert.match(service, /sales_order\.salesperson_user_id = target\.user_id/);
