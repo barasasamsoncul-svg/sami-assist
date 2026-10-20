@@ -2,6 +2,8 @@
 
 import EnterpriseDataWorkspaceClient from '@/app/apps/_shared/EnterpriseDataWorkspaceClient';
 
+import CrmSalesIntegrationPanel from '@/app/apps/crm/CrmSalesIntegrationPanel';
+
 import type {
   EnterpriseWorkspaceData,
 } from '@/lib/apps/enterprise/service';
@@ -24,12 +26,19 @@ export default function CrmWorkspaceClient({
   accessibleModuleKeys: string[];
 }) {
   return (
-    <EnterpriseDataWorkspaceClient
-      initialData={initialData}
-      userId={userId}
-      initialView={initialView}
-      initialTableKey={initialTableKey}
-      accessibleModuleKeys={accessibleModuleKeys}
-    />
+    <>
+      {initialView === 'overview' ? (
+        <CrmSalesIntegrationPanel
+          enabled={accessibleModuleKeys.includes('sales')}
+        />
+      ) : null}
+      <EnterpriseDataWorkspaceClient
+        initialData={initialData}
+        userId={userId}
+        initialView={initialView}
+        initialTableKey={initialTableKey}
+        accessibleModuleKeys={accessibleModuleKeys}
+      />
+    </>
   );
 }
