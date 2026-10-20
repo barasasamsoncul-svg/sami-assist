@@ -2193,6 +2193,7 @@ CREATE TABLE IF NOT EXISTS public.crm_accounts (
   industry VARCHAR(160),
   email VARCHAR(320),
   phone VARCHAR(80),
+  invoicing_customer_id UUID,
   employee_count INTEGER,
   annual_revenue NUMERIC(19,4) NOT NULL DEFAULT 0,
   owner_user_id UUID,
@@ -2213,6 +2214,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_crm_accounts_company_name
 CREATE INDEX IF NOT EXISTS idx_crm_accounts_company_lifecycle
   ON public.crm_accounts(company_id, lifecycle_stage, LOWER(account_name))
   WHERE deleted_at IS NULL;
+ALTER TABLE public.crm_accounts
+  ADD COLUMN IF NOT EXISTS invoicing_customer_id UUID;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_crm_accounts_company_invoicing_customer
+  ON public.crm_accounts(company_id, invoicing_customer_id)
+  WHERE invoicing_customer_id IS NOT NULL AND deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS public.crm_contacts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

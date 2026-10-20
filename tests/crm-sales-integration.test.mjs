@@ -59,3 +59,31 @@ test('CRM overview consumes the validated Sales pipeline API read-only', async (
   assert.ok(salesRoute.includes('getSalesPipelineData'));
   assert.ok(salesPipeline.includes('requireSalesContext(SALES_PERMISSIONS.PIPELINE_VIEW)'));
 });
+
+
+test('CRM links accounts to existing Invoicing customers without exposing raw links to generic CRUD', async () => {
+  const [schema, runtimeSchema, service, route, panel, client] = await Promise.all([
+    source('lib/apps/crm/schema.sql'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+    source('lib/apps/enterprise/service.ts'),
+    source('app/api/apps/crm/customer-links/route.ts'),
+    source('app/apps/crm/CrmCustomerLinkPanel.tsx'),
+    source('app/apps/crm/CrmWorkspaceClient.tsx'),
+  ]);
+
+  assert.match(schema, /invoicing_customer_id UUID/);
+  assert.match(runtimeSchema, /ADD COLUMN IF NOT EXISTS invoicing_customer_id UUID/);
+  assert.match(schema, /uq_crm_accounts_company_invoicing_customer/);
+  assert.match(runtimeSchema, /uq_crm_accounts_company_invoicing_customer/);
+  assert.match(service, /invoicing_customer_id/);
+  assert.match(route, /requireEnterpriseModuleTableContext/);
+  assert.match(route, /requireInvoicingContext/);
+  assert.match(route, /INVOICING_PERMISSIONS\.CUSTOMER_VIEW/);
+  assert.match(route, /company_id = \$1/);
+  assert.match(route, /status = 'active'/);
+  assert.match(route, /deleted_at IS NULL/);
+  assert.match(route, /sec-fetch-site/);
+  assert.match(panel, /\/api\/apps\/crm\/customer-links/);
+  assert.match(panel, /does not create duplicate billing customers/i);
+  assert.match(client, /CrmCustomerLinkPanel/);
+});
