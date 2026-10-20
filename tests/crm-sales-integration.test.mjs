@@ -311,3 +311,44 @@ test('CRM contact merging preserves relationship integrity and writes a merge au
   assert.ok(qualityPanel.includes('Account relationship conflict · merge blocked'));
   assert.ok(!qualityPanel.includes('Contact duplicates are flagged for review only'));
 });
+
+
+test('CRM merge history exposes company-scoped audit and guarded recovery only for complete snapshots', async () => {
+  const [schema, runtimeSchema, accountMerge, contactMerge, historyRoute, historyPanel, workspace, client] = await Promise.all([
+    source('lib/apps/crm/schema.sql'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+    source('app/api/apps/crm/accounts/merge/route.ts'),
+    source('app/api/apps/crm/contacts/merge/route.ts'),
+    source('app/api/apps/crm/merge-history/route.ts'),
+    source('app/apps/crm/CrmMergeHistoryPanel.tsx'),
+    source('app/apps/crm/CrmWorkspace.tsx'),
+    source('app/apps/crm/CrmWorkspaceClient.tsx'),
+  ]);
+
+  for (const sql of [schema, runtimeSchema]) {
+    assert.ok(sql.includes("moved_contact_snapshots JSONB NOT NULL DEFAULT '[]'::jsonb"));
+    assert.ok(sql.includes("moved_interaction_snapshots JSONB NOT NULL DEFAULT '[]'::jsonb"));
+    assert.ok(sql.includes('recovery_snapshot_version SMALLINT NOT NULL DEFAULT 0'));
+    assert.ok(sql.includes('reversed_at TIMESTAMPTZ'));
+    assert.ok(sql.includes('uq_crm_account_merge_history_active_source'));
+    assert.ok(sql.includes('uq_crm_contact_merge_history_active_source'));
+  }
+  assert.ok(accountMerge.includes('moved_contact_snapshots, moved_interaction_snapshots,'));
+  assert.ok(accountMerge.includes('recovery_snapshot_version, merged_by'));
+  assert.ok(accountMerge.includes('jsonb_agg(jsonb_build_object'));
+  assert.ok(contactMerge.includes('moved_interaction_snapshots, recovery_snapshot_version'));
+  assert.ok(contactMerge.includes('jsonb_agg(jsonb_build_object'));
+  assert.ok(historyRoute.includes("requireEnterpriseModuleTableContext('crm', 'crm_accounts', mode)"));
+  assert.ok(historyRoute.includes("requireEnterpriseModuleTableContext('crm', 'crm_contacts', mode)"));
+  assert.ok(historyRoute.includes("requireEnterpriseModuleTableContext('crm', 'crm_interactions', mode)"));
+  assert.ok(historyRoute.includes('recovery_snapshot_version'));
+  assert.ok(historyRoute.includes('editedAfterMerge'));
+  assert.ok(historyRoute.includes('RECOVERY_RELATIONSHIPS_CHANGED'));
+  assert.ok(historyRoute.includes('SOURCE_NAME_CONFIRMATION_MISMATCH'));
+  assert.ok(historyRoute.includes('ORDER BY id FOR UPDATE'));
+  assert.ok(historyRoute.includes("await client.query('ROLLBACK')"));
+  assert.ok(historyPanel.includes('/api/apps/crm/merge-history'));
+  assert.ok(historyPanel.includes('Type the exact source name to confirm recovery'));
+  assert.ok(workspace.includes("key: 'merge-history'"));
+  assert.ok(client.includes('CrmMergeHistoryPanel'));
+});
