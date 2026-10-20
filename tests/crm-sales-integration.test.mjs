@@ -408,6 +408,8 @@ test('CRM reports expose company-scoped relationship coverage, lifecycle, activi
   assert.ok(panel.includes('URL.createObjectURL'));
   assert.ok(panel.includes('Six-month interaction trend'));
   assert.ok(workspace.includes("section === 'reports'"));
+  assert.ok(workspace.includes("relationshipHealthView ? undefined : section"));
+  assert.ok(!workspace.includes("relationshipHealthView || reportsView ? undefined : section"));
   assert.ok(workspace.includes("key: 'reports'"));
   assert.ok(client.includes('CrmReportsPanel'));
 });
