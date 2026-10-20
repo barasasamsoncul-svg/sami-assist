@@ -148,3 +148,33 @@ test('CRM Customer 360 uses a dedicated Sales-style module shell and stays permi
   assert.match(links, /requestedAccountId/);
   assert.ok(links.includes('($2::uuid IS NULL OR a.id = $2)'));
 });
+
+
+test('CRM follow-up queue is company-scoped, paginated and uses CRM-only completion actions', async () => {
+  const [route, panel, workspace, client, interactions] = await Promise.all([
+    source('app/api/apps/crm/follow-ups/route.ts'),
+    source('app/apps/crm/CrmFollowUpsPanel.tsx'),
+    source('app/apps/crm/CrmWorkspace.tsx'),
+    source('app/apps/crm/CrmWorkspaceClient.tsx'),
+    source('app/api/apps/crm/interactions/route.ts'),
+  ]);
+
+  assert.match(route, /requireEnterpriseModuleTableContext\\('crm', 'crm_interactions', 'view'\\)/);
+  assert.ok(route.includes('i.company_id = $1'));
+  assert.ok(route.includes('i.deleted_at IS NULL'));
+  assert.ok(route.includes('LIMIT $4 OFFSET $5'));
+  assert.match(route, /due_today/);
+  assert.match(route, /completed_recently/);
+  assert.ok(route.includes('ILIKE $3'));
+  assert.ok(route.includes('LIMIT $4 OFFSET $5'));
+  assert.match(panel, /\\/api\\/apps\\/crm\\/follow-ups\\?/);
+  assert.match(panel, /Overdue/);
+  assert.match(panel, /Due today/);
+  assert.match(panel, /Upcoming/);
+  assert.match(panel, /method: 'PATCH'/);
+  assert.match(panel, /canEdit && item.status === 'planned'/);
+  assert.match(interactions, /requireEnterpriseModuleTableContext\\('crm', 'crm_interactions', 'edit'\\)/);
+  assert.match(workspace, /section === 'follow-ups'/);
+  assert.match(workspace, /label: 'Follow-ups'/);
+  assert.match(client, /CrmFollowUpsPanel/);
+});

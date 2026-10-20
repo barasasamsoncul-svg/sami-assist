@@ -6,6 +6,7 @@ import CrmCustomerLinkPanel from '@/app/apps/crm/CrmCustomerLinkPanel';
 import CrmRelationshipTimelinePanel from '@/app/apps/crm/CrmRelationshipTimelinePanel';
 import CrmAccount360Panel from '@/app/apps/crm/CrmAccount360Panel';
 import CrmAccount360Launcher from '@/app/apps/crm/CrmAccount360Launcher';
+import CrmFollowUpsPanel from '@/app/apps/crm/CrmFollowUpsPanel';
 
 import type { EnterpriseWorkspaceData } from '@/lib/apps/enterprise/service';
 import type { StandaloneEnterpriseWorkspaceView } from '@/app/apps/_shared/loadStandaloneEnterpriseApp';
@@ -17,6 +18,7 @@ export default function CrmWorkspaceClient({
   initialTableKey,
   accessibleModuleKeys,
   accountId,
+  followUpsView,
 }: {
   initialData: EnterpriseWorkspaceData;
   userId: string;
@@ -24,6 +26,7 @@ export default function CrmWorkspaceClient({
   initialTableKey: string | null;
   accessibleModuleKeys: string[];
   accountId?: string | null;
+  followUpsView: boolean;
 }) {
   if (accountId) {
     return (
@@ -34,6 +37,10 @@ export default function CrmWorkspaceClient({
         canCreateInteraction={initialData.capabilities.canCreate}
       />
     );
+  }
+
+  if (followUpsView) {
+    return <CrmFollowUpsPanel canEdit={initialData.capabilities.canEdit} />;
   }
 
   const accountTable = initialData.tables.find((table) => table.key === 'crm_accounts');

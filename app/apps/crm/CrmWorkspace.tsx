@@ -17,6 +17,7 @@ export default async function CrmWorkspace({
   section?: string | null;
   accountId?: string | null;
 }) {
+  const followUpsView = section === 'follow-ups';
   const {
     session,
     account,
@@ -25,7 +26,7 @@ export default async function CrmWorkspace({
     notifications,
     resolved,
     can,
-  } = await loadStandaloneEnterpriseApp(MODULE_KEY, section);
+  } = await loadStandaloneEnterpriseApp(MODULE_KEY, followUpsView ? undefined : section);
 
   const crmData = {
     ...data,
@@ -46,13 +47,14 @@ export default async function CrmWorkspace({
       badge: table.count,
       sectionLabel: 'Relationships',
     })),
+    { key: 'follow-ups', label: 'Follow-ups', href: appBaseHref + '/follow-ups', description: 'Manage overdue, today and upcoming CRM activities.', sectionLabel: 'Activity' },
     ...(data.capabilities.canReport ? [{ key: 'reports', label: 'Reports', href: appBaseHref + '/reports', description: 'Relationship coverage and engagement reporting.', sectionLabel: 'Insights' }] : []),
     { key: 'activity', label: 'Activity', href: appBaseHref + '/activity', description: 'Recent module changes and user actions.', sectionLabel: 'Insights' },
     ...(data.capabilities.canManageSettings && crmData.tables.some((table) => table.settingTable) ? [{ key: 'settings', label: 'Settings', href: appBaseHref + '/settings', description: 'Module defaults, policy and configuration.', sectionLabel: 'Configuration' }] : []),
   ];
 
   const accessibleModuleKeys = shell.accessibleModules.map((module) => module.registryKey);
-  const activeSidebarKey = accountId ? 'crm_accounts' : resolved.view === 'records' ? (resolved.tableKey || 'crm_accounts') : resolved.view;
+  const activeSidebarKey = accountId ? 'crm_accounts' : followUpsView ? 'follow-ups' : resolved.view === 'records' ? (resolved.tableKey || 'crm_accounts') : resolved.view;
 
   return (
     <CrmModuleShell
@@ -75,6 +77,7 @@ export default async function CrmWorkspace({
         initialTableKey={resolved.tableKey}
         accessibleModuleKeys={accessibleModuleKeys}
         accountId={accountId || null}
+        followUpsView={followUpsView}
       />
     </CrmModuleShell>
   );
