@@ -41,6 +41,8 @@ type QueueSummary = {
   due_today: number | string;
   upcoming: number | string;
   completed_recently: number | string;
+  completed: number | string;
+  all_activity: number | string;
   cancelled: number | string;
 };
 type QueuePayload = {
@@ -88,7 +90,7 @@ export default function CrmFollowUpsPanel({ canEdit }: { canEdit: boolean }) {
   const [page, setPage] = useState(1);
   const [items, setItems] = useState<FollowUp[]>([]);
   const [summary, setSummary] = useState<QueueSummary>({
-    open: 0, overdue: 0, due_today: 0, upcoming: 0, completed_recently: 0, cancelled: 0,
+    open: 0, overdue: 0, due_today: 0, upcoming: 0, completed_recently: 0, completed: 0, all_activity: 0, cancelled: 0,
   });
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
@@ -118,7 +120,7 @@ export default function CrmFollowUpsPanel({ canEdit }: { canEdit: boolean }) {
         throw new Error(payload.error || 'The follow-up queue could not be loaded.');
       }
       setItems(Array.isArray(payload.interactions) ? payload.interactions : []);
-      setSummary(payload.summary || { open: 0, overdue: 0, due_today: 0, upcoming: 0, completed_recently: 0, cancelled: 0 });
+      setSummary(payload.summary || { open: 0, overdue: 0, due_today: 0, upcoming: 0, completed_recently: 0, completed: 0, all_activity: 0, cancelled: 0 });
       setTotal(Number(payload.total || 0));
       setPages(Math.max(1, Number(payload.pages || 1)));
       if (page > Math.max(1, Number(payload.pages || 1))) setPage(Math.max(1, Number(payload.pages || 1)));
@@ -165,8 +167,8 @@ export default function CrmFollowUpsPanel({ canEdit }: { canEdit: boolean }) {
     { key: 'overdue' as const, label: 'Overdue', value: summary.overdue },
     { key: 'due_today' as const, label: 'Due today', value: summary.due_today },
     { key: 'upcoming' as const, label: 'Upcoming', value: summary.upcoming },
-    { key: 'completed' as const, label: 'Completed recently', value: summary.completed_recently },
-    { key: 'all' as const, label: 'All activity', value: total },
+    { key: 'completed' as const, label: 'Completed', value: summary.completed },
+    { key: 'all' as const, label: 'All activity', value: summary.all_activity },
   ];
 
   return (

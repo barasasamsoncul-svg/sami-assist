@@ -94,6 +94,8 @@ export async function GET(request: NextRequest) {
         "COUNT(*) FILTER (WHERE status = 'planned' AND due_at >= NOW() AND due_at < CURRENT_DATE + INTERVAL '1 day')::int AS due_today, " +
         "COUNT(*) FILTER (WHERE status = 'planned' AND due_at >= CURRENT_DATE + INTERVAL '1 day' AND due_at < CURRENT_DATE + INTERVAL '8 days')::int AS upcoming, " +
         "COUNT(*) FILTER (WHERE status = 'completed' AND completed_at >= NOW() - INTERVAL '30 days')::int AS completed_recently, " +
+        "COUNT(*) FILTER (WHERE status = 'completed')::int AS completed, " +
+        "COUNT(*)::int AS all_activity, " +
         "COUNT(*) FILTER (WHERE status = 'cancelled')::int AS cancelled " +
       'FROM public.crm_interactions WHERE company_id = $1 AND deleted_at IS NULL',
       [context.companyId],
@@ -159,6 +161,8 @@ export async function GET(request: NextRequest) {
         due_today: 0,
         upcoming: 0,
         completed_recently: 0,
+        completed: 0,
+        all_activity: 0,
         cancelled: 0,
       },
       interactions: rowsResult.rows,
