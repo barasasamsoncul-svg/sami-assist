@@ -22,6 +22,7 @@ type CrmAccount = {
   account_type: string;
   lifecycle_stage: string;
   invoicing_customer_id: string | null;
+  owner_user_id: string | null;
   updated_at: Date | string;
 };
 
@@ -72,7 +73,7 @@ async function findAccountForCustomer(
 ): Promise<CrmAccount | null> {
   const linked = await client.query<CrmAccount>(
     [
-      'SELECT id, account_name, account_type, lifecycle_stage, invoicing_customer_id, updated_at',
+      'SELECT id, account_name, account_type, lifecycle_stage, invoicing_customer_id, owner_user_id, updated_at',
       'FROM public.crm_accounts',
       'WHERE company_id = $1 AND invoicing_customer_id = $2 AND deleted_at IS NULL',
       'LIMIT 1 FOR UPDATE',
@@ -84,7 +85,7 @@ async function findAccountForCustomer(
 
   const sameName = await client.query<CrmAccount>(
     [
-      'SELECT id, account_name, account_type, lifecycle_stage, invoicing_customer_id, updated_at',
+      'SELECT id, account_name, account_type, lifecycle_stage, invoicing_customer_id, owner_user_id, updated_at',
       'FROM public.crm_accounts',
       'WHERE company_id = $1 AND LOWER(BTRIM(account_name)) = LOWER(BTRIM($2))',
       'AND deleted_at IS NULL',
@@ -123,7 +124,7 @@ async function findAccountForCustomer(
       '  invoicing_customer_id, created_by, updated_by',
       ') VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)',
       'ON CONFLICT DO NOTHING',
-      'RETURNING id, account_name, account_type, lifecycle_stage, invoicing_customer_id, updated_at',
+      'RETURNING id, account_name, account_type, lifecycle_stage, invoicing_customer_id, owner_user_id, updated_at',
     ].join('\n'),
     [
       companyId,
@@ -145,7 +146,7 @@ async function findAccountForCustomer(
   // and accept only an account linked to this same billing customer.
   const afterConflict = await client.query<CrmAccount>(
     [
-      'SELECT id, account_name, account_type, lifecycle_stage, invoicing_customer_id, updated_at',
+      'SELECT id, account_name, account_type, lifecycle_stage, invoicing_customer_id, owner_user_id, updated_at',
       'FROM public.crm_accounts',
       'WHERE company_id = $1 AND invoicing_customer_id = $2 AND deleted_at IS NULL',
       'LIMIT 1',
@@ -181,22 +182,38 @@ async function findPrimaryContact(
   }
 
   const email = clean(customer.email);
-  if (!email) return null;
+  if (email) {
+    const byEmail = await client.query<CrmContact>(
+      [
+        'SELECT id, account_id, first_name, last_name, email, phone, is_primary, preferred_channel, updated_at, deleted_at',
+        'FROM public.crm_contacts',
+        'WHERE company_id = $1 AND LOWER(BTRIM(email)) = LOWER(BTRIM($2))',
+        'AND deleted_at IS NULL',
+        'LIMIT 1 FOR UPDATE',
+      ].join('\n'),
+      [companyId, email],
+    );
 
-  const byEmail = await client.query<CrmContact>(
+    const match = byEmail.rows[0];
+    if (match) return match.account_id && match.account_id !== accountId ? null : match;
+  }
+
+  // Contacts without email addresses still need a stable initial match where
+  // their exact phone number is unique inside this CRM account.
+  const phone = clean(customer.phone);
+  if (!phone) return null;
+  const byPhone = await client.query<CrmContact>(
     [
       'SELECT id, account_id, first_name, last_name, email, phone, is_primary, preferred_channel, updated_at, deleted_at',
       'FROM public.crm_contacts',
-      'WHERE company_id = $1 AND LOWER(BTRIM(email)) = LOWER(BTRIM($2))',
+      'WHERE company_id = $1 AND account_id = $2 AND BTRIM(phone) = BTRIM($3)',
       'AND deleted_at IS NULL',
-      'LIMIT 1 FOR UPDATE',
+      'ORDER BY is_primary DESC, updated_at DESC',
+      'LIMIT 2 FOR UPDATE',
     ].join('\n'),
-    [companyId, email],
+    [companyId, accountId, phone],
   );
-
-  const match = byEmail.rows[0];
-  if (!match || (match.account_id && match.account_id !== accountId)) return null;
-  return match;
+  return byPhone.rows.length === 1 ? byPhone.rows[0] : null;
 }
 
 async function emailBelongsToAnotherContact(
@@ -341,7 +358,7 @@ export async function syncCrmCustomerMaster(
             'INSERT INTO public.crm_contacts (',
             '  company_id, account_id, first_name, last_name, email, phone,',
             '  contact_role, preferred_channel, is_primary, owner_user_id, created_by, updated_by',
-            ') VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9, $9, $9)',
+            ') VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9, $10, $10)',
             'ON CONFLICT DO NOTHING',
             'RETURNING id, account_id, first_name, last_name, email, phone, is_primary, preferred_channel, updated_at, deleted_at',
           ].join('\n'),
@@ -354,6 +371,7 @@ export async function syncCrmCustomerMaster(
             clean(customer.phone) || null,
             'other',
             channelFromCustomer(customer),
+            account.owner_user_id,
             userId,
           ],
         );
