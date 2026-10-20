@@ -24,6 +24,12 @@ import CrmWorkspaceClient from '@/app/apps/crm/CrmWorkspaceClient';
 
 const MODULE_KEY = 'crm';
 
+const CRM_TABLE_LABELS: Record<string, string> = {
+  crm_accounts: 'Accounts',
+  crm_contacts: 'Contacts',
+  crm_interactions: 'Interactions',
+};
+
 export default async function CrmWorkspace({
   section,
 }: {
@@ -46,6 +52,14 @@ export default async function CrmWorkspace({
       section,
     );
 
+  const crmData = {
+    ...data,
+    tables: data.tables.map(table => ({
+      ...table,
+      label: CRM_TABLE_LABELS[table.key] || table.label,
+    })),
+  };
+
   const appBaseHref =
     '/apps/crm';
 
@@ -56,7 +70,7 @@ export default async function CrmWorkspace({
       href: appBaseHref,
       description: 'KPIs, priorities and current operating state.',
     },
-    ...data.tables
+    ...crmData.tables
       .filter(
         table =>
           !table.settingTable,
@@ -100,7 +114,7 @@ export default async function CrmWorkspace({
     },
     ...(
       data.capabilities.canManageSettings &&
-      data.tables.some(
+      crmData.tables.some(
         table =>
           table.settingTable,
       )
@@ -193,7 +207,7 @@ export default async function CrmWorkspace({
         } as CSSProperties}
       >
         <CrmWorkspaceClient
-          initialData={data}
+          initialData={crmData}
           userId={session.user.id}
           initialView={resolved.view}
           initialTableKey={resolved.tableKey}
