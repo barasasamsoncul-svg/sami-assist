@@ -98,7 +98,8 @@ function safeSnapshotForHistory(type: 'account' | 'contact', row: Record<string,
     return movedContacts.length === Number(row.moved_contact_count || 0) &&
       movedInteractions.length === Number(row.moved_interaction_count || 0);
   }
-  return movedInteractions.length >= Number(row.moved_interaction_count || 0);
+  const movedFromSource = movedInteractions.filter((snapshot) => String(snapshot.contact_id || '') === String(row.source_contact_id)).length;
+  return movedFromSource === Number(row.moved_interaction_count || 0);
 }
 
 export async function GET() {
