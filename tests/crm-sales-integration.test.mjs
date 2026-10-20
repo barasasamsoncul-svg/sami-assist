@@ -213,3 +213,62 @@ test('CRM account segments support validated server filters and private saved vi
   assert.ok(workspace.includes("label: 'Account segments'"));
   assert.ok(client.includes('CrmAccountSegmentsPanel'));
 });
+
+
+test('CRM data quality detects candidate duplicates, protects account merges, and supports company-scoped owner assignment', async () => {
+  const [schema, runtimeSchema, ownersRoute, ownerRoute, duplicatesRoute, mergeRoute, ownerPanel, qualityPanel, workspace, client, profile] = await Promise.all([
+    source('lib/apps/crm/schema.sql'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+    source('app/api/apps/crm/owners/route.ts'),
+    source('app/api/apps/crm/accounts/[accountId]/owner/route.ts'),
+    source('app/api/apps/crm/duplicate-candidates/route.ts'),
+    source('app/api/apps/crm/accounts/merge/route.ts'),
+    source('app/apps/crm/CrmAccountOwnerPanel.tsx'),
+    source('app/apps/crm/CrmDataQualityPanel.tsx'),
+    source('app/apps/crm/CrmWorkspace.tsx'),
+    source('app/apps/crm/CrmWorkspaceClient.tsx'),
+    source('app/apps/crm/CrmAccount360Panel.tsx'),
+  ]);
+
+  for (const text of [schema, runtimeSchema]) {
+    assert.ok(text.includes('CREATE TABLE IF NOT EXISTS public.crm_account_owner_history'));
+    assert.ok(text.includes('CREATE TABLE IF NOT EXISTS public.crm_account_merge_history'));
+    assert.ok(text.includes('moved_contact_count'));
+    assert.ok(text.includes('source_snapshot JSONB NOT NULL'));
+  }
+
+  assert.ok(ownersRoute.includes("requireEnterpriseModuleTableContext('crm', 'crm_accounts', 'view')"));
+  assert.ok(ownersRoute.includes('buildWorkspaceMemberDirectory'));
+  assert.ok(ownersRoute.includes('member.companies.some((company) => company.id === context.companyId)'));
+  assert.ok(ownerRoute.includes("requireEnterpriseModuleTableContext('crm', 'crm_accounts', 'edit')"));
+  assert.ok(ownerRoute.includes('OWNER_NOT_ASSIGNABLE'));
+  assert.ok(ownerRoute.includes('sameOrigin'));
+  assert.ok(ownerRoute.includes('crm_account_owner_history'));
+
+  assert.ok(duplicatesRoute.includes("requireEnterpriseModuleTableContext('crm', 'crm_accounts', 'view')"));
+  assert.ok(duplicatesRoute.includes("requireEnterpriseModuleTableContext('crm', 'crm_contacts', 'view')"));
+  assert.ok(duplicatesRoute.includes("a.company_id = $1"));
+  assert.ok(duplicatesRoute.includes("c1.company_id = $1"));
+  assert.ok(duplicatesRoute.includes("normalized_name"));
+
+  assert.ok(mergeRoute.includes("requireEnterpriseModuleTableContext('crm', 'crm_accounts', 'edit')"));
+  assert.ok(mergeRoute.includes("requireEnterpriseModuleTableContext('crm', 'crm_contacts', 'edit')"));
+  assert.ok(mergeRoute.includes("requireEnterpriseModuleTableContext('crm', 'crm_interactions', 'edit')"));
+  assert.ok(mergeRoute.includes('FOR UPDATE'));
+  assert.ok(mergeRoute.includes('BILLING_IDENTITY_CONFLICT'));
+  assert.ok(mergeRoute.includes('confirmSourceAccountName'));
+  assert.ok(mergeRoute.includes('crm_account_merge_history'));
+  assert.ok(mergeRoute.includes('CRM contacts and interactions now belong to the surviving account; Sales data was not modified.'));
+
+  assert.ok(ownerPanel.includes('/api/apps/crm/owners'));
+  assert.ok(ownerPanel.includes('/owner'));
+  assert.ok(ownerPanel.includes('Save owner'));
+  assert.ok(qualityPanel.includes('/api/apps/crm/duplicate-candidates'));
+  assert.ok(qualityPanel.includes('/api/apps/crm/accounts/merge'));
+  assert.ok(qualityPanel.includes('Type the name of the account to retire'));
+  assert.ok(qualityPanel.includes('Contact duplicates are flagged for review only'));
+  assert.ok(workspace.includes("section === 'data-quality'"));
+  assert.ok(workspace.includes("label: 'Data quality'"));
+  assert.ok(client.includes('CrmDataQualityPanel'));
+  assert.ok(profile.includes('<CrmAccountOwnerPanel'));
+});

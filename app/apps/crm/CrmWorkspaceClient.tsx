@@ -8,6 +8,7 @@ import CrmAccount360Panel from '@/app/apps/crm/CrmAccount360Panel';
 import CrmAccount360Launcher from '@/app/apps/crm/CrmAccount360Launcher';
 import CrmFollowUpsPanel from '@/app/apps/crm/CrmFollowUpsPanel';
 import CrmAccountSegmentsPanel from '@/app/apps/crm/CrmAccountSegmentsPanel';
+import CrmDataQualityPanel from '@/app/apps/crm/CrmDataQualityPanel';
 
 import type { EnterpriseWorkspaceData } from '@/lib/apps/enterprise/service';
 import type { StandaloneEnterpriseWorkspaceView } from '@/app/apps/_shared/loadStandaloneEnterpriseApp';
@@ -21,6 +22,7 @@ export default function CrmWorkspaceClient({
   accountId,
   followUpsView,
   segmentsView,
+  dataQualityView,
 }: {
   initialData: EnterpriseWorkspaceData;
   userId: string;
@@ -30,6 +32,7 @@ export default function CrmWorkspaceClient({
   accountId?: string | null;
   followUpsView: boolean;
   segmentsView: boolean;
+  dataQualityView: boolean;
 }) {
   if (accountId) {
     return (
@@ -38,6 +41,7 @@ export default function CrmWorkspaceClient({
         salesEnabled={accessibleModuleKeys.includes('sales')}
         invoicingEnabled={accessibleModuleKeys.includes('invoicing')}
         canCreateInteraction={initialData.capabilities.canCreate}
+        canEditAccount={initialData.capabilities.canEdit}
       />
     );
   }
@@ -48,6 +52,10 @@ export default function CrmWorkspaceClient({
 
   if (segmentsView) {
     return <CrmAccountSegmentsPanel />;
+  }
+
+  if (dataQualityView) {
+    return <CrmDataQualityPanel canMerge={initialData.capabilities.canEdit} />;
   }
 
   const accountTable = initialData.tables.find((table) => table.key === 'crm_accounts');

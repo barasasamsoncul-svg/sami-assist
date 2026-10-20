@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, ArrowUpRight, Building2, CalendarClock, CircleAlert, FileText, Phone, RefreshCw, UsersRound } from 'lucide-react';
+import CrmAccountOwnerPanel from '@/app/apps/crm/CrmAccountOwnerPanel';
 
 type Account = {
   id: string;
@@ -75,11 +76,13 @@ export default function CrmAccount360Panel({
   salesEnabled,
   invoicingEnabled,
   canCreateInteraction,
+  canEditAccount,
 }: {
   accountId: string;
   salesEnabled: boolean;
   invoicingEnabled: boolean;
   canCreateInteraction: boolean;
+  canEditAccount: boolean;
 }) {
   const [account, setAccount] = useState<Account | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -185,6 +188,8 @@ export default function CrmAccount360Panel({
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {metrics.map((metric) => <section key={metric.label} className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-4 shadow-[var(--sami-shadow-sm)]"><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">{metric.label}</p><p className="mt-2 text-2xl font-black tabular-nums">{metric.value}</p><p className="mt-1 text-xs text-slate-500">{metric.detail}</p></section>)}
           </div>
+
+          <CrmAccountOwnerPanel accountId={account.id} currentOwnerId={account.owner_user_id} canEdit={canEditAccount} onSaved={load} />
 
           <section className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-4 shadow-[var(--sami-shadow-sm)] sm:p-5">
             <div className="flex items-center gap-2"><Building2 className="h-4 w-4 text-blue-600" /><h2 className="text-sm font-black">Account overview</h2><span className="ml-auto rounded-full border border-[var(--sami-border)] px-2.5 py-1 text-[10px] font-bold">{label(account.lifecycle_stage)}</span></div>
