@@ -72,26 +72,21 @@ const SPECIALIST_LAYOUTS:
   crm: {
     moduleKey: 'crm',
     style: 'pipeline',
-    eyebrow: 'Revenue workspace',
-    headline: 'Leads, opportunities, activities and forecast',
+    eyebrow: 'Customer relationships',
+    headline: 'Accounts, contacts and relationship history',
     description:
-      'Work the pipeline visually, keep next actions close to each opportunity and use forecast evidence instead of a flat customer register.',
+      'Keep account and contact records together with their interaction history, and view the live lead and opportunity pipeline from SaMi Sales without maintaining a second pipeline.',
     primaryTables: [
-      'opportunities',
-      'leads',
+      'crm_accounts',
+      'crm_contacts',
     ],
     workQueueTables: [
-      'crm_activities',
-      'crm_forecasts',
-      'crm_forecast_lines',
+      'crm_interactions',
     ],
-    controlTables: [
-      'crm_stages',
-      'crm_scoring_rules',
-    ],
-    preferredRecordView: 'kanban',
+    controlTables: [],
+    preferredRecordView: 'list',
     crossAppNarrative:
-      'Qualified demand should continue into Sales, communication and billing without re-entering the commercial context.',
+      'CRM owns customer relationships. SaMi Sales remains the source of truth for leads, opportunities, quotations and order outcomes.',
   },
   inventory: {
     moduleKey: 'inventory',
