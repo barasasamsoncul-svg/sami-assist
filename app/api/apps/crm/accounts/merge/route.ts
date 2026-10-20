@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { NextRequest, NextResponse } from 'next/server';
+import type { PoolClient } from 'pg';
 import { CompanyContextError } from '@/lib/auth/company-context';
 import { TenantContextError } from '@/lib/auth/tenant-context';
 import { EnterpriseModuleError, requireEnterpriseModuleTableContext } from '@/lib/apps/enterprise/service';
@@ -88,7 +89,7 @@ export async function POST(request: NextRequest) {
   if (!sameOrigin(request)) {
     return json({ success: false, code: 'CROSS_ORIGIN_REQUEST', error: 'This action must come from the SaMi workspace.' }, 403);
   }
-  let client: Awaited<ReturnType<Awaited<ReturnType<typeof requireEnterpriseModuleTableContext>>['pool']['connect']>> | null = null;
+  let client: PoolClient | null = null;
   try {
     const body = await parseBody(request);
     const survivorId = cleanText(body.survivorAccountId, 64);
