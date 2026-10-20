@@ -24,7 +24,7 @@ test('quote composer exposes a salesperson selector and includes the selected us
   assert.match(workspace, /salespeople=\{initialData\.salespeople\}/);
   assert.match(workspace, /currentSalespersonId=\{initialData\.currentSalespersonId\}/);
   assert.match(composer, /salespersonUserId: salespersonUserId \|\| undefined/);
-  assert.match(types, /salespeople: Array<\{[\s\S]{0,100}id: string;[\s\S]{0,100}name: string;[\s\S]{0,100}email: string;/);
+  assert.match(types, /salespeople: SalesSalesperson\\[\\]/);
   assert.match(types, /salespersonUserId: string \| null/);
   assert.match(queries, /FROM tenant_users tu[\s\S]{0,240}tu\.status = 'active'[\s\S]{0,120}tu\.member_type = 'internal'/);
   assert.match(queries, /salespeople: salespeople\.rows\.map/);

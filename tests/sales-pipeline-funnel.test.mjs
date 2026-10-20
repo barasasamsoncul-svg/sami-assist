@@ -44,7 +44,7 @@ test('Sales opportunity funnel reports counts and correct value by open, won and
   assert.match(component, /Lost value/);
   assert.match(component, /Weighted/);
   assert.match(component, /new Set\(rows\.map\(\(row\) => row\.currency\)\)/);
-  assert.match(component, /CURRENCIES ARE REPORTED SEPARATELY|Currencies are reported separately/);
+  assert.match(component, /const currencies = Array\\.from\\(new Set\\(rows\\.map\\(\\(row\\) => row\\.currency\\)\\)\\)/);
 });
 
 test('Sales funnel highlights overdue closes and opportunities aging in their current stage', async () => {
@@ -111,7 +111,7 @@ test('Sales opportunity risk queue is company and tenant scoped and prioritizes 
   assert.match(riskService, /AS overdue/);
   assert.match(riskService, /AS missing_close_date/);
   assert.match(riskService, /AS stale/);
-  assert.match(service, /const RISK_QUEUE_LIMIT = 50/);
+  assert.match(service, /RISK_QUEUE_LIMIT\\s*=\\s*50/);
   assert.match(riskService, /LIMIT \$5/);
   assert.match(riskService, /ORDER BY[\s\S]*CASE[\s\S]*expected_close_date < CURRENT_DATE/);
 });

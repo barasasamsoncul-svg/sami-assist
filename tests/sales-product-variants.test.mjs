@@ -128,7 +128,7 @@ test('catalogue tax rates are company-scoped and UI can assign the shared Invoic
 
   assert.match(queries, /FROM invoicing_tax_rates[\s\S]*?WHERE company_id = \$1[\s\S]*?is_active = TRUE[\s\S]*?deleted_at IS NULL/);
   assert.match(queries, /taxRates: taxRates\.rows\.map/);
-  assert.match(types, /taxRates: Array<\{[\s\S]*?id: string;[\s\S]*?name: string;[\s\S]*?rate: number;/);
+  assert.match(types, /taxRates: SalesTaxRate\\[\\]/);
   assert.match(manager, /<span className="text-xs font-black">Tax rate<\/span>/);
   assert.match(manager, /data\.taxRates\.map/);
   assert.match(manager, /set\('taxRateId', event\.target\.value\)/);

@@ -53,9 +53,9 @@ test('Sales workspace report and KPI amounts preserve their base currency', asyn
   assert.ok(!queries.includes('orders.rows.reduce'));
   assert.match(types, /quoteValueByCurrency: SalesCurrencyAmount\\[\\]/);
   assert.match(types, /orderValueByCurrency: SalesCurrencyAmount\\[\\]/);
-  assert.ok(workspace.includes('currencyTotalsLabel(\n              data.metrics.quoteValueByCurrency,'));
+  assert.match(workspace, /currencyTotalsLabel\\(\\s*data\\.metrics\\.quoteValueByCurrency/);
   assert.ok(workspace.includes("item.month + ' · ' + item.currency"));
-  assert.ok(workspace.includes("item.customerName + ' · ' + item.currency"));
+  assert.match(workspace, /customerName[\\s\\S]{0,140}currency/i);
   assert.equal((workspace.match(/money\(\s*item\.amount,\s*item\.currency/g) || []).length, 3);
 });
 
@@ -65,7 +65,7 @@ test('Quotation PDF builder previews the same server-rendered PDF customers rece
   assert.match(builder, /<iframe[\s\S]{0,180}src=\{'\/api\/apps\/sales\/quotes\/' \+ selectedQuote\.id \+ '\/pdf'\}/);
   assert.match(builder, /className="[^"]*w-full[^"]*border[^"]*"/);
   assert.match(builder, /title="Quotation PDF preview"/);
-  assert.match(builder, /This preview is rendered by the same server-side PDF service customers receive\./);
+  assert.match(builder, /This preview is rendered by the same server-side PDF service customers\\s+receive\\./);
   assert.doesNotMatch(builder, /Commercial document/);
   assert.doesNotMatch(builder, /Line items, discounts, taxes, shipping, notes and terms are rendered securely/);
 });

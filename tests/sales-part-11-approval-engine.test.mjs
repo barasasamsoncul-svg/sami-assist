@@ -97,9 +97,9 @@ test('approval policy and queue are available in the Sales UI', async () => {
     source('app/apps/sales/SalesWorkspaceClient.tsx'),
   ]);
   assert.match(ui, /Create approval policy/);
-  assert.match(ui, /Minimum quote total is evaluated in the company&apos;s base currency/);
+  assert.match(ui, /minimum quote total is evaluated in the[\\s\\S]{0,100}base currency/i);
   assert.match(ui, /Sequential approval steps/);
-  assert.match(ui, /Approval queue and audit trail/);
+  assert.match(ui, /Pending decisions and completed audit trail/);
   assert.match(page, /SalesSectionPage view="approvals"/);
   assert.match(section, /view === 'approvals'[\s\S]{0,100}<SalesApprovalsManager \/>/);
   assert.match(detail, /\/apps\/sales\/approvals/);
@@ -125,7 +125,7 @@ test('Sales approval queue supports paginated retrieval and requester/editor wit
   assert.ok(route.includes("offset: request.nextUrl.searchParams.get('offset')"));
   assert.ok(route.includes("limit: request.nextUrl.searchParams.get('limit')"));
   assert.ok(manager.includes('body.approvals.hasMore === true'));
-  assert.ok(manager.includes('request.canWithdraw &&'));
+  assert.match(manager, /request\\.canWithdraw\\s*\\?/);
   assert.ok(manager.includes("action: 'cancel_quote_approval'"));
   assert.ok(manager.includes('Load more'));
   assert.match(engine, /a-z0-9/);
