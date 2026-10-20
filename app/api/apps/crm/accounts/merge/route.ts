@@ -166,6 +166,16 @@ export async function POST(request: NextRequest) {
     );
     const movedContactCount = Number(contactsCount.rows[0]?.count || 0);
     const movedInteractionCount = Number(interactionsCount.rows[0]?.count || 0);
+    const contactSnapshotsResult = await client.query(
+      "SELECT COALESCE(jsonb_agg(jsonb_build_object('id', id, 'account_id', account_id, 'is_primary', is_primary, 'updated_at', updated_at, 'updated_by', updated_by) ORDER BY id), '[]'::jsonb) AS snapshots FROM public.crm_contacts WHERE company_id = $1 AND account_id = $2 AND deleted_at IS NULL",
+      [accountContext.companyId, sourceId],
+    );
+    const interactionSnapshotsResult = await client.query(
+      "SELECT COALESCE(jsonb_agg(jsonb_build_object('id', id, 'account_id', account_id, 'updated_at', updated_at, 'updated_by', updated_by) ORDER BY id), '[]'::jsonb) AS snapshots FROM public.crm_interactions WHERE company_id = $1 AND account_id = $2 AND deleted_at IS NULL",
+      [accountContext.companyId, sourceId],
+    );
+    const movedContactSnapshots = contactSnapshotsResult.rows[0]?.snapshots || [];
+    const movedInteractionSnapshots = interactionSnapshotsResult.rows[0]?.snapshots || [];
     const hasPrimaryContact = await client.query(
       'SELECT 1 FROM public.crm_contacts WHERE company_id = $1 AND account_id = $2 AND deleted_at IS NULL AND is_primary = TRUE LIMIT 1',
       [accountContext.companyId, survivorId],
@@ -235,12 +245,14 @@ export async function POST(request: NextRequest) {
       `INSERT INTO public.crm_account_merge_history (
          company_id, survivor_account_id, source_account_id,
          survivor_snapshot, source_snapshot, moved_contact_count,
-         moved_interaction_count, merged_by
-       ) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8)`,
+         moved_interaction_count, moved_contact_snapshots, moved_interaction_snapshots,
+         recovery_snapshot_version, merged_by
+       ) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8::jsonb, $9::jsonb, 1, $10)`,
       [
         accountContext.companyId, survivorId, sourceId,
         JSON.stringify(survivor), JSON.stringify(source),
-        movedContactCount, movedInteractionCount, accountContext.userId,
+        movedContactCount, movedInteractionCount,
+        JSON.stringify(movedContactSnapshots), JSON.stringify(movedInteractionSnapshots), accountContext.userId,
       ],
     );
 
