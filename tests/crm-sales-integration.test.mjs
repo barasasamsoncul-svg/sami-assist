@@ -160,7 +160,7 @@ test('CRM follow-up queue is company-scoped, paginated and uses CRM-only complet
     source('app/api/apps/crm/interactions/route.ts'),
   ]);
 
-  assert.ok(route.includes("requireEnterpriseModuleTableContext('crm', 'crm_interactions', 'report')"));
+  assert.ok(route.includes("requireEnterpriseModuleTableContext('crm', 'crm_interactions', 'view')"));
   assert.ok(route.includes('i.company_id = $1'));
   assert.ok(route.includes('i.deleted_at IS NULL'));
   assert.ok(route.includes('LIMIT $4 OFFSET $5'));
@@ -396,7 +396,7 @@ test('CRM reports expose company-scoped relationship coverage, lifecycle, activi
 
   assert.ok(route.includes("requireEnterpriseModuleTableContext('crm', 'crm_accounts', 'report')"));
   assert.ok(route.includes("requireEnterpriseModuleTableContext('crm', 'crm_contacts', 'report')"));
-  assert.ok(route.includes("requireEnterpriseModuleTableContext('crm', 'crm_interactions', 'view')"));
+  assert.ok(route.includes("requireEnterpriseModuleTableContext('crm', 'crm_interactions', 'report')"));
   assert.ok(route.includes('accounts.companyId !== contacts.companyId'));
   assert.ok(route.includes('a.company_id = $1'));
   assert.ok(route.includes('i.company_id = $1'));
