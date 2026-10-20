@@ -110,3 +110,41 @@ test('CRM relationship timeline validates company-scoped records and keeps Sales
   assert.match(panel, /does not send a message or make a call/i);
   assert.match(client, /CrmRelationshipTimelinePanel/);
 });
+
+
+test('CRM Customer 360 uses a dedicated Sales-style module shell and stays permission scoped', async () => {
+  const [shell, workspace, launcher, profile, page, route, links] = await Promise.all([
+    source('app/apps/crm/CrmModuleShell.tsx'),
+    source('app/apps/crm/CrmWorkspace.tsx'),
+    source('app/apps/crm/CrmAccount360Launcher.tsx'),
+    source('app/apps/crm/CrmAccount360Panel.tsx'),
+    source('app/apps/crm/accounts/[accountId]/page.tsx'),
+    source('app/api/apps/crm/accounts/[accountId]/route.ts'),
+    source('app/api/apps/crm/customer-links/route.ts'),
+  ]);
+
+  assert.match(shell, /data-crm-shell="standalone"/);
+  assert.match(shell, /fixed inset-y-0 left-0/);
+  assert.match(shell, /WorkspaceAppSwitcher/);
+  assert.match(shell, /WorkspaceTenantSwitcher/);
+  assert.match(shell, /WorkspaceNotificationCenter/);
+  assert.doesNotMatch(shell, /<AppSurfaceShell/);
+  assert.match(workspace, /CrmModuleShell/);
+  assert.match(launcher, /\/apps\/crm\/accounts\//);
+  assert.match(page, /CrmWorkspace accountId=\{accountId\}/);
+
+  assert.match(route, /requireEnterpriseModuleTableContext\('crm', 'crm_accounts', 'view'\)/);
+  assert.match(route, /requireEnterpriseModuleTableContext\('crm', 'crm_contacts', 'view'\)/);
+  assert.ok(route.includes('company_id = $2'));
+  assert.ok(route.includes('deleted_at IS NULL'));
+  assert.match(route, /CRM_ACCOUNT_NOT_FOUND/);
+
+  assert.match(profile, /\/api\/apps\/crm\/interactions\?accountId=/);
+  assert.match(profile, /\/api\/apps\/sales\?pipeline=1/);
+  assert.match(profile, /Sales relationship/);
+  assert.match(profile, /Read-only/);
+  assert.match(profile, /\/api\/apps\/crm\/customer-links\?accountId=/);
+  assert.match(profile, /Invoicing connection/);
+  assert.match(links, /requestedAccountId/);
+  assert.ok(links.includes('($2::uuid IS NULL OR a.id = $2)'));
+});

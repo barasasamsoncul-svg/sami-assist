@@ -220,6 +220,11 @@ export async function GET(request: NextRequest) {
   try {
     const context = await requireLinkContext('view');
     const search = (request.nextUrl.searchParams.get('search') || '').trim().slice(0, 100);
+    const requestedAccountId = (request.nextUrl.searchParams.get('accountId') || '').trim();
+    if (requestedAccountId && !UUID_RE.test(requestedAccountId)) {
+      return json({ success: false, code: 'INVALID_INPUT', error: 'Choose a valid CRM account.' }, 400);
+    }
+    const accountFilter = requestedAccountId || null;
     const searchPattern = '%' + search + '%';
 
     const [accountsResult, customersResult] = await Promise.all([
@@ -239,9 +244,10 @@ export async function GET(request: NextRequest) {
          AND c.company_id = a.company_id
         WHERE a.company_id = $1
           AND a.deleted_at IS NULL
+          AND ($2::uuid IS NULL OR a.id = $2)
         ORDER BY LOWER(a.account_name), a.id
-        LIMIT $2
-      `, [context.companyId, ACCOUNT_RESULT_LIMIT + 1]),
+        LIMIT $3
+      `, [context.companyId, accountFilter, accountFilter ? 1 : ACCOUNT_RESULT_LIMIT + 1]),
       context.pool.query(`
         SELECT id, name, email, phone, currency
         FROM public.invoicing_customers
@@ -262,7 +268,7 @@ export async function GET(request: NextRequest) {
     return json({
       success: true,
       accounts: accountsResult.rows.slice(0, ACCOUNT_RESULT_LIMIT),
-      accountsTruncated: accountsResult.rows.length > ACCOUNT_RESULT_LIMIT,
+      accountsTruncated: !accountFilter && accountsResult.rows.length > ACCOUNT_RESULT_LIMIT,
       customers: customersResult.rows,
     });
   } catch (error) {
