@@ -376,7 +376,7 @@ export default function SalesQuoteDetailClient({
         </div>
       ) : null}
 
-      <div className="space-y-4">
+      <div className="min-w-0 space-y-4">
         {/* ---------- Header card ---------- */}
         <section className="sami-surface rounded-[26px] p-4 sm:p-5">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -497,9 +497,9 @@ export default function SalesQuoteDetailClient({
           </section>
         ) : null}
 
-        <section className="grid gap-4 xl:grid-cols-[1fr_370px]">
+        <section className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_370px]">
           {/* ---------- Left column ---------- */}
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4">
             {/* Lines */}
             <div className="sami-surface overflow-hidden rounded-[24px]">
               <div className="flex items-center justify-between gap-2 border-b border-[var(--sami-border)] p-4">
@@ -879,7 +879,7 @@ export default function SalesQuoteDetailClient({
           </div>
 
           {/* ---------- Right column (aside) ---------- */}
-          <aside className="space-y-4">
+          <aside className="min-w-0 space-y-4">
             {/* Summary */}
             <div className="sami-surface rounded-[24px] p-4">
               <h2 className="inline-flex items-center gap-1.5 text-sm font-black">
