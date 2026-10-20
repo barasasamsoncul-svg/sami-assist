@@ -26,7 +26,7 @@ test('Sales revenue outlook aggregates only comparable base-currency amounts', a
   );
   assert.match(
     forecast,
-    /COUNT\(\*\) FILTER \(\s*WHERE status IN \('draft', 'sent', 'viewed'\)\s+AND valid_until IS NOT NULL/,
+    /COUNT\\(\\*\\) FILTER \\(\\s*WHERE status IN \\('draft'\\s*,\\s*'sent'\\s*,\\s*'viewed'\\)\\s*AND valid_until IS NOT NULL/ ,
     'accepted quotations must not be counted as expiring offers',
   );
   assert.match(forecast, /currencies AS \([\s\S]*?SELECT currency FROM quote_pipeline[\s\S]*?UNION[\s\S]*?SELECT currency FROM committed/);
