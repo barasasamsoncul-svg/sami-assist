@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 
 import {
+  createContext,
+  useContext,
   useState,
   type ReactNode,
 } from 'react';
@@ -24,6 +26,14 @@ import WorkspaceNotificationCenter from '@/app/components/workspace/WorkspaceNot
 import WorkspaceSearchLauncher from '@/app/components/workspace/WorkspaceSearch';
 import WorkspaceTenantSwitcher from '@/app/components/workspace/WorkspaceTenantSwitcher';
 import type { AppSidebarItem } from '@/app/components/apps/AppSurfaceShell';
+
+/* -------------------------------------------------------------------------- */
+/*  Double-mount guard                                                        */
+/* -------------------------------------------------------------------------- */
+
+// Marks "a SalesModuleShell is already rendering in this subtree".
+// The inner one becomes a pass-through so we never paint two sidebars.
+const SalesShellMount = createContext(false);
 
 /* -------------------------------------------------------------------------- */
 /*  Types                                                                     */
@@ -227,6 +237,13 @@ export default function SalesModuleShell({
   companyName,
   children,
 }: Props) {
+  // If a SalesModuleShell is already rendering above us in the tree, don't
+  // paint a second sidebar/topbar/padding — just pass children through.
+  const alreadyMounted = useContext(SalesShellMount);
+  if (alreadyMounted) {
+    return <>{children}</>;
+  }
+
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [liveUnread, setLiveUnread] = useState(unreadNotifications);
 
@@ -235,146 +252,148 @@ export default function SalesModuleShell({
   );
 
   return (
-    <main
-      data-sami-app="sales"
-      data-sales-shell="standalone"
-      data-sales-active-view={activeSidebarKey}
-      className="min-h-screen bg-[var(--sami-canvas)] text-slate-950 dark:text-white"
-    >
-      {/* ------------------------------------------------------------------ */}
-      {/* Desktop sidebar                                                    */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="hidden lg:block">
-        <div className="fixed inset-y-0 left-0 z-50 w-[260px] border-r border-[var(--sami-border)] bg-[var(--sami-sidebar)] shadow-[8px_0_32px_rgba(16,24,40,0.03)]">
-          <SalesSidebar
-            companyName={companyName}
-            appSidebarItems={appSidebarItems}
-            activeSidebarKey={activeSidebarKey}
-          />
-        </div>
-      </div>
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Mobile sidebar                                                     */}
-      {/* ------------------------------------------------------------------ */}
-      {mobileSidebarOpen ? (
-        <div className="fixed inset-0 z-[90] lg:hidden">
-          <button
-            type="button"
-            aria-label="Close Sales navigation"
-            className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]"
-            onClick={() => setMobileSidebarOpen(false)}
-          />
-          <div className="absolute inset-y-0 left-0 w-[min(88vw,280px)] border-r border-[var(--sami-border)] bg-[var(--sami-sidebar)] shadow-2xl">
-            <button
-              type="button"
-              aria-label="Close Sales navigation"
-              onClick={() => setMobileSidebarOpen(false)}
-              className="absolute right-3 top-4 z-10 inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)]"
-            >
-              <X className="h-4 w-4" aria-hidden="true" />
-            </button>
+    <SalesShellMount.Provider value={true}>
+      <main
+        data-sami-app="sales"
+        data-sales-shell="standalone"
+        data-sales-active-view={activeSidebarKey}
+        className="min-h-screen bg-[var(--sami-canvas)] text-slate-950 dark:text-white"
+      >
+        {/* ---------------------------------------------------------------- */}
+        {/* Desktop sidebar                                                  */}
+        {/* ---------------------------------------------------------------- */}
+        <div className="hidden lg:block">
+          <div className="fixed inset-y-0 left-0 z-50 w-[260px] border-r border-[var(--sami-border)] bg-[var(--sami-sidebar)] shadow-[8px_0_32px_rgba(16,24,40,0.03)]">
             <SalesSidebar
               companyName={companyName}
               appSidebarItems={appSidebarItems}
               activeSidebarKey={activeSidebarKey}
-              onNavigate={() => setMobileSidebarOpen(false)}
             />
           </div>
         </div>
-      ) : null}
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Content                                                            */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="min-h-screen lg:pl-[260px]">
-        <header className="sticky top-0 z-40 border-b border-[var(--sami-border)] bg-[var(--sami-topbar)]/95 backdrop-blur-xl">
-          <div className="flex h-[60px] min-w-0 items-center gap-2 px-3 sm:px-5 lg:px-6">
+        {/* ---------------------------------------------------------------- */}
+        {/* Mobile sidebar                                                   */}
+        {/* ---------------------------------------------------------------- */}
+        {mobileSidebarOpen ? (
+          <div className="fixed inset-0 z-[90] lg:hidden">
             <button
               type="button"
-              aria-label="Open Sales navigation"
-              onClick={() => setMobileSidebarOpen(true)}
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] lg:hidden"
-            >
-              <Menu className="h-4 w-4" aria-hidden="true" />
-            </button>
-
-            <Link
-              href="/apps"
-              aria-label="Back to all apps"
-              className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] text-slate-500 transition hover:text-slate-950 sm:inline-flex dark:text-slate-300 dark:hover:text-white"
-            >
-              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            </Link>
-
-            <div className="min-w-0 flex-1">
-              <p className="flex min-w-0 items-center gap-1.5 text-xs">
-                <Link
-                  href="/apps/sales"
-                  className="shrink-0 text-slate-500 transition hover:text-slate-950 dark:hover:text-white"
-                >
-                  Sales
-                </Link>
-                <ChevronRight
-                  className="h-3.5 w-3.5 shrink-0 text-slate-400"
-                  aria-hidden="true"
-                />
-                <span className="truncate font-black">
-                  {activePage?.label || 'Workspace'}
-                </span>
-              </p>
-              <p
-                title={activePage?.description || undefined}
-                className="mt-0.5 hidden max-w-[min(52vw,640px)] truncate text-[11px] text-slate-500 dark:text-slate-400 sm:block"
+              aria-label="Close Sales navigation"
+              className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]"
+              onClick={() => setMobileSidebarOpen(false)}
+            />
+            <div className="absolute inset-y-0 left-0 w-[min(88vw,280px)] border-r border-[var(--sami-border)] bg-[var(--sami-sidebar)] shadow-2xl">
+              <button
+                type="button"
+                aria-label="Close Sales navigation"
+                onClick={() => setMobileSidebarOpen(false)}
+                className="absolute right-3 top-4 z-10 inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)]"
               >
-                {activePage?.description || `Sales workspace for ${companyName}`}
-              </p>
-            </div>
-
-            <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
-              {sidebarCapabilities?.aiEnabled !== false ? (
-                <Link
-                  href="/ai?module=sales"
-                  aria-label="Open SaMi AI"
-                  title="SaMi AI"
-                  className="inline-flex h-9 items-center justify-center rounded-xl border border-indigo-200/80 bg-gradient-to-r from-indigo-50 to-blue-50 text-indigo-700 transition hover:from-indigo-100 hover:to-blue-100 dark:border-indigo-500/20 dark:from-indigo-500/10 dark:to-blue-500/10 dark:text-indigo-300 dark:hover:from-indigo-500/20 dark:hover:to-blue-500/20 sm:w-auto sm:px-3"
-                >
-                  <Sparkles className="h-4 w-4" aria-hidden="true" />
-                  <span className="ml-2 hidden text-[10px] font-black uppercase tracking-[0.06em] xl:inline">
-                    SaMi AI
-                  </span>
-                </Link>
-              ) : null}
-
-              <div className="hidden md:block">
-                <WorkspaceSearchLauncher />
-              </div>
-
-              <WorkspaceAppSwitcher modules={modules} />
-
-              <div className="hidden lg:block">
-                <WorkspaceTenantSwitcher currentTenant={tenant} />
-              </div>
-
-              <div className="hidden xl:block">
-                <WorkspaceCompanyIdentity />
-              </div>
-
-              {sidebarCapabilities?.notificationsEnabled !== false ? (
-                <WorkspaceNotificationCenter
-                  userId={user.id}
-                  initialUnreadNotifications={liveUnread}
-                  onUnreadChange={setLiveUnread}
-                />
-              ) : null}
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+              <SalesSidebar
+                companyName={companyName}
+                appSidebarItems={appSidebarItems}
+                activeSidebarKey={activeSidebarKey}
+                onNavigate={() => setMobileSidebarOpen(false)}
+              />
             </div>
           </div>
-        </header>
+        ) : null}
 
-        <div className="min-w-0 px-3 py-3 sm:px-5 sm:py-5 lg:px-6 lg:py-6">
-          <div className="mx-auto min-w-0 max-w-[1680px]">{children}</div>
+        {/* ---------------------------------------------------------------- */}
+        {/* Content                                                          */}
+        {/* ---------------------------------------------------------------- */}
+        <div className="min-h-screen lg:pl-[260px]">
+          <header className="sticky top-0 z-40 border-b border-[var(--sami-border)] bg-[var(--sami-topbar)]/95 backdrop-blur-xl">
+            <div className="flex h-[60px] min-w-0 items-center gap-2 px-3 sm:px-5 lg:px-6">
+              <button
+                type="button"
+                aria-label="Open Sales navigation"
+                onClick={() => setMobileSidebarOpen(true)}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] lg:hidden"
+              >
+                <Menu className="h-4 w-4" aria-hidden="true" />
+              </button>
+
+              <Link
+                href="/apps"
+                aria-label="Back to all apps"
+                className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] text-slate-500 transition hover:text-slate-950 sm:inline-flex dark:text-slate-300 dark:hover:text-white"
+              >
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              </Link>
+
+              <div className="min-w-0 flex-1">
+                <p className="flex min-w-0 items-center gap-1.5 text-xs">
+                  <Link
+                    href="/apps/sales"
+                    className="shrink-0 text-slate-500 transition hover:text-slate-950 dark:hover:text-white"
+                  >
+                    Sales
+                  </Link>
+                  <ChevronRight
+                    className="h-3.5 w-3.5 shrink-0 text-slate-400"
+                    aria-hidden="true"
+                  />
+                  <span className="truncate font-black">
+                    {activePage?.label || 'Workspace'}
+                  </span>
+                </p>
+                <p
+                  title={activePage?.description || undefined}
+                  className="mt-0.5 hidden max-w-[min(52vw,640px)] truncate text-[11px] text-slate-500 dark:text-slate-400 sm:block"
+                >
+                  {activePage?.description || `Sales workspace for ${companyName}`}
+                </p>
+              </div>
+
+              <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
+                {sidebarCapabilities?.aiEnabled !== false ? (
+                  <Link
+                    href="/ai?module=sales"
+                    aria-label="Open SaMi AI"
+                    title="SaMi AI"
+                    className="inline-flex h-9 items-center justify-center rounded-xl border border-indigo-200/80 bg-gradient-to-r from-indigo-50 to-blue-50 text-indigo-700 transition hover:from-indigo-100 hover:to-blue-100 dark:border-indigo-500/20 dark:from-indigo-500/10 dark:to-blue-500/10 dark:text-indigo-300 dark:hover:from-indigo-500/20 dark:hover:to-blue-500/20 sm:w-auto sm:px-3"
+                  >
+                    <Sparkles className="h-4 w-4" aria-hidden="true" />
+                    <span className="ml-2 hidden text-[10px] font-black uppercase tracking-[0.06em] xl:inline">
+                      SaMi AI
+                    </span>
+                  </Link>
+                ) : null}
+
+                <div className="hidden md:block">
+                  <WorkspaceSearchLauncher />
+                </div>
+
+                <WorkspaceAppSwitcher modules={modules} />
+
+                <div className="hidden lg:block">
+                  <WorkspaceTenantSwitcher currentTenant={tenant} />
+                </div>
+
+                <div className="hidden xl:block">
+                  <WorkspaceCompanyIdentity />
+                </div>
+
+                {sidebarCapabilities?.notificationsEnabled !== false ? (
+                  <WorkspaceNotificationCenter
+                    userId={user.id}
+                    initialUnreadNotifications={liveUnread}
+                    onUnreadChange={setLiveUnread}
+                  />
+                ) : null}
+              </div>
+            </div>
+          </header>
+
+          <div className="min-w-0 px-3 py-3 sm:px-5 sm:py-5 lg:px-6 lg:py-6">
+            <div className="mx-auto min-w-0 max-w-[1680px]">{children}</div>
+          </div>
         </div>
-      </div>
-    </main>
+      </main>
+    </SalesShellMount.Provider>
   );
 }
