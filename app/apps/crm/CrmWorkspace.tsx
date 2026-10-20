@@ -1,7 +1,60 @@
 import { loadStandaloneEnterpriseApp } from '@/app/apps/_shared/loadStandaloneEnterpriseApp';
 import { SAMI_PERMISSIONS } from '@/lib/auth/permission-catalog';
+import { requireEnterpriseModuleTableContext } from '@/lib/apps/enterprise/service';
+import { INVOICING_PERMISSIONS, InvoicingError, requireInvoicingContext } from '@/lib/apps/invoicing/context';
+import { syncCrmCustomerMaster } from '@/lib/apps/crm/customer-sync';
 import CrmModuleShell from '@/app/apps/crm/CrmModuleShell';
 import CrmWorkspaceClient from '@/app/apps/crm/CrmWorkspaceClient';
+
+
+
+async function syncSharedCustomerMasterForCrm() {
+  try {
+    const [crmAccounts, crmContacts, crmAccountsEdit, crmContactsEdit] = await Promise.all([
+      requireEnterpriseModuleTableContext('crm', 'crm_accounts', 'create'),
+      requireEnterpriseModuleTableContext('crm', 'crm_contacts', 'create'),
+      requireEnterpriseModuleTableContext('crm', 'crm_accounts', 'edit'),
+      requireEnterpriseModuleTableContext('crm', 'crm_contacts', 'edit'),
+    ]);
+    const invoicing = await requireInvoicingContext(INVOICING_PERMISSIONS.CUSTOMER_MANAGE);
+
+    const contexts = [crmContacts, crmAccountsEdit, crmContactsEdit];
+    if (
+      contexts.some((context) =>
+        context.tenantId !== crmAccounts.tenantId ||
+        context.companyId !== crmAccounts.companyId ||
+        context.userId !== crmAccounts.userId
+      ) ||
+      invoicing.tenantId !== crmAccounts.tenantId ||
+      invoicing.companyId !== crmAccounts.companyId ||
+      invoicing.userId !== crmAccounts.userId
+    ) {
+      return;
+    }
+
+    await syncCrmCustomerMaster({
+      pool: crmAccounts.pool,
+      companyId: crmAccounts.companyId,
+      userId: crmAccounts.userId,
+    });
+  } catch (error) {
+    const code = error && typeof error === 'object' && 'code' in error
+      ? String((error as { code?: unknown }).code || '')
+      : '';
+    if (
+      error instanceof InvoicingError &&
+      ['INVOICING_NOT_INSTALLED', 'INVOICING_PERMISSION_REQUIRED', 'INVOICING_WORKSPACE_SUSPENDED'].includes(error.code)
+    ) {
+      return;
+    }
+    if (['MODULE_PERMISSION_REQUIRED', 'MODULE_NOT_INSTALLED', 'TABLE_NOT_ALLOWED'].includes(code)) {
+      return;
+    }
+    // Integration failure must not take the CRM workspace down; the next page
+    // load can retry, while the main CRM workspace remains available.
+    console.error('[SaMi CRM shared-customer sync] request failed:', error);
+  }
+}
 
 const MODULE_KEY = 'crm';
 const CRM_TABLE_LABELS: Record<string, string> = {
@@ -23,6 +76,7 @@ export default async function CrmWorkspace({
   const mergeHistoryView = section === 'merge-history';
   const relationshipHealthView = section === 'health';
   const reportsView = section === 'reports';
+  await syncSharedCustomerMasterForCrm();
   const {
     session,
     account,
