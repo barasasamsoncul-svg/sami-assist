@@ -23,7 +23,7 @@ test('shipment status transitions emit fulfillment automation only after commit'
     'export async function updateSalesShipmentStatus(',
     'type SalesReturnCreateDependencies',
   );
-  const commit = fn.indexOf("await client.query(\n      'COMMIT',\n    );");
+  const commit = fn.search(/await client\.query\(\s*'COMMIT'\s*,?\s*\)/);
   const event = fn.indexOf("triggerKey: 'sales.order.fulfillment.changed'");
   assert.ok(commit >= 0 && event > commit, 'shipment fulfillment automation must be post-commit');
   assert.match(fn, /fulfillment:'\s*\+\s*orderId\s*\+\s*':'\s*\+\s*fulfillmentSnapshot\.fulfillmentStatus\s*\+\s*':'\s*\+\s*fulfillmentSnapshot\.deliveredQuantity/);
@@ -38,7 +38,7 @@ test('receiving a sales return emits the recalculated fulfillment state after co
     'export async function receiveSalesReturnTransaction(',
     'export async function receiveSalesReturn(',
   );
-  const commit = fn.indexOf("await client.query(\n      'COMMIT',\n    );");
+  const commit = fn.search(/await client\.query\(\s*'COMMIT'\s*,?\s*\)/);
   const event = fn.indexOf("triggerKey: 'sales.order.fulfillment.changed'");
   const returnReceivedEvent = fn.indexOf("triggerKey: 'sales.return.received'");
   assert.match(fn, /const fulfillmentSnapshot = await recalculateOrderFulfillment/);
@@ -55,7 +55,9 @@ test('shipment creation documents that planned quantities do not dispatch fulfil
     'export async function createSalesShipment(',
     'export async function updateSalesShipmentStatus(',
   );
-  assert.match(fn, /Shipment creation changes planned quantities only/);
+  assert.match(fn, /INSERT INTO sales_shipments/);
+  assert.match(fn, /INSERT INTO sales_shipment_items/);
+  assert.doesNotMatch(fn, /triggerKey:\s*'sales\.order\.fulfillment\.changed'/);
   assert.doesNotMatch(fn, /triggerKey:\s*'sales\.order\.fulfillment\.changed'/);
 });
 
@@ -68,7 +70,7 @@ test('return credits prorate invoice line totals by credited quantity and revers
   );
   assert.match(fn, /invoice_item\.line_total/);
   assert.match(fn, /invoice\.currency/);
-  assert.match(fn, /invoiceItemLineTotal:\s*number/);
+  assert.match(fn, /invoiceItemLineTotal:\s*Number\(invoiceItem\.line_total \|\| 0\)/);
   assert.match(fn, /line\.invoiceItemLineTotal\s*\*\s*\(line\.quantity\s*\/\s*line\.invoiceItemQuantity\)/);
   assert.match(fn, /returnedValueByCurrency:\s*Array\.from\(returnedAmountsByCurrency/);
   assert.match(fn, /reverseSalesOrderCommissionsForReturn\(/);

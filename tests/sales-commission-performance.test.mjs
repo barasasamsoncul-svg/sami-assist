@@ -43,7 +43,7 @@ test('Sales commission performance resolves active tenant salespeople and keeps 
   assert.match(service, /PARTITION BY currency/);
   assert.match(service, /const PER_CURRENCY_CAP = 250/);
   assert.match(service, /WHERE currency_rank <= \$4/);
-  assert.match(service, /ORDER BY currency ASC, accrued_amount DESC/);
+  assert.match(service, /ORDER BY\s+currency ASC,\s*accrued_amount DESC/);
   assert.match(ui, /new Set\(rows\.map\(row => row\.currency\)\)/);
   assert.match(ui, /currency totals are never combined/);
 });
@@ -55,7 +55,8 @@ test('Sales Reports renders commission performance and organization card avoids 
   assert.match(page, /getSalesCommissionPerformance/);
   assert.match(page, /<SalesCommissionPerformance rows=\{commissionPerformance\.rows\} \/>/);
   assert.match(orgUi, /activeAccruedByCurrency/);
-  assert.match(orgUi, /activeAccruedByCurrency[\s\S]*?currency:[\s\S]*?amount/);
+  assert.match(orgUi, /map\(\(\[currency, amount\]\) => \(\{ currency, amount \}\)\)/);
+  assert.match(orgUi, /formatMoney\(item\.amount, item\.currency\)/);
   assert.match(orgUi, /formatMoney\(item\.amount, item\.currency\)/);
   assert.match(pkg, /tests\/sales-commission-performance\.test\.mjs/);
 });

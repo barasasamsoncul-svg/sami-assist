@@ -13,7 +13,7 @@ test('quote revisions supersede pending approval requests and record the closed 
     source('lib/apps/sales/commercial.ts'),
   ]);
   assert.match(approvals, /export async function cancelPendingSalesQuoteApproval/);
-  assert.match(approvals, /return result\.rows\.map\(row => String\(row\.id\)\)/);
+  assert.match(approvals, /return result\.rows\.map\(\(row\) => String\(row\.id\)\)/);
   const revisionInsert = commercial.indexOf('INSERT INTO sales_quote_revisions');
   const cancel = commercial.indexOf("cancelPendingSalesQuoteApproval(client, context.companyId, quoteId, 'superseded')", revisionInsert);
   const quoteUpdate = commercial.indexOf('UPDATE sales_quotes', revisionInsert);
@@ -28,7 +28,7 @@ test('quote authoring resolves an explicitly selected active salesperson through
     source('lib/apps/sales/types.ts'),
   ]);
   assert.match(pipeline, /export async function resolveActiveSalesperson/);
-  assert.match(commands, /resolveSalesperson:\s*\(ctx: Awaited<ReturnType<typeof requireSalesContext>>, value: unknown\) => Promise<string \| null>/);
+  assert.match(commands, /resolveSalesperson:\s*\(ctx: SalesContext, value: unknown\) => Promise<string \| null>/);
   assert.match(commands, /resolveSalesperson:\s*resolveActiveSalesperson/);
   assert.equal((commands.match(/deps\.resolveSalesperson\(context, input\.salespersonUserId\)/g) || []).length, 2);
   assert.match(commands, /userId:\s*salespersonUserId/);

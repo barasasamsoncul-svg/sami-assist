@@ -39,7 +39,8 @@ test('duplicate quote copies salesperson only with pipeline access and preserves
   const start = commands.indexOf('export async function duplicateSalesQuote');
   const end = commands.indexOf('export async function changeSalesQuoteStatus', start);
   const body = commands.slice(start, end);
-  assert.match(body, /salespersonUserId:[\s\S]{0,220}SALES_PERMISSIONS\.PIPELINE_VIEW[\s\S]{0,220}SALES_PERMISSIONS\.PIPELINE_MANAGE/);
+  assert.match(body, /const hasPipelineAccess = crossPermission\(\s*context,\s*SALES_PERMISSIONS\.PIPELINE_VIEW,\s*SALES_PERMISSIONS\.PIPELINE_MANAGE,\s*\)/);
+  assert.match(body, /salespersonUserId: hasPipelineAccess\s*\?\s*row\.salesperson_user_id \|\| undefined/);
   assert.match(body, /FROM sales_quote_optional_items/);
   assert.match(body, /optionalItems:\s*optionalItems\.rows\.map/);
   assert.match(body, /depositType:\s*row\.deposit_type/);

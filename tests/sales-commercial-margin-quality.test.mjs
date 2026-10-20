@@ -38,7 +38,7 @@ test('Sales commercial quality keeps transaction currencies separate and avoids 
   assert.match(service, /DISCOUNT_THRESHOLD_PERCENT = 20/);
   assert.match(component, /formatMoney\([^\n]*row\.currency/);
   assert.match(component, /currency/);
-  assert.match(component, /returns and later credit notes are not netted into order margin/);
+  assert.match(component, /returns and later credit notes are not netted into\s+order margin/);
 });
 
 test('Sales commercial review queue is limited to open commercial documents and is wired to Sales Reports', async () => {
@@ -52,7 +52,7 @@ test('Sales commercial review queue is limited to open commercial documents and 
   assert.match(service, /PARTITION BY row_type, currency/);
   assert.match(service, /const PER_CURRENCY_RISK_CAP = 350/);
   assert.match(service, /WHERE row_type = 'summary' OR currency_rank <= \$6/);
-  assert.match(service, /ORDER BY row_type DESC, currency ASC/);
+  assert.match(service, /ORDER BY\s+row_type DESC,\s*currency ASC/);
   assert.match(component, /Commercial review queue/);
   assert.match(page, /getSalesCommercialMarginQualityReport/);
   assert.match(page, /<SalesCommercialMarginQuality report=\{commercialMarginQuality\} \/>/);

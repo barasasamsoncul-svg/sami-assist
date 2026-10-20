@@ -9,7 +9,7 @@ const source = file => readFile(path.join(root, file), 'utf8');
 
 test('Sales expiry sweep scans active tenant databases and skips tenants without Sales', async () => {
   const expiry = await source('lib/apps/sales/expiry.ts');
-  assert.match(expiry, /export async function expireOverdueSalesQuotes\(\): Promise<{ expired: number }>\s*\{/);
+  assert.match(expiry, /export async function expireOverdueSalesQuotes\(\): Promise<ExpireOverdueResult>\s*\{/);
   assert.match(expiry, /FROM tenant_databases td[\s\S]*INNER JOIN tenants t/);
   assert.match(expiry, /getTenantPoolByTenantId\(tenantId\)/);
   assert.match(expiry, /to_regclass\('public\.sales_quotes'\)/);
@@ -18,10 +18,10 @@ test('Sales expiry sweep scans active tenant databases and skips tenants without
 
 test('Sales expiry uses locked 500-row batches and writes status, history, and activity transactionally', async () => {
   const expiry = await source('lib/apps/sales/expiry.ts');
-  assert.match(expiry, /const SALES_QUOTE_EXPIRY_BATCH_SIZE = 500/);
+  assert.match(expiry, /const QUOTE_EXPIRY_BATCH_SIZE = 500/);
   assert.match(expiry, /status IN \('sent', 'viewed'\)[\s\S]*valid_until < CURRENT_DATE[\s\S]*deleted_at IS NULL/);
   assert.match(expiry, /LIMIT \$1\s+FOR UPDATE SKIP LOCKED/);
-  assert.match(expiry, /while \(true\)/);
+  assert.match(expiry, /for \(let batch = 0; batch < MAX_BATCHES_PER_TENANT; batch \+= 1\)/);
   assert.match(expiry, /updated_by = NULL/);
   assert.match(expiry, /expired_at = COALESCE\(expired_at, NOW\(\)\)/);
   assert.match(expiry, /public_enabled = FALSE/);
