@@ -14,7 +14,7 @@
     },
     {
       "path": "/api/internal/sales/expire-quotes",
-      "schedule": "0 * * * *"
+      "schedule": "0 0 * * *"
     }
   ],
   "$schema": "https://openapi.vercel.sh/vercel.json",
