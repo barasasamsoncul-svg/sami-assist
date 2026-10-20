@@ -200,6 +200,7 @@ test('CRM account segments support validated server filters and private saved vi
   assert.ok(segmentsRoute.includes("requireEnterpriseModuleTableContext('crm', 'crm_accounts', 'view')"));
   assert.ok(segmentsRoute.includes('a.company_id = $1 AND a.deleted_at IS NULL'));
   assert.ok(segmentsRoute.includes("INTERVAL '90 days'"));
+  assert.ok(segmentsRoute.includes("i.status = 'completed'"));
   assert.ok(segmentsRoute.includes('LIMIT $9 OFFSET $10'));
   assert.ok(segmentsRoute.includes('owner_user_id'));
   assert.ok(panel.includes('/api/apps/crm/account-views'));

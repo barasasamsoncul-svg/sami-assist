@@ -84,8 +84,8 @@ export async function GET(request: NextRequest) {
       AND ($6::text = '' OR COALESCE(a.source, '') = $6)
       AND ($7::text = '' OR ($7::text = 'unassigned' AND a.owner_user_id IS NULL) OR a.owner_user_id::text = $7)
       AND ($8::text = 'all'
-        OR ($8::text = 'engaged' AND EXISTS (SELECT 1 FROM public.crm_interactions i WHERE i.company_id = a.company_id AND i.account_id = a.id AND i.deleted_at IS NULL AND COALESCE(i.occurred_at, i.completed_at, i.created_at) >= NOW() - INTERVAL '90 days'))
-        OR ($8::text = 'not_engaged' AND NOT EXISTS (SELECT 1 FROM public.crm_interactions i WHERE i.company_id = a.company_id AND i.account_id = a.id AND i.deleted_at IS NULL AND COALESCE(i.occurred_at, i.completed_at, i.created_at) >= NOW() - INTERVAL '90 days')))
+        OR ($8::text = 'engaged' AND EXISTS (SELECT 1 FROM public.crm_interactions i WHERE i.company_id = a.company_id AND i.account_id = a.id AND i.deleted_at IS NULL AND i.status = 'completed' AND COALESCE(i.occurred_at, i.completed_at, i.created_at) >= NOW() - INTERVAL '90 days'))
+        OR ($8::text = 'not_engaged' AND NOT EXISTS (SELECT 1 FROM public.crm_interactions i WHERE i.company_id = a.company_id AND i.account_id = a.id AND i.deleted_at IS NULL AND i.status = 'completed' AND COALESCE(i.occurred_at, i.completed_at, i.created_at) >= NOW() - INTERVAL '90 days')))
     `;
 
     const params = [context.companyId, searchPattern, lifecycleStage, accountType, industry, source, ownerUserId, engagement];
@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
         'SELECT a.id, a.account_name, a.account_type, a.lifecycle_stage, a.industry, a.source, ' +
         'a.email, a.phone, a.owner_user_id, a.created_at, a.updated_at, ' +
         "(SELECT COUNT(*)::int FROM public.crm_contacts c WHERE c.company_id = a.company_id AND c.account_id = a.id AND c.deleted_at IS NULL) AS contact_count, " +
-        "(SELECT MAX(COALESCE(i.occurred_at, i.completed_at, i.created_at)) FROM public.crm_interactions i WHERE i.company_id = a.company_id AND i.account_id = a.id AND i.deleted_at IS NULL) AS last_interaction_at " +
+        "(SELECT MAX(COALESCE(i.occurred_at, i.completed_at, i.created_at)) FROM public.crm_interactions i WHERE i.company_id = a.company_id AND i.account_id = a.id AND i.deleted_at IS NULL AND i.status = 'completed') AS last_interaction_at " +
         'FROM public.crm_accounts a WHERE ' + where +
         ' ORDER BY LOWER(a.account_name), a.id LIMIT $9 OFFSET $10',
         [...params, PAGE_SIZE, offset],
