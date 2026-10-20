@@ -134,7 +134,7 @@ export const ENTERPRISE_MODULE_TABLES = {
   checkout: ['checkout_settings','checkout_links','checkout_sessions','checkout_events'],
   commissions: ['commissions_settings','commission_plans','commission_assignments','commission_entries','commission_tiers','commission_payouts','commission_payout_lines'],
   cpq: ['cpq_settings','cpq_products','cpq_price_rules','cpq_quotes','cpq_quote_lines'],
-  crm: ['leads','opportunities','crm_activities','crm_stages','crm_scoring_rules','crm_forecasts','crm_forecast_lines','crm_assignment_rules','crm_blueprints','crm_blueprint_transitions','crm_approval_requests'],
+  crm: ['crm_accounts','crm_contacts','crm_interactions'],
   customer_portal: ['customer_portal_settings','portal_customers','portal_access_grants','portal_messages','portal_requests','portal_document_views'],
   demand_planning: ['demand_planning_settings','demand_forecasts','demand_forecast_lines','replenishment_recommendations'],
   documents: ['document_folders','documents','document_versions','document_approvals','document_shares','document_access_events'],
