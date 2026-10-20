@@ -89,6 +89,33 @@ test('CRM links accounts to existing Invoicing customers without exposing raw li
 });
 
 
+test('CRM syncs the existing shared customer master into company-scoped CRM accounts and primary contacts', async () => {
+  const [sync, workspace, invoicingSchema] = await Promise.all([
+    source('lib/apps/crm/customer-sync.ts'),
+    source('app/apps/crm/CrmWorkspace.tsx'),
+    source('lib/apps/invoicing/schema.sql'),
+  ]);
+
+  assert.match(sync, /FROM public\\.invoicing_customers/);
+  assert.match(sync, /company_id = \\$1 AND deleted_at IS NULL/);
+  assert.match(sync, /pg_advisory_xact_lock/);
+  assert.match(sync, /invoicing_customer_id/);
+  assert.match(sync, /external_crm_contact_id/);
+  assert.match(sync, /INSERT INTO public\\.crm_accounts/);
+  assert.match(sync, /INSERT INTO public\\.crm_contacts/);
+  assert.match(sync, /ON CONFLICT DO NOTHING/);
+  assert.match(sync, /deleted_at IS NULL/);
+  assert.match(workspace, /syncSharedCustomerMasterForCrm/);
+  assert.match(workspace, /INVOICING_PERMISSIONS\\.CUSTOMER_MANAGE/);
+  assert.ok(
+    workspace.indexOf('await syncSharedCustomerMasterForCrm();') <
+    workspace.indexOf('await loadStandaloneEnterpriseApp('),
+    'sync must happen before CRM sidebar counts are loaded',
+  );
+  assert.match(invoicingSchema, /external_crm_contact_id UUID/);
+});
+
+
 test('CRM relationship timeline validates company-scoped records and keeps Sales activity read-only', async () => {
   const [route, panel, client, schema] = await Promise.all([
     source('app/api/apps/crm/interactions/route.ts'),
