@@ -82,6 +82,29 @@ type DocumentRow = {
   snapshot: Record<string, unknown> | string;
 };
 
+export function addOneSubscriptionMonth(value: Date) {
+  if (Number.isNaN(value.getTime())) {
+    throw new Error('A valid subscription billing boundary is required.');
+  }
+
+  const year = value.getUTCFullYear();
+  const month = value.getUTCMonth();
+  const day = value.getUTCDate();
+  const lastDay = new Date(Date.UTC(year, month + 2, 0)).getUTCDate();
+
+  return new Date(
+    Date.UTC(
+      year,
+      month + 1,
+      Math.min(day, lastDay),
+      value.getUTCHours(),
+      value.getUTCMinutes(),
+      value.getUTCSeconds(),
+      value.getUTCMilliseconds(),
+    ),
+  );
+}
+
 function money(value: number) {
   if (!Number.isFinite(value) || value < 0) {
     throw new Error('Subscription document amount must be a non-negative finite number.');
