@@ -8,6 +8,16 @@ type Overview = {
   warehouses: Array<{ id: string; name: string; code: string; isDefault: boolean }>;
   balances: Array<{ productId: string; productName: string; sku: string | null; warehouseId: string; warehouseName: string; quantity: string; reservedQuantity: string; availableQuantity: string; reorderLevel: string; lowStock: boolean }>;
   recentMovements: Array<{ id: string; productName: string; warehouseName: string; movementType: string; quantity: string; reference: string | null; createdAt: string }>;
+  transferOrders: Array<{
+    id: string; transferNumber: string; status: string; sourceWarehouseId: string;
+    sourceWarehouseName: string; destinationWarehouseId: string; destinationWarehouseName: string;
+    requestedAt: string; shippedAt: string | null; receivedAt: string | null;
+    lines: Array<{ id: string; productId: string; productName: string; requestedQuantity: string; shippedQuantity: string; receivedQuantity: string }>;
+  }>;
+  cycleCounts: Array<{
+    id: string; warehouseId: string; warehouseName: string; productId: string; productName: string;
+    dueOn: string; status: string; systemQuantity: string | null; countedQuantity: string | null; countedAt: string | null;
+  }>;
 };
 const MOVEMENTS = [
   { value: 'receipt', label: 'Stock receipt' }, { value: 'purchase_receipt', label: 'Purchase receipt' },
@@ -32,8 +42,20 @@ export default function InventoryStockControlPanel() {
   const [movementType,setMovementType] = useState('receipt');
   const [quantity,setQuantity] = useState('');
   const [reference,setReference] = useState('');
+  const [transferSourceId,setTransferSourceId] = useState('');
+  const [transferDestinationId,setTransferDestinationId] = useState('');
+  const [transferProductId,setTransferProductId] = useState('');
+  const [transferQuantity,setTransferQuantity] = useState('');
+  const [cycleWarehouseId,setCycleWarehouseId] = useState('');
+  const [cycleProductId,setCycleProductId] = useState('');
+  const [cycleDueOn,setCycleDueOn] = useState('');
+  const [countValues,setCountValues] = useState<Record<string,string>>({});
   const keyRef = useRef('');
   const payloadFingerprintRef = useRef('');
+  const transferKeyRef = useRef('');
+  const transferFingerprintRef = useRef('');
+  const cycleKeyRef = useRef('');
+  const cycleFingerprintRef = useRef('');
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -43,14 +65,79 @@ export default function InventoryStockControlPanel() {
       if(!response.ok||payload?.success!==true) throw new Error(payload?.error||'Inventory data could not be loaded.');
       const value = payload.result as Overview;
       setData(value);
-      setProductId(v=>v||value.products[0]?.id||'');
-      setWarehouseId(v=>v||value.warehouses[0]?.id||'');
+      setProductId(v=>value.products.some(p=>p.id===v)?v:(value.products[0]?.id||''));
+      setWarehouseId(v=>value.warehouses.some(w=>w.id===v)?v:(value.warehouses[0]?.id||''));
+      setTransferProductId(v=>value.products.some(p=>p.id===v)?v:(value.products[0]?.id||''));
+      setCycleProductId(v=>value.products.some(p=>p.id===v)?v:(value.products[0]?.id||''));
+      setTransferSourceId(v=>value.warehouses.some(w=>w.id===v)?v:(value.warehouses[0]?.id||''));
+      setTransferDestinationId(v=>value.warehouses.some(w=>w.id===v && w.id!==transferSourceId)?v:(value.warehouses.find(w=>w.id!==value.warehouses[0]?.id)?.id||''));
+      setCycleWarehouseId(v=>value.warehouses.some(w=>w.id===v)?v:(value.warehouses[0]?.id||''));
       setError(null);
     } catch(cause) {
       setError(cause instanceof Error?cause.message:'Inventory data could not be loaded.');
     } finally { setLoading(false); }
   },[]);
   useEffect(()=>{void refresh();},[refresh]);
+
+  async function performWorkflowAction(payload: Record<string,unknown>, successMessage: string): Promise<boolean> {
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await fetch('/api/apps/inventory', {
+        method:'POST',
+        headers:{'Content-Type':'application/json',Accept:'application/json'},
+        body:JSON.stringify(payload),
+      });
+      const result = await response.json().catch(()=>null);
+      if(!response.ok || result?.success!==true) throw new Error(result?.error||'Inventory workflow action failed.');
+      setNotice(successMessage);
+      await refresh();
+      return true;
+    } catch(cause) {
+      setError(cause instanceof Error?cause.message:'Inventory workflow action failed.');
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submitTransfer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const payload = {
+      action:'create-transfer',
+      sourceWarehouseId:transferSourceId,
+      destinationWarehouseId:transferDestinationId,
+      lines:[{productId:transferProductId,quantity:transferQuantity}],
+    };
+    const fingerprint = JSON.stringify(payload);
+    if(!transferKeyRef.current || transferFingerprintRef.current!==fingerprint) {
+      transferKeyRef.current=crypto.randomUUID();
+      transferFingerprintRef.current=fingerprint;
+    }
+    const saved = await performWorkflowAction({...payload,idempotencyKey:transferKeyRef.current},'Transfer draft created.');
+    if(saved) {
+      transferKeyRef.current='';
+      transferFingerprintRef.current='';
+      setTransferQuantity('');
+    }
+  }
+
+  async function submitCycleCount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const payload = {action:'create-cycle-count',warehouseId:cycleWarehouseId,productId:cycleProductId,dueOn:cycleDueOn};
+    const fingerprint = JSON.stringify(payload);
+    if(!cycleKeyRef.current || cycleFingerprintRef.current!==fingerprint) {
+      cycleKeyRef.current=crypto.randomUUID();
+      cycleFingerprintRef.current=fingerprint;
+    }
+    const saved = await performWorkflowAction({...payload,idempotencyKey:cycleKeyRef.current},'Cycle count scheduled.');
+    if(saved) {
+      cycleKeyRef.current='';
+      cycleFingerprintRef.current='';
+      setCycleDueOn('');
+    }
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setSaving(true); setError(null); setNotice(null);
@@ -111,5 +198,92 @@ export default function InventoryStockControlPanel() {
       <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[590px] border-collapse text-left text-sm"><thead><tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:text-slate-400"><th className="py-2 pr-3 font-semibold">Product</th><th className="py-2 pr-3 font-semibold">Warehouse</th><th className="py-2 pr-3 text-right font-semibold">On hand</th><th className="py-2 pr-3 text-right font-semibold">Reserved</th><th className="py-2 pr-3 text-right font-semibold">Available</th><th className="py-2 text-right font-semibold">Reorder at</th></tr></thead>
       <tbody>{(data?.balances||[]).map(b=><tr key={b.productId+':'+b.warehouseId} className="border-b border-slate-100 last:border-b-0 dark:border-slate-800"><td className="py-3 pr-3 text-slate-900 dark:text-slate-100"><span className="block font-medium">{b.productName}</span>{b.sku?<span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">{b.sku}</span>:null}</td><td className="py-3 pr-3 text-slate-700 dark:text-slate-300">{b.warehouseName}</td><td className="py-3 pr-3 text-right font-mono tabular-nums text-slate-900 dark:text-slate-100">{b.quantity}</td><td className="py-3 pr-3 text-right font-mono tabular-nums text-slate-900 dark:text-slate-100">{b.reservedQuantity}</td><td className={'py-3 pr-3 text-right font-mono tabular-nums '+(b.lowStock?'font-semibold text-rose-700 dark:text-rose-300':'text-slate-900 dark:text-slate-100')}>{b.availableQuantity}</td><td className="py-3 text-right font-mono tabular-nums text-slate-700 dark:text-slate-300">{b.reorderLevel}</td></tr>)}{!loading&&!data?.balances.length?<tr><td colSpan={6} className="py-8 text-center text-slate-500 dark:text-slate-400">No stock balances recorded yet.</td></tr>:null}</tbody></table></div>
     </div>
+
+    <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-2">
+      <section className={card} aria-labelledby="inventory-transfers-heading">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 id="inventory-transfers-heading" className="text-base font-semibold text-slate-950 dark:text-white">Warehouse transfers</h3>
+          <span className="text-xs text-slate-500 dark:text-slate-400">{data?.transferOrders.length ?? 0} recent</span>
+        </div>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Transfers reduce source stock on shipment and increase destination stock on receipt.</p>
+        <form onSubmit={submitTransfer} className="mt-4 space-y-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="block text-sm font-medium text-slate-800 dark:text-slate-100">From
+              <select required value={transferSourceId} onChange={e=>setTransferSourceId(e.target.value)} className={field}>
+                {(data?.warehouses||[]).map(w=><option key={w.id} value={w.id}>{w.name} ({w.code})</option>)}
+              </select>
+            </label>
+            <label className="block text-sm font-medium text-slate-800 dark:text-slate-100">To
+              <select required value={transferDestinationId} onChange={e=>setTransferDestinationId(e.target.value)} className={field}>
+                {(data?.warehouses||[]).map(w=><option key={w.id} value={w.id}>{w.name} ({w.code})</option>)}
+              </select>
+            </label>
+            <label className="block text-sm font-medium text-slate-800 dark:text-slate-100 sm:col-span-2">Product
+              <select required value={transferProductId} onChange={e=>setTransferProductId(e.target.value)} className={field} disabled={!data?.products.length}>
+                {(data?.products||[]).map(p=><option key={p.id} value={p.id}>{p.name}{p.sku?' · '+p.sku:''}</option>)}
+              </select>
+            </label>
+            <label className="block text-sm font-medium text-slate-800 dark:text-slate-100 sm:col-span-2">Quantity
+              <input required inputMode="decimal" pattern="\d+(\.\d{1,4})?" value={transferQuantity} onChange={e=>setTransferQuantity(e.target.value)} placeholder="Quantity to move" className={field}/>
+            </label>
+          </div>
+          <button type="submit" disabled={saving||loading||!transferSourceId||!transferDestinationId||transferSourceId===transferDestinationId||!transferProductId||!transferQuantity||!data?.warehouses || data.warehouses.length<2} className="inline-flex min-h-10 w-full items-center justify-center rounded-xl bg-indigo-700 px-4 text-sm font-semibold text-white hover:bg-indigo-800 disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-400">Create transfer</button>
+        </form>
+        <div className="mt-4 space-y-3">
+          {(data?.transferOrders||[]).map(order=><div key={order.id} className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div><p className="text-sm font-semibold text-slate-950 dark:text-white">{order.transferNumber}</p><p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{order.sourceWarehouseName} → {order.destinationWarehouseName}</p></div>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold capitalize text-slate-700 dark:bg-slate-800 dark:text-slate-200">{order.status.replaceAll('_',' ')}</span>
+            </div>
+            <div className="mt-2 space-y-1">{order.lines.map(line=><p key={line.id} className="text-xs text-slate-700 dark:text-slate-300">{line.productName}: {line.requestedQuantity} requested · {line.shippedQuantity} shipped · {line.receivedQuantity} received</p>)}</div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {order.status==='draft'?<button type="button" disabled={saving} onClick={()=>void performWorkflowAction({action:'approve-transfer',transferId:order.id},'Transfer approved.')} className="min-h-9 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800">Approve</button>:null}
+              {order.status==='approved'?<button type="button" disabled={saving} onClick={()=>void performWorkflowAction({action:'ship-transfer',transferId:order.id},'Transfer shipped; source stock has been reduced.')} className="min-h-9 rounded-lg bg-indigo-700 px-3 text-xs font-semibold text-white hover:bg-indigo-800 disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-400">Ship transfer</button>:null}
+              {order.status==='in_transit'?<button type="button" disabled={saving} onClick={()=>void performWorkflowAction({action:'receive-transfer',transferId:order.id},'Transfer received; destination stock has been updated.')} className="min-h-9 rounded-lg bg-indigo-700 px-3 text-xs font-semibold text-white hover:bg-indigo-800 disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-400">Receive transfer</button>:null}
+              {order.status==='draft'||order.status==='approved'?<button type="button" disabled={saving} onClick={()=>void performWorkflowAction({action:'cancel-transfer',transferId:order.id},'Transfer cancelled.')} className="min-h-9 rounded-lg border border-rose-300 px-3 text-xs font-semibold text-rose-800 hover:bg-rose-50 disabled:opacity-50 dark:border-rose-800 dark:text-rose-200 dark:hover:bg-rose-950/40">Cancel</button>:null}
+            </div>
+          </div>)}
+          {!loading&&!data?.transferOrders.length?<p className="py-4 text-center text-sm text-slate-500 dark:text-slate-400">No warehouse transfers yet.</p>:null}
+        </div>
+      </section>
+
+      <section className={card} aria-labelledby="inventory-cycle-counts-heading">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 id="inventory-cycle-counts-heading" className="text-base font-semibold text-slate-950 dark:text-white">Cycle counts</h3>
+          <span className="text-xs text-slate-500 dark:text-slate-400">{data?.cycleCounts.length ?? 0} recent</span>
+        </div>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Record a physical quantity, then post its variance as a controlled stock adjustment.</p>
+        <form onSubmit={submitCycleCount} className="mt-4 space-y-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="block text-sm font-medium text-slate-800 dark:text-slate-100">Warehouse
+              <select required value={cycleWarehouseId} onChange={e=>setCycleWarehouseId(e.target.value)} className={field}>{(data?.warehouses||[]).map(w=><option key={w.id} value={w.id}>{w.name} ({w.code})</option>)}</select>
+            </label>
+            <label className="block text-sm font-medium text-slate-800 dark:text-slate-100">Product
+              <select required value={cycleProductId} onChange={e=>setCycleProductId(e.target.value)} className={field}>{(data?.products||[]).map(p=><option key={p.id} value={p.id}>{p.name}{p.sku?' · '+p.sku:''}</option>)}</select>
+            </label>
+            <label className="block text-sm font-medium text-slate-800 dark:text-slate-100 sm:col-span-2">Due date
+              <input required type="date" value={cycleDueOn} onChange={e=>setCycleDueOn(e.target.value)} className={field}/>
+            </label>
+          </div>
+          <button type="submit" disabled={saving||loading||!cycleWarehouseId||!cycleProductId||!cycleDueOn} className="inline-flex min-h-10 w-full items-center justify-center rounded-xl bg-indigo-700 px-4 text-sm font-semibold text-white hover:bg-indigo-800 disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-400">Schedule cycle count</button>
+        </form>
+        <div className="mt-4 space-y-3">
+          {(data?.cycleCounts||[]).map(count=><div key={count.id} className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+            <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-semibold text-slate-950 dark:text-white">{count.productName}</p><p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{count.warehouseName} · due {count.dueOn}</p></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold capitalize text-slate-700 dark:bg-slate-800 dark:text-slate-200">{count.status.replaceAll('_',' ')}</span></div>
+            <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">System quantity: {count.systemQuantity??'Not recorded'} · Physical count: {count.countedQuantity??'Not counted'}</p>
+            {count.status==='pending'||count.status==='in_progress'?<form onSubmit={event=>{event.preventDefault();void performWorkflowAction({action:'record-cycle-count',cycleCountId:count.id,countedQuantity:countValues[count.id]??''},'Physical count recorded. Review and post the variance when ready.');}} className="mt-3 flex flex-wrap gap-2">
+              <input required inputMode="decimal" pattern="\d+(\.\d{1,4})?" value={countValues[count.id]??''} onChange={e=>setCountValues(current=>({...current,[count.id]:e.target.value}))} placeholder="Physical quantity" className={field+' min-w-[150px] flex-1'}/>
+              <button type="submit" disabled={saving} className="min-h-10 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800">Record count</button>
+            </form>:null}
+            <div className="mt-3 flex flex-wrap gap-2">
+              {count.status==='counted'?<button type="button" disabled={saving} onClick={()=>void performWorkflowAction({action:'post-cycle-count',cycleCountId:count.id},'Cycle-count variance posted to the stock ledger.')} className="min-h-9 rounded-lg bg-indigo-700 px-3 text-xs font-semibold text-white hover:bg-indigo-800 disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-400">Post variance</button>:null}
+              {['pending','in_progress','counted'].includes(count.status)?<button type="button" disabled={saving} onClick={()=>void performWorkflowAction({action:'cancel-cycle-count',cycleCountId:count.id},'Cycle count cancelled.')} className="min-h-9 rounded-lg border border-rose-300 px-3 text-xs font-semibold text-rose-800 hover:bg-rose-50 disabled:opacity-50 dark:border-rose-800 dark:text-rose-200 dark:hover:bg-rose-950/40">Cancel count</button>:null}
+            </div>
+          </div>)}
+          {!loading&&!data?.cycleCounts.length?<p className="py-4 text-center text-sm text-slate-500 dark:text-slate-400">No cycle counts scheduled yet.</p>:null}
+        </div>
+      </section>
+    </div>
+
   </section>;
 }
