@@ -45,3 +45,11 @@ test('Inventory movement retries retain idempotency only for an identical payloa
   assert.match(panel, /payloadFingerprintRef\.current !== fingerprint/);
   assert.match(panel, /JSON\.stringify\(\{\.\.\.movementPayload,idempotencyKey:keyRef\.current\}\)/);
 });
+
+test('Inventory low-stock indicators honour active company-specific reorder rules', async () => {
+  const service = await source('lib/apps/inventory/service.ts');
+  assert.match(service, /LEFT JOIN public\.inventory_reorder_rules rule/);
+  assert.match(service, /rule\.company_id = sl\.company_id/);
+  assert.match(service, /COALESCE\(rule\.min_quantity, sl\.reorder_level\)/);
+  assert.match(service, /rule\.status = 'active'/);
+});

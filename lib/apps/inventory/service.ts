@@ -81,10 +81,13 @@ export async function getInventoryStockOverview(): Promise<InventoryStockOvervie
          (SELECT COUNT(*)::int FROM public.warehouses w WHERE w.company_id = $1 AND w.deleted_at IS NULL AND w.is_active = TRUE) AS warehouse_count,
          COUNT(*)::int AS stock_balance_count,
          COALESCE(SUM(sl.quantity), 0)::text AS on_hand_quantity,
-         COUNT(*) FILTER (WHERE GREATEST(sl.quantity - COALESCE(reserved.reserved_quantity, 0), 0) <= sl.reorder_level)::int AS low_stock_count
+         COUNT(*) FILTER (WHERE GREATEST(sl.quantity - COALESCE(reserved.reserved_quantity, 0), 0) <= COALESCE(rule.min_quantity, sl.reorder_level))::int AS low_stock_count
        FROM public.stock_levels sl
        INNER JOIN public.products p ON p.id = sl.product_id AND p.company_id = sl.company_id AND p.deleted_at IS NULL
        INNER JOIN public.warehouses w ON w.id = sl.warehouse_id AND w.company_id = sl.company_id AND w.deleted_at IS NULL
+       LEFT JOIN public.inventory_reorder_rules rule
+         ON rule.company_id = sl.company_id AND rule.product_id = sl.product_id AND rule.warehouse_id = sl.warehouse_id
+        AND rule.deleted_at IS NULL AND rule.status = 'active'
        LEFT JOIN LATERAL (
          SELECT COALESCE(SUM(r.quantity), 0) AS reserved_quantity
          FROM public.stock_reservations r
@@ -98,11 +101,14 @@ export async function getInventoryStockOverview(): Promise<InventoryStockOvervie
       `SELECT p.id::text AS product_id, p.name AS product_name, p.sku, w.id::text AS warehouse_id, w.name AS warehouse_name,
          sl.quantity::text AS quantity, COALESCE(reserved.reserved_quantity, 0)::text AS reserved_quantity,
          GREATEST(sl.quantity - COALESCE(reserved.reserved_quantity, 0), 0)::text AS available_quantity,
-         sl.reorder_level::text AS reorder_level,
-         GREATEST(sl.quantity - COALESCE(reserved.reserved_quantity, 0), 0) <= sl.reorder_level AS low_stock
+         COALESCE(rule.min_quantity, sl.reorder_level)::text AS reorder_level,
+         GREATEST(sl.quantity - COALESCE(reserved.reserved_quantity, 0), 0) <= COALESCE(rule.min_quantity, sl.reorder_level) AS low_stock
        FROM public.stock_levels sl
        INNER JOIN public.products p ON p.id = sl.product_id AND p.company_id = sl.company_id AND p.deleted_at IS NULL
        INNER JOIN public.warehouses w ON w.id = sl.warehouse_id AND w.company_id = sl.company_id AND w.deleted_at IS NULL
+       LEFT JOIN public.inventory_reorder_rules rule
+         ON rule.company_id = sl.company_id AND rule.product_id = sl.product_id AND rule.warehouse_id = sl.warehouse_id
+        AND rule.deleted_at IS NULL AND rule.status = 'active'
        LEFT JOIN LATERAL (
          SELECT COALESCE(SUM(r.quantity), 0) AS reserved_quantity
          FROM public.stock_reservations r
