@@ -17,6 +17,11 @@ import {
   stripeBillingProvider,
 } from '@/lib/billing/providers/stripe';
 
+/**
+ * Paystack and PesaPal remain available only when resolving historical
+ * payment/provider references. New SaMi Platform subscription billing is
+ * deliberately Stripe-only.
+ */
 const PROVIDERS:
   Readonly<
     Record<
@@ -34,29 +39,9 @@ const PROVIDERS:
 
 export function getConfiguredBillingProviderKey():
   SamiBillingProviderKey {
-  const value =
-    (
-      process.env
-        .SAMI_BILLING_PROVIDER ||
-      'pesapal'
-    )
-      .trim()
-      .toLowerCase();
-
-  if (
-    value ===
-      'stripe' ||
-    value ===
-      'paystack' ||
-    value ===
-      'pesapal'
-  ) {
-    return value;
-  }
-
-  throw new Error(
-    'SAMI_BILLING_PROVIDER must be stripe, paystack or pesapal.',
-  );
+  // Do not let an old Vercel environment setting silently route new
+  // platform subscriptions back through a one-time-payment provider.
+  return 'stripe';
 }
 
 export function getBillingProvider(
@@ -90,14 +75,16 @@ export function getBillingProvider(
 
 export function getActiveBillingProvider() {
   const provider =
-    getBillingProvider();
+    getBillingProvider(
+      'stripe',
+    );
 
   if (
     !provider
       .isConfigured()
   ) {
     throw new Error(
-      `SaMi billing provider "${provider.key}" is not configured.`,
+      'SaMi Platform subscription billing is not configured for Stripe. Configure STRIPE_SECRET_KEY, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY and STRIPE_WEBHOOK_SECRET.',
     );
   }
 
@@ -105,12 +92,12 @@ export function getActiveBillingProvider() {
 }
 
 export function getBillingProviderCatalog() {
-  return (
-    Object.values(
-      PROVIDERS,
-    ) as
-      SamiBillingProvider[]
-  )
+  // Expose only the provider SaMi Platform subscriptions actually support.
+  // The legacy adapters above are intentionally not offered as selectable
+  // platform subscription providers.
+  return [
+    stripeBillingProvider,
+  ]
     .map(
       provider => ({
         key:
@@ -123,8 +110,7 @@ export function getBillingProviderCatalog() {
         capabilities:
           provider.capabilities,
         active:
-          provider.key ===
-          getConfiguredBillingProviderKey(),
+          true,
       }),
     );
 }
