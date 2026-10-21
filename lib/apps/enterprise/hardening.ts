@@ -480,7 +480,7 @@ export function appendEnterpriseSchemaHardening(
       ) +
     (
       moduleKey === 'inventory'
-        ? '\n\\n-- SaMi Inventory ledger integrity\\n' + inventoryLedgerIntegritySql()
+        ? '\n\n-- SaMi Inventory ledger integrity\n' + inventoryLedgerIntegritySql()
         : ''
     ) +
     '\n'
