@@ -1937,8 +1937,14 @@ test('Category 22: every issued subscription bill has a downloadable invoice or 
 
   assert.match(
     documentRoute,
-    /resolveBillingContext/,
-    'Document downloads must pass through authenticated billing context.',
+    /getWorkspaceSubscriptionBillingDocumentPdf/,
+    'Document downloads must pass through the tenant-authorized billing service.',
+  );
+
+  assert.match(
+    documentRoute,
+    /Cache-Control.*private, no-store/s,
+    'Document downloads must not be cached publicly.',
   );
 
   assert.match(
