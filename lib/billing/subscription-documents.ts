@@ -2,7 +2,6 @@ import 'server-only';
 
 import {
   renderInvoicePdf,
-  type PdfInvoice,
 } from '@/lib/apps/invoicing/pdf';
 
 import {
@@ -189,16 +188,34 @@ async function resolveSubscriptionDocumentInput(
     [input.subscriptionId, input.tenantId],
   );
 
-  const row = result.rows[0];
+  const row = result.rows[0] as
+    | {
+        plan_key?: unknown;
+        plan_name?: unknown;
+        scheduled_plan_key?: unknown;
+        scheduled_plan_name?: unknown;
+      }
+    | undefined;
+
   if (!row) {
     throw new Error('The SaMi subscription was not found while preparing its billing document.');
   }
 
+  const currentPlanKey =
+    typeof row.plan_key === 'string'
+      ? row.plan_key
+      : null;
+
+  const upcomingPlanKey =
+    typeof row.scheduled_plan_key === 'string'
+      ? row.scheduled_plan_key
+      : null;
+
   const planKey =
     normalizeSamiPlanKey(
       input.planKey ||
-      row.plan_key ||
-      row.scheduled_plan_key,
+      currentPlanKey ||
+      upcomingPlanKey,
     );
 
   const policy =
@@ -227,17 +244,28 @@ async function resolveSubscriptionDocumentInput(
     Number(seatsResult.rows[0]?.count || 0),
   );
 
+  const currentPlanName =
+    typeof row.plan_name === 'string'
+      ? row.plan_name
+      : null;
+
+  const upcomingPlanName =
+    typeof row.scheduled_plan_name === 'string'
+      ? row.scheduled_plan_name
+      : null;
+
   const planName =
     input.planName ||
     (
       input.planKey &&
       normalizeSamiPlanKey(input.planKey) !==
-        normalizeSamiPlanKey(row.plan_key)
-        ? row.scheduled_plan_name
+        normalizeSamiPlanKey(currentPlanKey)
+        ? upcomingPlanName
         : null
     ) ||
     policy.name ||
-    String(row.plan_name || planKey);
+    currentPlanName ||
+    planKey;
 
   return {
     ...input,
@@ -867,7 +895,7 @@ export async function getSubscriptionBillingDocument(
 
 function snapshotToPdf(
   row: DocumentRow,
-): PdfInvoice {
+): Buffer {
   const snapshot = parseSnapshot(row.snapshot);
   const kind =
     snapshot.kind === 'receipt'
