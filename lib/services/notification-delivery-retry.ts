@@ -53,6 +53,37 @@ function isText(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+/**
+ * Hold SMS retries until the selected provider can actually send.
+ * Missing credentials must not consume the bounded retry budget.
+ */
+function isSmsProviderConfigured(): boolean {
+  const provider =
+    (process.env.SAMI_SMS_PROVIDER || '')
+      .trim()
+      .toLowerCase();
+
+  if (provider === 'africastalking') {
+    return Boolean(
+      process.env.AFRICASTALKING_USERNAME?.trim() &&
+      process.env.AFRICASTALKING_API_KEY?.trim(),
+    );
+  }
+
+  if (provider === 'twilio') {
+    return Boolean(
+      process.env.TWILIO_ACCOUNT_SID?.trim() &&
+      process.env.TWILIO_AUTH_TOKEN?.trim() &&
+      (
+        process.env.TWILIO_FROM_NUMBER?.trim() ||
+        process.env.TWILIO_MESSAGING_SERVICE_SID?.trim()
+      ),
+    );
+  }
+
+  return false;
+}
+
 function emailStatusFor(type: string) {
   const value = type.toLowerCase();
 
@@ -89,6 +120,7 @@ function emailStatusFor(type: string) {
 async function claimPendingDeliveries(
   tenantId: string,
   limit: number,
+  smsProviderConfigured: boolean,
 ) {
   const pool = await getTenantPoolByTenantId(tenantId);
   const client = await pool.connect();
@@ -114,6 +146,7 @@ async function claimPendingDeliveries(
         INNER JOIN notifications n
           ON n.id = d.notification_id
         WHERE d.channel IN ('email', 'sms')
+          AND (d.channel <> 'sms' OR $2::boolean)
           AND d.attempts < 8
           AND (
             d.status IN ('pending', 'failed')
@@ -139,7 +172,7 @@ async function claimPendingDeliveries(
         LIMIT $1
         FOR UPDATE OF d SKIP LOCKED
       `,
-      [limit],
+      [limit, smsProviderConfigured],
     );
 
     const rows =
@@ -513,6 +546,7 @@ export async function retryPendingNotificationDeliveries(
       const deliveries = await claimPendingDeliveries(
         tenantId,
         perTenantLimit,
+        isSmsProviderConfigured(),
       );
 
       for (const delivery of deliveries) {
