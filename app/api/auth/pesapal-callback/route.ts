@@ -1457,6 +1457,79 @@ async function applyInitialSuccessfulPayment(
       'COMMIT'
     );
 
+    const nextBillingDate =
+      extensionResult.rows[0]
+        ?.current_period_end
+        ? new Date(
+            extensionResult.rows[0]
+              .current_period_end,
+          )
+        : null;
+
+    const nextBillingLabel =
+      nextBillingDate &&
+      !Number.isNaN(nextBillingDate.getTime())
+        ? nextBillingDate.toLocaleDateString(
+            'en-KE',
+            {
+              dateStyle: 'medium',
+              timeZone: 'Africa/Nairobi',
+            },
+          )
+        : null;
+
+    const receiptAmount =
+      amount ??
+      Number(source.amount);
+
+    const receiptCurrency =
+      currency ||
+      normalizeCurrency(source.currency) ||
+      'KES';
+
+    try {
+      await notifyWorkspaceOwnersOfBillingEvent({
+        tenantId:
+          String(subscription.tenant_id),
+        type:
+          'billing.payment_succeeded',
+        eventKey:
+          'billing.payment_succeeded',
+        title:
+          'Subscription renewed successfully',
+        message:
+          `PesaPal confirmed your recurring subscription payment. Your SaMi subscription is active and the paid period has been extended${nextBillingLabel ? ` through ${nextBillingLabel}` : ''}.`,
+        emailMessage:
+          `PesaPal confirmed the recurring subscription payment of ${receiptCurrency} ${receiptAmount.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.\\n\\nYour SaMi subscription is active${nextBillingLabel ? ` through ${nextBillingLabel}` : ''}. No action is needed right now.`,
+        smsMessage:
+          `SaMi subscription renewed: ${receiptCurrency} ${receiptAmount.toLocaleString('en-KE', { maximumFractionDigits: 2 })} received via PesaPal. Access is active${nextBillingLabel ? ` through ${nextBillingLabel}` : ''}.`,
+        emailStatus:
+          'success',
+        priority:
+          'high',
+        dedupeKey:
+          `billing:pesapal-recurring-succeeded:${orderTrackingId}`,
+        metadata: {
+          provider: 'pesapal',
+          paymentId: String(recurringPayment.id),
+          providerReference: orderTrackingId,
+          amount: receiptAmount,
+          currency: receiptCurrency,
+          billingBoundary:
+            nextBillingDate?.toISOString() || null,
+          subscriptionStatus: 'active',
+        },
+      });
+    } catch (error) {
+      console.error(
+        '[PesaPal] Recurring-success receipt could not be queued:',
+        {
+          orderTrackingId,
+          error,
+        },
+      );
+    }
+
     return {
       alreadyProcessed:
         false,
@@ -1918,14 +1991,72 @@ async function applyRecurringPayment({
         'COMMIT'
       );
 
+      const postFailureStatus =
+        String(
+          refreshed.rows[0]
+            ?.status ||
+          'past_due',
+        );
+
+      try {
+        const stillInTrial =
+          postFailureStatus === 'trialing';
+
+        const message =
+          stillInTrial
+            ? 'PesaPal could not complete a recurring charge, but your SaMi free trial is still active. Review Billing before the next billing date.'
+            : 'PesaPal could not complete your subscription renewal. Your subscription needs payment attention. Open Billing to recover access; your workspace data is retained.';
+
+        await notifyWorkspaceOwnersOfBillingEvent({
+          tenantId:
+            String(subscription.tenant_id),
+          type:
+            'billing.payment_failed',
+          eventKey:
+            'billing.payment_failed',
+          title:
+            stillInTrial
+              ? 'Recurring payment needs attention'
+              : 'Subscription renewal failed',
+          message,
+          emailMessage:
+            `${message}\\n\\nIf your bank or mobile-money provider shows a pending transaction, check its final status before trying again.`,
+          smsMessage:
+            stillInTrial
+              ? 'PesaPal reported a failed recurring charge. Your free trial is still active. Review SaMi Billing before the next billing date.'
+              : 'SaMi subscription renewal failed. Review Billing and retry payment to avoid service suspension. Your data is retained.',
+          emailStatus:
+            'critical',
+          priority:
+            'urgent',
+          dedupeKey:
+            `billing:pesapal-recurring-failed:${orderTrackingId}:${state}`,
+          metadata: {
+            provider: 'pesapal',
+            paymentId: String(recurringPayment.id),
+            providerReference: orderTrackingId,
+            paymentState: state,
+            amount: amount ?? null,
+            currency: currency || source.currency,
+            subscriptionStatus: postFailureStatus,
+          },
+        });
+      } catch (error) {
+        console.error(
+          '[PesaPal] Recurring-failure notice could not be queued:',
+          {
+            orderTrackingId,
+            error,
+          },
+        );
+      }
+
       return {
         alreadyProcessed:
           false,
 
         subscriptionStatus:
-          refreshed.rows[0]
-            ?.status ||
-          'past_due',
+          postFailureStatus,
       };
     }
 
@@ -2045,7 +2176,10 @@ async function applyRecurringPayment({
               'past_due'
             )
 
-          RETURNING status
+          RETURNING
+            status,
+            current_period_start,
+            current_period_end
         `,
         [
           subscription.id,
