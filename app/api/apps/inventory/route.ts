@@ -18,8 +18,11 @@ function sameOrigin(request: NextRequest) {
   try { return new URL(origin).origin === request.nextUrl.origin; } catch { return false; }
 }
 function handleError(error: unknown) {
-  if (error instanceof InventoryInputError || error instanceof SyntaxError) {
-    return respond({ success: false, error: error instanceof SyntaxError ? 'Enter valid inventory data.' : error.message }, 400);
+  if (error instanceof InventoryInputError) {
+    return respond({ success: false, error: error.message }, 400);
+  }
+  if (error instanceof SyntaxError) {
+    return respond({ success: false, error: 'Enter valid inventory data.' }, 400);
   }
   if (error instanceof TenantContextError || error instanceof CompanyContextError) {
     const status = error.code === 'UNAUTHENTICATED' ? 401 : error.code === 'NO_WORKSPACE_SELECTED' ? 409 : 403;
