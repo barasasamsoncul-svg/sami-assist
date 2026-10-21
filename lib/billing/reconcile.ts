@@ -36,6 +36,11 @@ import {
   getSubscriptionSuspensionWindow,
 } from '@/lib/billing/access';
 
+import {
+  addOneSubscriptionMonth,
+  ensureSubscriptionBillingInvoice,
+} from '@/lib/billing/subscription-documents';
+
 function closeEnough(
   left:
     number | null,
@@ -118,6 +123,8 @@ export async function reconcileWorkspaceBilling(
             AS plan_key,
           sp.key
             AS scheduled_plan_key,
+          sp.name
+            AS scheduled_plan_name,
           bp.provider,
           bp.provider_subscription_id,
           bp.recurring_status,
@@ -320,6 +327,74 @@ export async function reconcileWorkspaceBilling(
           reminderBucket !==
             null
         ) {
+          let invoice:
+            Awaited<ReturnType<typeof ensureSubscriptionBillingInvoice>> |
+            null = null;
+
+          const invoicePlanKey =
+            normalizeSamiPlanKey(
+              row.scheduled_plan_key,
+            ) || planKey;
+
+          const invoicePlanPolicy =
+            invoicePlanKey
+              ? getSamiPlanPolicy(
+                  invoicePlanKey,
+                )
+              : null;
+
+          // When a paid period is approaching, create its invoice once.
+          // Provider callbacks can arrive late; the PDF is a SaMi bill
+          // snapshot, not proof that payment has already been made.
+          if (invoicePlanPolicy?.paid) {
+            try {
+              invoice =
+                await ensureSubscriptionBillingInvoice({
+                  tenantId: String(row.tenant_id),
+                  subscriptionId: String(row.id),
+                  planKey: invoicePlanKey,
+                  planName:
+                    String(
+                      row.scheduled_plan_name ||
+                      invoicePlanPolicy.name,
+                    ),
+                  currency: SAMI_BILLING_CURRENCY,
+                  pricePerUserMonthly:
+                    getSamiPricePerUserMonthly(
+                      invoicePlanKey,
+                    ),
+                  billableUsers:
+                    await billableUsers(
+                      String(row.tenant_id),
+                    ),
+                  periodStart: boundaryDate,
+                  periodEnd:
+                    addOneSubscriptionMonth(
+                      boundaryDate,
+                    ),
+                  dueAt: boundaryDate,
+                });
+            } catch (error) {
+              report.failures += 1;
+              console.error(
+                '[SaMi Billing] Subscription invoice could not be issued:',
+                {
+                  subscriptionId: String(row.id),
+                  error,
+                },
+              );
+            }
+          }
+
+          const invoiceAmount =
+            invoice?.totalAmount ??
+            (
+              invoicePlanPolicy?.paid
+                ? getSamiPricePerUserMonthly(invoicePlanKey) *
+                  await billableUsers(String(row.tenant_id))
+                : 0
+            );
+
           try {
             await notifyWorkspaceOwnersOfBillingEvent({
               tenantId:
@@ -336,19 +411,29 @@ export async function reconcileWorkspaceBilling(
                   ? 'Subscription payment due soon'
                   : `Subscription payment due within ${reminderBucket} days`,
               message:
-                `Your SaMi ${policy.name} subscription billing boundary is ${boundaryDate.toLocaleDateString(
-                  'en-KE',
-                  {
-                    year:
-                      'numeric',
-                    month:
-                      'short',
-                    day:
-                      'numeric',
-                    timeZone:
-                      'Africa/Nairobi',
-                  },
-                )}. Review Billing before it becomes past due to avoid workspace suspension.`,
+                invoice
+                  ? `Your SaMi ${invoicePlanPolicy?.name || policy.name} invoice ${invoice.documentNumber} for ${invoice.currency} ${invoiceAmount.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} is due on ${boundaryDate.toLocaleDateString('en-KE', { dateStyle: 'medium', timeZone: 'Africa/Nairobi' })}. Review Billing to pay before your access is interrupted.`
+                  : `Your SaMi ${policy.name} subscription billing boundary is ${boundaryDate.toLocaleDateString('en-KE', { dateStyle: 'medium', timeZone: 'Africa/Nairobi' })}. Review Billing before it becomes past due to avoid workspace suspension.`,
+              emailMessage:
+                invoice
+                  ? `Your subscription invoice ${invoice.documentNumber} is ready.
+
+Plan: ${invoicePlanPolicy?.name || policy.name}
+Amount due: ${invoice.currency} ${invoiceAmount.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+Due date: ${boundaryDate.toLocaleDateString('en-KE', { dateStyle: 'long', timeZone: 'Africa/Nairobi' })}
+
+Open SaMi Settings > Billing to view or download your invoice and complete payment before this date.`
+                  : `Your SaMi ${policy.name} subscription reaches its billing date on ${boundaryDate.toLocaleDateString('en-KE', { dateStyle: 'medium', timeZone: 'Africa/Nairobi' })}.
+
+Open Billing to review the amount due and payment options before this date so your workspace access is not interrupted.`,
+              smsMessage:
+                invoice
+                  ? `SaMi invoice ${invoice.documentNumber}: ${invoice.currency} ${invoiceAmount.toLocaleString('en-KE', { maximumFractionDigits: 2 })} due ${boundaryDate.toLocaleDateString('en-KE', { dateStyle: 'medium', timeZone: 'Africa/Nairobi' })}. Open SaMi Billing to pay.`
+                  : reminderBucket === 1
+                    ? `SaMi subscription payment is due soon (${boundaryDate.toLocaleDateString('en-KE', { dateStyle: 'medium', timeZone: 'Africa/Nairobi' })}). Open Billing before the due date to avoid service interruption.`
+                    : `SaMi subscription payment is due within ${reminderBucket} days. Review Billing before the due date to avoid interruption.`,
+              emailStatus:
+                'warning',
               priority:
                 reminderBucket ===
                   1
@@ -368,6 +453,15 @@ export async function reconcileWorkspaceBilling(
                     .toISOString(),
                 reminderDays:
                   reminderBucket,
+                ...(invoice
+                  ? {
+                      documentType: 'invoice',
+                      documentId: invoice.id,
+                      documentNumber: invoice.documentNumber,
+                      amount: invoiceAmount,
+                      currency: invoice.currency,
+                    }
+                  : {}),
               },
             });
           } catch (
@@ -482,6 +576,16 @@ export async function reconcileWorkspaceBilling(
             suspension.suspended
               ? 'SaMi has suspended normal workspace work because the subscription remains unpaid after the grace period. Your data is retained. Open Billing and complete payment to restore access automatically.'
               : `Your SaMi subscription is overdue. Normal workspace access remains available during the ${suspension.graceDays}-day grace period${graceDate ? ` until ${graceDate}` : ''}. Complete payment before the deadline to avoid suspension.`,
+          emailMessage:
+            suspension.suspended
+              ? 'Normal workspace operations are suspended because the subscription remains unpaid after the grace period. Your workspace data, files and settings are retained. Complete payment in Billing to restore paid access.'
+              : `Your subscription payment is overdue. Paid access remains available during the ${suspension.graceDays}-day grace period${graceDate ? ` until ${graceDate}` : ''}. Open Billing to review the outstanding payment and settle it before the deadline.`,
+          smsMessage:
+            suspension.suspended
+              ? 'SaMi workspace is suspended for overdue subscription payment. Your data is retained. Open Billing and pay to restore access.'
+              : `SaMi subscription is overdue. ${graceDate ? `Pay before ${graceDate} ` : ''}to avoid workspace suspension. Open SaMi Billing.`,
+          emailStatus:
+            'critical',
           priority:
             'urgent',
           dedupeKey:
@@ -499,6 +603,7 @@ export async function reconcileWorkspaceBilling(
               String(
                 boundary,
               ),
+            billingBoundary: String(boundary),
             phase,
             graceDays:
               suspension.graceDays,
