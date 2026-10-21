@@ -3,7 +3,7 @@ import type { SamiModuleMigrationDefinition } from '@/lib/modules/migration-type
 import { executeSafeSamiModuleMigrationSql } from '@/lib/modules/migration-safety';
 
 /** Establish the shared, company-scoped stock-ledger contract. Ambiguous legacy ownership is never guessed. */
-export const INVENTORY_2_3_0_TO_2_4_0: SamiModuleMigrationDefinition = {
+export const INVENTORY_1_0_0_TO_2_4_0: SamiModuleMigrationDefinition = {
   key: 'inventory-1.0.0-to-2.4.0-stock-ledger-integrity',
   moduleKey: 'inventory',
   namespace: 'inventory',
