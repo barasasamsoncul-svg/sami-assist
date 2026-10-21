@@ -54,6 +54,12 @@ import {
   queryControl,
 } from '@/lib/db/control';
 
+import {
+  getSubscriptionBillingDocument,
+  listSubscriptionBillingDocuments,
+  renderSubscriptionBillingDocumentPdf,
+} from '@/lib/billing/subscription-documents';
+
 export type WorkspaceBillingErrorCode =
   | 'UNAUTHENTICATED'
   | 'WORKSPACE_CONTEXT_CHANGED'
@@ -880,6 +886,45 @@ async function persistPastDueIfNeeded(
   );
 }
 
+export async function getWorkspaceSubscriptionBillingDocumentPdf(
+  documentId: string,
+) {
+  const context =
+    await resolveBillingContext(
+      'view',
+    );
+
+  if (
+    typeof documentId !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(documentId)
+  ) {
+    return null;
+  }
+
+  const document =
+    await getSubscriptionBillingDocument(
+      context.tenantId,
+      documentId,
+    );
+
+  if (!document) {
+    return null;
+  }
+
+  const pdf =
+    await renderSubscriptionBillingDocumentPdf(
+      document,
+    );
+
+  return {
+    pdf,
+    documentNumber:
+      String(document.document_number),
+    documentType:
+      String(document.document_type),
+  };
+}
+
 export async function getWorkspaceBillingState() {
   const context =
     await resolveBillingContext(
@@ -934,6 +979,7 @@ export async function getWorkspaceBillingState() {
     plans,
     payments,
     billingProfile,
+    documents,
   ] =
     await Promise.all([
       getBillableUsers(
@@ -947,6 +993,10 @@ export async function getWorkspaceBillingState() {
         String(
           subscription.id,
         ),
+      ),
+      listSubscriptionBillingDocuments(
+        context.tenantId,
+        String(subscription.id),
       ),
     ]);
 
@@ -1106,6 +1156,8 @@ export async function getWorkspaceBillingState() {
     plans,
 
     payments,
+
+    documents,
 
     billingProfile:
       billingProfile
