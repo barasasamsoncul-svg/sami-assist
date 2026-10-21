@@ -8,6 +8,10 @@ import {
   notifyWorkspaceOwnersOfBillingEvent,
 } from '@/lib/billing/notifications';
 
+import {
+  issueSubscriptionPaymentReceipt,
+} from '@/lib/billing/subscription-documents';
+
 function normalizedCurrency(
   value:
     string | null | undefined,
@@ -367,6 +371,51 @@ export async function applyVerifiedCheckoutPayment(
       'COMMIT',
     );
 
+    let issuedReceipt:
+      Awaited<ReturnType<typeof issueSubscriptionPaymentReceipt>>['receipt'] |
+      null = null;
+
+    try {
+      const periodStart = new Date(
+        activation.rows[0].current_period_start,
+      );
+      const periodEnd = new Date(
+        activation.rows[0].current_period_end,
+      );
+
+      if (
+        !Number.isNaN(periodStart.getTime()) &&
+        !Number.isNaN(periodEnd.getTime())
+      ) {
+        const documents =
+          await issueSubscriptionPaymentReceipt({
+            tenantId: String(payment.tenant_id),
+            subscriptionId: String(payment.subscription_id),
+            paymentTransactionId: String(payment.id),
+            paymentReference: input.providerReference,
+            provider: input.provider,
+            amount: actualAmount,
+            currency: input.currency,
+            periodStart,
+            periodEnd,
+            dueAt: periodStart,
+            paidAt: new Date(),
+          });
+
+        issuedReceipt = documents.receipt;
+      } else {
+        throw new Error('Verified payment has no valid subscription billing period.');
+      }
+    } catch (error) {
+      console.error(
+        '[SaMi Billing] Payment receipt could not be issued:',
+        {
+          paymentId: String(payment.id),
+          error,
+        },
+      );
+    }
+
     try {
       await notifyWorkspaceOwnersOfBillingEvent({
         tenantId:
@@ -403,10 +452,44 @@ export async function applyVerifiedCheckoutPayment(
                     2,
                 },
               )}. Your workspace subscription is active.`,
+        emailMessage:
+          subscription.cancelled_at
+            ? `We received your payment of ${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Your paid period is active, but automatic renewal remains stopped because cancellation is still scheduled.${issuedReceipt ? `\n\nReceipt: ${issuedReceipt.documentNumber}. Download it from SaMi Settings > Billing.` : ''}`
+            : `We received your payment of ${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Your SaMi subscription is active.${issuedReceipt ? `\n\nReceipt: ${issuedReceipt.documentNumber}. Download it from SaMi Settings > Billing.` : ''} No further action is needed today.`,
+        smsMessage:
+          subscription.cancelled_at
+            ? `SaMi received ${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { maximumFractionDigits: 2 })}. Paid access is active; future renewals remain cancelled.`
+            : `SaMi payment received: ${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { maximumFractionDigits: 2 })}. Your subscription is active.`,
+        emailStatus:
+          'success',
         priority:
           'high',
         dedupeKey:
           `billing:payment-succeeded:${payment.id}`,
+        href:
+          '/settings?tab=billing',
+        emailDetails:
+          issuedReceipt
+            ? [
+                {
+                  label: 'Receipt number',
+                  value: issuedReceipt.documentNumber,
+                },
+                {
+                  label: 'Amount received',
+                  value: `${normalizedCurrency(input.currency)} ${actualAmount.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                },
+                {
+                  label: 'Billing period ends',
+                  value: new Date(
+                    activation.rows[0].current_period_end,
+                  ).toLocaleDateString('en-KE', {
+                    dateStyle: 'medium',
+                    timeZone: 'Africa/Nairobi',
+                  }),
+                },
+              ]
+            : undefined,
         metadata: {
           provider:
             input.provider,
@@ -420,6 +503,13 @@ export async function applyVerifiedCheckoutPayment(
             normalizedCurrency(
               input.currency,
             ),
+          ...(issuedReceipt
+            ? {
+                documentType: 'receipt',
+                documentId: issuedReceipt.id,
+                documentNumber: issuedReceipt.documentNumber,
+              }
+            : {}),
         },
       });
     } catch (
@@ -600,6 +690,12 @@ export async function markVerifiedCheckoutFailed(
             'Payment needs attention',
           message:
             'SaMi could not confirm the latest subscription payment. Open Billing to review the payment and restore full paid access.',
+          emailMessage:
+            'SaMi could not confirm your latest subscription payment. Open Billing to review the payment status and complete recovery if payment is still outstanding. Your workspace data is retained.',
+          smsMessage:
+            'SaMi could not confirm your latest subscription payment. Review Billing and complete payment recovery if needed.',
+          emailStatus:
+            'critical',
           priority:
             'urgent',
           dedupeKey:
@@ -1075,6 +1171,38 @@ export async function applyVerifiedRecurringInvoice(
       'COMMIT',
     );
 
+    let issuedReceipt:
+      Awaited<ReturnType<typeof issueSubscriptionPaymentReceipt>>['receipt'] |
+      null = null;
+
+    try {
+      const documents =
+        await issueSubscriptionPaymentReceipt({
+          tenantId: String(profile.tenant_id),
+          subscriptionId: String(profile.subscription_id),
+          paymentTransactionId: String(paymentId),
+          paymentReference: input.providerReference,
+          provider: input.provider,
+          amount: input.amount,
+          currency: input.currency,
+          periodStart: input.periodStart,
+          periodEnd: input.periodEnd,
+          dueAt: input.periodStart,
+          paidAt: new Date(),
+        });
+
+      issuedReceipt = documents.receipt;
+    } catch (error) {
+      console.error(
+        '[SaMi Billing] Recurring payment receipt could not be issued:',
+        {
+          paymentId,
+          providerReference: input.providerReference,
+          error,
+        },
+      );
+    }
+
     try {
       await notifyWorkspaceOwnersOfBillingEvent({
         tenantId:
@@ -1112,10 +1240,38 @@ export async function applyVerifiedRecurringInvoice(
                     2,
                 },
               )}. Your subscription remains active.`,
+        emailMessage:
+          subscription.rows[0]
+            .cancelled_at
+            ? `Your recurring payment of ${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} was confirmed. The paid period is active, but the scheduled cancellation still stops future renewals.${issuedReceipt ? `\n\nReceipt: ${issuedReceipt.documentNumber}. Download it from SaMi Settings > Billing.` : ''}`
+            : `Your recurring payment of ${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} was confirmed. Your SaMi subscription has been renewed and remains active.${issuedReceipt ? `\n\nReceipt: ${issuedReceipt.documentNumber}. Download it from SaMi Settings > Billing.` : ''}`,
+        smsMessage:
+          `SaMi subscription renewed: ${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { maximumFractionDigits: 2 })} received. ${subscription.rows[0].cancelled_at ? 'Future renewals remain cancelled.' : 'Access remains active.'}`,
+        emailStatus:
+          'success',
         priority:
           'high',
         dedupeKey:
           `billing:recurring-succeeded:${paymentId}`,
+        href:
+          '/settings?tab=billing',
+        emailDetails:
+          issuedReceipt
+            ? [
+                {
+                  label: 'Receipt number',
+                  value: issuedReceipt.documentNumber,
+                },
+                {
+                  label: 'Amount received',
+                  value: `${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                },
+                {
+                  label: 'Billing period',
+                  value: `${input.periodStart.toLocaleDateString('en-KE', { dateStyle: 'medium', timeZone: 'Africa/Nairobi' })} – ${input.periodEnd.toLocaleDateString('en-KE', { dateStyle: 'medium', timeZone: 'Africa/Nairobi' })}`,
+                },
+              ]
+            : undefined,
         metadata: {
           provider:
             input.provider,
@@ -1126,6 +1282,13 @@ export async function applyVerifiedRecurringInvoice(
             normalizedCurrency(
               input.currency,
             ),
+          ...(issuedReceipt
+            ? {
+                documentType: 'receipt',
+                documentId: issuedReceipt.id,
+                documentNumber: issuedReceipt.documentNumber,
+              }
+            : {}),
         },
       });
     } catch (
