@@ -66,16 +66,10 @@ SAMI_BILLING_STANDARD_PRICE_PER_USER_MONTHLY=2500
 SAMI_BILLING_CUSTOM_PRICE_PER_USER_MONTHLY=4500
 ```
 
-Platform subscription billing is Stripe-only. Configure the provider explicitly in Vercel:
-
-```env
-SAMI_BILLING_PROVIDER=stripe
-```
-
-The subscription provider registry routes new SaMi Platform billing only to
-Stripe; the legacy Paystack and PesaPal billing adapters are not selectable for
-new platform subscriptions. The Stripe credentials below are required before
-production checkout or automatic renewals can be enabled.
+Platform subscription billing is Stripe-only. The application selects
+Stripe in code and does not fall back to an old provider-selection environment
+value. The Stripe credentials below are required before production checkout
+or automatic renewals can be enabled.
 
 ### Stripe
 
