@@ -194,8 +194,8 @@ async function resolveSubscriptionDocumentInput(
   const planKey =
     normalizeSamiPlanKey(
       input.planKey ||
-      row.scheduled_plan_key ||
-      row.plan_key,
+      row.plan_key ||
+      row.scheduled_plan_key,
     );
 
   const policy =
