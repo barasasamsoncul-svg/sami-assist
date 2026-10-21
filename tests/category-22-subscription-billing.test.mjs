@@ -1955,6 +1955,24 @@ test('Category 22: every issued subscription bill has a downloadable invoice or 
 
   assert.match(
     notificationRetry,
+    /function isSmsProviderConfigured/,
+    'SMS retries must be held when the selected provider lacks required credentials.',
+  );
+
+  assert.match(
+    notificationRetry,
+    /AFRICASTALKING_API_KEY[\s\S]*TWILIO_AUTH_TOKEN/,
+    'SMS retry readiness must recognize the configured provider credential names.',
+  );
+
+  assert.match(
+    notificationRetry,
+    /d\.channel <> 'sms' OR \$2::boolean/,
+    'An unconfigured SMS provider must not burn through the retry budget.',
+  );
+
+  assert.match(
+    notificationRetry,
     /FOR UPDATE OF d SKIP LOCKED/,
     'Concurrent workers must not claim the same notification delivery.',
   );
