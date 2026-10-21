@@ -66,21 +66,16 @@ SAMI_BILLING_STANDARD_PRICE_PER_USER_MONTHLY=2500
 SAMI_BILLING_CUSTOM_PRICE_PER_USER_MONTHLY=4500
 ```
 
-Provider selection:
+Platform subscription billing is Stripe-only. Configure the provider explicitly in Vercel:
 
 ```env
 SAMI_BILLING_PROVIDER=stripe
 ```
 
-Supported provider keys are:
-
-- `stripe`
-- `paystack`
-- `pesapal`
-
-For rollout safety, an unset `SAMI_BILLING_PROVIDER` currently falls back to
-PesaPal. Set it explicitly in production once the chosen provider is fully
-configured.
+The subscription provider registry routes new SaMi Platform billing only to
+Stripe; the legacy Paystack and PesaPal billing adapters are not selectable for
+new platform subscriptions. The Stripe credentials below are required before
+production checkout or automatic renewals can be enabled.
 
 ### Stripe
 
@@ -109,56 +104,35 @@ SaMi uses a SetupIntent for zero-charge payment-method authorization during an
 eligible free trial/current paid period. The provider state is then re-read
 server-side before SaMi creates recurring billing.
 
-### Paystack
+### Legacy provider records
 
-```env
-SAMI_BILLING_PROVIDER=paystack
+Paystack and PesaPal are not supported for new SaMi Platform subscription
+checkout or automatic renewals. Legacy callback routes and adapter references
+are retained only where required to safely resolve previously initiated
+transactions and historical payment records. Their presence does not make
+them selectable platform subscription providers.
 
-PAYSTACK_SECRET_KEY=...
-```
+Payment providers configured by a tenant for that tenant's own Invoicing
+checkout are a separate integration and are not changed by this platform
+subscription policy.
 
-Callback/webhook endpoint:
+## Provider policy and existing subscriptions
 
-```text
-/api/billing/paystack/callback
-```
+SaMi Platform subscription billing is Stripe-only. The application does not
+use the legacy `SAMI_BILLING_PROVIDER` value to select another provider for
+new subscriptions.
 
-The current SaMi Paystack adapter supports checkout, including M-PESA-capable
-checkout, but does not advertise automatic recurring billing yet. SaMi must
-never claim a provider capability that the adapter cannot safely complete.
-
-### PesaPal
-
-Existing PesaPal credentials remain supported through the PesaPal adapter.
-
-PesaPal does not own SaMi pricing. Legacy provider-specific price variables are ignored by Category 22. Only the canonical `SAMI_BILLING_*` price variables may override the default SaMi plan prices.
-
-New PesaPal checkouts persist the server-calculated active-seat count and per-user price snapshot. The callback also validates one-time checkout amounts against the current SaMi billing contract before subscription access can be activated.
-
-## Provider switching
-
-Changing:
-
-```env
-SAMI_BILLING_PROVIDER=...
-```
-
-selects the provider for new billing operations.
-
-It does **not** migrate an existing recurring mandate. Existing recurring
-billing is pinned in `subscription_billing_profiles` to the provider that
-created it. A cross-provider migration requires an explicit cancellation /
-re-authorization flow.
-
-This prevents an existing Stripe subscription from being silently treated as a
-Paystack or PesaPal subscription after an environment change.
+Existing provider billing profiles remain pinned to the provider that created
+them; the platform must not silently reinterpret an existing provider
+subscription as a Stripe subscription. A change from a legacy provider requires
+an explicit Stripe payment-method authorization and verification flow before
+automatic renewal is activated.
 
 ## Recurring billing and changing seats
 
 Paid billing is per active internal user.
 
-For providers that support variable recurring billing, SaMi reconciliation
-keeps the provider subscription aligned to:
+Stripe reconciliation keeps the provider subscription aligned to:
 
 ```text
 current server-configured price per user × current active billable users
