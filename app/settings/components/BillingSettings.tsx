@@ -109,6 +109,21 @@ type BillingPayment = {
     string | null;
 };
 
+type BillingDocument = {
+  id: string;
+  documentType: 'invoice' | 'receipt';
+  documentNumber: string;
+  status: string;
+  currency: string;
+  totalAmount: number;
+  issuedAt: string;
+  dueAt: string | null;
+  paidAt: string | null;
+  periodStart: string;
+  periodEnd: string;
+  paymentTransactionId: string | null;
+};
+
 export type BillingState = {
   canManage: boolean;
   currency: string;
@@ -166,6 +181,8 @@ export type BillingState = {
     BillingPlan[];
   payments:
     BillingPayment[];
+  documents:
+    BillingDocument[];
   billingProfile:
     | {
         provider:
@@ -2229,6 +2246,86 @@ export default function BillingSettings({
               </div>
             ),
           )}
+        </div>
+      </section>
+
+
+      <section
+        className={[
+          'rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)]',
+          mobileSection ===
+            'payments'
+            ? ''
+            : 'hidden lg:block',
+        ].join(
+          ' ',
+        )}
+      >
+        <div className="border-b border-[var(--sami-border)] p-4">
+          <div className="flex items-center gap-2">
+            <ReceiptText className="h-4 w-4 text-slate-400" />
+            <h2 className="text-sm font-black">
+              Subscription invoices and receipts
+            </h2>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            Download issued invoices and payment receipts for this SaMi workspace.
+          </p>
+        </div>
+
+        <div className="divide-y divide-[var(--sami-border)]">
+          {state.documents.length === 0 && (
+            <div className="p-8 text-center text-sm text-slate-500">
+              No subscription invoices or receipts have been issued yet.
+            </div>
+          )}
+
+          {state.documents.map(document => (
+            <div
+              key={document.id}
+              className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-xs font-black">
+                  {document.documentNumber}
+                  <span className="ml-2 rounded-full border border-[var(--sami-border)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-500">
+                    {document.documentType}
+                  </span>
+                </p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Issued {formatDate(document.issuedAt)}
+                  {document.documentType === 'invoice' && document.dueAt
+                    ? ` · Due ${formatDate(document.dueAt)}`
+                    : document.paidAt
+                      ? ` · Paid ${formatDate(document.paidAt)}`
+                      : ''}
+                </p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Period: {formatDate(document.periodStart)} – {formatDate(document.periodEnd)}
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 sm:justify-end">
+                <div className="sm:text-right">
+                  <p className="text-xs font-black">
+                    {formatMoney(document.totalAmount, document.currency)}
+                  </p>
+                  <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                    {titleCase(document.status)}
+                  </p>
+                </div>
+                <a
+                  href={`/api/workspace/billing/documents/${encodeURIComponent(document.id)}?download=1`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-[11px] font-black hover:bg-[var(--sami-hover)]"
+                >
+                  <ReceiptText className="h-3.5 w-3.5" />
+                  Download PDF
+                </a>
+              </div>
+            </div>
+          ))}
         </div>
       </section>
 

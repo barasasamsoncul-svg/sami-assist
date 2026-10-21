@@ -3029,8 +3029,11 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   assert.match(invoice, /mode: hasExplicitLineSelection\s*\?\s*'explicit'\s*:\s*'all_remaining'/);
   assert.match(invoice, /else if \(storedMode === 'explicit'\)/,
     'an omitted retry selection cannot replay a completed partial invoice');
-  assert.match(invoice, /stored\.mode !== null && stored\.mode !== currentMode/);
-    'pending invoice-batch recovery must preserve the original selection mode');
+  assert.match(
+    invoice,
+    /stored\.mode !== null && stored\.mode !== currentMode/,
+    'pending invoice-batch recovery must preserve the original selection mode',
+  );
   const completedBatchGuardStart = invoice.indexOf('if (existingBatch.rows.length > 0) {');
   const completedBatchReturn = invoice.indexOf('reused: true', completedBatchGuardStart);
   assert.ok(completedBatchGuardStart >= 0 && completedBatchReturn > completedBatchGuardStart);

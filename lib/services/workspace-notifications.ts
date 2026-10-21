@@ -12,6 +12,15 @@ import {
 import { requireCompanyAccess } from '@/lib/services/company-access';
 import { getWorkspaceSubscriptionAccessState } from '@/lib/billing/access';
 import { sendWorkspaceNotificationEmail } from '@/lib/services/email';
+
+import type {
+  WorkspaceNotificationEmailAttachment,
+} from '@/lib/services/email';
+
+import {
+  getSubscriptionBillingDocument,
+  renderSubscriptionBillingDocumentPdf,
+} from '@/lib/billing/subscription-documents';
 import { sendWorkspaceNotificationSms } from '@/lib/services/sms';
 import {
   recordWorkspaceAuditEvent,
@@ -138,6 +147,12 @@ export type CreateWorkspaceNotificationInput = {
   critical?: boolean;
   emailMessage?: string | null;
   smsMessage?: string | null;
+  emailVariant?: 'default' | 'billing';
+  emailStatus?: 'success' | 'info' | 'warning' | 'critical';
+  emailDetails?: Array<{
+    label: string;
+    value: string;
+  }>;
 };
 
 function requireUuid(
@@ -1386,6 +1401,54 @@ export async function archiveWorkspaceNotification(
  * Modules and SaMi core services call this only after their own
  * business authorization succeeds.
  */
+async function getBillingDocumentEmailAttachment(
+  tenantId: string,
+  metadata: Record<string, unknown> | null | undefined,
+): Promise<WorkspaceNotificationEmailAttachment[]> {
+  const documentId =
+    typeof metadata?.documentId === 'string'
+      ? metadata.documentId.trim()
+      : '';
+
+  const documentType =
+    metadata?.documentType === 'invoice' ||
+    metadata?.documentType === 'receipt'
+      ? metadata.documentType
+      : null;
+
+  if (
+    !documentType ||
+    !UUID_RE.test(documentId)
+  ) {
+    return [];
+  }
+
+  const document =
+    await getSubscriptionBillingDocument(
+      tenantId,
+      documentId,
+    );
+
+  if (
+    !document ||
+    document.document_type !== documentType
+  ) {
+    return [];
+  }
+
+  const pdf =
+    await renderSubscriptionBillingDocumentPdf(
+      document,
+    );
+
+  return [{
+    filename:
+      `${String(document.document_number).replace(/[^a-z0-9._-]+/gi, '-').slice(0, 100)}.pdf`,
+    content: pdf,
+    contentType: 'application/pdf',
+  }];
+}
+
 export async function createWorkspaceNotification(
   input: CreateWorkspaceNotificationInput,
 ): Promise<WorkspaceNotification> {
@@ -1718,6 +1781,7 @@ export async function createWorkspaceNotification(
               channel,
               status,
               attempts,
+              metadata,
               created_at,
               updated_at
             )
@@ -1727,6 +1791,7 @@ export async function createWorkspaceNotification(
               'email',
               'pending',
               0,
+              $3::jsonb,
               NOW(),
               NOW()
             )
@@ -1740,6 +1805,47 @@ export async function createWorkspaceNotification(
           [
             row.id,
             recipientUserId,
+            JSON.stringify({
+              emailMessage:
+                typeof input.emailMessage === 'string'
+                  ? input.emailMessage.slice(0, 3000)
+                  : message,
+              emailVariant:
+                input.emailVariant === 'billing'
+                  ? 'billing'
+                  : 'default',
+              emailStatus:
+                input.emailStatus || 'info',
+              emailDetails:
+                Array.isArray(input.emailDetails)
+                  ? input.emailDetails
+                      .filter(item =>
+                        item &&
+                        typeof item.label === 'string' &&
+                        typeof item.value === 'string',
+                      )
+                      .slice(0, 8)
+                      .map(item => ({
+                        label: item.label.slice(0, 80),
+                        value: item.value.slice(0, 180),
+                      }))
+                  : [],
+              actionHref: href,
+              actionLabel:
+                input.emailVariant === 'billing'
+                  ? 'Review Billing'
+                  : 'Open in SaMi',
+              documentId:
+                typeof input.metadata?.documentId === 'string' &&
+                UUID_RE.test(input.metadata.documentId)
+                  ? input.metadata.documentId
+                  : null,
+              documentType:
+                input.metadata?.documentType === 'invoice' ||
+                input.metadata?.documentType === 'receipt'
+                  ? input.metadata.documentType
+                  : null,
+            }),
           ],
         );
 
@@ -1764,6 +1870,7 @@ export async function createWorkspaceNotification(
               channel,
               status,
               attempts,
+              metadata,
               created_at,
               updated_at
             )
@@ -1773,6 +1880,7 @@ export async function createWorkspaceNotification(
               'sms',
               'pending',
               0,
+              $3::jsonb,
               NOW(),
               NOW()
             )
@@ -1786,6 +1894,15 @@ export async function createWorkspaceNotification(
           [
             row.id,
             recipientUserId,
+            JSON.stringify({
+              smsMessage:
+                normalizeText(
+                  input.smsMessage !== undefined
+                    ? input.smsMessage
+                    : message,
+                  360,
+                ),
+            }),
           ],
         );
 
@@ -1820,6 +1937,27 @@ export async function createWorkspaceNotification(
       'there';
 
     try {
+      let billingAttachments:
+        WorkspaceNotificationEmailAttachment[] = [];
+
+      try {
+        billingAttachments =
+          await getBillingDocumentEmailAttachment(
+            tenantId,
+            input.metadata,
+          );
+      } catch (error) {
+        // The email/link must still go out if document rendering fails.
+        console.error(
+          '[SaMi Billing] Invoice/receipt email attachment could not be rendered:',
+          {
+            tenantId,
+            notificationId: row.id,
+            error,
+          },
+        );
+      }
+
       const delivery =
         await sendWorkspaceNotificationEmail(
           String(recipient.email),
@@ -1832,6 +1970,10 @@ export async function createWorkspaceNotification(
                 ? input.emailMessage
                 : message,
             actionHref: href,
+            variant: input.emailVariant,
+            status: input.emailStatus,
+            details: input.emailDetails,
+            attachments: billingAttachments,
           },
         );
 
