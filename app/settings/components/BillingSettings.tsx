@@ -109,6 +109,21 @@ type BillingPayment = {
     string | null;
 };
 
+type BillingDocument = {
+  id: string;
+  documentType: 'invoice' | 'receipt';
+  documentNumber: string;
+  status: string;
+  currency: string;
+  totalAmount: number;
+  issuedAt: string;
+  dueAt: string | null;
+  paidAt: string | null;
+  periodStart: string;
+  periodEnd: string;
+  paymentTransactionId: string | null;
+};
+
 export type BillingState = {
   canManage: boolean;
   currency: string;
@@ -166,6 +181,8 @@ export type BillingState = {
     BillingPlan[];
   payments:
     BillingPayment[];
+  documents:
+    BillingDocument[];
   billingProfile:
     | {
         provider:
