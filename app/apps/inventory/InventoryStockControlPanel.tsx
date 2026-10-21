@@ -33,6 +33,7 @@ export default function InventoryStockControlPanel() {
   const [quantity,setQuantity] = useState('');
   const [reference,setReference] = useState('');
   const keyRef = useRef('');
+  const payloadFingerprintRef = useRef('');
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -53,15 +54,20 @@ export default function InventoryStockControlPanel() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setSaving(true); setError(null); setNotice(null);
-    if(!keyRef.current) keyRef.current=crypto.randomUUID();
+    const movementPayload = { action:'record-movement',productId,warehouseId,movementType,quantity,reference };
+    const fingerprint = JSON.stringify(movementPayload);
+    if(!keyRef.current || payloadFingerprintRef.current !== fingerprint) {
+      keyRef.current=crypto.randomUUID();
+      payloadFingerprintRef.current=fingerprint;
+    }
     try {
       const response=await fetch('/api/apps/inventory',{
         method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json'},
-        body:JSON.stringify({action:'record-movement',productId,warehouseId,movementType,quantity,reference,idempotencyKey:keyRef.current}),
+        body:JSON.stringify({...movementPayload,idempotencyKey:keyRef.current}),
       });
       const payload=await response.json().catch(()=>null);
       if(!response.ok||payload?.success!==true) throw new Error(payload?.error||'Stock movement was not recorded.');
-      keyRef.current='';setQuantity('');setReference('');
+      keyRef.current='';payloadFingerprintRef.current='';setQuantity('');setReference('');
       setNotice('Movement recorded and stock balance updated.');
       await refresh();
     } catch(cause) {

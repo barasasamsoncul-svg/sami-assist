@@ -36,3 +36,10 @@ test('Inventory runtime hardening applies the ledger contract for fresh installa
   assert.match(enterprise, /!ledgerManaged[\s\S]*capabilities\.canEdit/);
   assert.match(enterprise, /!ledgerManaged[\s\S]*capabilities\.canDelete/);
 });
+
+test('Inventory movement retries retain idempotency only for an identical payload', async () => {
+  const panel = await source('app/apps/inventory/InventoryStockControlPanel.tsx');
+  assert.match(panel, /payloadFingerprintRef/);
+  assert.match(panel, /payloadFingerprintRef\.current !== fingerprint/);
+  assert.match(panel, /JSON\.stringify\(\{\.\.\.movementPayload,idempotencyKey:keyRef\.current\}\)/);
+});
