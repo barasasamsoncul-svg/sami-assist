@@ -12,6 +12,15 @@ import {
   sendWorkspaceNotificationEmail,
 } from '@/lib/services/email';
 
+import type {
+  WorkspaceNotificationEmailAttachment,
+} from '@/lib/services/email';
+
+import {
+  getSubscriptionBillingDocument,
+  renderSubscriptionBillingDocumentPdf,
+} from '@/lib/billing/subscription-documents';
+
 import {
   sendWorkspaceNotificationSms,
 } from '@/lib/services/sms';
@@ -248,6 +257,54 @@ async function finishDelivery(
   );
 }
 
+async function retryBillingDocumentAttachment(
+  tenantId: string,
+  payload: JsonRecord,
+): Promise<WorkspaceNotificationEmailAttachment[]> {
+  const documentId =
+    typeof payload.documentId === 'string'
+      ? payload.documentId.trim()
+      : '';
+
+  const documentType =
+    payload.documentType === 'invoice' ||
+    payload.documentType === 'receipt'
+      ? payload.documentType
+      : null;
+
+  if (
+    !documentType ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(documentId)
+  ) {
+    return [];
+  }
+
+  const document =
+    await getSubscriptionBillingDocument(
+      tenantId,
+      documentId,
+    );
+
+  if (
+    !document ||
+    document.document_type !== documentType
+  ) {
+    return [];
+  }
+
+  const pdf =
+    await renderSubscriptionBillingDocumentPdf(
+      document,
+    );
+
+  return [{
+    filename:
+      `${String(document.document_number).replace(/[^a-z0-9._-]+/gi, '-').slice(0, 100)}.pdf`,
+    content: pdf,
+    contentType: 'application/pdf',
+  }];
+}
+
 async function deliverOne(
   tenantId: string,
   delivery: PendingDelivery,
@@ -275,6 +332,26 @@ async function deliverOne(
         .trim() || 'there';
 
     try {
+      let attachments:
+        WorkspaceNotificationEmailAttachment[] = [];
+
+      try {
+        attachments =
+          await retryBillingDocumentAttachment(
+            tenantId,
+            payload,
+          );
+      } catch (error) {
+        console.error(
+          '[SaMi Billing] Invoice/receipt retry attachment could not be rendered:',
+          {
+            tenantId,
+            deliveryId: delivery.id,
+            error,
+          },
+        );
+      }
+
       const sent = await sendWorkspaceNotificationEmail(
         String(recipient.email || ''),
         name,
@@ -317,6 +394,7 @@ async function deliverOne(
                     value: String(record(item).value).slice(0, 180),
                   }))
               : [],
+          attachments,
         },
       );
 
