@@ -138,6 +138,12 @@ export type CreateWorkspaceNotificationInput = {
   critical?: boolean;
   emailMessage?: string | null;
   smsMessage?: string | null;
+  emailVariant?: 'default' | 'billing';
+  emailStatus?: 'success' | 'info' | 'warning' | 'critical';
+  emailDetails?: Array<{
+    label: string;
+    value: string;
+  }>;
 };
 
 function requireUuid(
@@ -1832,6 +1838,9 @@ export async function createWorkspaceNotification(
                 ? input.emailMessage
                 : message,
             actionHref: href,
+            variant: input.emailVariant,
+            status: input.emailStatus,
+            details: input.emailDetails,
           },
         );
 
