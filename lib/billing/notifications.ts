@@ -112,6 +112,8 @@ function buildBillingEmailDetails(
     ['effectiveAt', 'Effective date'],
     ['daysPastDue', 'Days overdue'],
     ['reminderDays', 'Reminder window'],
+    ['documentNumber', 'Invoice / receipt number'],
+    ['documentType', 'Document type'],
     ['phase', 'Payment status'],
     ['paymentState', 'Payment status'],
     ['provider', 'Payment provider'],
