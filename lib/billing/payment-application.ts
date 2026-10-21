@@ -403,6 +403,16 @@ export async function applyVerifiedCheckoutPayment(
                     2,
                 },
               )}. Your workspace subscription is active.`,
+        emailMessage:
+          subscription.cancelled_at
+            ? `We received your payment of ${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Your paid period is active, but automatic renewal remains stopped because cancellation is still scheduled.`
+            : `We received your payment of ${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Your SaMi subscription is active. No further action is needed today.`,
+        smsMessage:
+          subscription.cancelled_at
+            ? `SaMi received ${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { maximumFractionDigits: 2 })}. Paid access is active; future renewals remain cancelled.`
+            : `SaMi payment received: ${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { maximumFractionDigits: 2 })}. Your subscription is active.`,
+        emailStatus:
+          'success',
         priority:
           'high',
         dedupeKey:
@@ -600,6 +610,12 @@ export async function markVerifiedCheckoutFailed(
             'Payment needs attention',
           message:
             'SaMi could not confirm the latest subscription payment. Open Billing to review the payment and restore full paid access.',
+          emailMessage:
+            'SaMi could not confirm your latest subscription payment. Open Billing to review the payment status and complete recovery if payment is still outstanding. Your workspace data is retained.',
+          smsMessage:
+            'SaMi could not confirm your latest subscription payment. Review Billing and complete payment recovery if needed.',
+          emailStatus:
+            'critical',
           priority:
             'urgent',
           dedupeKey:
@@ -1112,6 +1128,15 @@ export async function applyVerifiedRecurringInvoice(
                     2,
                 },
               )}. Your subscription remains active.`,
+        emailMessage:
+          subscription.rows[0]
+            .cancelled_at
+            ? `Your recurring payment of ${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} was confirmed. The paid period is active, but the scheduled cancellation still stops future renewals.`
+            : `Your recurring payment of ${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} was confirmed. Your SaMi subscription has been renewed and remains active.`,
+        smsMessage:
+          `SaMi subscription renewed: ${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { maximumFractionDigits: 2 })} received. ${subscription.rows[0].cancelled_at ? 'Future renewals remain cancelled.' : 'Access remains active.'}`,
+        emailStatus:
+          'success',
         priority:
           'high',
         dedupeKey:
