@@ -240,12 +240,12 @@ export default function SalesModuleShell({
   // If a SalesModuleShell is already rendering above us in the tree, don't
   // paint a second sidebar/topbar/padding — just pass children through.
   const alreadyMounted = useContext(SalesShellMount);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [liveUnread, setLiveUnread] = useState(unreadNotifications);
+
   if (alreadyMounted) {
     return <>{children}</>;
   }
-
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [liveUnread, setLiveUnread] = useState(unreadNotifications);
 
   const activePage = appSidebarItems.find(
     (item) => item.key === activeSidebarKey,
