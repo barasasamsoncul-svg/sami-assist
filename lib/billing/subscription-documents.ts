@@ -36,6 +36,9 @@ export type SubscriptionDocumentInput = {
   dueAt?: Date | null;
   planKey?: string;
   planName?: string;
+  currency?: string;
+  pricePerUserMonthly?: number;
+  billableUsers?: number;
 };
 
 type ResolvedSubscriptionDocumentInput =
