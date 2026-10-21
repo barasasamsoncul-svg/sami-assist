@@ -1810,3 +1810,146 @@ test('Category 22: full-suite gate includes subscription billing regression cove
     /test:category22/,
   );
 });
+
+
+test('Category 22: every issued subscription bill has a downloadable invoice or receipt and verified-payment linkage', async () => {
+  const [
+    migration,
+    manifest,
+    documents,
+    billingService,
+    billingUi,
+    documentRoute,
+    notificationRetry,
+    pesapalCallback,
+    paymentApplication,
+    reconciliation,
+  ] = await Promise.all([
+    source('lib/schema/control-migrations/011-category-22-subscription-invoices-receipts.sql'),
+    source('lib/schema/control-migrations/manifest.ts'),
+    source('lib/billing/subscription-documents.ts'),
+    source('lib/services/workspace-billing.ts'),
+    source('app/settings/components/BillingSettings.tsx'),
+    source('app/api/workspace/billing/documents/[documentId]/route.ts'),
+    source('lib/services/notification-delivery-retry.ts'),
+    source('app/api/auth/pesapal-callback/route.ts'),
+    source('lib/billing/payment-application.ts'),
+    source('lib/billing/reconcile.ts'),
+  ]);
+
+  assert.match(
+    manifest,
+    /011-category-22-subscription-invoices-receipts\.sql/,
+  );
+
+  assert.match(
+    migration,
+    /CREATE TABLE IF NOT EXISTS subscription_billing_documents/,
+  );
+
+  assert.match(
+    migration,
+    /idx_subscription_invoice_per_period/,
+    'Invoice creation must be idempotent per subscription period.',
+  );
+
+  assert.match(
+    migration,
+    /idx_subscription_receipt_per_payment/,
+    'A payment can only issue one receipt.',
+  );
+
+  assert.doesNotMatch(
+    migration,
+    /DROP TABLE|TRUNCATE|DROP DATABASE/i,
+  );
+
+  assert.match(
+    documents,
+    /ensureSubscriptionBillingInvoice/,
+  );
+
+  assert.match(
+    documents,
+    /issueSubscriptionPaymentReceipt/,
+  );
+
+  assert.match(
+    documents,
+    /renderInvoicePdf/,
+    'Invoices and receipts must be downloadable PDFs rather than notification text only.',
+  );
+
+  assert.match(
+    documents,
+    /getSubscriptionBillingDocument/,
+  );
+
+  assert.match(
+    documents,
+    /WHERE tenant_id = \$1\s+AND id = \$2/,
+    'Documents must be scoped to the authenticated tenant.',
+  );
+
+  assert.match(
+    documents,
+    /Verified payment does not match the issued SaMi invoice amount/,
+    'A receipt must not be issued against an invoice with a different total.',
+  );
+
+  assert.match(
+    reconciliation,
+    /ensureSubscriptionBillingInvoice/,
+    'The billing reconciliation worker must issue the next-period invoice before the due date.',
+  );
+
+  assert.match(
+    pesapalCallback,
+    /issueSubscriptionPaymentReceipt/g,
+    'Initial and recurring PesaPal payments must issue receipts.',
+  );
+
+  assert.match(
+    paymentApplication,
+    /issueSubscriptionPaymentReceipt/g,
+    'Generic verified checkout and recurring-payment paths must issue receipts.',
+  );
+
+  assert.match(
+    billingService,
+    /listSubscriptionBillingDocuments/,
+  );
+
+  assert.match(
+    billingService,
+    /getWorkspaceSubscriptionBillingDocumentPdf/,
+  );
+
+  assert.match(
+    billingUi,
+    /Subscription invoices and receipts/,
+  );
+
+  assert.match(
+    billingUi,
+    /Download PDF/,
+  );
+
+  assert.match(
+    documentRoute,
+    /resolveBillingContext/,
+    'Document downloads must pass through authenticated billing context.',
+  );
+
+  assert.match(
+    notificationRetry,
+    /attempts < 8/,
+    'Failed email and SMS deliveries must have bounded retry attempts.',
+  );
+
+  assert.match(
+    notificationRetry,
+    /FOR UPDATE OF d SKIP LOCKED/,
+    'Concurrent workers must not claim the same notification delivery.',
+  );
+});
