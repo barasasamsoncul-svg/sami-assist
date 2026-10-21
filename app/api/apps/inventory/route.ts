@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { CompanyContextError } from '@/lib/auth/company-context';
 import { TenantContextError } from '@/lib/auth/tenant-context';
 import { EnterpriseModuleError } from '@/lib/apps/enterprise/service';
-import { InventoryInputError, getInventoryStockOverview, recordInventoryStockMovement } from '@/lib/apps/inventory/service';
+import { InventoryConflictError, InventoryInputError, getInventoryStockOverview, getInventoryWorkflowOverview, runInventoryWorkflow } from '@/lib/apps/inventory/service';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -20,6 +20,9 @@ function sameOrigin(request: NextRequest) {
 function handleError(error: unknown) {
   if (error instanceof InventoryInputError) {
     return respond({ success: false, error: error.message }, 400);
+  }
+  if (error instanceof InventoryConflictError) {
+    return respond({ success: false, error: error.message }, 409);
   }
   if (error instanceof SyntaxError) {
     return respond({ success: false, error: 'Enter valid inventory data.' }, 400);
@@ -39,7 +42,10 @@ function handleError(error: unknown) {
 }
 
 export async function GET() {
-  try { return respond({ success: true, result: await getInventoryStockOverview() }); }
+  try {
+    const [stock, workflows] = await Promise.all([getInventoryStockOverview(), getInventoryWorkflowOverview()]);
+    return respond({ success: true, result: { ...stock, ...workflows } });
+  }
   catch (error) { return handleError(error); }
 }
 export async function POST(request: NextRequest) {
@@ -48,7 +54,7 @@ export async function POST(request: NextRequest) {
     const raw = await request.text();
     if (new TextEncoder().encode(raw).byteLength > MAX_BODY_BYTES) return respond({ success: false, error: 'Inventory request is too large.' }, 413);
     const body = JSON.parse(raw) as unknown;
-    const result = await recordInventoryStockMovement(body);
+    const result = await runInventoryWorkflow(body);
     return respond({ success: true, result });
   } catch (error) { return handleError(error); }
 }
