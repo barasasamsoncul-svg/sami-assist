@@ -1,6 +1,7 @@
 import 'server-only';
 
 export type SamiBillingProviderKey =
+  | 'intasend'
   | 'stripe'
   | 'paystack'
   | 'pesapal';
@@ -72,6 +73,16 @@ export type SamiBillingSetupInput = {
     SamiBillingCustomer;
   origin?:
     string | null;
+  plan?:
+    string;
+  currency?:
+    string;
+  pricePerUserMonthly?:
+    number;
+  billableUsers?:
+    number;
+  firstChargeAt?:
+    Date | string | null;
 };
 
 export type SamiBillingSetupResult = {
@@ -81,6 +92,8 @@ export type SamiBillingSetupResult = {
     string;
   setupReference:
     string;
+  providerSubscriptionId?:
+    string | null;
   clientSecret:
     string | null;
   redirectUrl:
@@ -97,6 +110,12 @@ export type SamiBillingSetupStatus = {
   providerCustomerId:
     string;
   providerPaymentMethodId:
+    string | null;
+  providerSubscriptionId?:
+    string | null;
+  cardMask?:
+    string | null;
+  cardType?:
     string | null;
 };
 
