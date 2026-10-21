@@ -2636,35 +2636,49 @@ export async function getEnterpriseModuleWorkspace(
     },
     tables:
       tables.map(
-        table => ({
-          ...table,
-          supportsCreate:
-            capabilities.canCreate &&
-            !(
-              table.settingTable &&
-              table.count >
-                0
-            ) &&
-            table.fields.some(
-              field =>
-                field.writable,
-            ),
-          supportsEdit:
-            capabilities.canEdit &&
-            Boolean(
-              table.recordKey,
-            ),
-          supportsDelete:
-            capabilities.canDelete &&
-            Boolean(
-              table.recordKey,
-            ) &&
-            table.fields.some(
-              field =>
-                field.key ===
-                'deleted_at',
-            ),
-        }),
+        table => {
+          const ledgerManaged =
+            context.moduleKey === 'inventory' &&
+            [
+              'stock_levels',
+              'stock_movements',
+              'stock_reservations',
+              'inventory_adjustments',
+            ].includes(table.key);
+
+          return {
+            ...table,
+            supportsCreate:
+              !ledgerManaged &&
+              capabilities.canCreate &&
+              !(
+                table.settingTable &&
+                table.count >
+                  0
+              ) &&
+              table.fields.some(
+                field =>
+                  field.writable,
+              ),
+            supportsEdit:
+              !ledgerManaged &&
+              capabilities.canEdit &&
+              Boolean(
+                table.recordKey,
+              ),
+            supportsDelete:
+              !ledgerManaged &&
+              capabilities.canDelete &&
+              Boolean(
+                table.recordKey,
+              ) &&
+              table.fields.some(
+                field =>
+                  field.key ===
+                  'deleted_at',
+              ),
+          };
+        },
       ),
   };
 }

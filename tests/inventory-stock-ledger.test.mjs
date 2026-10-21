@@ -24,3 +24,15 @@ test('Inventory generic mutations cannot bypass the stock ledger',async()=>{
 test('Purchase is explicitly dependent on Inventory',async()=>{
  const f=await source('lib/modules/first-party.ts');const s=f.indexOf('key: "purchase"'),e=f.indexOf('defineSamiModule({',s+12);assert.match(f.slice(s,e),/depends:\s*\['inventory'\]/);
 });
+
+test('Inventory runtime hardening applies the ledger contract for fresh installations too', async () => {
+  const hardening = await source('lib/apps/enterprise/hardening.ts');
+  const enterprise = await source('lib/apps/enterprise/service.ts');
+  assert.match(hardening, /moduleKey === 'inventory'[\s\S]*inventoryLedgerIntegritySql/);
+  assert.match(hardening, /CREATE UNIQUE INDEX IF NOT EXISTS uq_products_company_sku/);
+  assert.match(hardening, /fk_stock_levels_company_product/);
+  assert.match(enterprise, /const ledgerManaged =[\s\S]*stock_movements[\s\S]*inventory_adjustments/);
+  assert.match(enterprise, /!ledgerManaged[\s\S]*capabilities\.canCreate/);
+  assert.match(enterprise, /!ledgerManaged[\s\S]*capabilities\.canEdit/);
+  assert.match(enterprise, /!ledgerManaged[\s\S]*capabilities\.canDelete/);
+});
