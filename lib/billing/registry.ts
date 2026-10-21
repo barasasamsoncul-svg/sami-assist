@@ -6,6 +6,10 @@ import type {
 } from '@/lib/billing/provider';
 
 import {
+  intasendBillingProvider,
+} from '@/lib/billing/providers/intasend';
+
+import {
   paystackBillingProvider,
 } from '@/lib/billing/providers/paystack';
 
@@ -24,6 +28,8 @@ const PROVIDERS:
       SamiBillingProvider
     >
   > = {
+    intasend:
+      intasendBillingProvider,
     stripe:
       stripeBillingProvider,
     paystack:
@@ -45,6 +51,8 @@ export function getConfiguredBillingProviderKey():
 
   if (
     value ===
+      'intasend' ||
+    value ===
       'stripe' ||
     value ===
       'paystack' ||
@@ -55,7 +63,7 @@ export function getConfiguredBillingProviderKey():
   }
 
   throw new Error(
-    'SAMI_BILLING_PROVIDER must be stripe, paystack or pesapal.',
+    'SAMI_BILLING_PROVIDER must be intasend, stripe, paystack or pesapal.',
   );
 }
 
@@ -71,6 +79,8 @@ export function getBillingProvider(
       : getConfiguredBillingProviderKey();
 
   if (
+    key !==
+      'intasend' &&
     key !==
       'stripe' &&
     key !==
