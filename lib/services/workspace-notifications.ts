@@ -1724,6 +1724,7 @@ export async function createWorkspaceNotification(
               channel,
               status,
               attempts,
+              metadata,
               created_at,
               updated_at
             )
@@ -1733,6 +1734,7 @@ export async function createWorkspaceNotification(
               'email',
               'pending',
               0,
+              $3::jsonb,
               NOW(),
               NOW()
             )
@@ -1746,6 +1748,37 @@ export async function createWorkspaceNotification(
           [
             row.id,
             recipientUserId,
+            JSON.stringify({
+              emailMessage:
+                typeof input.emailMessage === 'string'
+                  ? input.emailMessage.slice(0, 3000)
+                  : message,
+              emailVariant:
+                input.emailVariant === 'billing'
+                  ? 'billing'
+                  : 'default',
+              emailStatus:
+                input.emailStatus || 'info',
+              emailDetails:
+                Array.isArray(input.emailDetails)
+                  ? input.emailDetails
+                      .filter(item =>
+                        item &&
+                        typeof item.label === 'string' &&
+                        typeof item.value === 'string',
+                      )
+                      .slice(0, 8)
+                      .map(item => ({
+                        label: item.label.slice(0, 80),
+                        value: item.value.slice(0, 180),
+                      }))
+                  : [],
+              actionHref: href,
+              actionLabel:
+                input.emailVariant === 'billing'
+                  ? 'Review Billing'
+                  : 'Open in SaMi',
+            }),
           ],
         );
 
@@ -1770,6 +1803,7 @@ export async function createWorkspaceNotification(
               channel,
               status,
               attempts,
+              metadata,
               created_at,
               updated_at
             )
@@ -1779,6 +1813,7 @@ export async function createWorkspaceNotification(
               'sms',
               'pending',
               0,
+              $3::jsonb,
               NOW(),
               NOW()
             )
@@ -1792,6 +1827,15 @@ export async function createWorkspaceNotification(
           [
             row.id,
             recipientUserId,
+            JSON.stringify({
+              smsMessage:
+                normalizeText(
+                  input.smsMessage !== undefined
+                    ? input.smsMessage
+                    : message,
+                  360,
+                ),
+            }),
           ],
         );
 
