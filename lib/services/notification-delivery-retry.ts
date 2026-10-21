@@ -387,6 +387,26 @@ export async function retryPendingNotificationDeliveries(
     Math.max(1, Math.floor(input.perTenantLimit || 20)),
   );
 
+  const countResult = await queryControl(
+    `
+      SELECT COUNT(*)::int AS count
+      FROM tenants
+      WHERE deleted_at IS NULL
+    `,
+  );
+
+  const tenantCount =
+    Math.max(0, Number(countResult.rows[0]?.count || 0));
+
+  // Rotate tenant windows hourly so the oldest first page does not starve
+  // newer workspaces when the tenant count exceeds one worker batch.
+  const windowCount =
+    Math.max(1, Math.ceil(tenantCount / maxTenants));
+  const windowIndex =
+    Math.floor(Date.now() / (60 * 60 * 1000)) % windowCount;
+  const offset =
+    windowIndex * maxTenants;
+
   const tenantResult = await queryControl(
     `
       SELECT id
@@ -394,8 +414,9 @@ export async function retryPendingNotificationDeliveries(
       WHERE deleted_at IS NULL
       ORDER BY created_at ASC, id ASC
       LIMIT $1
+      OFFSET $2
     `,
-    [maxTenants],
+    [maxTenants, offset],
   );
 
   const report = {
