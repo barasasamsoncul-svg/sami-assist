@@ -10,6 +10,16 @@ import {
   queryControl,
 } from '@/lib/db/control';
 
+import {
+  getSamiPlanPolicy,
+  normalizeSamiPlanKey,
+} from '@/lib/billing/plan-policy';
+
+import {
+  getSamiPricePerUserMonthly,
+  SAMI_BILLING_CURRENCY,
+} from '@/lib/billing/pricing';
+
 type DocumentKind = 'invoice' | 'receipt';
 
 type CustomerSnapshot = {
@@ -21,15 +31,21 @@ type CustomerSnapshot = {
 export type SubscriptionDocumentInput = {
   tenantId: string;
   subscriptionId: string;
-  planKey: string;
-  planName: string;
-  currency: string;
-  pricePerUserMonthly: number;
-  billableUsers: number;
   periodStart: Date;
   periodEnd: Date;
   dueAt?: Date | null;
+  planKey?: string;
+  planName?: string;
 };
+
+type ResolvedSubscriptionDocumentInput =
+  SubscriptionDocumentInput & {
+    planKey: string;
+    planName: string;
+    currency: string;
+    pricePerUserMonthly: number;
+    billableUsers: number;
+  };
 
 export type SubscriptionDocumentSummary = {
   id: string;
@@ -116,6 +132,95 @@ function summarize(row: DocumentRow): SubscriptionDocumentSummary {
       row.payment_transaction_id
         ? String(row.payment_transaction_id)
         : null,
+  };
+}
+
+async function resolveSubscriptionDocumentInput(
+  input: SubscriptionDocumentInput,
+  runner: {
+    query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
+  } = { query: queryControl },
+): Promise<ResolvedSubscriptionDocumentInput> {
+  const result = await runner.query(
+    `
+      SELECT
+        p.key AS plan_key,
+        p.name AS plan_name,
+        sp.key AS scheduled_plan_key,
+        sp.name AS scheduled_plan_name
+      FROM subscriptions s
+      INNER JOIN plans p
+        ON p.id = s.plan_id
+       AND p.deleted_at IS NULL
+      LEFT JOIN plans sp
+        ON sp.id = s.scheduled_plan_id
+       AND sp.deleted_at IS NULL
+      WHERE s.id = $1
+        AND s.tenant_id = $2
+        AND s.deleted_at IS NULL
+      LIMIT 1
+    `,
+    [input.subscriptionId, input.tenantId],
+  );
+
+  const row = result.rows[0];
+  if (!row) {
+    throw new Error('The SaMi subscription was not found while preparing its billing document.');
+  }
+
+  const planKey =
+    normalizeSamiPlanKey(
+      input.planKey ||
+      row.scheduled_plan_key ||
+      row.plan_key,
+    );
+
+  const policy =
+    planKey
+      ? getSamiPlanPolicy(planKey)
+      : null;
+
+  if (!planKey || !policy || !policy.paid) {
+    throw new Error('Subscription invoices and receipts are only issued for paid SaMi plans.');
+  }
+
+  const seatsResult = await runner.query(
+    `
+      SELECT COUNT(*)::int AS count
+      FROM tenant_users
+      WHERE tenant_id = $1
+        AND deleted_at IS NULL
+        AND LOWER(COALESCE(status, '')) = 'active'
+        AND LOWER(COALESCE(member_type, '')) = 'internal'
+    `,
+    [input.tenantId],
+  );
+
+  const billableUsers = Math.max(
+    1,
+    Number(seatsResult.rows[0]?.count || 0),
+  );
+
+  const planName =
+    input.planName ||
+    (
+      input.planKey &&
+      normalizeSamiPlanKey(input.planKey) !==
+        normalizeSamiPlanKey(row.plan_key)
+        ? row.scheduled_plan_name
+        : null
+    ) ||
+    policy.name ||
+    String(row.plan_name || planKey);
+
+  return {
+    ...input,
+    planKey,
+    planName,
+    currency: SAMI_BILLING_CURRENCY,
+    pricePerUserMonthly:
+      getSamiPricePerUserMonthly(planKey),
+    billableUsers,
   };
 }
 
@@ -213,7 +318,7 @@ function makeDocumentSnapshot(input: {
   issuedAt: Date;
   dueAt: Date | null;
   paidAt: Date | null;
-  input: SubscriptionDocumentInput;
+  input: ResolvedSubscriptionDocumentInput;
   customer: CustomerSnapshot;
   totalAmount: number;
   paymentReference?: string | null;
@@ -300,18 +405,27 @@ async function ensureInvoiceWithinTransaction(
 ): Promise<DocumentRow> {
   validatePeriod(input);
 
-  if (!Number.isInteger(input.billableUsers) || input.billableUsers < 1) {
+  const resolved =
+    await resolveSubscriptionDocumentInput(
+      input,
+      client,
+    );
+
+  if (
+    !Number.isInteger(resolved.billableUsers) ||
+    resolved.billableUsers < 1
+  ) {
     throw new Error('Subscription invoices require at least one billable user.');
   }
 
-  const currency = input.currency.trim().toUpperCase();
+  const currency = resolved.currency.trim().toUpperCase();
   if (!/^[A-Z]{3}$/.test(currency)) {
     throw new Error('Subscription invoice currency is invalid.');
   }
 
   const amount = money(
     options.totalAmount ??
-    input.pricePerUserMonthly * input.billableUsers,
+    resolved.pricePerUserMonthly * resolved.billableUsers,
   );
 
   const existing = await client.query(
@@ -329,7 +443,22 @@ async function ensureInvoiceWithinTransaction(
   );
 
   if (existing.rows[0]) {
-    return existing.rows[0] as DocumentRow;
+    const existingInvoice =
+      existing.rows[0] as DocumentRow;
+
+    if (
+      options.totalAmount !== undefined &&
+      Math.abs(
+        Number(existingInvoice.total_amount) -
+        money(options.totalAmount),
+      ) >= 0.01
+    ) {
+      throw new Error(
+        'Verified subscription payment does not match the issued SaMi invoice amount.',
+      );
+    }
+
+    return existingInvoice;
   }
 
   const sequence = await client.query(
@@ -346,6 +475,14 @@ async function ensureInvoiceWithinTransaction(
     `SAMI-INV-${issuedAt.getUTCFullYear()}-${String(serial).padStart(6, '0')}`;
 
   const dueAt = input.dueAt || input.periodStart;
+  const snapshotInput: ResolvedSubscriptionDocumentInput = {
+    ...resolved,
+    pricePerUserMonthly:
+      options.totalAmount === undefined
+        ? resolved.pricePerUserMonthly
+        : money(amount / resolved.billableUsers),
+  };
+
   const snapshot = makeDocumentSnapshot({
     kind: 'invoice',
     documentNumber,
@@ -353,7 +490,7 @@ async function ensureInvoiceWithinTransaction(
     issuedAt,
     dueAt,
     paidAt: null,
-    input: { ...input, currency },
+    input: snapshotInput,
     customer,
     totalAmount: amount,
   });
@@ -385,13 +522,13 @@ async function ensureInvoiceWithinTransaction(
       RETURNING *
     `,
     [
-      input.tenantId,
-      input.subscriptionId,
+      resolved.tenantId,
+      resolved.subscriptionId,
       documentNumber,
       currency,
       amount,
-      input.periodStart,
-      input.periodEnd,
+      resolved.periodStart,
+      resolved.periodEnd,
       issuedAt,
       dueAt,
       JSON.stringify(snapshot),
@@ -453,11 +590,7 @@ export async function issueSubscriptionPaymentReceipt(
     throw new Error('A payment receipt requires a positive verified payment amount.');
   }
 
-  const currency = input.currency.trim().toUpperCase();
-  if (!/^[A-Z]{3}$/.test(currency)) {
-    throw new Error('Subscription receipt currency is invalid.');
-  }
-
+  const currency = SAMI_BILLING_CURRENCY;
   const pool = getControlPool();
   const client = await pool.connect();
 
@@ -489,18 +622,34 @@ export async function issueSubscriptionPaymentReceipt(
       };
     }
 
+    const resolved =
+      await resolveSubscriptionDocumentInput(
+        input,
+        client,
+      );
+
     const customer = await getCustomerSnapshot(input.tenantId, client);
     const paidAt = input.paidAt || new Date();
 
     const invoice = await ensureInvoiceWithinTransaction(
       client,
-      { ...input, currency },
+      resolved,
       customer,
       {
         issuedAt: paidAt,
         totalAmount: amount,
       },
     );
+
+    if (
+      Math.abs(
+        Number(invoice.total_amount) - amount,
+      ) >= 0.01
+    ) {
+      throw new Error(
+        'Verified payment amount does not match the subscription invoice; no receipt was issued.',
+      );
+    }
 
     const invoiceSnapshot = parseSnapshot(invoice.snapshot);
     const paidInvoiceSnapshot = {
@@ -539,6 +688,25 @@ export async function issueSubscriptionPaymentReceipt(
     const documentNumber =
       `SAMI-RCP-${paidAt.getUTCFullYear()}-${String(serial).padStart(6, '0')}`;
 
+    const invoicePricing = parseSnapshot(invoice.snapshot);
+    const receiptInput: ResolvedSubscriptionDocumentInput = {
+      ...resolved,
+      planKey:
+        typeof invoicePricing.planKey === 'string'
+          ? invoicePricing.planKey
+          : resolved.planKey,
+      planName:
+        typeof invoicePricing.planName === 'string'
+          ? invoicePricing.planName
+          : resolved.planName,
+      pricePerUserMonthly:
+        Number(invoicePricing.pricePerUserMonthly) ||
+        money(amount / resolved.billableUsers),
+      billableUsers:
+        Number(invoicePricing.billableUsers) ||
+        resolved.billableUsers,
+    };
+
     const snapshot = makeDocumentSnapshot({
       kind: 'receipt',
       documentNumber,
@@ -546,7 +714,7 @@ export async function issueSubscriptionPaymentReceipt(
       issuedAt: paidAt,
       dueAt: input.dueAt || input.periodStart,
       paidAt,
-      input: { ...input, currency },
+      input: receiptInput,
       customer,
       totalAmount: amount,
       paymentReference: input.paymentReference,
