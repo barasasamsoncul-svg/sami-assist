@@ -130,6 +130,7 @@ test('Category 22: billing provider is selected by environment behind one provid
   const [
     contract,
     registry,
+    intasend,
     stripe,
     paystack,
     pesapal,
@@ -140,6 +141,9 @@ test('Category 22: billing provider is selected by environment behind one provid
       ),
       source(
         'lib/billing/registry.ts',
+      ),
+      source(
+        'lib/billing/providers/intasend.ts',
       ),
       source(
         'lib/billing/providers/stripe.ts',
@@ -159,8 +163,55 @@ test('Category 22: billing provider is selected by environment behind one provid
 
   assert.match(
     registry,
-    /'pesapal'/,
-    'Unset provider must preserve current PesaPal production behavior during rollout.',
+    /SAMI_BILLING_PROVIDER[\s\S]*'intasend'/,
+    'IntaSend must be the default when the provider is not explicitly configured.',
+  );
+
+  assert.match(
+    registry,
+    /intasendBillingProvider/,
+    'IntaSend must be registered for new subscription billing.',
+  );
+
+  assert.match(
+    intasend,
+    /key:\s*'intasend'/,
+  );
+
+  assert.match(
+    intasend,
+    /savePaymentMethodWithoutCharge:\s*true/,
+  );
+
+  assert.match(
+    intasend,
+    /automaticRecurring:\s*true/,
+  );
+
+  assert.match(
+    intasend,
+    /subscriptions-customers\//,
+  );
+
+  assert.match(
+    intasend,
+    /subscriptions-plans\//,
+  );
+
+  assert.match(
+    intasend,
+    /subscriptions\//,
+  );
+
+  assert.match(
+    intasend,
+    /start_date:\s*dateInNairobi\(input\.firstChargeAt\)/,
+    'The IntaSend first charge must be scheduled no earlier than the SaMi billing boundary.',
+  );
+
+  assert.match(
+    intasend,
+    /INTASEND_WEBHOOK_CHALLENGE/,
   );
 
   assert.match(
@@ -1808,5 +1859,81 @@ test('Category 22: full-suite gate includes subscription billing regression cove
       'test:all'
     ],
     /test:category22/,
+  );
+});
+
+
+test('Category 22: IntaSend webhooks verify their challenge and provider-side payment/subscription state', async () => {
+  const [
+    webhook,
+    adapter,
+    service,
+    ui,
+  ] =
+    await Promise.all([
+      source(
+        'app/api/billing/intasend/webhook/route.ts',
+      ),
+      source(
+        'lib/billing/providers/intasend.ts',
+      ),
+      source(
+        'lib/services/workspace-billing.ts',
+      ),
+      source(
+        'app/settings/components/BillingSettings.tsx',
+      ),
+    ]);
+
+  assert.match(
+    webhook,
+    /INTASEND_WEBHOOK_CHALLENGE/,
+  );
+
+  assert.match(
+    webhook,
+    /timingSafeEqual/,
+    'IntaSend challenge comparison must be constant-time.',
+  );
+
+  assert.match(
+    webhook,
+    /getIntaSendInvoiceStatus/,
+    'One-time payment events must be confirmed with the provider API.',
+  );
+
+  assert.match(
+    webhook,
+    /getIntaSendSubscription/,
+    'Recurring subscription events must be confirmed with the provider API.',
+  );
+
+  assert.match(
+    webhook,
+    /applyVerifiedRecurringInvoice/,
+  );
+
+  assert.match(
+    webhook,
+    /provider_subscription_id = \$1/,
+    'Recurring events must be linked by the provider subscription ID.',
+  );
+
+  assert.match(
+    service,
+    /firstChargeAt:[\s\S]*noChargeUntilDate/s,
+    'The provider must receive SaMi’s no-charge-until date.',
+  );
+
+  assert.match(
+    ui,
+    /Continue to secure card setup/,
+    'The user must continue to IntaSend’s hosted card form.',
+  );
+
+  assert.match(
+    adapter,
+    /billing_cycles:\s*0/,
+    'The intended ongoing-cycle setting must be validated in IntaSend sandbox.',
   );
 });
