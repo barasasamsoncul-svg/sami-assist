@@ -1792,6 +1792,11 @@ export async function startWorkspaceRecurringBillingSetup(
     );
   }
 
+  const billableUsers =
+    await getBillableUsers(
+      context.tenantId,
+    );
+
   try {
     const setup =
       await provider
@@ -1826,12 +1831,18 @@ export async function startWorkspaceRecurringBillingSetup(
           origin:
             input.origin ||
             null,
+          plan:
+            planKey,
+          currency:
+            SAMI_BILLING_CURRENCY,
+          pricePerUserMonthly:
+            getSamiPricePerUserMonthly(
+              planKey,
+            ),
+          billableUsers,
+          firstChargeAt:
+            noChargeUntilDate,
         });
-
-    const billableUsers =
-      await getBillableUsers(
-        context.tenantId,
-      );
 
     await createSubscriptionBillingProfile({
       tenantId:
@@ -1844,6 +1855,9 @@ export async function startWorkspaceRecurringBillingSetup(
         provider.key,
       providerCustomerId:
         setup.providerCustomerId,
+      providerSubscriptionId:
+        setup.providerSubscriptionId ||
+        null,
       recurringStatus:
         'setup_pending',
       currency:
@@ -1857,6 +1871,8 @@ export async function startWorkspaceRecurringBillingSetup(
       metadata: {
         setupReference:
           setup.setupReference,
+        setupRedirectUrl:
+          setup.redirectUrl,
         setupCreatedAt:
           new Date()
             .toISOString(),
@@ -1877,7 +1893,13 @@ export async function startWorkspaceRecurringBillingSetup(
           )
             .trim() ||
           null
-        : null;
+        : provider.key ===
+            'intasend'
+          ? process.env
+              .INTASEND_PUBLISHABLE_KEY
+              ?.trim() ||
+            null
+          : null;
 
     if (
       provider.key ===
@@ -1887,6 +1909,17 @@ export async function startWorkspaceRecurringBillingSetup(
       throw new WorkspaceBillingError(
         'PAYMENT_SETUP_FAILED',
         'Stripe publishable key is not configured.',
+      );
+    }
+
+    if (
+      provider.key ===
+        'intasend' &&
+      !setup.redirectUrl
+    ) {
+      throw new WorkspaceBillingError(
+        'PAYMENT_SETUP_FAILED',
+        'IntaSend did not provide the hosted card setup URL.',
       );
     }
 
