@@ -44,7 +44,7 @@ export function getConfiguredBillingProviderKey():
     (
       process.env
         .SAMI_BILLING_PROVIDER ||
-      'pesapal'
+      'intasend'
     )
       .trim()
       .toLowerCase();
