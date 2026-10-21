@@ -37,7 +37,159 @@ export type BillingNotificationInput = {
       string,
       unknown
     >;
+  emailMessage?:
+    string | null;
+  smsMessage?:
+    string | null;
+  emailStatus?:
+    'success' | 'info' | 'warning' | 'critical';
+  emailDetails?:
+    Array<{
+      label: string;
+      value: string;
+    }>;
 };
+
+
+function scalarText(value: unknown): string | null {
+  if (
+    typeof value === 'string' &&
+    value.trim()
+  ) {
+    return value.trim();
+  }
+
+  if (
+    typeof value === 'number' &&
+    Number.isFinite(value)
+  ) {
+    return value.toLocaleString('en-KE', {
+      maximumFractionDigits: 2,
+    });
+  }
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toLocaleDateString('en-KE', {
+      dateStyle: 'medium',
+      timeZone: 'Africa/Nairobi',
+    });
+  }
+
+  return null;
+}
+
+function buildBillingEmailDetails(
+  metadata: Record<string, unknown> | undefined,
+) {
+  if (!metadata) {
+    return [];
+  }
+
+  const details: Array<{ label: string; value: string }> = [];
+  const currency = scalarText(metadata.currency);
+  const amount =
+    typeof metadata.amount === 'number'
+      ? metadata.amount
+      : Number(metadata.amount);
+
+  if (
+    metadata.amount !== undefined &&
+    Number.isFinite(amount) &&
+    amount >= 0
+  ) {
+    details.push({
+      label: 'Amount',
+      value: currency
+        ? `${currency.toUpperCase()} ${amount.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        : amount.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    });
+  }
+
+  const fields: Array<[string, string]> = [
+    ['plan', 'Plan'],
+    ['billingBoundary', 'Billing date'],
+    ['graceEndsAt', 'Grace period ends'],
+    ['effectiveAt', 'Effective date'],
+    ['daysPastDue', 'Days overdue'],
+    ['reminderDays', 'Reminder window'],
+    ['documentNumber', 'Invoice / receipt number'],
+    ['documentType', 'Document type'],
+    ['phase', 'Payment status'],
+    ['paymentState', 'Payment status'],
+    ['provider', 'Payment provider'],
+  ];
+
+  for (const [key, label] of fields) {
+    const value = scalarText(metadata[key]);
+
+    if (!value) {
+      continue;
+    }
+
+    let displayValue = value;
+
+    if (
+      (key === 'billingBoundary' ||
+       key === 'graceEndsAt' ||
+       key === 'effectiveAt') &&
+      metadata[key]
+    ) {
+      const date = new Date(String(metadata[key]));
+
+      if (!Number.isNaN(date.getTime())) {
+        displayValue = date.toLocaleDateString('en-KE', {
+          dateStyle: 'medium',
+          timeZone: 'Africa/Nairobi',
+        });
+      }
+    }
+
+    details.push({
+      label,
+      value:
+        key === 'reminderDays'
+          ? `Within ${displayValue} day(s)`
+          : displayValue,
+    });
+  }
+
+  return details.slice(0, 6);
+}
+
+function defaultEmailStatus(
+  eventType: string,
+): 'success' | 'info' | 'warning' | 'critical' {
+  const key = eventType.toLowerCase();
+
+  if (
+    key.includes('succeeded') ||
+    key.includes('payment_received') ||
+    key.includes('continues') ||
+    key.includes('renewed')
+  ) {
+    return 'success';
+  }
+
+  if (
+    key.includes('failed') ||
+    key.includes('past_due') ||
+    key.includes('suspended') ||
+    key.includes('cancelled') ||
+    key.includes('canceled')
+  ) {
+    return 'critical';
+  }
+
+  if (
+    key.includes('due_soon') ||
+    key.includes('reminder') ||
+    key.includes('cancellation_scheduled')
+  ) {
+    return 'warning';
+  }
+
+  return 'info';
+}
 
 async function getBillingNotificationCompanyId(
   tenantId:
@@ -175,6 +327,24 @@ export async function notifyWorkspaceOwnersOfBillingEvent(
             metadata:
               input.metadata ||
               {},
+            emailMessage:
+              input.emailMessage !== undefined
+                ? input.emailMessage
+                : input.message,
+            smsMessage:
+              input.smsMessage !== undefined
+                ? input.smsMessage
+                : input.message
+                    .replace(/\\s+/g, ' ')
+                    .slice(0, 220),
+            emailVariant:
+              'billing',
+            emailStatus:
+              input.emailStatus ||
+              defaultEmailStatus(input.type),
+            emailDetails:
+              input.emailDetails ||
+              buildBillingEmailDetails(input.metadata),
             forceEmail:
               true,
             forceSms:
