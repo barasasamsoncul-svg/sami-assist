@@ -28,6 +28,10 @@ import {
   notifyWorkspaceOwnersOfBillingEvent,
 } from '@/lib/billing/notifications';
 
+import {
+  issueSubscriptionPaymentReceipt,
+} from '@/lib/billing/subscription-documents';
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -1486,6 +1490,50 @@ async function applyInitialSuccessfulPayment(
       normalizeCurrency(payment.currency) ||
       'KES';
 
+    let issuedReceipt:
+      Awaited<ReturnType<typeof issueSubscriptionPaymentReceipt>>['receipt'] |
+      null = null;
+
+    try {
+      const periodStart = new Date(
+        activationResult.rows[0].current_period_start,
+      );
+      const periodEnd = new Date(
+        activationResult.rows[0].current_period_end,
+      );
+
+      if (
+        Number.isNaN(periodStart.getTime()) ||
+        Number.isNaN(periodEnd.getTime())
+      ) {
+        throw new Error('Payment confirmation returned an invalid subscription period.');
+      }
+
+      const documents = await issueSubscriptionPaymentReceipt({
+        tenantId: String(payment.tenant_id),
+        subscriptionId: String(payment.subscription_id),
+        paymentTransactionId: String(payment.id),
+        paymentReference: String(payment.provider_transaction_id),
+        provider: 'pesapal',
+        amount: receiptAmount,
+        currency: receiptCurrency,
+        periodStart,
+        periodEnd,
+        dueAt: periodStart,
+        paidAt: new Date(),
+      });
+
+      issuedReceipt = documents.receipt;
+    } catch (error) {
+      console.error(
+        '[PesaPal] Initial subscription receipt could not be issued:',
+        {
+          paymentId: String(payment.id),
+          error,
+        },
+      );
+    }
+
     try {
       await notifyWorkspaceOwnersOfBillingEvent({
         tenantId:
@@ -1506,6 +1554,24 @@ async function applyInitialSuccessfulPayment(
           'success',
         priority:
           'high',
+        href:
+          '/settings?tab=billing',
+        emailDetails:
+          issuedReceipt
+            ? [
+                {
+                  label: 'Receipt number',
+                  value: issuedReceipt.documentNumber,
+                },
+                {
+                  label: 'Amount received',
+                  value: `${receiptCurrency} ${receiptAmount.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                },
+                ...(nextBillingLabel
+                  ? [{ label: 'Paid through', value: nextBillingLabel }]
+                  : []),
+              ]
+            : undefined,
         dedupeKey:
           `billing:pesapal-initial-succeeded:${String(payment.id)}`,
         metadata: {
@@ -1517,6 +1583,13 @@ async function applyInitialSuccessfulPayment(
           billingBoundary:
             nextBillingDate?.toISOString() || null,
           subscriptionStatus: 'active',
+          ...(issuedReceipt
+            ? {
+                documentType: 'receipt',
+                documentId: issuedReceipt.id,
+                documentNumber: issuedReceipt.documentNumber,
+              }
+            : {}),
         },
       });
     } catch (error) {
@@ -2256,6 +2329,50 @@ async function applyRecurringPayment({
       normalizeCurrency(source.currency) ||
       'KES';
 
+    let issuedReceipt:
+      Awaited<ReturnType<typeof issueSubscriptionPaymentReceipt>>['receipt'] |
+      null = null;
+
+    try {
+      const periodStart = new Date(
+        extensionResult.rows[0].current_period_start,
+      );
+      const periodEnd = new Date(
+        extensionResult.rows[0].current_period_end,
+      );
+
+      if (
+        Number.isNaN(periodStart.getTime()) ||
+        Number.isNaN(periodEnd.getTime())
+      ) {
+        throw new Error('Recurring payment confirmation returned an invalid subscription period.');
+      }
+
+      const documents = await issueSubscriptionPaymentReceipt({
+        tenantId: String(subscription.tenant_id),
+        subscriptionId: String(subscription.id),
+        paymentTransactionId: String(recurringPayment.id),
+        paymentReference: orderTrackingId,
+        provider: 'pesapal',
+        amount: receiptAmount,
+        currency: receiptCurrency,
+        periodStart,
+        periodEnd,
+        dueAt: periodStart,
+        paidAt: new Date(),
+      });
+
+      issuedReceipt = documents.receipt;
+    } catch (error) {
+      console.error(
+        '[PesaPal] Recurring subscription receipt could not be issued:',
+        {
+          orderTrackingId,
+          error,
+        },
+      );
+    }
+
     try {
       await notifyWorkspaceOwnersOfBillingEvent({
         tenantId:
@@ -2271,13 +2388,33 @@ async function applyRecurringPayment({
         emailMessage:
           `PesaPal confirmed the recurring subscription payment of ${receiptCurrency} ${receiptAmount.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.
 
-Your SaMi subscription is active${nextBillingLabel ? ` through ${nextBillingLabel}` : ''}. No action is needed right now.`,
+Your SaMi subscription is active${nextBillingLabel ? ` through ${nextBillingLabel}` : ''}. No action is needed right now.${issuedReceipt ? `
+
+Receipt: ${issuedReceipt.documentNumber}. Open SaMi Settings > Billing to view or download the receipt.` : ''}`,
         smsMessage:
           `SaMi subscription renewed: ${receiptCurrency} ${receiptAmount.toLocaleString('en-KE', { maximumFractionDigits: 2 })} received via PesaPal. Access is active${nextBillingLabel ? ` through ${nextBillingLabel}` : ''}.`,
         emailStatus:
           'success',
         priority:
           'high',
+        href:
+          '/settings?tab=billing',
+        emailDetails:
+          issuedReceipt
+            ? [
+                {
+                  label: 'Receipt number',
+                  value: issuedReceipt.documentNumber,
+                },
+                {
+                  label: 'Amount received',
+                  value: `${receiptCurrency} ${receiptAmount.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                },
+                ...(nextBillingLabel
+                  ? [{ label: 'Paid through', value: nextBillingLabel }]
+                  : []),
+              ]
+            : undefined,
         dedupeKey:
           `billing:pesapal-recurring-succeeded:${orderTrackingId}`,
         metadata: {
@@ -2289,6 +2426,13 @@ Your SaMi subscription is active${nextBillingLabel ? ` through ${nextBillingLabe
           billingBoundary:
             nextBillingDate?.toISOString() || null,
           subscriptionStatus: 'active',
+          ...(issuedReceipt
+            ? {
+                documentType: 'receipt',
+                documentId: issuedReceipt.id,
+                documentNumber: issuedReceipt.documentNumber,
+              }
+            : {}),
         },
       });
     } catch (error) {
