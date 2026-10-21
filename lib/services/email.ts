@@ -2563,17 +2563,25 @@ export type WorkspaceNotificationEmailAttachment = {
   contentType: string;
 };
 
+export type WorkspaceNotificationEmailDetail = {
+  label: string;
+  value: string;
+};
+
 export type WorkspaceNotificationEmailOptions = {
   title: string;
   message?: string | null;
   actionHref?: string | null;
   actionLabel?: string | null;
   attachments?: WorkspaceNotificationEmailAttachment[];
+  variant?: 'default' | 'billing';
+  status?: 'success' | 'info' | 'warning' | 'critical';
+  details?: WorkspaceNotificationEmailDetail[];
 
   /**
    * Backward-compatible default is workspace.
    * Platform Administration reuses the same SaMi transport and
-   * branding without creating a second mail delivery stack.
+   * branding without creating a second delivery stack.
    */
   audience?: EmailAudience;
 };
@@ -2613,9 +2621,89 @@ export async function sendWorkspaceNotificationEmail(
 
   const message =
     (options.message || '')
-      .trim()
-      .replace(/\s+/g, ' ')
+      .replace(/\r\n?/g, '\n')
+      .split(/\n\s*\n/)
+      .map(paragraph =>
+        paragraph
+          .split('\n')
+          .map(line => line.replace(/[ \t]+/g, ' ').trim())
+          .filter(Boolean)
+          .join('\n'),
+      )
+      .filter(Boolean)
+      .join('\n\n')
       .slice(0, 3000);
+
+  const variant =
+    options.variant === 'billing'
+      ? 'billing'
+      : 'default';
+
+  const status =
+    options.status === 'success' ||
+    options.status === 'info' ||
+    options.status === 'warning' ||
+    options.status === 'critical'
+      ? options.status
+      : 'info';
+
+  const statusLabel =
+    status === 'success'
+      ? 'PAYMENT CONFIRMED'
+      : status === 'critical'
+        ? 'ACTION REQUIRED'
+        : status === 'warning'
+          ? 'BILLING REMINDER'
+          : 'BILLING UPDATE';
+
+  const safeDetails =
+    (options.details || [])
+      .filter(item =>
+        item &&
+        typeof item.label === 'string' &&
+        typeof item.value === 'string' &&
+        item.label.trim() &&
+        item.value.trim(),
+      )
+      .slice(0, 8)
+      .map(item => ({
+        label: escapeHtml(item.label.trim().slice(0, 80)),
+        value: escapeHtml(item.value.trim().slice(0, 180)),
+      }));
+
+  const statusColor =
+    status === 'success'
+      ? '#15803d'
+      : status === 'critical'
+        ? '#b91c1c'
+        : status === 'warning'
+          ? '#b45309'
+          : '#334155';
+
+  const messageHtml =
+    message
+      .split(/\n\s*\n/)
+      .filter(Boolean)
+      .map(paragraph => {
+        const safeParagraph =
+          escapeHtml(paragraph)
+            .replace(/\n/g, '<br>');
+        return `<p style="margin:16px 0 0;font-size:15px;line-height:24px;color:#475569;white-space:normal">${safeParagraph}</p>`;
+      })
+      .join('');
+
+  const detailsHtml =
+    safeDetails.length > 0
+      ? `
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:22px 0 0;border-collapse:collapse">
+          ${safeDetails.map((item, index) => `
+            <tr>
+              <td style="padding:11px 0;border-top:1px solid #e2e8f0;color:#64748b;font-size:13px;width:42%;vertical-align:top">${item.label}</td>
+              <td style="padding:11px 0;border-top:1px solid #e2e8f0;color:#0f172a;font-size:13px;font-weight:700;text-align:right;vertical-align:top;overflow-wrap:anywhere">${item.value}</td>
+            </tr>`).join('')}
+        </table>
+      `
+      : '';
 
   if (!title) {
     throw new Error(
@@ -2754,6 +2842,8 @@ export async function sendWorkspaceNotificationEmail(
     '',
     message,
     '',
+    ...safeDetails.map(item => `${item.label}: ${item.value}`),
+    '',
     `Open ${getAudienceLabel(
       audience
     )}: ${actionUrl}`,
@@ -2784,9 +2874,11 @@ export async function sendWorkspaceNotificationEmail(
           </tr>
           <tr>
             <td style="background:#ffffff;border:1px solid #e2e8f0;border-radius:20px;padding:28px">
+              ${variant === 'billing' ? `<p style="margin:0 0 14px;color:${statusColor};font-size:11px;font-weight:800;letter-spacing:1.2px">${statusLabel}</p>` : ''}
               <p style="margin:0 0 14px;font-size:14px;color:#475569">Hello ${safeName},</p>
-              <h1 style="margin:0;font-size:24px;line-height:32px">${safeTitle}</h1>
-              ${safeMessage ? `<p style="margin:16px 0 0;font-size:15px;line-height:24px;color:#475569">${safeMessage}</p>` : ''}
+              <h1 style="margin:0;font-size:24px;line-height:32px;overflow-wrap:anywhere">${safeTitle}</h1>
+              ${messageHtml}
+              ${variant === 'billing' ? detailsHtml : ''}
               <p style="margin:24px 0 0">
                 <a href="${safeActionUrl}" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:12px">${safeActionLabel}</a>
               </p>
