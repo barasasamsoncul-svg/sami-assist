@@ -22,6 +22,25 @@ ALTER TABLE public.warehouses
 ALTER TABLE public.products DROP CONSTRAINT IF EXISTS products_sku_key;
 ALTER TABLE public.warehouses DROP CONSTRAINT IF EXISTS warehouses_code_key;
 
+-- Backfill only records whose product and warehouse already agree on company ownership.
+UPDATE public.stock_levels sl SET company_id = p.company_id
+FROM public.products p, public.warehouses w
+WHERE sl.company_id IS NULL AND sl.product_id = p.id AND sl.warehouse_id = w.id
+  AND p.company_id IS NOT NULL AND p.company_id = w.company_id
+  AND p.deleted_at IS NULL AND w.deleted_at IS NULL;
+
+UPDATE public.stock_movements sm SET company_id = p.company_id
+FROM public.products p, public.warehouses w
+WHERE sm.company_id IS NULL AND sm.product_id = p.id AND sm.warehouse_id = w.id
+  AND p.company_id IS NOT NULL AND p.company_id = w.company_id
+  AND p.deleted_at IS NULL AND w.deleted_at IS NULL;
+
+UPDATE public.stock_reservations sr SET company_id = p.company_id
+FROM public.products p, public.warehouses w
+WHERE sr.company_id IS NULL AND sr.product_id = p.id AND sr.warehouse_id = w.id
+  AND p.company_id IS NOT NULL AND p.company_id = w.company_id
+  AND p.deleted_at IS NULL AND w.deleted_at IS NULL;
+
 CREATE UNIQUE INDEX IF NOT EXISTS uq_products_company_sku
   ON public.products(company_id, sku)
   WHERE company_id IS NOT NULL AND sku IS NOT NULL AND deleted_at IS NULL;

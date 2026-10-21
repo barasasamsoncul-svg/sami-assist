@@ -1195,12 +1195,21 @@ async function applyStockMovement(
     `UPDATE stock_levels
        SET quantity = quantity - $3, updated_at = NOW()
        WHERE product_id = $1 AND warehouse_id = $2
-         AND company_id = $4 AND deleted_at IS NULL AND quantity >= $3
+         AND company_id = $4 AND deleted_at IS NULL
+         AND quantity - COALESCE((
+           SELECT SUM(reservation.quantity)
+           FROM stock_reservations reservation
+           WHERE reservation.company_id = stock_levels.company_id
+             AND reservation.product_id = stock_levels.product_id
+             AND reservation.warehouse_id = stock_levels.warehouse_id
+             AND reservation.deleted_at IS NULL
+             AND reservation.status IN ('active', 'allocated')
+         ), 0) >= $3
        RETURNING id`,
     [row.product_id, row.warehouse_id, quantity, companyId],
   );
   if (changed.rows.length !== 1) {
-    throw new Error('Insufficient stock for this movement, or the stock balance is not available in the current company.');
+    throw new Error('Insufficient unreserved stock for this movement, or the balance is not available in the current company.');
   }
 }
 
