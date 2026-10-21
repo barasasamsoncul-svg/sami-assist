@@ -1893,7 +1893,7 @@ test('Category 22: every issued subscription bill has a downloadable invoice or 
 
   assert.match(
     documents,
-    /Verified payment does not match the issued SaMi invoice amount/,
+    /Verified subscription payment does not match the issued SaMi invoice amount/,
     'A receipt must not be issued against an invoice with a different total.',
   );
 
