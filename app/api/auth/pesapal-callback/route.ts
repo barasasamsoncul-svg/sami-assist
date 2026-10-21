@@ -1458,10 +1458,10 @@ async function applyInitialSuccessfulPayment(
     );
 
     const nextBillingDate =
-      extensionResult.rows[0]
+      activationResult.rows[0]
         ?.current_period_end
         ? new Date(
-            extensionResult.rows[0]
+            activationResult.rows[0]
               .current_period_end,
           )
         : null;
@@ -1479,40 +1479,39 @@ async function applyInitialSuccessfulPayment(
         : null;
 
     const receiptAmount =
-      amount ??
-      Number(source.amount);
+      numberOrNull(payment.amount) ??
+      0;
 
     const receiptCurrency =
-      currency ||
-      normalizeCurrency(source.currency) ||
+      normalizeCurrency(payment.currency) ||
       'KES';
 
     try {
       await notifyWorkspaceOwnersOfBillingEvent({
         tenantId:
-          String(subscription.tenant_id),
+          String(payment.tenant_id),
         type:
           'billing.payment_succeeded',
         eventKey:
           'billing.payment_succeeded',
         title:
-          'Subscription renewed successfully',
+          'Subscription payment received',
         message:
-          `PesaPal confirmed your recurring subscription payment. Your SaMi subscription is active and the paid period has been extended${nextBillingLabel ? ` through ${nextBillingLabel}` : ''}.`,
+          `PesaPal confirmed your SaMi subscription payment. Your subscription is active${nextBillingLabel ? ` through ${nextBillingLabel}` : ''}.`,
         emailMessage:
-          `PesaPal confirmed the recurring subscription payment of ${receiptCurrency} ${receiptAmount.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.\\n\\nYour SaMi subscription is active${nextBillingLabel ? ` through ${nextBillingLabel}` : ''}. No action is needed right now.`,
+          `PesaPal confirmed your subscription payment of ${receiptCurrency} ${receiptAmount.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.\n\nYour SaMi subscription is active${nextBillingLabel ? ` through ${nextBillingLabel}` : ''}. Thank you for your payment.`,
         smsMessage:
-          `SaMi subscription renewed: ${receiptCurrency} ${receiptAmount.toLocaleString('en-KE', { maximumFractionDigits: 2 })} received via PesaPal. Access is active${nextBillingLabel ? ` through ${nextBillingLabel}` : ''}.`,
+          `SaMi payment received: ${receiptCurrency} ${receiptAmount.toLocaleString('en-KE', { maximumFractionDigits: 2 })} via PesaPal. Your subscription is active.`,
         emailStatus:
           'success',
         priority:
           'high',
         dedupeKey:
-          `billing:pesapal-recurring-succeeded:${orderTrackingId}`,
+          `billing:pesapal-initial-succeeded:${String(payment.id)}`,
         metadata: {
           provider: 'pesapal',
-          paymentId: String(recurringPayment.id),
-          providerReference: orderTrackingId,
+          paymentId: String(payment.id),
+          providerReference: String(payment.provider_transaction_id),
           amount: receiptAmount,
           currency: receiptCurrency,
           billingBoundary:
@@ -1522,9 +1521,9 @@ async function applyInitialSuccessfulPayment(
       });
     } catch (error) {
       console.error(
-        '[PesaPal] Recurring-success receipt could not be queued:',
+        '[PesaPal] Initial-payment receipt could not be queued:',
         {
-          orderTrackingId,
+          paymentId: String(payment.id),
           error,
         },
       );
@@ -1536,8 +1535,7 @@ async function applyInitialSuccessfulPayment(
 
       subscriptionStatus:
         'active',
-    };
-  } catch (error) {
+    };  } catch (error) {
     try {
       await client.query(
         'ROLLBACK'
