@@ -1917,7 +1917,7 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
   defineSamiModule({
     key: "inventory",
     name: "Inventory",
-    version: '1.0.0',
+    version: '2.4.0',
     description: "Manage products, stock, warehouses and movements.",
     category: "supply_chain",
     icon: "package",
@@ -2130,7 +2130,7 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
     installable: true,
     autoInstall: false,
     recommended: false,
-    depends: [],
+    depends: ['inventory'],
     optionalDepends: [],
     schemaPath: "lib/apps/purchase/schema.sql",
     migrationNamespace: "purchase",

@@ -1,3 +1,4 @@
+import { INVENTORY_2_3_0_TO_2_4_0 } from '@/lib/apps/inventory/migrations/2.3.0-to-2.4.0';
 import { SALES_3_4_1_TO_3_4_2 } from '@/lib/apps/sales/migrations/3.4.1-to-3.4.2';
 import { SALES_3_4_2_TO_3_4_3 } from '@/lib/apps/sales/migrations/3.4.2-to-3.4.3';
 import { SALES_3_4_3_TO_3_4_4 } from '@/lib/apps/sales/migrations/3.4.3-to-3.4.4';
@@ -240,6 +241,7 @@ export const ENTERPRISE_RUNTIME_MIGRATIONS:
     ...ENTERPRISE_SUITE_COMPLETION_MIGRATIONS,
     ...ENTERPRISE_SPECIALIST_DEPTH_MIGRATIONS,
     ...ENTERPRISE_STRICT_PARITY_MIGRATIONS,
+    INVENTORY_2_3_0_TO_2_4_0,
     ACCOUNTING_2_3_0_TO_2_4_0,
     ACCOUNTING_2_4_0_TO_2_5_0,
     ACCOUNTING_2_5_0_TO_2_6_0,

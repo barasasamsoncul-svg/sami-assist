@@ -445,10 +445,23 @@ export function assertEnterpriseDomainMutationAllowed(
   if (
     moduleKey ===
       'inventory' &&
-    table ===
-      'stock_movements' &&
-    operation !==
-      'create'
+    (
+      table === 'stock_levels' ||
+      table === 'stock_reservations'
+    )
+  ) {
+    throw new Error(
+      table === 'stock_levels'
+        ? 'Stock balances are derived from the stock movement ledger and cannot be edited directly.'
+        : 'Stock reservations are controlled by the Sales and Inventory reservation workflows.',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'inventory' &&
+    table === 'stock_movements' &&
+    operation !== 'create'
   ) {
     throw new Error(
       'Posted stock movements are immutable. Create a reversing stock movement instead.',
@@ -552,17 +565,9 @@ export function normalizeEnterpriseDomainValues(
 
     const accepted =
       new Set([
-        'in',
-        'inbound',
-        'receipt',
-        'return_in',
-        'adjustment_in',
-        'out',
-        'outbound',
-        'issue',
-        'sale',
-        'return_out',
-        'adjustment_out',
+        'in', 'inbound', 'receipt', 'purchase_receipt', 'opening_balance',
+        'return_in', 'adjustment_in', 'out', 'outbound', 'issue', 'sale',
+        'return_out', 'adjustment_out',
       ]);
 
     if (
@@ -1138,121 +1143,66 @@ async function recalculateCommissionPayout(
 
 
 async function applyStockMovement(
-  client:
-    PoolClient,
-  row:
-    Record<
-      string,
-      unknown
-    >,
-  companyId:
-    string,
+  client: PoolClient,
+  row: Record<string, unknown>,
+  companyId: string,
 ) {
-  const movementType =
-    String(
-      row.movement_type ||
-      '',
-    )
-      .trim()
-      .toLowerCase();
+  const movementType = String(row.movement_type || '').trim().toLowerCase();
+  const quantity = numberValue(row.quantity);
 
-  const quantity =
-    numberValue(
-      row.quantity,
+  const references = await client.query(
+    `SELECT product.id
+       FROM public.products product
+       INNER JOIN public.warehouses warehouse
+         ON warehouse.id = $2
+        AND warehouse.company_id = $3
+        AND warehouse.deleted_at IS NULL
+        AND warehouse.is_active = TRUE
+       WHERE product.id = $1
+         AND product.company_id = $3
+         AND product.deleted_at IS NULL
+         AND product.is_active = TRUE
+         AND product.track_inventory = TRUE
+         AND product.product_type = 'stockable'
+       FOR SHARE OF product, warehouse`,
+    [row.product_id, row.warehouse_id, companyId],
+  );
+  if (references.rows.length !== 1) {
+    throw new Error('Choose an active stock-tracked product and warehouse in the current company.');
+  }
+
+  const inbound = new Set([
+    'in', 'inbound', 'receipt', 'purchase_receipt', 'opening_balance', 'return_in', 'adjustment_in',
+  ]).has(movementType);
+
+  if (inbound) {
+    const balance = await client.query(
+      `INSERT INTO stock_levels (product_id, warehouse_id, quantity, reorder_level, company_id, updated_at)
+       VALUES ($1,$2,$3,0,$4,NOW())
+       ON CONFLICT (product_id, warehouse_id)
+       DO UPDATE SET quantity = stock_levels.quantity + EXCLUDED.quantity, updated_at = NOW()
+       WHERE stock_levels.company_id = EXCLUDED.company_id AND stock_levels.deleted_at IS NULL
+       RETURNING id`,
+      [row.product_id, row.warehouse_id, quantity, companyId],
     );
-
-  const inbound =
-    new Set([
-      'in',
-      'inbound',
-      'receipt',
-      'return_in',
-      'adjustment_in',
-    ]).has(
-      movementType,
-    );
-
-  if (
-    inbound
-  ) {
-    await client.query(
-      `
-        INSERT INTO stock_levels (
-          product_id,
-          warehouse_id,
-          quantity,
-          reorder_level,
-          company_id,
-          updated_at
-        )
-        VALUES (
-          $1,$2,$3,0,$4,NOW()
-        )
-        ON CONFLICT (
-          product_id,
-          warehouse_id
-        )
-        DO UPDATE
-        SET
-          quantity =
-            stock_levels.quantity +
-            EXCLUDED.quantity,
-          company_id =
-            EXCLUDED.company_id,
-          updated_at =
-            NOW()
-      `,
-      [
-        row.product_id,
-        row.warehouse_id,
-        quantity,
-        companyId,
-      ],
-    );
-
+    if (balance.rows.length !== 1) {
+      throw new Error('The stock balance is not available in the current company. Review the company assignment before retrying.');
+    }
     return;
   }
 
-  const changed =
-    await client.query(
-      `
-        UPDATE stock_levels
-        SET
-          quantity =
-            quantity -
-            $3,
-          updated_at =
-            NOW()
-        WHERE product_id =
-              $1
-          AND warehouse_id =
-              $2
-          AND company_id =
-              $4
-          AND deleted_at
-              IS NULL
-          AND quantity >=
-              $3
-        RETURNING id
-      `,
-      [
-        row.product_id,
-        row.warehouse_id,
-        quantity,
-        companyId,
-      ],
-    );
-
-  if (
-    changed.rows.length !==
-      1
-  ) {
-    throw new Error(
-      'Insufficient stock for this movement.',
-    );
+  const changed = await client.query(
+    `UPDATE stock_levels
+       SET quantity = quantity - $3, updated_at = NOW()
+       WHERE product_id = $1 AND warehouse_id = $2
+         AND company_id = $4 AND deleted_at IS NULL AND quantity >= $3
+       RETURNING id`,
+    [row.product_id, row.warehouse_id, quantity, companyId],
+  );
+  if (changed.rows.length !== 1) {
+    throw new Error('Insufficient stock for this movement, or the stock balance is not available in the current company.');
   }
 }
-
 
 function assertPositive(
   value:
@@ -3752,6 +3702,14 @@ async function validateDomainLifecycleMutation(
     throw new Error(
       'Completed reconciliation history is immutable. Create a compensating reconciliation instead.',
     );
+  }
+
+  if (
+    moduleKey === 'inventory' &&
+    table === 'inventory_adjustments' &&
+    String(row.status || '').toLowerCase() === 'posted'
+  ) {
+    throw new Error('Posted inventory adjustments must be created through the validated Inventory posting workflow.');
   }
 
   if (
