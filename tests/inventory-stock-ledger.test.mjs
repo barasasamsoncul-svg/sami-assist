@@ -13,7 +13,7 @@ test('Inventory ledger upgrade is registered and versioned 2.3.0 to 2.4.0',async
 
 test('Inventory schema migration scopes identities and stock references by company',async()=>{
  const m=await source('lib/apps/inventory/migrations/2.3.0-to-2.4.0.ts');
- assert.match(m,/products_sku_key/);assert.match(m,/warehouses_code_key/);assert.match(m,/uq_products_company_sku/);assert.match(m,/uq_products_company_barcode/);assert.match(m,/uq_warehouses_company_code/);assert.match(m,/FOREIGN KEY \(company_id,product_id\)/);assert.match(m,/FOREIGN KEY \(company_id,warehouse_id\)/);assert.match(m,/NOT VALID/);assert.match(m,/ambiguous legacy ownership is never guessed/i);
+ assert.match(m,/products_sku_key/);assert.match(m,/warehouses_code_key/);assert.match(m,/uq_products_company_sku/);assert.match(m,/uq_products_company_barcode/);assert.match(m,/uq_warehouses_company_code/);assert.match(m,/FOREIGN KEY \(company_id,product_id\)/);assert.match(m,/FOREIGN KEY \(company_id,warehouse_id\)/);assert.match(m,/NOT VALID/);assert.match(m,/ALTER COLUMN quantity TYPE NUMERIC\(19,4\)/);assert.match(m,/fk_stock_reservations_company_lot/);assert.match(m,/fk_inventory_lots_company_product/);assert.match(m,/ambiguous legacy ownership is never guessed/i);
 });
 
 test('Inventory generic mutations cannot bypass the stock ledger',async()=>{
@@ -31,6 +31,8 @@ test('Inventory runtime hardening applies the ledger contract for fresh installa
   assert.match(hardening, /moduleKey === 'inventory'[\s\S]*inventoryLedgerIntegritySql/);
   assert.match(hardening, /CREATE UNIQUE INDEX IF NOT EXISTS uq_products_company_sku/);
   assert.match(hardening, /fk_stock_levels_company_product/);
+  assert.match(hardening, /ALTER COLUMN quantity TYPE NUMERIC\(19,4\)/);
+  assert.match(hardening, /fk_stock_reservations_company_lot/);
   assert.match(enterprise, /const ledgerManaged =[\s\S]*stock_movements[\s\S]*inventory_adjustments/);
   assert.match(enterprise, /!ledgerManaged[\s\S]*capabilities\.canCreate/);
   assert.match(enterprise, /!ledgerManaged[\s\S]*capabilities\.canEdit/);

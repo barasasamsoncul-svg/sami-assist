@@ -18,6 +18,11 @@ ALTER TABLE public.products
 ALTER TABLE public.warehouses
   ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE,
   ADD COLUMN IF NOT EXISTS is_default BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.stock_levels
+  ALTER COLUMN quantity TYPE NUMERIC(19,4) USING quantity::NUMERIC(19,4),
+  ALTER COLUMN reorder_level TYPE NUMERIC(19,4) USING reorder_level::NUMERIC(19,4);
+ALTER TABLE public.stock_movements
+  ALTER COLUMN quantity TYPE NUMERIC(19,4) USING quantity::NUMERIC(19,4);
 
 ALTER TABLE public.products DROP CONSTRAINT IF EXISTS products_sku_key;
 ALTER TABLE public.warehouses DROP CONSTRAINT IF EXISTS warehouses_code_key;
@@ -55,6 +60,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_warehouses_one_default_per_company
   WHERE company_id IS NOT NULL AND is_default = TRUE AND is_active = TRUE AND deleted_at IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_products_company_id_id ON public.products(company_id, id);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_warehouses_company_id_id ON public.warehouses(company_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_inventory_lots_company_id_id ON public.inventory_lots(company_id, id);
 
 CREATE INDEX IF NOT EXISTS idx_stock_levels_company_product_warehouse
   ON public.stock_levels(company_id, product_id, warehouse_id) WHERE deleted_at IS NULL;
@@ -110,6 +116,24 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_stock_reservations_company_warehouse' AND conrelid='public.stock_reservations'::regclass) THEN
     ALTER TABLE public.stock_reservations ADD CONSTRAINT fk_stock_reservations_company_warehouse FOREIGN KEY (company_id,warehouse_id) REFERENCES public.warehouses(company_id,id) ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_stock_reservations_company_lot' AND conrelid='public.stock_reservations'::regclass) THEN
+    ALTER TABLE public.stock_reservations ADD CONSTRAINT fk_stock_reservations_company_lot FOREIGN KEY (company_id,lot_id) REFERENCES public.inventory_lots(company_id,id) ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_inventory_lots_company_product' AND conrelid='public.inventory_lots'::regclass) THEN
+    ALTER TABLE public.inventory_lots ADD CONSTRAINT fk_inventory_lots_company_product FOREIGN KEY (company_id,product_id) REFERENCES public.products(company_id,id) ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_inventory_reorder_company_product' AND conrelid='public.inventory_reorder_rules'::regclass) THEN
+    ALTER TABLE public.inventory_reorder_rules ADD CONSTRAINT fk_inventory_reorder_company_product FOREIGN KEY (company_id,product_id) REFERENCES public.products(company_id,id) ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_inventory_reorder_company_warehouse' AND conrelid='public.inventory_reorder_rules'::regclass) THEN
+    ALTER TABLE public.inventory_reorder_rules ADD CONSTRAINT fk_inventory_reorder_company_warehouse FOREIGN KEY (company_id,warehouse_id) REFERENCES public.warehouses(company_id,id) ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_inventory_adjustments_company_product' AND conrelid='public.inventory_adjustments'::regclass) THEN
+    ALTER TABLE public.inventory_adjustments ADD CONSTRAINT fk_inventory_adjustments_company_product FOREIGN KEY (company_id,product_id) REFERENCES public.products(company_id,id) ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_inventory_adjustments_company_warehouse' AND conrelid='public.inventory_adjustments'::regclass) THEN
+    ALTER TABLE public.inventory_adjustments ADD CONSTRAINT fk_inventory_adjustments_company_warehouse FOREIGN KEY (company_id,warehouse_id) REFERENCES public.warehouses(company_id,id) ON DELETE RESTRICT NOT VALID;
   END IF;
 END
 $sami_inventory_constraints$;
