@@ -1864,10 +1864,19 @@ export default function BillingSettings({
         </div>
 
         {setup &&
-          setup.provider ===
-            'stripe' &&
-          setup.clientSecret &&
-          setup.publicKey && (
+          (
+            (
+              setup.provider ===
+                'stripe' &&
+              setup.clientSecret &&
+              setup.publicKey
+            ) ||
+            (
+              setup.provider ===
+                'intasend' &&
+              setup.redirectUrl
+            )
+          ) && (
           <div className="rounded-2xl border border-blue-200 bg-white p-4 shadow-sm dark:border-blue-500/20 dark:bg-[#11141a]">
             <div className="mb-4">
               <p className="text-xs font-black">
@@ -1878,24 +1887,52 @@ export default function BillingSettings({
               </p>
             </div>
 
-            <StripeRecurringSetup
-              publicKey={
-                setup.publicKey
-              }
-              clientSecret={
-                setup.clientSecret
-              }
-              onCompleted={
-                completeAutomaticBilling
-              }
-              onError={message =>
-                show(
-                  'error',
-                  'Payment method not saved',
-                  message,
-                )
-              }
-            />
+            {setup.provider ===
+                'intasend' &&
+              setup.redirectUrl && (
+              <div className="space-y-3">
+                <p className="text-xs leading-5 text-slate-600 dark:text-slate-300">
+                  SaMi will send you to IntaSend's secure card-registration page. Your first subscription charge is scheduled for the end of your current free trial or paid period.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (setup.redirectUrl) {
+                      window.location.assign(
+                        setup.redirectUrl,
+                      );
+                    }
+                  }}
+                  className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-slate-950 px-4 text-xs font-black text-white dark:bg-white dark:text-slate-950"
+                >
+                  Continue to secure card setup
+                </button>
+              </div>
+            )}
+
+            {setup.provider ===
+                'stripe' &&
+              setup.clientSecret &&
+              setup.publicKey && (
+              <StripeRecurringSetup
+                publicKey={
+                  setup.publicKey
+                }
+                clientSecret={
+                  setup.clientSecret
+                }
+                onCompleted={
+                  completeAutomaticBilling
+                }
+                onError={message =>
+                  show(
+                    'error',
+                    'Payment method not saved',
+                    message,
+                  )
+                }
+              />
+            )}
 
             <button
               type="button"
