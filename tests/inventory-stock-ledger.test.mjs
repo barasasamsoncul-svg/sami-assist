@@ -13,12 +13,12 @@ test('Inventory ledger upgrade is registered and versioned 2.3.0 to 2.4.0',async
 
 test('Inventory schema migration scopes identities and stock references by company',async()=>{
  const m=await source('lib/apps/inventory/migrations/2.3.0-to-2.4.0.ts');
- assert.match(m,/products_sku_key/);assert.match(m,/warehouses_code_key/);assert.match(m,/uq_products_company_sku/);assert.match(m,/uq_products_company_barcode/);assert.match(m,/uq_warehouses_company_code/);assert.match(m,/FOREIGN KEY \(company_id,product_id\)/);assert.match(m,/FOREIGN KEY \(company_id,warehouse_id\)/);assert.match(m,/NOT VALID/);assert.match(m,/ambiguous legacy ownership is never guessed/);
+ assert.match(m,/products_sku_key/);assert.match(m,/warehouses_code_key/);assert.match(m,/uq_products_company_sku/);assert.match(m,/uq_products_company_barcode/);assert.match(m,/uq_warehouses_company_code/);assert.match(m,/FOREIGN KEY \(company_id,product_id\)/);assert.match(m,/FOREIGN KEY \(company_id,warehouse_id\)/);assert.match(m,/NOT VALID/);assert.match(m,/ambiguous legacy ownership is never guessed/i);
 });
 
 test('Inventory generic mutations cannot bypass the stock ledger',async()=>{
  const h=await source('lib/apps/enterprise/domain-hooks.ts');
- assert.match(h,/Stock balances are derived from the stock movement ledger/);assert.match(h,/Stock reservations are controlled by the Sales and Inventory reservation workflows/);assert.match(h,/Posted stock movements are immutable/);assert.match(h,/FOR SHARE OF product, warehouse/);assert.match(h,/product\.company_id = \$3/);assert.match(h,/warehouse\.company_id = \$3/);assert.match(h,/WHERE stock_levels\.company_id = EXCLUDED\.company_id/);assert.match(h,/Insufficient stock for this movement/);
+ assert.match(h,/Stock balances are derived from the stock movement ledger/);assert.match(h,/Stock reservations are controlled by the Sales and Inventory reservation workflows/);assert.match(h,/Posted stock movements are immutable/);assert.match(h,/FOR SHARE OF product, warehouse/);assert.match(h,/product\.company_id = \$3/);assert.match(h,/warehouse\.company_id = \$3/);assert.match(h,/WHERE stock_levels\.company_id = EXCLUDED\.company_id/);assert.match(h,/Insufficient unreserved stock for this movement/);
 });
 
 test('Purchase is explicitly dependent on Inventory',async()=>{
