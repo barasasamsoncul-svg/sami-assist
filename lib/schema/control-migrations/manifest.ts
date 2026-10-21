@@ -9,6 +9,7 @@ export const CONTROL_MIGRATION_KEYS = [
   '008-user-tutorial-preferences.sql',
   '009-workspace-tutorial-opt-in.sql',
   '010-finance-module-version-sync.sql',
+  '011-category-22-intasend-subscriptions.sql',
 ] as const;
 
 
