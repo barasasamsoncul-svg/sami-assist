@@ -454,8 +454,8 @@ export async function applyVerifiedCheckoutPayment(
               )}. Your workspace subscription is active.`,
         emailMessage:
           subscription.cancelled_at
-            ? `We received your payment of ${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Your paid period is active, but automatic renewal remains stopped because cancellation is still scheduled.${issuedReceipt ? `\\n\\nReceipt: ${issuedReceipt.documentNumber}. Download it from SaMi Settings > Billing.` : ''}`
-            : `We received your payment of ${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Your SaMi subscription is active.${issuedReceipt ? `\\n\\nReceipt: ${issuedReceipt.documentNumber}. Download it from SaMi Settings > Billing.` : ''} No further action is needed today.`,
+            ? `We received your payment of ${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Your paid period is active, but automatic renewal remains stopped because cancellation is still scheduled.${issuedReceipt ? `\n\nReceipt: ${issuedReceipt.documentNumber}. Download it from SaMi Settings > Billing.` : ''}`
+            : `We received your payment of ${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Your SaMi subscription is active.${issuedReceipt ? `\n\nReceipt: ${issuedReceipt.documentNumber}. Download it from SaMi Settings > Billing.` : ''} No further action is needed today.`,
         smsMessage:
           subscription.cancelled_at
             ? `SaMi received ${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { maximumFractionDigits: 2 })}. Paid access is active; future renewals remain cancelled.`
@@ -1243,8 +1243,8 @@ export async function applyVerifiedRecurringInvoice(
         emailMessage:
           subscription.rows[0]
             .cancelled_at
-            ? `Your recurring payment of ${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} was confirmed. The paid period is active, but the scheduled cancellation still stops future renewals.${issuedReceipt ? `\\n\\nReceipt: ${issuedReceipt.documentNumber}. Download it from SaMi Settings > Billing.` : ''}`
-            : `Your recurring payment of ${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} was confirmed. Your SaMi subscription has been renewed and remains active.${issuedReceipt ? `\\n\\nReceipt: ${issuedReceipt.documentNumber}. Download it from SaMi Settings > Billing.` : ''}`,
+            ? `Your recurring payment of ${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} was confirmed. The paid period is active, but the scheduled cancellation still stops future renewals.${issuedReceipt ? `\n\nReceipt: ${issuedReceipt.documentNumber}. Download it from SaMi Settings > Billing.` : ''}`
+            : `Your recurring payment of ${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} was confirmed. Your SaMi subscription has been renewed and remains active.${issuedReceipt ? `\n\nReceipt: ${issuedReceipt.documentNumber}. Download it from SaMi Settings > Billing.` : ''}`,
         smsMessage:
           `SaMi subscription renewed: ${normalizedCurrency(input.currency)} ${Number(input.amount).toLocaleString('en-KE', { maximumFractionDigits: 2 })} received. ${subscription.rows[0].cancelled_at ? 'Future renewals remain cancelled.' : 'Access remains active.'}`,
         emailStatus:
