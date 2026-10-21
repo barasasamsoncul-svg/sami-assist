@@ -10,6 +10,10 @@ import {
 } from '@/lib/billing/reconcile';
 
 import {
+  retryPendingNotificationDeliveries,
+} from '@/lib/services/notification-delivery-retry';
+
+import {
   runTrackedPlatformJob,
 } from '@/lib/observability/platform-jobs';
 
@@ -165,8 +169,38 @@ async function runReconciliation(
           operation:
             'reconcile_workspace_billing',
         },
-        () =>
-          reconcileWorkspaceBilling(),
+        async () => {
+          const billing =
+            await reconcileWorkspaceBilling();
+
+          let notificationDeliveries = {
+            tenantsChecked: 0,
+            attempted: 0,
+            sent: 0,
+            failed: 0,
+            tenantFailures: 0,
+          };
+
+          try {
+            notificationDeliveries =
+              await retryPendingNotificationDeliveries({
+                maxTenants: 100,
+                perTenantLimit: 10,
+              });
+          } catch (error) {
+            // Notification retry issues must be visible, but must not
+            // turn a successful billing reconciliation into a failed run.
+            console.error(
+              '[SaMi Notifications] Delivery retry batch failed:',
+              error,
+            );
+          }
+
+          return {
+            ...billing,
+            notificationDeliveries,
+          };
+        },
       );
 
     return NextResponse.json(
