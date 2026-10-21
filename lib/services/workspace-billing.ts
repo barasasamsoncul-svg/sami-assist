@@ -2079,11 +2079,18 @@ export async function completeWorkspaceRecurringBillingSetup() {
       profile.provider,
     );
 
+  const subscriptionCreatedDuringSetup =
+    provider.key ===
+    'intasend';
+
   if (
     !provider
       .getPaymentMethodSetupStatus ||
-    !provider
-      .createRecurringSubscription
+    (
+      !provider
+        .createRecurringSubscription &&
+      !subscriptionCreatedDuringSetup
+    )
   ) {
     throw new WorkspaceBillingError(
       'PAYMENT_SETUP_UNSUPPORTED',
@@ -2120,11 +2127,23 @@ export async function completeWorkspaceRecurringBillingSetup() {
         setupReference,
       );
 
+  const setupIsComplete =
+    provider.key ===
+      'intasend'
+      ? setup.status ===
+        'active' &&
+        Boolean(
+          setup.providerSubscriptionId ||
+          profile.providerSubscriptionId,
+        )
+      : setup.status ===
+          'succeeded' &&
+        Boolean(
+          setup.providerPaymentMethodId,
+        );
+
   if (
-    setup.status !==
-      'succeeded' ||
-    !setup
-      .providerPaymentMethodId
+    !setupIsComplete
   ) {
     throw new WorkspaceBillingError(
       'PAYMENT_SETUP_INCOMPLETE',
@@ -2184,51 +2203,74 @@ export async function completeWorkspaceRecurringBillingSetup() {
 
   try {
     const recurring =
-      await provider
-        .createRecurringSubscription({
-          customer: {
-            tenantId:
-              context.tenantId,
-            subscriptionId:
-              String(
-                subscription.id,
-              ),
-            email:
-              user.email,
-            firstName:
-              typeof user.first_name ===
-                'string'
-                ? user.first_name
-                : '',
-            lastName:
-              typeof user.last_name ===
-                'string'
-                ? user.last_name
-                : '',
-            businessName:
-              typeof user.business_name ===
-                'string'
-                ? user.business_name
-                : 'SaMi Workspace',
-            phone:
+      provider.key ===
+        'intasend'
+        ? {
+            provider:
+              'intasend' as const,
+            providerSubscriptionId:
+              setup.providerSubscriptionId ||
+              profile.providerSubscriptionId ||
+              setupReference,
+            providerCustomerId:
+              setup.providerCustomerId,
+            providerPaymentMethodId:
               null,
-          },
-          providerCustomerId:
-            setup.providerCustomerId,
-          providerPaymentMethodId:
-            setup.providerPaymentMethodId,
-          plan:
-            planKey,
-          currency:
-            SAMI_BILLING_CURRENCY,
-          pricePerUserMonthly:
-            getSamiPricePerUserMonthly(
-              planKey,
-            ),
-          billableUsers,
-          trialEndsAt:
-            noChargeUntilDate,
-        });
+            status:
+              (
+                effectiveStatus ===
+                  'trial' ||
+                effectiveStatus ===
+                  'trialing'
+              )
+                ? 'trialing'
+                : 'active',
+          }
+        : await provider
+            .createRecurringSubscription!({
+              customer: {
+                tenantId:
+                  context.tenantId,
+                subscriptionId:
+                  String(
+                    subscription.id,
+                  ),
+                email:
+                  user.email,
+                firstName:
+                  typeof user.first_name ===
+                    'string'
+                    ? user.first_name
+                    : '',
+                lastName:
+                  typeof user.last_name ===
+                    'string'
+                    ? user.last_name
+                    : '',
+                businessName:
+                  typeof user.business_name ===
+                    'string'
+                    ? user.business_name
+                    : 'SaMi Workspace',
+                phone:
+                  null,
+              },
+              providerCustomerId:
+                setup.providerCustomerId,
+              providerPaymentMethodId:
+                setup.providerPaymentMethodId,
+              plan:
+                planKey,
+              currency:
+                SAMI_BILLING_CURRENCY,
+              pricePerUserMonthly:
+                getSamiPricePerUserMonthly(
+                  planKey,
+                ),
+              billableUsers,
+              trialEndsAt:
+                noChargeUntilDate,
+            });
 
     await updateActiveSubscriptionBillingProfile(
       String(
@@ -2264,6 +2306,15 @@ export async function completeWorkspaceRecurringBillingSetup() {
               .toISOString(),
           providerStatus:
             recurring.status,
+          ...(provider.key ===
+              'intasend'
+            ? {
+                cardMask:
+                  setup.cardMask || null,
+                cardType:
+                  setup.cardType || null,
+              }
+            : {}),
         },
       },
     );
