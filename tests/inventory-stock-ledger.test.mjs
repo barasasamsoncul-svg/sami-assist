@@ -53,3 +53,17 @@ test('Inventory low-stock indicators honour active company-specific reorder rule
   assert.match(service, /COALESCE\(rule\.min_quantity, sl\.reorder_level\)/);
   assert.match(service, /rule\.status = 'active'/);
 });
+
+test('Inventory reads enforce view scope for every company-scoped stock data source', async () => {
+  const service = await source('lib/apps/inventory/service.ts');
+  const api = await source('app/api/apps/inventory/route.ts');
+  assert.match(service, /requireEnterpriseModuleTableContext\('inventory', 'stock_levels', 'view'\)/);
+  assert.match(service, /requireEnterpriseModuleTableContext\('inventory', 'stock_movements', 'view'\)/);
+  assert.match(service, /requireEnterpriseModuleTableContext\('inventory', 'products', 'view'\)/);
+  assert.match(service, /requireEnterpriseModuleTableContext\('inventory', 'warehouses', 'view'\)/);
+  assert.match(service, /requireEnterpriseModuleTableContext\('inventory', 'stock_reservations', 'view'\)/);
+  assert.match(service, /requireEnterpriseModuleTableContext\('inventory', 'inventory_reorder_rules', 'view'\)/);
+  assert.match(service, /contexts\.some\(\(context\)/);
+  assert.match(api, /sec-fetch-site/);
+  assert.match(api, /MAX_BODY_BYTES/);
+});

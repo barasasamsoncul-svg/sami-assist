@@ -51,11 +51,19 @@ export type InventoryStockOverview = {
 };
 
 export async function getInventoryStockOverview(): Promise<InventoryStockOverview> {
-  const [stockContext, movementContext] = await Promise.all([
+  const contexts = await Promise.all([
     requireEnterpriseModuleTableContext('inventory', 'stock_levels', 'view'),
     requireEnterpriseModuleTableContext('inventory', 'stock_movements', 'view'),
+    requireEnterpriseModuleTableContext('inventory', 'products', 'view'),
+    requireEnterpriseModuleTableContext('inventory', 'warehouses', 'view'),
+    requireEnterpriseModuleTableContext('inventory', 'stock_reservations', 'view'),
+    requireEnterpriseModuleTableContext('inventory', 'inventory_reorder_rules', 'view'),
   ]);
-  if (stockContext.companyId !== movementContext.companyId || stockContext.tenantId !== movementContext.tenantId) {
+  const stockContext = contexts[0];
+  if (contexts.some((context) =>
+    context.companyId !== stockContext.companyId ||
+    context.tenantId !== stockContext.tenantId
+  )) {
     throw new EnterpriseModuleError('WORKSPACE_CONTEXT_CHANGED', 'Your workspace or company changed. Reload Inventory and try again.');
   }
 
