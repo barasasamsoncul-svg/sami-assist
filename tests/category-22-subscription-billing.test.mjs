@@ -126,7 +126,7 @@ test('Category 22: subscription prices are server-authoritative and environment 
   );
 });
 
-test('Category 22: billing provider is selected by environment behind one provider registry', async () => {
+test('Category 22: SaMi Platform subscription billing exposes Stripe only', async () => {
   const [
     contract,
     registry,
@@ -154,13 +154,20 @@ test('Category 22: billing provider is selected by environment behind one provid
 
   assert.match(
     registry,
-    /SAMI_BILLING_PROVIDER/,
+    /return 'stripe'/,
+    'New SaMi Platform subscriptions must always select Stripe.',
   );
 
   assert.match(
     registry,
-    /'pesapal'/,
-    'Unset provider must preserve current PesaPal production behavior during rollout.',
+    /\[\s*stripeBillingProvider,?\s*\]/,
+    'Only Stripe must be exposed in the subscription provider catalog.',
+  );
+
+  assert.match(
+    registry,
+    /getBillingProvider\([\s\S]*'stripe'/s,
+    'The active subscription billing provider must be Stripe.',
   );
 
   assert.match(
@@ -222,18 +229,13 @@ test('Category 22: billing provider is selected by environment behind one provid
   assert.match(
     paystack,
     /mpesaCheckout:[\s\S]*true/s,
+    'Retaining the tenant payment adapter does not expose it as SaMi subscription billing.',
   );
 
   assert.match(
     pesapal,
     /automaticRecurring:[\s\S]*false/s,
-    'The generic PesaPal adapter must not advertise automatic recurring until that contract is implemented end-to-end.',
-  );
-
-  assert.match(
-    pesapal,
-    /variableRecurringAmount:[\s\S]*false/s,
-    'PesaPal must not claim variable recurring support that SaMi cannot safely depend on.',
+    'PesaPal must not claim automatic recurring support.',
   );
 });
 
