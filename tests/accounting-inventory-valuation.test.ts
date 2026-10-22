@@ -92,7 +92,7 @@ test('inventory event classification maps authoritative movement direction to ac
 });
 
 
-test('posted Purchase receipts feed standard-cost valuation with the purchase-order unit cost', async () => {
+test('posted Purchase receipts feed standard-cost valuation with GRNI and purchase-price variance', async () => {
   const source = await readFile(
     new URL('../lib/apps/accounting/inventory-valuation.ts', import.meta.url),
     'utf8',
@@ -110,17 +110,17 @@ test('posted Purchase receipts feed standard-cost valuation with the purchase-or
   assert.match(backfill, /purchase_receipt_lines/);
   assert.match(backfill, /purchase_order_items/);
   assert.match(backfill, /purchase_item\.unit_cost/);
-  assert.match(backfill, /'purchase_order_cost'/);
+  assert.match(backfill, /'backfill_current_standard_cost'/);
   assert.match(backfill, /movement\.reference/);
   assert.match(backfill, /ON CONFLICT \(company_id, source_event_key\)/);
   assert.match(backfill, /supersededByPurchaseReceiptEvent/);
 
-  assert.match(source, /metadata\\.costProvenance !== 'confirmed_purchase_order_line'/);
-  assert.match(source, /treatment ===\\s*'receive_inventory'[\\s\\S]*?debitAccount = accounts\\.asset/);
-  assert.match(source, /creditAccount = accounts\\.grni/);
+  assert.match(source, /metadata\.costProvenance !== 'confirmed_purchase_order_line'/);
+  assert.match(source, /treatment ===\s*'receive_inventory'[\s\S]*?debitAccount = accounts\.asset/);
+  assert.match(source, /creditAccount = accounts\.grni/);
   assert.match(source, /actualPurchaseValue/);
-  assert.match(source, /varianceCents =\\s*actualPurchaseCents - valueCents/);
-  assert.match(source, /accountId: accounts\\.priceVariance/);
+  assert.match(source, /varianceCents =\s*actualPurchaseCents - valueCents/);
+  assert.match(source, /accountId: accounts\.priceVariance/);
   assert.match(source, /goods_received_not_invoiced_account_id/);
   assert.match(source, /source_type <> 'purchase_receipt'[\s\S]*?\$2::boolean = TRUE/);
 
