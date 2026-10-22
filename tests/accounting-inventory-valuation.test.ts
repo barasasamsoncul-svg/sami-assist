@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Pool } from 'pg';
+import { readFile } from 'node:fs/promises';
 
 import { ACCOUNTING_INVENTORY_VALUATION_SQL } from '../lib/apps/accounting/inventory-valuation-schema';
 
@@ -55,6 +56,13 @@ test('inventory event classification maps authoritative movement direction to ac
   );
   assert.equal(
     classifyInventoryEvent({
+      movementType: 'purchase_receipt',
+      quantityEffect: '2.0000',
+    }),
+    'receive_inventory',
+  );
+  assert.equal(
+    classifyInventoryEvent({
       movementType: 'inventory_adjustment_gain',
       quantityEffect: '1.0000',
     }),
@@ -83,6 +91,41 @@ test('inventory event classification maps authoritative movement direction to ac
   );
 });
 
+
+test('posted Purchase receipts feed standard-cost valuation with the purchase-order unit cost', async () => {
+  const source = await readFile(
+    new URL('../lib/apps/accounting/inventory-valuation.ts', import.meta.url),
+    'utf8',
+  );
+  const schema = await readFile(
+    new URL('../lib/apps/accounting/inventory-valuation-schema.ts', import.meta.url),
+    'utf8',
+  );
+  const start = source.indexOf('async function backfillSourceEvents');
+  const end = source.indexOf('function builtInTreatment', start);
+  const backfill = source.slice(start, end);
+
+  assert.match(backfill, /sync_purchase_receipts/);
+  assert.match(backfill, /receipt\.status = 'posted'/);
+  assert.match(backfill, /purchase_receipt_lines/);
+  assert.match(backfill, /purchase_order_items/);
+  assert.match(backfill, /purchase_item\.unit_cost/);
+  assert.match(backfill, /'purchase_order_cost'/);
+  assert.match(backfill, /movement\.reference/);
+  assert.match(backfill, /ON CONFLICT \(company_id, source_event_key\)/);
+  assert.match(backfill, /supersededByPurchaseReceiptEvent/);
+
+  assert.match(source, /event\.cost_source \|\| ''\) !== 'purchase_order_cost'/);
+  assert.match(source, /debitAccount = accounts\.asset;\s*creditAccount = accounts\.grni/);
+  assert.match(source, /goods_received_not_invoiced_account_id/);
+  assert.match(source, /source_type <> 'purchase_receipt'[\s\S]*?\$2::boolean = TRUE/);
+
+  assert.match(schema, /goods_received_not_invoiced_account_id/);
+  assert.match(schema, /sync_purchase_receipts BOOLEAN/);
+  assert.match(schema, /source_type IN \('stock_movement','inventory_adjustment','purchase_receipt'\)/);
+  assert.match(schema, /purchase_order_cost/);
+  assert.match(schema, /receive_inventory/);
+});
 
 test(
   'inventory valuation migration executes twice on PostgreSQL and exposes the complete 2.20 contract',
