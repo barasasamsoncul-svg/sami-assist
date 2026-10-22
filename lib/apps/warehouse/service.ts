@@ -368,6 +368,12 @@ async function createLocation(body: Record<string, unknown>) {
   ]);
   return transaction(context, async (client) => {
     if (parentId) await assertLocations(client, context.companyId, [parentId]);
+    // Serialize code creation by company and case-folded code, even when a
+    // legacy duplicate prevents the unique index from being created safely.
+    await client.query(
+      'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+      [context.companyId + ':' + code.toLowerCase()],
+    );
     const duplicate = await client.query(
       `SELECT id FROM public.warehouse_locations
        WHERE company_id = $1 AND lower(code) = lower($2) AND deleted_at IS NULL
