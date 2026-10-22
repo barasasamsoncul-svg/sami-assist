@@ -1352,7 +1352,8 @@ export async function POST(
       );
     }
 
-    let dependencyPlan;
+    let dependencyPlan:
+      ReturnType<typeof getSamiModuleDependencyPlan> = [];
 
     try {
       dependencyPlan =
@@ -1607,6 +1608,55 @@ export async function POST(
     const subscription =
       subscriptionResult
         .rows[0] as SubscriptionRecord;
+
+    if (
+      normalizeAppKey(subscription.plan_key) === 'free'
+    ) {
+      const installedBusinessAppsResult =
+        await controlClient.query(
+          `
+            SELECT LOWER(m.key) AS key
+            FROM tenant_modules tm
+            INNER JOIN modules m
+              ON m.id = tm.module_id
+            WHERE tm.tenant_id = $1
+              AND tm.deleted_at IS NULL
+              AND m.deleted_at IS NULL
+              AND COALESCE(m.is_core, FALSE) = FALSE
+              AND LOWER(COALESCE(tm.status, '')) IN (
+                'installed', 'active', 'enabled'
+              )
+          `,
+          [tenantId],
+        );
+
+      const prospectiveBusinessApps =
+        new Set<string>(
+          (installedBusinessAppsResult.rows as Array<{key: string}>).map(
+            row => normalizeAppKey(row.key),
+          ),
+        );
+
+      for (const plannedModule of planModules) {
+        prospectiveBusinessApps.add(
+          normalizeAppKey(plannedModule.key),
+        );
+      }
+
+      if (prospectiveBusinessApps.size > 1) {
+        return errorResponse(
+          402,
+          'APP_PLAN_UPGRADE_REQUIRED',
+          'This app and its required dependencies exceed the Free plan app allowance. Upgrade to Standard or Custom, then retry installation.',
+          {
+            billingHref: '/settings?tab=billing',
+            currentPlan: subscription.plan_key,
+            maxInstalledBusinessApps: 1,
+            prospectiveBusinessApps: prospectiveBusinessApps.size,
+          },
+        );
+      }
+    }
 
 
     /*
