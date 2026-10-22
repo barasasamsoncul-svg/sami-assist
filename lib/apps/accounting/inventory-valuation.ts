@@ -754,6 +754,101 @@ async function backfillSourceEvents(
       0;
   }
 
+  if (
+    input.runtime.purchaseReceipts &&
+    input.runtime.purchaseReceiptLines &&
+    input.runtime.purchaseOrderItems &&
+    input.settings.sync_purchase_receipts !== false
+  ) {
+    const receiptResult = await client.query(
+      `
+        INSERT INTO accounting_inventory_source_events (
+          company_id,
+          source_type,
+          source_id,
+          source_event_key,
+          event_date,
+          movement_type,
+          product_id,
+          warehouse_id,
+          source_quantity,
+          quantity_effect,
+          unit_cost,
+          value_amount,
+          cost_source,
+          cost_estimated,
+          status,
+          metadata,
+          created_by,
+          updated_by
+        )
+        SELECT
+          receipt.company_id,
+          'purchase_receipt',
+          receipt_line.id,
+          'purchase:receipt-line:' || receipt_line.id::text,
+          COALESCE(receipt.updated_at, receipt.created_at)::date,
+          'purchase_receipt',
+          COALESCE(receipt_line.product_reference, order_item.product_reference),
+          receipt.warehouse_reference,
+          (receipt_line.quantity_received - receipt_line.quantity_rejected)::numeric(19,4),
+          (receipt_line.quantity_received - receipt_line.quantity_rejected)::numeric(19,4),
+          order_item.unit_cost::numeric(19,4),
+          ROUND(
+            (receipt_line.quantity_received - receipt_line.quantity_rejected) * order_item.unit_cost,
+            2
+          )::numeric(19,2),
+          'purchase_order_cost',
+          FALSE,
+          CASE
+            WHEN receipt_line.quantity_received > receipt_line.quantity_rejected
+              AND order_item.unit_cost > 0
+              THEN 'pending'
+            ELSE 'review'
+          END,
+          jsonb_build_object(
+            'receiptId', receipt.id,
+            'receiptNumber', receipt.receipt_number,
+            'purchaseOrderId', order_item.purchase_order_id,
+            'purchaseOrderItemId', order_item.id,
+            'receiptLineId', receipt_line.id,
+            'costProvenance', 'confirmed_purchase_order_line'
+          ),
+          $2,
+          $2
+        FROM purchase_receipt_lines receipt_line
+        INNER JOIN purchase_receipts receipt
+          ON receipt.id = receipt_line.receipt_id
+         AND receipt.company_id = receipt_line.company_id
+         AND receipt.deleted_at IS NULL
+         AND receipt.status = 'posted'
+        INNER JOIN purchase_order_items order_item
+          ON order_item.id = receipt_line.purchase_order_item_id
+         AND order_item.company_id = receipt_line.company_id
+         AND order_item.purchase_order_id = receipt.purchase_order_id
+         AND order_item.deleted_at IS NULL
+        INNER JOIN products product
+          ON product.id = COALESCE(receipt_line.product_reference, order_item.product_reference)
+         AND product.company_id = receipt_line.company_id
+         AND product.deleted_at IS NULL
+        WHERE receipt_line.company_id = $1
+          AND receipt_line.deleted_at IS NULL
+          AND COALESCE(receipt.updated_at, receipt.created_at)::date >= $3::date
+          AND receipt_line.quantity_received > receipt_line.quantity_rejected
+        ON CONFLICT (company_id, source_event_key)
+          WHERE deleted_at IS NULL
+        DO NOTHING
+        RETURNING id
+      `,
+      [
+        input.companyId,
+        input.userId,
+        String(input.settings.valuation_start_date || today()).slice(0, 10),
+      ],
+    );
+    count += receiptResult.rowCount || 0;
+  }
+
   return count;
 }
 
