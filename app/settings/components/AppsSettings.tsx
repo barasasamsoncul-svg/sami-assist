@@ -240,6 +240,7 @@ export default function AppsSettings({
 
   const {
     overlay,
+    setOverlay,
     closeOverlay,
     showSuccess,
     showError,
