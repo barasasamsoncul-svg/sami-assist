@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS public.purchase_requisitions (
   requested_by UUID,
   requested_date DATE NOT NULL DEFAULT CURRENT_DATE,
   needed_by DATE,
-  department_id UUID REFERENCES public.departments(id) ON DELETE SET NULL,
+  department_name VARCHAR(160),
   reason TEXT,
   estimated_total NUMERIC(19,4) NOT NULL DEFAULT 0,
   approved_by UUID,
@@ -52,6 +52,10 @@ CREATE TABLE IF NOT EXISTS public.purchase_requisitions (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_requisition_number
   ON public.purchase_requisitions(company_id, requisition_number)
   WHERE deleted_at IS NULL;
+
+-- Keep the requisition department optional without requiring a separate HR master.
+ALTER TABLE public.purchase_requisitions
+  ADD COLUMN IF NOT EXISTS department_name VARCHAR(160);
 
 CREATE TABLE IF NOT EXISTS public.purchase_requisition_lines (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
