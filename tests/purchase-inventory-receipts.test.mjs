@@ -141,9 +141,11 @@ test('Purchase supplier master syncs idempotently into Accounting AP vendors whe
   assert.match(accountingSchema, /uq_accounting_vendors_company_purchase_supplier/);
   assert.match(accountingSchema, /fk_accounting_vendors_company_purchase_supplier/);
   assert.match(accountingSchema, /to_regclass\('public\.suppliers'\)/);
+  assert.match(accountingSchema, /EXECUTE \$sami_purchase_vendor_backfill\$[\s\S]*?FROM public\.suppliers supplier[\s\S]*?ON CONFLICT DO NOTHING/);
   assert.match(purchaseSchema, /fk_accounting_vendors_company_purchase_supplier/);
   assert.match(purchaseSchema, /uq_purchase_suppliers_company_id_id/);
   assert.match(purchaseSchema, /to_regclass\('public\.accounting_vendors'\)/);
+  assert.match(purchaseSchema, /EXECUTE \$sami_purchase_vendor_backfill\$[\s\S]*?FROM public\.suppliers supplier[\s\S]*?ON CONFLICT DO NOTHING/);
 });
 
 
