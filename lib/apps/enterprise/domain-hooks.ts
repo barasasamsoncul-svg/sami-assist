@@ -5,6 +5,10 @@ import type {
 } from 'pg';
 
 import {
+  syncPurchaseSupplierToAccounting,
+} from '@/lib/apps/purchase/accounting-supplier-sync';
+
+import {
   assertFinanceSpecialistMutationAllowed,
   validateFinanceSpecialistRow,
 } from '@/lib/apps/enterprise/specialist-finance-rules';
@@ -4015,6 +4019,21 @@ export async function applyEnterpriseDomainSideEffects(
       row,
     },
   );
+
+  if (
+    moduleKey === 'purchase' &&
+    table === 'suppliers'
+  ) {
+    await syncPurchaseSupplierToAccounting(
+      client,
+      {
+        companyId,
+        userId,
+        operation,
+        row,
+      },
+    );
+  }
 
   if (
     moduleKey ===
