@@ -65,6 +65,15 @@ test('Purchase product and warehouse links are company-safe and additive for exi
   ]);
 
   assert.match(purchaseSchema, /CREATE TABLE IF NOT EXISTS public\.purchase_order_items \([\s\S]*?product_reference UUID/);
+  assert.match(specialistDepth, /ALTER TABLE public.purchase_orders[\\s\\S]*?ADD COLUMN IF NOT EXISTS company_id UUID/);
+  assert.match(specialistDepth, /ALTER TABLE public.purchase_order_items[\\s\\S]*?ADD COLUMN IF NOT EXISTS company_id UUID/);
+  assert.ok(
+    specialistDepth.indexOf('CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_orders_company_id_id') <
+      specialistDepth.indexOf('fk_purchase_receipts_company_order'),
+    'The composite purchase-order key must exist before the company-safe receipt FK is created.',
+  );
+  assert.match(specialistDepth, /uq_products_company_id_id/);
+  assert.match(specialistDepth, /uq_warehouses_company_id_id/);
   assert.match(specialistDepth, /ALTER TABLE public\.purchase_order_items[\s\S]*?ADD COLUMN IF NOT EXISTS product_reference UUID/);
   assert.match(specialistDepth, /ADD COLUMN IF NOT EXISTS warehouse_reference UUID/);
   assert.match(specialistDepth, /fk_purchase_order_items_company_product/);
