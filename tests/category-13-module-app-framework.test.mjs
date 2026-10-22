@@ -694,7 +694,7 @@ test('Category 13: Apps administration receives lifecycle rows while ordinary na
   );
 });
 
-test('Category 13: legacy onboarding no longer enforces an app-count plan limit', async () => {
+test('Category 13: legacy installer keeps the Free dependency gate without restoring the retired global app-count limit', async () => {
   const onboarding =
     await source(
       'app/api/auth/install-app/route.ts',
@@ -702,17 +702,37 @@ test('Category 13: legacy onboarding no longer enforces an app-count plan limit'
 
   assert.match(
     onboarding,
-    /const includedApps =\s*-1/s,
+    /const includedApps =\\s*-1/s,
   );
 
   assert.doesNotMatch(
     onboarding,
-    /UPGRADE_REQUIRED/,
+    /APP_LIMIT_REACHED|MAX_INSTALLED_APPS|reservedAppCount/,
+    'The retired global installed-app counter must remain disabled.',
   );
 
-  assert.doesNotMatch(
+  assert.match(
     onboarding,
-    /reservedAppCount/,
+    /APP_DEPENDENCY_CONFIRMATION_REQUIRED/,
+    'Dependencies must be explicitly accepted before an installation may proceed.',
+  );
+
+  assert.match(
+    onboarding,
+    /APP_PLAN_UPGRADE_REQUIRED/,
+    'Free must upgrade when the resolved business-app dependency set exceeds its one-app allowance.',
+  );
+
+  assert.ok(
+    onboarding.indexOf('APP_DEPENDENCY_CONFIRMATION_REQUIRED') <
+      onboarding.indexOf('APP_PLAN_UPGRADE_REQUIRED'),
+    'Dependency confirmation must run before the Free-to-Standard plan gate.',
+  );
+
+  assert.ok(
+    onboarding.indexOf('APP_PLAN_UPGRADE_REQUIRED') <
+      onboarding.indexOf('INSERT INTO tenant_modules'),
+    'The plan gate must run before installation reservation writes.',
   );
 });
 
