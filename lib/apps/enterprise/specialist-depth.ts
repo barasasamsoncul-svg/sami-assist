@@ -447,6 +447,29 @@ CREATE TABLE IF NOT EXISTS public.accounting_vendors (
     ON public.accounting_vendors(company_id, purchase_supplier_id)
     WHERE purchase_supplier_id IS NOT NULL AND deleted_at IS NULL;
 
+  -- Purchase is optional for Accounting. When present, enforce an explicit
+  -- same-company supplier link; Purchase also installs this FK when it is
+  -- added later to an Accounting-first workspace.
+  DO $sami_accounting_purchase_supplier_link$
+  BEGIN
+    IF to_regclass('public.suppliers') IS NOT NULL THEN
+      EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_suppliers_company_id_id ON public.suppliers(company_id, id)';
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'fk_accounting_vendors_company_purchase_supplier'
+          AND conrelid = 'public.accounting_vendors'::regclass
+      ) THEN
+        ALTER TABLE public.accounting_vendors
+          ADD CONSTRAINT fk_accounting_vendors_company_purchase_supplier
+          FOREIGN KEY (company_id, purchase_supplier_id)
+          REFERENCES public.suppliers(company_id, id)
+          ON DELETE RESTRICT NOT VALID;
+      END IF;
+    END IF;
+  END
+  $sami_accounting_purchase_supplier_link$;
+
   CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_vendors_company_code
     ON public.accounting_vendors(company_id, vendor_code)
     WHERE deleted_at IS NULL;
