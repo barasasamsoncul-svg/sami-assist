@@ -68,7 +68,7 @@ test('GRNI configuration is company-scoped, typed as a liability, and exposed in
   assert.match(schema, /purchase_price_variance_account_id UUID REFERENCES public\.accounts\(id\)/);
   assert.match(schema, /sync_purchase_receipts BOOLEAN NOT NULL DEFAULT TRUE/);
   assert.match(schema, /'purchase_receipt'/);
-  assert.match(schema, /'purchase_order_cost'/);
+  assert.match(schema, /'backfill_current_standard_cost'/);
   assert.match(schema, /'receive_inventory'/);
 
   assert.match(service, /function liabilityAccount/);
