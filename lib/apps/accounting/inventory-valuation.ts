@@ -773,6 +773,8 @@ async function backfillSourceEvents(
 
     count += receiptResult.rowCount || 0;
 
+  }
+
     // Earlier versions logged purchase receipt movements as generic review events.
     // Retire those duplicates so the receipt-line valuation entry is the sole
     // accounting representation of that accepted stock increase.
@@ -799,7 +801,6 @@ async function backfillSourceEvents(
       `,
       [input.companyId, input.userId],
     );
-  }
 
   if (
     input.runtime
