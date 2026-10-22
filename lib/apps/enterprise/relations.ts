@@ -313,28 +313,37 @@ export async function getEnterpriseRelationDefinitions(
     }>(
       `
         SELECT
-          kcu.column_name,
-          ccu.table_name
-            AS foreign_table,
-          ccu.column_name
-            AS foreign_column
-        FROM information_schema.table_constraints tc
-        INNER JOIN information_schema.key_column_usage kcu
-          ON tc.constraint_name =
-             kcu.constraint_name
-         AND tc.constraint_schema =
-             kcu.constraint_schema
-        INNER JOIN information_schema.constraint_column_usage ccu
-          ON ccu.constraint_name =
-             tc.constraint_name
-         AND ccu.constraint_schema =
-             tc.constraint_schema
-        WHERE tc.constraint_type =
-              'FOREIGN KEY'
-          AND tc.table_schema =
-              'public'
-          AND tc.table_name =
-              $1
+          source_attribute.attname AS column_name,
+          target_relation.relname AS foreign_table,
+          target_attribute.attname AS foreign_column
+        FROM pg_constraint constraint_row
+        INNER JOIN pg_class source_relation
+          ON source_relation.oid = constraint_row.conrelid
+        INNER JOIN pg_namespace source_namespace
+          ON source_namespace.oid = source_relation.relnamespace
+        INNER JOIN pg_class target_relation
+          ON target_relation.oid = constraint_row.confrelid
+        INNER JOIN pg_namespace target_namespace
+          ON target_namespace.oid = target_relation.relnamespace
+        INNER JOIN LATERAL unnest(constraint_row.conkey)
+          WITH ORDINALITY AS source_key(attnum, key_position)
+          ON TRUE
+        INNER JOIN LATERAL unnest(constraint_row.confkey)
+          WITH ORDINALITY AS target_key(attnum, key_position)
+          ON target_key.key_position = source_key.key_position
+        INNER JOIN pg_attribute source_attribute
+          ON source_attribute.attrelid = source_relation.oid
+         AND source_attribute.attnum = source_key.attnum
+        INNER JOIN pg_attribute target_attribute
+          ON target_attribute.attrelid = target_relation.oid
+         AND target_attribute.attnum = target_key.attnum
+        WHERE constraint_row.contype = 'f'
+          AND source_namespace.nspname = 'public'
+          AND target_namespace.nspname = 'public'
+          AND source_relation.relname = $1
+        ORDER BY
+          constraint_row.conname,
+          source_key.key_position
       `,
       [
         table,
@@ -355,6 +364,7 @@ export async function getEnterpriseRelationDefinitions(
       !IDENTIFIER.test(
         foreignKey.column_name,
       ) ||
+      foreignKey.column_name === 'company_id' ||
       !IDENTIFIER.test(
         foreignKey.foreign_table,
       ) ||
