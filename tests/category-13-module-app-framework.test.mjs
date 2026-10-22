@@ -275,6 +275,23 @@ test('Category 13: installing or enabling an app requires explicit consent for i
   assert.match(legacyInstall, /for \(const plannedModule of dependencyPlan\)/);
   assert.match(legacyInstall, /acceptedDependencySet/);
 
+  const legacyConsentIndex =
+    legacyInstall.indexOf('if (unacceptedDependencies.length > 0)');
+  const legacyPlanGateIndex =
+    legacyInstall.indexOf("'APP_PLAN_UPGRADE_REQUIRED'");
+  const legacyReserveIndex =
+    legacyInstall.indexOf('17. RESERVE');
+  const legacyInstallLoopIndex =
+    legacyInstall.indexOf('for (const plannedModule of planModules)', legacyReserveIndex);
+
+  assert.ok(
+    legacyConsentIndex >= 0 &&
+      legacyPlanGateIndex > legacyConsentIndex &&
+      legacyReserveIndex > legacyPlanGateIndex &&
+      legacyInstallLoopIndex > legacyReserveIndex,
+    'The legacy installer must collect dependency consent first, then enforce plan limits, before reserving or installing any module.',
+  );
+
   assert.match(
     settings,
     /APP_DEPENDENCY_CONFIRMATION_REQUIRED/,
