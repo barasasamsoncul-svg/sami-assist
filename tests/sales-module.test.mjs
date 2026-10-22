@@ -3137,7 +3137,7 @@ const fulfillmentStart =
   assert.match(issueInvoicingCredit, /INVOICE_STATE_INVALID/);
   assert.ok(issueInvoicingCredit.includes('The existing credit note balance could not be verified'));
   assert.match(returnCreditInvoiceQuery, /returnId,/);
-  assert.match(createReturn, /'Sales order line',[\s\S]*\)\.toLowerCase\(\)/);
+  assert.match(createReturn, /requireUuid\(item\.lineId, 'Sales order line'\)\.toLowerCase\(\)/);
 
   const shipmentStart = operations.indexOf('export async function createSalesShipment(');
   const updateShipmentStart = operations.indexOf('export async function updateSalesShipmentStatus(', shipmentStart);
@@ -3401,7 +3401,7 @@ test('Sales quote, workspace, and order contracts expose salesperson, credit-lim
   assert.ok(types.includes('creditLimitEnforced') || queries.includes('creditLimitEnforced'));
   assert.ok(!workspace.includes('creditLimitEnforced?: boolean;'));
 
-  assert.ok(queries.includes('require_quote_approval,\n            credit_limit_enforced,\n            quote_approval_threshold'));
+  assert.match(queries, /require_quote_approval,\s*credit_limit_enforced,\s*quote_approval_threshold/);
   assert.match(queries, /creditLimitEnforced:[\s\S]{0,100}credit_limit_enforced === true/);
   assert.match(queries, /currentSalespersonId:[\s\S]{0,100}defaultSalesperson/);
   assert.match(queries, /str\(currentSalespersonRow\.id\)/);
