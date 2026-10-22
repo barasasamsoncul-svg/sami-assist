@@ -16,8 +16,11 @@ test('Accounting valuation captures posted Purchase receipts with confirmed PO-l
   assert.match(backfill, /receipt\.status = 'posted'/);
   assert.match(backfill, /receipt\.quantity_received/);
   assert.match(backfill, /receipt_line\.quantity_received - receipt_line\.quantity_rejected/);
+  assert.match(backfill, /product\.cost_price/);
   assert.match(backfill, /order_item\.unit_cost/);
-  assert.match(backfill, /'purchase_order_cost'/);
+  assert.match(backfill, /'backfill_current_standard_cost'/);
+  assert.match(backfill, /'purchaseOrderUnitCost', order_item\.unit_cost/);
+  assert.match(backfill, /'valuationCostBasis', 'product_standard_cost'/);
   assert.match(backfill, /'purchase:receipt-line:'/);
   assert.match(backfill, /ON CONFLICT \(company_id, source_event_key\)[\s\S]*?DO NOTHING/);
   assert.match(backfill, /'costProvenance', 'confirmed_purchase_order_line'/);
@@ -42,6 +45,11 @@ test('Purchase receipt valuation posts Inventory Asset against GRNI, not COGS or
   assert.match(posting, /debitAccount = accounts\.asset/);
   assert.match(posting, /creditAccount = accounts\.grni/);
   assert.match(posting, /Map a Goods Received Not Invoiced liability account/);
+  assert.match(posting, /Map a Purchase Price Variance expense account/);
+  assert.match(posting, /actualPurchaseValue/);
+  assert.match(posting, /varianceCents =\s*actualPurchaseCents - valueCents/);
+  assert.match(posting, /accountId: accounts\.priceVariance/);
+  assert.match(posting, /purchase price variance/);
 });
 
 test('GRNI configuration is company-scoped, typed as a liability, and exposed in Accounting controls', async () => {
@@ -52,6 +60,7 @@ test('GRNI configuration is company-scoped, typed as a liability, and exposed in
   ]);
 
   assert.match(schema, /goods_received_not_invoiced_account_id UUID REFERENCES public\.accounts\(id\)/);
+  assert.match(schema, /purchase_price_variance_account_id UUID REFERENCES public\.accounts\(id\)/);
   assert.match(schema, /sync_purchase_receipts BOOLEAN NOT NULL DEFAULT TRUE/);
   assert.match(schema, /'purchase_receipt'/);
   assert.match(schema, /'purchase_order_cost'/);
@@ -59,9 +68,12 @@ test('GRNI configuration is company-scoped, typed as a liability, and exposed in
 
   assert.match(service, /function liabilityAccount/);
   assert.match(service, /'Goods Received Not Invoiced'[\s\S]*?liabilityAccount/);
+  assert.match(service, /'Purchase Price Variance'[\s\S]*?expenseAccount/);
   assert.match(service, /sync_purchase_receipts =\s*EXCLUDED\.sync_purchase_receipts/);
 
   assert.match(ui, /Goods Received Not Invoiced \(GRNI\)/);
+  assert.match(ui, /Purchase Price Variance \(PPV\)/);
+  assert.match(ui, /purchasePriceVarianceAccountId/);
   assert.match(ui, /liabilityAccounts/);
   assert.match(ui, /syncPurchaseReceipts/);
   assert.match(ui, /Receive purchased goods \(Inventory Asset \/ GRNI\)/);
