@@ -34,7 +34,8 @@ test('Sales surfaces share the scoped visual system and consistent workspace she
   assert.doesNotMatch(approvalUi, /mx-auto max-w-6xl space-y-5 p-4 sm:p-6/);
   assert.doesNotMatch(approvalUi, /<main\b/, 'approval content must not nest a main element inside the Sales shell');
   assert.match(quoteRoute, /SalesSectionPage view="quotes"/);
-  assert.match(orderRoute, /SalesSectionPage view="orders"/);
+  assert.match(orderRoute, /SalesOrderDetailClient/);
+  assert.match(orderRoute, /AppSurfaceShell/);
 });
 
 test('Sales workspace report and KPI amounts preserve their base currency', async () => {
@@ -49,13 +50,13 @@ test('Sales workspace report and KPI amounts preserve their base currency', asyn
   assert.ok(queries.includes('PARTITION BY currency'));
   assert.ok(queries.includes('WHERE currency_rank <= 10'));
   assert.ok(queries.includes("status IN ('confirmed', 'closed')"));
-  assert.ok(queries.includes('GROUP BY base_currency\n              ORDER BY base_currency'));
+  assert.match(queries, /GROUP BY base_currency\s+ORDER BY base_currency/);
   assert.ok(!queries.includes('orders.rows.reduce'));
   assert.ok(types.includes('quoteValueByCurrency'));
   assert.ok(types.includes('orderValueByCurrency'));
   assert.ok(workspace.includes('currencyTotalsLabel'));
   assert.ok(workspace.includes("item.month + ' · ' + item.currency"));
-  assert.match(workspace, /customerName[\\s\\S]{0,140}currency/i);
+  assert.match(workspace, /customerName[\s\S]{0,140}currency/i);
   assert.equal((workspace.match(/money\(\s*item\.amount,\s*item\.currency/g) || []).length, 3);
 });
 
