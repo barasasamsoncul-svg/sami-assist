@@ -119,6 +119,10 @@ type LifecycleResponse = {
 };
 
 
+const dependencyAcceptanceStorageKey = (appKey: string) =>
+  `sami_workspace_app_dependency_acceptance:${appKey}`;
+
+
 const ACTIVE_STATUSES =
   new Set([
     'installed',
@@ -394,6 +398,49 @@ export default function AppsSettings({
       appKey,
     );
 
+    let requestBody: Record<string, unknown> | undefined =
+      body ? { ...body } : undefined;
+
+    if (
+      method === 'POST' ||
+      method === 'PATCH'
+    ) {
+      const currentAcceptedKeys =
+        requestBody?.acceptedDependencyKeys;
+
+      if (
+        currentAcceptedKeys == null ||
+        (Array.isArray(currentAcceptedKeys) && currentAcceptedKeys.length === 0)
+      ) {
+        try {
+          const storedAcceptance =
+            sessionStorage.getItem(
+              dependencyAcceptanceStorageKey(appKey),
+            );
+          const parsedAcceptance: unknown =
+            storedAcceptance
+              ? JSON.parse(storedAcceptance)
+              : null;
+
+          if (
+            Array.isArray(parsedAcceptance) &&
+            parsedAcceptance.every(key => typeof key === 'string')
+          ) {
+            requestBody = {
+              ...(requestBody || {}),
+              acceptedDependencyKeys: parsedAcceptance,
+            };
+          } else if (storedAcceptance) {
+            sessionStorage.removeItem(
+              dependencyAcceptanceStorageKey(appKey),
+            );
+          }
+        } catch {
+          // The API remains the authority for consent even when storage is unavailable.
+        }
+      }
+    }
+
     try {
       const response =
         await fetch(
@@ -406,7 +453,7 @@ export default function AppsSettings({
               Accept:
                 'application/json',
               ...(
-                body
+                requestBody
                   ? {
                       'Content-Type':
                         'application/json',
@@ -419,9 +466,9 @@ export default function AppsSettings({
             cache:
               'no-store',
             body:
-              body
+              requestBody
                 ? JSON.stringify(
-                    body,
+                    requestBody,
                   )
                 : undefined,
           },
@@ -456,9 +503,9 @@ export default function AppsSettings({
             appKey,
           method,
           body:
-            body
+            requestBody
               ? {
-                  ...body,
+                  ...requestBody,
                 }
               : undefined,
           dependencies:
@@ -472,6 +519,24 @@ export default function AppsSettings({
         !response.ok &&
         data.code === 'APP_PLAN_UPGRADE_REQUIRED'
       ) {
+        const acceptedKeys =
+          requestBody?.acceptedDependencyKeys;
+
+        if (
+          Array.isArray(acceptedKeys) &&
+          acceptedKeys.length > 0 &&
+          acceptedKeys.every((key): key is string => typeof key === 'string')
+        ) {
+          try {
+            sessionStorage.setItem(
+              dependencyAcceptanceStorageKey(appKey),
+              JSON.stringify([...new Set(acceptedKeys)]),
+            );
+          } catch {
+            // If storage is blocked, the user can accept the dependency list again after upgrading.
+          }
+        }
+
         const appName =
           workspaceByKey.get(appKey)?.name ||
           appKey;
@@ -527,6 +592,19 @@ export default function AppsSettings({
         throw new Error(
           `${data.error || 'SaMi could not update this app.'}${suffix}`,
         );
+      }
+
+      if (
+        method === 'POST' ||
+        method === 'PATCH'
+      ) {
+        try {
+          sessionStorage.removeItem(
+            dependencyAcceptanceStorageKey(appKey),
+          );
+        } catch {
+          // Clearing saved consent is best-effort; installation still succeeded.
+        }
       }
 
       router.refresh();
