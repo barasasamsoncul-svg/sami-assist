@@ -36,12 +36,19 @@ import SaMiLogo from '@/app/components/SaMiLogo';
 import SaMiOverlay from '@/app/components/SaMiOverlay';
 import { SAMI_APPS } from '@/lib/sami-apps';
 
+import {
+  getSamiModuleDependencyPlan,
+} from '@/lib/modules/registry';
+
 /* ============================================================
    CONSTANTS
    ============================================================ */
 
 const APPS_STORAGE_KEY =
   'sami_selected_apps';
+
+const ACCEPTED_DEPENDENCIES_STORAGE_KEY =
+  'sami_accepted_module_dependencies';
 
 const PLAN_STORAGE_KEY =
   'sami_selected_plan';
@@ -312,6 +319,40 @@ function readSelectedApps(): string[] {
   }
 }
 
+
+function resolveSelectedAppKeys(
+  keys: string[],
+): string[] {
+  const resolved = new Set<string>();
+  try {
+    for (const key of keys) {
+      for (const manifest of getSamiModuleDependencyPlan(key)) {
+        resolved.add(manifest.key.trim().toLowerCase());
+      }
+    }
+    return [...resolved];
+  } catch {
+    return [...new Set(keys.map(key => key.trim().toLowerCase()))];
+  }
+}
+
+
+function readAcceptedDependencyKeys(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = sessionStorage.getItem(ACCEPTED_DEPENDENCIES_STORAGE_KEY);
+    if (!raw) return [];
+    const value: unknown = JSON.parse(raw);
+    if (!Array.isArray(value)) return [];
+    return [...new Set(value.filter(
+      (item): item is string =>
+        typeof item === 'string' && /^[a-z0-9_-]{1,100}$/i.test(item.trim()),
+    ).map(item => item.trim().toLowerCase()))];
+  } catch {
+    return [];
+  }
+}
+
 function readSavedPlan():
   | PlanKey
   | null {
@@ -513,13 +554,16 @@ export default function SelectPlanPage() {
 
     setSelectedApps(apps);
 
+    const resolvedAppCount =
+      resolveSelectedAppKeys(apps).length;
+
     /*
-     * Free supports one business app.
-     * Multiple apps therefore default
-     * to Standard.
+     * Free supports one installed business app, including required dependencies.
+     * Resolve the code-owned dependency graph so the Standard requirement is
+     * visible before the workspace is created.
      */
     if (
-      apps.length >
+      resolvedAppCount >
         1
     ) {
       if (
@@ -558,8 +602,14 @@ export default function SelectPlanPage() {
      DERIVED
      ========================================================== */
 
+  const resolvedAppKeys =
+    useMemo(
+      () => resolveSelectedAppKeys(selectedApps),
+      [selectedApps],
+    );
+
   const selectedAppCount =
-    selectedApps.length;
+    resolvedAppKeys.length;
 
   const multipleApps =
     selectedAppCount > 1;
@@ -585,9 +635,9 @@ export default function SelectPlanPage() {
     useMemo(
       () =>
         getSelectedAppNames(
-          selectedApps
+          resolvedAppKeys
         ),
-      [selectedApps]
+      [resolvedAppKeys]
     );
 
   /* ==========================================================
@@ -725,11 +775,47 @@ export default function SelectPlanPage() {
          Plan
          ------------------------------------------------------ */
 
+      const resolvedApps =
+        resolveSelectedAppKeys(apps);
+
+      const requiredDependencyKeys =
+        resolvedApps.filter(
+          appKey => !apps.includes(appKey),
+        );
+
+      const acceptedDependencyKeys =
+        readAcceptedDependencyKeys();
+
+      const unacceptedDependencies =
+        requiredDependencyKeys.filter(
+          appKey => !acceptedDependencyKeys.includes(appKey),
+        );
+
+      if (unacceptedDependencies.length > 0) {
+        setOverlay({
+          type: 'warning',
+          title: 'Accept required app dependencies',
+          message: 'Your selected app requires additional SaMi apps. Return to app selection to review and accept the dependency list before creating the workspace.',
+          primaryAction: { label: 'Review dependencies', href: '/select-apps' },
+        });
+        return;
+      }
+
+      if (acceptedDependencyKeys.some(key => !requiredDependencyKeys.includes(key))) {
+        setOverlay({
+          type: 'warning',
+          title: 'App selection changed',
+          message: 'The saved dependency acceptance no longer matches your selected apps. Review the app selection and accept the required dependencies again.',
+          primaryAction: { label: 'Review apps', href: '/select-apps' },
+        });
+        return;
+      }
+
       let finalPlan =
         effectivePlan;
 
       if (
-        apps.length > 1 &&
+        resolvedApps.length > 1 &&
         finalPlan === 'free'
       ) {
         finalPlan =
@@ -766,6 +852,8 @@ export default function SelectPlanPage() {
 
           selectedApps:
             apps,
+
+          acceptedDependencyKeys,
         };
 
         const response =
@@ -875,6 +963,18 @@ export default function SelectPlanPage() {
               },
             });
 
+            return;
+          }
+
+          if (
+            code === 'APP_DEPENDENCY_CONFIRMATION_REQUIRED'
+          ) {
+            setOverlay({
+              type: 'warning',
+              title: 'Required apps need acceptance',
+              message: data?.message || data?.error || 'Review the required apps and accept them before creating your workspace.',
+              primaryAction: { label: 'Review dependencies', href: '/select-apps' },
+            });
             return;
           }
 
@@ -1122,6 +1222,10 @@ export default function SelectPlanPage() {
 
             sessionStorage.removeItem(
               PLAN_STORAGE_KEY
+            );
+
+            sessionStorage.removeItem(
+              ACCEPTED_DEPENDENCIES_STORAGE_KEY
             );
 
             sessionStorage.removeItem(
