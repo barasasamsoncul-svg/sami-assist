@@ -35,6 +35,7 @@ type Treatment =
   | 'return_cogs'
   | 'adjustment_gain'
   | 'adjustment_loss'
+  | 'receive_inventory'
   | 'ignore'
   | 'review';
 
@@ -217,6 +218,9 @@ async function inventoryRuntime(
     movements,
     adjustments,
     costPrice,
+    purchaseReceipts,
+    purchaseReceiptLines,
+    purchaseOrderItems,
   ] =
     await Promise.all([
       tableReady(
@@ -244,6 +248,9 @@ async function inventoryRuntime(
         'products',
         'cost_price',
       ),
+      tableReady(client, 'purchase_receipts'),
+      tableReady(client, 'purchase_receipt_lines'),
+      tableReady(client, 'purchase_order_items'),
     ]);
 
   return {
@@ -253,6 +260,9 @@ async function inventoryRuntime(
     movements,
     adjustments,
     costPrice,
+    purchaseReceipts,
+    purchaseReceiptLines,
+    purchaseOrderItems,
     available:
       products &&
       levels &&
@@ -405,6 +415,19 @@ function incomeAccount(
   );
 }
 
+function liabilityAccount(
+  type:
+    string,
+) {
+  return (
+    type ===
+      'liability' ||
+    type.startsWith(
+      'liability_',
+    )
+  );
+}
+
 async function settingsForUpdate(
   client:
     PoolClient,
@@ -423,8 +446,10 @@ async function settingsForUpdate(
           cogs_account_id::text,
           inventory_gain_account_id::text,
           inventory_loss_account_id::text,
+          goods_received_not_invoiced_account_id::text,
           sync_sales_movements,
           sync_adjustments,
+          sync_purchase_receipts,
           status
         FROM accounting_inventory_settings
         WHERE company_id =
@@ -772,6 +797,13 @@ function builtInTreatment(
     return 'adjustment_loss';
   }
 
+  if (
+    movementType === 'purchase_receipt' &&
+    inventoryQuantityUnits(quantityEffect) > BigInt(0)
+  ) {
+    return 'receive_inventory';
+  }
+
   return 'review';
 }
 
@@ -914,6 +946,14 @@ async function postingAccounts(
               .inventory_loss_account_id,
           )
         : null,
+    grni:
+      settings
+        .goods_received_not_invoiced_account_id
+        ? String(
+            settings
+              .goods_received_not_invoiced_account_id,
+          )
+        : null,
   };
 }
 
@@ -940,6 +980,8 @@ function treatmentEffect(
   if (
     treatment ===
       'return_cogs' ||
+    treatment ===
+      'receive_inventory' ||
     treatment ===
       'adjustment_gain'
   ) {
@@ -1259,8 +1301,10 @@ export async function getAccountingInventoryValuation() {
             cogs_account_id::text,
             inventory_gain_account_id::text,
             inventory_loss_account_id::text,
+            goods_received_not_invoiced_account_id::text,
             sync_sales_movements,
             sync_adjustments,
+            sync_purchase_receipts,
             status
           FROM accounting_inventory_settings
           WHERE company_id =
@@ -1425,6 +1469,10 @@ export async function getAccountingInventoryValuation() {
                  'income'
               OR account_type LIKE
                  'income_%'
+              OR account_type =
+                 'liability'
+              OR account_type LIKE
+                 'liability_%'
             )
           ORDER BY
             account_type,
@@ -1454,9 +1502,13 @@ export async function getAccountingInventoryValuation() {
         null,
       inventory_loss_account_id:
         null,
+      goods_received_not_invoiced_account_id:
+        null,
       sync_sales_movements:
         true,
       sync_adjustments:
+        true,
+      sync_purchase_receipts:
         true,
       status:
         'active',
@@ -2173,6 +2225,7 @@ export async function saveInventoryMovementRule(
     Treatment[] = [
       'issue_cogs',
       'return_cogs',
+      'receive_inventory',
       'adjustment_gain',
       'adjustment_loss',
       'ignore',
@@ -2606,6 +2659,17 @@ export async function syncInventoryValuation() {
           '';
 
         if (
+          treatment ===
+            'receive_inventory'
+        ) {
+          if (!accounts.grni) {
+            throw new AccountingInputError(
+              'Map a Goods Received Not Invoiced liability account before posting purchase receipts.',
+            );
+          }
+          debitAccount = accounts.asset;
+          creditAccount = accounts.grni;
+        } else if (
           treatment ===
             'issue_cogs'
         ) {
