@@ -81,6 +81,7 @@ type ModuleRecord = {
     | string
     | null;
   status: string;
+  is_core?: boolean | null;
 };
 
 
@@ -1401,7 +1402,8 @@ export async function POST(
             key,
             name,
             version,
-            status
+            status,
+            is_core
           FROM modules
           WHERE key = ANY($1::text[])
             AND deleted_at IS NULL
@@ -1670,9 +1672,11 @@ export async function POST(
         );
 
       for (const plannedModule of planModules) {
-        prospectiveBusinessApps.add(
-          normalizeAppKey(plannedModule.key),
-        );
+        if (plannedModule.is_core !== true) {
+          prospectiveBusinessApps.add(
+            normalizeAppKey(plannedModule.key),
+          );
+        }
       }
 
       if (prospectiveBusinessApps.size > 1) {
