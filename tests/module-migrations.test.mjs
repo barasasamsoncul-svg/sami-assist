@@ -2913,6 +2913,8 @@ test('Accounting 2.35 registers Purchase receipt valuation as a versioned schema
   const runtime = await source('lib/apps/runtime-migrations.ts');
   const migration = await source('lib/apps/accounting/migrations/2.34.0-to-2.35.0.ts');
   const schema = await source('lib/apps/accounting/inventory-valuation-schema.ts');
+  const releaseScript = await source('scripts/migrate-accounting-2-35-before-release.ts');
+  const pkg = await source('package.json');
 
   assert.match(manifest, /key:\s*"accounting"[\s\S]*version:\s*'2\.35\.0'/);
   assert.match(runtime, /ACCOUNTING_2_34_0_TO_2_35_0/);
@@ -2923,6 +2925,12 @@ test('Accounting 2.35 registers Purchase receipt valuation as a versioned schema
   assert.match(schema, /goods_received_not_invoiced_account_id/);
   assert.match(schema, /purchase_price_variance_account_id/);
   assert.match(schema, /source_type IN \('stock_movement','inventory_adjustment','purchase_receipt'\)/);
+  assert.match(releaseScript, /runSamiModuleMigrations/);
+  assert.match(releaseScript, /moduleKey:'accounting'/);
+  assert.match(releaseScript, /targetVersion:manifest\.version/);
+  assert.match(releaseScript, /controlVersionUpdated:false/);
+  assert.match(pkg, /migrate:accounting:2\.35:release/);
+  assert.match(pkg, /test:accounting:2\.35:release/);
 });
 
 test('Invoicing 2.23 provider refunds are runtime-backed and release-safe without tenant DDL', async () => {
