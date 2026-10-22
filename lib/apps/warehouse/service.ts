@@ -223,7 +223,7 @@ export async function getWarehouseWorkspaceOverview(): Promise<WarehouseWorkspac
       [context.companyId],
     ),
     context.pool.query(
-      `SELECT operation.id::text, operation.id::text AS operation_number,
+      `SELECT operation.id::text, 'WH-' || upper(substr(replace(operation.id::text, '-', ''), 1, 8)) AS operation_number,
               operation.operation_type, operation.status, operation.reference,
               operation.source_location_id::text, source.name AS source_name,
               operation.destination_location_id::text, destination.name AS destination_name,
@@ -520,10 +520,14 @@ async function createPutawayRule(body: Record<string, unknown>) {
 }
 
 async function createPickingBatch(body: Record<string, unknown>) {
-  const assignedUserId = uuid(body.assignedUserId, 'Assigned user', true) || null;
+  const requestedAssignee = uuid(body.assignedUserId, 'Assigned user', true);
   const scheduledAt = optionalText(body.scheduledAt, 'Scheduled time', 40);
   if (scheduledAt && Number.isNaN(Date.parse(scheduledAt))) throw new WarehouseInputError('Scheduled time is invalid.');
   const context = await getContext([{ table: 'warehouse_picking_batches', operation: 'create' }]);
+  if (requestedAssignee && requestedAssignee !== context.userId) {
+    throw new WarehouseInputError('You can only assign a picking batch to your own account in this workflow.');
+  }
+  const assignedUserId = requestedAssignee || context.userId;
   const batchNumber = warehouseNumber('PICK');
   const result = await context.pool.query(
     `INSERT INTO public.warehouse_picking_batches
