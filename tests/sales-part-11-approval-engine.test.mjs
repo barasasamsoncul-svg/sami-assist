@@ -125,7 +125,7 @@ test('Sales approval queue supports paginated retrieval and requester/editor wit
   assert.ok(route.includes("offset: request.nextUrl.searchParams.get('offset')"));
   assert.ok(route.includes("limit: request.nextUrl.searchParams.get('limit')"));
   assert.ok(manager.includes('body.approvals.hasMore === true'));
-  assert.match(manager, /request\\.canWithdraw\\s*\\?/);
+  assert.match(manager, /request\.canWithdraw\s*\?/);
   assert.ok(manager.includes("action: 'cancel_quote_approval'"));
   assert.ok(manager.includes('Load more'));
   assert.match(engine, /a-z0-9/);
