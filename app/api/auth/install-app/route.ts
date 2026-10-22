@@ -1687,6 +1687,7 @@ export async function POST(
           {
             billingHref: '/settings?tab=billing',
             currentPlan: subscription.plan_key,
+            requiredPlan: 'standard',
             maxInstalledBusinessApps: 1,
             prospectiveBusinessApps: prospectiveBusinessApps.size,
           },
