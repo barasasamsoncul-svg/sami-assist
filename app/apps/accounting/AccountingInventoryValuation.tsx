@@ -122,6 +122,12 @@ export default function AccountingInventoryValuation({
             .goods_received_not_invoiced_account_id ||
           '',
         ),
+      purchasePriceVarianceAccountId:
+        String(
+          data.settings
+            .purchase_price_variance_account_id ||
+          '',
+        ),
       syncSalesMovements:
         data.settings
           .sync_sales_movements !==
@@ -1034,6 +1040,27 @@ export default function AccountingInventoryValuation({
               >
                 <option value="">Choose liability account</option>
                 {liabilityAccounts.map(account => (
+                  <option key={account.id} value={account.id}>
+                    {account.code} · {account.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Purchase Price Variance (PPV)
+              <select
+                required
+                value={settings.purchasePriceVarianceAccountId}
+                onChange={event =>
+                  setSettings({
+                    ...settings,
+                    purchasePriceVarianceAccountId: event.target.value,
+                  })
+                }
+              >
+                <option value="">Choose expense account (COGS may be reused)</option>
+                {expenseAccounts.map(account => (
                   <option key={account.id} value={account.id}>
                     {account.code} · {account.name}
                   </option>
