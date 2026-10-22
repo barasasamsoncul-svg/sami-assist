@@ -38,6 +38,10 @@ test('Shipping operations are company-scoped and shipment state transitions are 
   assert.match(service, /Carrier booking and label purchase are not performed automatically/);
   assert.match(service, /trackingUrl/);
   assert.match(service, /https:/);
+  assert.match(service, /sourceSystem === 'warehouse'/);
+  assert.match(service, /public\.warehouse_packages/);
+  assert.match(service, /sourceWarehousePackageId/);
+  assert.match(service, /expectedWarehouseStatus/);
 });
 
 test('Shipping API bounds writes and handles create, transition and milestone actions', async () => {
