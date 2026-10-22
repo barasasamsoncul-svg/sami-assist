@@ -100,7 +100,7 @@ function actionList(table: string, status: string): WorkflowAction[] {
 }
 function tableHref(table: string) { return '/apps/purchase/' + table; }
 
-export default function PurchaseOperationsPanel({ initialSection, canTransition }: { initialSection: PurchaseSection; canTransition: boolean }) {
+export default function PurchaseOperationsPanel({ initialSection, canTransition, availableTableKeys }: { initialSection: PurchaseSection; canTransition: boolean; availableTableKeys: string[] }) {
   const [data, setData] = useState<PurchaseData>({
     requisitions: { records: [], total: 0, page: 1, hasMore: false, query: '' },
     orders: { records: [], total: 0, page: 1, hasMore: false, query: '' },
@@ -128,7 +128,8 @@ export default function PurchaseOperationsPanel({ initialSection, canTransition 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const results = await Promise.all(TABLES.map(async (table) => {
+      const visibleTables = TABLES.filter((table) => availableTableKeys.includes(table.key));
+      const results = await Promise.all(visibleTables.map(async (table) => {
         const result = await request({ action: 'list', table: table.key, query: '', page: 1, pageSize: 50 }) as unknown as TableResult;
         return [table.key, {
           records: Array.isArray(result.records) ? result.records : [],
@@ -136,11 +137,12 @@ export default function PurchaseOperationsPanel({ initialSection, canTransition 
           hasMore: Boolean(result.hasMore), query: String(result.query || ''),
         }] as const;
       }));
+      const emptyResult: TableResult = { records: [], total: 0, page: 1, hasMore: false, query: '' };
       const indexed = Object.fromEntries(results) as unknown as Record<string, TableResult>;
       setData({
-        requisitions: indexed.purchase_requisitions,
-        orders: indexed.purchase_orders,
-        receipts: indexed.purchase_receipts,
+        requisitions: indexed.purchase_requisitions || emptyResult,
+        orders: indexed.purchase_orders || emptyResult,
+        receipts: indexed.purchase_receipts || emptyResult,
       });
       setError('');
     } catch (caught) {
@@ -148,7 +150,7 @@ export default function PurchaseOperationsPanel({ initialSection, canTransition 
     } finally {
       setLoading(false);
     }
-  }, [request]);
+  }, [request, availableTableKeys]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
@@ -241,9 +243,9 @@ export default function PurchaseOperationsPanel({ initialSection, canTransition 
             <select className={inputClass + ' w-44'} value={filter} onChange={(e) => setFilter(e.target.value)}><option value="all">All statuses</option>{['draft','submitted','approved','rejected','converted','confirmed','received','inspected','posted','closed','cancelled'].map((status) => <option value={status} key={status}>{pretty(status)}</option>)}</select>
           </label>
           <div className="flex flex-wrap gap-2">
-            {initialSection !== 'requisitions' ? <Link className={neutralButton} href={tableHref('purchase_requisitions')}>Open requisitions register <ArrowRight className="h-3.5 w-3.5" /></Link> : null}
-            {initialSection !== 'orders' ? <Link className={neutralButton} href={tableHref('purchase_orders')}>Open PO register <ArrowRight className="h-3.5 w-3.5" /></Link> : null}
-            {initialSection !== 'receipts' ? <Link className={neutralButton} href={tableHref('purchase_receipts')}>Open receipt register <ArrowRight className="h-3.5 w-3.5" /></Link> : null}
+            {initialSection !== 'requisitions' && availableTableKeys.includes('purchase_requisitions') ? <Link className={neutralButton} href={tableHref('purchase_requisitions')}>Open requisitions register <ArrowRight className="h-3.5 w-3.5" /></Link> : null}
+            {initialSection !== 'orders' && availableTableKeys.includes('purchase_orders') ? <Link className={neutralButton} href={tableHref('purchase_orders')}>Open PO register <ArrowRight className="h-3.5 w-3.5" /></Link> : null}
+            {initialSection !== 'receipts' && availableTableKeys.includes('purchase_receipts') ? <Link className={neutralButton} href={tableHref('purchase_receipts')}>Open receipt register <ArrowRight className="h-3.5 w-3.5" /></Link> : null}
           </div>
         </div>
         <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[860px] border-collapse text-left text-sm"><thead><tr className="border-b border-[var(--sami-border)] text-[10px] uppercase tracking-wide text-[var(--sami-muted)]"><th className="px-3 py-3">Reference</th><th className="px-3 py-3">Supplier / detail</th><th className="px-3 py-3">Amount</th><th className="px-3 py-3">Due / created</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Actions</th></tr></thead><tbody>
