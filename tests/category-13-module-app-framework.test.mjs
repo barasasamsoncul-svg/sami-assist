@@ -223,6 +223,11 @@ test('Category 13: installing or enabling an app requires explicit consent for i
     lifecycle.indexOf(
       'const missingDependencies',
     );
+  const entitlementGateIndex =
+    lifecycle.indexOf(
+      'await assertInstallPlanEntitled',
+      consentIndex,
+    );
   const installWriteIndex =
     lifecycle.indexOf(
       'const installedDependencies',
@@ -231,8 +236,9 @@ test('Category 13: installing or enabling an app requires explicit consent for i
 
   assert.ok(
     consentIndex >= 0 &&
-    installWriteIndex > consentIndex,
-    'Consent must be checked before the dependency installation loop can change module state.',
+    entitlementGateIndex > consentIndex &&
+    installWriteIndex > entitlementGateIndex,
+    'Dependency acceptance must be requested before a plan-upgrade block, and both gates must run before installation writes.',
   );
 
   assert.match(
