@@ -91,3 +91,20 @@ test('Purchase orders cannot be manually marked received before every line is fu
   assert.match(service, /receipt\.status = 'posted'/);
   assert.match(service, /A purchase order can be marked received only after every ordered line has been fully received and posted through Inventory/);
 });
+
+test('Purchase uses a dedicated Sales-style workspace shell rather than the generic app surface shell', async () => {
+  const [shell, workspace] = await Promise.all([
+    source('app/apps/purchase/PurchaseModuleShell.tsx'),
+    source('app/apps/purchase/PurchaseWorkspace.tsx'),
+  ]);
+
+  assert.match(shell, /data-purchase-shell="standalone"/);
+  assert.match(shell, /aria-label="Purchase navigation"/);
+  assert.match(shell, /WorkspaceAppSwitcher/);
+  assert.match(shell, /WorkspaceTenantSwitcher/);
+  assert.match(shell, /WorkspaceNotificationCenter/);
+  assert.doesNotMatch(shell, /<AppSurfaceShell/);
+  assert.match(workspace, /PurchaseModuleShell/);
+  assert.match(workspace, /PurchaseWorkspaceClient/);
+  assert.doesNotMatch(workspace, /AppSurfaceShell/);
+});
