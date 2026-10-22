@@ -984,11 +984,24 @@ async function eventTreatment(
       unknown
     >,
 ) {
-  if (
-    String(event.movement_type) === 'purchase_receipt' &&
-    String(event.cost_source || '') !== 'purchase_order_cost'
-  ) {
-    return 'review';
+  if (String(event.source_type || '') === 'purchase_receipt') {
+    const metadata =
+      event.metadata &&
+      typeof event.metadata === 'object' &&
+      !Array.isArray(event.metadata)
+        ? event.metadata as Record<string, unknown>
+        : {};
+    const actualUnitCost = Number(metadata.purchaseOrderUnitCost || 0);
+    const standardUnitCost = Number(event.unit_cost || 0);
+
+    if (
+      !Number.isFinite(actualUnitCost) ||
+      actualUnitCost <= 0 ||
+      !Number.isFinite(standardUnitCost) ||
+      standardUnitCost <= 0
+    ) {
+      return 'review';
+    }
   }
 
   const builtin =
