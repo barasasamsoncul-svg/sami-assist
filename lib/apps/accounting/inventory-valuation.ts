@@ -672,35 +672,18 @@ async function backfillSourceEvents(
               THEN ABS(movement.quantity)
             ELSE 0
           END::numeric(19,4),
-          CASE
-            WHEN purchase_item.id IS NOT NULL
-             AND purchase_item.product_reference = movement.product_id
-              THEN purchase_item.unit_cost
-            ELSE product.cost_price
-          END::numeric(19,4),
+          product.cost_price::numeric(19,4),
           ROUND(
-            ABS(movement.quantity) *
-            CASE
-              WHEN purchase_item.id IS NOT NULL
-               AND purchase_item.product_reference = movement.product_id
-                THEN purchase_item.unit_cost
-              ELSE product.cost_price
-            END,
+            ABS(movement.quantity) * product.cost_price,
             2
           )::numeric(19,2),
+          'backfill_current_standard_cost',
+          TRUE,
           CASE
             WHEN purchase_item.id IS NOT NULL
              AND purchase_item.product_reference = movement.product_id
-              THEN 'purchase_order_cost'
-            ELSE 'backfill_current_standard_cost'
-          END,
-          NOT (
-            purchase_item.id IS NOT NULL
-            AND purchase_item.product_reference = movement.product_id
-          ),
-          CASE
-            WHEN purchase_item.id IS NOT NULL
-             AND purchase_item.product_reference = movement.product_id
+             AND purchase_item.unit_cost > 0
+             AND product.cost_price > 0
               THEN 'pending'
             ELSE 'review'
           END,
@@ -712,6 +695,10 @@ async function backfillSourceEvents(
             'purchaseOrderItemId', purchase_item.id::text,
             'stockMovementId', movement.id::text,
             'supplierDeliveryReference', receipt.supplier_delivery_reference,
+            'purchaseOrderUnitCost', purchase_item.unit_cost,
+            'standardCostUnitCost', product.cost_price,
+            'costProvenance', 'confirmed_purchase_order_line',
+            'valuationCostBasis', 'product_standard_cost',
             'backfilled', TRUE
           ),
           $3,
@@ -744,7 +731,30 @@ async function backfillSourceEvents(
           AND receipt_line.quantity_received > receipt_line.quantity_rejected
         ON CONFLICT (company_id, source_event_key)
         WHERE deleted_at IS NULL
-        DO NOTHING
+        DO UPDATE SET
+          unit_cost = EXCLUDED.unit_cost,
+          value_amount = EXCLUDED.value_amount,
+          cost_source = EXCLUDED.cost_source,
+          cost_estimated = EXCLUDED.cost_estimated,
+          status = CASE
+            WHEN EXCLUDED.status = 'pending' THEN 'pending'
+            ELSE accounting_inventory_source_events.status
+          END,
+          metadata =
+            (COALESCE(accounting_inventory_source_events.metadata, '{}'::jsonb) - 'syncError')
+            || EXCLUDED.metadata,
+          updated_by = EXCLUDED.updated_by,
+          updated_at = NOW()
+        WHERE accounting_inventory_source_events.status IN ('pending', 'review')
+          AND accounting_inventory_source_events.posted_journal_id IS NULL
+          AND (
+            accounting_inventory_source_events.unit_cost IS DISTINCT FROM EXCLUDED.unit_cost
+            OR accounting_inventory_source_events.value_amount IS DISTINCT FROM EXCLUDED.value_amount
+            OR (
+              accounting_inventory_source_events.status = 'review'
+              AND EXCLUDED.status = 'pending'
+            )
+          )
         RETURNING id
       `,
       [
