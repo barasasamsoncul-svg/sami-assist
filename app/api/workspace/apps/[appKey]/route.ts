@@ -150,6 +150,7 @@ function handleError(
         'WORKSPACE_NOT_READY',
         'WORKSPACE_CONTEXT_CHANGED',
         'APP_CHANGE_IN_PROGRESS',
+        'APP_DEPENDENCY_CONFIRMATION_REQUIRED',
         'APP_NOT_INSTALLED',
         'APP_DEPENDENCY_BLOCKED',
         'APP_DEPENDENCY_CYCLE',
@@ -258,6 +259,71 @@ async function getAppKey(
 }
 
 
+function parseAcceptedDependencyKeys(
+  body:
+    unknown,
+):
+  | {
+      valid: true;
+      keys?: string[];
+    }
+  | {
+      valid: false;
+    } {
+  if (
+    !body ||
+    typeof body !== 'object' ||
+    Array.isArray(body)
+  ) {
+    return {
+      valid: false,
+    };
+  }
+
+  const record =
+    body as Record<
+      string,
+      unknown
+    >;
+
+  if (
+    !Object.prototype.hasOwnProperty.call(
+      record,
+      'acceptedDependencyKeys',
+    )
+  ) {
+    return {
+      valid: true,
+    };
+  }
+
+  const value =
+    record.acceptedDependencyKeys;
+
+  if (
+    !Array.isArray(value) ||
+    value.length > 100 ||
+    value.some(
+      key =>
+        typeof key !== 'string' ||
+        !/^[a-z0-9_-]{1,100}$/i.test(
+          key.trim(),
+        ),
+    )
+  ) {
+    return {
+      valid: false,
+    };
+  }
+
+  return {
+    valid: true,
+    keys:
+      value as string[],
+  };
+}
+
+
 export async function POST(
   request:
     NextRequest,
@@ -290,6 +356,56 @@ export async function POST(
   }
 
   try {
+    let body:
+      unknown = {};
+
+    const rawBody =
+      await request.text();
+
+    if (
+      rawBody.trim()
+    ) {
+      try {
+        body =
+          JSON.parse(
+            rawBody,
+          ) as unknown;
+      } catch {
+        return json(
+          {
+            success:
+              false,
+            code:
+              'INVALID_APP_REQUEST',
+            error:
+              'The app installation request is invalid.',
+          },
+          400,
+        );
+      }
+    }
+
+    const consent =
+      parseAcceptedDependencyKeys(
+        body,
+      );
+
+    if (
+      !consent.valid
+    ) {
+      return json(
+        {
+          success:
+            false,
+          code:
+            'INVALID_DEPENDENCY_CONFIRMATION',
+          error:
+            'The dependency confirmation is invalid. Please try again.',
+        },
+        400,
+      );
+    }
+
     const result =
       await installWorkspaceApp(
         await getAppKey(
@@ -298,6 +414,7 @@ export async function POST(
         auditContext(
           request,
         ),
+        consent.keys,
       );
 
     return json({
@@ -352,6 +469,27 @@ export async function PATCH(
   try {
     const body =
       await request.json();
+
+    const consent =
+      parseAcceptedDependencyKeys(
+        body,
+      );
+
+    if (
+      !consent.valid
+    ) {
+      return json(
+        {
+          success:
+            false,
+          code:
+            'INVALID_DEPENDENCY_CONFIRMATION',
+          error:
+            'The dependency confirmation is invalid. Please try again.',
+        },
+        400,
+      );
+    }
 
     const action =
       body?.action ===
@@ -457,6 +595,7 @@ export async function DELETE(
         auditContext(
           request,
         ),
+        consent.keys,
       );
 
     return json({
