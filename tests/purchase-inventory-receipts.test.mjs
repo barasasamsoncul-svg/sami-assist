@@ -82,6 +82,18 @@ test('Purchase product and warehouse links are company-safe and additive for exi
   assert.match(specialistDepth, /ADD COLUMN IF NOT EXISTS warehouse_reference UUID/);
   assert.match(specialistDepth, /fk_purchase_order_items_company_product/);
   assert.match(specialistDepth, /fk_purchase_order_items_company_order/);
+  assert.ok(
+    specialistDepth.indexOf('uq_purchase_suppliers_company_id_id') <
+      specialistDepth.indexOf('fk_purchase_orders_company_supplier'),
+    'The composite supplier key must exist before the company-safe PO supplier FK.',
+  );
+  assert.match(specialistDepth, /fk_purchase_orders_company_supplier/);
+  assert.match(specialistDepth, /uq_purchase_requisitions_company_id_id/);
+  assert.match(specialistDepth, /uq_purchase_requisition_lines_company_id_id/);
+  assert.match(specialistDepth, /fk_purchase_requisition_lines_company_requisition/);
+  assert.match(specialistDepth, /fk_purchase_requisition_lines_company_product/);
+  assert.match(specialistDepth, /fk_purchase_requisition_lines_company_supplier/);
+
   assert.match(specialistDepth, /fk_purchase_receipts_company_warehouse/);
   assert.match(specialistDepth, /fk_purchase_receipt_lines_company_po_item/);
   assert.match(specialistDepth, /NOT VALID/);

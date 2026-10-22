@@ -291,6 +291,61 @@ $sami_purchase_inventory_links$;
 -- Purchase adds the same composite FK once its supplier master exists.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_suppliers_company_id_id
   ON public.suppliers(company_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_requisitions_company_id_id
+  ON public.purchase_requisitions(company_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_requisition_lines_company_id_id
+  ON public.purchase_requisition_lines(company_id, id);
+
+-- Enforce company-safe relations for purchasing sources and requisition lines.
+-- NOT VALID keeps upgrades additive while immediately checking new or changed rows.
+DO $sami_purchase_company_relations$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_purchase_orders_company_supplier'
+      AND conrelid = 'public.purchase_orders'::regclass
+  ) THEN
+    ALTER TABLE public.purchase_orders
+      ADD CONSTRAINT fk_purchase_orders_company_supplier
+      FOREIGN KEY (company_id, supplier_id)
+      REFERENCES public.suppliers(company_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_purchase_requisition_lines_company_requisition'
+      AND conrelid = 'public.purchase_requisition_lines'::regclass
+  ) THEN
+    ALTER TABLE public.purchase_requisition_lines
+      ADD CONSTRAINT fk_purchase_requisition_lines_company_requisition
+      FOREIGN KEY (company_id, requisition_id)
+      REFERENCES public.purchase_requisitions(company_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_purchase_requisition_lines_company_product'
+      AND conrelid = 'public.purchase_requisition_lines'::regclass
+  ) THEN
+    ALTER TABLE public.purchase_requisition_lines
+      ADD CONSTRAINT fk_purchase_requisition_lines_company_product
+      FOREIGN KEY (company_id, product_reference)
+      REFERENCES public.products(company_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_purchase_requisition_lines_company_supplier'
+      AND conrelid = 'public.purchase_requisition_lines'::regclass
+  ) THEN
+    ALTER TABLE public.purchase_requisition_lines
+      ADD CONSTRAINT fk_purchase_requisition_lines_company_supplier
+      FOREIGN KEY (company_id, preferred_supplier_id)
+      REFERENCES public.suppliers(company_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+END
+$sami_purchase_company_relations$;
 
 DO $sami_purchase_accounting_supplier_link$
 BEGIN
