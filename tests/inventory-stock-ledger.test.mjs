@@ -122,3 +122,21 @@ test('Cycle-count variance can reconcile physically counted stock even if reserv
   assert.match(service, /input\.allowReservedStockConsumption[\s\S]*?quantity >= \$3/);
   assert.match(service, /The physical-count variance exceeds on-hand stock/);
 });
+
+test('Inventory transfer UI supports multiple unique product lines up to the workflow limit', async () => {
+  const [panel, service] = await Promise.all([
+    source('app/apps/inventory/InventoryStockControlPanel.tsx'),
+    source('lib/apps/inventory/service.ts'),
+  ]);
+
+  assert.match(panel, /type TransferLineDraft/);
+  assert.match(panel, /function addTransferLine\(\)/);
+  assert.match(panel, /function updateTransferLine\(/);
+  assert.match(panel, /lines:transferLines\.map\(line => \(\{ productId:line\.productId, quantity:line\.quantity \}\)\)/);
+  assert.match(panel, /new Set\(transferLines\.map\(line => line\.productId\)\)\.size !== transferLines\.length/);
+  assert.match(panel, /transferLines\.length>=100/);
+  assert.match(panel, /Remove transfer line/);
+  assert.match(service, /body\.lines\.length < 1 \|\| body\.lines\.length > 100/);
+  assert.match(service, /new Set\(lines\.map\(\(line\) => line\.productId\)\)\.size !== lines\.length/);
+});
+
