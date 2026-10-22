@@ -296,6 +296,7 @@ export const ADDITIONAL_FIRST_PARTY_SAMI_MODULES:
   additionalModule({
     key: "barcode",
     name: "Barcode",
+    version: '1.1.0',
     description: "Use barcode workflows for receiving, picking, inventory and fulfillment.",
     category: "supply_chain",
     icon: "package",
