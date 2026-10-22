@@ -1816,6 +1816,10 @@ export async function saveInventoryValuationSettings(
     accountingId(
       body.inventoryLossAccountId,
     );
+  const grni =
+    accountingId(
+      body.goodsReceivedNotInvoicedAccountId,
+    );
 
   if (
     new Set([
@@ -1823,11 +1827,12 @@ export async function saveInventoryValuationSettings(
       cogs,
       gain,
       loss,
+      grni,
     ]).size !==
-      4
+      5
   ) {
     throw new AccountingInputError(
-      'Inventory Asset, COGS, Inventory Gain and Inventory Loss must use distinct ledger accounts.',
+      'Inventory Asset, COGS, Inventory Gain, Inventory Loss and Goods Received Not Invoiced must use distinct ledger accounts.',
     );
   }
 
@@ -1867,6 +1872,13 @@ export async function saveInventoryValuationSettings(
       'Inventory Loss',
       expenseAccount,
     );
+    await activeAccount(
+      client,
+      context.companyId,
+      grni,
+      'Goods Received Not Invoiced',
+      liabilityAccount,
+    );
 
     await client.query(
       `
@@ -1879,8 +1891,10 @@ export async function saveInventoryValuationSettings(
           cogs_account_id,
           inventory_gain_account_id,
           inventory_loss_account_id,
+          goods_received_not_invoiced_account_id,
           sync_sales_movements,
           sync_adjustments,
+          sync_purchase_receipts,
           status,
           created_by,
           updated_by
@@ -1888,8 +1902,8 @@ export async function saveInventoryValuationSettings(
         VALUES (
           $1,$2,
           'standard_cost',
-          $3,$4,$5,$6,$7,$8,$9,
-          'active',$10,$10
+          $3,$4,$5,$6,$7,$8,$9,$10,$11,
+          'active',$12,$12
         )
         ON CONFLICT (
           company_id
@@ -1910,10 +1924,14 @@ export async function saveInventoryValuationSettings(
             EXCLUDED.inventory_gain_account_id,
           inventory_loss_account_id =
             EXCLUDED.inventory_loss_account_id,
+          goods_received_not_invoiced_account_id =
+            EXCLUDED.goods_received_not_invoiced_account_id,
           sync_sales_movements =
             EXCLUDED.sync_sales_movements,
           sync_adjustments =
             EXCLUDED.sync_adjustments,
+          sync_purchase_receipts =
+            EXCLUDED.sync_purchase_receipts,
           status =
             'active',
           updated_by =
@@ -1931,12 +1949,17 @@ export async function saveInventoryValuationSettings(
         cogs,
         gain,
         loss,
+        grni,
         bool(
           body.syncSalesMovements,
           true,
         ),
         bool(
           body.syncAdjustments,
+          true,
+        ),
+        bool(
+          body.syncPurchaseReceipts,
           true,
         ),
         context.userId,
@@ -1955,8 +1978,10 @@ export async function saveInventoryValuationSettings(
             $4,
           inventory_loss_account_id =
             $5,
-          updated_by =
+          goods_received_not_invoiced_account_id =
             $6,
+          updated_by =
+            $7,
           updated_at =
             NOW()
         WHERE company_id =
@@ -1970,6 +1995,7 @@ export async function saveInventoryValuationSettings(
         cogs,
         gain,
         loss,
+        grni,
         context.userId,
       ],
     );
