@@ -113,3 +113,26 @@ test('Purchase uses a dedicated Sales-style workspace shell rather than the gene
   assert.match(workspace, /PurchaseWorkspaceClient/);
   assert.doesNotMatch(workspace, /AppSurfaceShell/);
 });
+
+
+test('Purchase supplier master syncs idempotently into Accounting AP vendors when Accounting is installed', async () => {
+  const [sync, hooks, accountingSchema] = await Promise.all([
+    source('lib/apps/purchase/accounting-supplier-sync.ts'),
+    source('lib/apps/enterprise/domain-hooks.ts'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+  ]);
+
+  assert.match(sync, /to_regclass\('public\.accounting_vendors'\)/);
+  assert.match(sync, /purchase_supplier_id/);
+  assert.match(sync, /uq_accounting_vendors_company_purchase_supplier/);
+  assert.match(sync, /ON CONFLICT \(company_id, purchase_supplier_id\)/);
+  assert.match(sync, /WHERE purchase_supplier_id IS NOT NULL AND deleted_at IS NULL/);
+  assert.match(sync, /input\.operation === 'delete'/);
+  assert.match(sync, /status='inactive'/);
+  assert.match(sync, /input\.companyId/);
+
+  assert.match(hooks, /syncPurchaseSupplierToAccounting/);
+  assert.match(hooks, /moduleKey === 'purchase'[\s\S]*?table === 'suppliers'/);
+  assert.match(accountingSchema, /ADD COLUMN IF NOT EXISTS purchase_supplier_id UUID/);
+  assert.match(accountingSchema, /uq_accounting_vendors_company_purchase_supplier/);
+});
