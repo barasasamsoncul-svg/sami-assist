@@ -304,6 +304,7 @@ async function postInventoryMovementInTransaction(
   client: PoolClient,
   input: {
     companyId: string;
+    userId: string;
     productId: string;
     warehouseId: string;
     movementType: string;
@@ -327,16 +328,17 @@ async function postInventoryMovementInTransaction(
   if (inbound) {
     const balance = await client.query(
       `INSERT INTO public.stock_levels
-         (product_id, warehouse_id, quantity, reorder_level, company_id, updated_at)
-       VALUES ($1, $2, $3, 0, $4, NOW())
+         (product_id, warehouse_id, quantity, reorder_level, company_id, updated_at, created_by, updated_by)
+       VALUES ($1, $2, $3, 0, $4, NOW(), $5, $5)
        ON CONFLICT (product_id, warehouse_id)
        DO UPDATE SET
          quantity = stock_levels.quantity + EXCLUDED.quantity,
-         updated_at = NOW()
+         updated_at = NOW(),
+         updated_by = EXCLUDED.updated_by
        WHERE stock_levels.company_id = EXCLUDED.company_id
          AND stock_levels.deleted_at IS NULL
        RETURNING id`,
-      [input.productId, input.warehouseId, input.quantity, input.companyId],
+      [input.productId, input.warehouseId, input.quantity, input.companyId, input.userId],
     );
     if (balance.rows.length !== 1) {
       throw new InventoryConflictError(
@@ -346,13 +348,13 @@ async function postInventoryMovementInTransaction(
   } else {
     const outboundUpdateSql = input.allowReservedStockConsumption
       ? `UPDATE public.stock_levels
-         SET quantity = quantity - $3, updated_at = NOW()
+         SET quantity = quantity - $3, updated_at = NOW(), updated_by = $5
          WHERE product_id = $1 AND warehouse_id = $2
            AND company_id = $4 AND deleted_at IS NULL
            AND quantity >= $3
          RETURNING id`
       : `UPDATE public.stock_levels
-         SET quantity = quantity - $3, updated_at = NOW()
+         SET quantity = quantity - $3, updated_at = NOW(), updated_by = $5
          WHERE product_id = $1 AND warehouse_id = $2
            AND company_id = $4 AND deleted_at IS NULL
            AND quantity - COALESCE((
@@ -367,7 +369,7 @@ async function postInventoryMovementInTransaction(
          RETURNING id`;
     const changed = await client.query(
       outboundUpdateSql,
-      [input.productId, input.warehouseId, input.quantity, input.companyId],
+      [input.productId, input.warehouseId, input.quantity, input.companyId, input.userId],
     );
     if (changed.rows.length !== 1) {
       throw new InventoryConflictError(
@@ -380,8 +382,8 @@ async function postInventoryMovementInTransaction(
 
   const movement = await client.query(
     `INSERT INTO public.stock_movements
-       (company_id, product_id, warehouse_id, movement_type, quantity, reference)
-     VALUES ($1, $2, $3, $4, $5, $6)
+       (company_id, product_id, warehouse_id, movement_type, quantity, reference, created_by, updated_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
      RETURNING id::text`,
     [
       input.companyId,
@@ -390,6 +392,7 @@ async function postInventoryMovementInTransaction(
       input.movementType,
       input.quantity,
       input.reference,
+      input.userId,
     ],
   );
   return String(movement.rows[0]?.id || '');
@@ -695,6 +698,7 @@ async function transitionInventoryTransfer(body: Record<string, unknown>, action
         const quantity = String(line.requested_quantity);
         await postInventoryMovementInTransaction(client, {
           companyId: context.companyId,
+          userId: context.userId,
           productId: String(line.product_id),
           warehouseId: String(order.source_warehouse_id),
           movementType: 'transfer_out',
@@ -732,6 +736,7 @@ async function transitionInventoryTransfer(body: Record<string, unknown>, action
       if (Number(quantity) <= 0) throw new InventoryConflictError('A transfer line has no shipped quantity.');
       await postInventoryMovementInTransaction(client, {
         companyId: context.companyId,
+          userId: context.userId,
         productId: String(line.product_id),
         warehouseId: String(order.destination_warehouse_id),
         movementType: 'transfer_in',
@@ -900,6 +905,7 @@ async function postInventoryCycleCount(body: Record<string, unknown>) {
     if (difference !== 0) {
       await postInventoryMovementInTransaction(client, {
         companyId: context.companyId,
+          userId: context.userId,
         productId,
         warehouseId,
         movementType: difference > 0 ? 'adjustment_in' : 'adjustment_out',
