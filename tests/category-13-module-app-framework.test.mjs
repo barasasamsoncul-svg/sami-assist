@@ -269,6 +269,8 @@ test('Category 13: installing or enabling an app requires explicit consent for i
   assert.match(selectPlan, /resolveSelectedAppKeys\(apps\)\.length/);
   assert.match(legacyInstall, /getSamiModuleDependencyPlan/);
   assert.match(legacyInstall, /APP_DEPENDENCY_CONFIRMATION_REQUIRED/);
+  assert.match(legacyInstall, /APP_PLAN_UPGRADE_REQUIRED/);
+  assert.match(legacyInstall, /billingHref: '\/settings\?tab=billing'/);
   assert.match(legacyInstall, /normalizeAcceptedDependencyKeys/);
   assert.match(legacyInstall, /for \(const plannedModule of dependencyPlan\)/);
   assert.match(legacyInstall, /acceptedDependencySet/);
