@@ -31,7 +31,7 @@ test('Sales representative performance measures open, weighted and overdue pipel
   assert.match(service, /o\.lost_at >= NOW\(\) - \(\$3::int \* INTERVAL '1 day'\)/);
   assert.match(service, /AS win_rate_90_days/);
   assert.match(service, /GROUP BY o\.salesperson_user_id, currency/);
-  assert.match(component, /new Set\(rows\.map\(row => row\.currency\)\)/);
+  assert.match(component, /new Set\(rows\.map\(\(row\) => row\.currency\)\)/);
   assert.match(component, /Win rate · 90d/);
 });
 

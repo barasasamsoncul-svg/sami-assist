@@ -87,8 +87,8 @@ test('new variants inherit the base product cost unless an authorized user overr
   assert.match(variants, /requireCostPermission\(context, input\.unitCost\)/);
   assert.ok(variants.includes('canViewSalesCost') && variants.includes('MARGIN_VIEW'));
   assert.equal((variants.match(/canViewSalesCost\(context\) \? \{ unitCost \} : \{\}/g) || []).length, 2);
-  assert.match(variants, /sales\.product\.variant\.created'[\s\S]{0,220}\{baseCatalogItemId,catalogItemId,sku,attributes,unitPrice\}\)/);
-  assert.match(variants, /sales\.product\.variant\.updated'[\s\S]{0,220}\{variantId,sku,attributes,unitPrice\}\)/);
+  assert.match(variants, /sales\.product\.variant\.created'[\s\S]{0,500}\{\s*baseCatalogItemId,\s*catalogItemId,\s*sku,\s*attributes,\s*unitPrice\s*\}/);
+  assert.match(variants, /sales\.product\.variant\.updated'[\s\S]{0,500}\{\s*variantId,\s*sku,\s*attributes,\s*unitPrice\s*\}/);
 });
 
 test('bulk import validates bounds, reports each row and can import variant rows by base SKU', async () => {
@@ -101,7 +101,7 @@ test('bulk import validates bounds, reports each row and can import variant rows
   assert.match(variants, /rows\.length > MAX_IMPORT_ROWS/);
   assert.match(variants, /baseProductSku/);
   assert.match(variants, /variantAttributes/);
-  assert.match(variants, /item\.company_id=\$1/);
+  assert.match(variants, /item\.company_id\s*=\s*\$1/);
   assert.match(variants, /row: rowNumber, success: false/);
   assert.match(variants, /success: true/);
   assert.match(service, /bulkImportSalesCatalogItems/);

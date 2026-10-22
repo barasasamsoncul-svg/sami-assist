@@ -138,6 +138,13 @@ export default function SalesTemplatesManager({
   async function confirmDelete() {
     const template = deleteTarget;
     if (!template) return;
+    const confirmed = window.confirm(
+      `Delete quotation template "${template.name}"? Existing quotations will remain unchanged.`,
+    );
+    if (!confirmed) {
+      setDeleteTarget(null);
+      return;
+    }
     setDeleting(true);
     try {
       await request({ action: 'delete_template', templateId: template.id });
