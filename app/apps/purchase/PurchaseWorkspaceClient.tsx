@@ -22,6 +22,7 @@ export default function PurchaseWorkspaceClient({
     return <PurchaseOperationsPanel
       initialSection={initialSection}
       canTransition={initialData.capabilities.canTransition}
+      availableTableKeys={initialData.tables.map((table) => table.key)}
     />;
   }
   return (
