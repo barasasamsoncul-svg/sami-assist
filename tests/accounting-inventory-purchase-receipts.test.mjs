@@ -29,6 +29,7 @@ test('Accounting valuation captures posted Purchase receipts with confirmed PO-l
   assert.match(backfill, /AND product\.cost_price > 0/);
   assert.match(backfill, /'accounting:purchase-receipt-line:'/);
   assert.match(backfill, /ON CONFLICT \(company_id, source_event_key\)[\s\S]*?DO UPDATE SET[\s\S]*?posted_journal_id IS NULL/);
+  assert.match(backfill, /event\.status IN \('pending', 'review'\)[\s\S]*?event\.posted_journal_id IS NULL/);
   assert.match(backfill, /accounting_inventory_source_events\.status IN \('pending', 'review'\)/);
   assert.match(backfill, /'costProvenance', 'confirmed_purchase_order_line'/);
 });
