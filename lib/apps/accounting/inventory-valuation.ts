@@ -765,7 +765,7 @@ async function backfillSourceEvents(
           status = 'ignored',
           metadata = COALESCE(event.metadata, '{}'::jsonb) ||
             jsonb_build_object('supersededByPurchaseReceiptEvent', TRUE),
-          updated_by = $3,
+          updated_by = $2,
           updated_at = NOW()
         FROM stock_movements movement
         WHERE event.company_id = $1
@@ -779,7 +779,7 @@ async function backfillSourceEvents(
           AND event.deleted_at IS NULL
           AND movement.deleted_at IS NULL
       `,
-      [input.companyId, String(input.settings.valuation_start_date).slice(0, 10), input.userId],
+      [input.companyId, input.userId],
     );
   }
 
@@ -1895,7 +1895,9 @@ export async function getAccountingInventoryValuation() {
       !settings
         .inventory_gain_account_id ||
       !settings
-        .inventory_loss_account_id
+        .inventory_loss_account_id ||
+      !settings
+        .goods_received_not_invoiced_account_id
     )
   ) {
     diagnostics.push({
@@ -1904,7 +1906,7 @@ export async function getAccountingInventoryValuation() {
       code:
         'VALUATION_ACCOUNTS_INCOMPLETE',
       message:
-        'Map Inventory Asset, Cost of Goods Sold, Inventory Gain and Inventory Loss accounts before syncing valuation.',
+        'Map Inventory Asset, Cost of Goods Sold, Inventory Gain, Inventory Loss and Goods Received Not Invoiced accounts before syncing valuation.',
     });
   }
 
