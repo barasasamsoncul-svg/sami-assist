@@ -2,14 +2,6 @@ import type {
   CSSProperties,
 } from 'react';
 
-import Link from 'next/link';
-
-import {
-  ArrowLeft,
-} from 'lucide-react';
-
-import AppSurfaceShell from '@/app/components/apps/AppSurfaceShell';
-import SamiAppIconTile from '@/app/components/apps/SamiAppIconTile';
 import styles from '@/app/apps/[appKey]/EnterpriseModuleWorkspaceShell.module.css';
 
 import {
@@ -20,15 +12,28 @@ import {
   loadStandaloneEnterpriseApp,
 } from '@/app/apps/_shared/loadStandaloneEnterpriseApp';
 
+import WarehouseModuleShell from '@/app/apps/warehouse/WarehouseModuleShell';
 import WarehouseWorkspaceClient from '@/app/apps/warehouse/WarehouseWorkspaceClient';
 
 const MODULE_KEY = 'warehouse';
+const WAREHOUSE_SECTIONS = [
+  'locations',
+  'operations',
+  'putaway',
+  'picking',
+  'packages',
+] as const;
 
 export default async function WarehouseWorkspace({
   section,
 }: {
   section?: string | null;
 }) {
+  const nativeSection = WAREHOUSE_SECTIONS.includes(
+    (section || '') as (typeof WAREHOUSE_SECTIONS)[number],
+  );
+  const nativeView = !section || section === 'overview' || nativeSection;
+
   const {
     session,
     account,
@@ -38,145 +43,124 @@ export default async function WarehouseWorkspace({
     notifications,
     resolved,
     can,
-    visual,
     uiProfile,
-  } =
-    await loadStandaloneEnterpriseApp(
-      MODULE_KEY,
-      section,
-    );
+  } = await loadStandaloneEnterpriseApp(
+    MODULE_KEY,
+    nativeSection ? undefined : section,
+  );
 
-  const appBaseHref =
-    '/apps/warehouse';
+  const appBaseHref = '/apps/warehouse';
 
   const appSidebarItems = [
     {
       key: 'overview',
       label: 'Overview',
       href: appBaseHref,
-      description: 'KPIs, priorities and current operating state.',
+      description: 'Warehouse activity, workloads and operational priorities.',
+      sectionLabel: 'Workspace',
+    },
+    {
+      key: 'locations',
+      label: 'Locations',
+      href: appBaseHref + '/locations',
+      description: 'Manage receiving, storage, picking and packing locations.',
+      sectionLabel: 'Warehouse execution',
+    },
+    {
+      key: 'operations',
+      label: 'Operations',
+      href: appBaseHref + '/operations',
+      description: 'Create and execute put-away, relocation, receiving and picking work.',
+      sectionLabel: 'Warehouse execution',
+    },
+    {
+      key: 'putaway',
+      label: 'Put-away rules',
+      href: appBaseHref + '/putaway',
+      description: 'Set priority-based destination location guidance.',
+      sectionLabel: 'Warehouse execution',
+    },
+    {
+      key: 'picking',
+      label: 'Picking waves',
+      href: appBaseHref + '/picking',
+      description: 'Group and release picking operations in controlled batches.',
+      sectionLabel: 'Fulfilment',
+    },
+    {
+      key: 'packages',
+      label: 'Packages',
+      href: appBaseHref + '/packages',
+      description: 'Track packed parcels through dispatch and delivery hand-off.',
+      sectionLabel: 'Fulfilment',
     },
     ...data.tables
-      .filter(
-        table =>
-          !table.settingTable,
+      .filter((table) =>
+        !table.settingTable &&
+        ![
+          'warehouse_locations',
+          'warehouse_operations',
+          'warehouse_operation_lines',
+          'warehouse_putaway_rules',
+          'warehouse_picking_batches',
+          'warehouse_picking_batch_operations',
+          'warehouse_packages',
+        ].includes(table.key),
       )
-      .map(
-        table => ({
-          key: table.key,
-          label: table.label,
-          href:
-            appBaseHref +
-            '/' +
-            encodeURIComponent(
-              table.key,
-            ),
-          description:
-            'Open ' +
-            table.label.toLowerCase() +
-            ' records.',
-          badge: table.count,
-        }),
-      ),
-    ...(
-      data.capabilities.canReport
-        ? [{
-            key: 'reports',
-            label: 'Reports',
-            href:
-              appBaseHref +
-              '/reports',
-            description: 'Module analysis and operational reporting.',
-          }]
-        : []
-    ),
+      .map((table) => ({
+        key: table.key,
+        label: table.label,
+        href: appBaseHref + '/' + encodeURIComponent(table.key),
+        description: 'Open ' + table.label.toLowerCase() + ' records.',
+        badge: table.count,
+        sectionLabel: 'Registers',
+      })),
+    ...(data.capabilities.canReport
+      ? [{
+          key: 'reports',
+          label: 'Reports',
+          href: appBaseHref + '/reports',
+          description: 'Module analysis and operational reporting.',
+          sectionLabel: 'Insights',
+        }]
+      : []),
     {
       key: 'activity',
       label: 'Activity',
-      href:
-        appBaseHref +
-        '/activity',
-      description: 'Recent module changes and user actions.',
+      href: appBaseHref + '/activity',
+      description: 'Recent Warehouse changes and user actions.',
+      sectionLabel: 'Workspace',
     },
-    ...(
-      data.capabilities.canManageSettings &&
-      data.tables.some(
-        table =>
-          table.settingTable,
-      )
-        ? [{
-            key: 'settings',
-            label: 'Settings',
-            href:
-              appBaseHref +
-              '/settings',
-            description: 'Module defaults, policy and configuration.',
-          }]
-        : []
-    ),
+    ...(data.capabilities.canManageSettings && data.tables.some((table) => table.settingTable)
+      ? [{
+          key: 'settings',
+          label: 'Settings',
+          href: appBaseHref + '/settings',
+          description: 'Warehouse defaults, policy and configuration.',
+          sectionLabel: 'Workspace',
+        }]
+      : []),
   ];
 
-  const activeSidebarKey =
-    resolved.view === 'records'
-      ? resolved.tableKey
+  const activeSidebarKey = nativeSection
+    ? (section || 'overview')
+    : resolved.view === 'records'
+      ? (resolved.tableKey || 'overview')
       : resolved.view;
 
   return (
-    <AppSurfaceShell
-      appKey={app.registryKey}
-      appCategory={app.category}
-      appIconKey={app.iconKey}
-      profile={uiProfile}
+    <WarehouseModuleShell
       user={session.user}
       tenant={account.tenant}
-      membership={account.membership}
-      subscription={shell.subscription}
       modules={shell.accessibleModules}
       appSidebarItems={appSidebarItems}
       activeSidebarKey={activeSidebarKey}
+      unreadNotifications={notifications?.unreadCount || 0}
       sidebarCapabilities={{
         aiEnabled: shell.aiAvailable,
-        filesEnabled:
-          can(
-            SAMI_PERMISSIONS.FILES_VIEW,
-          ),
-        notificationsEnabled:
-          can(
-            SAMI_PERMISSIONS.NOTIFICATIONS_VIEW,
-          ),
+        notificationsEnabled: can(SAMI_PERMISSIONS.NOTIFICATIONS_VIEW),
       }}
-      unreadNotifications={
-        notifications?.unreadCount ||
-        0
-      }
-      title={app.name}
-      description={app.description}
-      contextLabel={data.company.name}
-      actions={
-        <div className="flex items-center gap-2">
-          <SamiAppIconTile
-            appKey={app.registryKey}
-            category={app.category}
-            iconKey={app.iconKey}
-            size="sm"
-          />
-
-          <Link
-            href="/apps"
-            className={[
-              'inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold shadow-[var(--sami-shadow-sm)] transition hover:-translate-y-px',
-              visual.border,
-              visual.soft,
-              visual.text,
-            ].join(' ')}
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span className="hidden sm:inline">
-              All Apps
-            </span>
-          </Link>
-        </div>
-      }
+      companyName={data.company.name}
     >
       <div
         className={styles.enterpriseWorkspace}
@@ -185,11 +169,10 @@ export default async function WarehouseWorkspace({
         data-navigation={uiProfile.navigation}
         data-density={uiProfile.density}
         data-header={uiProfile.header}
+        data-warehouse-section={section || 'overview'}
         style={{
-          '--sami-module-accent':
-            uiProfile.accent,
-          '--sami-module-secondary':
-            uiProfile.secondary,
+          '--sami-module-accent': uiProfile.accent,
+          '--sami-module-secondary': uiProfile.secondary,
         } as CSSProperties}
       >
         <WarehouseWorkspaceClient
@@ -197,14 +180,11 @@ export default async function WarehouseWorkspace({
           userId={session.user.id}
           initialView={resolved.view}
           initialTableKey={resolved.tableKey}
-          accessibleModuleKeys={
-            shell.accessibleModules.map(
-              module =>
-                module.registryKey,
-            )
-          }
+          accessibleModuleKeys={shell.accessibleModules.map((module) => module.registryKey)}
+          nativeView={nativeView}
+          initialSection={nativeSection ? section as (typeof WAREHOUSE_SECTIONS)[number] : 'overview'}
         />
       </div>
-    </AppSurfaceShell>
+    </WarehouseModuleShell>
   );
 }

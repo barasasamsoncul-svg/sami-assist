@@ -4,9 +4,9 @@
 -- Required dependencies: inventory
 -- Optional dependencies: barcode, shipping
 --
--- Company-scoped domain foundation. This schema is real and migration-ready,
--- but the module remains non-installable until its permissions, routes,
--- services and UI are implemented and verified.
+-- Dedicated company-scoped warehouse execution tables. Inventory remains
+-- authoritative for on-hand stock totals; Warehouse owns bin-level workflows,
+-- put-away guidance, picking batches and package hand-off state.
 -- ============================================================
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
