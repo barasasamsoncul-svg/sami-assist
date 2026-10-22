@@ -164,7 +164,8 @@ export async function getShippingOverview(): Promise<ShippingOverview> {
       " COUNT(*) FILTER (WHERE status='ready')::int AS ready,",
       " COUNT(*) FILTER (WHERE status='in_transit')::int AS in_transit,",
       " COUNT(*) FILTER (WHERE status='delivered')::int AS delivered,",
-      " COUNT(*) FILTER (WHERE status='exception')::int AS exceptions",
+      " COUNT(*) FILTER (WHERE status='exception')::int AS exceptions,",
+      " (SELECT COUNT(*)::int FROM public.shipping_carriers WHERE company_id=$1 AND status='active' AND deleted_at IS NULL) AS active_carriers",
       'FROM public.shipments WHERE company_id=$1 AND deleted_at IS NULL',
     ].join('\n'), [context.companyId]),
     context.pool.query([
@@ -201,7 +202,7 @@ export async function getShippingOverview(): Promise<ShippingOverview> {
     summary: {
       totalShipments: Number(s.total || 0), draftShipments: Number(s.draft || 0), readyShipments: Number(s.ready || 0),
       inTransitShipments: Number(s.in_transit || 0), deliveredShipments: Number(s.delivered || 0),
-      exceptions: Number(s.exceptions || 0), activeCarriers: carriers.rows.length,
+      exceptions: Number(s.exceptions || 0), activeCarriers: Number(s.active_carriers || 0),
       activeLabels: Number(labels.rows[0]?.total || 0),
     },
     carriers: carriers.rows.map((row) => ({
@@ -240,6 +241,11 @@ export async function createShippingShipment(input: unknown) {
   const trackingNumber = optionalText(body.trackingNumber, 'Tracking number');
   const sourceReference = optionalText(body.sourceReference, 'Order / source reference', 128);
   const trackingIntent = optionalText(body.trackingIntent, 'Tracking intent', 80);
+  const sourceSystem = trackingIntent && ['sales','warehouse','ecommerce','manual'].includes(trackingIntent)
+    ? trackingIntent : 'manual';
+  if (sourceSystem === 'warehouse' && !sourceReference) {
+    throw new ShippingInputError('Enter the packed Warehouse package number when creating a shipment from Warehouse.');
+  }
   const packageInput = body.packages == null ? [] : body.packages;
   if (!Array.isArray(packageInput) || packageInput.length > 50) throw new ShippingInputError('Add no more than 50 parcels to one shipment.');
   const parcels = packageInput.map((raw, index) => {
@@ -258,6 +264,20 @@ export async function createShippingShipment(input: unknown) {
     { table: 'shipment_events', operation: 'create' },
     { table: 'shipping_carriers', operation: 'view' },
   ]);
+  let warehouseContext: Awaited<ReturnType<typeof requireEnterpriseModuleTableContext>> | null = null;
+  if (sourceSystem === 'warehouse') {
+    try {
+      warehouseContext = await requireEnterpriseModuleTableContext('warehouse', 'warehouse_packages', 'view');
+    } catch (error) {
+      if (error instanceof EnterpriseModuleError) {
+        throw new ShippingInputError('Install Warehouse and confirm you can view its packages before linking one to a shipment.');
+      }
+      throw error;
+    }
+    if (warehouseContext.companyId !== context.companyId || warehouseContext.tenantId !== context.tenantId) {
+      throw new EnterpriseModuleError('WORKSPACE_CONTEXT_CHANGED', 'Shipping and Warehouse must use the same selected company.');
+    }
+  }
   return withTransaction(context, async (client) => {
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1::text || \':\' || lower($2), 0))', [context.companyId, number]);
     const duplicate = await client.query(
@@ -274,8 +294,20 @@ export async function createShippingShipment(input: unknown) {
       if (!carrier.rows.length) throw new ShippingInputError('Choose an active carrier in this company.');
     }
 
-    const sourceSystem = trackingIntent && ['sales','warehouse','ecommerce','manual'].includes(trackingIntent)
-      ? trackingIntent : 'manual';
+    let sourceWarehousePackageId: string | null = null;
+    let sourceWarehousePackageNumber: string | null = null;
+    if (warehouseContext && sourceReference) {
+      const packageResult = await client.query(
+        'SELECT id::text, package_number, status FROM public.warehouse_packages WHERE company_id=$1 AND (id::text=$2 OR lower(package_number)=lower($2)) AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
+        [context.companyId, sourceReference],
+      );
+      if (!packageResult.rows.length) throw new ShippingInputError('The Warehouse package reference was not found in this company.');
+      if (packageResult.rows[0].status !== 'packed') {
+        throw new ShippingConflictError('Only a packed Warehouse package can be linked to a new shipment.');
+      }
+      sourceWarehousePackageId = String(packageResult.rows[0].id);
+      sourceWarehousePackageNumber = String(packageResult.rows[0].package_number);
+    }
     const inserted = await client.query([
       'INSERT INTO public.shipments',
       '(company_id, carrier_id, shipment_number, recipient_name, recipient_address, tracking_number, status, created_by, updated_by, metadata)',
@@ -283,7 +315,7 @@ export async function createShippingShipment(input: unknown) {
       'RETURNING id::text, shipment_number, created_at::text',
     ].join('\n'), [
       context.companyId, carrierId, number, recipientName, JSON.stringify(recipientAddress),
-      trackingNumber, context.userId, JSON.stringify({ sourceReference, sourceSystem, trackingIntent: trackingIntent || null }),
+      trackingNumber, context.userId, JSON.stringify({ sourceReference, sourceSystem, sourceWarehousePackageId, sourceWarehousePackageNumber, trackingIntent: trackingIntent || null }),
     ]);
     const row = inserted.rows[0];
     for (const parcel of parcels) {
@@ -321,13 +353,39 @@ export async function transitionShippingShipment(input: unknown) {
   ]);
   return withTransaction(context, async (client) => {
     const found = await client.query(
-      'SELECT status FROM public.shipments WHERE company_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE',
+      'SELECT status, metadata FROM public.shipments WHERE company_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE',
       [context.companyId, id],
     );
     if (!found.rows.length) throw new ShippingConflictError('Shipment not found in the selected company.');
     const current = found.rows[0].status as ShippingStatus;
     if (!SHIPMENT_STATUSES.has(current) || !ALLOWED_TRANSITIONS[current].includes(target)) {
       throw new ShippingConflictError('That shipment status transition is not allowed. Refresh and choose an available next step.');
+    }
+    const metadata = found.rows[0].metadata && typeof found.rows[0].metadata === 'object'
+      ? found.rows[0].metadata as Record<string, unknown> : {};
+    const linkedWarehousePackageId = typeof metadata.sourceWarehousePackageId === 'string'
+      ? metadata.sourceWarehousePackageId : null;
+    if (linkedWarehousePackageId && (target === 'in_transit' || target === 'delivered')) {
+      let warehouseContext: Awaited<ReturnType<typeof requireEnterpriseModuleTableContext>>;
+      try {
+        warehouseContext = await requireEnterpriseModuleTableContext('warehouse', 'warehouse_packages', 'edit');
+      } catch (error) {
+        if (error instanceof EnterpriseModuleError) {
+          throw new ShippingInputError('Your role needs Warehouse package edit access to advance a shipment linked to a Warehouse package.');
+        }
+        throw error;
+      }
+      if (warehouseContext.companyId !== context.companyId || warehouseContext.tenantId !== context.tenantId) {
+        throw new EnterpriseModuleError('WORKSPACE_CONTEXT_CHANGED', 'Shipping and Warehouse must use the same selected company.');
+      }
+      const expectedWarehouseStatus = target === 'in_transit' ? 'packed' : 'in_transit';
+      const linkedUpdate = await client.query(
+        'UPDATE public.warehouse_packages SET status=$3, updated_by=$4, updated_at=NOW() WHERE company_id=$1 AND id=$2 AND status=$5 AND deleted_at IS NULL RETURNING id',
+        [context.companyId, linkedWarehousePackageId, target, context.userId, expectedWarehouseStatus],
+      );
+      if (!linkedUpdate.rows.length) {
+        throw new ShippingConflictError('The linked Warehouse package is not in the expected ' + expectedWarehouseStatus + ' state. Refresh the package before advancing this shipment.');
+      }
     }
     const updated = await client.query([
       'UPDATE public.shipments SET status=$3,',
