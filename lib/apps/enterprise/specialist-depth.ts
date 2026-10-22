@@ -439,6 +439,14 @@ CREATE TABLE IF NOT EXISTS public.accounting_vendors (
     CHECK (status IN ('active','inactive','blocked'))
   );
 
+  -- Preserve the shared Purchase supplier link on both fresh and upgraded Accounting schemas.
+  ALTER TABLE public.accounting_vendors
+    ADD COLUMN IF NOT EXISTS purchase_supplier_id UUID;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_vendors_company_purchase_supplier
+    ON public.accounting_vendors(company_id, purchase_supplier_id)
+    WHERE purchase_supplier_id IS NOT NULL AND deleted_at IS NULL;
+
   CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_vendors_company_code
     ON public.accounting_vendors(company_id, vendor_code)
     WHERE deleted_at IS NULL;
