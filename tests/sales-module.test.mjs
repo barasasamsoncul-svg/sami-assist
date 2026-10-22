@@ -3010,7 +3010,7 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   assert.ok(invoiceStart >= 0);
   assert.ok(invoiceEnd > invoiceStart);
   assert.match(invoice, /requestedMap\.has\(lineId\)/);
-  assert.match(invoice, /requireUuid\\(/);
+  assert.match(invoice, /requireUuid\(/);
   assert.match(invoice, /An invoice line can only be selected once/);
   assert.match(invoice, /new Set\([\s\S]*lineRows\.map\([\s\S]*String\(line\.id\)/);
   assert.match(invoice, /orderLineIds\.has\(requestedLineId\)/);
