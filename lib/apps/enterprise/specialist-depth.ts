@@ -466,6 +466,42 @@ CREATE TABLE IF NOT EXISTS public.accounting_vendors (
           REFERENCES public.suppliers(company_id, id)
           ON DELETE RESTRICT NOT VALID;
       END IF;
+
+      -- Reconcile suppliers that predate Accounting's installation. Subsequent
+      -- create/update/delete operations are maintained by the Purchase domain hook.
+      EXECUTE $sami_purchase_vendor_backfill$
+        INSERT INTO public.accounting_vendors (
+          company_id, vendor_code, name, email, phone, tax_number,
+          purchase_supplier_id, status, created_at, updated_at
+        )
+        SELECT
+          supplier.company_id,
+          'PUR-' || UPPER(supplier.id::text),
+          supplier.name,
+          supplier.email,
+          supplier.phone,
+          supplier.tax_number,
+          supplier.id,
+          CASE
+            WHEN LOWER(COALESCE(supplier.status, 'active')) = 'blocked' THEN 'blocked'
+            WHEN LOWER(COALESCE(supplier.status, 'active')) IN ('inactive', 'archived') THEN 'inactive'
+            ELSE 'active'
+          END,
+          NOW(),
+          NOW()
+        FROM public.suppliers supplier
+        WHERE supplier.company_id IS NOT NULL
+          AND supplier.deleted_at IS NULL
+          AND NULLIF(BTRIM(supplier.name), '') IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1
+            FROM public.accounting_vendors vendor
+            WHERE vendor.company_id = supplier.company_id
+              AND vendor.purchase_supplier_id = supplier.id
+              AND vendor.deleted_at IS NULL
+          )
+        ON CONFLICT DO NOTHING
+      $sami_purchase_vendor_backfill$;
     END IF;
   END
   $sami_accounting_purchase_supplier_link$;
