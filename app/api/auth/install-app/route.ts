@@ -1490,14 +1490,6 @@ export async function POST(
           )
             .trim()
             .toLowerCase()
-        : '';    const existingStatus =
-      existingModule
-        ? String(
-            existingModule.status ||
-            '',
-          )
-            .trim()
-            .toLowerCase()
         : '';
 
     const tenantPlanStateResult =
