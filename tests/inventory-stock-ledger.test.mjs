@@ -18,7 +18,7 @@ test('Inventory schema migration scopes identities and stock references by compa
 
 test('Inventory generic mutations cannot bypass the stock ledger',async()=>{
  const h=await source('lib/apps/enterprise/domain-hooks.ts');
- assert.match(h,/Stock balances are derived from the stock movement ledger/);assert.match(h,/Stock reservations are controlled by the Sales and Inventory reservation workflows/);assert.match(h,/Posted stock movements are immutable/);assert.match(h,/FOR SHARE OF product, warehouse/);assert.match(h,/product\.company_id = \$3/);assert.match(h,/warehouse\.company_id = \$3/);assert.match(h,/WHERE stock_levels\.company_id = EXCLUDED\.company_id/);assert.match(h,/Insufficient unreserved stock for this movement/);
+ assert.match(h,/Stock balances are derived from the stock movement ledger/);assert.match(h,/Stock reservations are controlled by the Sales and Inventory reservation workflows/);assert.match(h,/Posted stock movements are immutable/);assert.match(h,/FOR SHARE OF product, warehouse/);assert.match(h,/product\.company_id = \$3/);assert.match(h,/warehouse\.company_id = \$3/);assert.match(h,/WHERE stock_levels\.company_id = EXCLUDED\.company_id/);assert.match(h,/Insufficient stock for this movement: unreserved stock is insufficient/);
 });
 
 test('Purchase is explicitly dependent on Inventory',async()=>{

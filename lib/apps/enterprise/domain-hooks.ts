@@ -1223,7 +1223,7 @@ async function applyStockMovement(
     [row.product_id, row.warehouse_id, quantity, companyId],
   );
   if (changed.rows.length !== 1) {
-    throw new Error('Insufficient unreserved stock for this movement, or the balance is not available in the current company.');
+    throw new Error('Insufficient stock for this movement: unreserved stock is insufficient, or the balance is not available in the current company.');
   }
 }
 
