@@ -95,7 +95,18 @@ export default async function WarehouseWorkspace({
       sectionLabel: 'Fulfilment',
     },
     ...data.tables
-      .filter((table) => !table.settingTable)
+      .filter((table) =>
+        !table.settingTable &&
+        ![
+          'warehouse_locations',
+          'warehouse_operations',
+          'warehouse_operation_lines',
+          'warehouse_putaway_rules',
+          'warehouse_picking_batches',
+          'warehouse_picking_batch_operations',
+          'warehouse_packages',
+        ].includes(table.key),
+      )
       .map((table) => ({
         key: table.key,
         label: table.label,
