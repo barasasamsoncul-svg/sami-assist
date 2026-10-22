@@ -529,6 +529,7 @@ export async function PATCH(
             auditContext(
               request,
             ),
+            consent.keys,
           )
         : await disableWorkspaceApp(
             appKey,
