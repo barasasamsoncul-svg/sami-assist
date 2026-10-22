@@ -2657,10 +2657,12 @@ export async function syncInventoryValuation() {
       !settings
         .inventory_gain_account_id ||
       !settings
-        .inventory_loss_account_id
+        .inventory_loss_account_id ||
+      !settings
+        .goods_received_not_invoiced_account_id
     ) {
       throw new AccountingInputError(
-        'Complete the Inventory Asset, COGS, Inventory Gain and Inventory Loss mappings before syncing.',
+        'Complete the Inventory Asset, COGS, Inventory Gain, Inventory Loss and Goods Received Not Invoiced mappings before syncing.',
       );
     }
 
@@ -2731,6 +2733,19 @@ export async function syncInventoryValuation() {
             )
             AND deleted_at
                 IS NULL
+            AND (
+              source_type <> 'purchase_receipt'
+              OR $2::boolean = TRUE
+            )
+            AND (
+              source_type <> 'stock_movement'
+              OR movement_type NOT IN ('sales_delivery','sales_return')
+              OR $3::boolean = TRUE
+            )
+            AND (
+              source_type <> 'inventory_adjustment'
+              OR $4::boolean = TRUE
+            )
           ORDER BY
             event_date,
             created_at,
@@ -2741,6 +2756,9 @@ export async function syncInventoryValuation() {
         `,
         [
           context.companyId,
+          settings.sync_purchase_receipts === true,
+          settings.sync_sales_movements === true,
+          settings.sync_adjustments === true,
         ],
       );
 
