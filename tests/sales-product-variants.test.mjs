@@ -31,7 +31,7 @@ test('variant create, update and archive stay company-scoped and transactional',
 
   assert.match(variants, /requireSalesContext\(SALES_PERMISSIONS\.QUOTE_CREATE\)/);
   assert.match(variants, /invoicing\.catalog\.manage/);
-  assert.match(variants, /WHERE id=\$1 AND company_id=\$2/);
+  assert.match(variants, /WHERE\s+(?:v\.)?id\s*=\s*\$1\s+AND\s+(?:v\.)?company_id\s*=\s*\$2/);
   assert.match(variants, /pg_advisory_xact_lock/);
   assert.match(variants, /await client\.query\('BEGIN'\)/);
   assert.match(variants, /await client\.query\('COMMIT'\)/);
@@ -55,7 +55,7 @@ test('base catalogue editor exposes internal cost only to authorized users and p
   assert.match(manager, /data\.capabilities\.canManageMargin \? \(/);
   assert.match(manager, /data\.capabilities\.canManageMargin && draft\.unitCost\.trim\(\) !== ''/);
   assert.ok(salesCommands.includes('resolveCatalogueStandardCost'));
-  assert.match(salesCommands, /export async function updateSalesCatalogItem[\s\S]*?crossPermission\(context, SALES_PERMISSIONS\.MARGIN_MANAGE\)[\s\S]*?standardCost === undefined \? undefined : \{ standardCost \}/);
+  assert.match(salesCommands, /export async function updateSalesCatalogItem[\s\S]*?resolveCatalogueStandardCost\(context, input\)[\s\S]*?standardCost === undefined \? undefined : \{ standardCost \}/);
   assert.match(invoicingCommands, /export async function updateInvoicingCatalogItem\([\s\S]*?standardCost\?: number/);
   assert.match(invoicingCommands, /SET metadata = COALESCE\(metadata, '\{\}'::jsonb\) \|\| \$3::jsonb/);
 });
@@ -69,7 +69,7 @@ test('base catalogue CSV imports preserve authorized unit costs in metadata and 
 
   assert.match(salesCommands, /rawCost = input\.unitCost/);
   assert.match(salesCommands, /crossPermission\(context, SALES_PERMISSIONS\.MARGIN_MANAGE\)/);
-  assert.match(salesCommands, /if \(error instanceof SalesError\) \{\s*throw error;/);
+  assert.match(salesCommands, /if \(error instanceof SalesError\) throw error;/);
   assert.match(salesCommands, /createInvoicingCatalogItem\([\s\S]*?standardCost === undefined \? undefined : \{ standardCost \}/);
   assert.match(invoicingCommands, /standardCost\?: number/);
   assert.match(invoicingCommands, /options\?\.standardCost === undefined\s*\? JSON\.stringify\(\{\}\)/);
@@ -80,7 +80,7 @@ test('base catalogue CSV imports preserve authorized unit costs in metadata and 
 test('new variants inherit the base product cost unless an authorized user overrides it', async () => {
   const variants = await source('lib/apps/sales/product-variants.ts');
 
-  assert.match(variants, /default_tax_group_id[\\s\\S]*?metadata/);
+  assert.match(variants, /default_tax_group_id[\s\S]*?metadata/);
   assert.match(variants, /baseMetadata\.standardCost \?\? baseMetadata\.unitCost \?\? 0/);
   assert.match(variants, /input\.unitCost \?\? inheritedUnitCost/);
   assert.match(variants, /: inheritedUnitCost/);
@@ -98,7 +98,7 @@ test('bulk import validates bounds, reports each row and can import variant rows
     source('app/api/apps/sales/route.ts'),
   ]);
 
-  assert.match(variants, /rows\.length > 200/);
+  assert.match(variants, /rows\.length > MAX_IMPORT_ROWS/);
   assert.match(variants, /baseProductSku/);
   assert.match(variants, /variantAttributes/);
   assert.match(variants, /item\.company_id=\$1/);
@@ -128,7 +128,7 @@ test('catalogue tax rates are company-scoped and UI can assign the shared Invoic
 
   assert.match(queries, /FROM invoicing_tax_rates[\s\S]*?WHERE company_id = \$1[\s\S]*?is_active = TRUE[\s\S]*?deleted_at IS NULL/);
   assert.match(queries, /taxRates: taxRates\.rows\.map/);
-  assert.match(types, /taxRates: SalesTaxRate\\[\\]/);
+  assert.match(types, /taxRates: SalesTaxRate\[\]/);
   assert.match(manager, /<span className="text-xs font-black">Tax rate<\/span>/);
   assert.match(manager, /data\.taxRates\.map/);
   assert.match(manager, /set\('taxRateId', event\.target\.value\)/);
