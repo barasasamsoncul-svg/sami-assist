@@ -594,6 +594,10 @@ async function backfillSourceEvents(
                 IS NULL
             AND movement.created_at::date >=
                 $2::date
+            AND NOT (
+              movement.reference LIKE 'purchase_receipt:%'
+              AND movement.movement_type IN ('receipt','purchase_receipt')
+            )
           ON CONFLICT (
             company_id,
             source_event_key
@@ -620,6 +624,163 @@ async function backfillSourceEvents(
       movementResult
         .rowCount ||
       0;
+  }
+
+  if (
+    input.runtime.movements &&
+    input.settings.sync_purchase_receipts &&
+    input.runtime.purchaseReceipts &&
+    input.runtime.purchaseReceiptLines &&
+    input.runtime.purchaseOrderItems
+  ) {
+    const receiptResult = await client.query(
+      `
+        INSERT INTO accounting_inventory_source_events (
+          company_id,
+          source_type,
+          source_id,
+          source_event_key,
+          event_date,
+          movement_type,
+          product_id,
+          warehouse_id,
+          source_quantity,
+          quantity_effect,
+          unit_cost,
+          value_amount,
+          cost_source,
+          cost_estimated,
+          status,
+          metadata,
+          created_by,
+          updated_by
+        )
+        SELECT
+          receipt.company_id,
+          'purchase_receipt',
+          receipt_line.id,
+          'accounting:purchase-receipt-line:' || receipt_line.id::text,
+          COALESCE(receipt.received_at, receipt.updated_at, receipt.created_at)::date,
+          'purchase_receipt',
+          movement.product_id,
+          movement.warehouse_id,
+          ABS(movement.quantity)::numeric(19,4),
+          CASE
+            WHEN purchase_item.id IS NOT NULL
+             AND purchase_item.product_reference = movement.product_id
+              THEN ABS(movement.quantity)
+            ELSE 0
+          END::numeric(19,4),
+          CASE
+            WHEN purchase_item.id IS NOT NULL
+             AND purchase_item.product_reference = movement.product_id
+              THEN purchase_item.unit_cost
+            ELSE product.cost_price
+          END::numeric(19,4),
+          ROUND(
+            ABS(movement.quantity) *
+            CASE
+              WHEN purchase_item.id IS NOT NULL
+               AND purchase_item.product_reference = movement.product_id
+                THEN purchase_item.unit_cost
+              ELSE product.cost_price
+            END,
+            2
+          )::numeric(19,2),
+          CASE
+            WHEN purchase_item.id IS NOT NULL
+             AND purchase_item.product_reference = movement.product_id
+              THEN 'purchase_order_cost'
+            ELSE 'backfill_current_standard_cost'
+          END,
+          NOT (
+            purchase_item.id IS NOT NULL
+            AND purchase_item.product_reference = movement.product_id
+          ),
+          CASE
+            WHEN purchase_item.id IS NOT NULL
+             AND purchase_item.product_reference = movement.product_id
+              THEN 'pending'
+            ELSE 'review'
+          END,
+          jsonb_build_object(
+            'receiptId', receipt.id::text,
+            'receiptNumber', receipt.receipt_number,
+            'receiptLineId', receipt_line.id::text,
+            'purchaseOrderId', receipt.purchase_order_id::text,
+            'purchaseOrderItemId', purchase_item.id::text,
+            'stockMovementId', movement.id::text,
+            'supplierDeliveryReference', receipt.supplier_delivery_reference,
+            'backfilled', TRUE
+          ),
+          $3,
+          $3
+        FROM purchase_receipts receipt
+        INNER JOIN purchase_receipt_lines receipt_line
+          ON receipt_line.receipt_id = receipt.id
+         AND receipt_line.company_id = receipt.company_id
+         AND receipt_line.deleted_at IS NULL
+        INNER JOIN stock_movements movement
+          ON movement.company_id = receipt.company_id
+         AND movement.reference =
+             'purchase_receipt:' || receipt.id::text || ':' || receipt_line.id::text
+         AND movement.movement_type IN ('purchase_receipt','receipt')
+         AND movement.deleted_at IS NULL
+         AND movement.product_id = receipt_line.product_reference
+        INNER JOIN products product
+          ON product.id = movement.product_id
+         AND product.company_id = movement.company_id
+         AND product.deleted_at IS NULL
+        LEFT JOIN purchase_order_items purchase_item
+          ON purchase_item.id = receipt_line.purchase_order_item_id
+         AND purchase_item.company_id = receipt_line.company_id
+         AND purchase_item.purchase_order_id = receipt.purchase_order_id
+         AND purchase_item.deleted_at IS NULL
+        WHERE receipt.company_id = $1
+          AND receipt.status = 'posted'
+          AND receipt.deleted_at IS NULL
+          AND COALESCE(receipt.received_at, receipt.updated_at, receipt.created_at)::date >= $2::date
+          AND receipt_line.quantity_received > receipt_line.quantity_rejected
+        ON CONFLICT (company_id, source_event_key)
+        WHERE deleted_at IS NULL
+        DO NOTHING
+        RETURNING id
+      `,
+      [
+        input.companyId,
+        String(input.settings.valuation_start_date).slice(0, 10),
+        input.userId,
+      ],
+    );
+
+    count += receiptResult.rowCount || 0;
+
+    // Earlier versions logged purchase receipt movements as generic review events.
+    // Retire those duplicates so the receipt-line valuation entry is the sole
+    // accounting representation of that accepted stock increase.
+    await client.query(
+      `
+        UPDATE accounting_inventory_source_events event
+        SET
+          status = 'ignored',
+          metadata = COALESCE(event.metadata, '{}'::jsonb) ||
+            jsonb_build_object('supersededByPurchaseReceiptEvent', TRUE),
+          updated_by = $3,
+          updated_at = NOW()
+        FROM stock_movements movement
+        WHERE event.company_id = $1
+          AND movement.company_id = event.company_id
+          AND movement.id = event.source_id
+          AND movement.reference LIKE 'purchase_receipt:%'
+          AND movement.movement_type IN ('receipt','purchase_receipt')
+          AND event.source_type = 'stock_movement'
+          AND event.status = 'review'
+          AND event.posted_journal_id IS NULL
+          AND event.deleted_at IS NULL
+          AND movement.deleted_at IS NULL
+      `,
+      [input.companyId, String(input.settings.valuation_start_date).slice(0, 10), input.userId],
+    );
   }
 
   if (
@@ -913,6 +1074,13 @@ async function eventTreatment(
       unknown
     >,
 ) {
+  if (
+    String(event.movement_type) === 'purchase_receipt' &&
+    String(event.cost_source || '') !== 'purchase_order_cost'
+  ) {
+    return 'review';
+  }
+
   const builtin =
     builtInTreatment(
       String(
@@ -2548,6 +2716,7 @@ export async function syncInventoryValuation() {
             quantity_effect::text,
             unit_cost::text,
             value_amount::text,
+            cost_source,
             cost_estimated,
             status,
             metadata
