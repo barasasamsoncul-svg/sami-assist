@@ -175,12 +175,13 @@ export default function ShippingOperationsPanel({ initialSection }: { initialSec
       {error ? <div role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-700 dark:text-rose-300">{error}</div> : null}
       {notice ? <div role="status" className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-800 dark:text-emerald-300">{notice}</div> : null}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {[
           { label: 'Total shipments', value: data?.summary.totalShipments ?? 0, detail: 'Company shipment register', icon: Package },
           { label: 'In transit', value: data?.summary.inTransitShipments ?? 0, detail: 'Carrier hand-off recorded', icon: Truck },
           { label: 'Delivery exceptions', value: data?.summary.exceptions ?? 0, detail: 'Needs fulfillment follow-up', icon: AlertTriangle },
           { label: 'Active carriers', value: data?.summary.activeCarriers ?? 0, detail: 'Available for shipment records', icon: CheckCircle2 },
+          { label: 'Label records', value: data?.summary.activeLabels ?? 0, detail: 'Externally generated label references', icon: Package },
         ].map((item) => <article key={item.label} className={cardClass}><div className="flex items-center justify-between gap-2"><p className="text-xs font-medium text-[var(--sami-muted)]">{item.label}</p><item.icon className="h-4 w-4 text-[var(--sami-muted)]" /></div><p className="mt-2 text-2xl font-semibold tabular-nums">{loading ? '—' : item.value.toLocaleString()}</p><p className="mt-1 text-[11px] text-[var(--sami-muted)]">{item.detail}</p></article>)}
       </section>
 
