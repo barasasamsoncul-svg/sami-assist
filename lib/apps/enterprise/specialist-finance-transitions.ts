@@ -35,158 +35,251 @@ async function postPurchaseReceiptToInventory(
   receiptId:
     string,
 ) {
-  const hasInventory =
-    await tableExists(
-      client,
-      'stock_movements',
-    ) &&
-    await tableExists(
-      client,
-      'stock_levels',
-    );
+  const requiredInventoryTables = [
+    'products',
+    'warehouses',
+    'stock_movements',
+    'stock_levels',
+  ];
 
-  if (
-    !hasInventory
-  ) {
-    return;
+  for (const table of requiredInventoryTables) {
+    if (!(await tableExists(client, table))) {
+      throw new Error(
+        'Inventory must be installed and ready before this purchase receipt can be posted.',
+      );
+    }
   }
 
-  const receipt =
-    await client.query(
+  const receiptResult = await client.query(
+    `
+      SELECT
+        id::text,
+        receipt_number,
+        purchase_order_id::text,
+        warehouse_reference::text,
+        status
+      FROM purchase_receipts
+      WHERE id = $1
+        AND company_id = $2
+        AND deleted_at IS NULL
+      FOR UPDATE
+    `,
+    [receiptId, companyId],
+  );
+  const receipt = receiptResult.rows[0];
+
+  if (!receipt) {
+    throw new Error('Purchase receipt was not found in the current company.');
+  }
+
+  const receiptStatus = String(receipt.status || '').toLowerCase();
+  if (receiptStatus !== 'received' && receiptStatus !== 'inspected') {
+    throw new Error('Record and inspect the supplier delivery before posting this receipt.');
+  }
+
+  const warehouseId = receipt.warehouse_reference
+    ? String(receipt.warehouse_reference)
+    : '';
+  if (!warehouseId) {
+    throw new Error('Choose a warehouse before posting a stock-bearing purchase receipt.');
+  }
+
+  const orderResult = await client.query(
+    `
+      SELECT id::text, status
+      FROM purchase_orders
+      WHERE id = $1
+        AND company_id = $2
+        AND deleted_at IS NULL
+      FOR UPDATE
+    `,
+    [String(receipt.purchase_order_id), companyId],
+  );
+  const order = orderResult.rows[0];
+
+  if (!order) {
+    throw new Error('The purchase order linked to this receipt was not found.');
+  }
+  if (String(order.status || '').toLowerCase() !== 'confirmed') {
+    throw new Error('Confirm the purchase order before receiving goods into Inventory.');
+  }
+
+  const linesResult = await client.query(
+    `
+      SELECT
+        id::text,
+        purchase_order_item_id::text,
+        product_reference::text,
+        quantity_received::text,
+        quantity_rejected::text,
+        (quantity_received - quantity_rejected)::text AS accepted_quantity
+      FROM purchase_receipt_lines
+      WHERE receipt_id = $1
+        AND company_id = $2
+        AND deleted_at IS NULL
+      ORDER BY created_at, id
+      FOR UPDATE
+    `,
+    [receiptId, companyId],
+  );
+
+  if (!linesResult.rows.length) {
+    throw new Error('Add at least one receipt line before posting this receipt.');
+  }
+
+  const seenOrderItems = new Set<string>();
+  const stockLines: Array<{ id: string; productId: string; quantity: string }> = [];
+
+  for (const line of linesResult.rows) {
+    const lineId = String(line.id);
+    const orderItemId = line.purchase_order_item_id
+      ? String(line.purchase_order_item_id)
+      : '';
+    const productId = line.product_reference
+      ? String(line.product_reference)
+      : '';
+    const receivedQuantity = Number(line.quantity_received);
+    const rejectedQuantity = Number(line.quantity_rejected);
+    const acceptedQuantity = Number(line.accepted_quantity);
+
+    if (
+      !orderItemId ||
+      !Number.isFinite(receivedQuantity) ||
+      receivedQuantity <= 0 ||
+      !Number.isFinite(rejectedQuantity) ||
+      rejectedQuantity < 0 ||
+      rejectedQuantity > receivedQuantity ||
+      !Number.isFinite(acceptedQuantity) ||
+      acceptedQuantity < 0
+    ) {
+      throw new Error('Every receipt line must contain a valid purchase-order line and nonnegative quantities.');
+    }
+
+    if (seenOrderItems.has(orderItemId)) {
+      throw new Error('A purchase-order line can appear only once on a receipt.');
+    }
+    seenOrderItems.add(orderItemId);
+
+    const orderItemResult = await client.query(
       `
-        SELECT
-          id,
-          receipt_number,
-          warehouse_reference
-        FROM purchase_receipts
+        SELECT id::text, product_reference::text, quantity::text
+        FROM purchase_order_items
         WHERE id = $1
           AND company_id = $2
+          AND purchase_order_id = $3
           AND deleted_at IS NULL
         FOR UPDATE
       `,
-      [
-        receiptId,
-        companyId,
-      ],
+      [orderItemId, companyId, String(receipt.purchase_order_id)],
     );
+    const orderItem = orderItemResult.rows[0];
 
-  if (
-    receipt.rows.length !==
-      1
-  ) {
-    throw new Error(
-      'Purchase receipt was not found.',
-    );
-  }
+    if (!orderItem) {
+      throw new Error('A receipt line references a purchase-order item outside this order or company.');
+    }
 
-  const lines =
-    await client.query(
-      `
-        SELECT
-          id,
-          product_reference,
-          quantity_received,
-          quantity_rejected
-        FROM purchase_receipt_lines
-        WHERE receipt_id = $1
-          AND company_id = $2
-          AND deleted_at IS NULL
-        ORDER BY created_at, id
-      `,
-      [
-        receiptId,
-        companyId,
-      ],
-    );
-
-  const stockLines =
-    lines.rows
-      .map(
-        row => ({
-          id:
-            String(
-              row.id,
-            ),
-          productId:
-            row.product_reference
-              ? String(
-                  row.product_reference,
-                )
-              : '',
-          quantity:
-            Number(
-              row.quantity_received ||
-              0,
-            ) -
-            Number(
-              row.quantity_rejected ||
-              0,
-            ),
-        }),
-      )
-      .filter(
-        line =>
-          Boolean(
-            line.productId,
-          ) &&
-          line.quantity >
-            0,
-      );
-
-  if (
-    stockLines.length ===
-      0
-  ) {
-    return;
-  }
-
-  const warehouseId =
-    receipt.rows[0]
-      .warehouse_reference
-      ? String(
-          receipt.rows[0]
-            .warehouse_reference,
-        )
+    const orderProductId = orderItem.product_reference
+      ? String(orderItem.product_reference)
       : '';
+    if (!productId || !orderProductId || productId !== orderProductId) {
+      throw new Error('Link each purchase-order line and receipt line to the same Inventory product before posting.');
+    }
 
-  if (
-    !warehouseId
-  ) {
-    throw new Error(
-      'Choose a warehouse before posting a stock-bearing purchase receipt.',
+    const orderedQuantity = Number(orderItem.quantity);
+    if (!Number.isFinite(orderedQuantity) || orderedQuantity <= 0) {
+      throw new Error('A purchase-order line must have a positive ordered quantity before receipt.');
+    }
+
+    const previouslyAccepted = await client.query(
+      `
+        SELECT COALESCE(
+          SUM(receipt_line.quantity_received - receipt_line.quantity_rejected),
+          0
+        )::text AS accepted_quantity
+        FROM purchase_receipt_lines receipt_line
+        INNER JOIN purchase_receipts prior_receipt
+          ON prior_receipt.id = receipt_line.receipt_id
+         AND prior_receipt.company_id = receipt_line.company_id
+         AND prior_receipt.deleted_at IS NULL
+        WHERE receipt_line.company_id = $1
+          AND receipt_line.purchase_order_item_id = $2
+          AND receipt_line.deleted_at IS NULL
+          AND prior_receipt.status = 'posted'
+      `,
+      [companyId, orderItemId],
     );
-  }
-
-  for (
-    const line
-    of stockLines
-  ) {
-    const movementReference =
-      'purchase_receipt:' +
-      receiptId +
-      ':' +
-      line.id;
-
-    const existing =
-      await client.query(
-        `
-          SELECT id
-          FROM stock_movements
-          WHERE company_id = $1
-            AND reference = $2
-            AND deleted_at IS NULL
-          LIMIT 1
-        `,
-        [
-          companyId,
-          movementReference,
-        ],
-      );
+    const priorQuantity = Number(previouslyAccepted.rows[0]?.accepted_quantity || 0);
 
     if (
-      existing.rows.length >
-        0
+      acceptedQuantity + priorQuantity >
+      orderedQuantity + 0.0000001
     ) {
+      throw new Error('The accepted receipt quantity would exceed the remaining quantity on the purchase order.');
+    }
+
+    if (acceptedQuantity > 0) {
+      const validProductAndWarehouse = await client.query(
+        `
+          SELECT product.id
+          FROM products product
+          INNER JOIN warehouses warehouse
+            ON warehouse.id = $3
+           AND warehouse.company_id = $1
+           AND warehouse.deleted_at IS NULL
+           AND warehouse.is_active = TRUE
+          WHERE product.id = $2
+            AND product.company_id = $1
+            AND product.deleted_at IS NULL
+            AND product.is_active = TRUE
+            AND product.track_inventory = TRUE
+            AND product.product_type = 'stockable'
+          FOR SHARE OF product, warehouse
+        `,
+        [companyId, productId, warehouseId],
+      );
+      if (validProductAndWarehouse.rows.length !== 1) {
+        throw new Error('Every accepted receipt line must use an active stock-tracked product and warehouse in the current company.');
+      }
+
+      stockLines.push({
+        id: lineId,
+        productId,
+        quantity: String(line.accepted_quantity),
+      });
+    }
+  }
+
+  for (const line of stockLines) {
+    const movementReference = 'purchase_receipt:' + receiptId + ':' + line.id;
+    const existingResult = await client.query(
+      `
+        SELECT
+          id::text,
+          product_id::text,
+          warehouse_id::text,
+          movement_type,
+          quantity::text
+        FROM stock_movements
+        WHERE company_id = $1
+          AND reference = $2
+          AND deleted_at IS NULL
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [companyId, movementReference],
+    );
+    const existing = existingResult.rows[0];
+
+    if (existing) {
+      const sameMovement =
+        String(existing.product_id) === line.productId &&
+        String(existing.warehouse_id) === warehouseId &&
+        ['receipt', 'purchase_receipt'].includes(String(existing.movement_type)) &&
+        Math.abs(Number(existing.quantity) - Number(line.quantity)) <= 0.0000001;
+
+      if (!sameMovement) {
+        throw new Error('An existing Inventory movement conflicts with this purchase receipt line. Contact an administrator.');
+      }
       continue;
     }
 
@@ -205,20 +298,13 @@ async function postPurchaseReceiptToInventory(
           updated_at
         )
         VALUES (
-          $1,$2,'receipt',$3,$4,$5,$6,$6,NOW(),NOW()
+          $1, $2, 'purchase_receipt', $3, $4, $5, $6, $6, NOW(), NOW()
         )
       `,
-      [
-        line.productId,
-        warehouseId,
-        line.quantity,
-        movementReference,
-        companyId,
-        userId,
-      ],
+      [line.productId, warehouseId, line.quantity, movementReference, companyId, userId],
     );
 
-    await client.query(
+    const balance = await client.query(
       `
         INSERT INTO stock_levels (
           product_id,
@@ -230,36 +316,82 @@ async function postPurchaseReceiptToInventory(
           updated_by,
           updated_at
         )
-        VALUES (
-          $1,$2,$3,0,$4,$5,$5,NOW()
-        )
-        ON CONFLICT (
-          product_id,
-          warehouse_id
-        )
-        DO UPDATE
-        SET
-          quantity =
-            stock_levels.quantity +
-            EXCLUDED.quantity,
-          company_id =
-            EXCLUDED.company_id,
-          updated_by =
-            EXCLUDED.updated_by,
-          updated_at =
-            NOW()
+        VALUES ($1, $2, $3, 0, $4, $5, $5, NOW())
+        ON CONFLICT (product_id, warehouse_id)
+        DO UPDATE SET
+          quantity = stock_levels.quantity + EXCLUDED.quantity,
+          updated_by = EXCLUDED.updated_by,
+          updated_at = NOW()
+        WHERE stock_levels.company_id = EXCLUDED.company_id
+          AND stock_levels.deleted_at IS NULL
+        RETURNING id
       `,
-      [
-        line.productId,
-        warehouseId,
-        line.quantity,
-        companyId,
-        userId,
-      ],
+      [line.productId, warehouseId, line.quantity, companyId, userId],
+    );
+
+    if (balance.rows.length !== 1) {
+      throw new Error('The stock balance is unavailable in this company or requires administrator review.');
+    }
+  }
+
+  const orderTotals = await client.query(
+    `
+      SELECT
+        item.id::text,
+        item.quantity::text AS ordered_quantity,
+        COALESCE(
+          SUM(receipt_line.quantity_received - receipt_line.quantity_rejected)
+            FILTER (
+              WHERE prior_receipt.status = 'posted'
+                 OR prior_receipt.id = $3
+            ),
+          0
+        )::text AS accepted_quantity
+      FROM purchase_order_items item
+      LEFT JOIN purchase_receipt_lines receipt_line
+        ON receipt_line.purchase_order_item_id = item.id
+       AND receipt_line.company_id = item.company_id
+       AND receipt_line.deleted_at IS NULL
+      LEFT JOIN purchase_receipts prior_receipt
+        ON prior_receipt.id = receipt_line.receipt_id
+       AND prior_receipt.company_id = receipt_line.company_id
+       AND prior_receipt.deleted_at IS NULL
+      WHERE item.company_id = $1
+        AND item.purchase_order_id = $2
+        AND item.deleted_at IS NULL
+      GROUP BY item.id
+      ORDER BY item.id
+    `,
+    [companyId, String(receipt.purchase_order_id), receiptId],
+  );
+
+  const fullyReceived =
+    orderTotals.rows.length > 0 &&
+    orderTotals.rows.every((row) => {
+      const ordered = Number(row.ordered_quantity);
+      const accepted = Number(row.accepted_quantity);
+      return Number.isFinite(ordered) &&
+        ordered > 0 &&
+        Number.isFinite(accepted) &&
+        accepted + 0.0000001 >= ordered;
+    });
+
+  if (fullyReceived) {
+    await client.query(
+      `
+        UPDATE purchase_orders
+        SET status = 'received',
+            updated_by = $3,
+            updated_at = NOW()
+        WHERE id = $1
+          AND company_id = $2
+          AND status = 'confirmed'
+          AND deleted_at IS NULL
+      `,
+      [String(receipt.purchase_order_id), companyId, userId],
     );
   }
 }
-
 
 async function reimburseExpenseReport(
   client:
