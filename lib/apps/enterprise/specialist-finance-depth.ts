@@ -179,6 +179,17 @@ BEGIN
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_purchase_order_items_company_order'
+      AND conrelid = 'public.purchase_order_items'::regclass
+  ) THEN
+    ALTER TABLE public.purchase_order_items
+      ADD CONSTRAINT fk_purchase_order_items_company_order
+      FOREIGN KEY (company_id, purchase_order_id)
+      REFERENCES public.purchase_orders(company_id, id)
+      ON DELETE CASCADE NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
     WHERE conname = 'fk_purchase_receipts_company_order'
       AND conrelid = 'public.purchase_receipts'::regclass
   ) THEN
