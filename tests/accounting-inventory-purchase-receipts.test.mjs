@@ -18,7 +18,7 @@ test('Accounting valuation captures posted Purchase receipts with confirmed PO-l
   assert.match(backfill, /receipt_line\.quantity_received - receipt_line\.quantity_rejected/);
   assert.match(backfill, /product\.cost_price/);
   assert.match(backfill, /purchase_item\.unit_cost/);
-  assert.match(backfill, /product\.cost_price::numeric\(19,4\)/);
+  assert.match(backfill, /COALESCE\(product\.cost_price, 0\)::numeric\(19,4\)/);
   assert.match(backfill, /'backfill_current_standard_cost'/);
   assert.match(backfill, /'purchaseOrderUnitCost', purchase_item\.unit_cost/);
   assert.match(backfill, /'standardCostUnitCost', product\.cost_price/);
@@ -41,6 +41,9 @@ test('Purchase receipt valuation posts Inventory Asset against GRNI, not COGS or
   const treatmentStart = service.indexOf('async function eventTreatment');
   const treatmentEnd = service.indexOf('async function postingAccounts', treatmentStart);
   assert.match(service.slice(treatmentStart, treatmentEnd), /purchaseOrderUnitCost/);
+  assert.match(service.slice(treatmentStart, treatmentEnd), /acceptedQuantity <= 0/);
+  assert.match(service.slice(treatmentStart, treatmentEnd), /metadata\.purchaseOrderItemId/);
+  assert.match(service.slice(treatmentStart, treatmentEnd), /metadata\.costProvenance !== 'confirmed_purchase_order_line'/);
   assert.match(service.slice(treatmentStart, treatmentEnd), /return 'review'/);
 
   const effectStart = service.indexOf('function treatmentEffect');
