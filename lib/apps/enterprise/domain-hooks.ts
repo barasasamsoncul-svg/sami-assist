@@ -487,6 +487,23 @@ export function assertEnterpriseDomainMutationAllowed(
   }
 
   if (
+    moduleKey === 'warehouse' &&
+    [
+      'warehouse_locations',
+      'warehouse_operations',
+      'warehouse_operation_lines',
+      'warehouse_putaway_rules',
+      'warehouse_picking_batches',
+      'warehouse_picking_batch_operations',
+      'warehouse_packages',
+    ].includes(table)
+  ) {
+    throw new Error(
+      'Warehouse operational records must be changed through the validated Warehouse workflows.',
+    );
+  }
+
+  if (
     moduleKey ===
       'payments' &&
     table ===
