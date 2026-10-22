@@ -81,6 +81,7 @@ test('Purchase product and warehouse links are company-safe and additive for exi
   assert.match(specialistDepth, /ALTER TABLE public\.purchase_order_items[\s\S]*?ADD COLUMN IF NOT EXISTS product_reference UUID/);
   assert.match(specialistDepth, /ADD COLUMN IF NOT EXISTS warehouse_reference UUID/);
   assert.match(specialistDepth, /fk_purchase_order_items_company_product/);
+  assert.match(specialistDepth, /fk_purchase_order_items_company_order/);
   assert.match(specialistDepth, /fk_purchase_receipts_company_warehouse/);
   assert.match(specialistDepth, /fk_purchase_receipt_lines_company_po_item/);
   assert.match(specialistDepth, /NOT VALID/);
