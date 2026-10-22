@@ -213,7 +213,10 @@ test(
             : moduleKey ===
                 'inventory'
               ? /InventoryModuleShell/
-              : /AppSurfaceShell/,
+              : moduleKey ===
+                  'purchase'
+                ? /PurchaseModuleShell/
+                : /AppSurfaceShell/,
         moduleKey +
           ' must compose its own standalone app surface.',
       );
