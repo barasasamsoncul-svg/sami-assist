@@ -178,7 +178,7 @@ export async function getShippingOverview(): Promise<ShippingOverview> {
       " shipment.recipient_address->>'city' AS city, shipment.recipient_address->>'country' AS country,",
       ' shipment.tracking_number, shipment.carrier_id::text, carrier.name AS carrier_name,',
       ' carrier.tracking_url_template, shipment.status,',
-      ' COUNT(parcel.id)::int AS package_count, shipment.metadata->>\\'sourceReference\\' AS source_reference,',
+      ' COUNT(parcel.id)::int AS package_count, shipment.metadata->>\'sourceReference\' AS source_reference,',
       ' shipment.created_at::text, shipment.shipped_at::text, shipment.delivered_at::text',
       'FROM public.shipments shipment',
       'LEFT JOIN public.shipping_carriers carrier ON carrier.id=shipment.carrier_id AND carrier.company_id=shipment.company_id AND carrier.deleted_at IS NULL',
@@ -259,7 +259,7 @@ export async function createShippingShipment(input: unknown) {
     { table: 'shipping_carriers', operation: 'view' },
   ]);
   return withTransaction(context, async (client) => {
-    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1::text || \\':\\' || lower($2), 0))', [context.companyId, number]);
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1::text || \':\' || lower($2), 0))', [context.companyId, number]);
     const duplicate = await client.query(
       'SELECT 1 FROM public.shipments WHERE company_id=$1 AND lower(shipment_number)=lower($2) AND deleted_at IS NULL LIMIT 1',
       [context.companyId, number],
