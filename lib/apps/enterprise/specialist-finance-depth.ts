@@ -16,6 +16,10 @@ ALTER TABLE public.purchase_orders
   ADD COLUMN IF NOT EXISTS company_id UUID;
 ALTER TABLE public.purchase_order_items
   ADD COLUMN IF NOT EXISTS company_id UUID;
+ALTER TABLE public.products
+  ADD COLUMN IF NOT EXISTS company_id UUID;
+ALTER TABLE public.warehouses
+  ADD COLUMN IF NOT EXISTS company_id UUID;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_orders_company_id_id
   ON public.purchase_orders(company_id, id);
 -- Inventory is a required Purchase dependency. Reassert the composite reference
@@ -133,6 +137,26 @@ CREATE INDEX IF NOT EXISTS idx_purchase_receipt_lines_company_po_item
 
 DO $sami_purchase_inventory_links$
 BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_purchase_products_company'
+      AND conrelid = 'public.products'::regclass
+  ) THEN
+    ALTER TABLE public.products
+      ADD CONSTRAINT fk_purchase_products_company
+      FOREIGN KEY (company_id) REFERENCES public.companies(id)
+      ON DELETE CASCADE NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_purchase_warehouses_company'
+      AND conrelid = 'public.warehouses'::regclass
+  ) THEN
+    ALTER TABLE public.warehouses
+      ADD CONSTRAINT fk_purchase_warehouses_company
+      FOREIGN KEY (company_id) REFERENCES public.companies(id)
+      ON DELETE CASCADE NOT VALID;
+  END IF;
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
     WHERE conname = 'fk_purchase_orders_company'
