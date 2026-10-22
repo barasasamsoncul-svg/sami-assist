@@ -792,7 +792,7 @@ async function backfillSourceEvents(
           AND movement.reference LIKE 'purchase_receipt:%'
           AND movement.movement_type IN ('receipt','purchase_receipt')
           AND event.source_type = 'stock_movement'
-          AND event.status = 'review'
+          AND event.status IN ('pending', 'review')
           AND event.posted_journal_id IS NULL
           AND event.deleted_at IS NULL
           AND movement.deleted_at IS NULL
