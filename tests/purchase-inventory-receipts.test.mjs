@@ -236,3 +236,47 @@ test('Purchase requisition lines lock once submitted and PO quantities retain fo
   assert.ok(specialistDepth.includes('ck_purchase_order_items_quantity_positive'));
   assert.ok(specialistDepth.includes('ck_purchase_order_items_unit_cost_nonnegative'));
 });
+
+test('Every advertised Purchase extension table has an installable schema definition', async () => {
+  const [catalog, specialistDepth] = await Promise.all([
+    source('lib/apps/enterprise/specialist-catalog.ts'),
+    source('lib/apps/enterprise/specialist-finance-depth.ts'),
+  ]);
+
+  const purchaseStart = catalog.indexOf('purchase: [');
+  const purchaseEnd = catalog.indexOf('\n  expenses:', purchaseStart);
+  assert.ok(purchaseStart >= 0 && purchaseEnd > purchaseStart);
+  const purchaseCatalog = catalog.slice(purchaseStart, purchaseEnd);
+  const tableNames = Array.from(purchaseCatalog.matchAll(/'([a-z0-9_]+)'/g), match => match[1]);
+
+  assert.ok(tableNames.length >= 10, 'Purchase catalog should include core workflows and supplier pricing/RFQ lines.');
+  for (const tableName of tableNames) {
+    assert.ok(
+      specialistDepth.includes('CREATE TABLE IF NOT EXISTS public.' + tableName),
+      'Missing Purchase specialist schema for ' + tableName,
+    );
+  }
+});
+
+test('Supplier price lists and RFQ response lines have company-safe supplier, product, and parent relations', async () => {
+  const specialistDepth = await source('lib/apps/enterprise/specialist-finance-depth.ts');
+  const policy = await source('lib/apps/enterprise/workflow-policy.ts');
+
+  for (const constraint of [
+    'fk_supplier_price_lists_company_supplier',
+    'fk_supplier_price_list_items_company_list',
+    'fk_supplier_price_list_items_company_product',
+    'fk_supplier_rfqs_company_requisition',
+    'fk_supplier_rfq_lines_company_rfq',
+    'fk_supplier_rfq_lines_company_requisition_line',
+    'fk_supplier_rfq_lines_company_product',
+    'fk_supplier_rfq_responses_company_rfq',
+    'fk_supplier_rfq_responses_company_supplier',
+    'fk_supplier_rfq_response_lines_company_response',
+    'fk_supplier_rfq_response_lines_company_rfq_line',
+  ]) {
+    assert.ok(specialistDepth.includes(constraint), 'Missing company-safe relation ' + constraint);
+  }
+  assert.ok(policy.includes("'purchase:supplier_rfqs'"));
+  assert.ok(policy.includes("'purchase:supplier_rfq_responses'"));
+});

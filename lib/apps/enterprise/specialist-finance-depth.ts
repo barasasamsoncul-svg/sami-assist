@@ -119,6 +119,177 @@ CREATE INDEX IF NOT EXISTS idx_purchase_receipt_lines_receipt
   ON public.purchase_receipt_lines(company_id, receipt_id)
   WHERE deleted_at IS NULL;
 
+CREATE TABLE IF NOT EXISTS public.supplier_price_lists (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  supplier_id UUID NOT NULL REFERENCES public.suppliers(id) ON DELETE RESTRICT,
+  price_list_number VARCHAR(100) NOT NULL,
+  name VARCHAR(200) NOT NULL,
+  currency VARCHAR(3) NOT NULL DEFAULT 'KES',
+  valid_from DATE,
+  valid_to DATE,
+  status VARCHAR(20) NOT NULL DEFAULT 'draft',
+  notes TEXT,
+  created_by UUID, updated_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
+  CHECK (valid_from IS NULL OR valid_to IS NULL OR valid_to >= valid_from),
+  CHECK (status IN ('draft','active','expired','archived'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_supplier_price_lists_company_number
+  ON public.supplier_price_lists(company_id, price_list_number)
+  WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_supplier_price_lists_company_id_id
+  ON public.supplier_price_lists(company_id, id);
+CREATE INDEX IF NOT EXISTS idx_supplier_price_lists_supplier_status
+  ON public.supplier_price_lists(company_id, supplier_id, status)
+  WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS public.supplier_price_list_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  price_list_id UUID NOT NULL REFERENCES public.supplier_price_lists(id) ON DELETE RESTRICT,
+  product_reference UUID REFERENCES public.products(id) ON DELETE RESTRICT,
+  supplier_sku VARCHAR(120),
+  description TEXT NOT NULL,
+  unit_of_measure VARCHAR(40) NOT NULL DEFAULT 'unit',
+  minimum_quantity NUMERIC(19,4) NOT NULL DEFAULT 1,
+  unit_cost NUMERIC(19,4) NOT NULL DEFAULT 0,
+  valid_from DATE,
+  valid_to DATE,
+  created_by UUID, updated_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
+  CHECK (minimum_quantity > 0),
+  CHECK (unit_cost >= 0),
+  CHECK (valid_from IS NULL OR valid_to IS NULL OR valid_to >= valid_from)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_supplier_price_list_items_company_id_id
+  ON public.supplier_price_list_items(company_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_supplier_price_list_items_product
+  ON public.supplier_price_list_items(company_id, price_list_id, product_reference)
+  WHERE product_reference IS NOT NULL AND deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_supplier_price_list_items_sku
+  ON public.supplier_price_list_items(company_id, price_list_id, LOWER(BTRIM(supplier_sku)))
+  WHERE NULLIF(BTRIM(supplier_sku), '') IS NOT NULL AND deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_supplier_price_list_items_list
+  ON public.supplier_price_list_items(company_id, price_list_id)
+  WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS public.supplier_rfqs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  rfq_number VARCHAR(100) NOT NULL,
+  requisition_id UUID REFERENCES public.purchase_requisitions(id) ON DELETE RESTRICT,
+  title VARCHAR(255) NOT NULL,
+  currency VARCHAR(3) NOT NULL DEFAULT 'KES',
+  response_due_at TIMESTAMPTZ,
+  issued_at TIMESTAMPTZ,
+  closed_at TIMESTAMPTZ,
+  status VARCHAR(20) NOT NULL DEFAULT 'draft',
+  notes TEXT,
+  created_by UUID, updated_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
+  CHECK (status IN ('draft','sent','closed','cancelled'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_supplier_rfqs_company_number
+  ON public.supplier_rfqs(company_id, rfq_number)
+  WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_supplier_rfqs_company_id_id
+  ON public.supplier_rfqs(company_id, id);
+
+CREATE TABLE IF NOT EXISTS public.supplier_rfq_lines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  rfq_id UUID NOT NULL REFERENCES public.supplier_rfqs(id) ON DELETE RESTRICT,
+  source_requisition_line_id UUID REFERENCES public.purchase_requisition_lines(id) ON DELETE RESTRICT,
+  product_reference UUID REFERENCES public.products(id) ON DELETE RESTRICT,
+  description TEXT NOT NULL,
+  quantity NUMERIC(19,4) NOT NULL,
+  unit_of_measure VARCHAR(40) NOT NULL DEFAULT 'unit',
+  estimated_unit_cost NUMERIC(19,4) NOT NULL DEFAULT 0,
+  created_by UUID, updated_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
+  CHECK (quantity > 0),
+  CHECK (estimated_unit_cost >= 0)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_supplier_rfq_lines_company_id_id
+  ON public.supplier_rfq_lines(company_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_supplier_rfq_lines_company_rfq_id_id
+  ON public.supplier_rfq_lines(company_id, rfq_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_supplier_rfq_lines_source_requisition
+  ON public.supplier_rfq_lines(company_id, rfq_id, source_requisition_line_id)
+  WHERE source_requisition_line_id IS NOT NULL AND deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_supplier_rfq_lines_rfq
+  ON public.supplier_rfq_lines(company_id, rfq_id)
+  WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS public.supplier_rfq_responses (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  rfq_id UUID NOT NULL REFERENCES public.supplier_rfqs(id) ON DELETE RESTRICT,
+  supplier_id UUID NOT NULL REFERENCES public.suppliers(id) ON DELETE RESTRICT,
+  response_number VARCHAR(100),
+  currency VARCHAR(3) NOT NULL DEFAULT 'KES',
+  quoted_total NUMERIC(19,2) NOT NULL DEFAULT 0,
+  delivery_lead_days INTEGER,
+  valid_until DATE,
+  payment_terms TEXT,
+  notes TEXT,
+  submitted_at TIMESTAMPTZ,
+  status VARCHAR(20) NOT NULL DEFAULT 'draft',
+  created_by UUID, updated_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
+  CHECK (quoted_total >= 0),
+  CHECK (delivery_lead_days IS NULL OR delivery_lead_days >= 0),
+  CHECK (status IN ('draft','submitted','accepted','rejected','withdrawn'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_supplier_rfq_responses_company_id_id
+  ON public.supplier_rfq_responses(company_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_supplier_rfq_responses_company_rfq_id_id
+  ON public.supplier_rfq_responses(company_id, rfq_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_supplier_rfq_responses_company_supplier
+  ON public.supplier_rfq_responses(company_id, rfq_id, supplier_id)
+  WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_supplier_rfq_responses_rfq_status
+  ON public.supplier_rfq_responses(company_id, rfq_id, status)
+  WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS public.supplier_rfq_response_lines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  rfq_id UUID NOT NULL,
+  response_id UUID NOT NULL,
+  rfq_line_id UUID NOT NULL,
+  quantity NUMERIC(19,4) NOT NULL,
+  unit_cost NUMERIC(19,4) NOT NULL DEFAULT 0,
+  line_total NUMERIC(19,2) NOT NULL DEFAULT 0,
+  notes TEXT,
+  created_by UUID, updated_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
+  CHECK (quantity > 0),
+  CHECK (unit_cost >= 0),
+  CHECK (line_total >= 0)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_supplier_rfq_response_lines_company_id_id
+  ON public.supplier_rfq_response_lines(company_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_supplier_rfq_response_lines_unique_source
+  ON public.supplier_rfq_response_lines(company_id, response_id, rfq_line_id)
+  WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_supplier_rfq_response_lines_rfq
+  ON public.supplier_rfq_response_lines(company_id, rfq_id, response_id)
+  WHERE deleted_at IS NULL;
+
 -- Purchase lines map to the shared Inventory product master. Existing unmapped
 -- purchase lines stay unmapped until an operator explicitly links a product.
 ALTER TABLE public.purchase_orders
@@ -356,6 +527,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_requisitions_company_id_id
   ON public.purchase_requisitions(company_id, id);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_requisition_lines_company_id_id
   ON public.purchase_requisition_lines(company_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_supplier_price_list_items_company_list_id
+  ON public.supplier_price_list_items(company_id, price_list_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_supplier_rfq_response_lines_company_rfq_id_id
+  ON public.supplier_rfq_response_lines(company_id, rfq_id, id);
 
 -- Enforce company-safe relations for purchasing sources and requisition lines.
 -- NOT VALID keeps upgrades additive while immediately checking new or changed rows.
@@ -425,6 +600,127 @@ BEGIN
       ADD CONSTRAINT fk_purchase_order_items_company_requisition_line
       FOREIGN KEY (company_id, source_requisition_line_id)
       REFERENCES public.purchase_requisition_lines(company_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_supplier_price_lists_company_supplier'
+      AND conrelid = 'public.supplier_price_lists'::regclass
+  ) THEN
+    ALTER TABLE public.supplier_price_lists
+      ADD CONSTRAINT fk_supplier_price_lists_company_supplier
+      FOREIGN KEY (company_id, supplier_id)
+      REFERENCES public.suppliers(company_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_supplier_price_list_items_company_list'
+      AND conrelid = 'public.supplier_price_list_items'::regclass
+  ) THEN
+    ALTER TABLE public.supplier_price_list_items
+      ADD CONSTRAINT fk_supplier_price_list_items_company_list
+      FOREIGN KEY (company_id, price_list_id)
+      REFERENCES public.supplier_price_lists(company_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_supplier_price_list_items_company_product'
+      AND conrelid = 'public.supplier_price_list_items'::regclass
+  ) THEN
+    ALTER TABLE public.supplier_price_list_items
+      ADD CONSTRAINT fk_supplier_price_list_items_company_product
+      FOREIGN KEY (company_id, product_reference)
+      REFERENCES public.products(company_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_supplier_rfqs_company_requisition'
+      AND conrelid = 'public.supplier_rfqs'::regclass
+  ) THEN
+    ALTER TABLE public.supplier_rfqs
+      ADD CONSTRAINT fk_supplier_rfqs_company_requisition
+      FOREIGN KEY (company_id, requisition_id)
+      REFERENCES public.purchase_requisitions(company_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_supplier_rfq_lines_company_rfq'
+      AND conrelid = 'public.supplier_rfq_lines'::regclass
+  ) THEN
+    ALTER TABLE public.supplier_rfq_lines
+      ADD CONSTRAINT fk_supplier_rfq_lines_company_rfq
+      FOREIGN KEY (company_id, rfq_id)
+      REFERENCES public.supplier_rfqs(company_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_supplier_rfq_lines_company_requisition_line'
+      AND conrelid = 'public.supplier_rfq_lines'::regclass
+  ) THEN
+    ALTER TABLE public.supplier_rfq_lines
+      ADD CONSTRAINT fk_supplier_rfq_lines_company_requisition_line
+      FOREIGN KEY (company_id, source_requisition_line_id)
+      REFERENCES public.purchase_requisition_lines(company_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_supplier_rfq_lines_company_product'
+      AND conrelid = 'public.supplier_rfq_lines'::regclass
+  ) THEN
+    ALTER TABLE public.supplier_rfq_lines
+      ADD CONSTRAINT fk_supplier_rfq_lines_company_product
+      FOREIGN KEY (company_id, product_reference)
+      REFERENCES public.products(company_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_supplier_rfq_responses_company_rfq'
+      AND conrelid = 'public.supplier_rfq_responses'::regclass
+  ) THEN
+    ALTER TABLE public.supplier_rfq_responses
+      ADD CONSTRAINT fk_supplier_rfq_responses_company_rfq
+      FOREIGN KEY (company_id, rfq_id)
+      REFERENCES public.supplier_rfqs(company_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_supplier_rfq_responses_company_supplier'
+      AND conrelid = 'public.supplier_rfq_responses'::regclass
+  ) THEN
+    ALTER TABLE public.supplier_rfq_responses
+      ADD CONSTRAINT fk_supplier_rfq_responses_company_supplier
+      FOREIGN KEY (company_id, supplier_id)
+      REFERENCES public.suppliers(company_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_supplier_rfq_response_lines_company_response'
+      AND conrelid = 'public.supplier_rfq_response_lines'::regclass
+  ) THEN
+    ALTER TABLE public.supplier_rfq_response_lines
+      ADD CONSTRAINT fk_supplier_rfq_response_lines_company_response
+      FOREIGN KEY (company_id, rfq_id, response_id)
+      REFERENCES public.supplier_rfq_responses(company_id, rfq_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_supplier_rfq_response_lines_company_rfq_line'
+      AND conrelid = 'public.supplier_rfq_response_lines'::regclass
+  ) THEN
+    ALTER TABLE public.supplier_rfq_response_lines
+      ADD CONSTRAINT fk_supplier_rfq_response_lines_company_rfq_line
+      FOREIGN KEY (company_id, rfq_id, rfq_line_id)
+      REFERENCES public.supplier_rfq_lines(company_id, rfq_id, id)
       ON DELETE RESTRICT NOT VALID;
   END IF;
 END

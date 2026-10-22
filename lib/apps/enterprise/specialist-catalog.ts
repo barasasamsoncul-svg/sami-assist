@@ -99,7 +99,9 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
     'supplier_price_lists',
     'supplier_price_list_items',
     'supplier_rfqs',
+    'supplier_rfq_lines',
     'supplier_rfq_responses',
+    'supplier_rfq_response_lines',
   ],
   expenses: [
     'expense_policies',
