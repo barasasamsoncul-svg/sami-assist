@@ -101,6 +101,11 @@ type PendingDependencyConfirmation = {
 type LifecycleResponse = {
   success?: boolean;
   code?: string;
+  billingHref?: string;
+  currentPlan?: string;
+  scheduledPlan?: string;
+  maxInstalledBusinessApps?: number;
+  prospectiveBusinessApps?: number;
   error?: string;
   message?: string;
   appKey?: string;
@@ -457,6 +462,37 @@ export default function AppsSettings({
               : undefined,
           dependencies:
             data.dependencies,
+        });
+
+        return;
+      }
+
+      if (
+        !response.ok &&
+        data.code === 'APP_PLAN_UPGRADE_REQUIRED'
+      ) {
+        const appName =
+          workspaceByKey.get(appKey)?.name ||
+          appKey;
+
+        setOverlay({
+          open: true,
+          type: 'warning',
+          title: 'Standard plan required',
+          message:
+            `${data.error || 'This app and its required dependencies exceed the current plan allowance.'} Review your subscription plan, upgrade to Standard or Custom, then retry installing ${appName}. Your dependency acceptance does not change billing by itself.`,
+          primaryAction: {
+            label: 'Review billing and plans',
+            href: data.billingHref || '/settings?tab=billing',
+          },
+          secondaryAction: {
+            label: 'Close',
+            onClick: () =>
+              setOverlay(current => ({
+                ...current,
+                open: false,
+              })),
+          },
         });
 
         return;
