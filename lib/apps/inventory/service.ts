@@ -277,7 +277,7 @@ async function requireActiveProductAndWarehouse(
   warehouseId: string,
 ) {
   const refs = await client.query(
-    \`SELECT product.id
+    `SELECT product.id
        FROM public.products product
        INNER JOIN public.warehouses warehouse
          ON warehouse.id = $3
@@ -290,7 +290,7 @@ async function requireActiveProductAndWarehouse(
          AND product.is_active = TRUE
          AND product.track_inventory = TRUE
          AND product.product_type = 'stockable'
-       FOR SHARE OF product, warehouse\`,
+       FOR SHARE OF product, warehouse`,
     [companyId, productId, warehouseId],
   );
   if (refs.rows.length !== 1) {
@@ -325,7 +325,7 @@ async function postInventoryMovementInTransaction(
 
   if (inbound) {
     const balance = await client.query(
-      \`INSERT INTO public.stock_levels
+      `INSERT INTO public.stock_levels
          (product_id, warehouse_id, quantity, reorder_level, company_id, updated_at)
        VALUES ($1, $2, $3, 0, $4, NOW())
        ON CONFLICT (product_id, warehouse_id)
@@ -334,7 +334,7 @@ async function postInventoryMovementInTransaction(
          updated_at = NOW()
        WHERE stock_levels.company_id = EXCLUDED.company_id
          AND stock_levels.deleted_at IS NULL
-       RETURNING id\`,
+       RETURNING id`,
       [input.productId, input.warehouseId, input.quantity, input.companyId],
     );
     if (balance.rows.length !== 1) {
@@ -344,7 +344,7 @@ async function postInventoryMovementInTransaction(
     }
   } else {
     const changed = await client.query(
-      \`UPDATE public.stock_levels
+      `UPDATE public.stock_levels
        SET quantity = quantity - $3, updated_at = NOW()
        WHERE product_id = $1
          AND warehouse_id = $2
@@ -359,7 +359,7 @@ async function postInventoryMovementInTransaction(
              AND reservation.deleted_at IS NULL
              AND reservation.status IN ('active', 'allocated')
          ), 0) >= $3
-       RETURNING id\`,
+       RETURNING id`,
       [input.productId, input.warehouseId, input.quantity, input.companyId],
     );
     if (changed.rows.length !== 1) {
@@ -370,10 +370,10 @@ async function postInventoryMovementInTransaction(
   }
 
   const movement = await client.query(
-    \`INSERT INTO public.stock_movements
+    `INSERT INTO public.stock_movements
        (company_id, product_id, warehouse_id, movement_type, quantity, reference)
      VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id::text\`,
+     RETURNING id::text`,
     [
       input.companyId,
       input.productId,
@@ -396,7 +396,7 @@ export async function getInventoryWorkflowOverview() {
   ]);
   const [transferRows, countRows] = await Promise.all([
     context.pool.query(
-      \`SELECT
+      `SELECT
          transfer.id::text,
          transfer.transfer_number,
          transfer.status,
@@ -439,11 +439,11 @@ export async function getInventoryWorkflowOverview() {
          AND transfer.deleted_at IS NULL
        GROUP BY transfer.id, source.id, destination.id
        ORDER BY transfer.requested_at DESC, transfer.id DESC
-       LIMIT 50\`,
+       LIMIT 50`,
       [context.companyId],
     ),
     context.pool.query(
-      \`SELECT
+      `SELECT
          count_row.id::text,
          count_row.warehouse_id::text,
          warehouse.name AS warehouse_name,
@@ -472,7 +472,7 @@ export async function getInventoryWorkflowOverview() {
          END,
          count_row.due_on,
          count_row.created_at DESC
-       LIMIT 100\`,
+       LIMIT 100`,
       [context.companyId],
     ),
   ]);
@@ -541,10 +541,10 @@ async function createInventoryTransfer(body: Record<string, unknown>) {
 
   return inventoryTransaction(context, async (client) => {
     const existing = await client.query(
-      \`SELECT id::text, request_hash
+      `SELECT id::text, request_hash
        FROM public.inventory_transfer_orders
        WHERE company_id = $1 AND request_key = $2 AND deleted_at IS NULL
-       FOR UPDATE\`,
+       FOR UPDATE`,
       [context.companyId, idempotencyKey],
     );
     if (existing.rows.length) {
@@ -555,21 +555,21 @@ async function createInventoryTransfer(body: Record<string, unknown>) {
     }
 
     const warehouses = await client.query(
-      \`SELECT id::text FROM public.warehouses
+      `SELECT id::text FROM public.warehouses
        WHERE company_id = $1 AND id = ANY($2::uuid[])
          AND is_active = TRUE AND deleted_at IS NULL
-       FOR SHARE\`,
+       FOR SHARE`,
       [context.companyId, [sourceWarehouseId, destinationWarehouseId]],
     );
     if (warehouses.rows.length !== 2) {
       throw new InventoryConflictError('Both transfer warehouses must be active and belong to the current company.');
     }
     const products = await client.query(
-      \`SELECT id::text FROM public.products
+      `SELECT id::text FROM public.products
        WHERE company_id = $1 AND id = ANY($2::uuid[])
          AND is_active = TRUE AND deleted_at IS NULL
          AND track_inventory = TRUE AND product_type = 'stockable'
-       FOR SHARE\`,
+       FOR SHARE`,
       [context.companyId, lines.map((line) => line.productId)],
     );
     if (products.rows.length !== lines.length) {
@@ -578,19 +578,19 @@ async function createInventoryTransfer(body: Record<string, unknown>) {
 
     const transferNumber = makeInventoryNumber('TRF');
     const created = await client.query(
-      \`INSERT INTO public.inventory_transfer_orders
+      `INSERT INTO public.inventory_transfer_orders
        (company_id, transfer_number, source_warehouse_id, destination_warehouse_id,
         status, request_key, request_hash, created_by, updated_by)
        VALUES ($1,$2,$3,$4,'draft',$5,$6,$7,$7)
        ON CONFLICT (company_id, request_key) WHERE request_key IS NOT NULL
        DO NOTHING
-       RETURNING id::text\`,
+       RETURNING id::text`,
       [context.companyId, transferNumber, sourceWarehouseId, destinationWarehouseId, idempotencyKey, hash, context.userId],
     );
     if (created.rows.length !== 1) {
       const raced = await client.query(
-        \`SELECT id::text, request_hash FROM public.inventory_transfer_orders
-         WHERE company_id = $1 AND request_key = $2 AND deleted_at IS NULL\`,
+        `SELECT id::text, request_hash FROM public.inventory_transfer_orders
+         WHERE company_id = $1 AND request_key = $2 AND deleted_at IS NULL`,
         [context.companyId, idempotencyKey],
       );
       if (!raced.rows.length || String(raced.rows[0].request_hash) !== hash) {
@@ -602,9 +602,9 @@ async function createInventoryTransfer(body: Record<string, unknown>) {
     const transferId = String(created.rows[0].id);
     for (const line of lines) {
       await client.query(
-        \`INSERT INTO public.inventory_transfer_order_lines
+        `INSERT INTO public.inventory_transfer_order_lines
          (company_id, transfer_id, product_id, requested_quantity, created_by, updated_by)
-         VALUES ($1,$2,$3,$4,$5,$5)\`,
+         VALUES ($1,$2,$3,$4,$5,$5)`,
         [context.companyId, transferId, line.productId, line.quantity, context.userId],
       );
     }
@@ -632,10 +632,10 @@ async function transitionInventoryTransfer(body: Record<string, unknown>, action
 
   return inventoryTransaction(context, async (client) => {
     const orderResult = await client.query(
-      \`SELECT id::text, transfer_number, source_warehouse_id::text, destination_warehouse_id::text, status
+      `SELECT id::text, transfer_number, source_warehouse_id::text, destination_warehouse_id::text, status
        FROM public.inventory_transfer_orders
        WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL
-       FOR UPDATE\`,
+       FOR UPDATE`,
       [transferId, context.companyId],
     );
     if (!orderResult.rows.length) throw new InventoryConflictError('Transfer not found in this company.');
@@ -645,14 +645,14 @@ async function transitionInventoryTransfer(body: Record<string, unknown>, action
       if (status === 'approved') return { transferId, status, duplicate: true };
       if (status !== 'draft') throw new InventoryConflictError('Only draft transfers can be approved.');
       const lineCount = await client.query(
-        \`SELECT COUNT(*)::int AS count FROM public.inventory_transfer_order_lines
-         WHERE company_id = $1 AND transfer_id = $2 AND deleted_at IS NULL\`,
+        `SELECT COUNT(*)::int AS count FROM public.inventory_transfer_order_lines
+         WHERE company_id = $1 AND transfer_id = $2 AND deleted_at IS NULL`,
         [context.companyId, transferId],
       );
       if (Number(lineCount.rows[0]?.count || 0) < 1) throw new InventoryConflictError('Add at least one product line before approving this transfer.');
       await client.query(
-        \`UPDATE public.inventory_transfer_orders SET status = 'approved', updated_by = $3, updated_at = NOW()
-         WHERE id = $1 AND company_id = $2 AND status = 'draft'\`,
+        `UPDATE public.inventory_transfer_orders SET status = 'approved', updated_by = $3, updated_at = NOW()
+         WHERE id = $1 AND company_id = $2 AND status = 'draft'`,
         [transferId, context.companyId, context.userId],
       );
       return { transferId, status: 'approved', duplicate: false };
@@ -664,8 +664,8 @@ async function transitionInventoryTransfer(body: Record<string, unknown>, action
         throw new InventoryConflictError('A transfer can be cancelled only before shipment.');
       }
       await client.query(
-        \`UPDATE public.inventory_transfer_orders SET status = 'cancelled', updated_by = $3, updated_at = NOW()
-         WHERE id = $1 AND company_id = $2 AND status = $4\`,
+        `UPDATE public.inventory_transfer_orders SET status = 'cancelled', updated_by = $3, updated_at = NOW()
+         WHERE id = $1 AND company_id = $2 AND status = $4`,
         [transferId, context.companyId, context.userId, status],
       );
       return { transferId, status: 'cancelled', duplicate: false };
@@ -675,10 +675,10 @@ async function transitionInventoryTransfer(body: Record<string, unknown>, action
       if (status === 'in_transit' || status === 'received') return { transferId, status, duplicate: true };
       if (status !== 'approved') throw new InventoryConflictError('Only approved transfers can be shipped.');
       const lines = await client.query(
-        \`SELECT line.id::text, line.product_id::text, line.requested_quantity::text
+        `SELECT line.id::text, line.product_id::text, line.requested_quantity::text
          FROM public.inventory_transfer_order_lines line
          WHERE line.company_id = $1 AND line.transfer_id = $2 AND line.deleted_at IS NULL
-         ORDER BY line.id FOR UPDATE\`,
+         ORDER BY line.id FOR UPDATE`,
         [context.companyId, transferId],
       );
       if (!lines.rows.length) throw new InventoryConflictError('This transfer has no product lines.');
@@ -693,16 +693,16 @@ async function transitionInventoryTransfer(body: Record<string, unknown>, action
           reference: String(order.transfer_number) + ' shipment',
         });
         await client.query(
-          \`UPDATE public.inventory_transfer_order_lines
+          `UPDATE public.inventory_transfer_order_lines
            SET shipped_quantity = requested_quantity, updated_by = $3, updated_at = NOW()
-           WHERE id = $1 AND company_id = $2\`,
+           WHERE id = $1 AND company_id = $2`,
           [line.id, context.companyId, context.userId],
         );
       }
       await client.query(
-        \`UPDATE public.inventory_transfer_orders
+        `UPDATE public.inventory_transfer_orders
          SET status = 'in_transit', shipped_at = NOW(), updated_by = $3, updated_at = NOW()
-         WHERE id = $1 AND company_id = $2 AND status = 'approved'\`,
+         WHERE id = $1 AND company_id = $2 AND status = 'approved'`,
         [transferId, context.companyId, context.userId],
       );
       return { transferId, status: 'in_transit', duplicate: false };
@@ -711,10 +711,10 @@ async function transitionInventoryTransfer(body: Record<string, unknown>, action
     if (status === 'received') return { transferId, status, duplicate: true };
     if (status !== 'in_transit') throw new InventoryConflictError('Only in-transit transfers can be received.');
     const lines = await client.query(
-      \`SELECT line.id::text, line.product_id::text, line.shipped_quantity::text
+      `SELECT line.id::text, line.product_id::text, line.shipped_quantity::text
        FROM public.inventory_transfer_order_lines line
        WHERE line.company_id = $1 AND line.transfer_id = $2 AND line.deleted_at IS NULL
-       ORDER BY line.id FOR UPDATE\`,
+       ORDER BY line.id FOR UPDATE`,
       [context.companyId, transferId],
     );
     if (!lines.rows.length) throw new InventoryConflictError('This transfer has no shipped product lines.');
@@ -730,16 +730,16 @@ async function transitionInventoryTransfer(body: Record<string, unknown>, action
         reference: String(order.transfer_number) + ' receipt',
       });
       await client.query(
-        \`UPDATE public.inventory_transfer_order_lines
+        `UPDATE public.inventory_transfer_order_lines
          SET received_quantity = shipped_quantity, updated_by = $3, updated_at = NOW()
-         WHERE id = $1 AND company_id = $2\`,
+         WHERE id = $1 AND company_id = $2`,
         [line.id, context.companyId, context.userId],
       );
     }
     await client.query(
-      \`UPDATE public.inventory_transfer_orders
+      `UPDATE public.inventory_transfer_orders
        SET status = 'received', received_at = NOW(), updated_by = $3, updated_at = NOW()
-       WHERE id = $1 AND company_id = $2 AND status = 'in_transit'\`,
+       WHERE id = $1 AND company_id = $2 AND status = 'in_transit'`,
       [transferId, context.companyId, context.userId],
     );
     return { transferId, status: 'received', duplicate: false };
@@ -762,9 +762,9 @@ async function createInventoryCycleCount(body: Record<string, unknown>) {
 
   return inventoryTransaction(context, async (client) => {
     const existing = await client.query(
-      \`SELECT id::text, request_hash FROM public.inventory_cycle_counts
+      `SELECT id::text, request_hash FROM public.inventory_cycle_counts
        WHERE company_id = $1 AND request_key = $2 AND deleted_at IS NULL
-       FOR UPDATE\`,
+       FOR UPDATE`,
       [context.companyId, idempotencyKey],
     );
     if (existing.rows.length) {
@@ -774,24 +774,24 @@ async function createInventoryCycleCount(body: Record<string, unknown>) {
 
     await requireActiveProductAndWarehouse(client, context.companyId, productId, warehouseId);
     const balance = await client.query(
-      \`SELECT quantity::text FROM public.stock_levels
+      `SELECT quantity::text FROM public.stock_levels
        WHERE company_id = $1 AND product_id = $2 AND warehouse_id = $3 AND deleted_at IS NULL
-       FOR UPDATE\`,
+       FOR UPDATE`,
       [context.companyId, productId, warehouseId],
     );
     const systemQuantity = balance.rows.length ? String(balance.rows[0].quantity) : '0.0000';
     const created = await client.query(
-      \`INSERT INTO public.inventory_cycle_counts
+      `INSERT INTO public.inventory_cycle_counts
        (company_id, warehouse_id, product_id, due_on, system_quantity, status, request_key, request_hash, created_by, updated_by)
        VALUES ($1,$2,$3,$4,$5,'pending',$6,$7,$8,$8)
        ON CONFLICT (company_id, request_key) WHERE request_key IS NOT NULL DO NOTHING
-       RETURNING id::text\`,
+       RETURNING id::text`,
       [context.companyId, warehouseId, productId, dueOn, systemQuantity, idempotencyKey, hash, context.userId],
     );
     if (created.rows.length !== 1) {
       const raced = await client.query(
-        \`SELECT id::text, request_hash FROM public.inventory_cycle_counts
-         WHERE company_id = $1 AND request_key = $2 AND deleted_at IS NULL\`,
+        `SELECT id::text, request_hash FROM public.inventory_cycle_counts
+         WHERE company_id = $1 AND request_key = $2 AND deleted_at IS NULL`,
         [context.companyId, idempotencyKey],
       );
       if (!raced.rows.length || String(raced.rows[0].request_hash) !== hash) throw new InventoryConflictError('The cycle-count request key conflicts with another request.');
@@ -812,10 +812,10 @@ async function recordInventoryCycleCount(body: Record<string, unknown>) {
   ]);
   return inventoryTransaction(context, async (client) => {
     const found = await client.query(
-      \`SELECT id::text, warehouse_id::text, product_id::text, status
+      `SELECT id::text, warehouse_id::text, product_id::text, status
        FROM public.inventory_cycle_counts
        WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL
-       FOR UPDATE\`,
+       FOR UPDATE`,
       [cycleCountId, context.companyId],
     );
     if (!found.rows.length) throw new InventoryConflictError('Cycle count not found in this company.');
@@ -825,17 +825,17 @@ async function recordInventoryCycleCount(body: Record<string, unknown>) {
     if (status !== 'pending' && status !== 'in_progress') throw new InventoryConflictError('Only pending or in-progress counts can be recorded.');
     await requireActiveProductAndWarehouse(client, context.companyId, String(row.product_id), String(row.warehouse_id));
     const balance = await client.query(
-      \`SELECT quantity::text FROM public.stock_levels
+      `SELECT quantity::text FROM public.stock_levels
        WHERE company_id = $1 AND product_id = $2 AND warehouse_id = $3 AND deleted_at IS NULL
-       FOR UPDATE\`,
+       FOR UPDATE`,
       [context.companyId, row.product_id, row.warehouse_id],
     );
     const systemQuantity = balance.rows.length ? String(balance.rows[0].quantity) : '0.0000';
     await client.query(
-      \`UPDATE public.inventory_cycle_counts
+      `UPDATE public.inventory_cycle_counts
        SET status = 'counted', system_quantity = $3, counted_quantity = $4,
            counted_at = NOW(), updated_by = $5, updated_at = NOW()
-       WHERE id = $1 AND company_id = $2\`,
+       WHERE id = $1 AND company_id = $2`,
       [cycleCountId, context.companyId, systemQuantity, countedQuantity, context.userId],
     );
     return { cycleCountId, status: 'counted', systemQuantity, countedQuantity, duplicate: false };
@@ -856,11 +856,11 @@ async function postInventoryCycleCount(body: Record<string, unknown>) {
 
   return inventoryTransaction(context, async (client) => {
     const found = await client.query(
-      \`SELECT id::text, warehouse_id::text, product_id::text, status,
+      `SELECT id::text, warehouse_id::text, product_id::text, status,
               system_quantity::text, counted_quantity::text
        FROM public.inventory_cycle_counts
        WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL
-       FOR UPDATE\`,
+       FOR UPDATE`,
       [cycleCountId, context.companyId],
     );
     if (!found.rows.length) throw new InventoryConflictError('Cycle count not found in this company.');
@@ -874,9 +874,9 @@ async function postInventoryCycleCount(body: Record<string, unknown>) {
     await requireActiveProductAndWarehouse(client, context.companyId, productId, warehouseId);
 
     const current = await client.query(
-      \`SELECT quantity::text FROM public.stock_levels
+      `SELECT quantity::text FROM public.stock_levels
        WHERE company_id = $1 AND product_id = $2 AND warehouse_id = $3 AND deleted_at IS NULL
-       FOR UPDATE\`,
+       FOR UPDATE`,
       [context.companyId, productId, warehouseId],
     );
     const currentQuantity = current.rows.length ? String(current.rows[0].quantity) : '0.0000';
@@ -899,14 +899,14 @@ async function postInventoryCycleCount(body: Record<string, unknown>) {
       });
     }
     const adjustment = await client.query(
-      \`INSERT INTO public.inventory_adjustments
+      `INSERT INTO public.inventory_adjustments
        (company_id, adjustment_number, warehouse_id, product_id, cycle_count_id,
         counted_quantity, system_quantity, difference_quantity, reason, approved_by,
         approved_at, posted_at, status, created_by, updated_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),NOW(),'posted',$10,$10)
        ON CONFLICT (company_id, cycle_count_id) WHERE cycle_count_id IS NOT NULL
        DO NOTHING
-       RETURNING id::text\`,
+       RETURNING id::text`,
       [context.companyId, adjustmentNumber, warehouseId, productId, cycleCountId,
         count.counted_quantity, count.system_quantity, difference,
         'Posted through approved Inventory cycle-count workflow', context.userId],
@@ -914,16 +914,16 @@ async function postInventoryCycleCount(body: Record<string, unknown>) {
     if (!adjustment.rows.length) {
       // The uniqueness constraint ensures a retry cannot create a second adjustment.
       const existingAdjustment = await client.query(
-        \`SELECT id::text FROM public.inventory_adjustments
-         WHERE company_id = $1 AND cycle_count_id = $2\`,
+        `SELECT id::text FROM public.inventory_adjustments
+         WHERE company_id = $1 AND cycle_count_id = $2`,
         [context.companyId, cycleCountId],
       );
       if (!existingAdjustment.rows.length) throw new InventoryConflictError('Cycle-count adjustment could not be verified.');
     }
     await client.query(
-      \`UPDATE public.inventory_cycle_counts
+      `UPDATE public.inventory_cycle_counts
        SET status = 'posted', updated_by = $3, updated_at = NOW()
-       WHERE id = $1 AND company_id = $2 AND status = 'counted'\`,
+       WHERE id = $1 AND company_id = $2 AND status = 'counted'`,
       [cycleCountId, context.companyId, context.userId],
     );
     return { cycleCountId, status: 'posted', differenceQuantity: difference.toFixed(4), duplicate: false };
@@ -937,9 +937,9 @@ async function cancelInventoryCycleCount(body: Record<string, unknown>) {
   ]);
   return inventoryTransaction(context, async (client) => {
     const found = await client.query(
-      \`SELECT id::text, status FROM public.inventory_cycle_counts
+      `SELECT id::text, status FROM public.inventory_cycle_counts
        WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL
-       FOR UPDATE\`,
+       FOR UPDATE`,
       [cycleCountId, context.companyId],
     );
     if (!found.rows.length) throw new InventoryConflictError('Cycle count not found in this company.');
@@ -949,8 +949,8 @@ async function cancelInventoryCycleCount(body: Record<string, unknown>) {
       throw new InventoryConflictError('Only unposted cycle counts can be cancelled.');
     }
     await client.query(
-      \`UPDATE public.inventory_cycle_counts SET status = 'cancelled', updated_by = $3, updated_at = NOW()
-       WHERE id = $1 AND company_id = $2\`,
+      `UPDATE public.inventory_cycle_counts SET status = 'cancelled', updated_by = $3, updated_at = NOW()
+       WHERE id = $1 AND company_id = $2`,
       [cycleCountId, context.companyId, context.userId],
     );
     return { cycleCountId, status: 'cancelled', duplicate: false };

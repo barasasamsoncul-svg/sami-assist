@@ -458,6 +458,20 @@ export function assertEnterpriseDomainMutationAllowed(
   }
 
   if (
+    moduleKey === 'inventory' &&
+    [
+      'inventory_transfer_orders',
+      'inventory_transfer_order_lines',
+      'inventory_cycle_counts',
+      'inventory_adjustments',
+    ].includes(table)
+  ) {
+    throw new Error(
+      'Transfer, cycle-count and adjustment records can only be changed through validated Inventory workflows.',
+    );
+  }
+
+  if (
     moduleKey ===
       'inventory' &&
     table === 'stock_movements' &&
@@ -566,7 +580,7 @@ export function normalizeEnterpriseDomainValues(
     const accepted =
       new Set([
         'in', 'inbound', 'receipt', 'purchase_receipt', 'opening_balance',
-        'return_in', 'adjustment_in', 'out', 'outbound', 'issue', 'sale',
+        'return_in', 'adjustment_in', 'transfer_in', 'out', 'outbound', 'issue', 'sale', 'transfer_out',
         'return_out', 'adjustment_out',
       ]);
 
@@ -1172,7 +1186,7 @@ async function applyStockMovement(
   }
 
   const inbound = new Set([
-    'in', 'inbound', 'receipt', 'purchase_receipt', 'opening_balance', 'return_in', 'adjustment_in',
+    'in', 'inbound', 'receipt', 'purchase_receipt', 'opening_balance', 'return_in', 'adjustment_in', 'transfer_in',
   ]).has(movementType);
 
   if (inbound) {

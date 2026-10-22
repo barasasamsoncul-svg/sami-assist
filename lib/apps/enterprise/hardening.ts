@@ -356,9 +356,26 @@ ALTER TABLE public.stock_levels
   ALTER COLUMN reorder_level TYPE NUMERIC(19,4) USING reorder_level::NUMERIC(19,4);
 ALTER TABLE public.stock_movements
   ALTER COLUMN quantity TYPE NUMERIC(19,4) USING quantity::NUMERIC(19,4);
+ALTER TABLE public.inventory_transfer_orders
+  ADD COLUMN IF NOT EXISTS request_key UUID,
+  ADD COLUMN IF NOT EXISTS request_hash CHAR(64);
+ALTER TABLE public.inventory_cycle_counts
+  ADD COLUMN IF NOT EXISTS request_key UUID,
+  ADD COLUMN IF NOT EXISTS request_hash CHAR(64);
+ALTER TABLE public.inventory_adjustments
+  ADD COLUMN IF NOT EXISTS cycle_count_id UUID;
+
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_products_company_id_id ON public.products(company_id, id);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_warehouses_company_id_id ON public.warehouses(company_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_inventory_transfer_orders_company_id_id ON public.inventory_transfer_orders(company_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_inventory_cycle_counts_company_id_id ON public.inventory_cycle_counts(company_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_inventory_transfer_request_key ON public.inventory_transfer_orders(company_id, request_key) WHERE request_key IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_inventory_cycle_count_request_key ON public.inventory_cycle_counts(company_id, request_key) WHERE request_key IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_inventory_adjustment_cycle_count ON public.inventory_adjustments(company_id, cycle_count_id) WHERE cycle_count_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_inventory_transfer_orders_company_status ON public.inventory_transfer_orders(company_id, status, requested_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_inventory_cycle_counts_company_status_due ON public.inventory_cycle_counts(company_id, status, due_on) WHERE deleted_at IS NULL;
+
 CREATE UNIQUE INDEX IF NOT EXISTS uq_inventory_lots_company_id_id ON public.inventory_lots(company_id, id);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_products_company_sku
   ON public.products(company_id, sku)
@@ -445,6 +462,39 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_inventory_adjustments_company_warehouse' AND conrelid='public.inventory_adjustments'::regclass) THEN
     ALTER TABLE public.inventory_adjustments ADD CONSTRAINT fk_inventory_adjustments_company_warehouse FOREIGN KEY (company_id,warehouse_id) REFERENCES public.warehouses(company_id,id) ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='ck_inventory_transfer_orders_company_required' AND conrelid='public.inventory_transfer_orders'::regclass) THEN
+    ALTER TABLE public.inventory_transfer_orders ADD CONSTRAINT ck_inventory_transfer_orders_company_required CHECK (company_id IS NOT NULL) NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='ck_inventory_transfer_lines_company_required' AND conrelid='public.inventory_transfer_order_lines'::regclass) THEN
+    ALTER TABLE public.inventory_transfer_order_lines ADD CONSTRAINT ck_inventory_transfer_lines_company_required CHECK (company_id IS NOT NULL) NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='ck_inventory_cycle_counts_company_required' AND conrelid='public.inventory_cycle_counts'::regclass) THEN
+    ALTER TABLE public.inventory_cycle_counts ADD CONSTRAINT ck_inventory_cycle_counts_company_required CHECK (company_id IS NOT NULL) NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='ck_inventory_adjustments_company_required' AND conrelid='public.inventory_adjustments'::regclass) THEN
+    ALTER TABLE public.inventory_adjustments ADD CONSTRAINT ck_inventory_adjustments_company_required CHECK (company_id IS NOT NULL) NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_inventory_transfer_source_warehouse' AND conrelid='public.inventory_transfer_orders'::regclass) THEN
+    ALTER TABLE public.inventory_transfer_orders ADD CONSTRAINT fk_inventory_transfer_source_warehouse FOREIGN KEY (company_id,source_warehouse_id) REFERENCES public.warehouses(company_id,id) ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_inventory_transfer_destination_warehouse' AND conrelid='public.inventory_transfer_orders'::regclass) THEN
+    ALTER TABLE public.inventory_transfer_orders ADD CONSTRAINT fk_inventory_transfer_destination_warehouse FOREIGN KEY (company_id,destination_warehouse_id) REFERENCES public.warehouses(company_id,id) ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_inventory_transfer_line_company_order' AND conrelid='public.inventory_transfer_order_lines'::regclass) THEN
+    ALTER TABLE public.inventory_transfer_order_lines ADD CONSTRAINT fk_inventory_transfer_line_company_order FOREIGN KEY (company_id,transfer_id) REFERENCES public.inventory_transfer_orders(company_id,id) ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_inventory_transfer_line_company_product' AND conrelid='public.inventory_transfer_order_lines'::regclass) THEN
+    ALTER TABLE public.inventory_transfer_order_lines ADD CONSTRAINT fk_inventory_transfer_line_company_product FOREIGN KEY (company_id,product_id) REFERENCES public.products(company_id,id) ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_inventory_cycle_counts_company_product' AND conrelid='public.inventory_cycle_counts'::regclass) THEN
+    ALTER TABLE public.inventory_cycle_counts ADD CONSTRAINT fk_inventory_cycle_counts_company_product FOREIGN KEY (company_id,product_id) REFERENCES public.products(company_id,id) ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_inventory_cycle_counts_company_warehouse' AND conrelid='public.inventory_cycle_counts'::regclass) THEN
+    ALTER TABLE public.inventory_cycle_counts ADD CONSTRAINT fk_inventory_cycle_counts_company_warehouse FOREIGN KEY (company_id,warehouse_id) REFERENCES public.warehouses(company_id,id) ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_inventory_adjustment_cycle_count' AND conrelid='public.inventory_adjustments'::regclass) THEN
+    ALTER TABLE public.inventory_adjustments ADD CONSTRAINT fk_inventory_adjustment_cycle_count FOREIGN KEY (company_id,cycle_count_id) REFERENCES public.inventory_cycle_counts(company_id,id) ON DELETE RESTRICT NOT VALID;
   END IF;
 END
 $sami_inventory_constraints$;
