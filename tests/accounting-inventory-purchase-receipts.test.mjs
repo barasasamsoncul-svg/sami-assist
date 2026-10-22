@@ -17,13 +17,18 @@ test('Accounting valuation captures posted Purchase receipts with confirmed PO-l
   assert.match(backfill, /receipt_line\.quantity_received/);
   assert.match(backfill, /receipt_line\.quantity_received - receipt_line\.quantity_rejected/);
   assert.match(backfill, /product\.cost_price/);
-  assert.match(backfill, /order_item\.unit_cost/);
+  assert.match(backfill, /purchase_item\.unit_cost/);
+  assert.match(backfill, /product\.cost_price::numeric\(19,4\)/);
   assert.match(backfill, /'backfill_current_standard_cost'/);
-  assert.match(backfill, /'purchaseOrderUnitCost', order_item\.unit_cost/);
+  assert.match(backfill, /'purchaseOrderUnitCost', purchase_item\.unit_cost/);
   assert.match(backfill, /'standardCostUnitCost', product\.cost_price/);
   assert.match(backfill, /'valuationCostBasis', 'product_standard_cost'/);
-  assert.match(backfill, /'purchase:receipt-line:'/);
-  assert.match(backfill, /ON CONFLICT \(company_id, source_event_key\)[\s\S]*?DO NOTHING/);
+  assert.match(backfill, /'costProvenance', 'confirmed_purchase_order_line'/);
+  assert.match(backfill, /AND purchase_item\.unit_cost > 0/);
+  assert.match(backfill, /AND product\.cost_price > 0/);
+  assert.match(backfill, /'accounting:purchase-receipt-line:'/);
+  assert.match(backfill, /ON CONFLICT \(company_id, source_event_key\)[\s\S]*?DO UPDATE SET[\s\S]*?posted_journal_id IS NULL/);
+  assert.match(backfill, /accounting_inventory_source_events\.status IN \('pending', 'review'\)/);
   assert.match(backfill, /'costProvenance', 'confirmed_purchase_order_line'/);
 });
 
