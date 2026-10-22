@@ -672,9 +672,9 @@ async function backfillSourceEvents(
               THEN ABS(movement.quantity)
             ELSE 0
           END::numeric(19,4),
-          product.cost_price::numeric(19,4),
+          COALESCE(product.cost_price, 0)::numeric(19,4),
           ROUND(
-            ABS(movement.quantity) * product.cost_price,
+            ABS(movement.quantity) * COALESCE(product.cost_price, 0),
             2
           )::numeric(19,2),
           'backfill_current_standard_cost',
@@ -696,7 +696,7 @@ async function backfillSourceEvents(
             'stockMovementId', movement.id::text,
             'supplierDeliveryReference', receipt.supplier_delivery_reference,
             'purchaseOrderUnitCost', purchase_item.unit_cost,
-            'standardCostUnitCost', product.cost_price,
+            'standardCostUnitCost', COALESCE(product.cost_price, 0),
             'costProvenance', 'confirmed_purchase_order_line',
             'valuationCostBasis', 'product_standard_cost',
             'backfilled', TRUE
@@ -1010,12 +1010,17 @@ async function eventTreatment(
         : {};
     const actualUnitCost = Number(metadata.purchaseOrderUnitCost || 0);
     const standardUnitCost = Number(event.unit_cost || 0);
+    const acceptedQuantity = Number(event.quantity_effect || 0);
 
     if (
       !Number.isFinite(actualUnitCost) ||
       actualUnitCost <= 0 ||
       !Number.isFinite(standardUnitCost) ||
-      standardUnitCost <= 0
+      standardUnitCost <= 0 ||
+      !Number.isFinite(acceptedQuantity) ||
+      acceptedQuantity <= 0 ||
+      !metadata.purchaseOrderItemId ||
+      metadata.costProvenance !== 'confirmed_purchase_order_line'
     ) {
       return 'review';
     }
