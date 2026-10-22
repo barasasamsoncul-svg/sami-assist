@@ -187,6 +187,78 @@ test('Category 13: lifecycle preserves business data on disable and uninstall', 
   );
 });
 
+test('Category 13: installing or enabling an app requires explicit consent for inactive dependencies', async () => {
+  const [
+    lifecycle,
+    route,
+    settings,
+  ] = await Promise.all([
+    source('lib/services/workspace-app-lifecycle.ts'),
+    source('app/api/workspace/apps/[appKey]/route.ts'),
+    source('app/settings/components/AppsSettings.tsx'),
+  ]);
+
+  assert.match(
+    lifecycle,
+    /APP_DEPENDENCY_CONFIRMATION_REQUIRED/,
+  );
+  assert.match(
+    lifecycle,
+    /acceptedDependencyKeys/,
+  );
+  assert.match(
+    lifecycle,
+    /dependencies:\s*missingDependencies/,
+  );
+
+  const consentIndex =
+    lifecycle.indexOf(
+      'const missingDependencies',
+    );
+  const installWriteIndex =
+    lifecycle.indexOf(
+      'const installedDependencies',
+      consentIndex,
+    );
+
+  assert.ok(
+    consentIndex >= 0 &&
+    installWriteIndex > consentIndex,
+    'Consent must be checked before the dependency installation loop can change module state.',
+  );
+
+  assert.match(
+    route,
+    /parseAcceptedDependencyKeys/,
+  );
+  assert.match(
+    route,
+    /APP_DEPENDENCY_CONFIRMATION_REQUIRED/,
+  );
+  assert.match(
+    route,
+    /consent\.keys/,
+  );
+
+  assert.match(
+    settings,
+    /APP_DEPENDENCY_CONFIRMATION_REQUIRED/,
+  );
+  assert.match(
+    settings,
+    /pendingDependencyConfirmation/,
+  );
+  assert.match(
+    settings,
+    /acceptedDependencyKeys/,
+  );
+  assert.match(
+    settings,
+    /Accept & install/,
+  );
+});
+
+
 test('Category 13: dependency apps cannot be disabled or uninstalled while required', async () => {
   const service =
     compact(
