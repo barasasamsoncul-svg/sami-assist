@@ -157,7 +157,7 @@ test('Accounting 2.34 and Invoicing 2.23 migrations and module extensions are re
     source('lib/apps/enterprise/domain-hooks.ts'),
   ]);
 
-  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.34\.0'/);
+  assert.match(manifest,/key:\s*"accounting"[\s\S]*version:\s*'2\.35\.0'/);
   assert.match(manifest,/key:\s*"accounting"[\s\S]*integrationProviders:\s*true/);
   assert.match(manifest,/key:\s*"invoicing"[\s\S]*version:\s*'2\.23\.0'/);
   assert.match(manifest,/key:\s*"invoicing"[\s\S]*integrationProviders:\s*true/);
