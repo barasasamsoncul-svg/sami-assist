@@ -19,6 +19,9 @@ type Overview = {
     dueOn: string; status: string; systemQuantity: string | null; countedQuantity: string | null; countedAt: string | null;
   }>;
 };
+
+type TransferLineDraft = { rowKey: string; productId: string; quantity: string };
+
 const MOVEMENTS = [
   { value: 'receipt', label: 'Stock receipt' }, { value: 'purchase_receipt', label: 'Purchase receipt' },
   { value: 'opening_balance', label: 'Opening balance' }, { value: 'return_in', label: 'Customer return' },
@@ -44,8 +47,7 @@ export default function InventoryStockControlPanel() {
   const [reference,setReference] = useState('');
   const [transferSourceId,setTransferSourceId] = useState('');
   const [transferDestinationId,setTransferDestinationId] = useState('');
-  const [transferProductId,setTransferProductId] = useState('');
-  const [transferQuantity,setTransferQuantity] = useState('');
+  const [transferLines,setTransferLines] = useState<TransferLineDraft[]>([{rowKey:'transfer-line-1',productId:'',quantity:''}]);
   const [cycleWarehouseId,setCycleWarehouseId] = useState('');
   const [cycleProductId,setCycleProductId] = useState('');
   const [cycleDueOn,setCycleDueOn] = useState('');
@@ -56,6 +58,7 @@ export default function InventoryStockControlPanel() {
   const transferFingerprintRef = useRef('');
   const cycleKeyRef = useRef('');
   const cycleFingerprintRef = useRef('');
+  const transferLineSequenceRef = useRef(2);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -67,7 +70,7 @@ export default function InventoryStockControlPanel() {
       setData(value);
       setProductId(v=>value.products.some(p=>p.id===v)?v:(value.products[0]?.id||''));
       setWarehouseId(v=>value.warehouses.some(w=>w.id===v)?v:(value.warehouses[0]?.id||''));
-      setTransferProductId(v=>value.products.some(p=>p.id===v)?v:(value.products[0]?.id||''));
+      setTransferLines(lines=>lines.map(line=>({ ...line, productId:value.products.some(p=>p.id===line.productId)?line.productId:(value.products[0]?.id||'') })));
       setCycleProductId(v=>value.products.some(p=>p.id===v)?v:(value.products[0]?.id||''));
       setTransferSourceId(v=>value.warehouses.some(w=>w.id===v)?v:(value.warehouses[0]?.id||''));
       setTransferDestinationId(v=>value.warehouses.some(w=>w.id===v && w.id!==transferSourceId)?v:(value.warehouses.find(w=>w.id!==value.warehouses[0]?.id)?.id||''));
@@ -102,13 +105,37 @@ export default function InventoryStockControlPanel() {
     }
   }
 
+  function addTransferLine() {
+    if (!data?.products.length || transferLines.length >= 100) return;
+    const usedProducts = new Set(transferLines.map(line => line.productId).filter(Boolean));
+    const product = data.products.find(item => !usedProducts.has(item.id));
+    if (!product) return;
+    setTransferLines(lines => [...lines, {
+      rowKey: 'transfer-line-' + transferLineSequenceRef.current++,
+      productId: product.id,
+      quantity: '',
+    }]);
+  }
+
+  function updateTransferLine(rowKey: string, change: Partial<Pick<TransferLineDraft, 'productId' | 'quantity'>>) {
+    setTransferLines(lines => lines.map(line => line.rowKey === rowKey ? { ...line, ...change } : line));
+  }
+
   async function submitTransfer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (transferLines.length < 1 || transferLines.some(line => !line.productId || !line.quantity)) {
+      setError('Choose a product and quantity for every transfer line.');
+      return;
+    }
+    if (new Set(transferLines.map(line => line.productId)).size !== transferLines.length) {
+      setError('Each product can appear only once on a warehouse transfer.');
+      return;
+    }
     const payload = {
       action:'create-transfer',
       sourceWarehouseId:transferSourceId,
       destinationWarehouseId:transferDestinationId,
-      lines:[{productId:transferProductId,quantity:transferQuantity}],
+      lines:transferLines.map(line => ({ productId:line.productId, quantity:line.quantity })),
     };
     const fingerprint = JSON.stringify(payload);
     if(!transferKeyRef.current || transferFingerprintRef.current!==fingerprint) {
@@ -119,7 +146,11 @@ export default function InventoryStockControlPanel() {
     if(saved) {
       transferKeyRef.current='';
       transferFingerprintRef.current='';
-      setTransferQuantity('');
+      setTransferLines([{
+        rowKey: 'transfer-line-' + transferLineSequenceRef.current++,
+        productId: data?.products[0]?.id || '',
+        quantity: '',
+      }]);
     }
   }
 
@@ -218,16 +249,27 @@ export default function InventoryStockControlPanel() {
                 {(data?.warehouses||[]).map(w=><option key={w.id} value={w.id}>{w.name} ({w.code})</option>)}
               </select>
             </label>
-            <label className="block text-sm font-medium text-slate-800 dark:text-slate-100 sm:col-span-2">Product
-              <select required value={transferProductId} onChange={e=>setTransferProductId(e.target.value)} className={field} disabled={!data?.products.length}>
-                {(data?.products||[]).map(p=><option key={p.id} value={p.id}>{p.name}{p.sku?' · '+p.sku:''}</option>)}
-              </select>
-            </label>
-            <label className="block text-sm font-medium text-slate-800 dark:text-slate-100 sm:col-span-2">Quantity
-              <input required inputMode="decimal" pattern="\d+(\.\d{1,4})?" value={transferQuantity} onChange={e=>setTransferQuantity(e.target.value)} placeholder="Quantity to move" className={field}/>
-            </label>
-          </div>
-          <button type="submit" disabled={saving||loading||!transferSourceId||!transferDestinationId||transferSourceId===transferDestinationId||!transferProductId||!transferQuantity||!data?.warehouses || data.warehouses.length<2} className="inline-flex min-h-10 w-full items-center justify-center rounded-xl bg-indigo-700 px-4 text-sm font-semibold text-white hover:bg-indigo-800 disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-400">Create transfer</button>
+            <div className="space-y-3 sm:col-span-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-900 dark:text-white">Transfer lines</h4>
+                  <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">Add distinct products to the same transfer (up to 100 lines).</p>
+                </div>
+                <button type="button" onClick={addTransferLine} disabled={saving||loading||!data?.products.length||transferLines.length>=100||transferLines.length>=data.products.length} className="inline-flex min-h-9 items-center justify-center rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800">Add product</button>
+              </div>
+              {transferLines.map((line,index)=><div key={line.rowKey} className="grid grid-cols-1 items-end gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.65fr)_auto]">
+                <label className="block min-w-0 text-sm font-medium text-slate-800 dark:text-slate-100">Product {index+1}
+                  <select required value={line.productId} onChange={e=>updateTransferLine(line.rowKey,{productId:e.target.value})} className={field} disabled={!data?.products.length}>
+                    {(data?.products||[]).map(p=><option key={p.id} value={p.id} disabled={transferLines.some(other=>other.rowKey!==line.rowKey&&other.productId===p.id)}>{p.name}{p.sku?' · '+p.sku:''}</option>)}
+                  </select>
+                </label>
+                <label className="block min-w-0 text-sm font-medium text-slate-800 dark:text-slate-100">Quantity
+                  <input required inputMode="decimal" pattern="\\d+(\\.\\d{1,4})?" value={line.quantity} onChange={e=>updateTransferLine(line.rowKey,{quantity:e.target.value})} placeholder="Quantity to move" className={field}/>
+                </label>
+                {transferLines.length>1?<button type="button" aria-label={'Remove transfer line '+(index+1)} onClick={()=>setTransferLines(lines=>lines.filter(item=>item.rowKey!==line.rowKey))} disabled={saving} className="min-h-10 rounded-lg border border-rose-300 px-3 text-xs font-semibold text-rose-800 hover:bg-rose-50 disabled:opacity-50 dark:border-rose-800 dark:text-rose-200 dark:hover:bg-rose-950/40">Remove</button>:null}
+              </div>)}
+            </div>          </div>
+          <button type="submit" disabled={saving||loading||!transferSourceId||!transferDestinationId||transferSourceId===transferDestinationId||transferLines.length<1||transferLines.some(line=>!line.productId||!line.quantity)||!data?.warehouses||data.warehouses.length<2} className="inline-flex min-h-10 w-full items-center justify-center rounded-xl bg-indigo-700 px-4 text-sm font-semibold text-white hover:bg-indigo-800 disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-400">Create transfer</button>
         </form>
         <div className="mt-4 space-y-3">
           {(data?.transferOrders||[]).map(order=><div key={order.id} className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
