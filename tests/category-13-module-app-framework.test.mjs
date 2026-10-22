@@ -281,6 +281,14 @@ test('Category 13: installing or enabling an app requires explicit consent for i
     settings,
     /Accept & install/,
   );
+  assert.match(
+    settings,
+    /Standard plan required/,
+  );
+  assert.match(
+    settings,
+    /Review billing and plans/,
+  );
 });
 
 
