@@ -1176,6 +1176,9 @@ export default function SettingsClient({
                 <SettingsSurface>
 
                   <AppsSettings
+                    workspaceId={
+                      tenant?.id || 'no-workspace'
+                    }
                     workspaceModules={
                       managedModules
                     }
