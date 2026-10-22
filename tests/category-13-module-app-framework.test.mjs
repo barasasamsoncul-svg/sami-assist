@@ -192,10 +192,16 @@ test('Category 13: installing or enabling an app requires explicit consent for i
     lifecycle,
     route,
     settings,
+    registration,
+    selectApps,
+    selectPlan,
   ] = await Promise.all([
     source('lib/services/workspace-app-lifecycle.ts'),
     source('app/api/workspace/apps/[appKey]/route.ts'),
     source('app/settings/components/AppsSettings.tsx'),
+    source('app/api/auth/register/route.ts'),
+    source('app/select-apps/page.tsx'),
+    source('app/select-plan/page.tsx'),
   ]);
 
   assert.match(
@@ -249,6 +255,15 @@ test('Category 13: installing or enabling an app requires explicit consent for i
     /uninstallWorkspaceApp\([\s\S]{0,200}consent\.keys/s,
     'Dependency install consent must not affect uninstall calls.',
   );
+
+  assert.match(registration, /normalizeAcceptedDependencyKeys/);
+  assert.match(registration, /APP_DEPENDENCY_CONFIRMATION_REQUIRED/);
+  assert.match(registration, /requiredDependencyKeys/);
+  assert.match(registration, /getSamiModuleManifest/);
+  assert.match(selectApps, /getSamiModuleDependencyPlan/);
+  assert.match(selectApps, /Accept & continue/);
+  assert.match(selectPlan, /acceptedDependencyKeys/);
+  assert.match(selectPlan, /resolveSelectedAppKeys\(apps\)\.length/);
 
   assert.match(
     settings,
