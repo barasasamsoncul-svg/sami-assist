@@ -1072,7 +1072,7 @@ export default function AppsSettings({
         }
         message={
           pendingDependencyConfirmation
-            ? `SaMi cannot ${pendingDependencyConfirmation.method === 'PATCH' ? 'enable' : 'install'} ${pendingDependencyConfirmation.appName} by itself. It also requires these dependencies to be active: ${pendingDependencyConfirmation.dependencies.map(dependency => dependency.name || dependency.key).join(', ')}. Accept to install or re-enable the listed apps first, in dependency order, then continue. Cancel leaves this request unapplied.`
+            ? `SaMi cannot ${pendingDependencyConfirmation.method === 'PATCH' ? 'enable' : 'install'} ${pendingDependencyConfirmation.appName} by itself. It also requires these dependencies to be active: ${pendingDependencyConfirmation.dependencies.map(dependency => dependency.name || dependency.key).join(', ')}. Accept to approve these dependencies. SaMi will install or re-enable them in dependency order once the plan allows it. If this app set exceeds Free's allowance, upgrade to Standard or Custom first; accepting dependencies alone does not change billing. Cancel leaves this request unapplied.`
             : pendingAction
               ? pendingAction.kind ===
                   'disable'
