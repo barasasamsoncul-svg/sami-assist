@@ -2927,14 +2927,20 @@ test('enterprise relationships use searchable company-scoped selectors instead o
     ),
   ]);
 
+  // PostgreSQL catalog metadata preserves the ordinal pairing of composite foreign keys.
   assert.match(
     relations,
-    /information_schema\.table_constraints/,
+    /FROM pg_constraint constraint_row/,
   );
 
   assert.match(
     relations,
-    /constraint_type[\s\S]*FOREIGN KEY/s,
+    /unnest\(constraint_row\.conkey\)[\s\S]*unnest\(constraint_row\.confkey\)[\s\S]*target_key\.key_position = source_key\.key_position/s,
+  );
+
+  assert.match(
+    relations,
+    /constraint_row\.contype = 'f'/,
   );
 
   assert.match(

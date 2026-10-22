@@ -27,6 +27,10 @@ import {
   provisionTenantDatabase,
 } from '@/lib/services/tenant-provisioning';
 
+import {
+  getSamiModuleDependencyPlan,
+} from '@/lib/modules/registry';
+
 
 export const runtime =
   'nodejs';
@@ -50,6 +54,7 @@ const MAX_APP_KEY_LENGTH =
 type InstallAppBody = {
   tenantId?: unknown;
   appKey?: unknown;
+  acceptedDependencyKeys?: unknown;
 };
 
 
@@ -76,6 +81,7 @@ type ModuleRecord = {
     | string
     | null;
   status: string;
+  is_core?: boolean | null;
 };
 
 
@@ -156,6 +162,42 @@ function isSafeAppKey(
       appKey,
     )
   );
+}
+
+
+function normalizeAcceptedDependencyKeys(
+  value:
+    unknown,
+): string[] | null {
+  if (value === undefined) {
+    return [];
+  }
+
+  if (
+    !Array.isArray(value) ||
+    value.length > 100
+  ) {
+    return null;
+  }
+
+  const result: string[] = [];
+
+  for (const item of value) {
+    if (typeof item !== 'string') {
+      return null;
+    }
+
+    const key = normalizeAppKey(item);
+    if (!isSafeAppKey(key)) {
+      return null;
+    }
+
+    if (!result.includes(key)) {
+      result.push(key);
+    }
+  }
+
+  return result;
 }
 
 
@@ -823,6 +865,19 @@ export async function POST(
       body.appKey,
     );
 
+  const acceptedDependencyKeys =
+    normalizeAcceptedDependencyKeys(
+      body.acceptedDependencyKeys,
+    );
+
+  if (acceptedDependencyKeys === null) {
+    return errorResponse(
+      400,
+      'INVALID_DEPENDENCY_CONFIRMATION',
+      'The accepted app dependency list is invalid.',
+    );
+  }
+
 
   /* ==========================================================
      5. WORKSPACE CONTEXT BINDING
@@ -1298,6 +1353,100 @@ export async function POST(
       );
     }
 
+    let dependencyPlan:
+      ReturnType<typeof getSamiModuleDependencyPlan> = [];
+
+    try {
+      dependencyPlan =
+        getSamiModuleDependencyPlan(
+          appKey,
+        );
+    } catch (error) {
+      return errorResponse(
+        400,
+        'INVALID_APP_DEPENDENCIES',
+        getErrorMessage(error),
+      );
+    }
+
+    const dependencyPlanKeys =
+      dependencyPlan.map(
+        manifest => normalizeAppKey(manifest.key),
+      );
+
+    const declaredDependencyKeys =
+      new Set(
+        dependencyPlanKeys.filter(
+          key => key !== appKey,
+        ),
+      );
+
+    const invalidAcceptedKeys =
+      acceptedDependencyKeys.filter(
+        key => !declaredDependencyKeys.has(key),
+      );
+
+    if (invalidAcceptedKeys.length > 0) {
+      return errorResponse(
+        400,
+        'INVALID_DEPENDENCY_CONFIRMATION',
+        'The accepted dependency list does not match this app.',
+      );
+    }
+
+    const planModuleResult =
+      await controlClient.query(
+        `
+          SELECT
+            id,
+            key,
+            name,
+            version,
+            status,
+            is_core
+          FROM modules
+          WHERE key = ANY($1::text[])
+            AND deleted_at IS NULL
+        `,
+        [dependencyPlanKeys],
+      );
+
+    const planModuleRows =
+      planModuleResult.rows as ModuleRecord[];
+
+    const planModuleByKey =
+      new Map<string, ModuleRecord>();
+
+    for (const plannedModule of planModuleRows) {
+      planModuleByKey.set(
+        normalizeAppKey(plannedModule.key),
+        plannedModule,
+      );
+    }
+
+    const unavailableDependencyKeys =
+      dependencyPlanKeys.filter(key => {
+        const plannedModule = planModuleByKey.get(key);
+        return (
+          !plannedModule ||
+          normalizeAppKey(plannedModule.status) !== 'active'
+        );
+      });
+
+    if (unavailableDependencyKeys.length > 0) {
+      return errorResponse(
+        409,
+        'APP_DEPENDENCY_UNAVAILABLE',
+        'This app cannot be installed because one or more required apps are unavailable.',
+        { dependencies: unavailableDependencyKeys },
+      );
+    }
+
+    const planModules =
+      dependencyPlanKeys.map(
+        key => planModuleByKey.get(key) as ModuleRecord,
+      );
+
 
     /* ========================================================
        13. EXISTING INSTALLATION
@@ -1344,6 +1493,48 @@ export async function POST(
             .trim()
             .toLowerCase()
         : '';
+
+    const tenantPlanStateResult =
+      await controlClient.query(
+        `
+          SELECT
+            m.key,
+            tm.status
+          FROM modules m
+          LEFT JOIN tenant_modules tm
+            ON tm.module_id = m.id
+           AND tm.tenant_id = $1
+          WHERE m.key = ANY($2::text[])
+            AND m.deleted_at IS NULL
+        `,
+        [tenantId, dependencyPlanKeys],
+      );
+
+    const tenantStatusByKey =
+      new Map<string, string>();
+
+    for (const row of tenantPlanStateResult.rows as Array<{key: string; status: string | null}>) {
+      tenantStatusByKey.set(
+        normalizeAppKey(row.key),
+        normalizeAppKey(row.status),
+      );
+    }
+
+    const activeTenantStatuses =
+      new Set(['installed', 'active', 'enabled']);
+
+    const dependenciesToInstall =
+      dependencyPlan.filter(
+        manifest => {
+          const key = normalizeAppKey(manifest.key);
+          return (
+            key !== appKey &&
+            !activeTenantStatuses.has(
+              tenantStatusByKey.get(key) || '',
+            )
+          );
+        },
+      );
 
 
     /* ========================================================
@@ -1412,7 +1603,6 @@ export async function POST(
       subscriptionResult
         .rows[0] as SubscriptionRecord;
 
-
     /*
      * Category 13 compatibility bridge.
      *
@@ -1423,14 +1613,96 @@ export async function POST(
     const includedApps =
       -1;
 
+    const acceptedDependencySet =
+      new Set(acceptedDependencyKeys);
+
+    const unacceptedDependencies =
+      dependenciesToInstall.filter(
+        manifest =>
+          !acceptedDependencySet.has(
+            normalizeAppKey(manifest.key),
+          ),
+      );
+
+    if (unacceptedDependencies.length > 0) {
+      return errorResponse(
+        409,
+        'APP_DEPENDENCY_CONFIRMATION_REQUIRED',
+        `Installing ${module.name} also requires installing its required apps. Accept the dependencies to continue.`,
+        {
+          appKey,
+          appName: module.name,
+          action: 'install',
+          dependencies: dependenciesToInstall.map(manifest => ({
+            key: normalizeAppKey(manifest.key),
+            name: planModuleByKey.get(normalizeAppKey(manifest.key))?.name || manifest.name,
+            status: tenantStatusByKey.get(normalizeAppKey(manifest.key)) || 'not_installed',
+          })),
+        },
+      );
+    }
+
+
+    if (
+      normalizeAppKey(subscription.plan_key) === 'free'
+    ) {
+      const installedBusinessAppsResult =
+        await controlClient.query(
+          `
+            SELECT LOWER(m.key) AS key
+            FROM tenant_modules tm
+            INNER JOIN modules m
+              ON m.id = tm.module_id
+            WHERE tm.tenant_id = $1
+              AND tm.deleted_at IS NULL
+              AND m.deleted_at IS NULL
+              AND COALESCE(m.is_core, FALSE) = FALSE
+              AND LOWER(COALESCE(tm.status, '')) IN (
+                'installed', 'active', 'enabled'
+              )
+          `,
+          [tenantId],
+        );
+
+      const prospectiveBusinessApps =
+        new Set<string>(
+          (installedBusinessAppsResult.rows as Array<{key: string}>).map(
+            row => normalizeAppKey(row.key),
+          ),
+        );
+
+      for (const plannedModule of planModules) {
+        if (plannedModule.is_core !== true) {
+          prospectiveBusinessApps.add(
+            normalizeAppKey(plannedModule.key),
+          );
+        }
+      }
+
+      if (prospectiveBusinessApps.size > 1) {
+        return errorResponse(
+          402,
+          'APP_PLAN_UPGRADE_REQUIRED',
+          'This app and its required dependencies exceed the Free plan app allowance. Upgrade to Standard or Custom, then retry installation.',
+          {
+            billingHref: '/settings?tab=billing',
+            currentPlan: subscription.plan_key,
+            requiredPlan: 'standard',
+            maxInstalledBusinessApps: 1,
+            prospectiveBusinessApps: prospectiveBusinessApps.size,
+          },
+        );
+      }
+    }
+
 
     /* ========================================================
        15. IDEMPOTENT
        ======================================================== */
 
     if (
-      existingStatus ===
-      'installed'
+      existingStatus === 'installed' &&
+      dependenciesToInstall.length === 0
     ) {
       const countResult =
         await controlClient.query(
@@ -1533,57 +1805,38 @@ export async function POST(
        17. RESERVE
        ======================================================== */
 
-    await controlClient.query(
-      `
-        INSERT INTO tenant_modules (
-          tenant_id,
-          module_id,
-          version,
-          status,
-          installed_at
-        )
-
-        VALUES (
-          $1,
-          $2,
-          $3,
-          'pending',
-          NULL
-        )
-
-        ON CONFLICT (
-          tenant_id,
-          module_id
-        )
-
-        DO UPDATE SET
-          version =
-            EXCLUDED.version,
-
-          status =
-            CASE
-              WHEN tenant_modules.status =
-                   'installed'
+    for (const plannedModule of planModules) {
+      await controlClient.query(
+        `
+          INSERT INTO tenant_modules (
+            tenant_id,
+            module_id,
+            version,
+            status,
+            installed_at
+          )
+          VALUES ($1, $2, $3, 'pending', NULL)
+          ON CONFLICT (tenant_id, module_id)
+          DO UPDATE SET
+            version = EXCLUDED.version,
+            status = CASE
+              WHEN tenant_modules.status = 'installed'
               THEN 'installed'
               ELSE 'pending'
             END,
-
-          installed_at =
-            CASE
-              WHEN tenant_modules.status =
-                   'installed'
+            installed_at = CASE
+              WHEN tenant_modules.status = 'installed'
               THEN tenant_modules.installed_at
               ELSE NULL
             END
-      `,
-      [
-        tenantId,
-
-        module.id,
-
-        module.version,
-      ],
-    );
+        `,
+        [
+          tenantId,
+          plannedModule.id,
+          plannedModule.version,
+        ],
+      );
+    }
 
 
     /* ========================================================
@@ -1605,9 +1858,7 @@ export async function POST(
 
           workspace.tenant_name,
 
-          [
-            appKey,
-          ],
+          dependencyPlanKeys,
         );
 
 
@@ -1625,10 +1876,12 @@ export async function POST(
           );
         }
       } else {
-        await installAppSchema(
-          databaseName,
-          appKey,
-        );
+        for (const plannedModule of dependencyPlan) {
+          await installAppSchema(
+            databaseName,
+            normalizeAppKey(plannedModule.key),
+          );
+        }
       }
     } catch (
       provisioningError
@@ -1648,35 +1901,30 @@ export async function POST(
       );
 
 
-      await controlClient
-        .query(
-          `
-            UPDATE tenant_modules
-
-            SET
-              status =
-                'failed',
-
-              installed_at =
-                NULL
-
-            WHERE tenant_id = $1
-              AND module_id = $2
-              AND status <> 'installed'
-          `,
-          [
-            tenantId,
-            module.id,
-          ],
-        )
-        .catch(
-          updateError => {
+      for (const plannedModule of planModules) {
+        await controlClient
+          .query(
+            `
+              UPDATE tenant_modules
+              SET
+                status = 'failed',
+                installed_at = NULL
+              WHERE tenant_id = $1
+                AND module_id = $2
+                AND status <> 'installed'
+            `,
+            [
+              tenantId,
+              plannedModule.id,
+            ],
+          )
+          .catch(updateError => {
             console.error(
-              '[Apps] Failed to mark installation as failed:',
+              '[Apps] Failed to mark dependency installation as failed:',
               updateError,
             );
-          },
-        );
+          });
+      }
 
 
       await recordAudit({
@@ -1715,31 +1963,24 @@ export async function POST(
        19. MARK INSTALLED
        ======================================================== */
 
-    await controlClient.query(
-      `
-        UPDATE tenant_modules
-
-        SET
-          version =
-            $3,
-
-          status =
-            'installed',
-
-          installed_at =
-            NOW()
-
-        WHERE tenant_id = $1
-          AND module_id = $2
-      `,
-      [
-        tenantId,
-
-        module.id,
-
-        module.version,
-      ],
-    );
+    for (const plannedModule of planModules) {
+      await controlClient.query(
+        `
+          UPDATE tenant_modules
+          SET
+            version = $3,
+            status = 'installed',
+            installed_at = NOW()
+          WHERE tenant_id = $1
+            AND module_id = $2
+        `,
+        [
+          tenantId,
+          plannedModule.id,
+          plannedModule.version,
+        ],
+      );
+    }
 
 
     /* ========================================================

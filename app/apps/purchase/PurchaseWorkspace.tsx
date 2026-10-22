@@ -2,14 +2,6 @@ import type {
   CSSProperties,
 } from 'react';
 
-import Link from 'next/link';
-
-import {
-  ArrowLeft,
-} from 'lucide-react';
-
-import AppSurfaceShell from '@/app/components/apps/AppSurfaceShell';
-import SamiAppIconTile from '@/app/components/apps/SamiAppIconTile';
 import styles from '@/app/apps/[appKey]/EnterpriseModuleWorkspaceShell.module.css';
 
 import {
@@ -21,6 +13,7 @@ import {
 } from '@/app/apps/_shared/loadStandaloneEnterpriseApp';
 
 import PurchaseWorkspaceClient from '@/app/apps/purchase/PurchaseWorkspaceClient';
+import PurchaseModuleShell from '@/app/apps/purchase/PurchaseModuleShell';
 
 const MODULE_KEY = 'purchase';
 
@@ -118,65 +111,29 @@ export default async function PurchaseWorkspace({
 
   const activeSidebarKey =
     resolved.view === 'records'
-      ? resolved.tableKey
+      ? resolved.tableKey || 'overview'
       : resolved.view;
 
   return (
-    <AppSurfaceShell
-      appKey={app.registryKey}
+    <PurchaseModuleShell
       appCategory={app.category}
       appIconKey={app.iconKey}
-      profile={uiProfile}
       user={session.user}
       tenant={account.tenant}
-      membership={account.membership}
-      subscription={shell.subscription}
       modules={shell.accessibleModules}
       appSidebarItems={appSidebarItems}
       activeSidebarKey={activeSidebarKey}
       sidebarCapabilities={{
         aiEnabled: shell.aiAvailable,
-        filesEnabled:
-          can(
-            SAMI_PERMISSIONS.FILES_VIEW,
-          ),
-        notificationsEnabled:
-          can(
-            SAMI_PERMISSIONS.NOTIFICATIONS_VIEW,
-          ),
+        notificationsEnabled: can(
+          SAMI_PERMISSIONS.NOTIFICATIONS_VIEW,
+        ),
       }}
       unreadNotifications={
         notifications?.unreadCount ||
         0
       }
-      title={app.name}
-      description={app.description}
-      contextLabel={data.company.name}
-      actions={
-        <div className="flex items-center gap-2">
-          <SamiAppIconTile
-            appKey={app.registryKey}
-            category={app.category}
-            iconKey={app.iconKey}
-            size="sm"
-          />
-
-          <Link
-            href="/apps"
-            className={[
-              'inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold shadow-[var(--sami-shadow-sm)] transition hover:-translate-y-px',
-              visual.border,
-              visual.soft,
-              visual.text,
-            ].join(' ')}
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span className="hidden sm:inline">
-              All Apps
-            </span>
-          </Link>
-        </div>
-      }
+      companyName={data.company.name}
     >
       <div
         className={styles.enterpriseWorkspace}
@@ -205,6 +162,6 @@ export default async function PurchaseWorkspace({
           }
         />
       </div>
-    </AppSurfaceShell>
+    </PurchaseModuleShell>
   );
 }

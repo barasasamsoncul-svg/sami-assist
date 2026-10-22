@@ -1,0 +1,282 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+
+async function source(path) {
+  return readFile(new URL('../' + path, import.meta.url), 'utf8');
+}
+
+test('Purchase receipt posting fails closed when the Inventory dependency is not ready', async () => {
+  const transitions = await source('lib/apps/enterprise/specialist-finance-transitions.ts');
+
+  assert.match(transitions, /const requiredInventoryTables = \[/);
+  assert.match(transitions, /'products'[\s\S]*?'warehouses'[\s\S]*?'stock_movements'[\s\S]*?'stock_levels'/);
+  assert.match(transitions, /Inventory must be installed and ready before this purchase receipt can be posted/);
+  assert.doesNotMatch(
+    transitions.slice(
+      transitions.indexOf('async function postPurchaseReceiptToInventory'),
+      transitions.indexOf('async function reimburseExpenseReport'),
+    ),
+    /if \(\s*!hasInventory\s*\)\s*\{\s*return;/,
+    'A receipt must never become posted when Inventory could not receive the stock.',
+  );
+});
+
+test('Purchase receipt posting validates status, order, product, warehouse, and receipt quantities', async () => {
+  const transitions = await source('lib/apps/enterprise/specialist-finance-transitions.ts');
+
+  const start = transitions.indexOf('async function postPurchaseReceiptToInventory');
+  const end = transitions.indexOf('async function reimburseExpenseReport', start);
+  const posting = transitions.slice(start, end);
+
+  assert.match(posting, /receiptStatus !== 'received' && receiptStatus !== 'inspected'/);
+  assert.match(posting, /String\(order\.status \|\| ''\)\.toLowerCase\(\) !== 'confirmed'/);
+  assert.match(posting, /purchase_order_item_id::text/);
+  assert.match(posting, /product_reference::text/);
+  assert.match(posting, /purchase_order_id = \$3/);
+  assert.match(posting, /productId !== orderProductId/);
+  assert.match(posting, /quantity_rejected/);
+  assert.match(posting, /acceptedQuantity \+ priorQuantity[\s\S]*?orderedQuantity/);
+  assert.match(posting, /product\.company_id = \$1/);
+  assert.match(posting, /warehouse\.company_id = \$1/);
+  assert.match(posting, /FOR SHARE OF product, warehouse/);
+});
+
+test('Purchase receipts post idempotently to the shared company-scoped Inventory ledger', async () => {
+  const transitions = await source('lib/apps/enterprise/specialist-finance-transitions.ts');
+
+  const start = transitions.indexOf('async function postPurchaseReceiptToInventory');
+  const end = transitions.indexOf('async function reimburseExpenseReport', start);
+  const posting = transitions.slice(start, end);
+
+  assert.match(posting, /movementReference = 'purchase_receipt:' \+ receiptId \+ ':' \+ line\.id/);
+  assert.match(posting, /movement_type,[\s\S]*?VALUES \([\s\S]*?'purchase_receipt'/);
+  assert.match(posting, /existing\.product_id/);
+  assert.match(posting, /existing\.warehouse_id/);
+  assert.match(posting, /ON CONFLICT \(product_id, warehouse_id\)[\s\S]*?WHERE stock_levels\.company_id = EXCLUDED\.company_id/);
+  assert.match(posting, /updated_by/);
+  assert.match(posting, /INSERT INTO stock_levels/);
+});
+
+test('Purchase product and warehouse links are company-safe and additive for existing workspaces', async () => {
+  const [purchaseSchema, specialistDepth] = await Promise.all([
+    source('lib/apps/purchase/schema.sql'),
+    source('lib/apps/enterprise/specialist-finance-depth.ts'),
+  ]);
+
+  assert.match(purchaseSchema, /CREATE TABLE IF NOT EXISTS public\.purchase_order_items \([\s\S]*?product_reference UUID/);
+  assert.match(specialistDepth, /ALTER TABLE public.products[\s\S]*?ADD COLUMN IF NOT EXISTS company_id UUID/);
+  assert.match(specialistDepth, /ALTER TABLE public.warehouses[\s\S]*?ADD COLUMN IF NOT EXISTS company_id UUID/);
+  assert.match(specialistDepth, /fk_purchase_products_company/);
+  assert.match(specialistDepth, /fk_purchase_warehouses_company/);
+  assert.match(specialistDepth, /ALTER TABLE public.purchase_orders[\s\S]*?ADD COLUMN IF NOT EXISTS company_id UUID/);
+  assert.match(specialistDepth, /ALTER TABLE public.purchase_order_items[\s\S]*?ADD COLUMN IF NOT EXISTS company_id UUID/);
+  assert.ok(
+    specialistDepth.indexOf('CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_orders_company_id_id') <
+      specialistDepth.indexOf('fk_purchase_receipts_company_order'),
+    'The composite purchase-order key must exist before the company-safe receipt FK is created.',
+  );
+  assert.match(specialistDepth, /uq_products_company_id_id/);
+  assert.match(specialistDepth, /uq_warehouses_company_id_id/);
+  assert.match(specialistDepth, /ALTER TABLE public\.purchase_order_items[\s\S]*?ADD COLUMN IF NOT EXISTS product_reference UUID/);
+  assert.match(specialistDepth, /ADD COLUMN IF NOT EXISTS warehouse_reference UUID/);
+  assert.match(specialistDepth, /fk_purchase_order_items_company_product/);
+  assert.match(specialistDepth, /fk_purchase_order_items_company_order/);
+  assert.ok(
+    specialistDepth.indexOf('uq_purchase_suppliers_company_id_id') <
+      specialistDepth.indexOf('fk_purchase_orders_company_supplier'),
+    'The composite supplier key must exist before the company-safe PO supplier FK.',
+  );
+  assert.match(specialistDepth, /fk_purchase_orders_company_supplier/);
+  assert.match(specialistDepth, /uq_purchase_requisitions_company_id_id/);
+  assert.match(specialistDepth, /uq_purchase_requisition_lines_company_id_id/);
+  assert.match(specialistDepth, /fk_purchase_requisition_lines_company_requisition/);
+  assert.match(specialistDepth, /fk_purchase_requisition_lines_company_product/);
+  assert.match(specialistDepth, /fk_purchase_requisition_lines_company_supplier/);
+  assert.doesNotMatch(
+    specialistDepth,
+    /department_id UUID REFERENCES public[.]departments/,
+    'Purchase must install without an undeclared Departments table or Employees dependency.',
+  );
+  assert.match(specialistDepth, /department_name VARCHAR[(]160[)]/);
+  assert.match(
+    specialistDepth,
+    /ALTER TABLE public[.]purchase_requisitions[\s\S]*?ADD COLUMN IF NOT EXISTS department_name VARCHAR[(]160[)]/,
+    'Existing Purchase installations receive the optional department-name field additively.',
+  );
+
+  assert.match(specialistDepth, /fk_purchase_receipts_company_warehouse/);
+  assert.match(specialistDepth, /fk_purchase_receipt_lines_company_po_item/);
+  assert.match(specialistDepth, /NOT VALID/);
+});
+
+test('Purchase orders cannot be manually marked received before every line is fully posted to Inventory', async () => {
+  const service = await source('lib/apps/enterprise/service.ts');
+
+  assert.match(service, /context\.moduleKey ===\s*'purchase'[\s\S]*?table ===\s*'purchase_orders'[\s\S]*?next ===\s*'received'/);
+  assert.match(service, /receiptCoverage/);
+  assert.match(service, /outstanding_line_count/);
+  assert.match(service, /receipt\.status = 'posted'/);
+  assert.match(service, /A purchase order can be marked received only after every ordered line has been fully received and posted through Inventory/);
+});
+
+test('Purchase uses a dedicated Sales-style workspace shell rather than the generic app surface shell', async () => {
+  const [shell, workspace] = await Promise.all([
+    source('app/apps/purchase/PurchaseModuleShell.tsx'),
+    source('app/apps/purchase/PurchaseWorkspace.tsx'),
+  ]);
+
+  assert.match(shell, /data-purchase-shell="standalone"/);
+  assert.match(shell, /aria-label="Purchase navigation"/);
+  assert.match(shell, /WorkspaceAppSwitcher/);
+  assert.match(shell, /WorkspaceTenantSwitcher/);
+  assert.match(shell, /WorkspaceNotificationCenter/);
+  assert.doesNotMatch(shell, /<AppSurfaceShell/);
+  assert.match(workspace, /PurchaseModuleShell/);
+  assert.match(workspace, /PurchaseWorkspaceClient/);
+  assert.doesNotMatch(workspace, /AppSurfaceShell/);
+});
+
+
+test('Purchase supplier master syncs idempotently into Accounting AP vendors when Accounting is installed', async () => {
+  const [sync, hooks, accountingSchema, purchaseSchema] = await Promise.all([
+    source('lib/apps/purchase/accounting-supplier-sync.ts'),
+    source('lib/apps/enterprise/domain-hooks.ts'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+    source('lib/apps/enterprise/specialist-finance-depth.ts'),
+  ]);
+
+  assert.match(sync, /to_regclass\('public\.accounting_vendors'\)/);
+  assert.match(sync, /purchase_supplier_id/);
+  assert.match(sync, /uq_accounting_vendors_company_purchase_supplier/);
+  assert.match(sync, /ON CONFLICT \(company_id, purchase_supplier_id\)/);
+  assert.match(sync, /WHERE purchase_supplier_id IS NOT NULL AND deleted_at IS NULL/);
+  assert.match(sync, /input\.operation === 'delete'/);
+  assert.match(sync, /status='inactive'/);
+  assert.match(sync, /input\.companyId/);
+  assert.match(sync, /SELECT id::text[\s\S]*?FROM public\.suppliers[\s\S]*?company_id = \$2/);
+  assert.match(sync, /FOR SHARE/);
+  assert.match(sync, /Purchase supplier is not part of the active company/);
+
+  assert.match(hooks, /syncPurchaseSupplierToAccounting/);
+  assert.match(hooks, /moduleKey === 'purchase'[\s\S]*?table === 'suppliers'/);
+  assert.match(accountingSchema, /ADD COLUMN IF NOT EXISTS purchase_supplier_id UUID/);
+  assert.match(accountingSchema, /uq_accounting_vendors_company_purchase_supplier/);
+  assert.match(accountingSchema, /fk_accounting_vendors_company_purchase_supplier/);
+  assert.match(accountingSchema, /to_regclass\('public\.suppliers'\)/);
+  assert.match(accountingSchema, /EXECUTE \$sami_purchase_vendor_backfill\$[\s\S]*?FROM public\.suppliers supplier[\s\S]*?ON CONFLICT DO NOTHING/);
+  assert.match(purchaseSchema, /fk_accounting_vendors_company_purchase_supplier/);
+  assert.match(purchaseSchema, /uq_purchase_suppliers_company_id_id/);
+  assert.match(purchaseSchema, /to_regclass\('public\.accounting_vendors'\)/);
+  assert.match(purchaseSchema, /EXECUTE \$sami_purchase_vendor_backfill\$[\s\S]*?FROM public\.suppliers supplier[\s\S]*?ON CONFLICT DO NOTHING/);
+});
+
+
+test('Purchase receipt lines are immutable once their parent receipt is posted', async () => {
+  const hooks = await source('lib/apps/enterprise/domain-hooks.ts');
+
+  assert.match(hooks, /moduleKey ===\s*'purchase'[\s\S]*?table ===\s*'purchase_receipt_lines'[\s\S]*?FOR SHARE/);
+  assert.match(hooks, /purchase receipt line must belong to a valid receipt in the current company/);
+  assert.match(hooks, /status \|\| ''\)\.trim\(\)\.toLowerCase\(\) === 'posted'/);
+  assert.match(hooks, /Lines on a posted purchase receipt are immutable/);
+});
+
+
+test('Enterprise relation resolver pairs composite FK columns by ordinal position', async () => {
+  const relations = await source('lib/apps/enterprise/relations.ts');
+
+  assert.match(relations, /JOIN LATERAL unnest\(constraint_row\.conkey\)[\s\S]*?WITH ORDINALITY AS source_key/);
+  assert.match(relations, /JOIN LATERAL unnest\(constraint_row\.confkey\)[\s\S]*?WITH ORDINALITY AS target_key/);
+  assert.match(relations, /target_key\.key_position = source_key\.key_position/);
+  assert.match(relations, /foreignKey\.column_name === 'company_id'/);
+  assert.match(relations, /SAFE_RELATION_TABLES\.has\(\s*foreignKey\.foreign_table/);
+});
+
+test('Purchase requisitions require supplier-complete lines before submission and record approval metadata', async () => {
+  const transitions = await source('lib/apps/enterprise/specialist-finance-transitions.ts');
+
+  assert.ok(transitions.includes('validatePurchaseRequisitionForSubmission'));
+  assert.ok(transitions.includes('Add at least one line before submitting a purchase requisition.'));
+  assert.ok(transitions.includes('Assign a preferred supplier to every requisition line before submitting.'));
+  assert.ok(transitions.includes('FROM suppliers'));
+  assert.ok(transitions.includes('id = ANY($2::uuid[])'));
+  assert.ok(transitions.includes("LOWER(BTRIM(COALESCE(status, ''))) = 'active'"));
+  assert.ok(transitions.includes('approved_by = $3'));
+  assert.ok(transitions.includes('approved_at = NOW()'));
+});
+
+test('Approved Purchase requisitions convert to supplier-grouped draft POs with source-line traceability and retry protection', async () => {
+  const transitions = await source('lib/apps/enterprise/specialist-finance-transitions.ts');
+  const schema = await source('lib/apps/enterprise/specialist-finance-depth.ts');
+
+  assert.ok(transitions.includes('convertPurchaseRequisitionToOrders'));
+  assert.ok(transitions.includes("String(requisition.status || '').toLowerCase() !== 'approved'"));
+  assert.ok(transitions.includes('groups.get(supplierId)'));
+  assert.ok(transitions.includes('ON CONFLICT (company_id, requisition_id, supplier_id)'));
+  assert.ok(transitions.includes('source_requisition_line_id'));
+  assert.ok(transitions.includes('ON CONFLICT (company_id, source_requisition_line_id)'));
+  assert.ok(transitions.includes('ROUND($6::numeric * $7::numeric, 2)'));
+  assert.ok(schema.includes('ADD COLUMN IF NOT EXISTS requisition_id UUID'));
+  assert.ok(schema.includes('ADD COLUMN IF NOT EXISTS source_requisition_line_id UUID'));
+  assert.ok(schema.includes('uq_purchase_orders_company_requisition_supplier'));
+  assert.ok(schema.includes('uq_purchase_order_items_company_requisition_line'));
+  assert.ok(schema.includes('fk_purchase_orders_company_requisition'));
+  assert.ok(schema.includes('fk_purchase_order_items_company_requisition_line'));
+});
+
+test('Purchase requisition lines lock once submitted and PO quantities retain four-decimal precision', async () => {
+  const hooks = await source('lib/apps/enterprise/domain-hooks.ts');
+  const purchaseSchema = await source('lib/apps/purchase/schema.sql');
+  const specialistDepth = await source('lib/apps/enterprise/specialist-finance-depth.ts');
+
+  assert.ok(hooks.includes('Requisition lines cannot change after submission.'));
+  assert.ok(purchaseSchema.includes('quantity NUMERIC(19,4)'));
+  assert.ok(purchaseSchema.includes('unit_cost NUMERIC(19,4)'));
+  assert.ok(specialistDepth.includes('ALTER COLUMN quantity TYPE NUMERIC(19,4)'));
+  assert.ok(specialistDepth.includes('ck_purchase_order_items_quantity_positive'));
+  assert.ok(specialistDepth.includes('ck_purchase_order_items_unit_cost_nonnegative'));
+});
+
+test('Every advertised Purchase extension table has an installable schema definition', async () => {
+  const [catalog, specialistDepth] = await Promise.all([
+    source('lib/apps/enterprise/specialist-catalog.ts'),
+    source('lib/apps/enterprise/specialist-finance-depth.ts'),
+  ]);
+
+  const purchaseStart = catalog.indexOf('purchase: [');
+  const purchaseEnd = catalog.indexOf('\n  expenses:', purchaseStart);
+  assert.ok(purchaseStart >= 0 && purchaseEnd > purchaseStart);
+  const purchaseCatalog = catalog.slice(purchaseStart, purchaseEnd);
+  const tableNames = Array.from(purchaseCatalog.matchAll(/'([a-z0-9_]+)'/g), match => match[1]);
+
+  assert.ok(tableNames.length >= 10, 'Purchase catalog should include core workflows and supplier pricing/RFQ lines.');
+  for (const tableName of tableNames) {
+    assert.ok(
+      specialistDepth.includes('CREATE TABLE IF NOT EXISTS public.' + tableName),
+      'Missing Purchase specialist schema for ' + tableName,
+    );
+  }
+});
+
+test('Supplier price lists and RFQ response lines have company-safe supplier, product, and parent relations', async () => {
+  const specialistDepth = await source('lib/apps/enterprise/specialist-finance-depth.ts');
+  const policy = await source('lib/apps/enterprise/workflow-policy.ts');
+
+  for (const constraint of [
+    'fk_supplier_price_lists_company_supplier',
+    'fk_supplier_price_list_items_company_list',
+    'fk_supplier_price_list_items_company_product',
+    'fk_supplier_rfqs_company_requisition',
+    'fk_supplier_rfq_lines_company_rfq',
+    'fk_supplier_rfq_lines_company_requisition_line',
+    'fk_supplier_rfq_lines_company_product',
+    'fk_supplier_rfq_responses_company_rfq',
+    'fk_supplier_rfq_responses_company_supplier',
+    'fk_supplier_rfq_response_lines_company_response',
+    'fk_supplier_rfq_response_lines_company_rfq_line',
+  ]) {
+    assert.ok(specialistDepth.includes(constraint), 'Missing company-safe relation ' + constraint);
+  }
+  assert.ok(policy.includes("'purchase:supplier_rfqs'"));
+  assert.ok(policy.includes("'purchase:supplier_rfq_responses'"));
+});

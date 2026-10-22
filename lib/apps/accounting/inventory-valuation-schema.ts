@@ -3,7 +3,9 @@ ALTER TABLE public.accounting_settings
   ADD COLUMN IF NOT EXISTS inventory_asset_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
   ADD COLUMN IF NOT EXISTS cogs_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
   ADD COLUMN IF NOT EXISTS inventory_gain_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
-  ADD COLUMN IF NOT EXISTS inventory_loss_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT;
+  ADD COLUMN IF NOT EXISTS inventory_loss_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
+  ADD COLUMN IF NOT EXISTS goods_received_not_invoiced_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
+  ADD COLUMN IF NOT EXISTS purchase_price_variance_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT;
 
 CREATE TABLE IF NOT EXISTS public.accounting_inventory_settings (
   company_id UUID PRIMARY KEY REFERENCES public.companies(id) ON DELETE CASCADE,
@@ -14,8 +16,11 @@ CREATE TABLE IF NOT EXISTS public.accounting_inventory_settings (
   cogs_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
   inventory_gain_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
   inventory_loss_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
+  goods_received_not_invoiced_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
+  purchase_price_variance_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
   sync_sales_movements BOOLEAN NOT NULL DEFAULT TRUE,
   sync_adjustments BOOLEAN NOT NULL DEFAULT TRUE,
+  sync_purchase_receipts BOOLEAN NOT NULL DEFAULT TRUE,
   status VARCHAR(20) NOT NULL DEFAULT 'active',
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_by UUID,
@@ -29,6 +34,11 @@ CREATE TABLE IF NOT EXISTS public.accounting_inventory_settings (
 CREATE INDEX IF NOT EXISTS idx_accounting_inventory_settings_active
   ON public.accounting_inventory_settings(company_id)
   WHERE deleted_at IS NULL;
+
+ALTER TABLE public.accounting_inventory_settings
+  ADD COLUMN IF NOT EXISTS goods_received_not_invoiced_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
+  ADD COLUMN IF NOT EXISTS purchase_price_variance_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
+  ADD COLUMN IF NOT EXISTS sync_purchase_receipts BOOLEAN NOT NULL DEFAULT TRUE;
 
 CREATE TABLE IF NOT EXISTS public.accounting_inventory_product_mappings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -61,7 +71,8 @@ CREATE TABLE IF NOT EXISTS public.accounting_inventory_movement_rules (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   deleted_at TIMESTAMPTZ,
-  CHECK (treatment IN ('issue_cogs','return_cogs','adjustment_gain','adjustment_loss','ignore'))
+  CONSTRAINT ck_accounting_inventory_movement_treatment
+    CHECK (treatment IN ('issue_cogs','return_cogs','receive_inventory','adjustment_gain','adjustment_loss','ignore'))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_inventory_movement_rule
   ON public.accounting_inventory_movement_rules(company_id,movement_type)
@@ -93,13 +104,56 @@ CREATE TABLE IF NOT EXISTS public.accounting_inventory_source_events (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   deleted_at TIMESTAMPTZ,
-  CHECK (source_type IN ('stock_movement','inventory_adjustment')),
-  CHECK (cost_source IN ('movement_snapshot','backfill_current_standard_cost')),
+  CONSTRAINT ck_accounting_inventory_source_type
+    CHECK (source_type IN ('stock_movement','inventory_adjustment','purchase_receipt')),
+  CONSTRAINT ck_accounting_inventory_cost_source
+    CHECK (cost_source IN ('movement_snapshot','backfill_current_standard_cost','purchase_order_cost')),
   CHECK (status IN ('pending','posted','review','ignored','reversed')),
   CHECK (source_quantity >= 0),
   CHECK (unit_cost >= 0),
   CHECK (value_amount >= 0)
 );
+-- Extend existing workspaces without replacing the accounting event register.
+DO $sami_accounting_inventory_valuation_extension$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'ck_accounting_inventory_movement_treatment'
+      AND conrelid = 'public.accounting_inventory_movement_rules'::regclass
+  ) THEN
+    ALTER TABLE public.accounting_inventory_movement_rules
+      DROP CONSTRAINT IF EXISTS accounting_inventory_movement_rules_treatment_check;
+    ALTER TABLE public.accounting_inventory_movement_rules
+      ADD CONSTRAINT ck_accounting_inventory_movement_treatment
+      CHECK (treatment IN ('issue_cogs','return_cogs','receive_inventory','adjustment_gain','adjustment_loss','ignore')) NOT VALID;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'ck_accounting_inventory_source_type'
+      AND conrelid = 'public.accounting_inventory_source_events'::regclass
+  ) THEN
+    ALTER TABLE public.accounting_inventory_source_events
+      DROP CONSTRAINT IF EXISTS accounting_inventory_source_events_source_type_check;
+    ALTER TABLE public.accounting_inventory_source_events
+      ADD CONSTRAINT ck_accounting_inventory_source_type
+      CHECK (source_type IN ('stock_movement','inventory_adjustment','purchase_receipt')) NOT VALID;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'ck_accounting_inventory_cost_source'
+      AND conrelid = 'public.accounting_inventory_source_events'::regclass
+  ) THEN
+    ALTER TABLE public.accounting_inventory_source_events
+      DROP CONSTRAINT IF EXISTS accounting_inventory_source_events_cost_source_check;
+    ALTER TABLE public.accounting_inventory_source_events
+      ADD CONSTRAINT ck_accounting_inventory_cost_source
+      CHECK (cost_source IN ('movement_snapshot','backfill_current_standard_cost','purchase_order_cost')) NOT VALID;
+  END IF;
+END
+$sami_accounting_inventory_valuation_extension$;
+
 CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_inventory_source_event
   ON public.accounting_inventory_source_events(company_id,source_event_key)
   WHERE deleted_at IS NULL;

@@ -439,6 +439,73 @@ CREATE TABLE IF NOT EXISTS public.accounting_vendors (
     CHECK (status IN ('active','inactive','blocked'))
   );
 
+  -- Preserve the shared Purchase supplier link on both fresh and upgraded Accounting schemas.
+  ALTER TABLE public.accounting_vendors
+    ADD COLUMN IF NOT EXISTS purchase_supplier_id UUID;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_vendors_company_purchase_supplier
+    ON public.accounting_vendors(company_id, purchase_supplier_id)
+    WHERE purchase_supplier_id IS NOT NULL AND deleted_at IS NULL;
+
+  -- Purchase is optional for Accounting. When present, enforce an explicit
+  -- same-company supplier link; Purchase also installs this FK when it is
+  -- added later to an Accounting-first workspace.
+  DO $sami_accounting_purchase_supplier_link$
+  BEGIN
+    IF to_regclass('public.suppliers') IS NOT NULL THEN
+      EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_suppliers_company_id_id ON public.suppliers(company_id, id)';
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'fk_accounting_vendors_company_purchase_supplier'
+          AND conrelid = 'public.accounting_vendors'::regclass
+      ) THEN
+        ALTER TABLE public.accounting_vendors
+          ADD CONSTRAINT fk_accounting_vendors_company_purchase_supplier
+          FOREIGN KEY (company_id, purchase_supplier_id)
+          REFERENCES public.suppliers(company_id, id)
+          ON DELETE RESTRICT NOT VALID;
+      END IF;
+
+      -- Reconcile suppliers that predate Accounting's installation. Subsequent
+      -- create/update/delete operations are maintained by the Purchase domain hook.
+      EXECUTE $sami_purchase_vendor_backfill$
+        INSERT INTO public.accounting_vendors (
+          company_id, vendor_code, name, email, phone, tax_number,
+          purchase_supplier_id, status, created_at, updated_at
+        )
+        SELECT
+          supplier.company_id,
+          'PUR-' || UPPER(supplier.id::text),
+          supplier.name,
+          supplier.email,
+          supplier.phone,
+          supplier.tax_number,
+          supplier.id,
+          CASE
+            WHEN LOWER(COALESCE(supplier.status, 'active')) = 'blocked' THEN 'blocked'
+            WHEN LOWER(COALESCE(supplier.status, 'active')) IN ('inactive', 'archived') THEN 'inactive'
+            ELSE 'active'
+          END,
+          NOW(),
+          NOW()
+        FROM public.suppliers supplier
+        WHERE supplier.company_id IS NOT NULL
+          AND supplier.deleted_at IS NULL
+          AND NULLIF(BTRIM(supplier.name), '') IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1
+            FROM public.accounting_vendors vendor
+            WHERE vendor.company_id = supplier.company_id
+              AND vendor.purchase_supplier_id = supplier.id
+              AND vendor.deleted_at IS NULL
+          )
+        ON CONFLICT DO NOTHING
+      $sami_purchase_vendor_backfill$;
+    END IF;
+  END
+  $sami_accounting_purchase_supplier_link$;
+
   CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_vendors_company_code
     ON public.accounting_vendors(company_id, vendor_code)
     WHERE deleted_at IS NULL;

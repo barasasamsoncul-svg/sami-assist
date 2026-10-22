@@ -116,6 +116,18 @@ export default function AccountingInventoryValuation({
             .inventory_loss_account_id ||
           '',
         ),
+      goodsReceivedNotInvoicedAccountId:
+        String(
+          data.settings
+            .goods_received_not_invoiced_account_id ||
+          '',
+        ),
+      purchasePriceVarianceAccountId:
+        String(
+          data.settings
+            .purchase_price_variance_account_id ||
+          '',
+        ),
       syncSalesMovements:
         data.settings
           .sync_sales_movements !==
@@ -123,6 +135,10 @@ export default function AccountingInventoryValuation({
       syncAdjustments:
         data.settings
           .sync_adjustments !==
+        false,
+      syncPurchaseReceipts:
+        data.settings
+          .sync_purchase_receipts !==
         false,
     });
 
@@ -181,6 +197,13 @@ export default function AccountingInventoryValuation({
             'income_',
           ),
       );
+
+  const liabilityAccounts =
+    data.ledgerAccounts.filter(
+      account =>
+        String(account.account_type) === 'liability' ||
+        String(account.account_type).startsWith('liability_'),
+    );
 
   const pending =
     useMemo(
@@ -1004,6 +1027,48 @@ export default function AccountingInventoryValuation({
             </label>
 
             <label>
+              Goods Received Not Invoiced (GRNI)
+              <select
+                required
+                value={settings.goodsReceivedNotInvoicedAccountId}
+                onChange={event =>
+                  setSettings({
+                    ...settings,
+                    goodsReceivedNotInvoicedAccountId: event.target.value,
+                  })
+                }
+              >
+                <option value="">Choose liability account</option>
+                {liabilityAccounts.map(account => (
+                  <option key={account.id} value={account.id}>
+                    {account.code} · {account.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Purchase Price Variance (PPV)
+              <select
+                required
+                value={settings.purchasePriceVarianceAccountId}
+                onChange={event =>
+                  setSettings({
+                    ...settings,
+                    purchasePriceVarianceAccountId: event.target.value,
+                  })
+                }
+              >
+                <option value="">Choose expense account (COGS may be reused)</option>
+                {expenseAccounts.map(account => (
+                  <option key={account.id} value={account.id}>
+                    {account.code} · {account.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
               <input
                 type="checkbox"
                 checked={
@@ -1022,6 +1087,20 @@ export default function AccountingInventoryValuation({
               Value Sales deliveries and returns
             </label>
 
+
+            <label>
+              <input
+                type="checkbox"
+                checked={settings.syncPurchaseReceipts}
+                onChange={event =>
+                  setSettings({
+                    ...settings,
+                    syncPurchaseReceipts: event.target.checked,
+                  })
+                }
+              />
+              Value posted Purchase receipts at purchase-order cost
+            </label>
             <label>
               <input
                 type="checkbox"
@@ -1591,6 +1670,11 @@ export default function AccountingInventoryValuation({
                   value="return_cogs"
                 >
                   Return from COGS
+                </option>
+                <option
+                  value="receive_inventory"
+                >
+                  Receive purchased goods (Inventory Asset / GRNI)
                 </option>
                 <option
                   value="adjustment_gain"

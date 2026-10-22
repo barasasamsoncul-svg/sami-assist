@@ -2636,35 +2636,49 @@ export async function getEnterpriseModuleWorkspace(
     },
     tables:
       tables.map(
-        table => ({
-          ...table,
-          supportsCreate:
-            capabilities.canCreate &&
-            !(
-              table.settingTable &&
-              table.count >
-                0
-            ) &&
-            table.fields.some(
-              field =>
-                field.writable,
-            ),
-          supportsEdit:
-            capabilities.canEdit &&
-            Boolean(
-              table.recordKey,
-            ),
-          supportsDelete:
-            capabilities.canDelete &&
-            Boolean(
-              table.recordKey,
-            ) &&
-            table.fields.some(
-              field =>
-                field.key ===
-                'deleted_at',
-            ),
-        }),
+        table => {
+          const ledgerManaged =
+            context.moduleKey === 'inventory' &&
+            [
+              'stock_levels',
+              'stock_movements',
+              'stock_reservations',
+              'inventory_adjustments',
+            ].includes(table.key);
+
+          return {
+            ...table,
+            supportsCreate:
+              !ledgerManaged &&
+              capabilities.canCreate &&
+              !(
+                table.settingTable &&
+                table.count >
+                  0
+              ) &&
+              table.fields.some(
+                field =>
+                  field.writable,
+              ),
+            supportsEdit:
+              !ledgerManaged &&
+              capabilities.canEdit &&
+              Boolean(
+                table.recordKey,
+              ),
+            supportsDelete:
+              !ledgerManaged &&
+              capabilities.canDelete &&
+              Boolean(
+                table.recordKey,
+              ) &&
+              table.fields.some(
+                field =>
+                  field.key ===
+                  'deleted_at',
+              ),
+          };
+        },
       ),
   };
 }
@@ -4046,6 +4060,57 @@ async function validateEnterpriseTransition(
         context.companyId,
       ],
     );
+  }
+
+  if (
+    context.moduleKey ===
+      'purchase' &&
+    table ===
+      'purchase_orders' &&
+    next ===
+      'received'
+  ) {
+    const receiptCoverage = await client.query(
+      `
+        SELECT
+          COUNT(*)::int AS order_line_count,
+          COUNT(*) FILTER (
+            WHERE COALESCE(received.accepted_quantity, 0) + 0.0000001
+              < item.quantity
+          )::int AS outstanding_line_count
+        FROM purchase_order_items item
+        LEFT JOIN LATERAL (
+          SELECT COALESCE(
+            SUM(receipt_line.quantity_received - receipt_line.quantity_rejected),
+            0
+          ) AS accepted_quantity
+          FROM purchase_receipt_lines receipt_line
+          INNER JOIN purchase_receipts receipt
+            ON receipt.id = receipt_line.receipt_id
+           AND receipt.company_id = receipt_line.company_id
+           AND receipt.deleted_at IS NULL
+           AND receipt.status = 'posted'
+          WHERE receipt_line.company_id = item.company_id
+            AND receipt_line.purchase_order_item_id = item.id
+            AND receipt_line.deleted_at IS NULL
+        ) received ON TRUE
+        WHERE item.company_id = $1
+          AND item.purchase_order_id = $2
+          AND item.deleted_at IS NULL
+      `,
+      [context.companyId, recordId],
+    );
+
+    const coverage = receiptCoverage.rows[0] || {};
+    if (
+      Number(coverage.order_line_count || 0) < 1 ||
+      Number(coverage.outstanding_line_count || 0) > 0
+    ) {
+      throw new EnterpriseModuleError(
+        'WORKFLOW_TRANSITION_INVALID',
+        'A purchase order can be marked received only after every ordered line has been fully received and posted through Inventory.',
+      );
+    }
   }
 
   if (

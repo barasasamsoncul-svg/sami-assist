@@ -210,7 +210,13 @@ test(
           : moduleKey ===
               'crm'
             ? /CrmModuleShell/
-            : /AppSurfaceShell/,
+            : moduleKey ===
+                'inventory'
+              ? /InventoryModuleShell/
+              : moduleKey ===
+                  'purchase'
+                ? /PurchaseModuleShell/
+                : /AppSurfaceShell/,
         moduleKey +
           ' must compose its own standalone app surface.',
       );
@@ -449,6 +455,34 @@ test(
     }
   },
 );
+
+test(
+  'Inventory owns a Sales-style module shell instead of the generic app surface',
+  async () => {
+    const [
+      workspace,
+      shell,
+    ] = await Promise.all([
+      readFile(
+        'app/apps/inventory/InventoryWorkspace.tsx',
+        'utf8',
+      ),
+      readFile(
+        'app/apps/inventory/InventoryModuleShell.tsx',
+        'utf8',
+      ),
+    ]);
+
+    assert.match(workspace, /InventoryModuleShell/);
+    assert.doesNotMatch(workspace, /AppSurfaceShell/);
+    assert.match(shell, /data-sami-app="inventory"/);
+    assert.match(shell, /data-inventory-shell="standalone"/);
+    assert.match(shell, /fixed inset-y-0 left-0/);
+    assert.match(shell, /lg:hidden/);
+    assert.match(shell, /min-w-0/);
+  },
+);
+
 
 test(
   'every standalone business app renders a module-owned sidebar',

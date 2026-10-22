@@ -37,12 +37,19 @@ import {
   SAMI_APPS,
 } from '@/lib/sami-apps';
 
+import {
+  getSamiModuleDependencyPlan,
+} from '@/lib/modules/registry';
+
 /* ============================================================
    CONSTANTS
    ============================================================ */
 
 const SELECTED_APPS_STORAGE_KEY =
   'sami_selected_apps';
+
+const ACCEPTED_DEPENDENCIES_STORAGE_KEY =
+  'sami_accepted_module_dependencies';
 
 const NEXT_ROUTE =
   '/select-plan';
@@ -354,6 +361,19 @@ type OverlayState = {
   message: string;
 };
 
+
+type RequiredDependency = {
+  key: string;
+  name: string;
+};
+
+
+type PendingDependencyAcceptance = {
+  selectedApps: string[];
+  dependencies: RequiredDependency[];
+  resolvedAppCount: number;
+};
+
 /* ============================================================
    STORAGE
    ============================================================ */
@@ -441,6 +461,33 @@ function saveSelectedApps(
   }
 }
 
+
+function getDependencySelection(
+  apps: string[],
+): {
+  resolvedAppKeys: string[];
+  dependencies: RequiredDependency[];
+} {
+  const resolved = new Map<string, RequiredDependency>();
+
+  for (const appKey of apps) {
+    for (const manifest of getSamiModuleDependencyPlan(appKey)) {
+      const key = normalizeKey(manifest.key);
+      if (!resolved.has(key)) {
+        resolved.set(key, { key, name: manifest.name });
+      }
+    }
+  }
+
+  const explicit = new Set(apps.map(normalizeKey));
+  return {
+    resolvedAppKeys: [...resolved.keys()],
+    dependencies: [...resolved.values()].filter(
+      dependency => !explicit.has(dependency.key),
+    ),
+  };
+}
+
 /* ============================================================
    PAGE
    ============================================================ */
@@ -480,6 +527,11 @@ export default function SelectAppsPage() {
     useState<OverlayState | null>(
       null
     );
+
+  const [
+    pendingDependencyAcceptance,
+    setPendingDependencyAcceptance,
+  ] = useState<PendingDependencyAcceptance | null>(null);
 
   /* ==========================================================
      RESTORE APP SELECTION
@@ -683,6 +735,13 @@ export default function SelectAppsPage() {
   const persistSelection =
     useCallback(
       (apps: string[]) => {
+        setPendingDependencyAcceptance(null);
+        try {
+          sessionStorage.removeItem(ACCEPTED_DEPENDENCIES_STORAGE_KEY);
+        } catch {
+          // The server still validates any submitted acceptance.
+        }
+
         const sanitized =
           sanitizeSelectedApps(
             apps
@@ -726,6 +785,13 @@ export default function SelectAppsPage() {
           )
         ) {
           return;
+        }
+
+        setPendingDependencyAcceptance(null);
+        try {
+          sessionStorage.removeItem(ACCEPTED_DEPENDENCIES_STORAGE_KEY);
+        } catch {
+          // The server still validates any submitted acceptance.
         }
 
         setSelectedApps(
@@ -791,6 +857,41 @@ export default function SelectAppsPage() {
     router.back();
   }
 
+
+  function acceptDependencyAcceptance() {
+    const pending = pendingDependencyAcceptance;
+    if (!pending) return;
+
+    if (!saveSelectedApps(pending.selectedApps)) {
+      setPendingDependencyAcceptance(null);
+      setOverlay({
+        type: 'error',
+        title: 'Selection could not be saved',
+        message: 'SaMi could not save your app selection. Check browser storage settings and try again.',
+      });
+      return;
+    }
+
+    try {
+      sessionStorage.setItem(
+        ACCEPTED_DEPENDENCIES_STORAGE_KEY,
+        JSON.stringify(pending.dependencies.map(dependency => dependency.key)),
+      );
+    } catch {
+      setPendingDependencyAcceptance(null);
+      setOverlay({
+        type: 'error',
+        title: 'Acceptance could not be saved',
+        message: 'SaMi could not save your dependency acceptance. Check browser storage settings and try again.',
+      });
+      return;
+    }
+
+    setPendingDependencyAcceptance(null);
+    setNavigating(true);
+    router.push(NEXT_ROUTE);
+  }
+
   function handleNext() {
     if (
       navigating ||
@@ -812,6 +913,33 @@ export default function SelectAppsPage() {
       });
 
       return;
+    }
+
+    let dependencySelection: ReturnType<typeof getDependencySelection>;
+    try {
+      dependencySelection = getDependencySelection(selectedApps);
+    } catch (error) {
+      setOverlay({
+        type: 'error',
+        title: 'App dependencies could not be resolved',
+        message: error instanceof Error ? error.message : 'SaMi could not resolve this app selection. Choose another app or try again.',
+      });
+      return;
+    }
+
+    if (dependencySelection.dependencies.length > 0) {
+      setPendingDependencyAcceptance({
+        selectedApps: [...selectedApps],
+        dependencies: dependencySelection.dependencies,
+        resolvedAppCount: dependencySelection.resolvedAppKeys.length,
+      });
+      return;
+    }
+
+    try {
+      sessionStorage.removeItem(ACCEPTED_DEPENDENCIES_STORAGE_KEY);
+    } catch {
+      // No dependency consent is needed for this selection.
     }
 
     const saved =
@@ -860,22 +988,42 @@ export default function SelectAppsPage() {
 
   return (
     <>
-      {overlay && (
+      {(pendingDependencyAcceptance || overlay) && (
         <SaMiOverlay
           open
-          type={overlay.type}
-          title={overlay.title}
+          type={pendingDependencyAcceptance ? 'warning' : overlay?.type || 'info'}
+          title={pendingDependencyAcceptance ? 'This app requires other apps' : overlay?.title || 'SaMi'}
           message={
-            overlay.message
+            pendingDependencyAcceptance
+              ? `To install your selection, SaMi must also install: ${pendingDependencyAcceptance.dependencies.map(dependency => dependency.name).join(', ')}. These required apps will be installed before the app you selected. ${pendingDependencyAcceptance.resolvedAppCount > 1 ? 'The complete selection requires the Standard plan; SaMi will set Standard as the starting plan. ' : ''}Accept to continue, or cancel to return to your selection.`
+              : overlay?.message || ''
           }
-          primaryAction={{
-            label: 'Continue',
-            onClick: () =>
-              setOverlay(null),
+          primaryAction={
+            pendingDependencyAcceptance
+              ? {
+                  label: 'Accept & continue',
+                  onClick: acceptDependencyAcceptance,
+                }
+              : {
+                  label: 'Continue',
+                  onClick: () => setOverlay(null),
+                }
+          }
+          secondaryAction={
+            pendingDependencyAcceptance
+              ? {
+                  label: 'Cancel',
+                  onClick: () => setPendingDependencyAcceptance(null),
+                }
+              : undefined
+          }
+          onClose={() => {
+            if (pendingDependencyAcceptance) {
+              setPendingDependencyAcceptance(null);
+            } else {
+              setOverlay(null);
+            }
           }}
-          onClose={() =>
-            setOverlay(null)
-          }
         />
       )}
 

@@ -73,16 +73,57 @@ type PendingLifecycleAction = {
 };
 
 
+type RequiredDependency = {
+  key:
+    string;
+  name?:
+    string;
+  status?:
+    string;
+};
+
+
+type PendingDependencyConfirmation = {
+  appKey:
+    string;
+  appName:
+    string;
+  method:
+    'POST' |
+    'PATCH';
+  body?:
+    Record<string, unknown>;
+  dependencies:
+    RequiredDependency[];
+};
+
+
 type LifecycleResponse = {
   success?: boolean;
   code?: string;
+  billingHref?: string;
+  currentPlan?: string;
+  scheduledPlan?: string;
+  maxInstalledBusinessApps?: number;
+  prospectiveBusinessApps?: number;
   error?: string;
   message?: string;
+  appKey?: string;
+  appName?: string;
+  action?: string;
+  dependencies?: RequiredDependency[];
   blockers?: Array<{
     key?: string;
     name?: string;
   }>;
 };
+
+
+const dependencyAcceptanceStorageKey = (
+  workspaceId: string,
+  appKey: string,
+) =>
+  `sami_workspace_app_dependency_acceptance:${workspaceId}:${appKey}`;
 
 
 const ACTIVE_STATUSES =
@@ -150,8 +191,10 @@ async function readLifecycleResponse(
 
 
 export default function AppsSettings({
+  workspaceId,
   workspaceModules,
 }: {
+  workspaceId: string;
   workspaceModules:
     WorkspaceModule[];
 }) {
@@ -194,8 +237,19 @@ export default function AppsSettings({
       null,
     );
 
+  const [
+    pendingDependencyConfirmation,
+    setPendingDependencyConfirmation,
+  ] =
+    useState<
+      PendingDependencyConfirmation | null
+    >(
+      null,
+    );
+
   const {
     overlay,
+    setOverlay,
     closeOverlay,
     showSuccess,
     showError,
@@ -349,6 +403,49 @@ export default function AppsSettings({
       appKey,
     );
 
+    let requestBody: Record<string, unknown> | undefined =
+      body ? { ...body } : undefined;
+
+    if (
+      method === 'POST' ||
+      method === 'PATCH'
+    ) {
+      const currentAcceptedKeys =
+        requestBody?.acceptedDependencyKeys;
+
+      if (
+        currentAcceptedKeys == null ||
+        (Array.isArray(currentAcceptedKeys) && currentAcceptedKeys.length === 0)
+      ) {
+        try {
+          const storedAcceptance =
+            sessionStorage.getItem(
+              dependencyAcceptanceStorageKey(workspaceId, appKey),
+            );
+          const parsedAcceptance: unknown =
+            storedAcceptance
+              ? JSON.parse(storedAcceptance)
+              : null;
+
+          if (
+            Array.isArray(parsedAcceptance) &&
+            parsedAcceptance.every(key => typeof key === 'string')
+          ) {
+            requestBody = {
+              ...(requestBody || {}),
+              acceptedDependencyKeys: parsedAcceptance,
+            };
+          } else if (storedAcceptance) {
+            sessionStorage.removeItem(
+              dependencyAcceptanceStorageKey(workspaceId, appKey),
+            );
+          }
+        } catch {
+          // The API remains the authority for consent even when storage is unavailable.
+        }
+      }
+    }
+
     try {
       const response =
         await fetch(
@@ -361,7 +458,7 @@ export default function AppsSettings({
               Accept:
                 'application/json',
               ...(
-                body
+                requestBody
                   ? {
                       'Content-Type':
                         'application/json',
@@ -374,9 +471,9 @@ export default function AppsSettings({
             cache:
               'no-store',
             body:
-              body
+              requestBody
                 ? JSON.stringify(
-                    body,
+                    requestBody,
                   )
                 : undefined,
           },
@@ -386,6 +483,91 @@ export default function AppsSettings({
         await readLifecycleResponse(
           response,
         );
+
+      if (
+        !response.ok &&
+        data.code ===
+          'APP_DEPENDENCY_CONFIRMATION_REQUIRED' &&
+        Array.isArray(
+          data.dependencies,
+        ) &&
+        data.dependencies.length >
+          0 &&
+        (
+          method === 'POST' ||
+          method === 'PATCH'
+        )
+      ) {
+        setPendingDependencyConfirmation({
+          appKey,
+          appName:
+            data.appName ||
+            workspaceByKey.get(
+              appKey,
+            )?.name ||
+            appKey,
+          method,
+          body:
+            requestBody
+              ? {
+                  ...requestBody,
+                }
+              : undefined,
+          dependencies:
+            data.dependencies,
+        });
+
+        return;
+      }
+
+      if (
+        !response.ok &&
+        data.code === 'APP_PLAN_UPGRADE_REQUIRED'
+      ) {
+        const acceptedKeys =
+          requestBody?.acceptedDependencyKeys;
+
+        if (
+          Array.isArray(acceptedKeys) &&
+          acceptedKeys.length > 0 &&
+          acceptedKeys.every((key): key is string => typeof key === 'string')
+        ) {
+          try {
+            sessionStorage.setItem(
+              dependencyAcceptanceStorageKey(workspaceId, appKey),
+              JSON.stringify([...new Set(acceptedKeys)]),
+            );
+          } catch {
+            // If storage is blocked, the user can accept the dependency list again after upgrading.
+          }
+        }
+
+        const appName =
+          workspaceByKey.get(appKey)?.name ||
+          appKey;
+
+        setOverlay({
+          open: true,
+          type: 'warning',
+          title: 'Standard plan required',
+          message:
+            `${data.error || 'This app and its required dependencies exceed the current plan allowance.'} Review your subscription plan, upgrade to Standard or Custom, then retry installing ${appName}. Your dependency acceptance does not change billing by itself.`,
+          primaryAction: {
+            label: 'Review billing and plans',
+            href: data.billingHref || '/settings?tab=billing',
+          },
+          secondaryAction: {
+            label: 'Close',
+            onClick: () =>
+              setOverlay(current => ({
+                ...current,
+                open: false,
+              })),
+          },
+        });
+
+        return;
+      }
 
       if (
         !response.ok ||
@@ -417,6 +599,19 @@ export default function AppsSettings({
         );
       }
 
+      if (
+        method === 'POST' ||
+        method === 'PATCH'
+      ) {
+        try {
+          sessionStorage.removeItem(
+            dependencyAcceptanceStorageKey(workspaceId, appKey),
+          );
+        } catch {
+          // Clearing saved consent is best-effort; installation still succeeded.
+        }
+      }
+
       router.refresh();
 
       showSuccess(
@@ -440,6 +635,38 @@ export default function AppsSettings({
       );
     }
   }
+
+  function confirmPendingDependencyAction() {
+    const pending =
+      pendingDependencyConfirmation;
+
+    if (
+      !pending
+    ) {
+      return;
+    }
+
+    setPendingDependencyConfirmation(
+      null,
+    );
+
+    void runAction(
+      pending.appKey,
+      pending.method,
+      {
+        ...(
+          pending.body ||
+          {}
+        ),
+        acceptedDependencyKeys:
+          pending.dependencies.map(
+            dependency =>
+              dependency.key,
+          ),
+      },
+    );
+  }
+
 
   function confirmPendingAction() {
     const action =
@@ -823,61 +1050,93 @@ export default function AppsSettings({
       <SaMiOverlay
         open={
           Boolean(
+            pendingDependencyConfirmation,
+          ) ||
+          Boolean(
             pendingAction,
           ) ||
           overlay.open
         }
         type={
+          pendingDependencyConfirmation ||
           pendingAction
             ? 'warning'
             : overlay.type
         }
         title={
-          pendingAction
-            ? `${pendingAction.kind === 'disable' ? 'Disable' : 'Uninstall'} ${pendingAction.appName}?`
-            : overlay.title
+          pendingDependencyConfirmation
+            ? `${pendingDependencyConfirmation.method === 'PATCH' ? 'Enable' : 'Install'} required apps for ${pendingDependencyConfirmation.appName}?`
+            : pendingAction
+              ? `${pendingAction.kind === 'disable' ? 'Disable' : 'Uninstall'} ${pendingAction.appName}?`
+              : overlay.title
         }
         message={
-          pendingAction
-            ? pendingAction.kind ===
-                'disable'
-              ? 'The app will disappear from active workspace use, but its data will be retained. SaMi will block this if another installed app depends on it.'
-              : 'The app will be removed from active workspace use. Its existing business data will be retained for a future reinstall. SaMi will block this if another installed app depends on it.'
-            : overlay.message
+          pendingDependencyConfirmation
+            ? `SaMi cannot ${pendingDependencyConfirmation.method === 'PATCH' ? 'enable' : 'install'} ${pendingDependencyConfirmation.appName} by itself. It also requires these dependencies to be active: ${pendingDependencyConfirmation.dependencies.map(dependency => dependency.name || dependency.key).join(', ')}. Accept to approve these dependencies. SaMi will install or re-enable them in dependency order once the plan allows it. If this app set exceeds Free's allowance, upgrade to Standard or Custom first; accepting dependencies alone does not change billing. Cancel leaves this request unapplied.`
+            : pendingAction
+              ? pendingAction.kind ===
+                  'disable'
+                ? 'The app will disappear from active workspace use, but its data will be retained. SaMi will block this if another installed app depends on it.'
+                : 'The app will be removed from active workspace use. Its existing business data will be retained for a future reinstall. SaMi will block this if another installed app depends on it.'
+              : overlay.message
         }
         primaryAction={
-          pendingAction
+          pendingDependencyConfirmation
             ? {
                 label:
-                  pendingAction.kind ===
-                    'disable'
-                    ? 'Disable app'
-                    : 'Uninstall app',
+                  pendingDependencyConfirmation.method === 'PATCH'
+                    ? 'Accept & enable'
+                    : 'Accept & install',
                 onClick:
-                  confirmPendingAction,
+                  confirmPendingDependencyAction,
               }
-            : overlay.primaryAction
+            : pendingAction
+              ? {
+                  label:
+                    pendingAction.kind ===
+                      'disable'
+                      ? 'Disable app'
+                      : 'Uninstall app',
+                  onClick:
+                    confirmPendingAction,
+                }
+              : overlay.primaryAction
         }
         secondaryAction={
-          pendingAction
+          pendingDependencyConfirmation
             ? {
                 label:
                   'Cancel',
                 onClick:
                   () =>
-                    setPendingAction(
+                    setPendingDependencyConfirmation(
                       null,
                     ),
               }
-            : overlay.secondaryAction
+            : pendingAction
+              ? {
+                  label:
+                    'Cancel',
+                  onClick:
+                    () =>
+                      setPendingAction(
+                        null,
+                      ),
+                }
+              : overlay.secondaryAction
         }
         onClose={
-          pendingAction
+          pendingDependencyConfirmation
             ? () =>
-                setPendingAction(
+                setPendingDependencyConfirmation(
                   null,
                 )
-            : closeOverlay
+            : pendingAction
+              ? () =>
+                  setPendingAction(
+                    null,
+                  )
+              : closeOverlay
         }
       />
     </>

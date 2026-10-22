@@ -5,6 +5,10 @@ import type {
 } from 'pg';
 
 import {
+  syncPurchaseSupplierToAccounting,
+} from '@/lib/apps/purchase/accounting-supplier-sync';
+
+import {
   assertFinanceSpecialistMutationAllowed,
   validateFinanceSpecialistRow,
 } from '@/lib/apps/enterprise/specialist-finance-rules';
@@ -445,10 +449,37 @@ export function assertEnterpriseDomainMutationAllowed(
   if (
     moduleKey ===
       'inventory' &&
-    table ===
-      'stock_movements' &&
-    operation !==
-      'create'
+    (
+      table === 'stock_levels' ||
+      table === 'stock_reservations'
+    )
+  ) {
+    throw new Error(
+      table === 'stock_levels'
+        ? 'Stock balances are derived from the stock movement ledger and cannot be edited directly.'
+        : 'Stock reservations are controlled by the Sales and Inventory reservation workflows.',
+    );
+  }
+
+  if (
+    moduleKey === 'inventory' &&
+    [
+      'inventory_transfer_orders',
+      'inventory_transfer_order_lines',
+      'inventory_cycle_counts',
+      'inventory_adjustments',
+    ].includes(table)
+  ) {
+    throw new Error(
+      'Transfer, cycle-count and adjustment records can only be changed through validated Inventory workflows.',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'inventory' &&
+    table === 'stock_movements' &&
+    operation !== 'create'
   ) {
     throw new Error(
       'Posted stock movements are immutable. Create a reversing stock movement instead.',
@@ -552,17 +583,9 @@ export function normalizeEnterpriseDomainValues(
 
     const accepted =
       new Set([
-        'in',
-        'inbound',
-        'receipt',
-        'return_in',
-        'adjustment_in',
-        'out',
-        'outbound',
-        'issue',
-        'sale',
-        'return_out',
-        'adjustment_out',
+        'in', 'inbound', 'receipt', 'purchase_receipt', 'opening_balance',
+        'return_in', 'adjustment_in', 'out', 'outbound', 'issue', 'sale',
+        'return_out', 'adjustment_out',
       ]);
 
     if (
@@ -1138,121 +1161,75 @@ async function recalculateCommissionPayout(
 
 
 async function applyStockMovement(
-  client:
-    PoolClient,
-  row:
-    Record<
-      string,
-      unknown
-    >,
-  companyId:
-    string,
+  client: PoolClient,
+  row: Record<string, unknown>,
+  companyId: string,
 ) {
-  const movementType =
-    String(
-      row.movement_type ||
-      '',
-    )
-      .trim()
-      .toLowerCase();
+  const movementType = String(row.movement_type || '').trim().toLowerCase();
+  const quantity = numberValue(row.quantity);
 
-  const quantity =
-    numberValue(
-      row.quantity,
+  const references = await client.query(
+    `SELECT product.id
+       FROM public.products product
+       INNER JOIN public.warehouses warehouse
+         ON warehouse.id = $2
+        AND warehouse.company_id = $3
+        AND warehouse.deleted_at IS NULL
+        AND warehouse.is_active = TRUE
+       WHERE product.id = $1
+         AND product.company_id = $3
+         AND product.deleted_at IS NULL
+         AND product.is_active = TRUE
+         AND product.track_inventory = TRUE
+         AND product.product_type = 'stockable'
+       FOR SHARE OF product, warehouse`,
+    [row.product_id, row.warehouse_id, companyId],
+  );
+  if (references.rows.length !== 1) {
+    throw new Error('Choose an active stock-tracked product and warehouse in the current company.');
+  }
+
+  const inbound = new Set([
+    'in', 'inbound', 'receipt', 'purchase_receipt', 'opening_balance', 'return_in', 'adjustment_in', 'transfer_in',
+  ]).has(movementType);
+
+  if (inbound) {
+    const balance = await client.query(
+      `INSERT INTO stock_levels (product_id, warehouse_id, quantity, reorder_level, company_id, updated_at)
+       VALUES ($1,$2,$3,0,$4,NOW())
+       ON CONFLICT (product_id, warehouse_id)
+       DO UPDATE SET quantity = stock_levels.quantity + EXCLUDED.quantity, updated_at = NOW()
+       WHERE stock_levels.company_id = EXCLUDED.company_id AND stock_levels.deleted_at IS NULL
+       RETURNING id`,
+      [row.product_id, row.warehouse_id, quantity, companyId],
     );
-
-  const inbound =
-    new Set([
-      'in',
-      'inbound',
-      'receipt',
-      'return_in',
-      'adjustment_in',
-    ]).has(
-      movementType,
-    );
-
-  if (
-    inbound
-  ) {
-    await client.query(
-      `
-        INSERT INTO stock_levels (
-          product_id,
-          warehouse_id,
-          quantity,
-          reorder_level,
-          company_id,
-          updated_at
-        )
-        VALUES (
-          $1,$2,$3,0,$4,NOW()
-        )
-        ON CONFLICT (
-          product_id,
-          warehouse_id
-        )
-        DO UPDATE
-        SET
-          quantity =
-            stock_levels.quantity +
-            EXCLUDED.quantity,
-          company_id =
-            EXCLUDED.company_id,
-          updated_at =
-            NOW()
-      `,
-      [
-        row.product_id,
-        row.warehouse_id,
-        quantity,
-        companyId,
-      ],
-    );
-
+    if (balance.rows.length !== 1) {
+      throw new Error('The stock balance is not available in the current company. Review the company assignment before retrying.');
+    }
     return;
   }
 
-  const changed =
-    await client.query(
-      `
-        UPDATE stock_levels
-        SET
-          quantity =
-            quantity -
-            $3,
-          updated_at =
-            NOW()
-        WHERE product_id =
-              $1
-          AND warehouse_id =
-              $2
-          AND company_id =
-              $4
-          AND deleted_at
-              IS NULL
-          AND quantity >=
-              $3
-        RETURNING id
-      `,
-      [
-        row.product_id,
-        row.warehouse_id,
-        quantity,
-        companyId,
-      ],
-    );
-
-  if (
-    changed.rows.length !==
-      1
-  ) {
-    throw new Error(
-      'Insufficient stock for this movement.',
-    );
+  const changed = await client.query(
+    `UPDATE stock_levels
+       SET quantity = quantity - $3, updated_at = NOW()
+       WHERE product_id = $1 AND warehouse_id = $2
+         AND company_id = $4 AND deleted_at IS NULL
+         AND quantity - COALESCE((
+           SELECT SUM(reservation.quantity)
+           FROM stock_reservations reservation
+           WHERE reservation.company_id = stock_levels.company_id
+             AND reservation.product_id = stock_levels.product_id
+             AND reservation.warehouse_id = stock_levels.warehouse_id
+             AND reservation.deleted_at IS NULL
+             AND reservation.status IN ('active', 'allocated')
+         ), 0) >= $3
+       RETURNING id`,
+    [row.product_id, row.warehouse_id, quantity, companyId],
+  );
+  if (changed.rows.length !== 1) {
+    throw new Error('Insufficient stock for this movement: unreserved stock is insufficient, or the balance is not available in the current company.');
   }
 }
-
 
 function assertPositive(
   value:
@@ -1440,6 +1417,16 @@ function validateDomainRow(
       row.deductions,
       'Payroll deductions',
     );
+  }
+
+  if (
+    moduleKey ===
+      'purchase' &&
+    table ===
+      'purchase_requisition_lines'
+  ) {
+    assertPositive(row.quantity, 'Requested quantity');
+    assertNonNegative(row.estimated_unit_cost, 'Estimated unit cost');
   }
 
   if (
@@ -3742,6 +3729,37 @@ async function validateDomainLifecycleMutation(
 
   if (
     moduleKey ===
+      'purchase' &&
+    table ===
+      'purchase_receipt_lines' &&
+    row.receipt_id
+  ) {
+    const parent = await client.query(
+      `
+        SELECT status
+        FROM purchase_receipts
+        WHERE id = $1
+          AND company_id = $2
+          AND deleted_at IS NULL
+        LIMIT 1
+        FOR SHARE
+      `,
+      [row.receipt_id, companyId],
+    );
+
+    if (!parent.rows[0]) {
+      throw new Error('The purchase receipt line must belong to a valid receipt in the current company.');
+    }
+
+    if (String(parent.rows[0].status || '').trim().toLowerCase() === 'posted') {
+      throw new Error(
+        'Lines on a posted purchase receipt are immutable. Use a separate inventory adjustment or return.',
+      );
+    }
+  }
+
+  if (
+    moduleKey ===
       'payments' &&
     table ===
       'payment_reconciliations' &&
@@ -3752,6 +3770,14 @@ async function validateDomainLifecycleMutation(
     throw new Error(
       'Completed reconciliation history is immutable. Create a compensating reconciliation instead.',
     );
+  }
+
+  if (
+    moduleKey === 'inventory' &&
+    table === 'inventory_adjustments' &&
+    String(row.status || '').toLowerCase() === 'posted'
+  ) {
+    throw new Error('Posted inventory adjustments must be created through the validated Inventory posting workflow.');
   }
 
   if (
@@ -4036,6 +4062,21 @@ export async function applyEnterpriseDomainSideEffects(
   );
 
   if (
+    moduleKey === 'purchase' &&
+    table === 'suppliers'
+  ) {
+    await syncPurchaseSupplierToAccounting(
+      client,
+      {
+        companyId,
+        userId,
+        operation,
+        row,
+      },
+    );
+  }
+
+  if (
     moduleKey ===
       'inventory' &&
     table ===
@@ -4048,6 +4089,35 @@ export async function applyEnterpriseDomainSideEffects(
       row,
       companyId,
     );
+  }
+
+  if (
+    moduleKey ===
+      'purchase' &&
+    table ===
+      'purchase_requisition_lines' &&
+    row.requisition_id
+  ) {
+    const parent = await client.query(
+      `
+        SELECT status
+        FROM purchase_requisitions
+        WHERE id = $1
+          AND company_id = $2
+          AND deleted_at IS NULL
+        LIMIT 1
+        FOR SHARE
+      `,
+      [row.requisition_id, companyId],
+    );
+
+    if (!parent.rows[0]) {
+      throw new Error('The requisition line must belong to a valid requisition in the current company.');
+    }
+
+    if (String(parent.rows[0].status || '').trim().toLowerCase() !== 'draft') {
+      throw new Error('Requisition lines cannot change after submission. Return the requisition to draft before editing its lines.');
+    }
   }
 
   if (

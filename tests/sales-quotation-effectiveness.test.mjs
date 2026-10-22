@@ -42,7 +42,7 @@ test('Sales quotation effectiveness keeps transaction currencies separate and re
   assert.match(service, /tu\.status = 'active'/);
   assert.match(service, /tu\.member_type = 'internal'/);
   assert.match(component, /new Set\(rows\.map\(\(row\) => row\.currency\)\)/);
-  assert.match(component, /money\([^,\n]+,\s*row\.currency\)/);
+  assert.match(component, /money\(row\.(quotedValue|convertedValue),\s*currency\)/);
   assert.match(component, /Salesperson quote effectiveness/);
   assert.match(component, /Quotation template effectiveness/);
 });

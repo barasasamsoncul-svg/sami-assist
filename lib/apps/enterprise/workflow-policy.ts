@@ -981,6 +981,19 @@ const DOMAIN_GRAPH:
       received: ['inspected','posted','cancelled'],
       inspected: ['posted','received','cancelled'],
     },
+    'purchase:supplier_price_lists': {
+      draft: ['active','archived'],
+      active: ['expired','archived'],
+      expired: ['active','archived'],
+    },
+    'purchase:supplier_rfqs': {
+      draft: ['sent','cancelled'],
+      sent: ['closed','cancelled'],
+    },
+    'purchase:supplier_rfq_responses': {
+      draft: ['submitted','withdrawn'],
+      submitted: ['accepted','rejected','withdrawn'],
+    },
     'expenses:expense_reports': {
       draft: ['submitted','cancelled'],
       submitted: ['approved','rejected','draft','cancelled'],

@@ -35,6 +35,7 @@ type Treatment =
   | 'return_cogs'
   | 'adjustment_gain'
   | 'adjustment_loss'
+  | 'receive_inventory'
   | 'ignore'
   | 'review';
 
@@ -217,6 +218,9 @@ async function inventoryRuntime(
     movements,
     adjustments,
     costPrice,
+    purchaseReceipts,
+    purchaseReceiptLines,
+    purchaseOrderItems,
   ] =
     await Promise.all([
       tableReady(
@@ -244,6 +248,9 @@ async function inventoryRuntime(
         'products',
         'cost_price',
       ),
+      tableReady(client, 'purchase_receipts'),
+      tableReady(client, 'purchase_receipt_lines'),
+      tableReady(client, 'purchase_order_items'),
     ]);
 
   return {
@@ -253,6 +260,9 @@ async function inventoryRuntime(
     movements,
     adjustments,
     costPrice,
+    purchaseReceipts,
+    purchaseReceiptLines,
+    purchaseOrderItems,
     available:
       products &&
       levels &&
@@ -405,6 +415,19 @@ function incomeAccount(
   );
 }
 
+function liabilityAccount(
+  type:
+    string,
+) {
+  return (
+    type ===
+      'liability' ||
+    type.startsWith(
+      'liability_',
+    )
+  );
+}
+
 async function settingsForUpdate(
   client:
     PoolClient,
@@ -423,8 +446,11 @@ async function settingsForUpdate(
           cogs_account_id::text,
           inventory_gain_account_id::text,
           inventory_loss_account_id::text,
+          goods_received_not_invoiced_account_id::text,
+          purchase_price_variance_account_id::text,
           sync_sales_movements,
           sync_adjustments,
+          sync_purchase_receipts,
           status
         FROM accounting_inventory_settings
         WHERE company_id =
@@ -569,6 +595,10 @@ async function backfillSourceEvents(
                 IS NULL
             AND movement.created_at::date >=
                 $2::date
+            AND NOT (
+              movement.reference LIKE 'purchase_receipt:%'
+              AND movement.movement_type IN ('receipt','purchase_receipt')
+            )
           ON CONFLICT (
             company_id,
             source_event_key
@@ -596,6 +626,181 @@ async function backfillSourceEvents(
         .rowCount ||
       0;
   }
+
+  if (
+    input.runtime.movements &&
+    input.settings.sync_purchase_receipts &&
+    input.runtime.purchaseReceipts &&
+    input.runtime.purchaseReceiptLines &&
+    input.runtime.purchaseOrderItems
+  ) {
+    const receiptResult = await client.query(
+      `
+        INSERT INTO accounting_inventory_source_events (
+          company_id,
+          source_type,
+          source_id,
+          source_event_key,
+          event_date,
+          movement_type,
+          product_id,
+          warehouse_id,
+          source_quantity,
+          quantity_effect,
+          unit_cost,
+          value_amount,
+          cost_source,
+          cost_estimated,
+          status,
+          metadata,
+          created_by,
+          updated_by
+        )
+        SELECT
+          receipt.company_id,
+          'purchase_receipt',
+          receipt_line.id,
+          'accounting:purchase-receipt-line:' || receipt_line.id::text,
+          COALESCE(receipt.received_at, receipt.updated_at, receipt.created_at)::date,
+          'purchase_receipt',
+          movement.product_id,
+          movement.warehouse_id,
+          ABS(movement.quantity)::numeric(19,4),
+          CASE
+            WHEN purchase_item.id IS NOT NULL
+             AND purchase_item.product_reference = movement.product_id
+              THEN ABS(movement.quantity)
+            ELSE 0
+          END::numeric(19,4),
+          COALESCE(product.cost_price, 0)::numeric(19,4),
+          ROUND(
+            ABS(movement.quantity) * COALESCE(product.cost_price, 0),
+            2
+          )::numeric(19,2),
+          'backfill_current_standard_cost',
+          TRUE,
+          CASE
+            WHEN purchase_item.id IS NOT NULL
+             AND purchase_item.product_reference = movement.product_id
+             AND purchase_item.unit_cost > 0
+             AND product.cost_price > 0
+              THEN 'pending'
+            ELSE 'review'
+          END,
+          jsonb_build_object(
+            'receiptId', receipt.id::text,
+            'receiptNumber', receipt.receipt_number,
+            'receiptLineId', receipt_line.id::text,
+            'purchaseOrderId', receipt.purchase_order_id::text,
+            'purchaseOrderItemId', purchase_item.id::text,
+            'stockMovementId', movement.id::text,
+            'supplierDeliveryReference', receipt.supplier_delivery_reference,
+            'purchaseOrderUnitCost', purchase_item.unit_cost,
+            'standardCostUnitCost', COALESCE(product.cost_price, 0),
+            'costProvenance', 'confirmed_purchase_order_line',
+            'valuationCostBasis', 'product_standard_cost',
+            'backfilled', TRUE
+          ),
+          $3,
+          $3
+        FROM purchase_receipts receipt
+        INNER JOIN purchase_receipt_lines receipt_line
+          ON receipt_line.receipt_id = receipt.id
+         AND receipt_line.company_id = receipt.company_id
+         AND receipt_line.deleted_at IS NULL
+        INNER JOIN stock_movements movement
+          ON movement.company_id = receipt.company_id
+         AND movement.reference =
+             'purchase_receipt:' || receipt.id::text || ':' || receipt_line.id::text
+         AND movement.movement_type IN ('purchase_receipt','receipt')
+         AND movement.deleted_at IS NULL
+         AND movement.product_id = receipt_line.product_reference
+        INNER JOIN products product
+          ON product.id = movement.product_id
+         AND product.company_id = movement.company_id
+         AND product.deleted_at IS NULL
+        LEFT JOIN purchase_order_items purchase_item
+          ON purchase_item.id = receipt_line.purchase_order_item_id
+         AND purchase_item.company_id = receipt_line.company_id
+         AND purchase_item.purchase_order_id = receipt.purchase_order_id
+         AND purchase_item.deleted_at IS NULL
+        WHERE receipt.company_id = $1
+          AND receipt.status = 'posted'
+          AND receipt.deleted_at IS NULL
+          AND COALESCE(receipt.received_at, receipt.updated_at, receipt.created_at)::date >= $2::date
+          AND receipt_line.quantity_received > receipt_line.quantity_rejected
+        ON CONFLICT (company_id, source_event_key)
+        WHERE deleted_at IS NULL
+        DO UPDATE SET
+          unit_cost = EXCLUDED.unit_cost,
+          value_amount = EXCLUDED.value_amount,
+          cost_source = EXCLUDED.cost_source,
+          cost_estimated = EXCLUDED.cost_estimated,
+          status = CASE
+            WHEN EXCLUDED.status = 'pending' THEN 'pending'
+            ELSE accounting_inventory_source_events.status
+          END,
+          metadata =
+            (COALESCE(accounting_inventory_source_events.metadata, '{}'::jsonb) - 'syncError')
+            || EXCLUDED.metadata,
+          updated_by = EXCLUDED.updated_by,
+          updated_at = NOW()
+        WHERE accounting_inventory_source_events.status IN ('pending', 'review')
+          AND accounting_inventory_source_events.posted_journal_id IS NULL
+          AND (
+            accounting_inventory_source_events.unit_cost IS DISTINCT FROM EXCLUDED.unit_cost
+            OR accounting_inventory_source_events.value_amount IS DISTINCT FROM EXCLUDED.value_amount
+            OR COALESCE(
+              accounting_inventory_source_events.metadata->>'purchaseOrderUnitCost',
+              ''
+            ) IS DISTINCT FROM COALESCE(
+              EXCLUDED.metadata->>'purchaseOrderUnitCost',
+              ''
+            )
+            OR (
+              accounting_inventory_source_events.status = 'review'
+              AND EXCLUDED.status = 'pending'
+            )
+          )
+        RETURNING id
+      `,
+      [
+        input.companyId,
+        String(input.settings.valuation_start_date).slice(0, 10),
+        input.userId,
+      ],
+    );
+
+    count += receiptResult.rowCount || 0;
+
+  }
+
+    // Earlier versions logged purchase receipt movements as generic review events.
+    // Retire those duplicates so the receipt-line valuation entry is the sole
+    // accounting representation of that accepted stock increase.
+    await client.query(
+      `
+        UPDATE accounting_inventory_source_events event
+        SET
+          status = 'ignored',
+          metadata = COALESCE(event.metadata, '{}'::jsonb) ||
+            jsonb_build_object('supersededByPurchaseReceiptEvent', TRUE),
+          updated_by = $2,
+          updated_at = NOW()
+        FROM stock_movements movement
+        WHERE event.company_id = $1
+          AND movement.company_id = event.company_id
+          AND movement.id = event.source_id
+          AND movement.reference LIKE 'purchase_receipt:%'
+          AND movement.movement_type IN ('receipt','purchase_receipt')
+          AND event.source_type = 'stock_movement'
+          AND event.status IN ('pending', 'review')
+          AND event.posted_journal_id IS NULL
+          AND event.deleted_at IS NULL
+          AND movement.deleted_at IS NULL
+      `,
+      [input.companyId, input.userId],
+    );
 
   if (
     input.runtime
@@ -729,6 +934,7 @@ async function backfillSourceEvents(
       0;
   }
 
+
   return count;
 }
 
@@ -736,6 +942,8 @@ function builtInTreatment(
   movementType:
     string,
   quantityEffect:
+    string,
+  sourceType:
     string,
 ): Treatment {
   const classified =
@@ -772,6 +980,14 @@ function builtInTreatment(
     return 'adjustment_loss';
   }
 
+  if (
+    movementType === 'purchase_receipt' &&
+    sourceType === 'purchase_receipt' &&
+    inventoryQuantityUnits(quantityEffect) > BigInt(0)
+  ) {
+    return 'receive_inventory';
+  }
+
   return 'review';
 }
 
@@ -786,6 +1002,31 @@ async function eventTreatment(
       unknown
     >,
 ) {
+  if (String(event.source_type || '') === 'purchase_receipt') {
+    const metadata =
+      event.metadata &&
+      typeof event.metadata === 'object' &&
+      !Array.isArray(event.metadata)
+        ? event.metadata as Record<string, unknown>
+        : {};
+    const actualUnitCost = Number(metadata.purchaseOrderUnitCost || 0);
+    const standardUnitCost = Number(event.unit_cost || 0);
+    const acceptedQuantity = Number(event.quantity_effect || 0);
+
+    if (
+      !Number.isFinite(actualUnitCost) ||
+      actualUnitCost <= 0 ||
+      !Number.isFinite(standardUnitCost) ||
+      standardUnitCost <= 0 ||
+      !Number.isFinite(acceptedQuantity) ||
+      acceptedQuantity <= 0 ||
+      !metadata.purchaseOrderItemId ||
+      metadata.costProvenance !== 'confirmed_purchase_order_line'
+    ) {
+      return 'review';
+    }
+  }
+
   const builtin =
     builtInTreatment(
       String(
@@ -794,6 +1035,7 @@ async function eventTreatment(
       String(
         event.quantity_effect,
       ),
+      String(event.source_type || ''),
     );
 
   if (
@@ -914,6 +1156,22 @@ async function postingAccounts(
               .inventory_loss_account_id,
           )
         : null,
+    grni:
+      settings
+        .goods_received_not_invoiced_account_id
+        ? String(
+            settings
+              .goods_received_not_invoiced_account_id,
+          )
+        : null,
+    priceVariance:
+      settings
+        .purchase_price_variance_account_id
+        ? String(
+            settings
+              .purchase_price_variance_account_id,
+          )
+        : null,
   };
 }
 
@@ -940,6 +1198,8 @@ function treatmentEffect(
   if (
     treatment ===
       'return_cogs' ||
+    treatment ===
+      'receive_inventory' ||
     treatment ===
       'adjustment_gain'
   ) {
@@ -1259,8 +1519,11 @@ export async function getAccountingInventoryValuation() {
             cogs_account_id::text,
             inventory_gain_account_id::text,
             inventory_loss_account_id::text,
+            goods_received_not_invoiced_account_id::text,
+            purchase_price_variance_account_id::text,
             sync_sales_movements,
             sync_adjustments,
+            sync_purchase_receipts,
             status
           FROM accounting_inventory_settings
           WHERE company_id =
@@ -1425,6 +1688,10 @@ export async function getAccountingInventoryValuation() {
                  'income'
               OR account_type LIKE
                  'income_%'
+              OR account_type =
+                 'liability'
+              OR account_type LIKE
+                 'liability_%'
             )
           ORDER BY
             account_type,
@@ -1454,9 +1721,15 @@ export async function getAccountingInventoryValuation() {
         null,
       inventory_loss_account_id:
         null,
+      goods_received_not_invoiced_account_id:
+        null,
+      purchase_price_variance_account_id:
+        null,
       sync_sales_movements:
         true,
       sync_adjustments:
+        true,
+      sync_purchase_receipts:
         true,
       status:
         'active',
@@ -1580,7 +1853,9 @@ export async function getAccountingInventoryValuation() {
       !settings
         .inventory_gain_account_id ||
       !settings
-        .inventory_loss_account_id
+        .inventory_loss_account_id ||
+      !settings
+        .goods_received_not_invoiced_account_id
     )
   ) {
     diagnostics.push({
@@ -1589,7 +1864,7 @@ export async function getAccountingInventoryValuation() {
       code:
         'VALUATION_ACCOUNTS_INCOMPLETE',
       message:
-        'Map Inventory Asset, Cost of Goods Sold, Inventory Gain and Inventory Loss accounts before syncing valuation.',
+        'Map Inventory Asset, Cost of Goods Sold, Inventory Gain, Inventory Loss and Goods Received Not Invoiced accounts before syncing valuation.',
     });
   }
 
@@ -1764,18 +2039,28 @@ export async function saveInventoryValuationSettings(
     accountingId(
       body.inventoryLossAccountId,
     );
+  const grni =
+    accountingId(
+      body.goodsReceivedNotInvoicedAccountId,
+    );
+  const priceVariance =
+    accountingId(
+      body.purchasePriceVarianceAccountId,
+    );
 
+  const coreAccounts = [
+    asset,
+    cogs,
+    gain,
+    loss,
+    grni,
+  ];
   if (
-    new Set([
-      asset,
-      cogs,
-      gain,
-      loss,
-    ]).size !==
-      4
+    new Set(coreAccounts).size !== 5 ||
+    [asset, gain, loss, grni].includes(priceVariance)
   ) {
     throw new AccountingInputError(
-      'Inventory Asset, COGS, Inventory Gain and Inventory Loss must use distinct ledger accounts.',
+      'Inventory Asset, COGS, Inventory Gain, Inventory Loss and Goods Received Not Invoiced must be distinct. Purchase Price Variance may share the COGS account, but no other account.',
     );
   }
 
@@ -1815,6 +2100,20 @@ export async function saveInventoryValuationSettings(
       'Inventory Loss',
       expenseAccount,
     );
+    await activeAccount(
+      client,
+      context.companyId,
+      grni,
+      'Goods Received Not Invoiced',
+      liabilityAccount,
+    );
+    await activeAccount(
+      client,
+      context.companyId,
+      priceVariance,
+      'Purchase Price Variance',
+      expenseAccount,
+    );
 
     await client.query(
       `
@@ -1827,8 +2126,11 @@ export async function saveInventoryValuationSettings(
           cogs_account_id,
           inventory_gain_account_id,
           inventory_loss_account_id,
+          goods_received_not_invoiced_account_id,
+          purchase_price_variance_account_id,
           sync_sales_movements,
           sync_adjustments,
+          sync_purchase_receipts,
           status,
           created_by,
           updated_by
@@ -1836,8 +2138,8 @@ export async function saveInventoryValuationSettings(
         VALUES (
           $1,$2,
           'standard_cost',
-          $3,$4,$5,$6,$7,$8,$9,
-          'active',$10,$10
+          $3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
+          'active',$13,$13
         )
         ON CONFLICT (
           company_id
@@ -1858,10 +2160,16 @@ export async function saveInventoryValuationSettings(
             EXCLUDED.inventory_gain_account_id,
           inventory_loss_account_id =
             EXCLUDED.inventory_loss_account_id,
+          goods_received_not_invoiced_account_id =
+            EXCLUDED.goods_received_not_invoiced_account_id,
+          purchase_price_variance_account_id =
+            EXCLUDED.purchase_price_variance_account_id,
           sync_sales_movements =
             EXCLUDED.sync_sales_movements,
           sync_adjustments =
             EXCLUDED.sync_adjustments,
+          sync_purchase_receipts =
+            EXCLUDED.sync_purchase_receipts,
           status =
             'active',
           updated_by =
@@ -1879,12 +2187,18 @@ export async function saveInventoryValuationSettings(
         cogs,
         gain,
         loss,
+        grni,
+        priceVariance,
         bool(
           body.syncSalesMovements,
           true,
         ),
         bool(
           body.syncAdjustments,
+          true,
+        ),
+        bool(
+          body.syncPurchaseReceipts,
           true,
         ),
         context.userId,
@@ -1903,8 +2217,12 @@ export async function saveInventoryValuationSettings(
             $4,
           inventory_loss_account_id =
             $5,
-          updated_by =
+          goods_received_not_invoiced_account_id =
             $6,
+          purchase_price_variance_account_id =
+            $7,
+          updated_by =
+            $8,
           updated_at =
             NOW()
         WHERE company_id =
@@ -1918,6 +2236,8 @@ export async function saveInventoryValuationSettings(
         cogs,
         gain,
         loss,
+        grni,
+        priceVariance,
         context.userId,
       ],
     );
@@ -2173,6 +2493,7 @@ export async function saveInventoryMovementRule(
     Treatment[] = [
       'issue_cogs',
       'return_cogs',
+      'receive_inventory',
       'adjustment_gain',
       'adjustment_loss',
       'ignore',
@@ -2313,10 +2634,12 @@ export async function syncInventoryValuation() {
       !settings
         .inventory_gain_account_id ||
       !settings
-        .inventory_loss_account_id
+        .inventory_loss_account_id ||
+      !settings
+        .goods_received_not_invoiced_account_id
     ) {
       throw new AccountingInputError(
-        'Complete the Inventory Asset, COGS, Inventory Gain and Inventory Loss mappings before syncing.',
+        'Complete the Inventory Asset, COGS, Inventory Gain, Inventory Loss and Goods Received Not Invoiced mappings before syncing.',
       );
     }
 
@@ -2374,6 +2697,7 @@ export async function syncInventoryValuation() {
             quantity_effect::text,
             unit_cost::text,
             value_amount::text,
+            cost_source,
             cost_estimated,
             status,
             metadata
@@ -2386,6 +2710,19 @@ export async function syncInventoryValuation() {
             )
             AND deleted_at
                 IS NULL
+            AND (
+              source_type <> 'purchase_receipt'
+              OR $2::boolean = TRUE
+            )
+            AND (
+              source_type <> 'stock_movement'
+              OR movement_type NOT IN ('sales_delivery','sales_return')
+              OR $3::boolean = TRUE
+            )
+            AND (
+              source_type <> 'inventory_adjustment'
+              OR $4::boolean = TRUE
+            )
           ORDER BY
             event_date,
             created_at,
@@ -2396,6 +2733,9 @@ export async function syncInventoryValuation() {
         `,
         [
           context.companyId,
+          settings.sync_purchase_receipts === true,
+          settings.sync_sales_movements === true,
+          settings.sync_adjustments === true,
         ],
       );
 
@@ -2604,8 +2944,92 @@ export async function syncInventoryValuation() {
           '';
         let creditAccount =
           '';
+        let journalLines: Array<{
+          accountId: string;
+          description: string;
+          debit: string;
+          credit: string;
+        }> = [];
 
         if (
+          treatment ===
+            'receive_inventory'
+        ) {
+          if (!accounts.grni) {
+            throw new AccountingInputError(
+              'Map a Goods Received Not Invoiced liability account before posting purchase receipts.',
+            );
+          }
+          if (!accounts.priceVariance) {
+            throw new AccountingInputError(
+              'Map a Purchase Price Variance expense account before posting purchase receipts.',
+            );
+          }
+
+          const eventMetadata =
+            event.metadata &&
+            typeof event.metadata === 'object' &&
+            !Array.isArray(event.metadata)
+              ? event.metadata as Record<string, unknown>
+              : {};
+          const purchaseOrderUnitCost =
+            String(eventMetadata.purchaseOrderUnitCost || '');
+
+          if (!purchaseOrderUnitCost) {
+            throw new AccountingInputError(
+              'The source receipt has no confirmed purchase-order unit cost.',
+            );
+          }
+
+          const actualPurchaseValue =
+            standardCostValue(
+              String(event.source_quantity || '0'),
+              purchaseOrderUnitCost,
+            );
+          const actualPurchaseCents =
+            inventoryMoneyCents(actualPurchaseValue);
+          if (actualPurchaseCents <= BigInt(0)) {
+            throw new AccountingInputError(
+              'The accepted purchase receipt must have a positive confirmed purchase value.',
+            );
+          }
+
+          const varianceCents =
+            actualPurchaseCents - valueCents;
+
+          debitAccount = accounts.asset;
+          creditAccount = accounts.grni;
+          journalLines = [
+            {
+              accountId: accounts.asset,
+              description,
+              debit: value,
+              credit: '0.00',
+            },
+            {
+              accountId: accounts.grni,
+              description,
+              debit: '0.00',
+              credit: actualPurchaseValue,
+            },
+          ];
+
+          if (varianceCents > BigInt(0)) {
+            journalLines.push({
+              accountId: accounts.priceVariance,
+              description: description + ' · purchase price variance',
+              debit: moneyDecimal(varianceCents),
+              credit: '0.00',
+            });
+          } else if (varianceCents < BigInt(0)) {
+            journalLines.push({
+              accountId: accounts.priceVariance,
+              description: description + ' · purchase price variance',
+              debit: '0.00',
+              credit: moneyDecimal(-varianceCents),
+            });
+          }
+        } else if (
           treatment ===
             'issue_cogs'
         ) {
@@ -2664,6 +3088,23 @@ export async function syncInventoryValuation() {
             accounts.asset;
         }
 
+        if (!journalLines.length) {
+          journalLines = [
+            {
+              accountId: debitAccount,
+              description,
+              debit: value,
+              credit: '0.00',
+            },
+            {
+              accountId: creditAccount,
+              description,
+              debit: '0.00',
+              credit: value,
+            },
+          ];
+        }
+
         const journal =
           await postBalancedLedgerJournal(
             client,
@@ -2703,26 +3144,7 @@ export async function syncInventoryValuation() {
                 ),
               postingKind:
                 'system',
-              lines: [
-                {
-                  accountId:
-                    debitAccount,
-                  description,
-                  debit:
-                    value,
-                  credit:
-                    '0.00',
-                },
-                {
-                  accountId:
-                    creditAccount,
-                  description,
-                  debit:
-                    '0.00',
-                  credit:
-                    value,
-                },
-              ],
+              lines: journalLines,
             },
           );
 

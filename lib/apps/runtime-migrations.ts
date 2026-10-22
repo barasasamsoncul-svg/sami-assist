@@ -1,3 +1,4 @@
+import { INVENTORY_1_0_0_TO_2_4_0 } from '@/lib/apps/inventory/migrations/1.0.0-to-2.4.0';
 import { SALES_3_4_1_TO_3_4_2 } from '@/lib/apps/sales/migrations/3.4.1-to-3.4.2';
 import { SALES_3_4_2_TO_3_4_3 } from '@/lib/apps/sales/migrations/3.4.2-to-3.4.3';
 import { SALES_3_4_3_TO_3_4_4 } from '@/lib/apps/sales/migrations/3.4.3-to-3.4.4';
@@ -20,6 +21,7 @@ import { SALES_3_4_19_TO_3_4_20 } from '@/lib/apps/sales/migrations/3.4.19-to-3.
 import { SALES_3_4_20_TO_3_4_21 } from '@/lib/apps/sales/migrations/3.4.20-to-3.4.21';
 import { SALES_3_4_21_TO_3_4_22 } from '@/lib/apps/sales/migrations/3.4.21-to-3.4.22';
 import { ACCOUNTING_2_33_0_TO_2_34_0 } from '@/lib/apps/accounting/migrations/2.33.0-to-2.34.0';
+import { ACCOUNTING_2_34_0_TO_2_35_0 } from '@/lib/apps/accounting/migrations/2.34.0-to-2.35.0';
 import { INVOICING_2_22_0_TO_2_23_0 } from '@/lib/apps/invoicing/migrations/2.22.0-to-2.23.0';
 import { INVOICING_2_21_0_TO_2_22_0 } from '@/lib/apps/invoicing/migrations/2.21.0-to-2.22.0';
 import { ACCOUNTING_2_32_0_TO_2_33_0 } from '@/lib/apps/accounting/migrations/2.32.0-to-2.33.0';
@@ -240,6 +242,7 @@ export const ENTERPRISE_RUNTIME_MIGRATIONS:
     ...ENTERPRISE_SUITE_COMPLETION_MIGRATIONS,
     ...ENTERPRISE_SPECIALIST_DEPTH_MIGRATIONS,
     ...ENTERPRISE_STRICT_PARITY_MIGRATIONS,
+    INVENTORY_1_0_0_TO_2_4_0,
     ACCOUNTING_2_3_0_TO_2_4_0,
     ACCOUNTING_2_4_0_TO_2_5_0,
     ACCOUNTING_2_5_0_TO_2_6_0,
@@ -271,6 +274,7 @@ export const ENTERPRISE_RUNTIME_MIGRATIONS:
     ACCOUNTING_2_31_0_TO_2_32_0,
     ACCOUNTING_2_32_0_TO_2_33_0,
     ACCOUNTING_2_33_0_TO_2_34_0,
+    ACCOUNTING_2_34_0_TO_2_35_0,
     FIXED_ASSETS_2_3_0_TO_2_4_0,
   ];
 

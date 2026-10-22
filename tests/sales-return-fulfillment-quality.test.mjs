@@ -44,7 +44,7 @@ test('Sales shipment quality reports only recorded durations and filters to rece
   assert.match(service, /s\.delivered_at IS NOT NULL/);
   assert.match(component, /not\s+promised delivery dates/);
   assert.match(component, /Recorded reasons can be free-form/);
-  assert.match(component, /Credit, available credit, and refunds are kept separate by\\s+currency/i);
+  assert.match(component, /Credit, available credit, and refunds are kept separate by\s+currency/i);
 });
 
 test('Sales return status and reason result caps are applied independently per currency', async () => {

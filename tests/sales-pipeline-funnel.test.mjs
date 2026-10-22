@@ -44,7 +44,7 @@ test('Sales opportunity funnel reports counts and correct value by open, won and
   assert.match(component, /Lost value/);
   assert.match(component, /Weighted/);
   assert.match(component, /new Set\(rows\.map\(\(row\) => row\.currency\)\)/);
-  assert.match(component, /const currencies = Array\\.from\\(new Set\\(rows\\.map\\(\\(row\\) => row\\.currency\\)\\)\\)/);
+  assert.match(component, /const currencies = Array\.from\(new Set\(rows\.map\(\(row\) => row\.currency\)\)\)\.sort\(\)/);
 });
 
 test('Sales funnel highlights overdue closes and opportunities aging in their current stage', async () => {

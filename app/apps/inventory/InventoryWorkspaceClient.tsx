@@ -1,6 +1,7 @@
 'use client';
 
 import EnterpriseDataWorkspaceClient from '@/app/apps/_shared/EnterpriseDataWorkspaceClient';
+import InventoryStockControlPanel from '@/app/apps/inventory/InventoryStockControlPanel';
 
 import type {
   EnterpriseWorkspaceData,
@@ -24,12 +25,15 @@ export default function InventoryWorkspaceClient({
   accessibleModuleKeys: string[];
 }) {
   return (
-    <EnterpriseDataWorkspaceClient
-      initialData={initialData}
-      userId={userId}
-      initialView={initialView}
-      initialTableKey={initialTableKey}
-      accessibleModuleKeys={accessibleModuleKeys}
-    />
+    <div className="min-w-0 space-y-6">
+      <InventoryStockControlPanel />
+      <EnterpriseDataWorkspaceClient
+        initialData={initialData}
+        userId={userId}
+        initialView={initialView}
+        initialTableKey={initialTableKey}
+        accessibleModuleKeys={accessibleModuleKeys}
+      />
+    </div>
   );
 }

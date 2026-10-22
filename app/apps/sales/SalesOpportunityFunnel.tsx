@@ -390,7 +390,7 @@ function FunnelStageRow({
               {row.overdueOpportunityCount > 0 ? (
                 <li className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.06em] text-red-700 ring-1 ring-red-500/20 dark:bg-red-950/40 dark:text-red-300 dark:ring-red-500/30">
                   <CalendarX2 className="h-3 w-3" aria-hidden="true" />
-                  {row.overdueOpportunityCount} overdue close
+                  {row.overdueOpportunityCount} overdue close · {formatMoney(row.overdueValue, currency)}
                 </li>
               ) : null}
               {row.staleOpportunityCount > 0 ? (

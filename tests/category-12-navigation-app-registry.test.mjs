@@ -712,8 +712,14 @@ test('Category 12: dashboard and Settings share app identity while Settings expo
 
   assert.doesNotMatch(
     appsSettings,
-    /maxApps|appLimit|upgrade.*app/i,
+    /maxApps|appLimit/i,
     'Paid-plan app count must not be modeled as a workspace app limit.',
+  );
+
+  assert.match(
+    appsSettings,
+    /upgrade to Standard or Custom first/,
+    'Dependency installs that exceed the Free allowance must explain the required plan upgrade without introducing a paid-plan app-count limit.',
   );
 });
 

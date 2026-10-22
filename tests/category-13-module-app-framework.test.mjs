@@ -187,6 +187,162 @@ test('Category 13: lifecycle preserves business data on disable and uninstall', 
   );
 });
 
+test('Category 13: installing or enabling an app requires explicit consent for inactive dependencies', async () => {
+  const [
+    lifecycle,
+    route,
+    settings,
+    registration,
+    selectApps,
+    selectPlan,
+    legacyInstall,
+    settingsClient,
+  ] = await Promise.all([
+    source('lib/services/workspace-app-lifecycle.ts'),
+    source('app/api/workspace/apps/[appKey]/route.ts'),
+    source('app/settings/components/AppsSettings.tsx'),
+    source('app/api/auth/register/route.ts'),
+    source('app/select-apps/page.tsx'),
+    source('app/select-plan/page.tsx'),
+    source('app/api/auth/install-app/route.ts'),
+    source('app/settings/SettingsClient.tsx'),
+  ]);
+
+  assert.match(
+    lifecycle,
+    /APP_DEPENDENCY_CONFIRMATION_REQUIRED/,
+  );
+  assert.match(
+    lifecycle,
+    /acceptedDependencyKeys/,
+  );
+  assert.match(
+    lifecycle,
+    /dependencies:\s*missingDependencies/,
+  );
+
+  const consentIndex =
+    lifecycle.indexOf(
+      'const missingDependencies',
+    );
+  const entitlementGateIndex =
+    lifecycle.indexOf(
+      'await assertInstallPlanEntitled',
+      consentIndex,
+    );
+  const installWriteIndex =
+    lifecycle.indexOf(
+      'const installedDependencies',
+      consentIndex,
+    );
+
+  assert.ok(
+    consentIndex >= 0 &&
+    entitlementGateIndex > consentIndex &&
+    installWriteIndex > entitlementGateIndex,
+    'Dependency acceptance must be requested before a plan-upgrade block, and both gates must run before installation writes.',
+  );
+
+  assert.match(
+    route,
+    /parseAcceptedDependencyKeys/,
+  );
+  assert.match(
+    route,
+    /APP_DEPENDENCY_CONFIRMATION_REQUIRED/,
+  );
+  assert.match(
+    route,
+    /consent\.keys/,
+  );
+  assert.match(
+    route,
+    /enableWorkspaceApp\(\s*appKey,\s*auditContext\(\s*request,\s*\),\s*consent\.keys/s,
+    'Enabling a disabled module must use the same dependency-consent gate.',
+  );
+  assert.doesNotMatch(
+    route,
+    /uninstallWorkspaceApp\([\s\S]{0,200}consent\.keys/s,
+    'Dependency install consent must not affect uninstall calls.',
+  );
+
+  assert.match(registration, /normalizeAcceptedDependencyKeys/);
+  assert.match(registration, /APP_DEPENDENCY_CONFIRMATION_REQUIRED/);
+  assert.match(registration, /requiredDependencyKeys/);
+  assert.match(registration, /getSamiModuleManifest/);
+  assert.match(registration, /result\.appsInstalled[\s\S]*?length ===\s*resolvedApps\.length/, 'A successful onboarding install must include every resolved dependency, not only explicitly selected root apps.');
+  assert.match(selectApps, /getSamiModuleDependencyPlan/);
+  assert.match(selectApps, /Accept & continue/);
+  assert.match(selectPlan, /acceptedDependencyKeys/);
+  assert.match(selectPlan, /resolveSelectedAppKeys\(apps\)\.length/);
+  assert.match(legacyInstall, /getSamiModuleDependencyPlan/);
+  assert.match(legacyInstall, /APP_DEPENDENCY_CONFIRMATION_REQUIRED/);
+  assert.match(legacyInstall, /APP_PLAN_UPGRADE_REQUIRED/);
+  assert.match(legacyInstall, /requiredPlan: 'standard'/);
+  assert.match(legacyInstall, /billingHref: '\/settings\?tab=billing'/);
+  assert.match(legacyInstall, /normalizeAcceptedDependencyKeys/);
+  assert.match(legacyInstall, /for \(const plannedModule of dependencyPlan\)/);
+  assert.match(legacyInstall, /acceptedDependencySet/);
+
+  const legacyConsentIndex =
+    legacyInstall.indexOf('if (unacceptedDependencies.length > 0)');
+  const legacyPlanGateIndex =
+    legacyInstall.indexOf("'APP_PLAN_UPGRADE_REQUIRED'");
+  const legacyReserveIndex =
+    legacyInstall.indexOf('17. RESERVE');
+  const legacyInstallLoopIndex =
+    legacyInstall.indexOf('for (const plannedModule of planModules)', legacyReserveIndex);
+
+  assert.ok(
+    legacyConsentIndex >= 0 &&
+      legacyPlanGateIndex > legacyConsentIndex &&
+      legacyReserveIndex > legacyPlanGateIndex &&
+      legacyInstallLoopIndex > legacyReserveIndex,
+    'The legacy installer must collect dependency consent first, then enforce plan limits, before reserving or installing any module.',
+  );
+
+  assert.match(
+    settings,
+    /APP_DEPENDENCY_CONFIRMATION_REQUIRED/,
+  );
+  assert.match(
+    settings,
+    /pendingDependencyConfirmation/,
+  );
+  assert.match(
+    settings,
+    /acceptedDependencyKeys/,
+  );
+  assert.match(
+    settings,
+    /Accept & install/,
+  );
+  assert.match(
+    settings,
+    /Standard plan required/,
+  );
+  assert.match(settings, /upgrade to Standard or Custom first/);
+  assert.match(
+    settings,
+    /Review billing and plans/,
+  );
+  assert.match(settings, /dependencyAcceptanceStorageKey/);
+  assert.match(
+    settingsClient,
+    /workspaceId[\s\S]*?tenant\?\.id \|\| 'no-workspace'/,
+    'Dependency consent storage must be scoped to the active workspace.',
+  );
+  assert.match(settings, /sessionStorage\.getItem/);
+  assert.match(settings, /sessionStorage\.setItem/);
+  assert.match(settings, /sessionStorage\.removeItem/);
+  assert.match(
+    settings,
+    /requestBody\?\.acceptedDependencyKeys[\s\S]*?dependencyAcceptanceStorageKey\(workspaceId, appKey\)/,
+    'A prior dependency acceptance must be restored when the user retries installation after upgrading the plan.',
+  );
+});
+
+
 test('Category 13: dependency apps cannot be disabled or uninstalled while required', async () => {
   const service =
     compact(
@@ -538,7 +694,7 @@ test('Category 13: Apps administration receives lifecycle rows while ordinary na
   );
 });
 
-test('Category 13: legacy onboarding no longer enforces an app-count plan limit', async () => {
+test('Category 13: legacy installer keeps the Free dependency gate without restoring the retired global app-count limit', async () => {
   const onboarding =
     await source(
       'app/api/auth/install-app/route.ts',
@@ -551,12 +707,32 @@ test('Category 13: legacy onboarding no longer enforces an app-count plan limit'
 
   assert.doesNotMatch(
     onboarding,
-    /UPGRADE_REQUIRED/,
+    /APP_LIMIT_REACHED|MAX_INSTALLED_APPS|reservedAppCount/,
+    'The retired global installed-app counter must remain disabled.',
   );
 
-  assert.doesNotMatch(
+  assert.match(
     onboarding,
-    /reservedAppCount/,
+    /APP_DEPENDENCY_CONFIRMATION_REQUIRED/,
+    'Dependencies must be explicitly accepted before an installation may proceed.',
+  );
+
+  assert.match(
+    onboarding,
+    /APP_PLAN_UPGRADE_REQUIRED/,
+    'Free must upgrade when the resolved business-app dependency set exceeds its one-app allowance.',
+  );
+
+  assert.ok(
+    onboarding.indexOf('APP_DEPENDENCY_CONFIRMATION_REQUIRED') <
+      onboarding.indexOf('APP_PLAN_UPGRADE_REQUIRED'),
+    'Dependency confirmation must run before the Free-to-Standard plan gate.',
+  );
+
+  assert.ok(
+    onboarding.indexOf('APP_PLAN_UPGRADE_REQUIRED') <
+      onboarding.indexOf('INSERT INTO tenant_modules'),
+    'The plan gate must run before installation reservation writes.',
   );
 });
 

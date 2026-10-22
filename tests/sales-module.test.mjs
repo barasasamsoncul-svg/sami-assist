@@ -2747,7 +2747,8 @@ test('Sales lead scoring explains profile and engagement signals and persists sc
   assert.ok(registry.indexOf('SALES_3_4_11_TO_3_4_12,') < registry.indexOf('SALES_3_4_12_TO_3_4_13,'));
   assert.match(schema, /score_view VARCHAR\(20\) NOT NULL DEFAULT 'all'/);
   assert.match(schema, /CHECK \(score_view IN \('all','high','medium','low'\)\)/);
-  assert.match(types, /export type SalesLeadScoreView = 'all' \| 'high' \| 'medium' \| 'low'/);
+  assert.match(types, /SALES_LEAD_SCORE_VIEWS = \['all', 'high', 'medium', 'low'\] as const/);
+  assert.match(types, /export type SalesLeadScoreView = \(typeof SALES_LEAD_SCORE_VIEWS\)\[number\]/);
   assert.match(types, /scoreView: SalesLeadScoreView/);
 
   assert.match(savedViews, /const LEAD_SCORE_VIEWS/);
@@ -2804,7 +2805,7 @@ test('Sales lead-routing rules are tenant-scoped, priority ordered and migration
 
   assert.ok(manifest.includes('version: \'3.4.22\''));
   assert.ok(rules.includes('requireSalesContext(SALES_PERMISSIONS.PIPELINE_MANAGE)'));
-  assert.match(rules, /WHERE company_id\\s*=\\s*\\$1 AND deleted_at IS NULL/);
+  assert.match(rules, /WHERE rule\.company_id\s*=\s*\$1 AND rule\.deleted_at IS NULL/);
   assert.ok(rules.includes('A routing rule with that name or source match already exists.'));
   assert.ok(rules.includes('Choose an active Sales team for this rule.'));
   assert.ok(schema.includes('CREATE TABLE IF NOT EXISTS public.sales_lead_assignment_rules'));
@@ -2928,7 +2929,7 @@ test('Sales bulk lead status actions are bounded, transactional and create activ
   assert.ok(manager.includes('Bulk lead actions'));
   assert.ok(manager.includes('Disqualify selected'));
   assert.ok(manager.includes('Reopen selected'));
-  assert.match(service, /recordSalesActivity/);
+  assert.match(pipeline, /INSERT INTO sales_lead_activities/);
 });
 
 test('Sales bulk follow-up scheduling is bounded, tenant-scoped and transactional', async () => {
@@ -2976,7 +2977,7 @@ test('Sales reports provide 30/60/90-day weighted opportunity forecasts without 
   assert.match(insights, /s\.stage_type = 'open'/);
   assert.match(insights, /o\.company_id = \$1/);
   assert.match(insights, /GROUP BY h\.horizon_days, UPPER\(COALESCE\(NULLIF\(BTRIM\(o\.currency\), ''\), 'KES'\)\)/);
-  assert.match(insights, /weightedPipelineValue: Number\(row\.weighted_pipeline_value/);
+  assert.match(insights, /weightedPipelineValue: toNum\(row\.weighted_pipeline_value\)/);
   assert.match(reportUi, /<SalesWeightedForecast rows=\{data\.forecast\} \/>/);
   assert.match(forecastUi, /Next 30 days/);
   assert.match(forecastUi, /Next 60 days/);
@@ -3010,7 +3011,7 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   assert.ok(invoiceStart >= 0);
   assert.ok(invoiceEnd > invoiceStart);
   assert.match(invoice, /requestedMap\.has\(lineId\)/);
-  assert.match(invoice, /requireUuid\\(/);
+  assert.match(invoice, /requireUuid\(/);
   assert.match(invoice, /An invoice line can only be selected once/);
   assert.match(invoice, /new Set\([\s\S]*lineRows\.map\([\s\S]*String\(line\.id\)/);
   assert.match(invoice, /orderLineIds\.has\(requestedLineId\)/);
@@ -3027,7 +3028,7 @@ test('Sales invoice selection rejects duplicate and non-order line IDs', async (
   assert.match(invoice, /normalizeSelectionLines/);
   assert.match(invoice, /idempotency key already belongs to an invoice with a different line selection/);
   assert.match(invoice, /mode: hasExplicitLineSelection\s*\?\s*'explicit'\s*:\s*'all_remaining'/);
-  assert.match(invoice, /else if \(storedMode === 'explicit'\)/,
+  assert.match(invoice, /else if \(stored\.mode === 'explicit'\)/,
     'an omitted retry selection cannot replay a completed partial invoice');
   assert.match(
     invoice,
@@ -3136,7 +3137,7 @@ const fulfillmentStart =
   assert.match(issueInvoicingCredit, /INVOICE_STATE_INVALID/);
   assert.ok(issueInvoicingCredit.includes('The existing credit note balance could not be verified'));
   assert.match(returnCreditInvoiceQuery, /returnId,/);
-  assert.match(createReturn, /'Sales order line',[\s\S]*\)\.toLowerCase\(\)/);
+  assert.match(createReturn, /requireUuid\(item\.lineId, 'Sales order line'\)\.toLowerCase\(\)/);
 
   const shipmentStart = operations.indexOf('export async function createSalesShipment(');
   const updateShipmentStart = operations.indexOf('export async function updateSalesShipmentStatus(', shipmentStart);
@@ -3177,7 +3178,7 @@ test('Sales order invoice retries retain their idempotency key until a successfu
   assert.match(client, /invoiceIdempotencyKey[\s\S]*useRef<string \| null>/);
   assert.match(client, /const idempotencyKey =[\s\S]*invoiceIdempotencyKey\.current \|\|/);
   assert.match(client, /invoiceIdempotencyKey\.current =\s*idempotencyKey/);
-  assert.match(client, /if \(result\)\s*\{\s*invoiceIdempotencyKey\.current = null;/);
+  assert.match(client, /if \(result\)\s*(?:\{\s*invoiceIdempotencyKey\.current = null;\s*\}|invoiceIdempotencyKey\.current = null;)/);
 
   const invoiceActionStart = client.indexOf("'create_order_invoice'");
   const invoiceActionEnd = client.indexOf("'Draft invoice created from the sales order.'", invoiceActionStart);
@@ -3214,7 +3215,7 @@ test('Sales bulk order invoicing is bounded, permission-gated, retry-safe and re
   assert.match(bulk, /requireSalesContext\(SALES_PERMISSIONS\.ORDER_MANAGE\)/);
   assert.match(bulk, /input\.orders\.length > MAX_BULK_ORDER_INVOICES/);
   assert.match(bulk, /new Set<string>\(\)/);
-  assert.match(bulk, /idempotencyKeys\.has\(request\.idempotencyKey\)/);
+  assert.match(bulk, /seenIdempotencyKeys\.has\(request\.idempotencyKey\)/);
   assert.match(bulk, /createSalesOrderInvoice\(/);
   assert.match(bulk, /for \(const request of requests\)/);
   assert.match(bulk, /successCount/);
@@ -3352,7 +3353,8 @@ test('Sales workspace search includes permission-scoped leads and opportunities 
   assert.match(provider, /score:[\s\S]*?100 -[\s\S]*?index/);
   assert.match(provider, /right\.result\.score[\s\S]*?left\.sourceOrder[\s\S]*?left\.sourceIndex/);
   assert.match(provider, /JSON\.stringify\(\[[\s\S]*?item\.kind,[\s\S]*?item\.recordId/);
-  assert.match(provider, /results\.length[\s\S]*?20/);
+  assert.match(provider, /const MAX_RESULTS = 20/);
+  assert.match(provider, /if \(results\.length >= MAX_RESULTS\) break/);
   assert.match(invoicing, /searchInvoicingRecords/);
 });
 
@@ -3394,13 +3396,13 @@ test('Sales quote, workspace, and order contracts expose salesperson, credit-lim
   const workspaceStart = types.indexOf('export type SalesWorkspaceData =');
   const workspaceEnd = types.indexOf('\n};', workspaceStart);
   const workspace = types.slice(workspaceStart, workspaceEnd);
-  assert.ok(workspace.includes('salespeople: Array<{'));
+  assert.ok(workspace.includes('salespeople: SalesSalesperson[]'));
   assert.ok(workspace.includes('currentSalespersonId: string | null;'));
   assert.ok(types.includes('creditLimitEnforced') || queries.includes('creditLimitEnforced'));
   assert.ok(!workspace.includes('creditLimitEnforced?: boolean;'));
 
-  assert.ok(queries.includes('require_quote_approval,\n            credit_limit_enforced,\n            quote_approval_threshold'));
-  assert.match(queries, /creditLimitEnforced:[\\s\\S]{0,100}credit_limit_enforced === true/);
-  assert.match(queries, /currentSalespersonId:[\\s\\S]{0,100}defaultSalesperson/);
-  assert.match(queries, /str\\(currentSalespersonRow\\.id\\)/);
+  assert.match(queries, /require_quote_approval,\s*credit_limit_enforced,\s*quote_approval_threshold/);
+  assert.match(queries, /creditLimitEnforced:[\s\S]{0,100}credit_limit_enforced === true/);
+  assert.match(queries, /currentSalespersonId:[\s\S]{0,100}defaultSalesperson/);
+  assert.match(queries, /str\(currentSalespersonRow\.id\)/);
 });

@@ -17,6 +17,7 @@ import {
 
 import {
   getSamiModuleDependencyPlan,
+  getSamiModuleManifest,
 } from '@/lib/modules/registry';
 
 import {
@@ -309,6 +310,22 @@ function normalizeSelectedApps(
   return [
     ...new Set(apps),
   ];
+}
+
+
+function normalizeAcceptedDependencyKeys(
+  value: unknown,
+): string[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > MAX_SELECTED_APPS) return null;
+  const keys: string[] = [];
+  for (const item of value) {
+    if (typeof item !== 'string') return null;
+    const key = item.trim().toLowerCase();
+    if (!/^[a-z0-9_-]{1,100}$/.test(key)) return null;
+    if (!keys.includes(key)) keys.push(key);
+  }
+  return keys;
 }
 
 /* ============================================================
@@ -2408,6 +2425,11 @@ export async function POST(
         body.selectedApps
       );
 
+    const acceptedDependencyKeys =
+      normalizeAcceptedDependencyKeys(
+        body.acceptedDependencyKeys,
+      );
+
     /* ========================================================
        4. VALIDATION
        ======================================================== */
@@ -2459,6 +2481,14 @@ export async function POST(
         400,
         'INVALID_BUSINESS_NAME',
         'Business name must be between 2 and 120 characters.'
+      );
+    }
+
+    if (acceptedDependencyKeys === null) {
+      return errorResponse(
+        400,
+        'INVALID_DEPENDENCY_CONFIRMATION',
+        'The required-app acceptance is invalid. Review the app selection and try again.',
       );
     }
 
@@ -2668,6 +2698,44 @@ export async function POST(
           Error
           ? error.message
           : 'One or more selected SaMi apps are unavailable.'
+      );
+    }
+
+    const explicitlySelectedApps = new Set(selectedApps);
+    const requiredDependencyKeys = resolvedApps.filter(
+      appKey => !explicitlySelectedApps.has(appKey),
+    );
+    const requiredDependencySet = new Set(requiredDependencyKeys);
+
+    if (acceptedDependencyKeys.some(appKey => !requiredDependencySet.has(appKey))) {
+      return errorResponse(
+        400,
+        'INVALID_DEPENDENCY_CONFIRMATION',
+        'The accepted dependency list no longer matches the selected apps. Review the app selection and accept again.',
+      );
+    }
+
+    const acceptedDependencySet = new Set(acceptedDependencyKeys);
+    const unacceptedDependencyKeys = requiredDependencyKeys.filter(
+      appKey => !acceptedDependencySet.has(appKey),
+    );
+
+    if (unacceptedDependencyKeys.length > 0) {
+      return errorResponse(
+        409,
+        'APP_DEPENDENCY_CONFIRMATION_REQUIRED',
+        'Your selected app requires additional apps. Accept the required dependencies before creating the workspace.',
+        {
+          dependencies: unacceptedDependencyKeys.map(appKey => ({
+            key: appKey,
+            name: getSamiModuleManifest(appKey)?.name || appKey,
+          })),
+          requiredPlan:
+            requestedPlan === 'free' && resolvedApps.length > 1
+              ? 'standard'
+              : requestedPlan,
+          next: '/select-apps',
+        },
       );
     }
 
@@ -3371,7 +3439,7 @@ export async function POST(
           0 &&
         result.appsInstalled
           .length ===
-          selectedApps.length;
+          resolvedApps.length;
     } catch (error) {
       console.error(
         '[SaMi] Workspace provisioning failed:',

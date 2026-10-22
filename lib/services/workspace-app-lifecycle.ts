@@ -74,6 +74,8 @@ export type WorkspaceAppLifecycleCode =
   | 'WORKSPACE_NOT_READY'
   | 'WORKSPACE_CONTEXT_CHANGED'
   | 'APP_CHANGE_IN_PROGRESS'
+  | 'APP_DEPENDENCY_CONFIRMATION_REQUIRED'
+  | 'APP_DEPENDENCY_CONFIRMATION_INVALID'
   | 'APP_CORE_PROTECTED'
   | 'APP_NOT_INSTALLED'
   | 'APP_DEPENDENCY_BLOCKED'
@@ -1253,6 +1255,7 @@ async function activateWorkspaceApp(
     LifecycleAction,
   audit?:
     WorkspaceAppAuditContext,
+  acceptedDependencyKeys?: string[],
 ) {
   const canonicalKey =
     getCanonicalAppKey(
@@ -1368,12 +1371,6 @@ async function activateWorkspaceApp(
         canonicalKey,
       );
 
-    await assertInstallPlanEntitled(
-      controlClient,
-      context.tenantId,
-      plan,
-    );
-
     const root =
       plan[
         plan.length -
@@ -1397,6 +1394,148 @@ async function activateWorkspaceApp(
         'Core SaMi platform components cannot be installed from Workspace Apps.',
       );
     }
+
+    /*
+     * Dependencies are installed in dependency-first order below. Before
+     * performing any state/schema writes, require the user to acknowledge
+     * every dependency that is not already active in this workspace.
+     */
+    const requestedRootKey =
+      normalizeKey(
+        root.key,
+      );
+
+    const dependencyModules =
+      plan.filter(
+        module =>
+          normalizeKey(
+            module.key,
+          ) !==
+          requestedRootKey,
+      );
+
+    const declaredDependencyKeys =
+      new Set(
+        dependencyModules.map(
+          module =>
+            normalizeKey(
+              module.key,
+            ),
+        ),
+      );
+
+    const acceptedKeys =
+      new Set(
+        (
+          acceptedDependencyKeys ||
+          []
+        )
+          .map(
+            normalizeKey,
+          )
+          .filter(
+            Boolean,
+          ),
+      );
+
+    for (
+      const acceptedKey
+      of acceptedKeys
+    ) {
+      if (
+        !declaredDependencyKeys.has(
+          acceptedKey,
+        )
+      ) {
+        throw new WorkspaceAppLifecycleError(
+          'APP_DEPENDENCY_CONFIRMATION_INVALID',
+          'The dependency confirmation does not match this app installation request. Please try again.',
+          {
+            appKey:
+              root.key,
+          },
+        );
+      }
+    }
+
+    const missingDependencies:
+      Array<{
+        key: string;
+        name: string;
+        status: string;
+      }> = [];
+
+    for (
+      const dependency
+      of dependencyModules
+    ) {
+      const existingDependency =
+        await getTenantModule(
+          controlClient,
+          context.tenantId,
+          dependency.id,
+        );
+
+      if (
+        !existingDependency ||
+        !ACTIVE_STATUSES.has(
+          normalizeKey(
+            existingDependency.status,
+          ),
+        )
+      ) {
+        missingDependencies.push({
+          key:
+            dependency.key,
+          name:
+            dependency.name,
+          status:
+            existingDependency?.status ||
+            'not_installed',
+        });
+      }
+    }
+
+    const unacceptedDependencies =
+      missingDependencies.filter(
+        dependency =>
+          !acceptedKeys.has(
+            normalizeKey(
+              dependency.key,
+            ),
+          ),
+      );
+
+    if (
+      unacceptedDependencies.length >
+      0
+    ) {
+      const actionLabel =
+        action ===
+        'install'
+          ? 'Installing'
+          : 'Enabling';
+
+      throw new WorkspaceAppLifecycleError(
+        'APP_DEPENDENCY_CONFIRMATION_REQUIRED',
+        `${actionLabel} ${root.name} also requires additional apps to be installed or re-enabled. Review and accept the required dependencies to continue.`,
+        {
+          appKey:
+            root.key,
+          appName:
+            root.name,
+          action,
+          dependencies:
+            missingDependencies,
+        },
+      );
+    }
+
+    await assertInstallPlanEntitled(
+      controlClient,
+      context.tenantId,
+      plan,
+    );
 
     const tenantPool =
       getTenantPool(
@@ -2139,11 +2278,13 @@ export async function installWorkspaceApp(
     string,
   audit?:
     WorkspaceAppAuditContext,
+  acceptedDependencyKeys?: string[],
 ) {
   return activateWorkspaceApp(
     appKey,
     'install',
     audit,
+    acceptedDependencyKeys,
   );
 }
 
@@ -2153,11 +2294,13 @@ export async function enableWorkspaceApp(
     string,
   audit?:
     WorkspaceAppAuditContext,
+  acceptedDependencyKeys?: string[],
 ) {
   return activateWorkspaceApp(
     appKey,
     'enable',
     audit,
+    acceptedDependencyKeys,
   );
 }
 

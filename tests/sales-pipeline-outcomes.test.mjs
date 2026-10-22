@@ -41,7 +41,7 @@ test('Sales win/loss analytics includes trailing 90-day closures and avoids mixi
   assert.match(component, /new Set\(\[/);
   assert.match(component, /row\.currency/);
   assert.ok(component.includes('currency'));
-  assert.match(component, /row\.winRate == null \? '—'/);
+  assert.match(component, /const winRate = row\.winRate == null \? null : Math\.round\(row\.winRate\)/);
 });
 
 test('Sales loss-reason report groups and ranks common recorded reasons per currency', async () => {
