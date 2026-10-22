@@ -4,7 +4,8 @@ ALTER TABLE public.accounting_settings
   ADD COLUMN IF NOT EXISTS cogs_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
   ADD COLUMN IF NOT EXISTS inventory_gain_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
   ADD COLUMN IF NOT EXISTS inventory_loss_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
-  ADD COLUMN IF NOT EXISTS goods_received_not_invoiced_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT;
+  ADD COLUMN IF NOT EXISTS goods_received_not_invoiced_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
+  ADD COLUMN IF NOT EXISTS purchase_price_variance_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT;
 
 CREATE TABLE IF NOT EXISTS public.accounting_inventory_settings (
   company_id UUID PRIMARY KEY REFERENCES public.companies(id) ON DELETE CASCADE,
@@ -16,6 +17,7 @@ CREATE TABLE IF NOT EXISTS public.accounting_inventory_settings (
   inventory_gain_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
   inventory_loss_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
   goods_received_not_invoiced_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
+  purchase_price_variance_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
   sync_sales_movements BOOLEAN NOT NULL DEFAULT TRUE,
   sync_adjustments BOOLEAN NOT NULL DEFAULT TRUE,
   sync_purchase_receipts BOOLEAN NOT NULL DEFAULT TRUE,
@@ -35,6 +37,7 @@ CREATE INDEX IF NOT EXISTS idx_accounting_inventory_settings_active
 
 ALTER TABLE public.accounting_inventory_settings
   ADD COLUMN IF NOT EXISTS goods_received_not_invoiced_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
+  ADD COLUMN IF NOT EXISTS purchase_price_variance_account_id UUID REFERENCES public.accounts(id) ON DELETE RESTRICT,
   ADD COLUMN IF NOT EXISTS sync_purchase_receipts BOOLEAN NOT NULL DEFAULT TRUE;
 
 CREATE TABLE IF NOT EXISTS public.accounting_inventory_product_mappings (
