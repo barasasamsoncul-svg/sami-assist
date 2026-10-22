@@ -94,6 +94,103 @@ CREATE TABLE IF NOT EXISTS public.purchase_receipt_lines (
 CREATE INDEX IF NOT EXISTS idx_purchase_receipt_lines_receipt
   ON public.purchase_receipt_lines(company_id, receipt_id)
   WHERE deleted_at IS NULL;
+
+-- Purchase lines map to the shared Inventory product master. Existing unmapped
+-- purchase lines stay unmapped until an operator explicitly links a product.
+ALTER TABLE public.purchase_order_items
+  ADD COLUMN IF NOT EXISTS product_reference UUID;
+ALTER TABLE public.purchase_receipts
+  ADD COLUMN IF NOT EXISTS warehouse_reference UUID;
+ALTER TABLE public.purchase_receipt_lines
+  ADD COLUMN IF NOT EXISTS product_reference UUID;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_order_items_company_id_id
+  ON public.purchase_order_items(company_id, id);
+CREATE INDEX IF NOT EXISTS idx_purchase_order_items_company_product
+  ON public.purchase_order_items(company_id, product_reference)
+  WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_purchase_receipt_lines_company_po_item
+  ON public.purchase_receipt_lines(company_id, purchase_order_item_id)
+  WHERE deleted_at IS NULL;
+
+DO $sami_purchase_inventory_links$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_purchase_order_items_product'
+      AND conrelid = 'public.purchase_order_items'::regclass
+  ) THEN
+    ALTER TABLE public.purchase_order_items
+      ADD CONSTRAINT fk_purchase_order_items_product
+      FOREIGN KEY (product_reference) REFERENCES public.products(id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_purchase_order_items_company_product'
+      AND conrelid = 'public.purchase_order_items'::regclass
+  ) THEN
+    ALTER TABLE public.purchase_order_items
+      ADD CONSTRAINT fk_purchase_order_items_company_product
+      FOREIGN KEY (company_id, product_reference)
+      REFERENCES public.products(company_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_purchase_receipts_warehouse'
+      AND conrelid = 'public.purchase_receipts'::regclass
+  ) THEN
+    ALTER TABLE public.purchase_receipts
+      ADD CONSTRAINT fk_purchase_receipts_warehouse
+      FOREIGN KEY (warehouse_reference) REFERENCES public.warehouses(id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_purchase_receipts_company_warehouse'
+      AND conrelid = 'public.purchase_receipts'::regclass
+  ) THEN
+    ALTER TABLE public.purchase_receipts
+      ADD CONSTRAINT fk_purchase_receipts_company_warehouse
+      FOREIGN KEY (company_id, warehouse_reference)
+      REFERENCES public.warehouses(company_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_purchase_receipt_lines_product'
+      AND conrelid = 'public.purchase_receipt_lines'::regclass
+  ) THEN
+    ALTER TABLE public.purchase_receipt_lines
+      ADD CONSTRAINT fk_purchase_receipt_lines_product
+      FOREIGN KEY (product_reference) REFERENCES public.products(id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_purchase_receipt_lines_company_product'
+      AND conrelid = 'public.purchase_receipt_lines'::regclass
+  ) THEN
+    ALTER TABLE public.purchase_receipt_lines
+      ADD CONSTRAINT fk_purchase_receipt_lines_company_product
+      FOREIGN KEY (company_id, product_reference)
+      REFERENCES public.products(company_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_purchase_receipt_lines_company_po_item'
+      AND conrelid = 'public.purchase_receipt_lines'::regclass
+  ) THEN
+    ALTER TABLE public.purchase_receipt_lines
+      ADD CONSTRAINT fk_purchase_receipt_lines_company_po_item
+      FOREIGN KEY (company_id, purchase_order_item_id)
+      REFERENCES public.purchase_order_items(company_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+END
+$sami_purchase_inventory_links$;
 `;
 
     case 'expenses':
