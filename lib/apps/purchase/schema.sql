@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS public.purchase_orders (
 CREATE TABLE IF NOT EXISTS public.purchase_order_items (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     purchase_order_id UUID NOT NULL REFERENCES public.purchase_orders(id) ON DELETE CASCADE,
+    product_reference UUID,
     description TEXT NOT NULL,
     quantity NUMERIC(15,2) NOT NULL DEFAULT 1,
     unit_cost NUMERIC(15,2) NOT NULL DEFAULT 0,
