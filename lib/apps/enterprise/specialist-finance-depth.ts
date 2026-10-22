@@ -9,6 +9,16 @@ export function financeSpecialistDepthSql(
   ) {
     case 'purchase':
       return `
+-- Baseline Purchase tables are created before specialist extension SQL. Establish
+-- nullable company columns now so company-safe indexes/FKs below are valid before
+-- the normal enterprise hardening pass performs any unambiguous legacy backfill.
+ALTER TABLE public.purchase_orders
+  ADD COLUMN IF NOT EXISTS company_id UUID;
+ALTER TABLE public.purchase_order_items
+  ADD COLUMN IF NOT EXISTS company_id UUID;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_orders_company_id_id
+  ON public.purchase_orders(company_id, id);
+
 CREATE TABLE IF NOT EXISTS public.purchase_requisitions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
@@ -106,6 +116,8 @@ ALTER TABLE public.purchase_receipt_lines
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_order_items_company_id_id
   ON public.purchase_order_items(company_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_receipts_company_id_id
+  ON public.purchase_receipts(company_id, id);
 CREATE INDEX IF NOT EXISTS idx_purchase_order_items_company_product
   ON public.purchase_order_items(company_id, product_reference)
   WHERE deleted_at IS NULL;
@@ -115,6 +127,48 @@ CREATE INDEX IF NOT EXISTS idx_purchase_receipt_lines_company_po_item
 
 DO $sami_purchase_inventory_links$
 BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_purchase_orders_company'
+      AND conrelid = 'public.purchase_orders'::regclass
+  ) THEN
+    ALTER TABLE public.purchase_orders
+      ADD CONSTRAINT fk_purchase_orders_company
+      FOREIGN KEY (company_id) REFERENCES public.companies(id)
+      ON DELETE CASCADE NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_purchase_order_items_company'
+      AND conrelid = 'public.purchase_order_items'::regclass
+  ) THEN
+    ALTER TABLE public.purchase_order_items
+      ADD CONSTRAINT fk_purchase_order_items_company
+      FOREIGN KEY (company_id) REFERENCES public.companies(id)
+      ON DELETE CASCADE NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_purchase_receipts_company_order'
+      AND conrelid = 'public.purchase_receipts'::regclass
+  ) THEN
+    ALTER TABLE public.purchase_receipts
+      ADD CONSTRAINT fk_purchase_receipts_company_order
+      FOREIGN KEY (company_id, purchase_order_id)
+      REFERENCES public.purchase_orders(company_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_purchase_receipt_lines_company_receipt'
+      AND conrelid = 'public.purchase_receipt_lines'::regclass
+  ) THEN
+    ALTER TABLE public.purchase_receipt_lines
+      ADD CONSTRAINT fk_purchase_receipt_lines_company_receipt
+      FOREIGN KEY (company_id, receipt_id)
+      REFERENCES public.purchase_receipts(company_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
     WHERE conname = 'fk_purchase_order_items_product'
