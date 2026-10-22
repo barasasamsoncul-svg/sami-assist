@@ -447,6 +447,7 @@ async function settingsForUpdate(
           inventory_gain_account_id::text,
           inventory_loss_account_id::text,
           goods_received_not_invoiced_account_id::text,
+          purchase_price_variance_account_id::text,
           sync_sales_movements,
           sync_adjustments,
           sync_purchase_receipts,
@@ -954,16 +955,17 @@ async function backfillSourceEvents(
           receipt.warehouse_reference,
           (receipt_line.quantity_received - receipt_line.quantity_rejected)::numeric(19,4),
           (receipt_line.quantity_received - receipt_line.quantity_rejected)::numeric(19,4),
-          order_item.unit_cost::numeric(19,4),
+          product.cost_price::numeric(19,4),
           ROUND(
-            (receipt_line.quantity_received - receipt_line.quantity_rejected) * order_item.unit_cost,
+            (receipt_line.quantity_received - receipt_line.quantity_rejected) * product.cost_price,
             2
           )::numeric(19,2),
-          'purchase_order_cost',
-          FALSE,
+          'backfill_current_standard_cost',
+          TRUE,
           CASE
             WHEN receipt_line.quantity_received > receipt_line.quantity_rejected
               AND order_item.unit_cost > 0
+              AND product.cost_price > 0
               THEN 'pending'
             ELSE 'review'
           END,
@@ -973,7 +975,10 @@ async function backfillSourceEvents(
             'purchaseOrderId', order_item.purchase_order_id,
             'purchaseOrderItemId', order_item.id,
             'receiptLineId', receipt_line.id,
-            'costProvenance', 'confirmed_purchase_order_line'
+            'purchaseOrderUnitCost', order_item.unit_cost,
+            'standardCostUnitCost', product.cost_price,
+            'costProvenance', 'confirmed_purchase_order_line',
+            'valuationCostBasis', 'product_standard_cost'
           ),
           $2,
           $2
@@ -1215,6 +1220,14 @@ async function postingAccounts(
         ? String(
             settings
               .goods_received_not_invoiced_account_id,
+          )
+        : null,
+    priceVariance:
+      settings
+        .purchase_price_variance_account_id
+        ? String(
+            settings
+              .purchase_price_variance_account_id,
           )
         : null,
   };
@@ -1565,6 +1578,7 @@ export async function getAccountingInventoryValuation() {
             inventory_gain_account_id::text,
             inventory_loss_account_id::text,
             goods_received_not_invoiced_account_id::text,
+            purchase_price_variance_account_id::text,
             sync_sales_movements,
             sync_adjustments,
             sync_purchase_receipts,
@@ -1766,6 +1780,8 @@ export async function getAccountingInventoryValuation() {
       inventory_loss_account_id:
         null,
       goods_received_not_invoiced_account_id:
+        null,
+      purchase_price_variance_account_id:
         null,
       sync_sales_movements:
         true,
@@ -2085,19 +2101,24 @@ export async function saveInventoryValuationSettings(
     accountingId(
       body.goodsReceivedNotInvoicedAccountId,
     );
+  const priceVariance =
+    accountingId(
+      body.purchasePriceVarianceAccountId,
+    );
 
+  const coreAccounts = [
+    asset,
+    cogs,
+    gain,
+    loss,
+    grni,
+  ];
   if (
-    new Set([
-      asset,
-      cogs,
-      gain,
-      loss,
-      grni,
-    ]).size !==
-      5
+    new Set(coreAccounts).size !== 5 ||
+    [asset, gain, loss, grni].includes(priceVariance)
   ) {
     throw new AccountingInputError(
-      'Inventory Asset, COGS, Inventory Gain, Inventory Loss and Goods Received Not Invoiced must use distinct ledger accounts.',
+      'Inventory Asset, COGS, Inventory Gain, Inventory Loss and Goods Received Not Invoiced must be distinct. Purchase Price Variance may share the COGS account, but no other account.',
     );
   }
 
@@ -2144,6 +2165,13 @@ export async function saveInventoryValuationSettings(
       'Goods Received Not Invoiced',
       liabilityAccount,
     );
+    await activeAccount(
+      client,
+      context.companyId,
+      priceVariance,
+      'Purchase Price Variance',
+      expenseAccount,
+    );
 
     await client.query(
       `
@@ -2157,6 +2185,7 @@ export async function saveInventoryValuationSettings(
           inventory_gain_account_id,
           inventory_loss_account_id,
           goods_received_not_invoiced_account_id,
+          purchase_price_variance_account_id,
           sync_sales_movements,
           sync_adjustments,
           sync_purchase_receipts,
@@ -2167,8 +2196,8 @@ export async function saveInventoryValuationSettings(
         VALUES (
           $1,$2,
           'standard_cost',
-          $3,$4,$5,$6,$7,$8,$9,$10,$11,
-          'active',$12,$12
+          $3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
+          'active',$13,$13
         )
         ON CONFLICT (
           company_id
@@ -2191,6 +2220,8 @@ export async function saveInventoryValuationSettings(
             EXCLUDED.inventory_loss_account_id,
           goods_received_not_invoiced_account_id =
             EXCLUDED.goods_received_not_invoiced_account_id,
+          purchase_price_variance_account_id =
+            EXCLUDED.purchase_price_variance_account_id,
           sync_sales_movements =
             EXCLUDED.sync_sales_movements,
           sync_adjustments =
@@ -2215,6 +2246,7 @@ export async function saveInventoryValuationSettings(
         gain,
         loss,
         grni,
+        priceVariance,
         bool(
           body.syncSalesMovements,
           true,
@@ -2245,8 +2277,10 @@ export async function saveInventoryValuationSettings(
             $5,
           goods_received_not_invoiced_account_id =
             $6,
-          updated_by =
+          purchase_price_variance_account_id =
             $7,
+          updated_by =
+            $8,
           updated_at =
             NOW()
         WHERE company_id =
@@ -2261,6 +2295,7 @@ export async function saveInventoryValuationSettings(
         gain,
         loss,
         grni,
+        priceVariance,
         context.userId,
       ],
     );
