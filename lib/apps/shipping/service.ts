@@ -160,7 +160,7 @@ export async function getShippingOverview(): Promise<ShippingOverview> {
   const [summary, carriers, shipments, events, labels] = await Promise.all([
     context.pool.query([
       'SELECT COUNT(*)::int AS total,',
-      " COUNT(*) FILTER (WHERE status IN ('draft','active'))::int AS draft,"
+      " COUNT(*) FILTER (WHERE status IN ('draft','active'))::int AS draft,",
       " COUNT(*) FILTER (WHERE status='ready')::int AS ready,",
       " COUNT(*) FILTER (WHERE status='in_transit')::int AS in_transit,",
       " COUNT(*) FILTER (WHERE status='delivered')::int AS delivered,",
