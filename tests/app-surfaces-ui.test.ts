@@ -222,7 +222,10 @@ test(
                   : moduleKey ===
                       'barcode'
                     ? /BarcodeModuleShell/
-                    : /AppSurfaceShell/,
+                    : moduleKey ===
+                        'shipping'
+                      ? /ShippingModuleShell/
+                      : /AppSurfaceShell/,
         moduleKey +
           ' must compose its own standalone app surface.',
       );

@@ -269,6 +269,7 @@ export const ADDITIONAL_FIRST_PARTY_SAMI_MODULES:
   additionalModule({
     key: "shipping",
     name: "Shipping",
+    version: '1.1.0',
     description: "Prepare shipments, carrier handoffs, tracking and delivery exceptions.",
     category: "supply_chain",
     icon: "package",
