@@ -219,7 +219,10 @@ test(
                 : moduleKey ===
                     'warehouse'
                   ? /WarehouseModuleShell/
-                  : /AppSurfaceShell/,
+                  : moduleKey ===
+                      'barcode'
+                    ? /BarcodeModuleShell/
+                    : /AppSurfaceShell/,
         moduleKey +
           ' must compose its own standalone app surface.',
       );
