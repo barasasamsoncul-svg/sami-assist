@@ -93,6 +93,8 @@
     "test:accounting:parity-hardening": "node --test tests/accounting-parity-hardening.test.mjs",
     "migrate:accounting:2.34:release": "node --conditions=react-server --import tsx scripts/migrate-accounting-2-34-before-release.ts",
     "test:accounting:2.34:release": "npm run test:accounting:parity-hardening && npm run test:accounting:operational-recovery && npm run test:locks && npm run test:module-migrations && npm run test:app-ui && npm run test:invoicing && npm run test:erp-integration && npx tsc --noEmit && npm run build",
+    "migrate:accounting:2.35:release": "node --conditions=react-server --import tsx scripts/migrate-accounting-2-35-before-release.ts",
+    "test:accounting:2.35:release": "npm run test:accounting:inventory && npm run test:accounting:parity-hardening && npm run test:accounting:operational-recovery && npm run test:locks && npm run test:module-migrations && npm run test:app-ui && npm run test:invoicing && npm run test:erp-integration && npx tsc --noEmit && npm run build",
     "migrate:invoicing:2.22:release": "node --conditions=react-server --import tsx scripts/migrate-invoicing-2-22-before-release.ts",
     "test:invoicing:2.22:release": "npm run test:accounting:parity-hardening && npm run test:invoicing && npm run test:locks && npm run test:module-migrations && npm run test:responsive && npm run test:app-ui && npm run test:erp-integration && npx tsc --noEmit && npm run build",
     "migrate:invoicing:2.23:release": "node --conditions=react-server --import tsx scripts/migrate-invoicing-2-23-before-release.ts",
