@@ -321,6 +321,7 @@ test('Category 13: installing or enabling an app requires explicit consent for i
     settings,
     /Standard plan required/,
   );
+  assert.match(settings, /upgrade to Standard or Custom first/);
   assert.match(
     settings,
     /Review billing and plans/,
