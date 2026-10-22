@@ -20,6 +20,7 @@ test('Accounting valuation captures posted Purchase receipts with confirmed PO-l
   assert.match(backfill, /order_item\.unit_cost/);
   assert.match(backfill, /'backfill_current_standard_cost'/);
   assert.match(backfill, /'purchaseOrderUnitCost', order_item\.unit_cost/);
+  assert.match(backfill, /'standardCostUnitCost', product\.cost_price/);
   assert.match(backfill, /'valuationCostBasis', 'product_standard_cost'/);
   assert.match(backfill, /'purchase:receipt-line:'/);
   assert.match(backfill, /ON CONFLICT \(company_id, source_event_key\)[\s\S]*?DO NOTHING/);
@@ -31,7 +32,11 @@ test('Purchase receipt valuation posts Inventory Asset against GRNI, not COGS or
   const start = service.indexOf('function builtInTreatment');
   const end = service.indexOf('async function eventTreatment', start);
   const classifier = service.slice(start, end);
-  assert.match(classifier, /movementType === 'purchase_receipt'[\s\S]*?return 'receive_inventory'/);
+  assert.match(classifier, /movementType === 'purchase_receipt'[\s\S]*?sourceType === 'purchase_receipt'[\s\S]*?return 'receive_inventory'/);
+  const treatmentStart = service.indexOf('async function eventTreatment');
+  const treatmentEnd = service.indexOf('async function postingAccounts', treatmentStart);
+  assert.match(service.slice(treatmentStart, treatmentEnd), /purchaseOrderUnitCost/);
+  assert.match(service.slice(treatmentStart, treatmentEnd), /return 'review'/);
 
   const effectStart = service.indexOf('function treatmentEffect');
   const effectEnd = service.indexOf('async function currentReconciliation', effectStart);
