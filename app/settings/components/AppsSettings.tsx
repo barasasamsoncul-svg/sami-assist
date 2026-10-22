@@ -73,11 +73,40 @@ type PendingLifecycleAction = {
 };
 
 
+type RequiredDependency = {
+  key:
+    string;
+  name?:
+    string;
+  status?:
+    string;
+};
+
+
+type PendingDependencyConfirmation = {
+  appKey:
+    string;
+  appName:
+    string;
+  method:
+    'POST' |
+    'PATCH';
+  body?:
+    Record<string, unknown>;
+  dependencies:
+    RequiredDependency[];
+};
+
+
 type LifecycleResponse = {
   success?: boolean;
   code?: string;
   error?: string;
   message?: string;
+  appKey?: string;
+  appName?: string;
+  action?: string;
+  dependencies?: RequiredDependency[];
   blockers?: Array<{
     key?: string;
     name?: string;
@@ -190,6 +219,16 @@ export default function AppsSettings({
   ] =
     useState<
       PendingLifecycleAction | null
+    >(
+      null,
+    );
+
+  const [
+    pendingDependencyConfirmation,
+    setPendingDependencyConfirmation,
+  ] =
+    useState<
+      PendingDependencyConfirmation | null
     >(
       null,
     );
@@ -388,6 +427,42 @@ export default function AppsSettings({
         );
 
       if (
+        !response.ok &&
+        data.code ===
+          'APP_DEPENDENCY_CONFIRMATION_REQUIRED' &&
+        Array.isArray(
+          data.dependencies,
+        ) &&
+        data.dependencies.length >
+          0 &&
+        (
+          method === 'POST' ||
+          method === 'PATCH'
+        )
+      ) {
+        setPendingDependencyConfirmation({
+          appKey,
+          appName:
+            data.appName ||
+            workspaceByKey.get(
+              appKey,
+            )?.name ||
+            appKey,
+          method,
+          body:
+            body
+              ? {
+                  ...body,
+                }
+              : undefined,
+          dependencies:
+            data.dependencies,
+        });
+
+        return;
+      }
+
+      if (
         !response.ok ||
         !data.success
       ) {
@@ -440,6 +515,38 @@ export default function AppsSettings({
       );
     }
   }
+
+  function confirmPendingDependencyAction() {
+    const pending =
+      pendingDependencyConfirmation;
+
+    if (
+      !pending
+    ) {
+      return;
+    }
+
+    setPendingDependencyConfirmation(
+      null,
+    );
+
+    void runAction(
+      pending.appKey,
+      pending.method,
+      {
+        ...(
+          pending.body ||
+          {}
+        ),
+        acceptedDependencyKeys:
+          pending.dependencies.map(
+            dependency =>
+              dependency.key,
+          ),
+      },
+    );
+  }
+
 
   function confirmPendingAction() {
     const action =
@@ -823,61 +930,93 @@ export default function AppsSettings({
       <SaMiOverlay
         open={
           Boolean(
+            pendingDependencyConfirmation,
+          ) ||
+          Boolean(
             pendingAction,
           ) ||
           overlay.open
         }
         type={
+          pendingDependencyConfirmation ||
           pendingAction
             ? 'warning'
             : overlay.type
         }
         title={
-          pendingAction
-            ? `${pendingAction.kind === 'disable' ? 'Disable' : 'Uninstall'} ${pendingAction.appName}?`
-            : overlay.title
+          pendingDependencyConfirmation
+            ? `${pendingDependencyConfirmation.method === 'PATCH' ? 'Enable' : 'Install'} required apps for ${pendingDependencyConfirmation.appName}?`
+            : pendingAction
+              ? `${pendingAction.kind === 'disable' ? 'Disable' : 'Uninstall'} ${pendingAction.appName}?`
+              : overlay.title
         }
         message={
-          pendingAction
-            ? pendingAction.kind ===
-                'disable'
-              ? 'The app will disappear from active workspace use, but its data will be retained. SaMi will block this if another installed app depends on it.'
-              : 'The app will be removed from active workspace use. Its existing business data will be retained for a future reinstall. SaMi will block this if another installed app depends on it.'
-            : overlay.message
+          pendingDependencyConfirmation
+            ? `SaMi cannot ${pendingDependencyConfirmation.method === 'PATCH' ? 'enable' : 'install'} ${pendingDependencyConfirmation.appName} by itself. It also requires these dependencies to be active: ${pendingDependencyConfirmation.dependencies.map(dependency => dependency.name || dependency.key).join(', ')}. Accept to install or re-enable the listed apps first, in dependency order, then continue. Cancel leaves this request unapplied.`
+            : pendingAction
+              ? pendingAction.kind ===
+                  'disable'
+                ? 'The app will disappear from active workspace use, but its data will be retained. SaMi will block this if another installed app depends on it.'
+                : 'The app will be removed from active workspace use. Its existing business data will be retained for a future reinstall. SaMi will block this if another installed app depends on it.'
+              : overlay.message
         }
         primaryAction={
-          pendingAction
+          pendingDependencyConfirmation
             ? {
                 label:
-                  pendingAction.kind ===
-                    'disable'
-                    ? 'Disable app'
-                    : 'Uninstall app',
+                  pendingDependencyConfirmation.method === 'PATCH'
+                    ? 'Accept & enable'
+                    : 'Accept & install',
                 onClick:
-                  confirmPendingAction,
+                  confirmPendingDependencyAction,
               }
-            : overlay.primaryAction
+            : pendingAction
+              ? {
+                  label:
+                    pendingAction.kind ===
+                      'disable'
+                      ? 'Disable app'
+                      : 'Uninstall app',
+                  onClick:
+                    confirmPendingAction,
+                }
+              : overlay.primaryAction
         }
         secondaryAction={
-          pendingAction
+          pendingDependencyConfirmation
             ? {
                 label:
                   'Cancel',
                 onClick:
                   () =>
-                    setPendingAction(
+                    setPendingDependencyConfirmation(
                       null,
                     ),
               }
-            : overlay.secondaryAction
+            : pendingAction
+              ? {
+                  label:
+                    'Cancel',
+                  onClick:
+                    () =>
+                      setPendingAction(
+                        null,
+                      ),
+                }
+              : overlay.secondaryAction
         }
         onClose={
-          pendingAction
+          pendingDependencyConfirmation
             ? () =>
-                setPendingAction(
+                setPendingDependencyConfirmation(
                   null,
                 )
-            : closeOverlay
+            : pendingAction
+              ? () =>
+                  setPendingAction(
+                    null,
+                  )
+              : closeOverlay
         }
       />
     </>
