@@ -1609,6 +1609,47 @@ export async function POST(
       subscriptionResult
         .rows[0] as SubscriptionRecord;
 
+    /*
+     * Category 13 compatibility bridge.
+     *
+     * Paid SaMi workspaces are not limited by the number of first-party
+     * apps installed. Keep -1 in the legacy response shape until
+     * Categories 22/23 replace old plan-limit fields with entitlements.
+     */
+    const includedApps =
+      -1;    const includedApps =
+      -1;
+
+    const acceptedDependencySet =
+      new Set(acceptedDependencyKeys);
+
+    const unacceptedDependencies =
+      dependenciesToInstall.filter(
+        manifest =>
+          !acceptedDependencySet.has(
+            normalizeAppKey(manifest.key),
+          ),
+      );
+
+    if (unacceptedDependencies.length > 0) {
+      return errorResponse(
+        409,
+        'APP_DEPENDENCY_CONFIRMATION_REQUIRED',
+        `Installing ${module.name} also requires installing its required apps. Accept the dependencies to continue.`,
+        {
+          appKey,
+          appName: module.name,
+          action: 'install',
+          dependencies: dependenciesToInstall.map(manifest => ({
+            key: normalizeAppKey(manifest.key),
+            name: planModuleByKey.get(normalizeAppKey(manifest.key))?.name || manifest.name,
+            status: tenantStatusByKey.get(normalizeAppKey(manifest.key)) || 'not_installed',
+          })),
+        },
+      );
+    }
+
+
     if (
       normalizeAppKey(subscription.plan_key) === 'free'
     ) {
@@ -1656,47 +1697,6 @@ export async function POST(
           },
         );
       }
-    }
-
-
-    /*
-     * Category 13 compatibility bridge.
-     *
-     * Paid SaMi workspaces are not limited by the number of first-party
-     * apps installed. Keep -1 in the legacy response shape until
-     * Categories 22/23 replace old plan-limit fields with entitlements.
-     */
-    const includedApps =
-      -1;    const includedApps =
-      -1;
-
-    const acceptedDependencySet =
-      new Set(acceptedDependencyKeys);
-
-    const unacceptedDependencies =
-      dependenciesToInstall.filter(
-        manifest =>
-          !acceptedDependencySet.has(
-            normalizeAppKey(manifest.key),
-          ),
-      );
-
-    if (unacceptedDependencies.length > 0) {
-      return errorResponse(
-        409,
-        'APP_DEPENDENCY_CONFIRMATION_REQUIRED',
-        `Installing ${module.name} also requires installing its required apps. Accept the dependencies to continue.`,
-        {
-          appKey,
-          appName: module.name,
-          action: 'install',
-          dependencies: dependenciesToInstall.map(manifest => ({
-            key: normalizeAppKey(manifest.key),
-            name: planModuleByKey.get(normalizeAppKey(manifest.key))?.name || manifest.name,
-            status: tenantStatusByKey.get(normalizeAppKey(manifest.key)) || 'not_installed',
-          })),
-        },
-      );
     }
 
 
