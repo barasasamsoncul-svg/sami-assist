@@ -52,9 +52,9 @@ test('Purchase Inventory receipt workflow is guarded and company scoped by exist
   ]);
   assert.match(tests, /fails closed when the Inventory dependency is not ready/);
   assert.match(tests, /posts idempotently to the shared company-scoped Inventory ledger/);
-  assert.match(posting, /movementReference = 'purchase_receipt:' \\+ receiptId \\+ ':' \\+ line\\.id/);
-  assert.match(posting, /product\\.company_id = \\$1/);
-  assert.match(posting, /warehouse\\.company_id = \\$1/);
+  assert.ok(posting.includes("const movementReference = 'purchase_receipt:' + receiptId + ':' + line.id;"));
+  assert.ok(posting.includes('product.company_id = $1'));
+  assert.ok(posting.includes('warehouse.company_id = $1'));
 });
 
 test('Purchase regression gate is included in CI and full test scripts', async () => {
