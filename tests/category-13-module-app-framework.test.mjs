@@ -196,6 +196,7 @@ test('Category 13: installing or enabling an app requires explicit consent for i
     selectApps,
     selectPlan,
     legacyInstall,
+    settingsClient,
   ] = await Promise.all([
     source('lib/services/workspace-app-lifecycle.ts'),
     source('app/api/workspace/apps/[appKey]/route.ts'),
@@ -204,6 +205,7 @@ test('Category 13: installing or enabling an app requires explicit consent for i
     source('app/select-apps/page.tsx'),
     source('app/select-plan/page.tsx'),
     source('app/api/auth/install-app/route.ts'),
+    source('app/settings/SettingsClient.tsx'),
   ]);
 
   assert.match(
@@ -323,12 +325,17 @@ test('Category 13: installing or enabling an app requires explicit consent for i
     /Review billing and plans/,
   );
   assert.match(settings, /dependencyAcceptanceStorageKey/);
+  assert.match(
+    settingsClient,
+    /workspaceId[\s\S]*?tenant\?\.id \|\| 'no-workspace'/,
+    'Dependency consent storage must be scoped to the active workspace.',
+  );
   assert.match(settings, /sessionStorage\.getItem/);
   assert.match(settings, /sessionStorage\.setItem/);
   assert.match(settings, /sessionStorage\.removeItem/);
   assert.match(
     settings,
-    /requestBody\?\.acceptedDependencyKeys[\s\S]*?dependencyAcceptanceStorageKey\(appKey\)/,
+    /requestBody\?\.acceptedDependencyKeys[\s\S]*?dependencyAcceptanceStorageKey\(workspaceId, appKey\)/,
     'A prior dependency acceptance must be restored when the user retries installation after upgrading the plan.',
   );
 });
