@@ -260,6 +260,7 @@ test('Category 13: installing or enabling an app requires explicit consent for i
   assert.match(registration, /APP_DEPENDENCY_CONFIRMATION_REQUIRED/);
   assert.match(registration, /requiredDependencyKeys/);
   assert.match(registration, /getSamiModuleManifest/);
+  assert.match(registration, /result\.appsInstalled[\s\S]*?length ===\s*resolvedApps\.length/, 'A successful onboarding install must include every resolved dependency, not only explicitly selected root apps.');
   assert.match(selectApps, /getSamiModuleDependencyPlan/);
   assert.match(selectApps, /Accept & continue/);
   assert.match(selectPlan, /acceptedDependencyKeys/);
