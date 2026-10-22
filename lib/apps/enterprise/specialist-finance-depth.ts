@@ -286,6 +286,36 @@ BEGIN
   END IF;
 END
 $sami_purchase_inventory_links$;
+
+-- Install order is deliberately flexible: if Accounting was installed first,
+-- Purchase adds the same composite FK once its supplier master exists.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_suppliers_company_id_id
+  ON public.suppliers(company_id, id);
+
+DO $sami_purchase_accounting_supplier_link$
+BEGIN
+  IF to_regclass('public.accounting_vendors') IS NOT NULL THEN
+    ALTER TABLE public.accounting_vendors
+      ADD COLUMN IF NOT EXISTS purchase_supplier_id UUID;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_vendors_company_purchase_supplier
+      ON public.accounting_vendors(company_id, purchase_supplier_id)
+      WHERE purchase_supplier_id IS NOT NULL AND deleted_at IS NULL;
+
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint
+      WHERE conname = 'fk_accounting_vendors_company_purchase_supplier'
+        AND conrelid = 'public.accounting_vendors'::regclass
+    ) THEN
+      ALTER TABLE public.accounting_vendors
+        ADD CONSTRAINT fk_accounting_vendors_company_purchase_supplier
+        FOREIGN KEY (company_id, purchase_supplier_id)
+        REFERENCES public.suppliers(company_id, id)
+        ON DELETE RESTRICT NOT VALID;
+    END IF;
+  END IF;
+END
+$sami_purchase_accounting_supplier_link$;
 `;
 
     case 'expenses':
