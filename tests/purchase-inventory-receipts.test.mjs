@@ -191,3 +191,45 @@ test('Enterprise relation resolver pairs composite FK columns by ordinal positio
   assert.match(relations, /foreignKey\.column_name === 'company_id'/);
   assert.match(relations, /SAFE_RELATION_TABLES\.has\(\s*foreignKey\.foreign_table/);
 });
+
+test('Purchase requisitions require supplier-complete lines before submission and record approval metadata', async () => {
+  const transitions = await source('lib/apps/enterprise/specialist-finance-transitions.ts');
+
+  assert.match(transitions, /validatePurchaseRequisitionForSubmission/);
+  assert.match(transitions, /Add at least one line before submitting a purchase requisition/);
+  assert.match(transitions, /Assign a preferred supplier to every requisition line before submitting/);
+  assert.match(transitions, /FROM suppliers[\\s\\S]*?company_id = \\$1[\\s\\S]*?IS NULL[\\s\\S]*?active/i);
+  assert.match(transitions, /UPDATE purchase_requisitions[\\s\\S]*?approved_by = \\$3[\\s\\S]*?approved_at = NOW\\(\\)/);
+});
+
+test('Approved Purchase requisitions convert to supplier-grouped draft POs with source-line traceability and retry protection', async () => {
+  const transitions = await source('lib/apps/enterprise/specialist-finance-transitions.ts');
+  const schema = await source('lib/apps/enterprise/specialist-finance-depth.ts');
+
+  assert.match(transitions, /convertPurchaseRequisitionToOrders/);
+  assert.match(transitions, /requisition\\.status \\|\\| ''\\) !== 'approved'/);
+  assert.match(transitions, /groups\\.get\\(supplierId\\)/);
+  assert.match(transitions, /ON CONFLICT \\(company_id, requisition_id, supplier_id\\)/);
+  assert.match(transitions, /source_requisition_line_id/);
+  assert.match(transitions, /ON CONFLICT \\(company_id, source_requisition_line_id\\)/);
+  assert.match(transitions, /ROUND\\(\\$6::numeric \\* \\$7::numeric, 2\\)/);
+  assert.match(schema, /ADD COLUMN IF NOT EXISTS requisition_id UUID/);
+  assert.match(schema, /ADD COLUMN IF NOT EXISTS source_requisition_line_id UUID/);
+  assert.match(schema, /uq_purchase_orders_company_requisition_supplier/);
+  assert.match(schema, /uq_purchase_order_items_company_requisition_line/);
+  assert.match(schema, /fk_purchase_orders_company_requisition/);
+  assert.match(schema, /fk_purchase_order_items_company_requisition_line/);
+});
+
+test('Purchase requisition lines lock once submitted and PO quantities retain four-decimal precision', async () => {
+  const hooks = await source('lib/apps/enterprise/domain-hooks.ts');
+  const purchaseSchema = await source('lib/apps/purchase/schema.sql');
+  const specialistDepth = await source('lib/apps/enterprise/specialist-finance-depth.ts');
+
+  assert.match(hooks, /purchase_requisition_lines[\\s\\S]*?Requisition lines cannot change after submission/);
+  assert.match(purchaseSchema, /quantity NUMERIC\\(19,4\\)/);
+  assert.match(purchaseSchema, /unit_cost NUMERIC\\(19,4\\)/);
+  assert.match(specialistDepth, /ALTER COLUMN quantity TYPE NUMERIC\\(19,4\\)/);
+  assert.match(specialistDepth, /ck_purchase_order_items_quantity_positive/);
+  assert.match(specialistDepth, /ck_purchase_order_items_unit_cost_nonnegative/);
+});

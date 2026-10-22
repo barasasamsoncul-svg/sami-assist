@@ -1423,6 +1423,16 @@ function validateDomainRow(
     moduleKey ===
       'purchase' &&
     table ===
+      'purchase_requisition_lines'
+  ) {
+    assertPositive(row.quantity, 'Requested quantity');
+    assertNonNegative(row.estimated_unit_cost, 'Estimated unit cost');
+  }
+
+  if (
+    moduleKey ===
+      'purchase' &&
+    table ===
       'purchase_order_items'
   ) {
     assertPositive(
@@ -4079,6 +4089,35 @@ export async function applyEnterpriseDomainSideEffects(
       row,
       companyId,
     );
+  }
+
+  if (
+    moduleKey ===
+      'purchase' &&
+    table ===
+      'purchase_requisition_lines' &&
+    row.requisition_id
+  ) {
+    const parent = await client.query(
+      `
+        SELECT status
+        FROM purchase_requisitions
+        WHERE id = $1
+          AND company_id = $2
+          AND deleted_at IS NULL
+        LIMIT 1
+        FOR SHARE
+      `,
+      [row.requisition_id, companyId],
+    );
+
+    if (!parent.rows[0]) {
+      throw new Error('The requisition line must belong to a valid requisition in the current company.');
+    }
+
+    if (String(parent.rows[0].status || '').trim().toLowerCase() !== 'draft') {
+      throw new Error('Requisition lines cannot change after submission. Return the requisition to draft before editing its lines.');
+    }
   }
 
   if (

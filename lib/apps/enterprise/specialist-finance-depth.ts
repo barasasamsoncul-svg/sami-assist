@@ -121,17 +121,74 @@ CREATE INDEX IF NOT EXISTS idx_purchase_receipt_lines_receipt
 
 -- Purchase lines map to the shared Inventory product master. Existing unmapped
 -- purchase lines stay unmapped until an operator explicitly links a product.
+ALTER TABLE public.purchase_orders
+  ADD COLUMN IF NOT EXISTS requisition_id UUID;
 ALTER TABLE public.purchase_order_items
-  ADD COLUMN IF NOT EXISTS product_reference UUID;
+  ADD COLUMN IF NOT EXISTS product_reference UUID,
+  ADD COLUMN IF NOT EXISTS source_requisition_line_id UUID;
 ALTER TABLE public.purchase_receipts
   ADD COLUMN IF NOT EXISTS warehouse_reference UUID;
 ALTER TABLE public.purchase_receipt_lines
   ADD COLUMN IF NOT EXISTS product_reference UUID;
 
+ALTER TABLE public.purchase_order_items
+  ALTER COLUMN quantity TYPE NUMERIC(19,4) USING quantity::NUMERIC(19,4),
+  ALTER COLUMN unit_cost TYPE NUMERIC(19,4) USING unit_cost::NUMERIC(19,4),
+  ALTER COLUMN line_total TYPE NUMERIC(19,2) USING line_total::NUMERIC(19,2);
+ALTER TABLE public.purchase_orders
+  ALTER COLUMN total_amount TYPE NUMERIC(19,2) USING total_amount::NUMERIC(19,2);
+
+DO $sami_purchase_value_checks$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'ck_purchase_order_items_quantity_positive'
+      AND conrelid = 'public.purchase_order_items'::regclass
+  ) THEN
+    ALTER TABLE public.purchase_order_items
+      ADD CONSTRAINT ck_purchase_order_items_quantity_positive
+      CHECK (quantity > 0) NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'ck_purchase_order_items_unit_cost_nonnegative'
+      AND conrelid = 'public.purchase_order_items'::regclass
+  ) THEN
+    ALTER TABLE public.purchase_order_items
+      ADD CONSTRAINT ck_purchase_order_items_unit_cost_nonnegative
+      CHECK (unit_cost >= 0) NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'ck_purchase_order_items_line_total_nonnegative'
+      AND conrelid = 'public.purchase_order_items'::regclass
+  ) THEN
+    ALTER TABLE public.purchase_order_items
+      ADD CONSTRAINT ck_purchase_order_items_line_total_nonnegative
+      CHECK (line_total >= 0) NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'ck_purchase_orders_total_nonnegative'
+      AND conrelid = 'public.purchase_orders'::regclass
+  ) THEN
+    ALTER TABLE public.purchase_orders
+      ADD CONSTRAINT ck_purchase_orders_total_nonnegative
+      CHECK (total_amount >= 0) NOT VALID;
+  END IF;
+END
+$sami_purchase_value_checks$;
+
 CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_order_items_company_id_id
   ON public.purchase_order_items(company_id, id);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_receipts_company_id_id
   ON public.purchase_receipts(company_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_orders_company_requisition_supplier
+  ON public.purchase_orders(company_id, requisition_id, supplier_id)
+  WHERE requisition_id IS NOT NULL AND deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_order_items_company_requisition_line
+  ON public.purchase_order_items(company_id, source_requisition_line_id)
+  WHERE source_requisition_line_id IS NOT NULL AND deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_purchase_order_items_company_product
   ON public.purchase_order_items(company_id, product_reference)
   WHERE deleted_at IS NULL;
@@ -346,6 +403,28 @@ BEGIN
       ADD CONSTRAINT fk_purchase_requisition_lines_company_supplier
       FOREIGN KEY (company_id, preferred_supplier_id)
       REFERENCES public.suppliers(company_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_purchase_orders_company_requisition'
+      AND conrelid = 'public.purchase_orders'::regclass
+  ) THEN
+    ALTER TABLE public.purchase_orders
+      ADD CONSTRAINT fk_purchase_orders_company_requisition
+      FOREIGN KEY (company_id, requisition_id)
+      REFERENCES public.purchase_requisitions(company_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_purchase_order_items_company_requisition_line'
+      AND conrelid = 'public.purchase_order_items'::regclass
+  ) THEN
+    ALTER TABLE public.purchase_order_items
+      ADD CONSTRAINT fk_purchase_order_items_company_requisition_line
+      FOREIGN KEY (company_id, source_requisition_line_id)
+      REFERENCES public.purchase_requisition_lines(company_id, id)
       ON DELETE RESTRICT NOT VALID;
   END IF;
 END

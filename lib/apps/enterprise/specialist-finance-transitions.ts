@@ -25,6 +25,345 @@ async function tableExists(
 }
 
 
+async function validatePurchaseRequisitionForSubmission(
+  client: PoolClient,
+  companyId: string,
+  requisitionId: string,
+) {
+  const lines = await client.query(
+    `
+      SELECT
+        id::text,
+        quantity::text,
+        estimated_unit_cost::text,
+        preferred_supplier_id::text
+      FROM purchase_requisition_lines
+      WHERE company_id = $1
+        AND requisition_id = $2
+        AND deleted_at IS NULL
+      ORDER BY id
+      FOR UPDATE
+    `,
+    [companyId, requisitionId],
+  );
+
+  if (lines.rows.length === 0) {
+    throw new Error('Add at least one line before submitting a purchase requisition.');
+  }
+
+  const supplierIds = new Set<string>();
+  for (const line of lines.rows) {
+    const quantity = Number(line.quantity);
+    const estimatedCost = Number(line.estimated_unit_cost);
+    const supplierId = String(line.preferred_supplier_id || '').trim();
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      throw new Error('Every requisition line must have a positive requested quantity.');
+    }
+    if (!Number.isFinite(estimatedCost) || estimatedCost < 0) {
+      throw new Error('Every requisition line must have a nonnegative estimated unit cost.');
+    }
+    if (!supplierId) {
+      throw new Error('Assign a preferred supplier to every requisition line before submitting.');
+    }
+    supplierIds.add(supplierId);
+  }
+
+  const suppliers = await client.query(
+    `
+      SELECT id::text
+      FROM suppliers
+      WHERE company_id = $1
+        AND id = ANY($2::uuid[])
+        AND deleted_at IS NULL
+        AND LOWER(BTRIM(COALESCE(status, ''))) = 'active'
+      ORDER BY id
+      FOR SHARE
+    `,
+    [companyId, Array.from(supplierIds)],
+  );
+
+  if (suppliers.rows.length !== supplierIds.size) {
+    throw new Error('Every requisition line must reference an active supplier in the current company.');
+  }
+}
+
+async function approvePurchaseRequisition(
+  client: PoolClient,
+  companyId: string,
+  userId: string,
+  requisitionId: string,
+) {
+  const result = await client.query(
+    `
+      UPDATE purchase_requisitions
+      SET approved_by = $3,
+          approved_at = NOW(),
+          updated_by = $3,
+          updated_at = NOW()
+      WHERE id = $1
+        AND company_id = $2
+        AND status = 'submitted'
+        AND deleted_at IS NULL
+      RETURNING id
+    `,
+    [requisitionId, companyId, userId],
+  );
+
+  if (result.rows.length !== 1) {
+    throw new Error('Only a submitted purchase requisition can be approved.');
+  }
+}
+
+async function convertPurchaseRequisitionToOrders(
+  client: PoolClient,
+  companyId: string,
+  userId: string,
+  requisitionId: string,
+) {
+  const requisitionResult = await client.query(
+    `
+      SELECT id::text, requisition_number, needed_by::text, status
+      FROM purchase_requisitions
+      WHERE id = $1
+        AND company_id = $2
+        AND deleted_at IS NULL
+      FOR UPDATE
+    `,
+    [requisitionId, companyId],
+  );
+  const requisition = requisitionResult.rows[0];
+
+  if (!requisition || String(requisition.status || '').toLowerCase() !== 'approved') {
+    throw new Error('Only an approved purchase requisition can be converted to purchase orders.');
+  }
+
+  const lineResult = await client.query(
+    `
+      SELECT
+        id::text,
+        product_reference::text,
+        description,
+        quantity::text,
+        estimated_unit_cost::text,
+        preferred_supplier_id::text
+      FROM purchase_requisition_lines
+      WHERE company_id = $1
+        AND requisition_id = $2
+        AND deleted_at IS NULL
+      ORDER BY preferred_supplier_id, id
+      FOR UPDATE
+    `,
+    [companyId, requisitionId],
+  );
+
+  if (lineResult.rows.length === 0) {
+    throw new Error('The requisition has no lines to convert.');
+  }
+
+  type RequisitionLine = {
+    id: string;
+    productReference: string | null;
+    description: string;
+    quantity: string;
+    estimatedUnitCost: string;
+    supplierId: string;
+  };
+  const lines: RequisitionLine[] = lineResult.rows.map((row) => ({
+    id: String(row.id),
+    productReference: row.product_reference ? String(row.product_reference) : null,
+    description: String(row.description || '').trim(),
+    quantity: String(row.quantity),
+    estimatedUnitCost: String(row.estimated_unit_cost),
+    supplierId: String(row.preferred_supplier_id || '').trim(),
+  }));
+
+  const groups = new Map<string, RequisitionLine[]>();
+  for (const line of lines) {
+    const quantity = Number(line.quantity);
+    const estimatedCost = Number(line.estimatedUnitCost);
+    if (!line.supplierId) {
+      throw new Error('Assign a preferred supplier to every requisition line before conversion.');
+    }
+    if (!line.description || !Number.isFinite(quantity) || quantity <= 0) {
+      throw new Error('Every requisition line must have a description and a positive requested quantity.');
+    }
+    if (!Number.isFinite(estimatedCost) || estimatedCost < 0) {
+      throw new Error('Every requisition line must have a nonnegative estimated unit cost.');
+    }
+    const bucket = groups.get(line.supplierId) || [];
+    bucket.push(line);
+    groups.set(line.supplierId, bucket);
+  }
+
+  const supplierIds = Array.from(groups.keys()).sort();
+  const activeSuppliers = await client.query(
+    `
+      SELECT id::text
+      FROM suppliers
+      WHERE company_id = $1
+        AND id = ANY($2::uuid[])
+        AND deleted_at IS NULL
+        AND LOWER(BTRIM(COALESCE(status, ''))) = 'active'
+      ORDER BY id
+      FOR SHARE
+    `,
+    [companyId, supplierIds],
+  );
+  if (activeSuppliers.rows.length !== supplierIds.length) {
+    throw new Error('Every requisition line must reference an active supplier in the current company.');
+  }
+
+  const label = String(requisition.requisition_number || 'REQUEST')
+    .trim()
+    .replace(/[^A-Za-z0-9_-]/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 20) || 'REQUEST';
+  const requisitionKey = requisitionId.replace(/-/g, '');
+
+  const generatedOrderIds: string[] = [];
+  for (const supplierId of supplierIds) {
+    const supplierLines = groups.get(supplierId) || [];
+    const supplierKey = supplierId.replace(/-/g, '');
+    const orderNumber = 'PO-' + label + '-' + requisitionKey + '-' + supplierKey;
+
+    const createdOrder = await client.query(
+      `
+        INSERT INTO purchase_orders (
+          company_id,
+          order_number,
+          supplier_id,
+          order_date,
+          expected_date,
+          status,
+          total_amount,
+          requisition_id,
+          created_by,
+          updated_by,
+          created_at,
+          updated_at
+        )
+        VALUES ($1, $2, $3, CURRENT_DATE, $4, 'draft', 0, $5, $6, $6, NOW(), NOW())
+        ON CONFLICT (company_id, requisition_id, supplier_id)
+          WHERE requisition_id IS NOT NULL AND deleted_at IS NULL
+        DO NOTHING
+        RETURNING id::text, status
+      `,
+      [companyId, orderNumber, supplierId, requisition.needed_by || null, requisitionId, userId],
+    );
+
+    let purchaseOrderId = createdOrder.rows[0]?.id ? String(createdOrder.rows[0].id) : '';
+    let orderStatus = createdOrder.rows[0]?.status ? String(createdOrder.rows[0].status) : '';
+
+    if (!purchaseOrderId) {
+      const existingOrder = await client.query(
+        `
+          SELECT id::text, status
+          FROM purchase_orders
+          WHERE company_id = $1
+            AND requisition_id = $2
+            AND supplier_id = $3
+            AND deleted_at IS NULL
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [companyId, requisitionId, supplierId],
+      );
+      purchaseOrderId = existingOrder.rows[0]?.id ? String(existingOrder.rows[0].id) : '';
+      orderStatus = existingOrder.rows[0]?.status ? String(existingOrder.rows[0].status) : '';
+    }
+
+    if (!purchaseOrderId || orderStatus !== 'draft') {
+      throw new Error('An existing purchase order from this requisition is not an editable draft. Resolve it before retrying conversion.');
+    }
+
+    for (const line of supplierLines) {
+      const insertedLine = await client.query(
+        `
+          INSERT INTO purchase_order_items (
+            company_id,
+            purchase_order_id,
+            source_requisition_line_id,
+            product_reference,
+            description,
+            quantity,
+            unit_cost,
+            line_total,
+            created_by,
+            updated_by,
+            created_at,
+            updated_at
+          )
+          VALUES (
+            $1, $2, $3, $4, $5, $6, $7,
+            ROUND($6::numeric * $7::numeric, 2),
+            $8, $8, NOW(), NOW()
+          )
+          ON CONFLICT (company_id, source_requisition_line_id)
+            WHERE source_requisition_line_id IS NOT NULL AND deleted_at IS NULL
+          DO NOTHING
+          RETURNING id::text
+        `,
+        [
+          companyId,
+          purchaseOrderId,
+          line.id,
+          line.productReference,
+          line.description,
+          line.quantity,
+          line.estimatedUnitCost,
+          userId,
+        ],
+      );
+
+      if (insertedLine.rows.length === 0) {
+        const existingLine = await client.query(
+          `
+            SELECT purchase_order_id::text
+            FROM purchase_order_items
+            WHERE company_id = $1
+              AND source_requisition_line_id = $2
+              AND deleted_at IS NULL
+            LIMIT 1
+            FOR UPDATE
+          `,
+          [companyId, line.id],
+        );
+        if (String(existingLine.rows[0]?.purchase_order_id || '') !== purchaseOrderId) {
+          throw new Error('A requisition line is already linked to a different purchase order.');
+        }
+      }
+    }
+
+    const updatedOrder = await client.query(
+      `
+        UPDATE purchase_orders po
+        SET
+          total_amount = COALESCE((
+            SELECT SUM(item.quantity * item.unit_cost)
+            FROM purchase_order_items item
+            WHERE item.company_id = po.company_id
+              AND item.purchase_order_id = po.id
+              AND item.deleted_at IS NULL
+          ), 0),
+          updated_by = $3,
+          updated_at = NOW()
+        WHERE po.id = $1
+          AND po.company_id = $2
+          AND po.status = 'draft'
+          AND po.deleted_at IS NULL
+        RETURNING id::text
+      `,
+      [purchaseOrderId, companyId, userId],
+    );
+    if (updatedOrder.rows.length !== 1) {
+      throw new Error('The generated purchase order could not be recalculated.');
+    }
+    generatedOrderIds.push(purchaseOrderId);
+  }
+  return generatedOrderIds;
+}
+
 export async function postPurchaseReceiptToInventory(
   client:
     PoolClient,
@@ -881,6 +1220,39 @@ export async function applyFinanceSpecialistTransition(
     nextStatus,
   } =
     input;
+
+  if (
+    moduleKey ===
+      'purchase' &&
+    table ===
+      'purchase_requisitions' &&
+    nextStatus ===
+      'submitted'
+  ) {
+    await validatePurchaseRequisitionForSubmission(client, companyId, recordId);
+  }
+
+  if (
+    moduleKey ===
+      'purchase' &&
+    table ===
+      'purchase_requisitions' &&
+    nextStatus ===
+      'approved'
+  ) {
+    await approvePurchaseRequisition(client, companyId, userId, recordId);
+  }
+
+  if (
+    moduleKey ===
+      'purchase' &&
+    table ===
+      'purchase_requisitions' &&
+    nextStatus ===
+      'converted'
+  ) {
+    await convertPurchaseRequisitionToOrders(client, companyId, userId, recordId);
+  }
 
   if (
     moduleKey ===
