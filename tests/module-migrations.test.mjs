@@ -341,7 +341,7 @@ test('Accounting 2.4 setup schema is migration-backed and available on fresh ins
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.34\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.35\.0'/,
   );
 
   assert.match(
@@ -436,7 +436,7 @@ test('Accounting 2.5 Chart of Accounts is migration-backed and company scoped', 
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.34\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.35\.0'/,
   );
 
   assert.match(
@@ -519,7 +519,7 @@ test('Accounting 2.6 centralizes double-entry posting and reversal invariants', 
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.34\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.35\.0'/,
   );
 
   assert.match(
@@ -627,7 +627,7 @@ test('Accounting 2.7 journal workflow is migration-backed and fresh-install comp
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.34\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.35\.0'/,
   );
 
   assert.match(runtimeMigrations, /ACCOUNTING_2_6_0_TO_2_7_0/);
@@ -711,7 +711,7 @@ test('Accounting 2.8 opening balances are migration-backed and workflow protecte
 
   assert.match(
     firstParty,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.34\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.35\.0'/,
   );
 
   assert.match(runtimeMigrations, /ACCOUNTING_2_7_0_TO_2_8_0/);
@@ -1081,7 +1081,7 @@ test('Accounting 2.11 controls approved expenses and employee reimbursements wit
 
   assert.match(
     manifest,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.34\.0'[\s\S]*optionalDepends:\s*\['expenses','projects','payroll'\]/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.35\.0'[\s\S]*optionalDepends:\s*\['expenses','projects','payroll'\]/,
   );
   assert.match(migrations,/ACCOUNTING_2_10_0_TO_2_11_0/);
   assert.match(
@@ -1862,7 +1862,7 @@ test('Accounting 2.21 Accruals and Deferrals are migration-backed and ledger con
 
   assert.match(
     manifest,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.34\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.35\.0'/,
   );
   assert.match(runtime,/ACCOUNTING_2_20_0_TO_2_21_0/);
   assert.match(
@@ -1992,7 +1992,7 @@ test('Accounting 2.22 Loans and Financing are migration-backed and ledger contro
 
   assert.match(
     manifest,
-    /key:\s*"accounting"[\s\S]*version:\s*'2\.34\.0'/,
+    /key:\s*"accounting"[\s\S]*version:\s*'2\.35\.0'/,
   );
   assert.match(runtime,/ACCOUNTING_2_21_0_TO_2_22_0/);
   assert.match(
