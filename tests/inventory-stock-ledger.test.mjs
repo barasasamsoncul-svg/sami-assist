@@ -5,7 +5,7 @@ import path from 'node:path';
 const root=process.cwd();
 async function source(file){return (await readFile(path.join(root,file),'utf8')).replace(/\r\n/g,'\n');}
 
-test('Inventory ledger upgrade is registered and versioned 2.3.0 to 2.4.0',async()=>{
+test('Inventory ledger upgrade is registered and versioned from the installed 1.0.0 to 2.4.0',async()=>{
  const [m,r,f]=await Promise.all([source('lib/apps/inventory/migrations/1.0.0-to-2.4.0.ts'),source('lib/apps/runtime-migrations.ts'),source('lib/modules/first-party.ts')]);
  assert.match(m,/moduleKey:\s*'inventory'/);assert.match(m,/fromVersion:\s*'1\.0\.0'/);assert.match(m,/toVersion:\s*'2\.4\.0'/);assert.match(r,/INVENTORY_1_0_0_TO_2_4_0/);
  const s=f.indexOf('key: "inventory"'),e=f.indexOf('defineSamiModule({',s+12);assert.match(f.slice(s,e),/version:\s*'2\.4\.0'/);
@@ -66,4 +66,40 @@ test('Inventory reads enforce view scope for every company-scoped stock data sou
   assert.match(service, /contexts\.some\(\(context\)/);
   assert.match(api, /sec-fetch-site/);
   assert.match(api, /MAX_BODY_BYTES/);
+});
+
+test('Transfer and cycle-count tables have idempotency columns and company-safe relationships', async () => {
+  const migration = await source('lib/apps/inventory/migrations/1.0.0-to-2.4.0.ts');
+  const hardening = await source('lib/apps/enterprise/hardening.ts');
+  for (const sql of [migration, hardening]) {
+    assert.match(sql, /inventory_transfer_orders[\s\S]*ADD COLUMN IF NOT EXISTS request_key UUID/);
+    assert.match(sql, /inventory_cycle_counts[\s\S]*ADD COLUMN IF NOT EXISTS request_key UUID/);
+    assert.match(sql, /inventory_adjustments[\s\S]*ADD COLUMN IF NOT EXISTS cycle_count_id UUID/);
+    assert.match(sql, /uq_inventory_transfer_request_key/);
+    assert.match(sql, /uq_inventory_cycle_count_request_key/);
+    assert.match(sql, /uq_inventory_adjustment_cycle_count/);
+    assert.match(sql, /fk_inventory_transfer_line_company_order/);
+    assert.match(sql, /fk_inventory_cycle_counts_company_product/);
+    assert.match(sql, /fk_inventory_adjustment_cycle_count/);
+  }
+});
+
+test('Inventory workflow routes post transfer and count variances in one transaction', async () => {
+  const service = await source('lib/apps/inventory/service.ts');
+  const api = await source('app/api/apps/inventory/route.ts');
+  const hooks = await source('lib/apps/enterprise/domain-hooks.ts');
+  assert.match(service, /export async function runInventoryWorkflow/);
+  assert.match(service, /createInventoryTransfer/);
+  assert.match(service, /transitionInventoryTransfer/);
+  assert.match(service, /createInventoryCycleCount/);
+  assert.match(service, /recordInventoryCycleCount/);
+  assert.match(service, /postInventoryCycleCount/);
+  assert.match(service, /await client\.query\('BEGIN'\)/);
+  assert.match(service, /transfer_out/);
+  assert.match(service, /transfer_in/);
+  assert.match(service, /Stock changed after the count was recorded/);
+  assert.match(api, /getInventoryWorkflowOverview/);
+  assert.match(api, /runInventoryWorkflow/);
+  assert.match(hooks, /Transfer, cycle-count and adjustment records can only be changed through validated Inventory workflows/);
+  assert.match(hooks, /'transfer_in'/);
 });
