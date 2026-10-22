@@ -145,3 +145,13 @@ test('Purchase supplier master syncs idempotently into Accounting AP vendors whe
   assert.match(purchaseSchema, /uq_purchase_suppliers_company_id_id/);
   assert.match(purchaseSchema, /to_regclass\('public\.accounting_vendors'\)/);
 });
+
+
+test('Purchase receipt lines are immutable once their parent receipt is posted', async () => {
+  const hooks = await source('lib/apps/enterprise/domain-hooks.ts');
+
+  assert.match(hooks, /moduleKey ===\s*'purchase'[\s\S]*?table ===\s*'purchase_receipt_lines'[\s\S]*?FOR SHARE/);
+  assert.match(hooks, /purchase receipt line must belong to a valid receipt in the current company/);
+  assert.match(hooks, /status \|\| ''\)\.trim\(\)\.toLowerCase\(\) === 'posted'/);
+  assert.match(hooks, /Lines on a posted purchase receipt are immutable/);
+});
