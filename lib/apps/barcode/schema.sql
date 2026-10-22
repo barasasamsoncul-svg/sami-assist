@@ -4,9 +4,8 @@
 -- Required dependencies: inventory
 -- Optional dependencies: warehouse
 --
--- Company-scoped domain foundation. This schema is real and migration-ready,
--- but the module remains non-installable until its permissions, routes,
--- services and UI are implemented and verified.
+-- Company-scoped schema for the dedicated scanner and audit API.
+-- Scan events are traceability records; stock changes remain in Inventory and Warehouse workflows.
 -- ============================================================
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -106,3 +105,19 @@ CREATE INDEX IF NOT EXISTS idx_barcode_scan_events_company_created
     ON public.barcode_scan_events(company_id, created_at DESC, id DESC)
     WHERE deleted_at IS NULL;
 
+
+CREATE INDEX IF NOT EXISTS idx_barcode_scan_events_company_recent
+    ON public.barcode_scan_events(company_id, scanned_at DESC, id DESC)
+    WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_barcode_identifiers_company_code_lookup
+    ON public.barcode_identifiers(company_id, lower(barcode))
+    WHERE status = 'active' AND deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_barcode_identifiers_company_entity
+    ON public.barcode_identifiers(company_id, entity_type, entity_id)
+    WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_barcode_rules_company_active
+    ON public.barcode_rules(company_id, status, entity_type)
+    WHERE deleted_at IS NULL;
