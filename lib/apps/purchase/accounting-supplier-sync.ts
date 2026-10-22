@@ -46,10 +46,16 @@ export async function syncPurchaseSupplierToAccounting(
        ) AS link_ready`,
   );
   if (columns.rows[0]?.link_ready !== true) {
-    throw new Error(
-      'Accounting supplier linking is not ready. Apply the Accounting vendor-link schema before changing a Purchase supplier.',
+    await client.query(
+      `ALTER TABLE public.accounting_vendors
+       ADD COLUMN IF NOT EXISTS purchase_supplier_id UUID`,
     );
   }
+  await client.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_vendors_company_purchase_supplier
+     ON public.accounting_vendors(company_id, purchase_supplier_id)
+     WHERE purchase_supplier_id IS NOT NULL AND deleted_at IS NULL`,
+  );
 
   const supplierId = nullableText(input.row.id, 64);
   if (!supplierId) {
