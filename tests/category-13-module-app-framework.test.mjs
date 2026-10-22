@@ -702,7 +702,7 @@ test('Category 13: legacy installer keeps the Free dependency gate without resto
 
   assert.match(
     onboarding,
-    /const includedApps =\\s*-1/s,
+    /const includedApps =\s*-1/s,
   );
 
   assert.doesNotMatch(
