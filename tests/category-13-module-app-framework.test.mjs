@@ -239,6 +239,11 @@ test('Category 13: installing or enabling an app requires explicit consent for i
     route,
     /consent\.keys/,
   );
+  assert.match(
+    route,
+    /enableWorkspaceApp\(\s*appKey,\s*auditContext\(\s*request,\s*\),\s*consent\.keys/s,
+    'Enabling a disabled module must use the same dependency-consent gate.',
+  );
 
   assert.match(
     settings,
