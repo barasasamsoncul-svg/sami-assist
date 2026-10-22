@@ -244,6 +244,11 @@ test('Category 13: installing or enabling an app requires explicit consent for i
     /enableWorkspaceApp\(\s*appKey,\s*auditContext\(\s*request,\s*\),\s*consent\.keys/s,
     'Enabling a disabled module must use the same dependency-consent gate.',
   );
+  assert.doesNotMatch(
+    route,
+    /uninstallWorkspaceApp\([\s\S]{0,200}consent\.keys/s,
+    'Dependency install consent must not affect uninstall calls.',
+  );
 
   assert.match(
     settings,
