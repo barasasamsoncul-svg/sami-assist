@@ -157,3 +157,14 @@ test('Purchase receipt lines are immutable once their parent receipt is posted',
   assert.match(hooks, /status \|\| ''\)\.trim\(\)\.toLowerCase\(\) === 'posted'/);
   assert.match(hooks, /Lines on a posted purchase receipt are immutable/);
 });
+
+
+test('Enterprise relation resolver pairs composite FK columns by ordinal position', async () => {
+  const relations = await source('lib/apps/enterprise/relations.ts');
+
+  assert.match(relations, /JOIN LATERAL unnest\(constraint_row\.conkey\)[\s\S]*?WITH ORDINALITY AS source_key/);
+  assert.match(relations, /JOIN LATERAL unnest\(constraint_row\.confkey\)[\s\S]*?WITH ORDINALITY AS target_key/);
+  assert.match(relations, /target_key\.key_position = source_key\.key_position/);
+  assert.match(relations, /foreignKey\.column_name === 'company_id'/);
+  assert.match(relations, /SAFE_RELATION_TABLES\.has\(\s*foreignKey\.foreign_table/);
+});
