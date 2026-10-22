@@ -112,7 +112,7 @@ export default function PurchaseOperationsPanel({ initialSection, canTransition 
   const [notice, setNotice] = useState('');
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
-  const [focusTable, setFocusTable] = useState<string>(initialSection === 'requisitions' ? 'purchase_requisitions' : initialSection === 'receipts' ? 'purchase_receipts' : 'purchase_orders');
+  const [focusTable, setFocusTable] = useState<string>(initialSection === 'overview' ? 'all' : initialSection === 'requisitions' ? 'purchase_requisitions' : initialSection === 'receipts' ? 'purchase_receipts' : 'purchase_orders');
 
   const request = useCallback(async (payload: Row) => {
     const response = await fetch('/api/apps/purchase/records', {
@@ -170,6 +170,7 @@ export default function PurchaseOperationsPanel({ initialSection, canTransition 
     });
     return all.filter(({ table, row }) => {
       if (initialSection !== 'overview' && table !== focusTable) return false;
+      if (initialSection === 'overview' && focusTable !== 'all' && table !== focusTable) return false;
       const status = stringValue(row, 'status', 'state').toLowerCase();
       if (filter !== 'all' && status !== filter) return false;
       const query = search.trim().toLowerCase();
@@ -234,7 +235,7 @@ export default function PurchaseOperationsPanel({ initialSection, canTransition 
           <div><div className="flex items-center gap-2"><ClipboardCheck className="h-4 w-4 text-[var(--sami-muted)]" /><h2 className="text-base font-semibold">{initialSection === 'overview' ? 'Procurement workflow queue' : title}</h2></div><p className="mt-1 text-xs text-[var(--sami-muted)]">Company-scoped records; showing up to 50 per register.</p></div>
           <label className="relative block w-full sm:w-72"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--sami-muted)]" /><input className={inputClass + ' pl-9'} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search reference, supplier, status…" /></label>
         </div>
-        {initialSection === 'overview' ? <div className="mt-4 flex flex-wrap gap-2">{TABLES.map((table) => <button type="button" key={table.key} onClick={() => setFocusTable(table.key)} className={focusTable === table.key ? primaryButton : neutralButton}>{table.label}</button>)}<button type="button" onClick={() => setFilter('all')} className={neutralButton}>Clear filters</button></div> : null}
+        {initialSection === 'overview' ? <div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={() => setFocusTable('all')} className={focusTable === 'all' ? primaryButton : neutralButton}>All registers</button>{TABLES.map((table) => <button type="button" key={table.key} onClick={() => setFocusTable(table.key)} className={focusTable === table.key ? primaryButton : neutralButton}>{table.label}</button>)}<button type="button" onClick={() => { setFilter('all'); setSearch(''); setFocusTable('all'); }} className={neutralButton}>Clear filters</button></div> : null}
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <label className="flex items-center gap-2 text-xs font-medium text-[var(--sami-muted)]">Status
             <select className={inputClass + ' w-44'} value={filter} onChange={(e) => setFilter(e.target.value)}><option value="all">All statuses</option>{['draft','submitted','approved','rejected','converted','confirmed','received','inspected','posted','closed','cancelled'].map((status) => <option value={status} key={status}>{pretty(status)}</option>)}</select>
