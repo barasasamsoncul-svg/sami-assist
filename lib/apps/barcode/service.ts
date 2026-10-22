@@ -84,7 +84,7 @@ export async function getBarcodeWorkspaceOverview(): Promise<BarcodeWorkspaceOve
       " AND identifier.entity_id = product.id AND identifier.status = 'active' AND identifier.deleted_at IS NULL))",
     ].join('\n'), [context.companyId]),
     context.pool.query([
-      'SELECT event.id::text, event.barcode, COALESCE(event.operation,\\'lookup\\') AS operation,',
+      'SELECT event.id::text, event.barcode, COALESCE(event.operation,\'lookup\') AS operation,',
       " COALESCE(event.payload->>'matchStatus','unmatched') AS match_status,",
       " event.payload->>'productName' AS product_name, event.payload->>'sku' AS sku,",
       ' event.device_reference, event.scanned_at::text',
@@ -124,18 +124,18 @@ export async function recordBarcodeScan(input: unknown) {
   return transaction(context, async (client) => {
     const result = await client.query([
       'SELECT product.id::text AS id, product.name, product.sku, product.barcode,',
-      ' MIN(CASE WHEN lower(BTRIM(COALESCE(product.barcode,\\'\\'))) = lower($2) THEN 0',
-      ' WHEN lower(BTRIM(COALESCE(identifier.barcode,\\'\\'))) = lower($2) THEN 1 ELSE 2 END) AS priority',
+      ' MIN(CASE WHEN lower(BTRIM(COALESCE(product.barcode,\'\'))) = lower($2) THEN 0',
+      ' WHEN lower(BTRIM(COALESCE(identifier.barcode,\'\'))) = lower($2) THEN 1 ELSE 2 END) AS priority',
       'FROM public.products product LEFT JOIN public.barcode_identifiers identifier',
-      ' ON identifier.company_id = product.company_id AND identifier.entity_type = \\'product\\'',
-      ' AND identifier.entity_id = product.id AND identifier.status = \\'active\\' AND identifier.deleted_at IS NULL',
+      ' ON identifier.company_id = product.company_id AND identifier.entity_type = \'product\'',
+      ' AND identifier.entity_id = product.id AND identifier.status = \'active\' AND identifier.deleted_at IS NULL',
       'WHERE product.company_id = $1 AND product.is_active = TRUE AND product.deleted_at IS NULL',
-      ' AND (lower(BTRIM(COALESCE(product.barcode,\\'\\'))) = lower($2)',
-      ' OR lower(BTRIM(COALESCE(product.sku,\\'\\'))) = lower($2)',
-      ' OR lower(BTRIM(COALESCE(identifier.barcode,\\'\\'))) = lower($2))',
+      ' AND (lower(BTRIM(COALESCE(product.barcode,\'\'))) = lower($2)',
+      ' OR lower(BTRIM(COALESCE(product.sku,\'\'))) = lower($2)',
+      ' OR lower(BTRIM(COALESCE(identifier.barcode,\'\'))) = lower($2))',
       'GROUP BY product.id ORDER BY MIN(CASE',
-      ' WHEN lower(BTRIM(COALESCE(product.barcode,\\'\\'))) = lower($2) THEN 0',
-      ' WHEN lower(BTRIM(COALESCE(identifier.barcode,\\'\\'))) = lower($2) THEN 1 ELSE 2 END), product.name LIMIT 2',
+      ' WHEN lower(BTRIM(COALESCE(product.barcode,\'\'))) = lower($2) THEN 0',
+      ' WHEN lower(BTRIM(COALESCE(identifier.barcode,\'\'))) = lower($2) THEN 1 ELSE 2 END), product.name LIMIT 2',
     ].join('\n'), [context.companyId, barcode]);
     const matchStatus = result.rows.length === 1 ? 'matched' : result.rows.length > 1 ? 'ambiguous' : 'unmatched';
     const product = result.rows.length === 1 ? {
