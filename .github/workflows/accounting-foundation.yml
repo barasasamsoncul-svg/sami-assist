@@ -111,6 +111,7 @@ jobs:
       - run: npm ci
       - run: node --conditions=react-server --import tsx --test tests/accounting-foundation.test.mjs tests/accounting-statements.test.mjs tests/accounting-payments.test.mjs tests/accounting-tax.test.mjs tests/accounting-kenya.test.mjs tests/accounting-international.test.mjs tests/accounting-fx.test.mjs
       - run: npm run test:accounting:inventory
+      - run: npm run test:purchase:inventory:integration
       - run: npm run test:accounting:accruals
       - run: npm run test:accounting:financing
       - run: npm run test:accounting:budgets
