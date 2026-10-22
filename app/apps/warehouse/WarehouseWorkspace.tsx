@@ -143,9 +143,9 @@ export default async function WarehouseWorkspace({
   ];
 
   const activeSidebarKey = nativeSection
-    ? section
+    ? (section || 'overview')
     : resolved.view === 'records'
-      ? resolved.tableKey
+      ? (resolved.tableKey || 'overview')
       : resolved.view;
 
   return (
