@@ -18,7 +18,7 @@ export default function ShippingWorkspaceClient({
   nativeView: boolean;
   initialSection: ShippingSection;
 }) {
-  if (nativeView) return <ShippingOperationsPanel initialSection={initialSection} />;
+  if (nativeView) return <ShippingOperationsPanel initialSection={initialSection} warehouseAvailable={accessibleModuleKeys.includes('warehouse')} />;
   return <EnterpriseDataWorkspaceClient initialData={initialData} userId={userId} initialView={initialView}
     initialTableKey={initialTableKey} accessibleModuleKeys={accessibleModuleKeys} />;
 }
