@@ -14,7 +14,7 @@ test('Accounting valuation captures posted Purchase receipts with confirmed PO-l
 
   assert.match(backfill, /input\.runtime\.purchaseReceipts/);
   assert.match(backfill, /receipt\.status = 'posted'/);
-  assert.match(backfill, /receipt\.quantity_received/);
+  assert.match(backfill, /receipt_line\.quantity_received/);
   assert.match(backfill, /receipt_line\.quantity_received - receipt_line\.quantity_rejected/);
   assert.match(backfill, /product\.cost_price/);
   assert.match(backfill, /order_item\.unit_cost/);
