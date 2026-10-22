@@ -596,7 +596,6 @@ export async function DELETE(
         auditContext(
           request,
         ),
-        consent.keys,
       );
 
     return json({
