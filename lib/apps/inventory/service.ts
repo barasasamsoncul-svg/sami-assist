@@ -736,7 +736,7 @@ async function transitionInventoryTransfer(body: Record<string, unknown>, action
       if (Number(quantity) <= 0) throw new InventoryConflictError('A transfer line has no shipped quantity.');
       await postInventoryMovementInTransaction(client, {
         companyId: context.companyId,
-          userId: context.userId,
+        userId: context.userId,
         productId: String(line.product_id),
         warehouseId: String(order.destination_warehouse_id),
         movementType: 'transfer_in',
@@ -905,7 +905,7 @@ async function postInventoryCycleCount(body: Record<string, unknown>) {
     if (difference !== 0) {
       await postInventoryMovementInTransaction(client, {
         companyId: context.companyId,
-          userId: context.userId,
+        userId: context.userId,
         productId,
         warehouseId,
         movementType: difference > 0 ? 'adjustment_in' : 'adjustment_out',
