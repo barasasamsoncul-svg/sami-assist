@@ -1371,12 +1371,6 @@ async function activateWorkspaceApp(
         canonicalKey,
       );
 
-    await assertInstallPlanEntitled(
-      controlClient,
-      context.tenantId,
-      plan,
-    );
-
     const root =
       plan[
         plan.length -
@@ -1536,6 +1530,12 @@ async function activateWorkspaceApp(
         },
       );
     }
+
+    await assertInstallPlanEntitled(
+      controlClient,
+      context.tenantId,
+      plan,
+    );
 
     const tenantPool =
       getTenantPool(
