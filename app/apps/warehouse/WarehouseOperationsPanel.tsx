@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
+import { useCallback, useEffect, useMemo, useState, useTransition, type ReactNode } from 'react';
 import {
   ArrowDownToLine,
   ArrowLeftRight,
