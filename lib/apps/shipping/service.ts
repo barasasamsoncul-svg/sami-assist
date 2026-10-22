@@ -160,7 +160,7 @@ export async function getShippingOverview(): Promise<ShippingOverview> {
   const [summary, carriers, shipments, events, labels] = await Promise.all([
     context.pool.query([
       'SELECT COUNT(*)::int AS total,',
-      " COUNT(*) FILTER (WHERE status='draft')::int AS draft,",
+      " COUNT(*) FILTER (WHERE status IN ('draft','active'))::int AS draft,"
       " COUNT(*) FILTER (WHERE status='ready')::int AS ready,",
       " COUNT(*) FILTER (WHERE status='in_transit')::int AS in_transit,",
       " COUNT(*) FILTER (WHERE status='delivered')::int AS delivered,",
@@ -359,7 +359,8 @@ export async function transitionShippingShipment(input: unknown) {
       [context.companyId, id],
     );
     if (!found.rows.length) throw new ShippingConflictError('Shipment not found in the selected company.');
-    const current = found.rows[0].status as ShippingStatus;
+    const storedStatus = String(found.rows[0].status || 'draft');
+    const current = (storedStatus === 'active' ? 'draft' : storedStatus) as ShippingStatus;
     if (!SHIPMENT_STATUSES.has(current) || !ALLOWED_TRANSITIONS[current].includes(target)) {
       throw new ShippingConflictError('That shipment status transition is not allowed. Refresh and choose an available next step.');
     }
@@ -377,7 +378,7 @@ export async function transitionShippingShipment(input: unknown) {
         }
         throw error;
       }
-      if (warehouseContext.companyId !== context.companyId || warehouseContext.tenantId !== context.tenantId) {
+      if (warehouseContext.companyId !== context.companyId || warehouseContext.tenantId !== context.tenantId || warehouseContext.userId !== context.userId) {
         throw new EnterpriseModuleError('WORKSPACE_CONTEXT_CHANGED', 'Shipping and Warehouse must use the same selected company.');
       }
       const expectedWarehouseStatus = target === 'in_transit' ? 'packed' : 'in_transit';
