@@ -36,7 +36,7 @@ function StatusPill({ status }: { status: string }) {
 }
 function numberOrNull(value: string) { return value.trim() ? Number(value) : null; }
 
-export default function ShippingOperationsPanel({ initialSection }: { initialSection: Section }) {
+export default function ShippingOperationsPanel({ initialSection, warehouseAvailable }: { initialSection: Section; warehouseAvailable: boolean }) {
   const [data, setData] = useState<ShippingOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, startTransition] = useTransition();
@@ -201,7 +201,7 @@ export default function ShippingOperationsPanel({ initialSection }: { initialSec
             <label className="block text-xs">Region / county<input className={inputClass + ' mt-2'} value={region} onChange={(e) => setRegion(e.target.value)} maxLength={120} /></label>
             <label className="block text-xs">Postal code<input className={inputClass + ' mt-2'} value={postalCode} onChange={(e) => setPostalCode(e.target.value)} maxLength={32} /></label>
             <label className="block text-xs">Source reference (optional)<input className={inputClass + ' mt-2'} value={sourceReference} onChange={(e) => setSourceReference(e.target.value)} maxLength={128} placeholder="Sales order / warehouse ref" /></label>
-            <label className="block text-xs">Origin workspace<select className={inputClass + ' mt-2'} value={trackingIntent} onChange={(e) => setTrackingIntent(e.target.value)}><option value="manual">Manual shipment</option><option value="sales">Sales order</option><option value="warehouse">Warehouse hand-off</option><option value="ecommerce">E-commerce order</option></select></label>
+            <label className="block text-xs">Origin workspace<select className={inputClass + ' mt-2'} value={trackingIntent} onChange={(e) => setTrackingIntent(e.target.value)}><option value="manual">Manual shipment</option><option value="sales">Sales order reference</option>{warehouseAvailable ? <option value="warehouse">Warehouse package hand-off</option> : null}<option value="ecommerce">E-commerce order reference</option></select></label>
           </div></div>
           <div><p className="mb-2 text-xs font-semibold">Parcel details (optional)</p><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <label className="block text-xs">Weight<input type="number" min="0" step="0.001" className={inputClass + ' mt-2'} value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="Weight in configured unit" /></label>
