@@ -140,3 +140,18 @@ test('Inventory transfer UI supports multiple unique product lines up to the wor
   assert.match(service, /new Set\(lines\.map\(\(line\) => line\.productId\)\)\.size !== lines\.length/);
 });
 
+test('Inventory ledger and balance writes retain the authenticated actor for audit', async () => {
+  const service = await source('lib/apps/inventory/service.ts');
+
+  assert.match(service, /userId: string;/);
+  assert.match(service, /reference, created_by, updated_by/);
+  assert.match(service, /input\.userId/);
+  assert.match(service, /updated_by = EXCLUDED\.updated_by/);
+  assert.match(service, /updated_by = \$5/);
+  assert.equal(
+    (service.match(/userId: context\.userId/g) || []).length,
+    3,
+    'Shipment, receipt and cycle-count variance movements must pass the authenticated actor.',
+  );
+});
+
