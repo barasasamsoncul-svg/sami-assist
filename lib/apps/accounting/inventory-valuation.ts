@@ -750,6 +750,13 @@ async function backfillSourceEvents(
           AND (
             accounting_inventory_source_events.unit_cost IS DISTINCT FROM EXCLUDED.unit_cost
             OR accounting_inventory_source_events.value_amount IS DISTINCT FROM EXCLUDED.value_amount
+            OR COALESCE(
+              accounting_inventory_source_events.metadata->>'purchaseOrderUnitCost',
+              ''
+            ) IS DISTINCT FROM COALESCE(
+              EXCLUDED.metadata->>'purchaseOrderUnitCost',
+              ''
+            )
             OR (
               accounting_inventory_source_events.status = 'review'
               AND EXCLUDED.status = 'pending'
