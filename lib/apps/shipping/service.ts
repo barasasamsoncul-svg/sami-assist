@@ -241,8 +241,10 @@ export async function createShippingShipment(input: unknown) {
   const trackingNumber = optionalText(body.trackingNumber, 'Tracking number');
   const sourceReference = optionalText(body.sourceReference, 'Order / source reference', 128);
   const trackingIntent = optionalText(body.trackingIntent, 'Tracking intent', 80);
-  const sourceSystem = trackingIntent && ['sales','warehouse','ecommerce','manual'].includes(trackingIntent)
-    ? trackingIntent : 'manual';
+  if (trackingIntent && !new Set<string>(['sales','warehouse','ecommerce','manual']).has(trackingIntent)) {
+    throw new ShippingInputError('Choose a supported shipment origin.');
+  }
+  const sourceSystem = trackingIntent || 'manual';
   if (sourceSystem === 'warehouse' && !sourceReference) {
     throw new ShippingInputError('Enter the packed Warehouse package number when creating a shipment from Warehouse.');
   }
@@ -274,7 +276,7 @@ export async function createShippingShipment(input: unknown) {
       }
       throw error;
     }
-    if (warehouseContext.companyId !== context.companyId || warehouseContext.tenantId !== context.tenantId) {
+    if (warehouseContext.companyId !== context.companyId || warehouseContext.tenantId !== context.tenantId || warehouseContext.userId !== context.userId) {
       throw new EnterpriseModuleError('WORKSPACE_CONTEXT_CHANGED', 'Shipping and Warehouse must use the same selected company.');
     }
   }
