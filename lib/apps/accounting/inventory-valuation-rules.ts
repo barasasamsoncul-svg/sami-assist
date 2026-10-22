@@ -32,6 +32,7 @@ export function classifyInventoryEvent(input:{movementType:string;quantityEffect
   const q=inventoryQuantityUnits(input.quantityEffect);
   if(input.movementType==='sales_delivery'&&q<0)return 'cogs_issue' as const;
   if(input.movementType==='sales_return'&&q>0)return 'cogs_return' as const;
+  if(input.movementType==='purchase_receipt'&&q>0)return 'receive_inventory' as const;
   if(input.movementType==='inventory_adjustment_gain'&&q>0)return 'adjustment_gain' as const;
   if(input.movementType==='inventory_adjustment_loss'&&q<0)return 'adjustment_loss' as const;
   return 'review' as const;
