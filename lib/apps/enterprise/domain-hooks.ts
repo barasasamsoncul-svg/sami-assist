@@ -3719,6 +3719,37 @@ async function validateDomainLifecycleMutation(
 
   if (
     moduleKey ===
+      'purchase' &&
+    table ===
+      'purchase_receipt_lines' &&
+    row.receipt_id
+  ) {
+    const parent = await client.query(
+      `
+        SELECT status
+        FROM purchase_receipts
+        WHERE id = $1
+          AND company_id = $2
+          AND deleted_at IS NULL
+        LIMIT 1
+        FOR SHARE
+      `,
+      [row.receipt_id, companyId],
+    );
+
+    if (!parent.rows[0]) {
+      throw new Error('The purchase receipt line must belong to a valid receipt in the current company.');
+    }
+
+    if (String(parent.rows[0].status || '').trim().toLowerCase() === 'posted') {
+      throw new Error(
+        'Lines on a posted purchase receipt are immutable. Use a separate inventory adjustment or return.',
+      );
+    }
+  }
+
+  if (
+    moduleKey ===
       'payments' &&
     table ===
       'payment_reconciliations' &&
