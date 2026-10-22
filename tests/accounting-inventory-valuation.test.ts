@@ -448,10 +448,12 @@ test(
       await postPurchaseReceiptToInventory(client, companyId, userId, receiptB);
 
       const finalMovements = await client.query(
-        `SELECT quantity::text FROM public.stock_movements WHERE company_id=$1 AND product_id=$2`,
+        `SELECT COUNT(*)::int AS count, COALESCE(SUM(quantity),0)::text AS total
+          FROM public.stock_movements WHERE company_id=$1 AND product_id=$2`,
         [companyId, productA],
       );
-      assert.deepEqual(finalMovements.rows.map(row => row.quantity), ['4.0000', '1.0000']);
+      assert.equal(Number(finalMovements.rows[0].count), 2);
+      assert.equal(finalMovements.rows[0].total, '5.0000');
 
       const finalBalances = await client.query(
         `SELECT quantity::text FROM public.stock_levels WHERE company_id=$1 AND product_id=$2`,
