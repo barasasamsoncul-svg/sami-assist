@@ -103,3 +103,22 @@ test('Inventory workflow routes post transfer and count variances in one transac
   assert.match(hooks, /Transfer, cycle-count and adjustment records can only be changed through validated Inventory workflows/);
   assert.match(hooks, /'transfer_in'/);
 });
+
+test('Transfer-only movement types are not accepted through generic stock-movement CRUD', async () => {
+  const hooks = await source('lib/apps/enterprise/domain-hooks.ts');
+  const start = hooks.indexOf('export function normalizeEnterpriseDomainValues');
+  const end = hooks.indexOf('\n\nasync function recalculatePurchaseOrder', start);
+  const normalization = hooks.slice(start, end);
+  const acceptedStart = normalization.indexOf('const accepted =');
+  const acceptedEnd = normalization.indexOf('if (\n      !accepted.has', acceptedStart);
+  assert.ok(acceptedStart >= 0 && acceptedEnd > acceptedStart);
+  assert.doesNotMatch(normalization.slice(acceptedStart, acceptedEnd), /transfer_(?:in|out)/);
+});
+
+test('Cycle-count variance can reconcile physically counted stock even if reservations exceed count', async () => {
+  const service = await source('lib/apps/inventory/service.ts');
+  assert.match(service, /allowReservedStockConsumption\?: boolean/);
+  assert.match(service, /allowReservedStockConsumption: true/);
+  assert.match(service, /input\.allowReservedStockConsumption[\s\S]*?quantity >= \$3/);
+  assert.match(service, /The physical-count variance exceeds on-hand stock/);
+});

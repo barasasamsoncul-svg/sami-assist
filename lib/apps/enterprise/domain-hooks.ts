@@ -580,7 +580,7 @@ export function normalizeEnterpriseDomainValues(
     const accepted =
       new Set([
         'in', 'inbound', 'receipt', 'purchase_receipt', 'opening_balance',
-        'return_in', 'adjustment_in', 'transfer_in', 'out', 'outbound', 'issue', 'sale', 'transfer_out',
+        'return_in', 'adjustment_in', 'out', 'outbound', 'issue', 'sale',
         'return_out', 'adjustment_out',
       ]);
 

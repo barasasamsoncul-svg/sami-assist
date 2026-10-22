@@ -309,6 +309,7 @@ async function postInventoryMovementInTransaction(
     movementType: string;
     quantity: string;
     reference: string;
+    allowReservedStockConsumption?: boolean;
   },
 ) {
   await requireActiveProductAndWarehouse(
@@ -343,28 +344,36 @@ async function postInventoryMovementInTransaction(
       );
     }
   } else {
+    const outboundUpdateSql = input.allowReservedStockConsumption
+      ? `UPDATE public.stock_levels
+         SET quantity = quantity - $3, updated_at = NOW()
+         WHERE product_id = $1 AND warehouse_id = $2
+           AND company_id = $4 AND deleted_at IS NULL
+           AND quantity >= $3
+         RETURNING id`
+      : `UPDATE public.stock_levels
+         SET quantity = quantity - $3, updated_at = NOW()
+         WHERE product_id = $1 AND warehouse_id = $2
+           AND company_id = $4 AND deleted_at IS NULL
+           AND quantity - COALESCE((
+             SELECT SUM(reservation.quantity)
+             FROM public.stock_reservations reservation
+             WHERE reservation.company_id = stock_levels.company_id
+               AND reservation.product_id = stock_levels.product_id
+               AND reservation.warehouse_id = stock_levels.warehouse_id
+               AND reservation.deleted_at IS NULL
+               AND reservation.status IN ('active', 'allocated')
+           ), 0) >= $3
+         RETURNING id`;
     const changed = await client.query(
-      `UPDATE public.stock_levels
-       SET quantity = quantity - $3, updated_at = NOW()
-       WHERE product_id = $1
-         AND warehouse_id = $2
-         AND company_id = $4
-         AND deleted_at IS NULL
-         AND quantity - COALESCE((
-           SELECT SUM(reservation.quantity)
-           FROM public.stock_reservations reservation
-           WHERE reservation.company_id = stock_levels.company_id
-             AND reservation.product_id = stock_levels.product_id
-             AND reservation.warehouse_id = stock_levels.warehouse_id
-             AND reservation.deleted_at IS NULL
-             AND reservation.status IN ('active', 'allocated')
-         ), 0) >= $3
-       RETURNING id`,
+      outboundUpdateSql,
       [input.productId, input.warehouseId, input.quantity, input.companyId],
     );
     if (changed.rows.length !== 1) {
       throw new InventoryConflictError(
-        'Insufficient unreserved stock for this movement, or the stock balance is unavailable.',
+        input.allowReservedStockConsumption
+          ? 'The physical-count variance exceeds on-hand stock.'
+          : 'Insufficient unreserved stock for this movement, or the stock balance is unavailable.',
       );
     }
   }
@@ -896,6 +905,7 @@ async function postInventoryCycleCount(body: Record<string, unknown>) {
         movementType: difference > 0 ? 'adjustment_in' : 'adjustment_out',
         quantity: Math.abs(difference).toFixed(4),
         reference: adjustmentNumber + ' · cycle count ' + cycleCountId,
+        allowReservedStockConsumption: true,
       });
     }
     const adjustment = await client.query(
