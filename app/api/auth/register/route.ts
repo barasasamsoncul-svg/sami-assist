@@ -3439,7 +3439,7 @@ export async function POST(
           0 &&
         result.appsInstalled
           .length ===
-          selectedApps.length;
+          resolvedApps.length;
     } catch (error) {
       console.error(
         '[SaMi] Workspace provisioning failed:',
