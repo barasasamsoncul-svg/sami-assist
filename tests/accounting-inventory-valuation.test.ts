@@ -115,8 +115,12 @@ test('posted Purchase receipts feed standard-cost valuation with the purchase-or
   assert.match(backfill, /ON CONFLICT \(company_id, source_event_key\)/);
   assert.match(backfill, /supersededByPurchaseReceiptEvent/);
 
-  assert.match(source, /event\.cost_source \|\| ''\) !== 'purchase_order_cost'/);
-  assert.match(source, /debitAccount = accounts\.asset;\s*creditAccount = accounts\.grni/);
+  assert.match(source, /metadata\\.costProvenance !== 'confirmed_purchase_order_line'/);
+  assert.match(source, /treatment ===\\s*'receive_inventory'[\\s\\S]*?debitAccount = accounts\\.asset/);
+  assert.match(source, /creditAccount = accounts\\.grni/);
+  assert.match(source, /actualPurchaseValue/);
+  assert.match(source, /varianceCents =\\s*actualPurchaseCents - valueCents/);
+  assert.match(source, /accountId: accounts\\.priceVariance/);
   assert.match(source, /goods_received_not_invoiced_account_id/);
   assert.match(source, /source_type <> 'purchase_receipt'[\s\S]*?\$2::boolean = TRUE/);
 
