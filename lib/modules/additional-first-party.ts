@@ -259,6 +259,7 @@ export const ADDITIONAL_FIRST_PARTY_SAMI_MODULES:
   additionalModule({
     key: "warehouse",
     name: "Warehouse",
+    version: '1.1.0',
     description: "Coordinate warehouse locations, put-away, picking and internal stock flows.",
     category: "supply_chain",
     icon: "boxes",
