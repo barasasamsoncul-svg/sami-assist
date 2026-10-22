@@ -157,7 +157,7 @@ const overviewTables = [
 
 export async function getShippingOverview(): Promise<ShippingOverview> {
   const context = await getContext(overviewTables);
-  const [summary, carriers, shipments, events] = await Promise.all([
+  const [summary, carriers, shipments, events, labels] = await Promise.all([
     context.pool.query([
       'SELECT COUNT(*)::int AS total,',
       " COUNT(*) FILTER (WHERE status='draft')::int AS draft,",
@@ -202,7 +202,7 @@ export async function getShippingOverview(): Promise<ShippingOverview> {
       totalShipments: Number(s.total || 0), draftShipments: Number(s.draft || 0), readyShipments: Number(s.ready || 0),
       inTransitShipments: Number(s.in_transit || 0), deliveredShipments: Number(s.delivered || 0),
       exceptions: Number(s.exceptions || 0), activeCarriers: carriers.rows.length,
-      activeLabels: Number(events.rows.length >= 0 ? 0 : 0) + Number((await Promise.resolve(0))),
+      activeLabels: Number(labels.rows[0]?.total || 0),
     },
     carriers: carriers.rows.map((row) => ({
       id: String(row.id), name: String(row.name), providerKey: row.provider_key == null ? null : String(row.provider_key),
