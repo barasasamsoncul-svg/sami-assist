@@ -119,8 +119,11 @@ type LifecycleResponse = {
 };
 
 
-const dependencyAcceptanceStorageKey = (appKey: string) =>
-  `sami_workspace_app_dependency_acceptance:${appKey}`;
+const dependencyAcceptanceStorageKey = (
+  workspaceId: string,
+  appKey: string,
+) =>
+  `sami_workspace_app_dependency_acceptance:${workspaceId}:${appKey}`;
 
 
 const ACTIVE_STATUSES =
@@ -188,8 +191,10 @@ async function readLifecycleResponse(
 
 
 export default function AppsSettings({
+  workspaceId,
   workspaceModules,
 }: {
+  workspaceId: string;
   workspaceModules:
     WorkspaceModule[];
 }) {
@@ -415,7 +420,7 @@ export default function AppsSettings({
         try {
           const storedAcceptance =
             sessionStorage.getItem(
-              dependencyAcceptanceStorageKey(appKey),
+              dependencyAcceptanceStorageKey(workspaceId, appKey),
             );
           const parsedAcceptance: unknown =
             storedAcceptance
@@ -432,7 +437,7 @@ export default function AppsSettings({
             };
           } else if (storedAcceptance) {
             sessionStorage.removeItem(
-              dependencyAcceptanceStorageKey(appKey),
+              dependencyAcceptanceStorageKey(workspaceId, appKey),
             );
           }
         } catch {
@@ -529,7 +534,7 @@ export default function AppsSettings({
         ) {
           try {
             sessionStorage.setItem(
-              dependencyAcceptanceStorageKey(appKey),
+              dependencyAcceptanceStorageKey(workspaceId, appKey),
               JSON.stringify([...new Set(acceptedKeys)]),
             );
           } catch {
@@ -600,7 +605,7 @@ export default function AppsSettings({
       ) {
         try {
           sessionStorage.removeItem(
-            dependencyAcceptanceStorageKey(appKey),
+            dependencyAcceptanceStorageKey(workspaceId, appKey),
           );
         } catch {
           // Clearing saved consent is best-effort; installation still succeeded.
