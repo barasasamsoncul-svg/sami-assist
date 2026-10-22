@@ -62,6 +62,21 @@ export async function syncPurchaseSupplierToAccounting(
     throw new Error('The Purchase supplier ID is required to synchronize its Accounting vendor.');
   }
 
+  // Do not trust an incoming row ID alone: the linked supplier must belong to
+  // the same company. A deleted row remains available for this ownership check
+  // so its AP vendor projection can be deactivated safely.
+  const ownership = await client.query(
+    `SELECT id::text
+     FROM public.suppliers
+     WHERE id = $1
+       AND company_id = $2
+     LIMIT 1`,
+    [supplierId, input.companyId],
+  );
+  if (!ownership.rows[0]) {
+    throw new Error('The Purchase supplier is not part of the active company.');
+  }
+
   if (input.operation === 'delete' || input.row.deleted_at) {
     await client.query(
       `UPDATE public.accounting_vendors
@@ -74,12 +89,27 @@ export async function syncPurchaseSupplierToAccounting(
     return { synced: true };
   }
 
-  const name = nullableText(input.row.name, 255);
+  const supplierResult = await client.query(
+    `SELECT name, email, phone, tax_number, status
+     FROM public.suppliers
+     WHERE id = $1
+       AND company_id = $2
+       AND deleted_at IS NULL
+     LIMIT 1
+     FOR SHARE`,
+    [supplierId, input.companyId],
+  );
+  const supplier = supplierResult.rows[0];
+  if (!supplier) {
+    throw new Error('The Purchase supplier is deleted or unavailable in this company.');
+  }
+
+  const name = nullableText(supplier.name, 255);
   if (!name) {
     throw new Error('A Purchase supplier needs a name before it can be synchronized to Accounting.');
   }
 
-  const sourceStatus = String(input.row.status || 'active').trim().toLowerCase();
+  const sourceStatus = String(supplier.status || 'active').trim().toLowerCase();
   const status = sourceStatus === 'blocked'
     ? 'blocked'
     : sourceStatus === 'inactive' || sourceStatus === 'archived'
@@ -110,9 +140,9 @@ export async function syncPurchaseSupplierToAccounting(
       input.companyId,
       'PUR-' + supplierId.toUpperCase(),
       name,
-      nullableText(input.row.email, 255),
-      nullableText(input.row.phone, 50),
-      nullableText(input.row.tax_number, 100),
+      nullableText(supplier.email, 255),
+      nullableText(supplier.phone, 50),
+      nullableText(supplier.tax_number, 100),
       supplierId,
       status,
       input.userId,
