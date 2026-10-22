@@ -18,6 +18,12 @@ ALTER TABLE public.purchase_order_items
   ADD COLUMN IF NOT EXISTS company_id UUID;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_orders_company_id_id
   ON public.purchase_orders(company_id, id);
+-- Inventory is a required Purchase dependency. Reassert the composite reference
+-- keys here so receipt constraints are safe even when upgrading an older workspace.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_products_company_id_id
+  ON public.products(company_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_warehouses_company_id_id
+  ON public.warehouses(company_id, id);
 
 CREATE TABLE IF NOT EXISTS public.purchase_requisitions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
