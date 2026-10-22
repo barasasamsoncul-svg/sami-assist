@@ -111,7 +111,7 @@ export default async function InventoryWorkspace({
 
   const activeSidebarKey =
     resolved.view === 'records'
-      ? resolved.tableKey
+      ? resolved.tableKey || 'overview'
       : resolved.view;
 
   return (
