@@ -36,7 +36,7 @@ test('Warehouse migration enforces same-company relationships without guessing a
   assert.match(migration, /FOREIGN KEY \(company_id, operation_id\)[\s\S]*REFERENCES public\.warehouse_operations\(company_id, id\)[\s\S]*NOT VALID/s);
   assert.match(migration, /FOREIGN KEY \(company_id, product_reference\)[\s\S]*REFERENCES public\.products\(company_id, id\)[\s\S]*NOT VALID/s);
   assert.match(migration, /FOREIGN KEY \(company_id, current_location_id\)[\s\S]*REFERENCES public\.warehouse_locations\(company_id, id\)[\s\S]*NOT VALID/s);
-  assert.match(migration, /Legacy duplicate code can prevent a unique index/);
+  assert.match(migration, /legacy duplicate code can prevent a unique index/i);
   assert.doesNotMatch(migration, /UPDATE\s+public\.warehouse_(locations|operations|operation_lines|packages)/i);
 });
 
@@ -44,9 +44,9 @@ test('Warehouse workflow service enforces workspace, company and product/warehou
   const service = await source('lib/apps/warehouse/service.ts');
 
   assert.match(service, /requireEnterpriseModuleTableContext/);
-  assert.match(service, /context\.companyId !== first\.companyId/);
-  assert.match(service, /context\.tenantId !== first\.tenantId/);
-  assert.match(service, /context\.userId !== first\.userId/);
+  assert.match(service, /item\.companyId !== first\.companyId/);
+  assert.match(service, /item\.tenantId !== first\.tenantId/);
+  assert.match(service, /item\.userId !== first\.userId/);
   assert.match(service, /WHERE company_id = \$1 AND id = ANY\(\$2::uuid\[\]\)/);
   assert.match(service, /product\.company_id = rule\.company_id/);
   assert.match(service, /pg_advisory_xact_lock/);
