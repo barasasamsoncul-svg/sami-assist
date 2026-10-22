@@ -13,6 +13,7 @@ import {
   Plus,
   RefreshCw,
   ScanLine,
+  Trash2,
   Truck,
   Warehouse as WarehouseIcon,
   XCircle,
@@ -23,6 +24,7 @@ import type { WarehouseWorkspaceOverview } from '@/lib/apps/warehouse/service';
 type WarehouseSection = 'overview' | 'locations' | 'operations' | 'putaway' | 'picking' | 'packages';
 
 type ApiResponse<T> = { success: boolean; data?: T; error?: string; code?: string };
+type OperationLineDraft = { productReference: string; quantity: string };
 
 type Props = { initialSection?: WarehouseSection };
 
@@ -100,8 +102,7 @@ export default function WarehouseOperationsPanel({ initialSection = 'overview' }
   const [operationType, setOperationType] = useState('putaway');
   const [sourceLocationId, setSourceLocationId] = useState('');
   const [destinationLocationId, setDestinationLocationId] = useState('');
-  const [productReference, setProductReference] = useState('');
-  const [quantity, setQuantity] = useState('1');
+  const [operationLines, setOperationLines] = useState<OperationLineDraft[]>([{ productReference: '', quantity: '1' }]);
   const [operationReference, setOperationReference] = useState('');
   const [putawaySource, setPutawaySource] = useState('');
   const [putawayDestination, setPutawayDestination] = useState('');
@@ -181,7 +182,7 @@ export default function WarehouseOperationsPanel({ initialSection = 'overview' }
       setPutawaySource((current) => current || locations.find((location) => location.status === 'active')?.id || '');
       setParentLocationId((current) => current || '');
     }
-    if (data?.products.length) setProductReference((current) => current || data.products[0].id);
+    if (data?.products.length) setOperationLines((current) => current.map((line) => ({ ...line, productReference: line.productReference || data.products[0].id })));
   }, [locations, data?.products]);
 
   const locationOptions = (includeBlank = false) => (
@@ -325,13 +326,24 @@ export default function WarehouseOperationsPanel({ initialSection = 'overview' }
           </section>
           <section className={panelClass + ' p-5 sm:p-6'}>
             <SectionHeading kicker="New work" title="Create operation" description="A warehouse operation tracks location-level work. Inventory quantities remain controlled by Inventory workflows." />
-            <form className="mt-5 space-y-4" onSubmit={(event) => { event.preventDefault(); submitAction('create-operation', { operationType, sourceLocationId: sourceLocationId || null, destinationLocationId: destinationLocationId || null, reference: operationReference || null, lines: [{ productReference, quantity }] }); }}>
+            <form className="mt-5 space-y-4" onSubmit={(event) => { event.preventDefault(); submitAction('create-operation', { operationType, sourceLocationId: sourceLocationId || null, destinationLocationId: destinationLocationId || null, reference: operationReference || null, lines: operationLines.map((line) => ({ productReference: line.productReference, quantity: line.quantity })) }); }}>
               <Field label="Operation type"><select className={inputClass} value={operationType} onChange={(event) => setOperationType(event.target.value)}>{['putaway','relocate','pick','receive','replenish','pack','count'].map((value) => <option key={value} value={value}>{humanize(value)}</option>)}</select></Field>
               <Field label="From location"><select className={inputClass} value={sourceLocationId} onChange={(event) => setSourceLocationId(event.target.value)}><option value="">Not applicable / inbound</option>{locationOptions()}</select></Field>
               <Field label="To location"><select className={inputClass} value={destinationLocationId} onChange={(event) => setDestinationLocationId(event.target.value)}><option value="">Not applicable / outbound</option>{locationOptions()}</select></Field>
-              <Field label="Product"><select className={inputClass} value={productReference} onChange={(event) => setProductReference(event.target.value)} required><option value="">Choose product</option>{(data?.products || []).map((product) => <option key={product.id} value={product.id}>{product.name}{product.sku ? ' · ' + product.sku : ''}</option>)}</select></Field>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><Field label="Quantity"><input className={inputClass} required min="0.0001" step="0.0001" type="number" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></Field><Field label="Reference (optional)"><input className={inputClass} maxLength={255} value={operationReference} onChange={(event) => setOperationReference(event.target.value)} placeholder="PO, SO or move ref" /></Field></div>
-              <button disabled={busy || !productReference || (!sourceLocationId && !destinationLocationId)} className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-bold text-white transition hover:bg-blue-700 disabled:opacity-50"><Plus size={15} /> Create operation</button>
+              <div className="flex items-center justify-between gap-3"><p className="text-xs font-bold text-[var(--sami-text)]">Product lines</p><button type="button" className={buttonClass} disabled={busy || operationLines.length >= 100} onClick={() => setOperationLines((current) => current.length >= 100 ? current : [...current, { productReference: data?.products[0]?.id || '', quantity: '1' }])}><Plus size={14} /> Add line</button></div>
+              <div className="space-y-3">
+                {operationLines.map((line, index) => (
+                  <div key={index} className="rounded-xl border border-[var(--sami-border)] p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2"><p className="text-xs font-bold text-[var(--sami-muted)]">Line {index + 1}</p><button type="button" aria-label={'Remove product line ' + (index + 1)} className={buttonClass} disabled={busy || operationLines.length === 1} onClick={() => setOperationLines((current) => current.length === 1 ? current : current.filter((_, rowIndex) => rowIndex !== index))}><Trash2 size={13} /> Remove</button></div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_120px]">
+                      <Field label="Product"><select className={inputClass} value={line.productReference} onChange={(event) => setOperationLines((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, productReference: event.target.value } : row))} required><option value="">Choose product</option>{(data?.products || []).map((product) => <option key={product.id} value={product.id}>{product.name}{product.sku ? ' · ' + product.sku : ''}</option>)}</select></Field>
+                      <Field label="Quantity"><input className={inputClass} required min="0.0001" step="0.0001" type="number" value={line.quantity} onChange={(event) => setOperationLines((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, quantity: event.target.value } : row))} /></Field>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <Field label="Reference (optional)"><input className={inputClass} maxLength={255} value={operationReference} onChange={(event) => setOperationReference(event.target.value)} placeholder="PO, SO or move ref" /></Field>
+              <button disabled={busy || !operationLines.length || !operationLines.every((line) => line.productReference && Number(line.quantity) > 0) || (!sourceLocationId && !destinationLocationId)} className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-bold text-white transition hover:bg-blue-700 disabled:opacity-50"><Plus size={15} /> Create operation with {operationLines.length} line{operationLines.length === 1 ? '' : 's'}</button>
             </form>
           </section>
         </div>
