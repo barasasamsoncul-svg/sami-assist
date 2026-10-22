@@ -140,6 +140,11 @@ test('Inventory transfer UI supports multiple unique product lines up to the wor
   assert.match(service, /new Set\(lines\.map\(\(line\) => line\.productId\)\)\.size !== lines\.length/);
 });
 
+test('Inventory records view always resolves a valid active sidebar key', async () => {
+  const workspace = await source('app/apps/inventory/InventoryWorkspace.tsx');
+  assert.match(workspace, /resolved\.tableKey \|\| 'overview'/);
+});
+
 test('Inventory ledger and balance writes retain the authenticated actor for audit', async () => {
   const service = await source('lib/apps/inventory/service.ts');
 
