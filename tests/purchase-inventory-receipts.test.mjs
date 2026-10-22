@@ -95,13 +95,13 @@ test('Purchase product and warehouse links are company-safe and additive for exi
   assert.match(specialistDepth, /fk_purchase_requisition_lines_company_supplier/);
   assert.doesNotMatch(
     specialistDepth,
-    /department_id UUID REFERENCES public\\.departments/,
+    /department_id UUID REFERENCES public[.]departments/,
     'Purchase must install without an undeclared Departments table or Employees dependency.',
   );
-  assert.match(specialistDepth, /department_name VARCHAR\\(160\\)/);
+  assert.match(specialistDepth, /department_name VARCHAR[(]160[)]/);
   assert.match(
     specialistDepth,
-    /ALTER TABLE public\\.purchase_requisitions[\\s\\S]*?ADD COLUMN IF NOT EXISTS department_name VARCHAR\\(160\\)/,
+    /ALTER TABLE public[.]purchase_requisitions[\s\S]*?ADD COLUMN IF NOT EXISTS department_name VARCHAR[(]160[)]/,
     'Existing Purchase installations receive the optional department-name field additively.',
   );
 
