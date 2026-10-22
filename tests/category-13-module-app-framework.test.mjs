@@ -322,6 +322,15 @@ test('Category 13: installing or enabling an app requires explicit consent for i
     settings,
     /Review billing and plans/,
   );
+  assert.match(settings, /dependencyAcceptanceStorageKey/);
+  assert.match(settings, /sessionStorage\.getItem/);
+  assert.match(settings, /sessionStorage\.setItem/);
+  assert.match(settings, /sessionStorage\.removeItem/);
+  assert.match(
+    settings,
+    /requestBody\?\.acceptedDependencyKeys[\s\S]*?dependencyAcceptanceStorageKey\(appKey\)/,
+    'A prior dependency acceptance must be restored when the user retries installation after upgrading the plan.',
+  );
 });
 
 
