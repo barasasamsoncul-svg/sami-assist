@@ -1023,6 +1023,8 @@ function builtInTreatment(
     string,
   quantityEffect:
     string,
+  sourceType:
+    string,
 ): Treatment {
   const classified =
     classifyInventoryEvent({
@@ -1060,6 +1062,7 @@ function builtInTreatment(
 
   if (
     movementType === 'purchase_receipt' &&
+    sourceType === 'purchase_receipt' &&
     inventoryQuantityUnits(quantityEffect) > BigInt(0)
   ) {
     return 'receive_inventory';
@@ -1094,6 +1097,7 @@ async function eventTreatment(
       String(
         event.quantity_effect,
       ),
+      String(event.source_type || ''),
     );
 
   if (
@@ -3002,6 +3006,12 @@ export async function syncInventoryValuation() {
           '';
         let creditAccount =
           '';
+        let journalLines: Array<{
+          accountId: string;
+          description: string;
+          debit: string;
+          credit: string;
+        }> = [];
 
         if (
           treatment ===
@@ -3012,8 +3022,75 @@ export async function syncInventoryValuation() {
               'Map a Goods Received Not Invoiced liability account before posting purchase receipts.',
             );
           }
+          if (!accounts.priceVariance) {
+            throw new AccountingInputError(
+              'Map a Purchase Price Variance expense account before posting purchase receipts.',
+            );
+          }
+
+          const eventMetadata =
+            event.metadata &&
+            typeof event.metadata === 'object' &&
+            !Array.isArray(event.metadata)
+              ? event.metadata as Record<string, unknown>
+              : {};
+          const purchaseOrderUnitCost =
+            String(eventMetadata.purchaseOrderUnitCost || '');
+
+          if (!purchaseOrderUnitCost) {
+            throw new AccountingInputError(
+              'The source receipt has no confirmed purchase-order unit cost.',
+            );
+          }
+
+          const actualPurchaseValue =
+            standardCostValue(
+              String(event.source_quantity || '0'),
+              purchaseOrderUnitCost,
+            );
+          const actualPurchaseCents =
+            inventoryMoneyCents(actualPurchaseValue);
+          if (actualPurchaseCents <= BigInt(0)) {
+            throw new AccountingInputError(
+              'The accepted purchase receipt must have a positive confirmed purchase value.',
+            );
+          }
+
+          const varianceCents =
+            actualPurchaseCents - valueCents;
+
           debitAccount = accounts.asset;
           creditAccount = accounts.grni;
+          journalLines = [
+            {
+              accountId: accounts.asset,
+              description,
+              debit: value,
+              credit: '0.00',
+            },
+            {
+              accountId: accounts.grni,
+              description,
+              debit: '0.00',
+              credit: actualPurchaseValue,
+            },
+          ];
+
+          if (varianceCents > BigInt(0)) {
+            journalLines.push({
+              accountId: accounts.priceVariance,
+              description: description + ' · purchase price variance',
+              debit: moneyDecimal(varianceCents),
+              credit: '0.00',
+            });
+          } else if (varianceCents < BigInt(0)) {
+            journalLines.push({
+              accountId: accounts.priceVariance,
+              description: description + ' · purchase price variance',
+              debit: '0.00',
+              credit: moneyDecimal(-varianceCents),
+            });
+          }
         } else if (
           treatment ===
             'issue_cogs'
@@ -3073,6 +3150,23 @@ export async function syncInventoryValuation() {
             accounts.asset;
         }
 
+        if (!journalLines.length) {
+          journalLines = [
+            {
+              accountId: debitAccount,
+              description,
+              debit: value,
+              credit: '0.00',
+            },
+            {
+              accountId: creditAccount,
+              description,
+              debit: '0.00',
+              credit: value,
+            },
+          ];
+        }
+
         const journal =
           await postBalancedLedgerJournal(
             client,
@@ -3112,26 +3206,7 @@ export async function syncInventoryValuation() {
                 ),
               postingKind:
                 'system',
-              lines: [
-                {
-                  accountId:
-                    debitAccount,
-                  description,
-                  debit:
-                    value,
-                  credit:
-                    '0.00',
-                },
-                {
-                  accountId:
-                    creditAccount,
-                  description,
-                  debit:
-                    '0.00',
-                  credit:
-                    value,
-                },
-              ],
+              lines: journalLines,
             },
           );
 
