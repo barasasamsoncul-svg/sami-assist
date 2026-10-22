@@ -25,7 +25,7 @@ async function tableExists(
 }
 
 
-async function postPurchaseReceiptToInventory(
+export async function postPurchaseReceiptToInventory(
   client:
     PoolClient,
   companyId:
