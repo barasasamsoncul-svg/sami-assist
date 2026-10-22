@@ -21,6 +21,7 @@ test('Purchase exposes a dedicated workflow center using the existing specialist
   assert.match(panel, /purchase_orders/);
   assert.match(panel, /purchase_receipts/);
   assert.match(panel, /data-purchase-workspace="specialist"/);
+  assert.match(panel, /availableTableKeys\.includes\(table\.key\)/);
 });
 
 test('Purchase actions route through server-guarded requisition, order and receipt transitions', async () => {
