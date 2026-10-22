@@ -5,14 +5,15 @@ import path from 'node:path';
 const root=process.cwd();
 async function source(file){return (await readFile(path.join(root,file),'utf8')).replace(/\r\n/g,'\n');}
 
-test('Inventory ledger upgrade is registered and versioned from the installed 1.0.0 to 2.4.0',async()=>{
- const [m,r,f]=await Promise.all([source('lib/apps/inventory/migrations/1.0.0-to-2.4.0.ts'),source('lib/apps/runtime-migrations.ts'),source('lib/modules/first-party.ts')]);
- assert.match(m,/moduleKey:\s*'inventory'/);assert.match(m,/fromVersion:\s*'1\.0\.0'/);assert.match(m,/toVersion:\s*'2\.4\.0'/);assert.match(r,/INVENTORY_1_0_0_TO_2_4_0/);
+test('Inventory ledger upgrade follows the shared enterprise migration chain to 2.4.0',async()=>{
+ const [m,r,f,h]=await Promise.all([source('lib/apps/inventory/migrations/2.3.0-to-2.4.0.ts'),source('lib/apps/runtime-migrations.ts'),source('lib/modules/first-party.ts'),source('lib/apps/enterprise/hardening.ts')]);
+ assert.match(m,/moduleKey:\s*'inventory'/);assert.match(m,/fromVersion:\s*'2\.3\.0'/);assert.match(m,/toVersion:\s*'2\.4\.0'/);assert.match(r,/INVENTORY_2_3_0_TO_2_4_0/);assert.doesNotMatch(m,/fromVersion:\s*'1\.0\.0'/);
+ assert.match(h,/fromVersion:\s*'1\.0\.0'[\s\S]*?toVersion:\s*'2\.0\.0'/);
  const s=f.indexOf('key: "inventory"'),e=f.indexOf('defineSamiModule({',s+12);assert.match(f.slice(s,e),/version:\s*'2\.4\.0'/);
 });
 
 test('Inventory schema migration scopes identities and stock references by company',async()=>{
- const m=await source('lib/apps/inventory/migrations/1.0.0-to-2.4.0.ts');
+ const m=await source('lib/apps/inventory/migrations/2.3.0-to-2.4.0.ts');
  assert.match(m,/products_sku_key/);assert.match(m,/warehouses_code_key/);assert.match(m,/uq_products_company_sku/);assert.match(m,/uq_products_company_barcode/);assert.match(m,/uq_warehouses_company_code/);assert.match(m,/FOREIGN KEY \(company_id,product_id\)/);assert.match(m,/FOREIGN KEY \(company_id,warehouse_id\)/);assert.match(m,/NOT VALID/);assert.match(m,/ALTER COLUMN quantity TYPE NUMERIC\(19,4\)/);assert.match(m,/fk_stock_reservations_company_lot/);assert.match(m,/fk_inventory_lots_company_product/);assert.match(m,/ambiguous legacy ownership is never guessed/i);
 });
 
@@ -69,7 +70,7 @@ test('Inventory reads enforce view scope for every company-scoped stock data sou
 });
 
 test('Transfer and cycle-count tables have idempotency columns and company-safe relationships', async () => {
-  const migration = await source('lib/apps/inventory/migrations/1.0.0-to-2.4.0.ts');
+  const migration = await source('lib/apps/inventory/migrations/2.3.0-to-2.4.0.ts');
   const hardening = await source('lib/apps/enterprise/hardening.ts');
   for (const sql of [migration, hardening]) {
     assert.match(sql, /inventory_transfer_orders[\s\S]*ADD COLUMN IF NOT EXISTS request_key UUID/);
