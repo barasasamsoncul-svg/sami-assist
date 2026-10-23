@@ -37,7 +37,7 @@ test('Demand Planning service uses company-scoped access, idempotent forecast ru
   assert.match(service, /status IN \('active','allocated'\)/);
   assert.match(service, /movement_type=ANY\(\$3::text\[\]\)/);
   assert.match(service, /WHERE p\.company_id=\$1/);
-  assert.match(service, /No purchase order was created/);
+  assert.match(service, /no purchase order was created/i);
   assert.match(service, /Only suggested recommendations can be accepted or rejected/);
   assert.doesNotMatch(service, /INSERT INTO public\.purchase_orders/);
 });
