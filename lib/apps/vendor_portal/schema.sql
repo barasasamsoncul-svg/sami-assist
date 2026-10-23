@@ -4,9 +4,9 @@
 -- Required dependencies: purchase
 -- Optional dependencies: documents
 --
--- Company-scoped domain foundation. This schema is real and migration-ready,
--- but the module remains non-installable until its permissions, routes,
--- services and UI are implemented and verified.
+-- Company-scoped supplier collaboration schema. Runtime hardening and the
+-- Vendor Portal workspace additive migration enforce access-token and workflow
+-- boundaries for both new and existing installations.
 -- ============================================================
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -30,6 +30,10 @@ CREATE TABLE IF NOT EXISTS public.vendor_portal_accounts (
     email VARCHAR(255) NOT NULL,
     last_login_at TIMESTAMPTZ,
     access_expires_at TIMESTAMPTZ,
+    public_token_hash CHAR(64),
+    public_token_created_at TIMESTAMPTZ,
+    public_token_expires_at TIMESTAMPTZ,
+    public_token_revoked_at TIMESTAMPTZ,
     status VARCHAR(40) NOT NULL DEFAULT 'active',
     created_by UUID,
     updated_by UUID,
@@ -49,6 +53,10 @@ CREATE INDEX IF NOT EXISTS idx_vendor_portal_accounts_company_status
 CREATE INDEX IF NOT EXISTS idx_vendor_portal_accounts_company_created
     ON public.vendor_portal_accounts(company_id, created_at DESC, id DESC)
     WHERE deleted_at IS NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_vendor_portal_account_token_hash
+    ON public.vendor_portal_accounts(public_token_hash)
+    WHERE public_token_hash IS NOT NULL AND deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS public.vendor_portal_documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
