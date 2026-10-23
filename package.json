@@ -106,7 +106,7 @@
     "test:barcode": "node --test tests/barcode-specialist.test.mjs",
     "test:shipping": "node --test tests/shipping-specialist.test.mjs",
     "test:purchase-specialist": "node --test tests/purchase-specialist.test.mjs",
-    "test:demand-planning": "node --import tsx --test tests/demand-planning-specialist.test.mjs tests/demand-planning-math.test.ts"
+    "test:demand-planning": "node --conditions=react-server --import tsx --test tests/demand-planning-specialist.test.mjs tests/demand-planning-math.test.ts tests/demand-planning-migration-chain.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1133.0",
