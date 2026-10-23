@@ -65,6 +65,13 @@ export function assertEnterpriseDomainMutationAllowed(
     MutationOperation,
 ) {
   if (
+    moduleKey === 'demand_planning' &&
+    ['demand_forecasts', 'demand_forecast_lines', 'replenishment_recommendations'].includes(table)
+  ) {
+    throw new Error('Demand forecasts and replenishment decisions must be changed through the validated Demand Planning workflow.');
+  }
+
+  if (
     moduleKey ===
       'accounting' &&
     (
