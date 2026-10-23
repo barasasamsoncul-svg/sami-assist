@@ -359,78 +359,229 @@ export async function getVendorPortalPublicView(tenantIdInput: string, tokenInpu
 }
 
 export async function submitVendorPortalRFQResponse(
-  tenantIdInput: string, tokenInput: unknown, input: Record<string, unknown>,
+  tenantIdInput: string,
+  tokenInput: unknown,
+  input: Record<string, unknown>,
 ) {
   const tenantId = requireUuid(tenantIdInput, 'Workspace');
   const token = publicToken(tokenInput);
   const rfqId = requireUuid(input.rfqId, 'RFQ');
-  const amount = responseAmount(input.amount);
   const currency = responseCurrency(input.currency);
   const promisedDate = responseDate(input.promisedDate);
   const terms = responseTerms(input.terms);
+
+  if (!Array.isArray(input.lines) || input.lines.length === 0 || input.lines.length > 500) {
+    throw new VendorPortalError('INVALID_INPUT', 'Provide a unit price for every requested quotation line.');
+  }
+
+  const linePrices = input.lines.map((value, index) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new VendorPortalError('INVALID_INPUT', 'Quotation line ' + (index + 1) + ' is invalid.');
+    }
+    const item = value as Record<string, unknown>;
+    return {
+      rfqLineId: requireUuid(item.rfqLineId, 'Quotation line'),
+      unitCost: responseAmount(item.unitCost),
+    };
+  });
+  const lineIds = linePrices.map((line) => line.rfqLineId);
+  if (new Set(lineIds).size !== lineIds.length) {
+    throw new VendorPortalError('INVALID_INPUT', 'Each requested quotation line must appear exactly once.');
+  }
+
   const pool = await getTenantPoolByTenantId(tenantId);
   const client = await pool.connect();
   let account: Record<string, unknown>;
   let rfqNumber = '';
   let responseId = '';
+  let totalAmount = '0.00';
+
   try {
     await client.query('BEGIN');
     account = await requirePublicAccount(tenantId, token, client);
+    const companyId = String(account.company_id);
+    const supplierId = requireUuid(account.vendor_reference, 'Supplier');
+
     await client.query(
       'SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))',
-      ['vendor-portal-rfq-response:' + String(account.company_id), rfqId],
+      ['vendor-portal-rfq-response:' + companyId, rfqId],
     );
+
     const rfq = await client.query(
-      `SELECT id::text, rfq_number, status
-       FROM public.vendor_portal_rfqs
-       WHERE id = $1 AND company_id = $2 AND vendor_account_id = $3
-         AND deleted_at IS NULL AND status IN ('sent','opened','responded')
-         AND (due_at IS NULL OR due_at > NOW())
-       FOR UPDATE`,
-      [rfqId, account.company_id, account.id],
+      `SELECT portal.id::text AS id,
+              portal.rfq_number,
+              portal.status AS portal_status,
+              portal.purchase_rfq_id::text AS purchase_rfq_id,
+              purchase_rfq.status AS purchase_status
+       FROM public.vendor_portal_rfqs portal
+       JOIN public.supplier_rfqs purchase_rfq
+         ON purchase_rfq.id = portal.purchase_rfq_id
+        AND purchase_rfq.company_id = portal.company_id
+        AND purchase_rfq.deleted_at IS NULL
+       WHERE portal.id = $1
+         AND portal.company_id = $2
+         AND portal.vendor_account_id = $3
+         AND portal.deleted_at IS NULL
+         AND portal.status IN ('sent','opened','responded')
+         AND (portal.due_at IS NULL OR portal.due_at > NOW())
+         AND purchase_rfq.status = 'sent'
+         AND (purchase_rfq.response_due_at IS NULL OR purchase_rfq.response_due_at > NOW())
+       FOR UPDATE OF portal, purchase_rfq`,
+      [rfqId, companyId, account.id],
     );
+
     if (!rfq.rows[0]) {
       throw new VendorPortalError('RFQ_NOT_AVAILABLE', 'This quotation invitation is not available or its deadline has passed.');
     }
+
+    const purchaseRfqId = String(rfq.rows[0].purchase_rfq_id);
     rfqNumber = String(rfq.rows[0].rfq_number || '');
-    const existing = await client.query(
-      `SELECT id::text, status
-       FROM public.vendor_portal_rfq_responses
-       WHERE company_id = $1 AND portal_rfq_id = $2 AND deleted_at IS NULL
-       ORDER BY updated_at DESC, id DESC LIMIT 1 FOR UPDATE`,
-      [account.company_id, rfqId],
+
+    const sourceLines = await client.query(
+      `SELECT id::text AS id, quantity::text AS quantity
+       FROM public.supplier_rfq_lines
+       WHERE company_id = $1 AND rfq_id = $2 AND deleted_at IS NULL
+       ORDER BY id
+       FOR SHARE`,
+      [companyId, purchaseRfqId],
     );
-    const current = existing.rows[0] as Record<string, unknown> | undefined;
-    if (current && ['accepted', 'rejected'].includes(String(current.status))) {
-      throw new VendorPortalError('RESPONSE_LOCKED', 'The procurement team has already decided on this response.');
+
+    const sourceIds = sourceLines.rows.map((row) => String(row.id));
+    if (
+      sourceIds.length === 0 ||
+      sourceIds.length !== lineIds.length ||
+      sourceIds.some((id) => !lineIds.includes(id))
+    ) {
+      throw new VendorPortalError('INVALID_INPUT', 'The quotation must price every current Purchase RFQ line exactly once.');
     }
-    if (current) {
+
+    const pricingJson = JSON.stringify(linePrices.map((line) => ({
+      rfq_line_id: line.rfqLineId,
+      unit_cost: line.unitCost,
+    })));
+
+    const total = await client.query(
+      `SELECT ROUND(COALESCE(SUM(source_line.quantity * submitted.unit_cost), 0), 2)::text AS total
+       FROM jsonb_to_recordset($3::jsonb) AS submitted(rfq_line_id UUID, unit_cost NUMERIC(19,4))
+       JOIN public.supplier_rfq_lines source_line
+         ON source_line.id = submitted.rfq_line_id
+        AND source_line.company_id = $1
+        AND source_line.rfq_id = $2
+        AND source_line.deleted_at IS NULL`,
+      [companyId, purchaseRfqId, pricingJson],
+    );
+    totalAmount = String(total.rows[0]?.total || '0.00');
+
+    const existingPurchaseResponse = await client.query(
+      `SELECT id::text, status
+       FROM public.supplier_rfq_responses
+       WHERE company_id = $1 AND rfq_id = $2 AND supplier_id = $3 AND deleted_at IS NULL
+       FOR UPDATE`,
+      [companyId, purchaseRfqId, supplierId],
+    );
+
+    const currentPurchaseResponse = existingPurchaseResponse.rows[0] as Record<string, unknown> | undefined;
+    if (currentPurchaseResponse && ['accepted', 'rejected'].includes(String(currentPurchaseResponse.status))) {
+      throw new VendorPortalError('RESPONSE_LOCKED', 'The procurement team has already decided on this supplier response.');
+    }
+
+    if (currentPurchaseResponse) {
       const updated = await client.query(
-        `UPDATE public.vendor_portal_rfq_responses
-         SET amount = $3, currency = $4, promised_date = $5, terms = $6,
-             status = 'submitted', submitted_at = NOW(), updated_by = NULL, updated_at = NOW()
-         WHERE id = $1 AND company_id = $2 AND portal_rfq_id = $7 AND deleted_at IS NULL
+        `UPDATE public.supplier_rfq_responses
+         SET currency = $4,
+             quoted_total = $5,
+             payment_terms = $6,
+             notes = $7,
+             status = 'submitted',
+             submitted_at = NOW(),
+             updated_by = NULL,
+             updated_at = NOW()
+         WHERE id = $1 AND company_id = $2 AND rfq_id = $3 AND deleted_at IS NULL
          RETURNING id::text`,
-        [current.id, account.company_id, amount, currency, promisedDate, terms, rfqId],
+        [currentPurchaseResponse.id, companyId, purchaseRfqId, currency, totalAmount, terms, promisedDate ? 'Promised delivery: ' + promisedDate : null],
       );
-      responseId = String(updated.rows[0]?.id || current.id);
+      responseId = String(updated.rows[0]?.id || currentPurchaseResponse.id);
     } else {
       const inserted = await client.query(
-        `INSERT INTO public.vendor_portal_rfq_responses
-           (company_id, portal_rfq_id, amount, currency, promised_date, terms, submitted_at, status, created_by, updated_by)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW(), 'submitted', NULL, NULL)
+        `INSERT INTO public.supplier_rfq_responses
+           (company_id, rfq_id, supplier_id, currency, quoted_total, payment_terms, notes, submitted_at, status, created_by, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), 'submitted', NULL, NULL)
          RETURNING id::text`,
-        [account.company_id, rfqId, amount, currency, promisedDate, terms],
+        [companyId, purchaseRfqId, supplierId, currency, totalAmount, terms, promisedDate ? 'Promised delivery: ' + promisedDate : null],
       );
       responseId = String(inserted.rows[0].id);
     }
+
+    await client.query(
+      `UPDATE public.supplier_rfq_response_lines
+       SET deleted_at = NOW(), updated_at = NOW()
+       WHERE company_id = $1 AND rfq_id = $2 AND response_id = $3 AND deleted_at IS NULL`,
+      [companyId, purchaseRfqId, responseId],
+    );
+
+    const insertedLines = await client.query(
+      `INSERT INTO public.supplier_rfq_response_lines
+         (company_id, rfq_id, response_id, rfq_line_id, quantity, unit_cost, line_total, notes, created_by, updated_by)
+       SELECT $1, $2, $3, source_line.id, source_line.quantity,
+              submitted.unit_cost,
+              ROUND(source_line.quantity * submitted.unit_cost, 2),
+              NULL, NULL, NULL
+       FROM jsonb_to_recordset($4::jsonb) AS submitted(rfq_line_id UUID, unit_cost NUMERIC(19,4))
+       JOIN public.supplier_rfq_lines source_line
+         ON source_line.id = submitted.rfq_line_id
+        AND source_line.company_id = $1
+        AND source_line.rfq_id = $2
+        AND source_line.deleted_at IS NULL
+       RETURNING id`,
+      [companyId, purchaseRfqId, responseId, pricingJson],
+    );
+    if (insertedLines.rowCount !== linePrices.length) {
+      throw new VendorPortalError('INVALID_INPUT', 'The quotation lines changed before submission. Refresh the invitation and try again.');
+    }
+
+    const currentPortalResponse = await client.query(
+      `SELECT id::text, status
+       FROM public.vendor_portal_rfq_responses
+       WHERE company_id = $1 AND portal_rfq_id = $2 AND deleted_at IS NULL
+       ORDER BY updated_at DESC, id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [companyId, rfqId],
+    );
+    const currentPortal = currentPortalResponse.rows[0] as Record<string, unknown> | undefined;
+    if (currentPortal && ['accepted', 'rejected'].includes(String(currentPortal.status))) {
+      throw new VendorPortalError('RESPONSE_LOCKED', 'The procurement team has already decided on this portal response.');
+    }
+
+    if (currentPortal) {
+      await client.query(
+        `UPDATE public.vendor_portal_rfq_responses
+         SET amount = $3, currency = $4, promised_date = $5, terms = $6,
+             purchase_rfq_id = $7, purchase_response_id = $8,
+             status = 'submitted', submitted_at = NOW(),
+             updated_by = NULL, updated_at = NOW()
+         WHERE id = $1 AND company_id = $2 AND portal_rfq_id = $9 AND deleted_at IS NULL`,
+        [currentPortal.id, companyId, totalAmount, currency, promisedDate, terms, purchaseRfqId, responseId, rfqId],
+      );
+    } else {
+      await client.query(
+        `INSERT INTO public.vendor_portal_rfq_responses
+           (company_id, portal_rfq_id, purchase_rfq_id, purchase_response_id, amount, currency, promised_date, terms, submitted_at, status, created_by, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), 'submitted', NULL, NULL)`,
+        [companyId, rfqId, purchaseRfqId, responseId, totalAmount, currency, promisedDate, terms],
+      );
+    }
+
     await client.query(
       `UPDATE public.vendor_portal_rfqs
-       SET status = 'responded', opened_at = COALESCE(opened_at, NOW()),
-           responded_at = NOW(), updated_at = NOW()
+       SET status = 'responded',
+           opened_at = COALESCE(opened_at, NOW()),
+           responded_at = NOW(),
+           updated_at = NOW()
        WHERE id = $1 AND company_id = $2 AND vendor_account_id = $3 AND deleted_at IS NULL`,
-      [rfqId, account.company_id, account.id],
+      [rfqId, companyId, account.id],
     );
+
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined);
@@ -440,12 +591,20 @@ export async function submitVendorPortalRFQResponse(
   }
 
   await recordWorkspaceAuditEvent({
-    tenantId, companyId: String(account.company_id), actorType: 'integration',
-    action: 'vendor_portal.rfq_response.submit', eventType: 'vendor_portal.rfq_response.submitted',
-    category: 'procurement', severity: 'info', summary: 'Supplier submitted a quotation response.',
-    resourceType: 'vendor_portal_rfq_response', resourceId: responseId, module: 'vendor_portal',
-    result: 'success', metadata: { rfqNumber },
+    tenantId,
+    companyId: String(account.company_id),
+    actorType: 'integration',
+    action: 'vendor_portal.rfq_response.submit',
+    eventType: 'vendor_portal.rfq_response.submitted',
+    category: 'procurement',
+    severity: 'info',
+    summary: 'Supplier submitted a quotation response into the Purchase RFQ and response ledger.',
+    resourceType: 'supplier_rfq_response',
+    resourceId: responseId,
+    module: 'vendor_portal',
+    result: 'success',
+    metadata: { rfqNumber, totalAmount },
   }).catch(() => undefined);
 
-  return { responseId, rfqId, rfqNumber, status: 'submitted' as const };
+  return { responseId, rfqId, rfqNumber, totalAmount, status: 'submitted' as const };
 }
