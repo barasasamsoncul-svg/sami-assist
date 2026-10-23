@@ -22,7 +22,7 @@ export default async function VendorPortalWorkspace({ section }: { section?: str
     { key: 'rfqs', label: 'RFQ invitations', href: baseHref + '/rfqs', description: 'Issue expiring, supplier-specific requests for quotation.', sectionLabel: 'Sourcing' },
     { key: 'responses', label: 'Supplier responses', href: baseHref + '/responses', description: 'Review and decide on submitted supplier quotations.', sectionLabel: 'Sourcing' },
     ...data.tables.filter((table) => !table.settingTable && ![
-      'vendor_portal_accounts', 'vendor_portal_rfqs', 'vendor_portal_rfq_responses',
+      'vendor_portal_accounts', 'vendor_portal_rfqs', 'vendor_portal_rfq_responses', 'vendor_portal_documents', 'vendor_portal_messages',
     ].includes(table.key)).map((table) => ({
       key: table.key, label: table.label, href: baseHref + '/' + encodeURIComponent(table.key),
       description: 'Open ' + table.label.toLowerCase() + ' records.', badge: table.count, sectionLabel: 'Registers',
