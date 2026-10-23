@@ -159,7 +159,7 @@ export async function getVendorPortalOverview() {
          AND NOT EXISTS (
            SELECT 1 FROM public.vendor_portal_accounts a
            WHERE a.company_id=supplier.company_id AND a.vendor_reference=supplier.id
-             AND a.deleted_at IS NULL AND a.status='active'
+             AND a.deleted_at IS NULL
          )
        ORDER BY lower(supplier.name), supplier.id LIMIT 250`,
       [context.companyId],
@@ -386,7 +386,7 @@ export async function cancelVendorPortalRfq(input: unknown) {
     );
     if (row.rows.length !== 1) throw new VendorPortalError('NOT_FOUND', 'RFQ invitation was not found.');
     const status = String(row.rows[0].status);
-    if (!['sent','opened','delivery_failed'].includes(status)) throw new VendorPortalError('STATE_CONFLICT', 'Only invitations awaiting a supplier response can be cancelled.');
+    if (!['sent','opened','delivery_failed','delivery_pending'].includes(status)) throw new VendorPortalError('STATE_CONFLICT', 'Only invitations awaiting a supplier response can be cancelled.');
     await client.query(
       `UPDATE public.vendor_portal_rfqs SET status='cancelled', public_token_hash=NULL, public_token_expires_at=NOW(),
          updated_by=$3, updated_at=NOW() WHERE id=$1 AND company_id=$2`,
@@ -460,6 +460,7 @@ export async function getPublicVendorPortalRfq(tenantId: string, token: string) 
      LEFT JOIN public.purchase_requisitions requisition
        ON requisition.id=source.requisition_id AND requisition.company_id=rfq.company_id AND requisition.deleted_at IS NULL
      WHERE rfq.public_token_hash=$1 AND rfq.public_token_expires_at>NOW()
+       AND rfq.status IN ('sent','opened','responded')
        AND rfq.deleted_at IS NULL AND account.deleted_at IS NULL AND account.status='active'
      LIMIT 1`,
     [digest],
@@ -497,7 +498,8 @@ export async function getPublicVendorPortalRfq(tenantId: string, token: string) 
     status: String(rfq.status), vendorName: String(rfq.vendor_name),
     lines: lineRows.rows.map((line) => ({ id: String(line.id), description: String(line.product_name || line.description), quantity: String(line.quantity), sku: line.sku == null ? null : String(line.sku) })),
     response: existing ? { amount: String(existing.amount), currency: String(existing.currency), promisedDate: existing.promised_date == null ? null : String(existing.promised_date), terms: existing.terms == null ? null : String(existing.terms), submittedAt: existing.submitted_at == null ? null : String(existing.submitted_at), status: String(existing.status) } : null,
-    acceptingResponses: ['sent','opened'].includes(String(rfq.status)) && !existing,
+    acceptingResponses: ['sent','opened'].includes(String(rfq.status)) && !existing
+      && (!rfq.due_at || new Date(String(rfq.due_at)).getTime() >= Date.now()),
   };
 }
 
@@ -538,6 +540,8 @@ export async function submitPublicVendorPortalResponse(tenantId: string, token: 
     if (invitation.rows.length !== 1) throw new VendorPortalPublicError('NOT_FOUND', 'This supplier invitation has expired or is no longer available.');
     const row = invitation.rows[0];
     if (!['sent','opened'].includes(String(row.status))) throw new VendorPortalPublicError('STATE_CONFLICT', 'This request is no longer accepting quotations.');
+    const expectedCurrency = String(row.currency || 'KES').trim().toUpperCase();
+    if (currency !== expectedCurrency) throw new VendorPortalPublicError('INVALID_INPUT', 'Use the currency specified on this Purchase RFQ (' + expectedCurrency + ').');
     if (row.due_at && new Date(String(row.due_at)).getTime() < Date.now()) throw new VendorPortalPublicError('STATE_CONFLICT', 'The response deadline has passed.');
     if (!row.vendor_reference || !row.purchase_rfq_id) throw new VendorPortalPublicError('STATE_CONFLICT', 'This RFQ is not linked to a valid Purchase supplier record.');
     const supplier = await client.query(
