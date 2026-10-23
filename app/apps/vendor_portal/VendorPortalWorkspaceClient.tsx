@@ -29,6 +29,7 @@ export default function VendorPortalWorkspaceClient({
       <VendorPortalOperationsPanel
         initialSection={initialSection}
         canTransition={initialData.capabilities.canTransition}
+        canManageAccess={initialData.capabilities.canEdit}
         availableTableKeys={initialData.tables.map((table) => table.key)}
       />
     );
