@@ -98,10 +98,12 @@ function statusClass(status: string) {
 export default function VendorPortalOperationsPanel({
   initialSection,
   canTransition,
+  canManageAccess,
   availableTableKeys,
 }: {
   initialSection: ViewKey;
   canTransition: boolean;
+  canManageAccess: boolean;
   availableTableKeys: string[];
 }) {
   const [data, setData] = useState<Partial<Record<TableKey, TableResult>>>({});
@@ -109,9 +111,10 @@ export default function VendorPortalOperationsPanel({
   const [busyId, setBusyId] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [inviteLink, setInviteLink] = useState<{ vendorAccountId: string; vendorName: string; url: string; expiresAt: string } | null>(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
-  const [view, setView] = useState<ViewKey>(initialSection);
+  const view: ViewKey = initialSection;
   const [refreshCounter, setRefreshCounter] = useState(0);
 
   const request = useCallback(async (payload: RowData) => {
@@ -128,6 +131,53 @@ export default function VendorPortalOperationsPanel({
     }
     return body.result;
   }, []);
+
+  async function manageAccess(action: 'issue' | 'revoke', row: RowData) {
+    const vendorAccountId = textValue(row, 'id');
+    if (!canManageAccess || !vendorAccountId || busyId) return;
+    const vendorName = labelFor('vendor_portal_accounts', row);
+    const message = action === 'issue'
+      ? 'Issue a 30-day supplier portal link for ' + vendorName + '? Any existing link for this account will stop working.'
+      : 'Revoke supplier portal access for ' + vendorName + '?';
+    if (!window.confirm(message)) return;
+    setBusyId(vendorAccountId);
+    setError('');
+    setNotice('');
+    try {
+      const response = await fetch('/api/apps/vendor_portal/access', {
+        method: 'POST',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ action, vendorAccountId }),
+      });
+      const body = await response.json() as ApiResponse;
+      if (!response.ok || body.success !== true || !body.result) {
+        throw new Error(body.error || 'Vendor access could not be changed.');
+      }
+      if (action === 'issue') {
+        const accessUrl = textValue(body.result, 'accessUrl');
+        if (!accessUrl || !accessUrl.startsWith('/vp/')) {
+          throw new Error('The access link response was invalid.');
+        }
+        setInviteLink({
+          vendorAccountId,
+          vendorName: textValue(body.result, 'vendorName') || vendorName,
+          url: window.location.origin + accessUrl,
+          expiresAt: textValue(body.result, 'expiresAt'),
+        });
+        setNotice('A new supplier link is ready. Share it securely; it expires automatically in 30 days.');
+      } else {
+        setInviteLink((current) => current?.vendorAccountId === vendorAccountId ? null : current);
+        setNotice('Supplier portal access was revoked.');
+      }
+      setRefreshCounter((value) => value + 1);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Vendor access could not be changed.');
+    } finally {
+      setBusyId('');
+    }
+  }
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -241,6 +291,26 @@ export default function VendorPortalOperationsPanel({
 
       {error ? <div role="alert" className="flex gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-700 dark:text-rose-300"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><span>{error}</span></div> : null}
       {notice ? <div role="status" className="flex gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-300"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><span>{notice}</span></div> : null}
+      {inviteLink ? (
+        <section className="space-y-3 rounded-2xl border border-blue-500/30 bg-blue-500/5 p-4" aria-label="New supplier portal link">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-black text-[var(--sami-text)]">Supplier link ready · {inviteLink.vendorName}</p>
+              <p className="mt-1 text-xs text-[var(--sami-muted)]">This is a bearer link. Anyone with it can access this supplier account until it expires or you revoke it.</p>
+            </div>
+            <button type="button" className={buttonClass} onClick={() => setInviteLink(null)}>Hide link</button>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input aria-label="Supplier portal access link" readOnly value={inviteLink.url} className={inputClass} onFocus={(event) => event.currentTarget.select()} />
+            <button type="button" className={primaryButton} onClick={() => {
+              void navigator.clipboard.writeText(inviteLink.url)
+                .then(() => setNotice('Supplier access link copied to the clipboard.'))
+                .catch(() => setNotice('Select the access URL above and copy it manually.'));
+            }}>Copy link</button>
+          </div>
+          <p className="text-[11px] text-[var(--sami-muted)]">Expires {showDate(inviteLink.expiresAt)}. Issuing another link invalidates this one.</p>
+        </section>
+      ) : null}
 
       {view === 'overview' ? (
         <>
@@ -319,6 +389,16 @@ export default function VendorPortalOperationsPanel({
                               {busyId === id ? 'Saving…' : action.label}
                             </button>
                           ))}
+                          {table.key === 'vendor_portal_accounts' && canManageAccess ? (
+                            <>
+                              <button type="button" className={primaryButton} disabled={Boolean(busyId) || status !== 'active'} onClick={() => void manageAccess('issue', row)}>
+                                {busyId === id ? 'Working…' : 'Issue access link'}
+                              </button>
+                              <button type="button" className="inline-flex min-h-9 items-center justify-center rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-700 dark:text-rose-300 disabled:opacity-50" disabled={Boolean(busyId)} onClick={() => void manageAccess('revoke', row)}>
+                                Revoke access
+                              </button>
+                            </>
+                          ) : null}
                           <Link className={buttonClass} href={'/apps/vendor_portal/' + table.key}>Open register</Link>
                         </div>
                       </article>
