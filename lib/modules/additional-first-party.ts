@@ -279,6 +279,7 @@ export const ADDITIONAL_FIRST_PARTY_SAMI_MODULES:
   additionalModule({
     key: "demand_planning",
     name: "Demand Planning",
+    version: '2.4.0',
     description: "Forecast product demand and translate forecasts into replenishment signals.",
     category: "supply_chain",
     icon: "bar-chart",
