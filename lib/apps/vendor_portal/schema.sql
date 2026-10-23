@@ -4,9 +4,9 @@
 -- Required dependencies: purchase
 -- Optional dependencies: documents
 --
--- Company-scoped domain foundation. This schema is real and migration-ready,
--- but the module remains non-installable until its permissions, routes,
--- services and UI are implemented and verified.
+-- Company-scoped supplier accounts, documents and messages. Shared specialist
+-- migrations create the RFQ tables; the app-owned 2.3.0-to-2.4.0 migration
+-- adds hashed invitation tokens, response uniqueness and company-safe FKs.
 -- ============================================================
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
