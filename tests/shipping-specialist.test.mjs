@@ -8,18 +8,18 @@ test('Shipping is versioned with Inventory required and Sales, ecommerce and War
   const [manifest, registry, migration, schema] = await Promise.all([
     source('lib/modules/additional-first-party.ts'),
     source('lib/apps/runtime-migrations.ts'),
-    source('lib/apps/shipping/migrations/1.0.0-to-1.1.0.ts'),
+    source('lib/apps/shipping/migrations/2.3.0-to-2.4.0.ts'),
     source('lib/apps/shipping/schema.sql'),
   ]);
   const at = manifest.indexOf('key: "shipping"');
   assert.notEqual(at, -1);
   const entry = manifest.slice(at, at + 600);
-  assert.match(entry, /version:\s*'1\.1\.0'/);
+  assert.match(entry, /version:\s*'2\.4\.0'/);
   assert.match(entry, /depends:\s*\["inventory"\]/);
   assert.match(entry, /optionalDepends:\s*\["sales","ecommerce","warehouse"\]/);
-  assert.match(registry, /SHIPPING_1_0_0_TO_1_1_0/);
-  assert.match(migration, /fromVersion:\s*'1\.0\.0'/);
-  assert.match(migration, /toVersion:\s*'1\.1\.0'/);
+  assert.match(registry, /SHIPPING_2_3_0_TO_2_4_0/);
+  assert.match(migration, /fromVersion:\s*'2\.3\.0'/);
+  assert.match(migration, /toVersion:\s*'2\.4\.0'/);
   for (const name of ['shipping_rate_quotes','shipping_labels','idx_shipments_company_recent','idx_shipment_events_company_shipment_recent']) {
     assert.ok(migration.includes(name), 'migration misses ' + name);
     assert.ok(schema.includes(name), 'fresh-install schema misses ' + name);

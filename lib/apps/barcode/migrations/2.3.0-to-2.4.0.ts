@@ -3,12 +3,12 @@ import type { SamiModuleMigrationDefinition } from '@/lib/modules/migration-type
 import { executeSafeSamiModuleMigrationSql } from '@/lib/modules/migration-safety';
 
 /** Additive lookup indexes for the company-scoped Barcode scanner. */
-export const BARCODE_1_0_0_TO_1_1_0: SamiModuleMigrationDefinition = {
-  key: 'barcode-1.0.0-to-1.1.0-company-scoped-scan-workspace',
+export const BARCODE_2_3_0_TO_2_4_0: SamiModuleMigrationDefinition = {
+  key: 'barcode-2.3.0-to-2.4.0-company-scoped-scan-workspace',
   moduleKey: 'barcode',
   namespace: 'barcode',
-  fromVersion: '1.0.0',
-  toVersion: '1.1.0',
+  fromVersion: '2.3.0',
+  toVersion: '2.4.0',
   async run(client) {
     await executeSafeSamiModuleMigrationSql(client, [
       'CREATE INDEX IF NOT EXISTS idx_barcode_scan_events_company_recent',

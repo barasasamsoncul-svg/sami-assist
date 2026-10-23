@@ -1,7 +1,7 @@
 import { INVENTORY_2_3_0_TO_2_4_0 } from '@/lib/apps/inventory/migrations/2.3.0-to-2.4.0';
-import { WAREHOUSE_1_0_0_TO_1_1_0 } from '@/lib/apps/warehouse/migrations/1.0.0-to-1.1.0';
-import { BARCODE_1_0_0_TO_1_1_0 } from '@/lib/apps/barcode/migrations/1.0.0-to-1.1.0';
-import { SHIPPING_1_0_0_TO_1_1_0 } from '@/lib/apps/shipping/migrations/1.0.0-to-1.1.0';
+import { WAREHOUSE_2_3_0_TO_2_4_0 } from '@/lib/apps/warehouse/migrations/2.3.0-to-2.4.0';
+import { BARCODE_2_3_0_TO_2_4_0 } from '@/lib/apps/barcode/migrations/2.3.0-to-2.4.0';
+import { SHIPPING_2_3_0_TO_2_4_0 } from '@/lib/apps/shipping/migrations/2.3.0-to-2.4.0';
 import { DEMAND_PLANNING_2_3_0_TO_2_4_0 } from '@/lib/apps/demand_planning/migrations/2.3.0-to-2.4.0';
 import { SALES_3_4_1_TO_3_4_2 } from '@/lib/apps/sales/migrations/3.4.1-to-3.4.2';
 import { SALES_3_4_2_TO_3_4_3 } from '@/lib/apps/sales/migrations/3.4.2-to-3.4.3';
@@ -247,9 +247,9 @@ export const ENTERPRISE_RUNTIME_MIGRATIONS:
     ...ENTERPRISE_SPECIALIST_DEPTH_MIGRATIONS,
     ...ENTERPRISE_STRICT_PARITY_MIGRATIONS,
     INVENTORY_2_3_0_TO_2_4_0,
-    WAREHOUSE_1_0_0_TO_1_1_0,
-    BARCODE_1_0_0_TO_1_1_0,
-    SHIPPING_1_0_0_TO_1_1_0,
+    WAREHOUSE_2_3_0_TO_2_4_0,
+    BARCODE_2_3_0_TO_2_4_0,
+    SHIPPING_2_3_0_TO_2_4_0,
     DEMAND_PLANNING_2_3_0_TO_2_4_0,
     ACCOUNTING_2_3_0_TO_2_4_0,
     ACCOUNTING_2_4_0_TO_2_5_0,

@@ -19,18 +19,18 @@ test('Warehouse is installed as version 1.1.0 with Inventory as a required depen
   const at = manifest.indexOf('key: "warehouse"');
   assert.notEqual(at, -1);
   const warehouseManifest = manifest.slice(at, at + 500);
-  assert.match(warehouseManifest, /version:\s*'1\.1\.0'/);
+  assert.match(warehouseManifest, /version:\s*'2\.4\.0'/);
   assert.match(warehouseManifest, /depends:\s*\["inventory"\]/);
   assert.match(warehouseManifest, /optionalDepends:\s*\["barcode","shipping"\]/);
-  assert.match(runtimeMigrations, /WAREHOUSE_1_0_0_TO_1_1_0/);
+  assert.match(runtimeMigrations, /WAREHOUSE_2_3_0_TO_2_4_0/);
   assert.doesNotMatch(schema, /module remains non-installable/i);
 });
 
 test('Warehouse migration enforces same-company relationships without guessing at legacy ownership', async () => {
-  const migration = await source('lib/apps/warehouse/migrations/1.0.0-to-1.1.0.ts');
+  const migration = await source('lib/apps/warehouse/migrations/2.3.0-to-2.4.0.ts');
 
-  assert.match(migration, /fromVersion:\s*'1\.0\.0'/);
-  assert.match(migration, /toVersion:\s*'1\.1\.0'/);
+  assert.match(migration, /fromVersion:\s*'2\.3\.0'/);
+  assert.match(migration, /toVersion:\s*'2\.4\.0'/);
   assert.match(migration, /uq_warehouse_locations_company_id_id/);
   assert.match(migration, /FOREIGN KEY \(company_id, parent_location_id\)[\s\S]*REFERENCES public\.warehouse_locations\(company_id, id\)[\s\S]*NOT VALID/s);
   assert.match(migration, /FOREIGN KEY \(company_id, operation_id\)[\s\S]*REFERENCES public\.warehouse_operations\(company_id, id\)[\s\S]*NOT VALID/s);

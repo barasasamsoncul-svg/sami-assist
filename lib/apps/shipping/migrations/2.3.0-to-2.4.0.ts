@@ -7,12 +7,12 @@ import { executeSafeSamiModuleMigrationSql } from '@/lib/modules/migration-safet
  * Brings installed Shipping workspaces up to the quote/label model without
  * rewriting existing carrier, shipment, package or milestone records.
  */
-export const SHIPPING_1_0_0_TO_1_1_0: SamiModuleMigrationDefinition = {
-  key: 'shipping-1.0.0-to-1.1.0-rate-quotes-label-registers',
+export const SHIPPING_2_3_0_TO_2_4_0: SamiModuleMigrationDefinition = {
+  key: 'shipping-2.3.0-to-2.4.0-rate-quotes-label-registers',
   moduleKey: 'shipping',
   namespace: 'shipping',
-  fromVersion: '1.0.0',
-  toVersion: '1.1.0',
+  fromVersion: '2.3.0',
+  toVersion: '2.4.0',
   async run(client) {
     await executeSafeSamiModuleMigrationSql(client, [
       'CREATE TABLE IF NOT EXISTS public.shipping_rate_quotes (',

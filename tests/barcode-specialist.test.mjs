@@ -8,18 +8,18 @@ test('Barcode has a versioned install manifest and migration-backed lookup index
   const [manifest, registry, migration, schema] = await Promise.all([
     source('lib/modules/additional-first-party.ts'),
     source('lib/apps/runtime-migrations.ts'),
-    source('lib/apps/barcode/migrations/1.0.0-to-1.1.0.ts'),
+    source('lib/apps/barcode/migrations/2.3.0-to-2.4.0.ts'),
     source('lib/apps/barcode/schema.sql'),
   ]);
   const at = manifest.indexOf('key: "barcode"');
   assert.notEqual(at, -1);
   const entry = manifest.slice(at, at + 500);
-  assert.match(entry, /version:\s*'1\.1\.0'/);
+  assert.match(entry, /version:\s*'2\.4\.0'/);
   assert.match(entry, /depends:\s*\["inventory"\]/);
   assert.match(entry, /optionalDepends:\s*\["warehouse"\]/);
-  assert.match(registry, /BARCODE_1_0_0_TO_1_1_0/);
-  assert.match(migration, /fromVersion:\s*'1\.0\.0'/);
-  assert.match(migration, /toVersion:\s*'1\.1\.0'/);
+  assert.match(registry, /BARCODE_2_3_0_TO_2_4_0/);
+  assert.match(migration, /fromVersion:\s*'2\.3\.0'/);
+  assert.match(migration, /toVersion:\s*'2\.4\.0'/);
   for (const name of ['idx_barcode_scan_events_company_recent','idx_barcode_identifiers_company_code_lookup','idx_barcode_identifiers_company_entity','idx_barcode_rules_company_active']) {
     assert.ok(migration.includes(name), name + ' migration index missing');
     assert.ok(schema.includes(name), name + ' fresh-install index missing');

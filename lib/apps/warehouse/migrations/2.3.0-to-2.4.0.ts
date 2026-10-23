@@ -9,12 +9,12 @@ import { executeSafeSamiModuleMigrationSql } from '@/lib/modules/migration-safet
  * Existing ambiguous cross-company links are not rewritten; NOT VALID keeps
  * history intact while enforcing every new or updated row.
  */
-export const WAREHOUSE_1_0_0_TO_1_1_0: SamiModuleMigrationDefinition = {
-  key: 'warehouse-1.0.0-to-1.1.0-company-boundary-hardening',
+export const WAREHOUSE_2_3_0_TO_2_4_0: SamiModuleMigrationDefinition = {
+  key: 'warehouse-2.3.0-to-2.4.0-company-boundary-hardening',
   moduleKey: 'warehouse',
   namespace: 'warehouse',
-  fromVersion: '1.0.0',
-  toVersion: '1.1.0',
+  fromVersion: '2.3.0',
+  toVersion: '2.4.0',
   async run(client) {
     await executeSafeSamiModuleMigrationSql(client, `
 CREATE UNIQUE INDEX IF NOT EXISTS uq_warehouse_locations_company_id_id
