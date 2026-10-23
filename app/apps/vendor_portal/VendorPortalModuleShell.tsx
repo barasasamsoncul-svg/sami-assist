@@ -31,9 +31,9 @@ import type { AppSidebarItem } from '@/app/components/apps/AppSurfaceShell';
 /*  Double-mount guard                                                        */
 /* -------------------------------------------------------------------------- */
 
-// Marks "a Vendor PortalModuleShell is already rendering in this subtree".
+// Marks "a VendorPortalModuleShell is already rendering in this subtree".
 // The inner one becomes a pass-through so we never paint two sidebars.
-const Vendor PortalShellMount = createContext(false);
+const VendorPortalShellMount = createContext(false);
 
 /* -------------------------------------------------------------------------- */
 /*  Types                                                                     */
@@ -72,7 +72,7 @@ type SidebarCapabilities = {
   notificationsEnabled?: boolean;
 };
 
-type Vendor PortalSidebarItem = AppSidebarItem & {
+type VendorPortalSidebarItem = AppSidebarItem & {
   sectionLabel?: string | null;
 };
 
@@ -82,7 +82,7 @@ type Props = {
   appIconKey: string;
   tenant: TenantData;
   modules: ModuleData[];
-  appSidebarItems: Vendor PortalSidebarItem[];
+  appSidebarItems: VendorPortalSidebarItem[];
   activeSidebarKey: string;
   unreadNotifications?: number;
   sidebarCapabilities?: SidebarCapabilities;
@@ -94,7 +94,7 @@ type Props = {
 /*  Sidebar                                                                   */
 /* -------------------------------------------------------------------------- */
 
-function Vendor PortalSidebar({
+function VendorPortalSidebar({
   companyName,
   appCategory,
   appIconKey,
@@ -105,7 +105,7 @@ function Vendor PortalSidebar({
   companyName: string;
   appCategory: string;
   appIconKey: string;
-  appSidebarItems: Vendor PortalSidebarItem[];
+  appSidebarItems: VendorPortalSidebarItem[];
   activeSidebarKey: string;
   onNavigate?: () => void;
 }) {
@@ -116,10 +116,10 @@ function Vendor PortalSidebar({
     >
       {/* Brand */}
       <div className="flex min-h-[68px] shrink-0 items-center gap-3 border-b border-[var(--sami-border)] py-3 pl-5 pr-14 lg:pr-5">
-        <SamiAppIconTile appKey="vendor_portal" category={appCategory} iconKey={appIconKey} size="sm" />
+        <SamiAppIconTile appKey="purchase" category={appCategory} iconKey={appIconKey} size="sm" />
         <div className="min-w-0">
           <p className="truncate text-sm font-black leading-5 tracking-[-0.02em]">
-            Vendor Portal
+            VendorPortal
           </p>
           <p
             title={companyName}
@@ -232,7 +232,7 @@ function Vendor PortalSidebar({
 /*  Shell                                                                     */
 /* -------------------------------------------------------------------------- */
 
-export default function Vendor PortalModuleShell({
+export default function VendorPortalModuleShell({
   user,
   tenant,
   modules,
@@ -245,9 +245,9 @@ export default function Vendor PortalModuleShell({
   appIconKey,
   children,
 }: Props) {
-  // If a Vendor PortalModuleShell is already rendering above us in the tree, don't
+  // If a VendorPortalModuleShell is already rendering above us in the tree, don't
   // paint a second sidebar/topbar/padding — just pass children through.
-  const alreadyMounted = useContext(Vendor PortalShellMount);
+  const alreadyMounted = useContext(VendorPortalShellMount);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [liveUnread, setLiveUnread] = useState(unreadNotifications);
 
@@ -260,9 +260,9 @@ export default function Vendor PortalModuleShell({
   );
 
   return (
-    <Vendor PortalShellMount.Provider value={true}>
+    <VendorPortalShellMount.Provider value={true}>
       <main
-        data-sami-app="vendor_portal"
+        data-sami-app="purchase"
         data-vendor-portal-shell="standalone"
         data-vendor-portal-active-view={activeSidebarKey}
         className="min-h-screen bg-[var(--sami-canvas)] text-slate-950 dark:text-white"
@@ -272,7 +272,7 @@ export default function Vendor PortalModuleShell({
         {/* ---------------------------------------------------------------- */}
         <div className="hidden lg:block">
           <div className="fixed inset-y-0 left-0 z-50 w-[260px] border-r border-[var(--sami-border)] bg-[var(--sami-sidebar)] shadow-[8px_0_32px_rgba(16,24,40,0.03)]">
-            <Vendor PortalSidebar
+            <VendorPortalSidebar
               companyName={companyName}
               appCategory={appCategory}
               appIconKey={appIconKey}
@@ -302,7 +302,7 @@ export default function Vendor PortalModuleShell({
               >
                 <X className="h-4 w-4" aria-hidden="true" />
               </button>
-              <Vendor PortalSidebar
+              <VendorPortalSidebar
                 companyName={companyName}
                 appCategory={appCategory}
                 appIconKey={appIconKey}
@@ -340,10 +340,10 @@ export default function Vendor PortalModuleShell({
               <div className="min-w-0 flex-1">
                 <p className="flex min-w-0 items-center gap-1.5 text-xs">
                   <Link
-                    href="/apps/vendor_portal"
+                    href="/apps/purchase"
                     className="shrink-0 text-slate-500 transition hover:text-slate-950 dark:hover:text-white"
                   >
-                    Vendor Portal
+                    VendorPortal
                   </Link>
                   <ChevronRight
                     className="h-3.5 w-3.5 shrink-0 text-slate-400"
@@ -357,14 +357,14 @@ export default function Vendor PortalModuleShell({
                   title={activePage?.description || undefined}
                   className="mt-0.5 hidden max-w-[min(52vw,640px)] truncate text-[11px] text-slate-500 dark:text-slate-400 sm:block"
                 >
-                  {activePage?.description || `Vendor Portal workspace for ${companyName}`}
+                  {activePage?.description || `VendorPortal workspace for ${companyName}`}
                 </p>
               </div>
 
               <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
                 {sidebarCapabilities?.aiEnabled !== false ? (
                   <Link
-                    href="/ai?module=vendor_portal"
+                    href="/ai?module=purchase"
                     aria-label="Open SaMi AI"
                     title="SaMi AI"
                     className="inline-flex h-9 items-center justify-center rounded-xl border border-indigo-200/80 bg-gradient-to-r from-indigo-50 to-blue-50 text-indigo-700 transition hover:from-indigo-100 hover:to-blue-100 dark:border-indigo-500/20 dark:from-indigo-500/10 dark:to-blue-500/10 dark:text-indigo-300 dark:hover:from-indigo-500/20 dark:hover:to-blue-500/20 sm:w-auto sm:px-3"
@@ -406,6 +406,6 @@ export default function Vendor PortalModuleShell({
           </div>
         </div>
       </main>
-    </Vendor PortalShellMount.Provider>
+    </VendorPortalShellMount.Provider>
   );
 }
