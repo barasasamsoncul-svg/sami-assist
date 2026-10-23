@@ -177,11 +177,23 @@ export async function revokeVendorPortalAccess(input: Record<string, unknown>) {
 }
 
 export type VendorPortalPublicRFQ = {
-  id: string; rfqNumber: string; dueAt: string | null; status: string;
-  openedAt: string | null; respondedAt: string | null;
+  id: string;
+  purchaseRfqId: string | null;
+  rfqNumber: string;
+  dueAt: string | null;
+  status: string;
+  openedAt: string | null;
+  respondedAt: string | null;
+  items: Array<{ id: string; description: string; quantity: string; unitOfMeasure: string }>;
   response: null | {
-    amount: string; currency: string; promisedDate: string | null;
-    terms: string | null; submittedAt: string | null; status: string;
+    amount: string;
+    currency: string;
+    promisedDate: string | null;
+    terms: string | null;
+    submittedAt: string | null;
+    status: string;
+    purchaseResponseId: string | null;
+    linePrices: Array<{ rfqLineId: string; unitCost: string; lineTotal: string }>;
   };
 };
 
@@ -197,6 +209,7 @@ async function requirePublicAccount(tenantId: string, tokenInput: unknown, clien
   const queryable = client || pool!;
   const result = await queryable.query(
     `SELECT account.id::text AS id, account.company_id::text AS company_id,
+            account.vendor_reference::text AS vendor_reference,
             account.vendor_name, account.email,
             account.public_token_expires_at::text AS public_token_expires_at,
             company.name AS company_name
@@ -248,20 +261,49 @@ export async function getVendorPortalPublicView(tenantIdInput: string, tokenInpu
       [account.company_id, account.id],
     );
     const rfqs = await client.query(
-      `SELECT rfq.id::text AS id, rfq.rfq_number, rfq.due_at::text AS due_at,
-              rfq.status, rfq.opened_at::text AS opened_at, rfq.responded_at::text AS responded_at,
+      `SELECT rfq.id::text AS id, rfq.purchase_rfq_id::text AS purchase_rfq_id,
+              rfq.rfq_number, rfq.due_at::text AS due_at, rfq.status,
+              rfq.opened_at::text AS opened_at, rfq.responded_at::text AS responded_at,
+              COALESCE(request_items.items, '[]'::jsonb) AS request_items,
               response.amount::text AS response_amount, response.currency AS response_currency,
               response.promised_date::text AS response_promised_date, response.terms AS response_terms,
-              response.submitted_at::text AS response_submitted_at, response.status AS response_status
+              response.submitted_at::text AS response_submitted_at, response.status AS response_status,
+              response.purchase_response_id::text AS purchase_response_id,
+              COALESCE(response.line_prices, '[]'::jsonb) AS response_line_prices
        FROM public.vendor_portal_rfqs rfq
        LEFT JOIN LATERAL (
          SELECT candidate.amount, candidate.currency, candidate.promised_date,
-                candidate.terms, candidate.submitted_at, candidate.status
+                candidate.terms, candidate.submitted_at, candidate.status,
+                candidate.purchase_response_id,
+                (
+                  SELECT jsonb_agg(jsonb_build_object(
+                    'rfqLineId', priced.rfq_line_id::text,
+                    'unitCost', priced.unit_cost::text,
+                    'lineTotal', priced.line_total::text
+                  ) ORDER BY priced.rfq_line_id)
+                  FROM public.supplier_rfq_response_lines priced
+                  WHERE priced.company_id = candidate.company_id
+                    AND priced.rfq_id = candidate.purchase_rfq_id
+                    AND priced.response_id = candidate.purchase_response_id
+                    AND priced.deleted_at IS NULL
+                ) AS line_prices
          FROM public.vendor_portal_rfq_responses candidate
          WHERE candidate.company_id = rfq.company_id
            AND candidate.portal_rfq_id = rfq.id AND candidate.deleted_at IS NULL
          ORDER BY candidate.updated_at DESC, candidate.id DESC LIMIT 1
        ) response ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT jsonb_agg(jsonb_build_object(
+           'id', source_line.id::text,
+           'description', source_line.description,
+           'quantity', source_line.quantity::text,
+           'unitOfMeasure', source_line.unit_of_measure
+         ) ORDER BY source_line.created_at, source_line.id) AS items
+         FROM public.supplier_rfq_lines source_line
+         WHERE source_line.company_id = rfq.company_id
+           AND source_line.rfq_id = rfq.purchase_rfq_id
+           AND source_line.deleted_at IS NULL
+       ) request_items ON TRUE
        WHERE rfq.company_id = $1 AND rfq.vendor_account_id = $2 AND rfq.deleted_at IS NULL
        ORDER BY rfq.due_at ASC NULLS LAST, rfq.created_at DESC LIMIT 100`,
       [account.company_id, account.id],
@@ -274,22 +316,39 @@ export async function getVendorPortalPublicView(tenantIdInput: string, tokenInpu
       vendorName: String(account.vendor_name || 'Supplier'),
       email: String(account.email || ''),
       accessExpiresAt: new Date(String(account.public_token_expires_at)).toISOString(),
-      rfqs: rfqs.rows.map((row): VendorPortalPublicRFQ => ({
-        id: String(row.id),
-        rfqNumber: String(row.rfq_number || ''),
-        dueAt: row.due_at ? new Date(String(row.due_at)).toISOString() : null,
-        status: String(row.status || ''),
-        openedAt: row.opened_at ? new Date(String(row.opened_at)).toISOString() : null,
-        respondedAt: row.responded_at ? new Date(String(row.responded_at)).toISOString() : null,
-        response: row.response_status == null ? null : {
-          amount: String(row.response_amount ?? '0'),
-          currency: String(row.response_currency || 'KES'),
-          promisedDate: row.response_promised_date ? String(row.response_promised_date).slice(0, 10) : null,
-          terms: row.response_terms == null ? null : String(row.response_terms),
-          submittedAt: row.response_submitted_at ? new Date(String(row.response_submitted_at)).toISOString() : null,
-          status: String(row.response_status),
-        },
-      })),
+      rfqs: rfqs.rows.map((row): VendorPortalPublicRFQ => {
+        const items = Array.isArray(row.request_items) ? row.request_items as Array<Record<string, unknown>> : [];
+        const linePrices = Array.isArray(row.response_line_prices) ? row.response_line_prices as Array<Record<string, unknown>> : [];
+        return {
+          id: String(row.id),
+          purchaseRfqId: row.purchase_rfq_id == null ? null : String(row.purchase_rfq_id),
+          rfqNumber: String(row.rfq_number || ''),
+          dueAt: row.due_at ? new Date(String(row.due_at)).toISOString() : null,
+          status: String(row.status || ''),
+          openedAt: row.opened_at ? new Date(String(row.opened_at)).toISOString() : null,
+          respondedAt: row.responded_at ? new Date(String(row.responded_at)).toISOString() : null,
+          items: items.map((item) => ({
+            id: String(item.id),
+            description: String(item.description || ''),
+            quantity: String(item.quantity || '0'),
+            unitOfMeasure: String(item.unitOfMeasure || 'unit'),
+          })),
+          response: row.response_status == null ? null : {
+            amount: String(row.response_amount ?? '0'),
+            currency: String(row.response_currency || 'KES'),
+            promisedDate: row.response_promised_date ? String(row.response_promised_date).slice(0, 10) : null,
+            terms: row.response_terms == null ? null : String(row.response_terms),
+            submittedAt: row.response_submitted_at ? new Date(String(row.response_submitted_at)).toISOString() : null,
+            status: String(row.response_status),
+            purchaseResponseId: row.purchase_response_id == null ? null : String(row.purchase_response_id),
+            linePrices: linePrices.map((item) => ({
+              rfqLineId: String(item.rfqLineId),
+              unitCost: String(item.unitCost),
+              lineTotal: String(item.lineTotal),
+            })),
+          },
+        };
+      }),
     };
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined);
