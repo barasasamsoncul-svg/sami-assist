@@ -76,29 +76,29 @@ export async function getDemandPlanningOverview(): Promise<DemandPlanningOvervie
   const [summary, forecasts, recommendations] = await Promise.all([
     context.pool.query([
       'SELECT',
-      ' (SELECT COUNT(*)::int FROM public.products p WHERE p.company_id=$1 AND p.deleted_at IS NULL AND p.is_active=TRUE AND p.track_inventory=TRUE AND p.product_type=\\'stockable\\') AS product_count,',
+      ' (SELECT COUNT(*)::int FROM public.products p WHERE p.company_id=$1 AND p.deleted_at IS NULL AND p.is_active=TRUE AND p.track_inventory=TRUE AND p.product_type=\'stockable\') AS product_count,',
       ' (SELECT COUNT(*)::int FROM public.demand_forecasts f WHERE f.company_id=$1 AND f.deleted_at IS NULL) AS forecast_count,',
-      ' (SELECT COUNT(*)::int FROM public.replenishment_recommendations r WHERE r.company_id=$1 AND r.deleted_at IS NULL AND r.status=\\'suggested\\') AS suggested_count,',
-      ' (SELECT COUNT(*)::int FROM public.replenishment_recommendations r WHERE r.company_id=$1 AND r.deleted_at IS NULL AND r.status=\\'accepted\\') AS accepted_count,',
-      ' (SELECT COUNT(*)::int FROM public.stock_movements m WHERE m.company_id=$1 AND m.deleted_at IS NULL AND m.created_at>=NOW()-INTERVAL \\'90 days\\' AND m.movement_type=ANY($2::text[])) AS history_movement_count,',
+      ' (SELECT COUNT(*)::int FROM public.replenishment_recommendations r WHERE r.company_id=$1 AND r.deleted_at IS NULL AND r.status=\'suggested\') AS suggested_count,',
+      ' (SELECT COUNT(*)::int FROM public.replenishment_recommendations r WHERE r.company_id=$1 AND r.deleted_at IS NULL AND r.status=\'accepted\') AS accepted_count,',
+      ' (SELECT COUNT(*)::int FROM public.stock_movements m WHERE m.company_id=$1 AND m.deleted_at IS NULL AND m.created_at>=NOW()-INTERVAL \'90 days\' AND m.movement_type=ANY($2::text[])) AS history_movement_count,',
       ' (SELECT COUNT(DISTINCT z.product_id)::int FROM (SELECT sl.product_id, SUM(sl.quantity) AS on_hand, MAX(sl.reorder_level) AS reorder_level FROM public.stock_levels sl WHERE sl.company_id=$1 AND sl.deleted_at IS NULL GROUP BY sl.product_id) z WHERE z.on_hand<=z.reorder_level) AS products_at_risk',
-    ].join('\\n'), [context.companyId, OUTBOUND_TYPES]),
+    ].join('\n'), [context.companyId, OUTBOUND_TYPES]),
     context.pool.query([
       'SELECT f.id::text, f.name, f.status, f.method, f.horizon_start::text, f.horizon_end::text, f.created_at::text,',
       ' COUNT(l.id)::int AS line_count, COUNT(l.id) FILTER (WHERE l.forecast_quantity>0)::int AS demand_lines',
       'FROM public.demand_forecasts f LEFT JOIN public.demand_forecast_lines l ON l.forecast_id=f.id AND l.company_id=f.company_id AND l.deleted_at IS NULL',
       'WHERE f.company_id=$1 AND f.deleted_at IS NULL GROUP BY f.id ORDER BY f.created_at DESC,f.id DESC LIMIT 25',
-    ].join('\\n'), [context.companyId]),
+    ].join('\n'), [context.companyId]),
     context.pool.query([
       'SELECT r.id::text, r.forecast_id::text, r.product_reference::text AS product_id, p.name AS product_name, p.sku,',
       ' r.recommended_quantity::text, GREATEST(COALESCE(st.on_hand,0)-COALESCE(rs.reserved,0),0)::text AS available_quantity,',
       ' r.needed_by::text, r.reason, r.status, r.created_at::text',
       'FROM public.replenishment_recommendations r JOIN public.products p ON p.id=r.product_reference AND p.company_id=r.company_id AND p.deleted_at IS NULL',
       'LEFT JOIN (SELECT company_id,product_id,SUM(quantity) AS on_hand FROM public.stock_levels WHERE deleted_at IS NULL GROUP BY company_id,product_id) st ON st.company_id=r.company_id AND st.product_id=p.id',
-      'LEFT JOIN (SELECT company_id,product_id,SUM(quantity) AS reserved FROM public.stock_reservations WHERE deleted_at IS NULL AND status IN (\\'active\\',\\'allocated\\') GROUP BY company_id,product_id) rs ON rs.company_id=r.company_id AND rs.product_id=p.id',
-      'WHERE r.company_id=$1 AND r.deleted_at IS NULL AND r.status IN (\\'suggested\\',\\'accepted\\',\\'rejected\\')',
-      'ORDER BY CASE r.status WHEN \\'suggested\\' THEN 0 WHEN \\'accepted\\' THEN 1 ELSE 2 END,r.needed_by NULLS LAST,r.created_at DESC,r.id DESC LIMIT 100',
-    ].join('\\n'), [context.companyId]),
+      'LEFT JOIN (SELECT company_id,product_id,SUM(quantity) AS reserved FROM public.stock_reservations WHERE deleted_at IS NULL AND status IN (\'active\',\'allocated\') GROUP BY company_id,product_id) rs ON rs.company_id=r.company_id AND rs.product_id=p.id',
+      'WHERE r.company_id=$1 AND r.deleted_at IS NULL AND r.status IN (\'suggested\',\'accepted\',\'rejected\')',
+      'ORDER BY CASE r.status WHEN \'suggested\' THEN 0 WHEN \'accepted\' THEN 1 ELSE 2 END,r.needed_by NULLS LAST,r.created_at DESC,r.id DESC LIMIT 100',
+    ].join('\n'), [context.companyId]),
   ]);
   const s = summary.rows[0] || {};
   return {
@@ -134,9 +134,9 @@ export async function runDemandForecast(input: unknown) {
     const created = await client.query([
       'INSERT INTO public.demand_forecasts',
       ' (company_id,name,horizon_start,horizon_end,method,status,request_key,request_hash,metadata,created_by,updated_by)',
-      ' VALUES ($1,$2,CURRENT_DATE,CURRENT_DATE+$3::int,$4,\\'ready\\',$5,$6,$7::jsonb,$8,$8)',
+      ' VALUES ($1,$2,CURRENT_DATE,CURRENT_DATE+$3::int,$4,\'ready\',$5,$6,$7::jsonb,$8,$8)',
       ' ON CONFLICT (company_id,request_key) WHERE request_key IS NOT NULL DO NOTHING RETURNING id::text',
-    ].join('\\n'), [context.companyId, 'Moving-average forecast (' + horizonDays + ' days)', horizonDays, config.method, requestKey, configHash, JSON.stringify(config), context.userId]);
+    ].join('\n'), [context.companyId, 'Moving-average forecast (' + horizonDays + ' days)', horizonDays, config.method, requestKey, configHash, JSON.stringify(config), context.userId]);
     if (!created.rows.length) {
       const raced = await client.query('SELECT id::text,request_hash FROM public.demand_forecasts WHERE company_id=$1 AND request_key=$2 AND deleted_at IS NULL', [context.companyId, requestKey]);
       if (!raced.rows.length || String(raced.rows[0].request_hash || '') !== configHash) throw new DemandPlanningConflictError('The request key conflicts with another forecast run.');
@@ -150,9 +150,9 @@ export async function runDemandForecast(input: unknown) {
         ' GREATEST(COALESCE(st.on_hand,0)-COALESCE(rs.reserved,0),0)::text AS available',
         'FROM public.products p',
         'LEFT JOIN (SELECT company_id,product_id,SUM(quantity) AS on_hand,MAX(reorder_level) AS reorder_level FROM public.stock_levels WHERE company_id=$1 AND deleted_at IS NULL GROUP BY company_id,product_id) st ON st.company_id=p.company_id AND st.product_id=p.id',
-        'LEFT JOIN (SELECT company_id,product_id,SUM(quantity) AS reserved FROM public.stock_reservations WHERE company_id=$1 AND deleted_at IS NULL AND status IN (\\'active\\',\\'allocated\\') GROUP BY company_id,product_id) rs ON rs.company_id=p.company_id AND rs.product_id=p.id',
-        'WHERE p.company_id=$1 AND p.deleted_at IS NULL AND p.is_active=TRUE AND p.track_inventory=TRUE AND p.product_type=\\'stockable\\' ORDER BY p.name,p.id LIMIT 500',
-      ].join('\\n'), [context.companyId]),
+        'LEFT JOIN (SELECT company_id,product_id,SUM(quantity) AS reserved FROM public.stock_reservations WHERE company_id=$1 AND deleted_at IS NULL AND status IN (\'active\',\'allocated\') GROUP BY company_id,product_id) rs ON rs.company_id=p.company_id AND rs.product_id=p.id',
+        'WHERE p.company_id=$1 AND p.deleted_at IS NULL AND p.is_active=TRUE AND p.track_inventory=TRUE AND p.product_type=\'stockable\' ORDER BY p.name,p.id LIMIT 500',
+      ].join('\n'), [context.companyId]),
       client.query('SELECT product_id::text,SUM(quantity)::text AS total_quantity,COUNT(DISTINCT created_at::date)::int AS demand_days FROM public.stock_movements WHERE company_id=$1 AND deleted_at IS NULL AND created_at>=NOW()-make_interval(days => $2::int) AND movement_type=ANY($3::text[]) GROUP BY product_id', [context.companyId,historyDays,OUTBOUND_TYPES]),
     ]);
     const history = new Map(movementRows.rows.map((r) => [String(r.product_id), { total: numeric(r.total_quantity), days: Number(r.demand_days || 0) }]));
@@ -160,12 +160,12 @@ export async function runDemandForecast(input: unknown) {
     for (const product of products.rows) {
       const past = history.get(String(product.id)) || { total: 0, days: 0 };
       const plan = calculateDemandPlan({ historicalQuantity: past.total, historyDays, horizonDays, availableQuantity: numeric(product.available), reorderLevel: numeric(product.reorder_level), safetyStockDays, demandDays: past.days });
-      await client.query('INSERT INTO public.demand_forecast_lines (company_id,forecast_id,product_reference,period_start,period_end,forecast_quantity,confidence,status,metadata,created_by,updated_by) VALUES ($1,$2,$3,CURRENT_DATE,CURRENT_DATE+$4::int,$5,$6,\\'active\\',$7::jsonb,$8,$8)', [
+      await client.query('INSERT INTO public.demand_forecast_lines (company_id,forecast_id,product_reference,period_start,period_end,forecast_quantity,confidence,status,metadata,created_by,updated_by) VALUES ($1,$2,$3,CURRENT_DATE,CURRENT_DATE+$4::int,$5,$6,\'active\',$7::jsonb,$8,$8)', [
         context.companyId,forecastId,String(product.id),horizonDays,plan.forecastQuantity.toFixed(4),plan.signalStrength,
         JSON.stringify({ historyDays,horizonDays,safetyStockDays,historyQuantity:past.total,demandDays:past.days,dailyAverage:plan.dailyAverage }),context.userId,
       ]);
       if (plan.recommendedQuantity > 0) {
-        await client.query('INSERT INTO public.replenishment_recommendations (company_id,forecast_id,product_reference,recommended_quantity,needed_by,reason,status,metadata,created_by,updated_by) VALUES ($1,$2,$3,$4,CURRENT_DATE+$5::int,$6,\\'suggested\\',$7::jsonb,$8,$8)', [
+        await client.query('INSERT INTO public.replenishment_recommendations (company_id,forecast_id,product_reference,recommended_quantity,needed_by,reason,status,metadata,created_by,updated_by) VALUES ($1,$2,$3,$4,CURRENT_DATE+$5::int,$6,\'suggested\',$7::jsonb,$8,$8)', [
           context.companyId,forecastId,String(product.id),plan.recommendedQuantity.toFixed(4),leadTimeDays,
           plan.rationale + ' Demand is based on ' + historyDays + ' calendar days of outbound stock movements.',
           JSON.stringify({ availableQuantity:numeric(product.available),reorderLevel:numeric(product.reorder_level),forecastQuantity:plan.forecastQuantity,safetyStockQuantity:plan.safetyStockQuantity,leadTimeDays }),context.userId,
@@ -190,7 +190,7 @@ export async function decideDemandRecommendation(input: unknown) {
     const next = decision === 'accept' ? 'accepted' : 'rejected';
     if (current === next) return { recommendationId,status:next,duplicate:true };
     if (current !== 'suggested') throw new DemandPlanningConflictError('Only suggested recommendations can be accepted or rejected.');
-    await client.query('UPDATE public.replenishment_recommendations SET status=$3,updated_by=$4,updated_at=NOW() WHERE id=$1 AND company_id=$2 AND status=\\'suggested\\'', [recommendationId,context.companyId,next,context.userId]);
+    await client.query('UPDATE public.replenishment_recommendations SET status=$3,updated_by=$4,updated_at=NOW() WHERE id=$1 AND company_id=$2 AND status=\'suggested\'', [recommendationId,context.companyId,next,context.userId]);
     return { recommendationId,status:next,duplicate:false };
   });
 }
