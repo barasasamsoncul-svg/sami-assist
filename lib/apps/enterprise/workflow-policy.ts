@@ -883,6 +883,16 @@ const DOMAIN_GRAPH:
       active: ['suspended','expired','closed'],
       suspended: ['active','closed'],
     },
+    'vendor_portal:vendor_portal_rfqs': {
+      sent: ['opened','cancelled'],
+      opened: ['responded','closed','cancelled'],
+      responded: ['awarded','closed','cancelled'],
+      awarded: ['closed'],
+    },
+    'vendor_portal:vendor_portal_rfq_responses': {
+      draft: ['submitted','withdrawn'],
+      submitted: ['accepted','rejected','withdrawn'],
+    },
     'warehouse:warehouse_operations': {
       draft: ['scheduled','cancelled'],
       active: ['scheduled','in_progress','completed','cancelled'],
