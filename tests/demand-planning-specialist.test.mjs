@@ -4,20 +4,20 @@ import { readFile } from 'node:fs/promises';
 
 async function source(file) { return (await readFile(file, 'utf8')).replace(/\r\n/g, '\n'); }
 
-test('Demand Planning manifest and migration register version 1.1.0 against required Inventory', async () => {
+test('Demand Planning manifest and migration register version 2.4.0 against required Inventory', async () => {
   const [manifest, registry, schema, migration] = await Promise.all([
     source('lib/modules/additional-first-party.ts'), source('lib/apps/runtime-migrations.ts'),
-    source('lib/apps/demand_planning/schema.sql'), source('lib/apps/demand_planning/migrations/1.0.0-to-1.1.0.ts'),
+    source('lib/apps/demand_planning/schema.sql'), source('lib/apps/demand_planning/migrations/2.3.0-to-2.4.0.ts'),
   ]);
   const at = manifest.indexOf('key: "demand_planning"');
   assert.notEqual(at, -1);
   const entry = manifest.slice(at, at + 500);
-  assert.match(entry, /version:\s*'1\.1\.0'/);
+  assert.match(entry, /version:\s*'2\.4\.0'/);
   assert.match(entry, /depends:\s*\["inventory"\]/);
   assert.match(entry, /optionalDepends:\s*\["purchase","sales"\]/);
   assert.match(registry, /DEMAND_PLANNING_1_0_0_TO_1_1_0/);
-  assert.match(migration, /fromVersion:\s*'1\.0\.0'/);
-  assert.match(migration, /toVersion:\s*'1\.1\.0'/);
+  assert.match(migration, /fromVersion:\s*'2\.3\.0'/);
+  assert.match(migration, /toVersion:\s*'2\.4\.0'/);
   for (const index of ['uq_demand_forecasts_company_request_key','idx_demand_forecast_lines_company_forecast_product','idx_replenishment_recommendations_company_status_due','idx_stock_movements_company_demand_history']) {
     assert.ok(schema.includes(index), 'fresh schema index missing: ' + index);
     assert.ok(migration.includes(index), 'upgrade migration index missing: ' + index);
