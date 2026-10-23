@@ -4,9 +4,8 @@
 -- Required dependencies: inventory
 -- Optional dependencies: purchase, sales
 --
--- Company-scoped domain foundation. This schema is real and migration-ready,
--- but the module remains non-installable until its permissions, routes,
--- services and UI are implemented and verified.
+-- Company-scoped demand forecast and replenishment data. Calculated values are
+-- planning signals sourced from actual Inventory movements and stock balances.
 -- ============================================================
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -28,8 +27,10 @@ CREATE TABLE IF NOT EXISTS public.demand_forecasts (
     name VARCHAR(200) NOT NULL,
     horizon_start DATE NOT NULL,
     horizon_end DATE NOT NULL,
-    method VARCHAR(80) NOT NULL DEFAULT 'manual',
-    status VARCHAR(40) NOT NULL DEFAULT 'active',
+    method VARCHAR(80) NOT NULL DEFAULT 'moving_average_stock_outbound',
+    status VARCHAR(40) NOT NULL DEFAULT 'draft',
+    request_key UUID,
+    request_hash VARCHAR(64),
     created_by UUID,
     updated_by UUID,
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -106,3 +107,19 @@ CREATE INDEX IF NOT EXISTS idx_replenishment_recommendations_company_created
     ON public.replenishment_recommendations(company_id, created_at DESC, id DESC)
     WHERE deleted_at IS NULL;
 
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_demand_forecasts_company_request_key
+    ON public.demand_forecasts(company_id, request_key)
+    WHERE request_key IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_demand_forecast_lines_company_forecast_product
+    ON public.demand_forecast_lines(company_id, forecast_id, product_reference)
+    WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_replenishment_recommendations_company_status_due
+    ON public.replenishment_recommendations(company_id, status, needed_by, created_at DESC)
+    WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_stock_movements_company_demand_history
+    ON public.stock_movements(company_id, movement_type, created_at DESC, product_id)
+    WHERE deleted_at IS NULL;
