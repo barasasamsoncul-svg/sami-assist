@@ -836,6 +836,101 @@ CREATE TABLE IF NOT EXISTS public.vendor_portal_rfq_responses (
 CREATE INDEX IF NOT EXISTS idx_vendor_portal_rfq_responses
   ON public.vendor_portal_rfq_responses(company_id, portal_rfq_id, status)
   WHERE deleted_at IS NULL;
+
+-- Access links are bearer credentials: persist only SHA-256 hashes and expire them.
+ALTER TABLE public.vendor_portal_accounts
+  ADD COLUMN IF NOT EXISTS public_token_hash CHAR(64);
+ALTER TABLE public.vendor_portal_accounts
+  ADD COLUMN IF NOT EXISTS public_token_created_at TIMESTAMPTZ;
+ALTER TABLE public.vendor_portal_accounts
+  ADD COLUMN IF NOT EXISTS public_token_expires_at TIMESTAMPTZ;
+ALTER TABLE public.vendor_portal_accounts
+  ADD COLUMN IF NOT EXISTS public_token_revoked_at TIMESTAMPTZ;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_vendor_portal_account_token_hash
+  ON public.vendor_portal_accounts(public_token_hash)
+  WHERE public_token_hash IS NOT NULL AND deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_vendor_portal_accounts_company_id_id
+  ON public.vendor_portal_accounts(company_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_vendor_portal_rfqs_company_id_id
+  ON public.vendor_portal_rfqs(company_id, id);
+
+-- NOT VALID preserves pre-existing legacy rows while enforcing company-safe links
+-- for every new or modified relationship.
+DO $sami_vendor_portal_constraints$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_vendor_portal_accounts_company_supplier'
+      AND conrelid = 'public.vendor_portal_accounts'::regclass
+  ) THEN
+    ALTER TABLE public.vendor_portal_accounts
+      ADD CONSTRAINT fk_vendor_portal_accounts_company_supplier
+      FOREIGN KEY (company_id, vendor_reference)
+      REFERENCES public.suppliers(company_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_vendor_portal_documents_company_account'
+      AND conrelid = 'public.vendor_portal_documents'::regclass
+  ) THEN
+    ALTER TABLE public.vendor_portal_documents
+      ADD CONSTRAINT fk_vendor_portal_documents_company_account
+      FOREIGN KEY (company_id, vendor_account_id)
+      REFERENCES public.vendor_portal_accounts(company_id, id)
+      ON DELETE CASCADE NOT VALID;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_vendor_portal_messages_company_account'
+      AND conrelid = 'public.vendor_portal_messages'::regclass
+  ) THEN
+    ALTER TABLE public.vendor_portal_messages
+      ADD CONSTRAINT fk_vendor_portal_messages_company_account
+      FOREIGN KEY (company_id, vendor_account_id)
+      REFERENCES public.vendor_portal_accounts(company_id, id)
+      ON DELETE CASCADE NOT VALID;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_vendor_portal_rfqs_company_account'
+      AND conrelid = 'public.vendor_portal_rfqs'::regclass
+  ) THEN
+    ALTER TABLE public.vendor_portal_rfqs
+      ADD CONSTRAINT fk_vendor_portal_rfqs_company_account
+      FOREIGN KEY (company_id, vendor_account_id)
+      REFERENCES public.vendor_portal_accounts(company_id, id)
+      ON DELETE CASCADE NOT VALID;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_vendor_portal_rfqs_company_purchase_rfq'
+      AND conrelid = 'public.vendor_portal_rfqs'::regclass
+  ) THEN
+    ALTER TABLE public.vendor_portal_rfqs
+      ADD CONSTRAINT fk_vendor_portal_rfqs_company_purchase_rfq
+      FOREIGN KEY (company_id, purchase_rfq_id)
+      REFERENCES public.supplier_rfqs(company_id, id)
+      ON DELETE RESTRICT NOT VALID;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_vendor_portal_rfq_responses_company_rfq'
+      AND conrelid = 'public.vendor_portal_rfq_responses'::regclass
+  ) THEN
+    ALTER TABLE public.vendor_portal_rfq_responses
+      ADD CONSTRAINT fk_vendor_portal_rfq_responses_company_rfq
+      FOREIGN KEY (company_id, portal_rfq_id)
+      REFERENCES public.vendor_portal_rfqs(company_id, id)
+      ON DELETE CASCADE NOT VALID;
+  END IF;
+END
+$sami_vendor_portal_constraints$;
 `;
 
     default:
