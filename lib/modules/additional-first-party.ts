@@ -289,6 +289,7 @@ export const ADDITIONAL_FIRST_PARTY_SAMI_MODULES:
   additionalModule({
     key: "vendor_portal",
     name: "Vendor Portal",
+    version: '2.4.0',
     description: "Give suppliers controlled access to purchase orders, deliveries and documents.",
     category: "supply_chain",
     icon: "users",
