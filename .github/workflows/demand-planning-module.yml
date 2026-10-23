@@ -1,0 +1,71 @@
+name: Demand Planning Module Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/apps/demand_planning/**'
+      - 'app/api/apps/demand_planning/**'
+      - 'lib/apps/demand_planning/**'
+      - 'lib/apps/enterprise/domain-hooks.ts'
+      - 'lib/apps/runtime-migrations.ts'
+      - 'lib/modules/additional-first-party.ts'
+      - 'tests/demand-planning-*'
+      - 'tests/app-surfaces-ui.test.ts'
+      - 'tests/module-migrations.test.mjs'
+      - 'package.json'
+      - '.github/workflows/demand-planning-module.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'app/apps/demand_planning/**'
+      - 'app/api/apps/demand_planning/**'
+      - 'lib/apps/demand_planning/**'
+      - 'lib/apps/enterprise/domain-hooks.ts'
+      - 'lib/apps/runtime-migrations.ts'
+      - 'lib/modules/additional-first-party.ts'
+      - 'tests/demand-planning-*'
+      - 'tests/app-surfaces-ui.test.ts'
+      - 'tests/module-migrations.test.mjs'
+      - 'package.json'
+      - '.github/workflows/demand-planning-module.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  demand-planning:
+    name: Validate Demand Planning workflow and migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Forecast logic and specialist security tests
+        run: npm run test:demand-planning
+
+      - name: Migration registry and tenant upgrade path
+        run: npm run test:module-migrations
+
+      - name: Module layout and accessibility regression tests
+        run: npm run test:app-ui
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+      - name: Targeted lint
+        run: npm run lint -- app/apps/demand_planning app/api/apps/demand_planning lib/apps/demand_planning lib/apps/enterprise/domain-hooks.ts lib/apps/runtime-migrations.ts lib/modules/additional-first-party.ts
+
+      - name: Production compilation
+        run: npm run build
