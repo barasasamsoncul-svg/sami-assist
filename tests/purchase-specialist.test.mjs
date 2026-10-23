@@ -52,7 +52,7 @@ test('Purchase Inventory receipt workflow is guarded and company scoped by exist
     source('lib/apps/enterprise/specialist-finance-transitions.ts'),
   ]);
   assert.match(tests, /fails closed when the Inventory dependency is not ready/);
-  assert.match(tests, /posts idempotently to the shared company-scoped Inventory ledger/);
+  assert.match(tests, /receipts post idempotently to the shared company-scoped Inventory ledger/);
   assert.ok(posting.includes("const movementReference = 'purchase_receipt:' + receiptId + ':' + line.id;"));
   assert.ok(posting.includes('product.company_id = $1'));
   assert.ok(posting.includes('warehouse.company_id = $1'));
