@@ -15,7 +15,7 @@ test('Demand Planning manifest and migration register version 2.4.0 against requ
   assert.match(entry, /version:\s*'2\.4\.0'/);
   assert.match(entry, /depends:\s*\["inventory"\]/);
   assert.match(entry, /optionalDepends:\s*\["purchase","sales"\]/);
-  assert.match(registry, /DEMAND_PLANNING_1_0_0_TO_1_1_0/);
+  assert.match(registry, /DEMAND_PLANNING_2_3_0_TO_2_4_0/);
   assert.match(migration, /fromVersion:\s*'2\.3\.0'/);
   assert.match(migration, /toVersion:\s*'2\.4\.0'/);
   for (const index of ['uq_demand_forecasts_company_request_key','idx_demand_forecast_lines_company_forecast_product','idx_replenishment_recommendations_company_status_due','idx_stock_movements_company_demand_history']) {
