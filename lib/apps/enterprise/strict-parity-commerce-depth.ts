@@ -820,6 +820,8 @@ CREATE TABLE IF NOT EXISTS public.vendor_portal_rfq_responses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
   portal_rfq_id UUID NOT NULL REFERENCES public.vendor_portal_rfqs(id) ON DELETE CASCADE,
+  purchase_rfq_id UUID,
+  purchase_response_id UUID,
   amount NUMERIC(19,4) NOT NULL DEFAULT 0,
   currency VARCHAR(3) NOT NULL DEFAULT 'KES',
   promised_date DATE,
@@ -836,6 +838,13 @@ CREATE TABLE IF NOT EXISTS public.vendor_portal_rfq_responses (
 CREATE INDEX IF NOT EXISTS idx_vendor_portal_rfq_responses
   ON public.vendor_portal_rfq_responses(company_id, portal_rfq_id, status)
   WHERE deleted_at IS NULL;
+
+ALTER TABLE public.vendor_portal_rfq_responses
+  ADD COLUMN IF NOT EXISTS purchase_rfq_id UUID;
+ALTER TABLE public.vendor_portal_rfq_responses
+  ADD COLUMN IF NOT EXISTS purchase_response_id UUID;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_vendor_portal_rfqs_company_rfq
+  ON public.vendor_portal_rfqs(company_id, id, purchase_rfq_id);
 
 -- Access links are bearer credentials: persist only SHA-256 hashes and expire them.
 ALTER TABLE public.vendor_portal_accounts
@@ -928,6 +937,30 @@ BEGIN
       FOREIGN KEY (company_id, portal_rfq_id)
       REFERENCES public.vendor_portal_rfqs(company_id, id)
       ON DELETE CASCADE NOT VALID;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_vendor_portal_rfq_responses_company_purchase_rfq'
+      AND conrelid = 'public.vendor_portal_rfq_responses'::regclass
+  ) THEN
+    ALTER TABLE public.vendor_portal_rfq_responses
+      ADD CONSTRAINT fk_vendor_portal_rfq_responses_company_purchase_rfq
+      FOREIGN KEY (company_id, portal_rfq_id, purchase_rfq_id)
+      REFERENCES public.vendor_portal_rfqs(company_id, id, purchase_rfq_id)
+      ON DELETE CASCADE NOT VALID;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_vendor_portal_rfq_responses_company_purchase_response'
+      AND conrelid = 'public.vendor_portal_rfq_responses'::regclass
+  ) THEN
+    ALTER TABLE public.vendor_portal_rfq_responses
+      ADD CONSTRAINT fk_vendor_portal_rfq_responses_company_purchase_response
+      FOREIGN KEY (company_id, purchase_rfq_id, purchase_response_id)
+      REFERENCES public.supplier_rfq_responses(company_id, rfq_id, id)
+      ON DELETE RESTRICT NOT VALID;
   END IF;
 END
 $sami_vendor_portal_constraints$;
