@@ -225,7 +225,10 @@ test(
                     : moduleKey ===
                         'shipping'
                       ? /ShippingModuleShell/
-                      : /AppSurfaceShell/,
+                      : moduleKey ===
+                          'demand_planning'
+                        ? /DemandPlanningModuleShell/
+                        : /AppSurfaceShell/,
         moduleKey +
           ' must compose its own standalone app surface.',
       );
