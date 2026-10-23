@@ -511,6 +511,21 @@ export function assertEnterpriseDomainMutationAllowed(
   }
 
   if (
+    moduleKey === 'vendor_portal' &&
+    [
+      'vendor_portal_accounts',
+      'vendor_portal_rfqs',
+      'vendor_portal_rfq_responses',
+      'vendor_portal_documents',
+      'vendor_portal_messages',
+    ].includes(table)
+  ) {
+    throw new Error(
+      'Vendor Portal supplier accounts, invitations and responses must be changed through validated Vendor Portal workflows.',
+    );
+  }
+
+  if (
     moduleKey ===
       'payments' &&
     table ===
