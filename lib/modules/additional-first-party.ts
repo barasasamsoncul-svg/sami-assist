@@ -259,7 +259,7 @@ export const ADDITIONAL_FIRST_PARTY_SAMI_MODULES:
   additionalModule({
     key: "warehouse",
     name: "Warehouse",
-    version: '1.1.0',
+    version: '2.4.0',
     description: "Coordinate warehouse locations, put-away, picking and internal stock flows.",
     category: "supply_chain",
     icon: "boxes",
@@ -269,7 +269,7 @@ export const ADDITIONAL_FIRST_PARTY_SAMI_MODULES:
   additionalModule({
     key: "shipping",
     name: "Shipping",
-    version: '1.1.0',
+    version: '2.4.0',
     description: "Prepare shipments, carrier handoffs, tracking and delivery exceptions.",
     category: "supply_chain",
     icon: "package",
@@ -298,7 +298,7 @@ export const ADDITIONAL_FIRST_PARTY_SAMI_MODULES:
   additionalModule({
     key: "barcode",
     name: "Barcode",
-    version: '1.1.0',
+    version: '2.4.0',
     description: "Use barcode workflows for receiving, picking, inventory and fulfillment.",
     category: "supply_chain",
     icon: "package",
