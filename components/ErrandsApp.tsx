@@ -89,6 +89,9 @@ export default function ErrandsApp() {
   const [mpesaConfigured, setMpesaConfigured] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("shopping");
   const [selectedPriority, setSelectedPriority] = useState("standard");
+  const [selectedDistanceKm, setSelectedDistanceKm] = useState("1");
+  const [selectedItemSize, setSelectedItemSize] = useState("none");
+  const [selectedItemValue, setSelectedItemValue] = useState("");
   const [profileDraft, setProfileDraft] = useState({
     providerType:"individual", businessName:"", serviceArea:"", bio:"", serviceCategories:["shopping","pickup_delivery"] as string[]
   });
@@ -211,6 +214,7 @@ export default function ErrandsApp() {
       const result = await post("createErrand", payload);
       setNotice("Request " + result.errand.public_code + " received. The upfront errand-service fee is saved; any seller/goods cost is separate. Operations can assign an approved provider directly.");
       (event.currentTarget as HTMLFormElement).reset();
+      setSelectedDistanceKm("1"); setSelectedItemSize("none"); setSelectedItemValue("");
       setShowRequest(false); setTab("errands"); await refresh(true);
     } catch(e) { setError(e instanceof Error ? e.message : "The request could not be submitted."); }
     finally { setBusy(""); }
@@ -353,7 +357,14 @@ export default function ErrandsApp() {
         lowPriorityMultiplier: Number(rule.low_priority_multiplier),
         standardPriorityMultiplier: Number(rule.standard_priority_multiplier),
         highPriorityMultiplier: Number(rule.high_priority_multiplier),
-        urgentPriorityMultiplier: Number(rule.urgent_priority_multiplier)
+        urgentPriorityMultiplier: Number(rule.urgent_priority_multiplier),
+        distanceRatePerKm: Number(rule.distance_rate_per_km),
+        smallItemFee: Number(rule.small_item_fee),
+        mediumItemFee: Number(rule.medium_item_fee),
+        largeItemFee: Number(rule.large_item_fee),
+        bulkyItemFee: Number(rule.bulky_item_fee),
+        valueSurchargeThreshold: Number(rule.value_surcharge_threshold),
+        valueSurchargeRate: Number(rule.value_surcharge_rate)
       });
       const latest = await get("/api/dispatch?action=pricing");
       setPricing(Object.fromEntries((latest.pricing || []).map((p:any) => [p.category,p])));
@@ -378,7 +389,13 @@ export default function ErrandsApp() {
   const openCount = errands.filter(e => isActiveStatus(e.status)).length;
   const activePriceRule = pricing[selectedCategory];
   const activeMultiplier = activePriceRule ? Number(activePriceRule[selectedPriority + "_priority_multiplier"] ?? activePriceRule.standard_priority_multiplier ?? 1) : 1;
-  const displayedServiceFee = activePriceRule ? Math.round(Number(activePriceRule.base_fee) * activeMultiplier) : null;
+  const previewDistance = Math.max(0, Math.min(500, Number(selectedDistanceKm) || 0));
+  const previewItemValue = Math.max(0, Number(selectedItemValue) || 0);
+  const previewBaseFee = activePriceRule ? Number(activePriceRule.base_fee) : 0;
+  const previewDistanceFee = activePriceRule ? previewDistance * Number(activePriceRule.distance_rate_per_km ?? 25) * activeMultiplier : 0;
+  const previewSizeFee = activePriceRule && selectedItemSize !== "none" ? Number(activePriceRule[selectedItemSize + "_item_fee"] ?? 0) * activeMultiplier : 0;
+  const previewValueSurcharge = activePriceRule ? Math.max(0, previewItemValue - Number(activePriceRule.value_surcharge_threshold ?? 10000)) * Number(activePriceRule.value_surcharge_rate ?? 0.5) / 100 * activeMultiplier : 0;
+  const displayedServiceFee = activePriceRule ? Math.round((previewBaseFee + previewDistance * Number(activePriceRule.distance_rate_per_km ?? 25) + (selectedItemSize === "none" ? 0 : Number(activePriceRule[selectedItemSize + "_item_fee"] ?? 0)) + Math.max(0, previewItemValue - Number(activePriceRule.value_surcharge_threshold ?? 10000)) * Number(activePriceRule.value_surcharge_rate ?? 0.5) / 100) * activeMultiplier) : null;
 
   if (!ready) return <main className="loading-screen"><div className="brand-mark">S</div><strong>SaMi Errands</strong><span className="muted">Preparing your workspace…</span></main>;
 
@@ -440,11 +457,15 @@ export default function ErrandsApp() {
           <div className="field wide"><label htmlFor="description">Task details and instructions</label><textarea id="description" name="description" required minLength={5} maxLength={5000} placeholder="What needs doing? Include quantities, preferences, contacts and any relevant instructions."/></div>
           <div className="field"><label htmlFor="serviceArea">Area or neighbourhood</label><input id="serviceArea" name="serviceArea" required minLength={2} maxLength={180} placeholder="e.g. Westlands, Nairobi"/></div>
           <div className="field"><label htmlFor="dueAt">When do you need it?</label><input id="dueAt" name="dueAt" type="datetime-local"/></div>
-          <div className="field"><label htmlFor="pickupLocation">Pickup location <span className="optional">Optional</span></label><input id="pickupLocation" name="pickupLocation" maxLength={300} placeholder="Building, street or landmark"/></div>
-          <div className="field"><label htmlFor="destinationLocation">Destination <span className="optional">Optional</span></label><input id="destinationLocation" name="destinationLocation" maxLength={300} placeholder="Destination or handover point"/></div>
-          <div className="field"><label htmlFor="itemBudgetAmount">Estimated goods / seller cost (KES) <span className="optional">Optional</span></label><input id="itemBudgetAmount" name="itemBudgetAmount" type="number" min="0" step="0.01" placeholder="Separate from the errand fee"/></div>
+          <div className="field"><label htmlFor="pickupLocation">Pickup / starting location <span className="optional">Optional for non-travel errands</span></label><input id="pickupLocation" name="pickupLocation" maxLength={300} placeholder="Building, street or landmark"/></div>
+          <div className="field"><label htmlFor="destinationLocation">Destination / final stop <span className="optional">Optional for non-travel errands</span></label><input id="destinationLocation" name="destinationLocation" maxLength={300} placeholder="Destination or handover point"/></div>
+          <div className="field"><label htmlFor="distanceKm">Estimated total route distance (km)</label><input id="distanceKm" name="distanceKm" type="number" min="0" max="500" step="0.1" required value={selectedDistanceKm} onChange={e=>setSelectedDistanceKm(e.target.value)}/><small className="muted">Use the estimated end-to-end route, including any additional stops. This version uses the distance you enter.</small></div>
+          <div className="field"><label htmlFor="itemSize">Item size / handling</label><select id="itemSize" name="itemSize" value={selectedItemSize} onChange={e=>setSelectedItemSize(e.target.value)}><option value="none">No item to carry</option><option value="small">Small — documents, keys, small parcel</option><option value="medium">Medium — handbag or shopping bag</option><option value="large">Large — box or several bags</option><option value="bulky">Bulky / heavy / fragile item</option></select><small className="muted">Handling charges are set by operations for each category.</small></div>
+          <div className="field"><label htmlFor="itemBudgetAmount">Estimated goods / seller cost (KES) <span className="optional">Optional</span></label><input id="itemBudgetAmount" name="itemBudgetAmount" type="number" min="0" max="100000000" step="0.01" placeholder="Paid separately to the seller" value={selectedItemValue} onChange={e=>setSelectedItemValue(e.target.value)}/><small className="muted">Above the configurable threshold, only the handling surcharge is added to the service fee. The goods amount remains separate.</small></div>
           <div className="field"><label htmlFor="servicePaymentMethod">How will you pay the errand service fee?</label><select id="servicePaymentMethod" name="servicePaymentMethod" defaultValue="cash"><option value="cash">Cash to the errand provider</option><option value="in_app" disabled={!mpesaConfigured}>M-PESA in-app payment{mpesaConfigured ? "" : " (setup required)"}</option></select><small className="muted">{mpesaConfigured ? "M-PESA will send a PIN prompt for the errand service fee. Goods are paid to the seller separately." : "M-PESA checkout is not enabled in this Preview yet; cash is available until Daraja credentials are configured. Seller goods remain separate."}</small></div>
-          <div className="wide service-fee-preview"><div><span>Errand service fee upfront</span><strong>{displayedServiceFee === null ? "Loading price…" : money(displayedServiceFee)}</strong></div><p>This is the errand-service charge only—not clothing, groceries or goods bought from a seller. SaMi commission applies to this service fee.</p></div>
+          <div className="wide service-fee-preview"><div><span>Estimated errand service fee upfront</span><strong>{displayedServiceFee === null ? "Loading price…" : money(displayedServiceFee)}</strong></div>
+            <div className="pricing-card-preview"><div><span>Base fee (priority-adjusted)</span><b>{money(previewBaseFee*activeMultiplier)}</b></div><div><span>Route ({previewDistance.toFixed(1)} km)</span><b>{money(previewDistanceFee)}</b></div><div><span>Item handling</span><b>{money(previewSizeFee)}</b></div><div><span>High-value handling surcharge</span><b>{money(previewValueSurcharge)}</b></div></div>
+            <p>Estimate uses your entered route distance, selected item size, estimated goods value and priority. The goods/seller cost itself is separate from the fee. SaMi commission applies only to the total service fee.</p></div>
           <div className="request-form-footer wide"><p><span>ⓘ</span> Your errand fee is shown before you submit. Goods are paid to the seller separately; operations assigns a provider without a quotation step.</p><div><button type="button" className="button ghost" onClick={()=>setShowRequest(false)}>Cancel</button><button className="button" disabled={busy==="create"}>{busy==="create"?"Submitting…":"Submit request ↗"}</button></div></div>
         </form></section>}
         <section className="surface-card"><div className="surface-heading"><div><h2>{user?.role==="admin"?"All errand requests":user?.role==="provider"?"Your assignments":"Your requests"}</h2><p>{visibleErrands.length} result{visibleErrands.length===1?"":"s"} · {errands.length} total</p></div>{user?.role==="customer"&&<button className="button" onClick={()=>setShowRequest(v=>!v)}>{showRequest?"Close form":"+ New errand"}</button>}</div>
