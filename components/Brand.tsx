@@ -11,9 +11,9 @@ export function BrandMark({ size = "default" }: BrandMarkProps) {
       <svg viewBox="140 35 220 230" fill="none" focusable="false" role="presentation">
         <defs>
           <linearGradient id={gradientId} x1="160" y1="54" x2="326" y2="248" gradientUnits="userSpaceOnUse">
-            <stop stopColor="#6A9AFF" />
-            <stop offset="0.45" stopColor="#2B5CFF" />
-            <stop offset="1" stopColor="#0F2B66" />
+            <stop stopColor="#FFFFFF" />
+            <stop offset="0.45" stopColor="#E3ECFF" />
+            <stop offset="1" stopColor="#B8D4FF" />
           </linearGradient>
         </defs>
         <path
