@@ -126,7 +126,7 @@ export async function POST(request: Request) {
         PhoneNumber: phone,
         CallBackURL: callbackUrl.toString(),
         AccountReference: accountReference,
-        TransactionDesc: "SaMi Errands"
+        TransactionDesc: "SaMi service fee"
       })
     });
     const stkData: any = await stkResponse.json().catch(() => ({}));
