@@ -1,18 +1,18 @@
-# SaMi Errands
+# SaMi
 
 ## Brand system
 
 - **Parent brand:** SaMi Technologies.
-- **Product name:** SaMi Errands. Use this exact styling in page titles, product listings and customer-facing copy.
-- **Wordmark:** “SaMi” as the masterbrand, with “ERRANDS” as the uppercase product descriptor. Use the shared `components/Brand.tsx` component instead of creating local, text-only logos.
+- **Product name:** SaMi. Use this exact styling in page titles, product listings and customer-facing copy.
+- **Wordmark:** “SaMi” as the masterbrand, with “brand descriptor is omitted from the customer-facing wordmark. Use the shared `components/Brand.tsx` component instead of creating local, text-only logos.
 - **Tagline:** “Everyday help, organised.”
 - **Primary palette:** deep teal `#087E76`, deep teal hover `#065B56`, navy `#102C38`, pale mint `#A7E6D8`, and amber `#F4BB4B`. UI surfaces stay light with high-contrast text.
-- **Voice:** calm, direct, practical and accountable. Describe SaMi Errands as a marketplace for legitimate personal, local and business tasks—not simply a delivery service.
+- **Voice:** calm, direct, practical and accountable. Describe SaMi as a marketplace for legitimate personal, local and business tasks—not simply a delivery service.
 - **Product promise:** clear service fees upfront, goods/seller costs kept separate, visible progress, and accountable hand-offs.
 - **Consistency:** keep the brand mark, page metadata, manifest, app icon, marketing footer and authenticated workspace aligned. Avoid mixed casing such as “saMi” and avoid inventing extra product names.
 
 
-SaMi Errands is a marketplace for all kinds of legitimate everyday errands—shopping, clothing purchases and returns, pickups and drop-offs, document/admin tasks, bookings and queues, personal errands, business support, local assistance and any other lawful task a customer can describe. The "other legitimate errand" category keeps the service open to new needs without constraining the product to deliveries.
+SaMi is a marketplace for all kinds of legitimate everyday errands—shopping, clothing purchases and returns, pickups and drop-offs, document/admin tasks, bookings and queues, personal errands, business support, local assistance and any other lawful task a customer can describe. The "other legitimate errand" category keeps the service open to new needs without constraining the product to deliveries.
 
 ## Customer pricing model (no quotation step)
 
@@ -67,7 +67,7 @@ The Preview currently has only the database and initial-admin environment values
 
 - Next.js App Router on Vercel.
 - PostgreSQL accessed server-side using pg.
-- Separate Neon project SaMi Errands Development, isolated from the old SaMi database.
+- Separate Neon project SaMi Development, isolated from the old SaMi database.
 - Dedicated, least-privilege database role sami_errands_app.
 - Password hashes use bcrypt; sessions use random opaque values, with only SHA-256 hashes persisted. Cookies are HttpOnly, SameSite=Lax and Secure in production.
 - Authentication attempts are rate-limited by hashed identifiers. Server-side operations enforce role and resource ownership. Errand and pricing state changes are audited.
