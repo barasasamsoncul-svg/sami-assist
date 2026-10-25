@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 
 const route = readFileSync(new URL("../app/api/dispatch/route.ts", import.meta.url), "utf8");
 const ui = readFileSync(new URL("../components/ErrandsApp.tsx", import.meta.url), "utf8");
+const setup = readFileSync(new URL("../components/AdminSetupForm.tsx", import.meta.url), "utf8");
 const checkout = readFileSync(new URL("../app/api/payments/mpesa/checkout/route.ts", import.meta.url), "utf8");
 const callback = readFileSync(new URL("../app/api/payments/mpesa/callback/route.ts", import.meta.url), "utf8");
 const schema = readFileSync(new URL("../database/schema.sql", import.meta.url), "utf8");
@@ -37,9 +38,9 @@ test("admin bootstrap reports readiness and actionable errors without exposing t
   assert.ok(route.includes("tokenConfigured, setupAvailable"));
   assert.ok(route.includes("ADMIN_BOOTSTRAP_TOKEN"));
   assert.ok(route.includes("does not match this deployment"));
-  assert.ok(ui.includes("bootstrapStatus"));
-  assert.ok(ui.includes("ADMIN_BOOTSTRAP_TOKEN for Preview"));
-  assert.ok(ui.includes("minLength={14}"));
+  assert.ok(setup.includes("bootstrapStatus"));
+  assert.ok(setup.includes("ADMIN_BOOTSTRAP_TOKEN for Preview"));
+  assert.ok(setup.includes("minLength={14}"));
 });
 
 test("seller goods are tracked separately from service-fee payments", () => {
