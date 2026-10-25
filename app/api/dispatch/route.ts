@@ -119,7 +119,7 @@ export async function GET(request: Request) {
         );
       } else if (user.role === "provider") {
         result = await query(
-          "SELECT e.*, c.full_name AS customer_name, p.full_name AS provider_name, pp.business_name AS provider_business_name FROM errands e JOIN users c ON c.id=e.customer_id LEFT JOIN users p ON p.id=e.provider_id LEFT JOIN provider_profiles pp ON pp.user_id=p.id WHERE e.provider_id=$1 AND ($2='' OR e.status=$2) AND ($3='' OR e.title ILIKE '%'||$3||'%' OR e.public_code ILIKE '%'||$3||'%') ORDER BY e.created_at DESC LIMIT 150",
+          "SELECT e.*, c.full_name AS customer_name, p.full_name AS provider_name, pp.business_name AS provider_business_name FROM errands e JOIN users c ON c.id=e.customer_id LEFT JOIN users p ON p.id=e.provider_id LEFT JOIN provider_profiles pp ON pp.user_id=p.id WHERE (e.provider_id=$1 OR (e.provider_id IS NULL AND e.status='requested' AND EXISTS (SELECT 1 FROM provider_profiles viewer WHERE viewer.user_id=$1 AND viewer.approval_status='approved' AND viewer.available=true AND (COALESCE(array_length(viewer.service_categories,1),0)=0 OR e.category=ANY(viewer.service_categories) OR 'other'=ANY(viewer.service_categories)) AND NOT EXISTS (SELECT 1 FROM errands active WHERE active.provider_id=$1 AND active.status IN ('assigned','accepted','in_progress','completion_submitted'))))) AND ($2='' OR e.status=$2) AND ($3='' OR e.title ILIKE '%'||$3||'%' OR e.public_code ILIKE '%'||$3||'%') ORDER BY CASE WHEN e.provider_id IS NULL AND e.status='requested' THEN 0 ELSE 1 END, e.created_at DESC LIMIT 150",
           [user.id, status, search]
         );
       } else {
@@ -649,15 +649,48 @@ export async function POST(request: Request) {
         await client.query("UPDATE errands SET provider_id=$2,status=$3,version=version+1,updated_at=now() WHERE id=$1",[id,providerId,next]);
         notifyTarget = {id:providerId,kind:"assignment",title:"New errand assignment",body:e.public_code+" · "+e.title,errandId:id};
       } else if (act === "accept" || act === "decline") {
-        if (user.role !== "provider" || e.provider_id !== user.id || previous !== "assigned") throw new Error("Only the assigned provider can respond to this assignment.");
-        next = act === "accept" ? "accepted" : "declined";
-        eventNote = act === "accept" ? "Provider accepted the assignment." : "Provider declined the assignment.";
-        await client.query("UPDATE errands SET status=$2,accepted_at=CASE WHEN $2='accepted' THEN now() ELSE accepted_at END,provider_id=CASE WHEN $2='declined' THEN NULL ELSE provider_id END,version=version+1,updated_at=now() WHERE id=$1",[id,next]);
-        const recipients = await client.query("SELECT id FROM users WHERE role='admin' AND is_active=true");
+        if (user.role !== "provider") throw new Error("Only provider accounts can respond to job requests.");
         if (act === "decline") {
-          for (const admin of recipients.rows) await client.query("INSERT INTO notifications(user_id,kind,title,body,href,entity_type,entity_id) VALUES($1,'provider_declined','Provider declined assignment',$2,'/','errand',$3)",[admin.id,e.public_code+" needs reassignment",id]);
-          notifyTarget = {id:e.customer_id,kind:"assignment",title:"Your assignment is being reviewed",body:"Operations is arranging the next step for "+e.public_code+".",errandId:id};
-        } else notifyTarget = {id:e.customer_id,kind:"progress",title:"Provider accepted your errand",body:e.public_code+" · The provider will update progress here.",errandId:id};
+          if (e.provider_id !== user.id || previous !== "assigned") throw new Error("Only the assigned provider can decline an assignment.");
+          next = "declined";
+          eventNote = "Provider declined the assignment.";
+          await client.query("UPDATE errands SET status=$2,provider_id=NULL,version=version+1,updated_at=now() WHERE id=$1", [id, next]);
+          const admins = await client.query("SELECT id FROM users WHERE role='admin' AND is_active=true");
+          for (const admin of admins.rows) {
+            await client.query("INSERT INTO notifications(user_id,kind,title,body,href,entity_type,entity_id) VALUES($1,'provider_declined','Provider declined assignment',$2,'/','errand',$3)", [admin.id, e.public_code + " needs reassignment", id]);
+          }
+          notifyTarget = { id: e.customer_id, kind: "assignment", title: "Your assignment is being reviewed", body: "Operations is arranging the next step for " + e.public_code + ".", errandId: id };
+        } else {
+          const assignedToMe = e.provider_id === user.id && previous === "assigned";
+          const openRequest = !e.provider_id && previous === "requested";
+          if (!assignedToMe && !openRequest) throw new Error("This request has already been accepted or is no longer available.");
+
+          // Lock the provider profile while checking availability and active work. This prevents
+          // accepting two open requests concurrently from different browser tabs.
+          const providerResult = await client.query(
+            "SELECT pp.approval_status,pp.available,pp.service_categories FROM provider_profiles pp JOIN users u ON u.id=pp.user_id WHERE pp.user_id=$1 AND u.is_active=true FOR UPDATE OF pp",
+            [user.id]
+          );
+          const providerProfile = providerResult.rows[0];
+          if (!providerProfile || providerProfile.approval_status !== "approved") throw new Error("Your provider profile must be approved before accepting requests.");
+          if (openRequest && !providerProfile.available) throw new Error("Mark yourself available before accepting an open request.");
+          const categories = providerProfile.service_categories || [];
+          if (categories.length && !categories.includes(e.category) && !categories.includes("other")) throw new Error("This request is outside the service categories on your profile.");
+          const activeJob = await client.query(
+            "SELECT id FROM errands WHERE provider_id=$1 AND status IN ('assigned','accepted','in_progress','completion_submitted') AND id<>$2 LIMIT 1",
+            [user.id, id]
+          );
+          if (activeJob.rowCount) throw new Error("Finish your active assignment before accepting another request.");
+
+          next = "accepted";
+          eventNote = openRequest ? "Provider accepted an open marketplace request." : "Provider accepted the assigned errand.";
+          const accepted = await client.query(
+            "UPDATE errands SET provider_id=$2,status=$3,accepted_at=now(),version=version+1,updated_at=now() WHERE id=$1 AND ((provider_id=$2 AND status='assigned') OR (provider_id IS NULL AND status='requested')) RETURNING id",
+            [id, user.id, next]
+          );
+          if (!accepted.rowCount) throw new Error("Another provider accepted this request first. Refresh the job list.");
+          notifyTarget = { id: e.customer_id, kind: "progress", title: "Provider accepted your errand", body: e.public_code + " · The provider accepted the request and will update progress here.", errandId: id };
+        }
       } else if (act === "start") {
         if (user.role !== "provider" || e.provider_id !== user.id || previous !== "accepted") throw new Error("Only the assigned provider can start an accepted task.");
         next = "in_progress"; eventNote = "Provider marked the task as in progress.";
@@ -701,15 +734,22 @@ export async function POST(request: Request) {
         const method=text(body.method,80);
         const reference=text(body.reference,160);
         const idempotencyKey=text(body.idempotencyKey,100)||hash([id,act,amount,method,reference].join("|"));
-        if(!Number.isFinite(amount)||amount<0||amount>100000000||method.length<2)throw new Error("Enter a valid amount and payment method.");
+        if(!Number.isFinite(amount)||amount<=0||amount>100000000||method.length<2)throw new Error("Enter a positive amount and payment method.");
+        if(!["M-Pesa","Cash","Bank transfer","Card terminal","Other manual method"].includes(method))throw new Error("Choose a supported payment method.");
         if(act==="mark_paid"&&e.payment_status==="paid")throw new Error("The errand-service fee is already recorded as paid.");
+        if(act==="mark_paid"&&Math.abs(amount-Number(e.service_fee_amount))>0.01)throw new Error("The recorded service payment must equal the saved service fee of KES "+Number(e.service_fee_amount).toFixed(2)+".");
         if(act==="mark_paid"&&e.service_payment_method==="cash"&&!["completion_submitted","completed","disputed"].includes(e.status))throw new Error("Cash service fees can be recorded after the errand service has been performed.");
         if(act==="mark_paid"&&e.service_payment_method==="in_app"&&reference.length<4)throw new Error("Enter the verified in-app transaction reference before recording the service payment.");
-        if(act==="recordPayout"&&(!e.provider_id||e.status!=="completed"))throw new Error("A provider payout can only be recorded for an assigned provider after customer-confirmed completion.");
-        if(act==="recordRefund"&&e.payment_status!=="paid")throw new Error("A refund can only be recorded against a paid errand service fee.");
+        if(act==="recordPayout"&&(!e.provider_id||e.status!=="completed"||e.payment_status!=="paid"))throw new Error("A provider payout can only be recorded after customer-confirmed completion and confirmed payment.");
+        if(act==="recordPayout"){
+          const existingPayout=await client.query("SELECT coalesce(sum(amount),0)::numeric AS total FROM payment_records WHERE errand_id=$1 AND record_type='provider_payout' AND status<>'reversed'",[id]);
+          const availablePayout=Math.max(0,Number(e.provider_earning_amount||0)-Number(existingPayout.rows[0]?.total||0));
+          if(amount>availablePayout+0.01)throw new Error("Payout exceeds the remaining provider share of KES "+availablePayout.toFixed(2)+".");
+        }
+        if(act==="recordRefund"&&e.payment_status!=="paid")throw new Error("A refund can only be recorded against a paid service fee that has not been fully refunded.");
         if(act==="recordRefund"){
           const remainingPaid=await client.query("SELECT (coalesce(sum(amount) FILTER (WHERE record_type='service_payment' AND status<>'reversed'),0)-coalesce(sum(amount) FILTER (WHERE record_type='refund' AND status<>'reversed'),0))::numeric AS total FROM payment_records WHERE errand_id=$1",[id]);
-          if(amount>Number(remainingPaid.rows[0]?.total||0))throw new Error("Refund amount cannot exceed the remaining recorded errand-service payments.");
+          if(amount>Number(remainingPaid.rows[0]?.total||0)+0.01)throw new Error("Refund amount cannot exceed the remaining recorded errand-service payments.");
         }
         const recordType=act==="recordPayout"?"provider_payout":act==="recordRefund"?"refund":act==="recordSellerPayment"?"seller_payment":"service_payment";
         const inserted=await client.query(
@@ -726,8 +766,10 @@ export async function POST(request: Request) {
           eventNote="Recorded separate seller/goods payment of KES "+amount.toFixed(2)+" ("+method+"). This is not SaMi service revenue.";
           notifyTarget=e.customer_id?{id:e.customer_id,kind:"seller_payment",title:"Seller payment recorded",body:e.public_code+" · The seller/goods payment was recorded separately.",errandId:id}:null;
         } else if(act==="recordRefund") {
-          await client.query("UPDATE errands SET payment_status='refunded',version=version+1,updated_at=now() WHERE id=$1",[id]);
-          eventNote="Operations recorded a refund KES "+amount.toFixed(2)+" ("+method+").";
+          const remainingAfter=await client.query("SELECT (coalesce(sum(amount) FILTER (WHERE record_type='service_payment' AND status<>'reversed'),0)-coalesce(sum(amount) FILTER (WHERE record_type='refund' AND status<>'reversed'),0))::numeric AS total FROM payment_records WHERE errand_id=$1",[id]);
+          const fullyRefunded=Number(remainingAfter.rows[0]?.total||0)<=0.01;
+          await client.query("UPDATE errands SET payment_status=CASE WHEN $2 THEN 'refunded' ELSE 'paid' END,version=version+1,updated_at=now() WHERE id=$1",[id,fullyRefunded]);
+          eventNote="Operations recorded a refund KES "+amount.toFixed(2)+" ("+method+")."+(fullyRefunded?" The recorded service fee is fully refunded.":" A balance remains refundable.");
           notifyTarget=e.customer_id?{id:e.customer_id,kind:"payment",title:"Refund recorded",body:e.public_code+" · A refund record has been added.",errandId:id}:null;
         } else {
           eventNote="Operations recorded provider payout KES "+amount.toFixed(2)+" ("+method+").";
