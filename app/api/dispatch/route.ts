@@ -11,6 +11,25 @@ const hash = (value: string) => createHash("sha256").update(value).digest("hex")
 const text = (value: unknown, max = 1000) => typeof value === "string" ? value.trim().slice(0, max) : "";
 const emailText = (value: unknown) => text(value, 254).toLowerCase();
 const num = (value: unknown) => value === "" || value == null ? null : Number(value);
+const itemSizes = new Set(["none","small","medium","large","bulky"]);
+function calculateServicePrice(rule: Record<string, any>, input: { distanceKm: number; itemSize: string; itemValue: number; priority: string }) {
+  const baseFee = Number(rule.base_fee);
+  const multiplier = Number(rule[input.priority + "_priority_multiplier"] ?? rule.standard_priority_multiplier ?? 1);
+  const distanceFeeRaw = input.distanceKm * Number(rule.distance_rate_per_km ?? 25);
+  const sizeKey = input.itemSize === "none" ? "" : input.itemSize + "_item_fee";
+  const sizeFeeRaw = sizeKey ? Number(rule[sizeKey] ?? 0) : 0;
+  const threshold = Number(rule.value_surcharge_threshold ?? 10000);
+  const rate = Number(rule.value_surcharge_rate ?? 0.5);
+  const valueFeeRaw = Math.max(0, input.itemValue - threshold) * rate / 100;
+  const distanceFee = Math.round(distanceFeeRaw * multiplier * 100) / 100;
+  const itemSizeFee = Math.round(sizeFeeRaw * multiplier * 100) / 100;
+  const valueSurcharge = Math.round(valueFeeRaw * multiplier * 100) / 100;
+  const serviceFee = Math.round((baseFee + distanceFeeRaw + sizeFeeRaw + valueFeeRaw) * multiplier);
+  const commissionRate = Number(rule.commission_rate);
+  const commission = Math.round(serviceFee * commissionRate) / 100;
+  const providerEarning = Math.round((serviceFee - commission) * 100) / 100;
+  return { serviceFee, commissionRate, commission, providerEarning, distanceFee, itemSizeFee, valueSurcharge, multiplier, baseFee };
+}
 function error(message: string, status = 400) { return NextResponse.json({ error: message }, { status }); }
 function randomCode() { return "SE-" + new Date().toISOString().slice(0, 10).replaceAll("-", "") + "-" + randomBytes(3).toString("hex").toUpperCase(); }
 function sameOrigin(request: Request) {
@@ -54,6 +73,16 @@ async function getScopedErrand(id: string, user: { id: string; role: UserRole })
 export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const action = params.get("action") || "";
+  if (action === "bootstrapStatus") {
+    try {
+      const r = await query<{ admin_exists: boolean }>("SELECT EXISTS(SELECT 1 FROM users WHERE role='admin') AS admin_exists");
+      const adminExists = Boolean(r.rows[0]?.admin_exists);
+      const tokenConfigured = (process.env.ADMIN_BOOTSTRAP_TOKEN || "").length >= 32;
+      return NextResponse.json({ adminExists, tokenConfigured, setupAvailable: !adminExists && tokenConfigured });
+    } catch {
+      return error("Could not verify administrator setup. Check the Preview database configuration and try again.", 503);
+    }
+  }
   if (action === "health") {
     try {
       const r = await query<{ schema_version: string | null }>(
@@ -64,11 +93,27 @@ export async function GET(request: Request) {
       return error("Database connectivity or schema check failed.", 503);
     }
   }
+  if (action === "bootstrapStatus") {
+    try {
+      const [adminResult] = await Promise.all([
+        query<{ admin_exists: boolean }>("SELECT EXISTS(SELECT 1 FROM users WHERE role='admin') AS admin_exists")
+      ]);
+      const tokenConfigured = (process.env.ADMIN_BOOTSTRAP_TOKEN || "").length >= 32;
+      const adminExists = Boolean(adminResult.rows[0]?.admin_exists);
+      return NextResponse.json({ adminExists, tokenConfigured, setupAvailable: !adminExists && tokenConfigured });
+    } catch {
+      return error("Could not verify administrator setup. Check the Preview database configuration and try again.", 503);
+    }
+  }
   if (action === "pricing") {
     try {
-      const r = await query("SELECT category,service_name,base_fee,commission_rate,low_priority_multiplier,standard_priority_multiplier,high_priority_multiplier,urgent_priority_multiplier FROM service_pricing WHERE enabled=true ORDER BY category");
-      return NextResponse.json({ pricing: r.rows.map(p => ({ ...p, base_fee: Number(p.base_fee), commission_rate: Number(p.commission_rate), low_priority_multiplier: Number(p.low_priority_multiplier), standard_priority_multiplier: Number(p.standard_priority_multiplier), high_priority_multiplier: Number(p.high_priority_multiplier), urgent_priority_multiplier: Number(p.urgent_priority_multiplier) })) });
-    } catch { return error("Service pricing is temporarily unavailable.", 503); }
+      const r = await query("SELECT category,service_name,base_fee,commission_rate,low_priority_multiplier,standard_priority_multiplier,high_priority_multiplier,urgent_priority_multiplier,distance_rate_per_km,small_item_fee,medium_item_fee,large_item_fee,bulky_item_fee,value_surcharge_threshold,value_surcharge_rate FROM service_pricing WHERE enabled=true ORDER BY category");
+      const keys = ["base_fee","commission_rate","low_priority_multiplier","standard_priority_multiplier","high_priority_multiplier","urgent_priority_multiplier","distance_rate_per_km","small_item_fee","medium_item_fee","large_item_fee","bulky_item_fee","value_surcharge_threshold","value_surcharge_rate"];
+      return NextResponse.json({ pricing: r.rows.map(p => Object.fromEntries(Object.entries(p).map(([k,v]) => [k, keys.includes(k) ? Number(v) : v]))) });
+    } catch (e) {
+      console.error("[SaMi Errands pricing] Unable to load configurable pricing rules.");
+      return error("Service pricing is temporarily unavailable. The pricing migration may not have been applied.", 503);
+    }
   }
   const user = await getCurrentUser().catch(() => null);
   if (action === "me") return user ? NextResponse.json({ user }) : error("Not signed in.", 401);
@@ -269,7 +314,10 @@ export async function POST(request: Request) {
       if (await attemptCount(identifier, "bootstrap") >= 5) return error("Too many setup attempts. Contact the deployment administrator.", 429);
       if (expected.length < 32 || supplied.length < 32 || supplied !== expected) {
         await recordAttempt(identifier, "bootstrap", false).catch(() => undefined);
-        return error("Administrator setup token is invalid or not configured.", 403);
+        console.warn("[SaMi Errands admin bootstrap] Request rejected: token missing, mismatched, or not configured for this Preview deployment.", { tokenConfigured: expected.length >= 32 });
+        return error(expected.length < 32
+          ? "Admin setup is not configured for this deployment. Set ADMIN_BOOTSTRAP_TOKEN for the feat/sami-errands-transformation Preview branch, then redeploy."
+          : "The setup token does not match this deployment. Confirm the Preview token and make sure you are using the latest deployment.", 403);
       }
       const fullName = text(body.fullName, 120);
       const email = emailText(body.email);
@@ -292,14 +340,16 @@ export async function POST(request: Request) {
       } catch (e) {
         await client.query("ROLLBACK").catch(() => undefined);
         if (typeof e === "object" && e !== null && "code" in e && (e as { code?: string }).code === "23505") return error("That email is already registered.", 409);
-        return error("Administrator setup failed.", 503);
+        console.error("[SaMi Errands admin bootstrap] Database operation failed.", e instanceof Error ? e.message : "unknown error");
+        return error("Admin account creation failed because of a database or email constraint. Check the Preview database connection and try again.", 503);
       } finally { client.release(); }
       await recordAttempt(identifier, "bootstrap", true).catch(() => undefined);
       await createSession(adminId);
       return NextResponse.json({ ok: true, message: "Administrator created and signed in." }, { status: 201 });
-    } catch {
+    } catch (e) {
       await recordAttempt(identifier, "bootstrap", false).catch(() => undefined);
-      return error("Administrator setup failed.", 503);
+      console.error("[SaMi Errands admin bootstrap] Request failed before account creation.", e instanceof Error ? e.message : "unknown error");
+      return error("Admin setup could not finish. Check the Preview database, then refresh this page and retry.", 503);
     }
   }
 
@@ -316,9 +366,19 @@ export async function POST(request: Request) {
     const standard = Number(body.standardPriorityMultiplier);
     const high = Number(body.highPriorityMultiplier);
     const urgent = Number(body.urgentPriorityMultiplier);
+    const distanceRate = Number(body.distanceRatePerKm);
+    const smallFee = Number(body.smallItemFee);
+    const mediumFee = Number(body.mediumItemFee);
+    const largeFee = Number(body.largeItemFee);
+    const bulkyFee = Number(body.bulkyItemFee);
+    const valueThreshold = Number(body.valueSurchargeThreshold);
+    const valueRate = Number(body.valueSurchargeRate);
     if (!category || !Number.isFinite(baseFee) || baseFee < 0 || baseFee > 1000000) return error("Enter a valid non-negative service fee.");
     if (!Number.isFinite(commissionRate) || commissionRate < 0 || commissionRate > 100) return error("Commission must be between 0% and 100%.");
     if ([low,standard,high,urgent].some(n => !Number.isFinite(n) || n <= 0 || n > 5)) return error("Priority multipliers must be greater than zero and no more than 5.");
+    if ([distanceRate,smallFee,mediumFee,largeFee,bulkyFee].some(n => !Number.isFinite(n) || n < 0 || n > 100000)) return error("Distance and item-size fees must be between KES 0 and KES 100,000.");
+    if (!Number.isFinite(valueThreshold) || valueThreshold < 0 || valueThreshold > 100000000) return error("Value surcharge threshold must be between KES 0 and KES 100,000,000.");
+    if (!Number.isFinite(valueRate) || valueRate < 0 || valueRate > 100) return error("Value surcharge rate must be between 0% and 100%.");
     try {
       const client = await databasePool().connect();
       let updated: any;
@@ -327,18 +387,27 @@ export async function POST(request: Request) {
         const previous = await client.query("SELECT * FROM service_pricing WHERE category=$1 FOR UPDATE", [category]);
         if (!previous.rowCount) { await client.query("ROLLBACK"); return error("Pricing rule not found.",404); }
         const result = await client.query(
-          "UPDATE service_pricing SET service_name=$2,base_fee=$3,commission_rate=$4,low_priority_multiplier=$5,standard_priority_multiplier=$6,high_priority_multiplier=$7,urgent_priority_multiplier=$8,updated_at=now() WHERE category=$1 RETURNING *",
-          [category,serviceName||previous.rows[0].service_name,baseFee,commissionRate,low,standard,high,urgent]
+          "UPDATE service_pricing SET service_name=$2,base_fee=$3,commission_rate=$4,low_priority_multiplier=$5,standard_priority_multiplier=$6,high_priority_multiplier=$7,urgent_priority_multiplier=$8,distance_rate_per_km=$9,small_item_fee=$10,medium_item_fee=$11,large_item_fee=$12,bulky_item_fee=$13,value_surcharge_threshold=$14,value_surcharge_rate=$15,updated_at=now() WHERE category=$1 RETURNING *",
+          [category,serviceName||previous.rows[0].service_name,baseFee,commissionRate,low,standard,high,urgent,distanceRate,smallFee,mediumFee,largeFee,bulkyFee,valueThreshold,valueRate]
         );
         updated=result.rows[0];
+        const values = (r: any) => ({
+          serviceName:r.service_name,baseFee:Number(r.base_fee),commissionRate:Number(r.commission_rate),
+          lowPriorityMultiplier:Number(r.low_priority_multiplier),standardPriorityMultiplier:Number(r.standard_priority_multiplier),
+          highPriorityMultiplier:Number(r.high_priority_multiplier),urgentPriorityMultiplier:Number(r.urgent_priority_multiplier),
+          distanceRatePerKm:Number(r.distance_rate_per_km),smallItemFee:Number(r.small_item_fee),
+          mediumItemFee:Number(r.medium_item_fee),largeItemFee:Number(r.large_item_fee),bulkyItemFee:Number(r.bulky_item_fee),
+          valueSurchargeThreshold:Number(r.value_surcharge_threshold),valueSurchargeRate:Number(r.value_surcharge_rate)
+        });
         await client.query(
           "INSERT INTO pricing_audit_events(actor_id,category,previous_values,new_values) VALUES($1,$2,$3::jsonb,$4::jsonb)",
-          [user.id,category,JSON.stringify({serviceName:previous.rows[0].service_name,baseFee:Number(previous.rows[0].base_fee),commissionRate:Number(previous.rows[0].commission_rate),lowPriorityMultiplier:Number(previous.rows[0].low_priority_multiplier),standardPriorityMultiplier:Number(previous.rows[0].standard_priority_multiplier),highPriorityMultiplier:Number(previous.rows[0].high_priority_multiplier),urgentPriorityMultiplier:Number(previous.rows[0].urgent_priority_multiplier)}),JSON.stringify({serviceName:updated.service_name,baseFee:Number(updated.base_fee),commissionRate:Number(updated.commission_rate),lowPriorityMultiplier:Number(updated.low_priority_multiplier),standardPriorityMultiplier:Number(updated.standard_priority_multiplier),highPriorityMultiplier:Number(updated.high_priority_multiplier),urgentPriorityMultiplier:Number(updated.urgent_priority_multiplier)})]
+          [user.id,category,JSON.stringify(values(previous.rows[0])),JSON.stringify(values(updated))]
         );
         await client.query("COMMIT");
-      } catch {
+      } catch (e) {
         await client.query("ROLLBACK").catch(()=>undefined);
-        return error("Pricing could not be saved.",503);
+        console.error("[SaMi Errands pricing] Update failed for category:", category, e instanceof Error ? e.message : "unknown error");
+        return error("Pricing could not be saved. Check that the pricing migration is applied.",503);
       } finally { client.release(); }
       return NextResponse.json({ok:true,message:"Pricing rule saved.",pricing:updated});
     } catch { return error("Pricing could not be saved.",503); }
@@ -354,11 +423,15 @@ export async function POST(request: Request) {
     const destination = text(body.destinationLocation, 300);
     const allowed = new Set(["shopping","clothing_retail","pickup_delivery","documents_admin","personal_errand","queue_appointments","business_support","local_assistance","other"]);
     const itemBudget = num(body.itemBudgetAmount);
+    const distanceKm = Number(body.distanceKm ?? 0);
+    const itemSize = itemSizes.has(text(body.itemSize, 20)) ? text(body.itemSize, 20) : "none";
     const dueAt = text(body.dueAt, 60);
     const due = dueAt ? new Date(dueAt) : null;
     const priority = new Set(["low","standard","high","urgent"]).has(text(body.priority, 20)) ? text(body.priority, 20) : "standard";
     const servicePaymentMethod = body.servicePaymentMethod === "in_app" ? "in_app" : "cash";
     if (title.length < 3 || description.length < 5 || serviceArea.length < 2 || !allowed.has(category)) return error("Check the task title, details, category and service area.");
+    if (!Number.isFinite(distanceKm) || distanceKm < 0 || distanceKm > 500) return error("Enter an estimated end-to-end travel distance between 0 and 500 km.");
+    if ((pickup || destination) && distanceKm <= 0) return error("Enter the estimated route distance when a pickup or destination is provided.");
     if (servicePaymentMethod === "in_app" && ["MPESA_SHORTCODE","MPESA_CONSUMER_KEY","MPESA_CONSUMER_SECRET","MPESA_PASSKEY","MPESA_CALLBACK_TOKEN"].some(key => !process.env[key])) return error("M-PESA in-app checkout is not configured for this Preview yet. Choose cash until Daraja credentials are configured.",503);
     if (itemBudget !== null && (!Number.isFinite(itemBudget) || itemBudget < 0 || itemBudget > 100000000)) return error("Enter a valid estimated seller/goods budget.");
     if (due && (!Number.isFinite(due.getTime()) || due.getTime() < Date.now() - 86400000)) return error("Choose a valid due date.");
@@ -366,24 +439,20 @@ export async function POST(request: Request) {
       const pricingResult = await query("SELECT * FROM service_pricing WHERE category=$1 AND enabled=true", [category]);
       const rule = pricingResult.rows[0];
       if (!rule) return error("This errand category is not currently available.", 409);
-      const multiplierKey = priority + "_priority_multiplier";
-      const multiplier = Number(rule[multiplierKey] ?? rule.standard_priority_multiplier);
-      const serviceFee = Math.round(Number(rule.base_fee) * multiplier);
-      const commissionRate = Number(rule.commission_rate);
-      const commission = Math.round(serviceFee * commissionRate) / 100;
-      const providerEarning = Math.round((serviceFee - commission) * 100) / 100;
+      const price = calculateServicePrice(rule, { distanceKm, itemSize, itemValue:itemBudget ?? 0, priority });
+      const { serviceFee, commissionRate, commission, providerEarning, distanceFee, itemSizeFee, valueSurcharge, multiplier, baseFee } = price;
       const code = randomCode();
       const client = await databasePool().connect();
       let row: any;
       try {
         await client.query("BEGIN");
         const insert = await client.query(
-          "INSERT INTO errands(public_code,customer_id,title,category,description,pickup_location,destination_location,service_area,due_at,budget_amount,item_budget_amount,priority,service_fee_amount,commission_rate,commission_amount,provider_earning_amount,service_payment_method,payment_status,app_payment_checkout_status,seller_payment_status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *",
-          [code,user.id,title,category,description,pickup||null,destination||null,serviceArea,due,itemBudget,priority,serviceFee,commissionRate,commission,providerEarning,servicePaymentMethod,servicePaymentMethod==="in_app"?"pending":"unpaid","not_started",itemBudget === null ? "not_applicable" : "due"]
+          "INSERT INTO errands(public_code,customer_id,title,category,description,pickup_location,destination_location,service_area,due_at,distance_km,item_size,distance_fee_amount,item_size_fee_amount,value_surcharge_amount,budget_amount,item_budget_amount,priority,service_fee_amount,commission_rate,commission_amount,provider_earning_amount,service_payment_method,payment_status,app_payment_checkout_status,seller_payment_status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING *",
+          [code,user.id,title,category,description,pickup||null,destination||null,serviceArea,due,distanceKm,itemSize,distanceFee,itemSizeFee,valueSurcharge,itemBudget,priority,serviceFee,commissionRate,commission,providerEarning,servicePaymentMethod,servicePaymentMethod==="in_app"?"pending":"unpaid","not_started",itemBudget === null ? "not_applicable" : "due"]
         );
         row = insert.rows[0];
         await addEvent(client,row.id,user.id,"request_created",null,"requested","Customer submitted an errand request.",{
-          category,priority,serviceFee,commissionRate,commission,providerEarning,servicePaymentMethod,itemBudget,merchantCostIsSeparate:true
+          category,priority,baseFee,distanceKm,distanceFee,itemSize,itemSizeFee,itemBudget,valueSurcharge,multiplier,serviceFee,commissionRate,commission,providerEarning,servicePaymentMethod,merchantCostIsSeparate:true
         });
         const admins = await client.query("SELECT id FROM users WHERE role='admin' AND is_active=true");
         for (const admin of admins.rows) await client.query(
@@ -391,16 +460,20 @@ export async function POST(request: Request) {
           [admin.id,code+" · "+title+" · Errand service KES "+serviceFee.toFixed(2),row.id]
         );
         await client.query("COMMIT");
-      } catch {
+      } catch (e) {
         await client.query("ROLLBACK").catch(()=>undefined);
-        return error("The request could not be saved. Please retry.",503);
+        console.error("[SaMi Errands request] Could not save errand:", e instanceof Error ? e.message : "unknown error");
+        return error("The request could not be saved. The database schema may need its pricing migration applied.",503);
       } finally { client.release(); }
       return NextResponse.json({
         errand:row,
-        price:{serviceFee,commissionRate,commission,providerEarning,itemBudget,servicePaymentMethod},
+        price:{...price,itemValue:itemBudget,itemSize,distanceKm,servicePaymentMethod},
         paymentNotice:servicePaymentMethod==="in_app" ? "In-app payment is selected. The request remains unpaid until the configured payment provider confirms a successful transaction." : "Cash is selected for the errand-service fee. Any goods/seller amount is separate and paid to the seller."
       },{status:201});
-    } catch { return error("Service pricing or request creation is temporarily unavailable.",503); }
+    } catch (e) {
+      console.error("[SaMi Errands request] Pricing/request creation failed:", e instanceof Error ? e.message : "unknown error");
+      return error("Service pricing or request creation is temporarily unavailable.",503);
+    }
   }
   if (action === "providerProfile") {
     if (user.role !== "provider") return error("Only provider accounts can edit service profiles.", 403);
