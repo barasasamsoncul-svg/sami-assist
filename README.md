@@ -5,7 +5,7 @@ SaMi Errands is a marketplace for all kinds of legitimate everyday errands—sho
 ## Customer pricing model (no quotation step)
 
 1. The customer describes the errand, location, timing and relevant details.
-2. The category service fee and priority multiplier are shown before the request is submitted.
+2. The estimated service fee is shown before submission and combines the category base fee, entered end-to-end route distance, item-size handling fee, configured high-value handling surcharge, and priority multiplier.
 3. The customer chooses cash or M-PESA in-app payment for the errand-service fee. M-PESA checkout becomes available once Daraja credentials are configured.
 4. Operations assigns an approved provider directly; the customer does not wait for or approve a separate quote.
 5. For shopping and clothing errands, the estimated goods budget is tracked separately. The seller is paid separately when the goods are bought/received. Goods are not part of SaMi's service fee or commission base.
@@ -14,14 +14,14 @@ SaMi Errands is a marketplace for all kinds of legitimate everyday errands—sho
 
 ## Commission
 
-Each category has a configurable base service fee, SaMi commission percentage and low/standard/high/urgent multipliers. The fee is calculated from the database rule when the request is created and saved with the request, so future price changes do not retroactively change an existing errand.
+Each category has configurable base fee, distance rate per kilometre, handling fees for small/medium/large/bulky items, an item-value surcharge threshold and percentage, SaMi commission rate, and low/standard/high/urgent multipliers. The formula is: (base fee + route distance × rate/km + item-size handling + high-value handling surcharge) × priority multiplier. Value surcharge applies only to the portion of the estimated goods value above the configured threshold. The resulting service fee, distance, size and surcharge breakdown, commission, and provider share are saved with the request; future pricing changes do not retroactively change an existing errand.
 
 - Errand service fee: what the customer pays for the work of handling the errand.
 - SaMi commission: the configured percentage of the service fee.
 - Provider share: the remaining part of the service fee after SaMi commission.
 - Goods/seller cost: separate; paid to the seller and excluded from SaMi commission.
 
-Administrators manage category fees, commission and priority multipliers from Service pricing. Pricing changes are written to an audit table.
+Administrators manage the base fee, commission, distance rate, item-size charges, high-value threshold/rate and priority multipliers for each category from Service pricing. Pricing changes are written to an audit table. The Preview currently asks the customer to enter an estimated end-to-end route distance; it does not yet geocode addresses or call a road-routing API automatically.
 
 ## Payment model
 
@@ -62,11 +62,11 @@ The Preview currently has only the database and initial-admin environment values
 
 ## Preview and verification
 
-The feat/sami-errands-transformation branch uses a Preview-scoped database connection and a one-time first-admin token. The source code contains no credential values. Open /admin-setup on the Preview deployment to create the first admin; the endpoint stops working once one exists.
+The feat/sami-errands-transformation branch uses a Preview-scoped database connection and a one-time first-admin token. The source code contains no credential values. Open /admin-setup on the latest Preview deployment. The page calls /api/dispatch?action=bootstrapStatus and explicitly reports when the token is missing, the database cannot be checked, or an admin already exists. If ADMIN_BOOTSTRAP_TOKEN is changed in Vercel, redeploy this branch before using that token; a deployment retains the environment values it was built with. The endpoint stops creating users once an admin exists.
 
 Health check: /api/dispatch?action=health. It returns database connectivity and schema version without credentials. Service pricing: /api/dispatch?action=pricing.
 
-Tests: npm test; the Vercel build runs the workflow/schema tests before next build. Preview checks performed so far: successful production build, connected isolated database, nine readable category pricing rules, and a public Errands landing page with the old business-workspace branding removed. Full role workflows, actual M-PESA checkout/callback, and payment reconciliation still require end-to-end tests.
+Tests: npm test; the Vercel build runs the workflow/schema tests before next build. Tests cover the no-quotation workflow, route/item/value-based service pricing, separate seller goods, admin bootstrap diagnostics, pricing audit and the M-PESA callback validation. Preview checks performed so far: successful production build, connected isolated database, nine readable category pricing rules, and a public Errands landing page with the old business-workspace branding removed. Full role workflows, actual M-PESA checkout/callback, and payment reconciliation still require end-to-end tests.
 
 ## Later hosting migration
 
