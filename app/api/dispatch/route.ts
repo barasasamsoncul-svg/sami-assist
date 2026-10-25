@@ -88,7 +88,7 @@ export async function GET(request: Request) {
       const r = await query<{ schema_version: string | null }>(
         "SELECT (SELECT version FROM schema_migrations ORDER BY applied_at DESC LIMIT 1) AS schema_version, now()::text AS checked_at"
       );
-      return NextResponse.json({ status: "ok", app: "SaMi Errands", database: "connected", schemaVersion: r.rows[0]?.schema_version || null });
+      return NextResponse.json({ status: "ok", app: "SaMi", database: "connected", schemaVersion: r.rows[0]?.schema_version || null });
     } catch {
       return error("Database connectivity or schema check failed.", 503);
     }
@@ -99,7 +99,7 @@ export async function GET(request: Request) {
       const keys = ["base_fee","commission_rate","low_priority_multiplier","standard_priority_multiplier","high_priority_multiplier","urgent_priority_multiplier","distance_rate_per_km","small_item_fee","medium_item_fee","large_item_fee","bulky_item_fee","value_surcharge_threshold","value_surcharge_rate"];
       return NextResponse.json({ pricing: r.rows.map(p => Object.fromEntries(Object.entries(p).map(([k,v]) => [k, keys.includes(k) ? Number(v) : v]))) });
     } catch (e) {
-      console.error("[SaMi Errands pricing] Unable to load configurable pricing rules.");
+      console.error("[SaMi pricing] Unable to load configurable pricing rules.");
       return error("Service pricing is temporarily unavailable. The pricing migration may not have been applied.", 503);
     }
   }
@@ -302,7 +302,7 @@ export async function POST(request: Request) {
       if (await attemptCount(identifier, "bootstrap") >= 5) return error("Too many setup attempts. Contact the deployment administrator.", 429);
       if (expected.length < 32 || supplied.length < 32 || supplied !== expected) {
         await recordAttempt(identifier, "bootstrap", false).catch(() => undefined);
-        console.warn("[SaMi Errands admin bootstrap] Request rejected: token missing, mismatched, or not configured for this Preview deployment.", { tokenConfigured: expected.length >= 32 });
+        console.warn("[SaMi admin bootstrap] Request rejected: token missing, mismatched, or not configured for this Preview deployment.", { tokenConfigured: expected.length >= 32 });
         return error(expected.length < 32
           ? "Admin setup is not configured for this deployment. Set ADMIN_BOOTSTRAP_TOKEN for the feat/sami-errands-transformation Preview branch, then redeploy."
           : "The setup token does not match this deployment. Confirm the Preview token and make sure you are using the latest deployment.", 403);
@@ -328,7 +328,7 @@ export async function POST(request: Request) {
       } catch (e) {
         await client.query("ROLLBACK").catch(() => undefined);
         if (typeof e === "object" && e !== null && "code" in e && (e as { code?: string }).code === "23505") return error("That email is already registered.", 409);
-        console.error("[SaMi Errands admin bootstrap] Database operation failed.", e instanceof Error ? e.message : "unknown error");
+        console.error("[SaMi admin bootstrap] Database operation failed.", e instanceof Error ? e.message : "unknown error");
         return error("Admin account creation failed because of a database or email constraint. Check the Preview database connection and try again.", 503);
       } finally { client.release(); }
       await recordAttempt(identifier, "bootstrap", true).catch(() => undefined);
@@ -336,7 +336,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, message: "Administrator created and signed in." }, { status: 201 });
     } catch (e) {
       await recordAttempt(identifier, "bootstrap", false).catch(() => undefined);
-      console.error("[SaMi Errands admin bootstrap] Request failed before account creation.", e instanceof Error ? e.message : "unknown error");
+      console.error("[SaMi admin bootstrap] Request failed before account creation.", e instanceof Error ? e.message : "unknown error");
       return error("Admin setup could not finish. Check the Preview database, then refresh this page and retry.", 503);
     }
   }
@@ -394,7 +394,7 @@ export async function POST(request: Request) {
         await client.query("COMMIT");
       } catch (e) {
         await client.query("ROLLBACK").catch(()=>undefined);
-        console.error("[SaMi Errands pricing] Update failed for category:", category, e instanceof Error ? e.message : "unknown error");
+        console.error("[SaMi pricing] Update failed for category:", category, e instanceof Error ? e.message : "unknown error");
         return error("Pricing could not be saved. Check that the pricing migration is applied.",503);
       } finally { client.release(); }
       return NextResponse.json({ok:true,message:"Pricing rule saved.",pricing:updated});
@@ -450,7 +450,7 @@ export async function POST(request: Request) {
         await client.query("COMMIT");
       } catch (e) {
         await client.query("ROLLBACK").catch(()=>undefined);
-        console.error("[SaMi Errands request] Could not save errand:", e instanceof Error ? e.message : "unknown error");
+        console.error("[SaMi request] Could not save errand:", e instanceof Error ? e.message : "unknown error");
         return error("The request could not be saved. The database schema may need its pricing migration applied.",503);
       } finally { client.release(); }
       return NextResponse.json({
@@ -459,7 +459,7 @@ export async function POST(request: Request) {
         paymentNotice:servicePaymentMethod==="in_app" ? "In-app payment is selected. The request remains unpaid until the configured payment provider confirms a successful transaction." : "Cash is selected for the errand-service fee. Any goods/seller amount is separate and paid to the seller."
       },{status:201});
     } catch (e) {
-      console.error("[SaMi Errands request] Pricing/request creation failed:", e instanceof Error ? e.message : "unknown error");
+      console.error("[SaMi request] Pricing/request creation failed:", e instanceof Error ? e.message : "unknown error");
       return error("Service pricing or request creation is temporarily unavailable.",503);
     }
   }
