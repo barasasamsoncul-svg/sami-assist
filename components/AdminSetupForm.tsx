@@ -1,4 +1,5 @@
 "use client";
+import Brand from "@/components/Brand";
 import { useEffect, useState } from "react";
 export default function AdminSetupForm() {
   const [error,setError] = useState("");
@@ -28,7 +29,7 @@ export default function AdminSetupForm() {
     } catch(e) { setError(e instanceof Error ? e.message : "Setup failed."); }
     finally { setBusy(false); }
   }
-  return <main className="auth-wrap"><aside className="auth-aside"><a className="brand" href="/"><span className="brand-mark">S</span><span>SaMi Errands</span></a><div><div className="eyebrow">One-time setup</div><h1>Set up operations.</h1><p className="lead">The first admin can only be created using the private preview bootstrap token.</p></div><small className="muted">Keep your setup token private.</small></aside><section className="auth-main"><div className="auth-card"><h2>Administrator setup</h2><p className="muted">This form stops working once an administrator exists.</p>
+  return <main className="auth-wrap"><aside className="auth-aside"><Brand /><div><div className="eyebrow">One-time setup</div><h1>Set up operations.</h1><p className="lead">The first admin can only be created using the private preview bootstrap token.</p></div><small className="muted">Keep your setup token private. SaMi Errands · Everyday help, organised.</small></aside><section className="auth-main"><div className="auth-card"><h2>Administrator setup</h2><p className="muted">This form stops working once an administrator exists.</p>
     {checking && <p className="muted">Checking Preview setup configuration…</p>}
     {!checking && status && !status.tokenConfigured && <div className="error" role="alert">Admin setup is not enabled in this deployment. In Vercel, set ADMIN_BOOTSTRAP_TOKEN for Preview and the feat/sami-errands-transformation branch, then redeploy this branch. The value must be at least 32 characters.</div>}
     {!checking && status?.adminExists && <div className="notice" role="status">An administrator already exists in this Preview database. Return to the home page and sign in using that account. <a href="/">Go to sign in</a>.</div>}
