@@ -1,46 +1,61 @@
 # SaMi Errands
 
-SaMi Errands is a marketplace and operations platform for everyday errands: shopping, local pickup and drop-off, personal errands, business support, and practical coordination. It is designed around accountable execution, not simply placing a delivery order.
+SaMi Errands is a marketplace for all kinds of legitimate everyday errands—shopping, clothing purchases and returns, pickups and drop-offs, document/admin tasks, bookings and queues, personal errands, business support, local assistance and any other lawful task a customer can describe. The "other legitimate errand" category keeps the service open to new needs without constraining the product to deliveries.
 
-## Product roles
+## Customer pricing model (no quotation step)
 
-- Customers and businesses create detailed requests, review quotes, explicitly approve pricing, message participants, track status, confirm completion or raise a dispute, and rate providers.
-- Providers and provider businesses maintain a service profile, describe service categories and service areas, submit for approval, control availability, accept or decline assigned work, record progress and submit completion notes.
-- Operations administrators review provider applications, quote requests, require customer quote approval before assignment, manually dispatch eligible providers, oversee disputes, record customer payments/provider payouts/refunds, and reconcile financial records.
+1. Customer describes the errand, location, timing and any relevant details.
+2. The current category fee and priority multiplier are shown before the request is submitted.
+3. Customer chooses cash or in-app payment for the errand-service fee.
+4. Operations assigns an approved provider directly; the customer does not wait for or approve a separate quote.
+5. For shopping/clothing errands, the estimated goods budget is tracked separately. Goods are paid to the seller separately when the item is bought/received. They are not part of SaMi's service fee or commission base.
+6. Provider accepts, starts, messages relevant parties, records seller payment proof if applicable, submits completion notes, and the customer confirms or disputes.
+7. Operations tracks service-fee payments, provider payouts, refunds and reconciliation.
 
-## Runtime and isolated development database
+## Commission
 
-- Next.js App Router with a Node.js runtime on Vercel.
-- PostgreSQL accessed server-side using the pg driver.
-- Separate Neon project named SaMi Errands Development, isolated from the former SaMi database.
-- Dedicated database role sami_errands_app with limited application permissions.
-- Passwords use bcrypt. Sessions are random opaque values; only SHA-256 hashes are stored. Cookies are HttpOnly, SameSite=Lax and Secure in production.
-- Auth attempts are rate-limited per hashed identifier. Server-side actions enforce role and resource ownership. State changes create timeline records where applicable.
+Each service category has a configurable base service fee, SaMi commission percentage and low/standard/high/urgent multipliers. The service fee is calculated from the database pricing rule when the request is created and saved with the request, so later price changes do not retroactively change existing errands.
 
-## Vercel Preview
+- Errand service fee: what the customer pays for the work of handling the errand.
+- SaMi commission: the configured percentage of the errand service fee.
+- Provider share: the remainder of the service fee after SaMi commission.
+- Goods/seller cost: separate; paid to the seller and excluded from SaMi commission.
 
-The feat/sami-errands-transformation branch uses a Preview-scoped DATABASE_URL for the isolated Errands project and a Preview-scoped one-time ADMIN_BOOTSTRAP_TOKEN. Do not put either value in source code or Production variables.
+Administrators can manage fees, commission and priority multipliers from the Service pricing area. Pricing changes are audited.
 
-Open /admin-setup in the Preview deployment to create the first operations account. The setup token must match the server secret; the endpoint refuses a second administrator. Use a strong unique password. Customer and provider accounts can then be registered from the public landing page. Provider accounts remain pending until operations approves the profile.
+## Roles and responsibilities
 
-Health check: /api/dispatch?action=health. It returns connectivity status and schema version, not credentials.
+- Customers/businesses: submit freeform lawful tasks, see the service fee upfront, choose cash or in-app service payment, track updates, message participants, confirm completion or raise a dispute, and rate providers.
+- Providers/provider businesses: maintain a service profile, list categories and service areas, submit for approval, control availability, accept/decline assigned tasks, update progress and submit completion notes. Seller/goods payment is a separate record.
+- Operations: approve/suspend providers, assign requested errands directly, review disputes, record verified service payments, seller payments, provider payouts and refunds, and reconcile the ledger.
 
-## Workflow controls
+## Current payment status
 
-The lifecycle is request → operations quote → customer quote approval → manual assignment to an approved/available provider → provider accept/decline → in progress → provider completion notes → customer confirmation or dispute. Customers can cancel before provider acceptance; operations can cancel with audit history.
+Cash selection and service-fee/payment ledgers are implemented. In-app payment selection is saved as pending, and an operator must enter a verified transaction reference before the errand is marked paid. A live payment-gateway checkout/callback is not connected yet because it requires a selected payment provider and its merchant credentials; the app must never mark an unverified payment as successful. Seller/goods payment records are distinct from SaMi service payments.
 
-Payments are manual records, not a payment gateway. Recording payment does not charge a customer or transfer money. Payouts and refunds are separate ledger entries. Idempotency keys prevent replaying the same payment action, and operations can reconcile recorded entries. Confirm the real transaction with your payment provider or bank before recording it.
+## Runtime and database
 
-## Verification
+- Next.js App Router on Vercel.
+- PostgreSQL accessed server-side using pg.
+- Separate Neon project SaMi Errands Development, isolated from the old SaMi database.
+- Dedicated database role sami_errands_app.
+- Password hashes use bcrypt; sessions use random opaque values, with only SHA-256 hashes persisted. Cookies are HttpOnly, SameSite=Lax and Secure in production.
+- Authentication attempts are rate-limited by hashed identifiers. Server-side operations enforce role and resource ownership. Errand state changes are recorded in the timeline.
 
-npm test runs schema smoke checks, and the Vercel build runs the same tests before the optimized build. Release verification must also cover: signup/login, admin bootstrap, provider profile/approval/availability, errand creation, quote/revision/approval, assignment, accept/decline/start/completion, messaging and timeline, customer confirmation/dispute, ratings, payments/refunds and reconciliation. Test unauthorized cross-account access as well as successful paths.
+## Preview testing
 
-A successful build and database health check do not prove every browser flow. Do not promote the Preview until those workflows have been exercised.
+The feat/sami-errands-transformation branch uses a Preview-only database connection and one-time first-admin token. The source code contains no secret values. Open /admin-setup on Preview to create the first admin with the private bootstrap token. This route stops working once an administrator exists.
 
-## Future hosting
+Health check: /api/dispatch?action=health. It returns database connectivity and schema version without credentials.
 
-The current Preview is a Next.js app. A later move needs a host capable of running Next.js/Node.js, or a deliberate port to PHP/MySQL if the chosen shared-hosting package only supports PHP. A domain name does not determine runtime compatibility. Migrate application data only after testing schema and export/import against the target database.
+Tests: npm test; the Vercel build runs the schema checks before next build. Release testing must cover signup/login, admin bootstrap, provider application/approval/availability, service fee preview, errand creation, direct assignment, accept/decline/start/completion, messages/timeline, seller payment tracking, customer confirmation/dispute/rating, cash payment recording, in-app payment-reference verification, payout/refund/reconciliation and unauthorized access checks.
 
-## Development safety
+A Vercel build and database health check do not prove every end-to-end browser payment flow. A live checkout cannot be tested until a gateway is configured with credentials. Do not promote to production until the end-to-end role and payment flows pass.
 
-Changes stay on feat/sami-errands-transformation and the pull request remains a draft. Git main, its history, the original database, and production deployment are not altered by this branch.
+## Later hosting migration
+
+The current application is Next.js and needs a compatible Node.js host, or a deliberate port if a future shared-hosting package supports PHP only. The domain name itself does not determine runtime compatibility. Migrate data only after testing schema and export/import against the final host.
+
+## Safety of this conversion
+
+The change stays on feat/sami-errands-transformation. main, its history, the old database and production deployment have not been switched to Errands by these changes.

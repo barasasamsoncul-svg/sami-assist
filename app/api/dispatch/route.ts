@@ -64,6 +64,12 @@ export async function GET(request: Request) {
       return error("Database connectivity or schema check failed.", 503);
     }
   }
+  if (action === "pricing") {
+    try {
+      const r = await query("SELECT category,service_name,base_fee,commission_rate,low_priority_multiplier,standard_priority_multiplier,high_priority_multiplier,urgent_priority_multiplier FROM service_pricing WHERE enabled=true ORDER BY category");
+      return NextResponse.json({ pricing: r.rows.map(p => ({ ...p, base_fee: Number(p.base_fee), commission_rate: Number(p.commission_rate), low_priority_multiplier: Number(p.low_priority_multiplier), standard_priority_multiplier: Number(p.standard_priority_multiplier), high_priority_multiplier: Number(p.high_priority_multiplier), urgent_priority_multiplier: Number(p.urgent_priority_multiplier) })) });
+    } catch { return error("Service pricing is temporarily unavailable.", 503); }
+  }
   const user = await getCurrentUser().catch(() => null);
   if (action === "me") return user ? NextResponse.json({ user }) : error("Not signed in.", 401);
   if (!user) return error("Sign in to continue.", 401);
@@ -97,7 +103,7 @@ export async function GET(request: Request) {
     try {
       if (user.role === "admin") {
         const r = await query(
-          "SELECT count(*)::int AS total, count(*) FILTER(WHERE status='requested')::int AS needs_review, count(*) FILTER(WHERE status IN ('quoted','assigned','accepted','in_progress','completion_submitted'))::int AS active, count(*) FILTER(WHERE status='disputed')::int AS disputes, count(*) FILTER(WHERE status='completed')::int AS completed, count(*) FILTER(WHERE payment_status<>'paid' AND status IN ('completed','completion_submitted','disputed'))::int AS awaiting_payment, coalesce(sum(quote_amount) FILTER(WHERE payment_status='paid'),0)::numeric(14,2)::text AS recorded_revenue, coalesce(sum(provider_payout) FILTER(WHERE status='completed'),0)::numeric(14,2)::text AS provider_payouts FROM errands"
+          "SELECT count(*)::int AS total, count(*) FILTER(WHERE status='requested')::int AS needs_review, count(*) FILTER(WHERE status IN ('assigned','accepted','in_progress','completion_submitted'))::int AS active, count(*) FILTER(WHERE status='disputed')::int AS disputes, count(*) FILTER(WHERE status='completed')::int AS completed, count(*) FILTER(WHERE payment_status<>'paid' AND status IN ('completed','completion_submitted','disputed'))::int AS awaiting_payment, coalesce(sum(commission_amount) FILTER(WHERE payment_status='paid'),0)::numeric(14,2)::text AS recorded_revenue, coalesce(sum(provider_earning_amount) FILTER(WHERE status='completed'),0)::numeric(14,2)::text AS provider_payouts FROM errands"
         );
         const p = await query("SELECT count(*) FILTER(WHERE approval_status='pending')::int AS pending, count(*) FILTER(WHERE approval_status='approved' AND available=true)::int AS available FROM provider_profiles");
         const recent = await query("SELECT e.id,e.public_code,e.title,e.status,e.created_at,e.service_area,c.full_name AS customer_name FROM errands e JOIN users c ON c.id=e.customer_id ORDER BY e.created_at DESC LIMIT 6");
@@ -105,7 +111,7 @@ export async function GET(request: Request) {
       }
       const filter = user.role === "customer" ? "customer_id" : "provider_id";
       const r = await query(
-        "SELECT count(*)::int AS total, count(*) FILTER(WHERE status IN ('requested','quoted','assigned','accepted','in_progress','completion_submitted'))::int AS active, count(*) FILTER(WHERE status='completed')::int AS completed, count(*) FILTER(WHERE status='disputed')::int AS disputes, coalesce(sum(quote_amount) FILTER(WHERE payment_status='paid'),0)::numeric(14,2)::text AS recorded_total FROM errands WHERE " + filter + "=$1",
+        "SELECT count(*)::int AS total, count(*) FILTER(WHERE status IN ('requested','assigned','accepted','in_progress','completion_submitted'))::int AS active, count(*) FILTER(WHERE status='completed')::int AS completed, count(*) FILTER(WHERE status='disputed')::int AS disputes, coalesce(sum(service_fee_amount) FILTER(WHERE payment_status='paid'),0)::numeric(14,2)::text AS recorded_total FROM errands WHERE " + filter + "=$1",
         [user.id]
       );
       const p = user.role === "provider"
@@ -142,12 +148,12 @@ export async function GET(request: Request) {
         );
       } else if (user.role === "provider") {
         result = await query(
-          "SELECT pr.*,e.public_code,e.title,e.status AS errand_status,c.full_name AS customer_name,p.full_name AS provider_name FROM payment_records pr JOIN errands e ON e.id=pr.errand_id JOIN users c ON c.id=e.customer_id LEFT JOIN users p ON p.id=e.provider_id WHERE e.provider_id=$1 AND pr.record_type='provider_payout' ORDER BY pr.created_at DESC LIMIT 150",
+          "SELECT pr.*,e.public_code,e.title,e.status AS errand_status,c.full_name AS customer_name,p.full_name AS provider_name FROM payment_records pr JOIN errands e ON e.id=pr.errand_id JOIN users c ON c.id=e.customer_id LEFT JOIN users p ON p.id=e.provider_id WHERE e.provider_id=$1 AND pr.record_type IN ('provider_payout','service_payment','seller_payment','refund') ORDER BY pr.created_at DESC LIMIT 150",
           [user.id]
         );
       } else {
         result = await query(
-          "SELECT pr.*,e.public_code,e.title,e.status AS errand_status,c.full_name AS customer_name FROM payment_records pr JOIN errands e ON e.id=pr.errand_id JOIN users c ON c.id=e.customer_id WHERE e.customer_id=$1 AND pr.record_type IN ('customer_payment','refund') ORDER BY pr.created_at DESC LIMIT 150",
+          "SELECT pr.*,e.public_code,e.title,e.status AS errand_status,c.full_name AS customer_name FROM payment_records pr JOIN errands e ON e.id=pr.errand_id JOIN users c ON c.id=e.customer_id WHERE e.customer_id=$1 AND pr.record_type IN ('service_payment','seller_payment','refund') ORDER BY pr.created_at DESC LIMIT 150",
           [user.id]
         );
       }
@@ -300,6 +306,44 @@ export async function POST(request: Request) {
   const user = await getCurrentUser().catch(() => null);
   if (!user) return error("Sign in to continue.", 401);
 
+  if (action === "updatePricing") {
+    if (user.role !== "admin") return error("Operations access is required.", 403);
+    const category = text(body.category,40);
+    const serviceName = text(body.serviceName,120);
+    const baseFee = Number(body.baseFee);
+    const commissionRate = Number(body.commissionRate);
+    const low = Number(body.lowPriorityMultiplier);
+    const standard = Number(body.standardPriorityMultiplier);
+    const high = Number(body.highPriorityMultiplier);
+    const urgent = Number(body.urgentPriorityMultiplier);
+    if (!category || !Number.isFinite(baseFee) || baseFee < 0 || baseFee > 1000000) return error("Enter a valid non-negative service fee.");
+    if (!Number.isFinite(commissionRate) || commissionRate < 0 || commissionRate > 100) return error("Commission must be between 0% and 100%.");
+    if ([low,standard,high,urgent].some(n => !Number.isFinite(n) || n <= 0 || n > 5)) return error("Priority multipliers must be greater than zero and no more than 5.");
+    try {
+      const client = await databasePool().connect();
+      let updated: any;
+      try {
+        await client.query("BEGIN");
+        const previous = await client.query("SELECT * FROM service_pricing WHERE category=$1 FOR UPDATE", [category]);
+        if (!previous.rowCount) { await client.query("ROLLBACK"); return error("Pricing rule not found.",404); }
+        const result = await client.query(
+          "UPDATE service_pricing SET service_name=$2,base_fee=$3,commission_rate=$4,low_priority_multiplier=$5,standard_priority_multiplier=$6,high_priority_multiplier=$7,urgent_priority_multiplier=$8,updated_at=now() WHERE category=$1 RETURNING *",
+          [category,serviceName||previous.rows[0].service_name,baseFee,commissionRate,low,standard,high,urgent]
+        );
+        updated=result.rows[0];
+        await client.query(
+          "INSERT INTO pricing_audit_events(actor_id,category,previous_values,new_values) VALUES($1,$2,$3::jsonb,$4::jsonb)",
+          [user.id,category,JSON.stringify({serviceName:previous.rows[0].service_name,baseFee:Number(previous.rows[0].base_fee),commissionRate:Number(previous.rows[0].commission_rate),lowPriorityMultiplier:Number(previous.rows[0].low_priority_multiplier),standardPriorityMultiplier:Number(previous.rows[0].standard_priority_multiplier),highPriorityMultiplier:Number(previous.rows[0].high_priority_multiplier),urgentPriorityMultiplier:Number(previous.rows[0].urgent_priority_multiplier}),JSON.stringify({serviceName:updated.service_name,baseFee:Number(updated.base_fee),commissionRate:Number(updated.commission_rate),lowPriorityMultiplier:Number(updated.low_priority_multiplier),standardPriorityMultiplier:Number(updated.standard_priority_multiplier),highPriorityMultiplier:Number(updated.high_priority_multiplier),urgentPriorityMultiplier:Number(updated.urgent_priority_multiplier)})]
+        );
+        await client.query("COMMIT");
+      } catch {
+        await client.query("ROLLBACK").catch(()=>undefined);
+        return error("Pricing could not be saved.",503);
+      } finally { client.release(); }
+      return NextResponse.json({ok:true,message:"Pricing rule saved.",pricing:updated});
+    } catch { return error("Pricing could not be saved.",503); }
+  }
+
   if (action === "createErrand") {
     if (user.role !== "customer") return error("Only customer accounts can submit new errands.", 403);
     const title = text(body.title, 160);
@@ -308,45 +352,62 @@ export async function POST(request: Request) {
     const serviceArea = text(body.serviceArea, 180);
     const pickup = text(body.pickupLocation, 300);
     const destination = text(body.destinationLocation, 300);
-    const allowed = new Set(["shopping", "pickup_delivery", "personal_errand", "business_support", "local_assistance", "other"]);
-    const budget = num(body.budgetAmount);
+    const allowed = new Set(["shopping","clothing_retail","pickup_delivery","documents_admin","personal_errand","queue_appointments","business_support","local_assistance","other"]);
+    const itemBudget = num(body.itemBudgetAmount);
     const dueAt = text(body.dueAt, 60);
     const due = dueAt ? new Date(dueAt) : null;
-    const priority = new Set(["low", "standard", "high", "urgent"]).has(text(body.priority, 20)) ? text(body.priority, 20) : "standard";
-    if (title.length < 3 || description.length < 5 || serviceArea.length < 2 || !allowed.has(category)) return error("Check the task title, detail, category and service area.");
-    if (budget !== null && (!Number.isFinite(budget) || budget < 0 || budget > 100000000)) return error("Enter a valid non-negative budget.");
+    const priority = new Set(["low","standard","high","urgent"]).has(text(body.priority, 20)) ? text(body.priority, 20) : "standard";
+    const servicePaymentMethod = body.servicePaymentMethod === "in_app" ? "in_app" : "cash";
+    if (title.length < 3 || description.length < 5 || serviceArea.length < 2 || !allowed.has(category)) return error("Check the task title, details, category and service area.");
+    if (itemBudget !== null && (!Number.isFinite(itemBudget) || itemBudget < 0 || itemBudget > 100000000)) return error("Enter a valid estimated seller/goods budget.");
     if (due && (!Number.isFinite(due.getTime()) || due.getTime() < Date.now() - 86400000)) return error("Choose a valid due date.");
-    const code = randomCode();
-    const client = await databasePool().connect();
-    let row: any;
     try {
-      await client.query("BEGIN");
-      const r = await client.query(
-        "INSERT INTO errands(public_code,customer_id,title,category,description,pickup_location,destination_location,service_area,due_at,budget_amount,priority) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",
-        [code, user.id, title, category, description, pickup || null, destination || null, serviceArea, due, budget, priority]
-      );
-      row = r.rows[0];
-      await addEvent(client, row.id, user.id, "request_created", null, "requested", "Customer submitted an errand request.", { priority, category });
-      const admins = await client.query("SELECT id FROM users WHERE role='admin' AND is_active=true");
-      for (const admin of admins.rows) await client.query(
-        "INSERT INTO notifications(user_id,kind,title,body,href,entity_type,entity_id) VALUES($1,'new_errand','New errand request',$2,'/','errand',$3)",
-        [admin.id, code + " · " + title, row.id]
-      );
-      await client.query("COMMIT");
-      return NextResponse.json({ errand: row }, { status: 201 });
-    } catch {
-      await client.query("ROLLBACK").catch(() => undefined);
-      return error("The request could not be saved. Please retry.", 503);
-    } finally { client.release(); }
+      const pricingResult = await query("SELECT * FROM service_pricing WHERE category=$1 AND enabled=true", [category]);
+      const rule = pricingResult.rows[0];
+      if (!rule) return error("This errand category is not currently available.", 409);
+      const multiplierKey = priority + "_priority_multiplier";
+      const multiplier = Number(rule[multiplierKey] ?? rule.standard_priority_multiplier);
+      const serviceFee = Math.round(Number(rule.base_fee) * multiplier * 100) / 100;
+      const commissionRate = Number(rule.commission_rate);
+      const commission = Math.round(serviceFee * commissionRate) / 100;
+      const providerEarning = Math.round((serviceFee - commission) * 100) / 100;
+      const code = randomCode();
+      const client = await databasePool().connect();
+      let row: any;
+      try {
+        await client.query("BEGIN");
+        const insert = await client.query(
+          "INSERT INTO errands(public_code,customer_id,title,category,description,pickup_location,destination_location,service_area,due_at,budget_amount,item_budget_amount,priority,service_fee_amount,commission_rate,commission_amount,provider_earning_amount,service_payment_method,payment_status,app_payment_checkout_status,seller_payment_status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *",
+          [code,user.id,title,category,description,pickup||null,destination||null,serviceArea,due,itemBudget,priority,serviceFee,commissionRate,commission,providerEarning,servicePaymentMethod,servicePaymentMethod==="in_app"?"pending":"unpaid","not_started",itemBudget === null ? "not_applicable" : "due"]
+        );
+        row = insert.rows[0];
+        await addEvent(client,row.id,user.id,"request_created",null,"requested","Customer submitted an errand request.",{
+          category,priority,serviceFee,commissionRate,commission,providerEarning,servicePaymentMethod,itemBudget,merchantCostIsSeparate:true
+        });
+        const admins = await client.query("SELECT id FROM users WHERE role='admin' AND is_active=true");
+        for (const admin of admins.rows) await client.query(
+          "INSERT INTO notifications(user_id,kind,title,body,href,entity_type,entity_id) VALUES($1,'new_errand','New errand request',$2,'/','errand',$3)",
+          [admin.id,code+" · "+title+" · Errand service KES "+serviceFee.toFixed(2),row.id]
+        );
+        await client.query("COMMIT");
+      } catch {
+        await client.query("ROLLBACK").catch(()=>undefined);
+        return error("The request could not be saved. Please retry.",503);
+      } finally { client.release(); }
+      return NextResponse.json({
+        errand:row,
+        price:{serviceFee,commissionRate,commission,providerEarning,itemBudget,servicePaymentMethod},
+        paymentNotice:servicePaymentMethod==="in_app" ? "In-app payment is selected. The request remains unpaid until the configured payment provider confirms a successful transaction." : "Cash is selected for the errand-service fee. Any goods/seller amount is separate and paid to the seller."
+      },{status:201});
+    } catch { return error("Service pricing or request creation is temporarily unavailable.",503); }
   }
-
   if (action === "providerProfile") {
     if (user.role !== "provider") return error("Only provider accounts can edit service profiles.", 403);
     const providerType = new Set(["individual", "business", "team"]).has(text(body.providerType, 20)) ? text(body.providerType, 20) : "individual";
     const businessName = text(body.businessName, 160);
     const serviceArea = text(body.serviceArea, 180);
     const bio = text(body.bio, 1200);
-    const categories = Array.isArray(body.serviceCategories) ? body.serviceCategories.map((v: unknown) => text(v, 40)).filter((v: string) => ["shopping","pickup_delivery","personal_errand","business_support","local_assistance","other"].includes(v)).slice(0, 6) : [];
+    const categories = Array.isArray(body.serviceCategories) ? body.serviceCategories.map((v: unknown) => text(v, 40)).filter((v: string) => ["shopping","clothing_retail","pickup_delivery","documents_admin","personal_errand","queue_appointments","business_support","local_assistance","other"].includes(v)).slice(0, 6) : [];
     if (serviceArea.length < 2 || categories.length === 0) return error("Add at least one service category and a service area before submitting your profile.");
     if (providerType !== "individual" && businessName.length < 2) return error("Enter the team or business name.");
     try {
@@ -514,40 +575,15 @@ export async function POST(request: Request) {
       let next = previous;
       let eventNote = "";
       let eventType = act;
-      if (act === "quote") {
-        if (user.role !== "admin" || !["requested","declined","quoted"].includes(previous)) throw new Error("Only operations can quote requests awaiting review.");
-        const amount = Number(body.amount);
-        const payout = num(body.providerPayout);
-        if (!Number.isFinite(amount) || amount < 0 || amount > 100000000 || (payout !== null && (!Number.isFinite(payout) || payout < 0 || payout > amount))) throw new Error("Enter a valid quote and payout; provider payout cannot exceed the quote.");
-        const fee = amount - (payout ?? amount);
-        next = "quoted";
-        eventNote = "Operations prepared or updated the customer quote.";
-        await client.query("UPDATE errands SET quote_amount=$2,provider_payout=$3,service_fee_amount=$4,status=$5,quote_approved=false,quote_decided_at=NULL,version=version+1,updated_at=now() WHERE id=$1",[id,amount,payout,fee,next]);
-        notifyTarget = {id:e.customer_id,kind:"quote",title:"Your errand has been quoted",body:e.public_code+" · Quote: KES "+amount.toFixed(2),errandId:id};
-      } else if (act === "approveQuote" || act === "declineQuote") {
-        if (user.role !== "customer" || e.customer_id !== user.id || previous !== "quoted" || e.quote_approved === true || e.quote_amount == null) throw new Error("Only the requesting customer can respond to an unapproved quote.");
-        const admins = await client.query("SELECT id FROM users WHERE role='admin' AND is_active=true");
-        if (act === "approveQuote") {
-          next = "quoted";
-          eventNote = "Customer approved the quote of KES " + Number(e.quote_amount).toFixed(2) + ".";
-          await client.query("UPDATE errands SET quote_approved=true,quote_decided_at=now(),version=version+1,updated_at=now() WHERE id=$1", [id]);
-          for (const admin of admins.rows) await client.query("INSERT INTO notifications(user_id,kind,title,body,href,entity_type,entity_id) VALUES($1,'quote_approved','Quote approved by customer',$2,'/','errand',$3)", [admin.id,e.public_code + " is ready for assignment.",id]);
-          notifyTarget = {id:e.customer_id,kind:"quote",title:"Quote approved",body:e.public_code + " · Operations will assign an approved provider.",errandId:id};
-        } else {
-          const reason = text(body.reason,500);
-          next = "requested";
-          eventNote = "Customer declined the quote." + (reason ? " Reason: " + reason : "");
-          await client.query("UPDATE errands SET status='requested',quote_amount=NULL,provider_payout=NULL,service_fee_amount=0,quote_approved=false,quote_decided_at=now(),version=version+1,updated_at=now() WHERE id=$1", [id]);
-          for (const admin of admins.rows) await client.query("INSERT INTO notifications(user_id,kind,title,body,href,entity_type,entity_id) VALUES($1,'quote_declined','Quote needs revision',$2,'/','errand',$3)", [admin.id,e.public_code + " · Customer declined the quote.",id]);
-          notifyTarget = {id:e.customer_id,kind:"quote",title:"Quote declined",body:"Operations has been asked to review the pricing for " + e.public_code + ".",errandId:id};
-        }
-      } else if (act === "assign") {
-        if (user.role !== "admin" || previous !== "quoted" || e.quote_approved !== true) throw new Error("The customer must approve a valid quote before operations can assign this errand.");
+      if (act === "assign") {
+        if (user.role !== "admin" || !["requested","declined"].includes(previous)) throw new Error("Only operations can assign a new or declined errand.");
         const providerId = text(body.providerId,80);
-        const provider = await client.query("SELECT u.id,pp.service_area FROM users u JOIN provider_profiles pp ON pp.user_id=u.id WHERE u.id=$1 AND u.role='provider' AND u.is_active=true AND pp.approval_status='approved' AND pp.available=true",[providerId]);
+        const provider = await client.query("SELECT u.id,pp.service_area,pp.service_categories FROM users u JOIN provider_profiles pp ON pp.user_id=u.id WHERE u.id=$1 AND u.role='provider' AND u.is_active=true AND pp.approval_status='approved' AND pp.available=true",[providerId]);
         if (!provider.rowCount) throw new Error("Choose an active, approved provider marked available.");
+        const categories = provider.rows[0].service_categories || [];
+        if (categories.length && !categories.includes(e.category) && !categories.includes("other")) throw new Error("This provider has not listed the requested errand category.");
         next = "assigned";
-        eventNote = "Operations manually assigned the errand to an approved provider.";
+        eventNote = "Operations assigned the errand to an approved provider.";
         await client.query("UPDATE errands SET provider_id=$2,status=$3,version=version+1,updated_at=now() WHERE id=$1",[id,providerId,next]);
         notifyTarget = {id:providerId,kind:"assignment",title:"New errand assignment",body:e.public_code+" · "+e.title,errandId:id};
       } else if (act === "accept" || act === "decline") {
@@ -597,31 +633,36 @@ export async function POST(request: Request) {
         await client.query("UPDATE errands SET status=$2,cancellation_reason=$3,version=version+1,updated_at=now() WHERE id=$1",[id,next,reason||null]);
         const other = user.id===e.customer_id ? e.provider_id : e.customer_id;
         notifyTarget = other ? {id:other,kind:"cancellation",title:"Errand cancelled",body:e.public_code+" · "+eventNote,errandId:id} : null;
-      } else if (act === "mark_paid" || act === "recordPayout" || act === "recordRefund") {
-        if(user.role!=="admin")throw new Error("Only operations can create payment or payout records.");
+      } else if (act === "mark_paid" || act === "recordPayout" || act === "recordRefund" || act === "recordSellerPayment") {
+        if(act==="recordSellerPayment" ? !(user.role==="admin" || (user.role==="provider" && e.provider_id===user.id)) : act==="mark_paid" && e.service_payment_method==="cash" ? !(user.role==="admin" || (user.role==="provider" && e.provider_id===user.id)) : user.role!=="admin")throw new Error("Only operations can verify in-app service payments and record payouts; the assigned provider may record cash service fees and separate seller payments.");
         const amount=Number(body.amount);
         const method=text(body.method,80);
         const reference=text(body.reference,160);
         const idempotencyKey=text(body.idempotencyKey,100)||hash([id,act,amount,method,reference].join("|"));
         if(!Number.isFinite(amount)||amount<0||amount>100000000||method.length<2)throw new Error("Enter a valid amount and payment method.");
-        if(act==="mark_paid"&&e.payment_status==="paid")throw new Error("A customer payment is already recorded for this errand. Review the ledger instead.");
-        if(act==="mark_paid"&&!["completion_submitted","completed","disputed"].includes(e.status))throw new Error("Record a customer payment only after completion has been submitted or an issue requires operations review.");
+        if(act==="mark_paid"&&e.payment_status==="paid")throw new Error("The errand-service fee is already recorded as paid.");
+        if(act==="mark_paid"&&e.service_payment_method==="cash"&&!["completion_submitted","completed","disputed"].includes(e.status))throw new Error("Cash service fees can be recorded after the errand service has been performed.");
+        if(act==="mark_paid"&&e.service_payment_method==="in_app"&&reference.length<4)throw new Error("Enter the verified in-app transaction reference before recording the service payment.");
         if(act==="recordPayout"&&(!e.provider_id||e.status!=="completed"))throw new Error("A provider payout can only be recorded for an assigned provider after customer-confirmed completion.");
-        if(act==="recordRefund"&&e.payment_status!=="paid")throw new Error("A refund can only be recorded against a paid errand.");
+        if(act==="recordRefund"&&e.payment_status!=="paid")throw new Error("A refund can only be recorded against a paid errand service fee.");
         if(act==="recordRefund"){
-          const remainingPaid=await client.query("SELECT (coalesce(sum(amount) FILTER (WHERE record_type='customer_payment' AND status<>'reversed'),0)-coalesce(sum(amount) FILTER (WHERE record_type='refund' AND status<>'reversed'),0))::numeric AS total FROM payment_records WHERE errand_id=$1",[id]);
-          if(amount>Number(remainingPaid.rows[0]?.total||0))throw new Error("Refund amount cannot exceed the remaining recorded customer payments.");
+          const remainingPaid=await client.query("SELECT (coalesce(sum(amount) FILTER (WHERE record_type='service_payment' AND status<>'reversed'),0)-coalesce(sum(amount) FILTER (WHERE record_type='refund' AND status<>'reversed'),0))::numeric AS total FROM payment_records WHERE errand_id=$1",[id]);
+          if(amount>Number(remainingPaid.rows[0]?.total||0))throw new Error("Refund amount cannot exceed the remaining recorded errand-service payments.");
         }
-        const recordType=act==="recordPayout"?"provider_payout":act==="recordRefund"?"refund":"customer_payment";
+        const recordType=act==="recordPayout"?"provider_payout":act==="recordRefund"?"refund":act==="recordSellerPayment"?"seller_payment":"service_payment";
         const inserted=await client.query(
           "INSERT INTO payment_records(errand_id,recorded_by,record_type,amount,currency,method,reference,status,notes,idempotency_key) VALUES($1,$2,$3,$4,'KES',$5,$6,'recorded',$7,$8) ON CONFLICT(errand_id,idempotency_key) DO NOTHING RETURNING id",
           [id,user.id,recordType,amount,method,reference||null,"Manually recorded by operations.",idempotencyKey]
         );
         if(!inserted.rowCount){await client.query("COMMIT");return NextResponse.json({ok:true,message:"This payment action was already recorded.",status:previous});}
         if(act==="mark_paid") {
-          await client.query("UPDATE errands SET payment_status='paid',payment_method=$2,payment_reference=$3,paid_at=now(),version=version+1,updated_at=now() WHERE id=$1",[id,method,reference||null]);
-          eventNote="Operations recorded customer payment KES "+amount.toFixed(2)+" ("+method+").";
-          notifyTarget=e.customer_id?{id:e.customer_id,kind:"payment",title:"Payment recorded",body:e.public_code+" · Customer payment has been recorded.",errandId:id}:null;
+          await client.query("UPDATE errands SET payment_status='paid',payment_method=$2,payment_reference=$3,paid_at=now(),app_payment_checkout_status=CASE WHEN service_payment_method='in_app' THEN 'succeeded' ELSE app_payment_checkout_status END,app_payment_reference=CASE WHEN service_payment_method='in_app' THEN $3 ELSE app_payment_reference END,version=version+1,updated_at=now() WHERE id=$1",[id,method,reference||null]);
+          eventNote="Operations verified and recorded the errand service fee of KES "+amount.toFixed(2)+" ("+method+"). Seller goods are separate.";
+          notifyTarget=e.customer_id?{id:e.customer_id,kind:"payment",title:"Errand service payment recorded",body:e.public_code+" · SaMi service fee payment has been recorded.",errandId:id}:null;
+        } else if(act==="recordSellerPayment") {
+          await client.query("UPDATE errands SET seller_payment_status='paid',seller_actual_amount=$2,seller_payment_method=$3,seller_payment_reference=$4,version=version+1,updated_at=now() WHERE id=$1",[id,amount,method,reference||null]);
+          eventNote="Recorded separate seller/goods payment of KES "+amount.toFixed(2)+" ("+method+"). This is not SaMi service revenue.";
+          notifyTarget=e.customer_id?{id:e.customer_id,kind:"seller_payment",title:"Seller payment recorded",body:e.public_code+" · The seller/goods payment was recorded separately.",errandId:id}:null;
         } else if(act==="recordRefund") {
           await client.query("UPDATE errands SET payment_status='refunded',version=version+1,updated_at=now() WHERE id=$1",[id]);
           eventNote="Operations recorded a refund KES "+amount.toFixed(2)+" ("+method+").";
@@ -667,7 +708,7 @@ export async function POST(request: Request) {
         await client.query("COMMIT");
       } catch(e) { await client.query("ROLLBACK").catch(()=>undefined); throw e; }
       finally { client.release(); }
-      const target = changed.record_type === "provider_payout" ? changed.provider_id : changed.customer_id;
+      const target = ["provider_payout","service_payment"].includes(changed.record_type) ? changed.provider_id || changed.customer_id : changed.customer_id;
       if (target) await notify(target,"payment_reconciled","Payment reconciled",changed.public_code+" · Operations reconciled a payment record.","/","errand",changed.errand_id);
       return NextResponse.json({ok:true,message:"Payment record reconciled."});
     } catch { return error("Payment could not be reconciled.", 503); }
