@@ -106,7 +106,7 @@ test("manual service payments cannot settle a short amount or create an unpaid p
   assert.ok(route.includes("The recorded service payment must equal the saved service fee"));
   assert.ok(route.includes("e.service_payment_method!==\"in_app\"||!e.provider_id||e.status!==\"completed\"||e.payment_status!==\"paid\""));
   assert.ok(route.includes("Payout exceeds the remaining provider share"));
-  assert.ok(route.includes("A payout amount and payment method"));
+  assert.ok(route.includes("Enter a positive amount and payment method."));
 });
 
 test("partial refunds stay refundable until the collected fee is fully refunded", () => {
