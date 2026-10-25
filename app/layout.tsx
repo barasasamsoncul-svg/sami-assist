@@ -3,11 +3,11 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "SaMi Errands — Everyday help, organised.",
-    template: "%s | SaMi Errands"
+    default: "SaMi — Everyday help, organised.",
+    template: "%s | SaMi"
   },
-  description: "From shopping and collections to personal and business tasks, SaMi Errands connects you with people ready to get things done.",
-  applicationName: "SaMi Errands",
+  description: "From shopping and collections to personal and business tasks, SaMi helps people and businesses get everyday tasks done with clear fees and accountable updates.",
+  applicationName: "SaMi",
   category: "services",
   icons: {
     icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
@@ -16,14 +16,14 @@ export const metadata: Metadata = {
   },
   openGraph: {
     type: "website",
-    siteName: "SaMi Errands",
-    title: "SaMi Errands — Everyday help, organised.",
-    description: "Your everyday and business errands, handled with clear service fees and accountable updates."
+    siteName: "SaMi",
+    title: "SaMi — Everyday help, organised.",
+    description: "Everyday and business tasks, handled with clear service fees and accountable updates."
   },
   twitter: {
     card: "summary",
-    title: "SaMi Errands — Everyday help, organised.",
-    description: "Your everyday and business errands, handled with clear service fees and accountable updates."
+    title: "SaMi — Everyday help, organised.",
+    description: "Everyday and business tasks, handled with clear service fees and accountable updates."
   }
 };
 
