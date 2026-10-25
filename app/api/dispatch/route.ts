@@ -93,18 +93,6 @@ export async function GET(request: Request) {
       return error("Database connectivity or schema check failed.", 503);
     }
   }
-  if (action === "bootstrapStatus") {
-    try {
-      const [adminResult] = await Promise.all([
-        query<{ admin_exists: boolean }>("SELECT EXISTS(SELECT 1 FROM users WHERE role='admin') AS admin_exists")
-      ]);
-      const tokenConfigured = (process.env.ADMIN_BOOTSTRAP_TOKEN || "").length >= 32;
-      const adminExists = Boolean(adminResult.rows[0]?.admin_exists);
-      return NextResponse.json({ adminExists, tokenConfigured, setupAvailable: !adminExists && tokenConfigured });
-    } catch {
-      return error("Could not verify administrator setup. Check the Preview database configuration and try again.", 503);
-    }
-  }
   if (action === "pricing") {
     try {
       const r = await query("SELECT category,service_name,base_fee,commission_rate,low_priority_multiplier,standard_priority_multiplier,high_priority_multiplier,urgent_priority_multiplier,distance_rate_per_km,small_item_fee,medium_item_fee,large_item_fee,bulky_item_fee,value_surcharge_threshold,value_surcharge_rate FROM service_pricing WHERE enabled=true ORDER BY category");
@@ -447,7 +435,7 @@ export async function POST(request: Request) {
       try {
         await client.query("BEGIN");
         const insert = await client.query(
-          "INSERT INTO errands(public_code,customer_id,title,category,description,pickup_location,destination_location,service_area,due_at,distance_km,item_size,distance_fee_amount,item_size_fee_amount,value_surcharge_amount,budget_amount,item_budget_amount,priority,service_fee_amount,commission_rate,commission_amount,provider_earning_amount,service_payment_method,payment_status,app_payment_checkout_status,seller_payment_status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING *",
+          "INSERT INTO errands(public_code,customer_id,title,category,description,pickup_location,destination_location,service_area,due_at,distance_km,item_size,distance_fee_amount,item_size_fee_amount,value_surcharge_amount,budget_amount,item_budget_amount,priority,service_fee_amount,commission_rate,commission_amount,provider_earning_amount,service_payment_method,payment_status,app_payment_checkout_status,seller_payment_status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING *",
           [code,user.id,title,category,description,pickup||null,destination||null,serviceArea,due,distanceKm,itemSize,distanceFee,itemSizeFee,valueSurcharge,itemBudget,priority,serviceFee,commissionRate,commission,providerEarning,servicePaymentMethod,servicePaymentMethod==="in_app"?"pending":"unpaid","not_started",itemBudget === null ? "not_applicable" : "due"]
         );
         row = insert.rows[0];
