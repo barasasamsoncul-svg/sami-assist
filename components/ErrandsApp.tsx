@@ -170,6 +170,32 @@ export default function ErrandsApp() {
 
   useEffect(() => { if (user && view === "app") void refresh(); }, [user, view, refresh]);
 
+  // Bolt-style live status refresh: keep lists and an open errand/payment panel in sync
+  // while a request is active or an M-PESA callback is still pending.
+  const activeErrandId = activeErrand?.errand.id || "";
+  const needsLiveRefresh = errands.some(e =>
+    isActiveStatus(e.status) || e.status === "disputed" ||
+    e.payment_status === "pending" || e.app_payment_checkout_status === "initiated"
+  );
+  useEffect(() => {
+    if (!user || view !== "app" || (!needsLiveRefresh && !activeErrandId)) return;
+    const timer = window.setInterval(() => {
+      void (async () => {
+        await refresh(true);
+        if (!activeErrandId) return;
+        try {
+          const response = await fetch("/api/dispatch?action=errandDetail&id=" + encodeURIComponent(activeErrandId), { cache: "no-store" });
+          if (!response.ok) return;
+          const detail = await response.json();
+          setActiveErrand(current => current?.errand.id === activeErrandId ? detail : current);
+        } catch {
+          // A failed refresh must not interrupt the request or payment flow.
+        }
+      })();
+    }, 8000);
+    return () => window.clearInterval(timer);
+  }, [user, view, needsLiveRefresh, activeErrandId, refresh]);
+
   const visibleErrands = useMemo(() => errands.filter(e => {
     const matchesStatus = statusFilter === "all" || e.status === statusFilter;
     const matchesCategory = categoryFilter === "all" || e.category === categoryFilter;
