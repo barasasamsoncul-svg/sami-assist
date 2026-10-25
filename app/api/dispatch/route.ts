@@ -1,164 +1,677 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { randomBytes, createHash } from "node:crypto";
-import { cookies } from "next/headers";
+import { createHash, randomBytes } from "node:crypto";
 import { databasePool, query } from "@/lib/db";
 import { createSession, destroySession, getCurrentUser } from "@/lib/auth";
 
 export const runtime = "nodejs";
-const tokenHash = (value:string) => createHash("sha256").update(value).digest("hex");
-const validEmail = (value:string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-function error(message:string,status=400){return NextResponse.json({error:message},{status});}
-
-export async function GET(request:Request){
-  const action = new URL(request.url).searchParams.get("action") || "";
-  if(action==="health"){
-    try{const r=await query("SELECT (SELECT version FROM schema_migrations ORDER BY applied_at DESC LIMIT 1) AS schema_version");return NextResponse.json({status:"ok",app:"SaMi Errands",database:"connected",schemaVersion:r.rows[0]?.schema_version||null});}
-    catch{return error("Database connectivity or schema check failed.",503);}
-  }
-  const user=await getCurrentUser().catch(()=>null);
-  if(action==="me")return user?NextResponse.json({user}):error("Not signed in.",401);
-  if(!user)return error("Sign in to continue.",401);
-  if(action==="errands"){
-    try{
-      let r;
-      if(user.role==="admin")r=await query("SELECT e.*,c.full_name AS customer_name,p.full_name AS provider_name FROM errands e JOIN users c ON c.id=e.customer_id LEFT JOIN users p ON p.id=e.provider_id ORDER BY CASE WHEN e.status IN ('requested','disputed') THEN 0 ELSE 1 END,e.created_at DESC LIMIT 200");
-      else if(user.role==="provider")r=await query("SELECT e.*,c.full_name AS customer_name,p.full_name AS provider_name FROM errands e JOIN users c ON c.id=e.customer_id LEFT JOIN users p ON p.id=e.provider_id WHERE e.provider_id=$1 ORDER BY e.created_at DESC LIMIT 100",[user.id]);
-      else r=await query("SELECT e.*,c.full_name AS customer_name,p.full_name AS provider_name FROM errands e JOIN users c ON c.id=e.customer_id LEFT JOIN users p ON p.id=e.provider_id WHERE e.customer_id=$1 ORDER BY e.created_at DESC LIMIT 100",[user.id]);
-      return NextResponse.json({errands:r.rows});
-    }catch{return error("Unable to load errands right now.",503);}
-  }
-  if(action==="providers"){
-    if(user.role!=="admin")return error("Operations access is required.",403);
-    try{const r=await query("SELECT u.id AS user_id,u.full_name,u.email,pp.provider_type,pp.business_name,pp.service_area,pp.service_categories,pp.approval_status,pp.available FROM users u JOIN provider_profiles pp ON pp.user_id=u.id WHERE u.role='provider' ORDER BY CASE pp.approval_status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,pp.created_at DESC LIMIT 200");return NextResponse.json({providers:r.rows});}
-    catch{return error("Provider list is temporarily unavailable.",503);}
-  }
-  return error("Unknown operation.",404);
+type UserRole = "customer" | "provider" | "admin";
+const validEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+const text = (value: unknown, max = 1000) => typeof value === "string" ? value.trim().slice(0, max) : "";
+const emailText = (value: unknown) => text(value, 254).toLowerCase();
+const num = (value: unknown) => value === "" || value == null ? null : Number(value);
+function error(message: string, status = 400) { return NextResponse.json({ error: message }, { status }); }
+function randomCode() { return "SE-" + new Date().toISOString().slice(0, 10).replaceAll("-", "") + "-" + randomBytes(3).toString("hex").toUpperCase(); }
+function sameOrigin(request: Request) {
+  const origin = request.headers.get("origin");
+  return !origin || origin === new URL(request.url).origin;
+}
+function safeHref(value: string) {
+  return value.startsWith("/") && !value.startsWith("//") && !value.includes("\\") ? value.slice(0, 300) : null;
+}
+async function attemptCount(identifierHash: string, attemptType: string) {
+  const result = await query<{ count: string }>(
+    "SELECT count(*)::text AS count FROM auth_attempts WHERE identifier_hash=$1 AND attempt_type=$2 AND succeeded=false AND attempted_at > now() - interval '15 minutes'",
+    [identifierHash, attemptType]
+  );
+  return Number(result.rows[0]?.count || 0);
+}
+async function recordAttempt(identifierHash: string, attemptType: string, succeeded: boolean) {
+  await query("INSERT INTO auth_attempts(identifier_hash,attempt_type,succeeded) VALUES($1,$2,$3)", [identifierHash, attemptType, succeeded]);
+}
+async function notify(userId: string, kind: string, title: string, body: string, href: string | null, entityType?: string, entityId?: string) {
+  if (!userId) return;
+  await query(
+    "INSERT INTO notifications(user_id,kind,title,body,href,entity_type,entity_id) VALUES($1,$2,$3,$4,$5,$6,$7)",
+    [userId, kind, title.slice(0, 160), body.slice(0, 1000), safeHref(href || ""), entityType || null, entityId || null]
+  ).catch(() => undefined);
+}
+async function addEvent(client: { query: (...args: any[]) => Promise<any> }, errandId: string, actorId: string | null, eventType: string, from: string | null, to: string | null, note: string, metadata: Record<string, unknown> = {}) {
+  await client.query(
+    "INSERT INTO errand_events(errand_id,actor_id,event_type,from_status,to_status,note,metadata) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb)",
+    [errandId, actorId, eventType, from, to, note.slice(0, 1000), JSON.stringify(metadata)]
+  );
+}
+async function getScopedErrand(id: string, user: { id: string; role: UserRole }) {
+  const result = await query(
+    "SELECT e.*, c.full_name AS customer_name, c.email AS customer_email, c.phone AS customer_phone, p.full_name AS provider_name, p.email AS provider_email, pp.business_name AS provider_business_name, pp.service_area AS provider_service_area FROM errands e JOIN users c ON c.id=e.customer_id LEFT JOIN users p ON p.id=e.provider_id LEFT JOIN provider_profiles pp ON pp.user_id=p.id WHERE e.id=$1 AND ($2='admin' OR e.customer_id=$3 OR e.provider_id=$3) LIMIT 1",
+    [id, user.role, user.id]
+  );
+  return result.rows[0] || null;
 }
 
-export async function POST(request:Request){
-  const action = new URL(request.url).searchParams.get("action") || "";
-  const body=await request.json().catch(()=>null);
-  const op=action || (typeof body?.action==="string"?body.action:"");
-  if(op==="register"){
-    const fullName=typeof body?.fullName==="string"?body.fullName.trim():"";
-    const email=typeof body?.email==="string"?body.email.trim().toLowerCase():"";
-    const phone=typeof body?.phone==="string"?body.phone.trim().slice(0,32):"";
-    const role=body?.role==="provider"?"provider":"customer";
-    const password=typeof body?.password==="string"?body.password:"";
-    if(fullName.length<2||fullName.length>120)return error("Enter your full name.");
-    if(!validEmail(email)||email.length>254)return error("Enter a valid email address.");
-    if(password.length<10||password.length>128)return error("Password must be 10–128 characters.");
-    const client=await databasePool().connect();
-    try{
+export async function GET(request: Request) {
+  const params = new URL(request.url).searchParams;
+  const action = params.get("action") || "";
+  if (action === "health") {
+    try {
+      const r = await query<{ schema_version: string | null }>(
+        "SELECT (SELECT version FROM schema_migrations ORDER BY applied_at DESC LIMIT 1) AS schema_version, now()::text AS checked_at"
+      );
+      return NextResponse.json({ status: "ok", app: "SaMi Errands", database: "connected", schemaVersion: r.rows[0]?.schema_version || null });
+    } catch {
+      return error("Database connectivity or schema check failed.", 503);
+    }
+  }
+  const user = await getCurrentUser().catch(() => null);
+  if (action === "me") return user ? NextResponse.json({ user }) : error("Not signed in.", 401);
+  if (!user) return error("Sign in to continue.", 401);
+
+  if (action === "errands") {
+    const status = text(params.get("status"), 40);
+    const search = text(params.get("q"), 120);
+    try {
+      let result;
+      if (user.role === "admin") {
+        result = await query(
+          "SELECT e.*, c.full_name AS customer_name, c.email AS customer_email, p.full_name AS provider_name, pp.business_name AS provider_business_name FROM errands e JOIN users c ON c.id=e.customer_id LEFT JOIN users p ON p.id=e.provider_id LEFT JOIN provider_profiles pp ON pp.user_id=p.id WHERE ($1='' OR e.status=$1) AND ($2='' OR e.title ILIKE '%'||$2||'%' OR e.public_code ILIKE '%'||$2||'%' OR e.service_area ILIKE '%'||$2||'%' OR c.full_name ILIKE '%'||$2||'%') ORDER BY CASE e.status WHEN 'disputed' THEN 0 WHEN 'requested' THEN 1 WHEN 'completion_submitted' THEN 2 ELSE 3 END, e.created_at DESC LIMIT 250",
+          [status, search]
+        );
+      } else if (user.role === "provider") {
+        result = await query(
+          "SELECT e.*, c.full_name AS customer_name, p.full_name AS provider_name, pp.business_name AS provider_business_name FROM errands e JOIN users c ON c.id=e.customer_id LEFT JOIN users p ON p.id=e.provider_id LEFT JOIN provider_profiles pp ON pp.user_id=p.id WHERE e.provider_id=$1 AND ($2='' OR e.status=$2) AND ($3='' OR e.title ILIKE '%'||$3||'%' OR e.public_code ILIKE '%'||$3||'%') ORDER BY e.created_at DESC LIMIT 150",
+          [user.id, status, search]
+        );
+      } else {
+        result = await query(
+          "SELECT e.*, c.full_name AS customer_name, p.full_name AS provider_name, pp.business_name AS provider_business_name FROM errands e JOIN users c ON c.id=e.customer_id LEFT JOIN users p ON p.id=e.provider_id LEFT JOIN provider_profiles pp ON pp.user_id=p.id WHERE e.customer_id=$1 AND ($2='' OR e.status=$2) AND ($3='' OR e.title ILIKE '%'||$3||'%' OR e.public_code ILIKE '%'||$3||'%') ORDER BY e.created_at DESC LIMIT 150",
+          [user.id, status, search]
+        );
+      }
+      return NextResponse.json({ errands: result.rows });
+    } catch { return error("Unable to load errands right now.", 503); }
+  }
+
+  if (action === "dashboard") {
+    try {
+      if (user.role === "admin") {
+        const r = await query(
+          "SELECT count(*)::int AS total, count(*) FILTER(WHERE status='requested')::int AS needs_review, count(*) FILTER(WHERE status IN ('quoted','assigned','accepted','in_progress','completion_submitted'))::int AS active, count(*) FILTER(WHERE status='disputed')::int AS disputes, count(*) FILTER(WHERE status='completed')::int AS completed, count(*) FILTER(WHERE payment_status<>'paid' AND status IN ('completed','completion_submitted','disputed'))::int AS awaiting_payment, coalesce(sum(quote_amount) FILTER(WHERE payment_status='paid'),0)::numeric(14,2)::text AS recorded_revenue, coalesce(sum(provider_payout) FILTER(WHERE status='completed'),0)::numeric(14,2)::text AS provider_payouts FROM errands"
+        );
+        const p = await query("SELECT count(*) FILTER(WHERE approval_status='pending')::int AS pending, count(*) FILTER(WHERE approval_status='approved' AND available=true)::int AS available FROM provider_profiles");
+        const recent = await query("SELECT e.id,e.public_code,e.title,e.status,e.created_at,e.service_area,c.full_name AS customer_name FROM errands e JOIN users c ON c.id=e.customer_id ORDER BY e.created_at DESC LIMIT 6");
+        return NextResponse.json({ metrics: r.rows[0], providers: p.rows[0], recent: recent.rows });
+      }
+      const filter = user.role === "customer" ? "customer_id" : "provider_id";
+      const r = await query(
+        "SELECT count(*)::int AS total, count(*) FILTER(WHERE status IN ('requested','quoted','assigned','accepted','in_progress','completion_submitted'))::int AS active, count(*) FILTER(WHERE status='completed')::int AS completed, count(*) FILTER(WHERE status='disputed')::int AS disputes, coalesce(sum(quote_amount) FILTER(WHERE payment_status='paid'),0)::numeric(14,2)::text AS recorded_total FROM errands WHERE " + filter + "=$1",
+        [user.id]
+      );
+      const p = user.role === "provider"
+        ? await query("SELECT coalesce(sum(amount) FILTER(WHERE record_type='provider_payout' AND status IN ('recorded','reconciled')),0)::numeric(14,2)::text AS earnings, count(*) FILTER(WHERE status='pending')::int AS pending FROM payment_records WHERE errand_id IN (SELECT id FROM errands WHERE provider_id=$1)", [user.id])
+        : { rows: [{ earnings: "0", pending: 0 }] };
+      return NextResponse.json({ metrics: r.rows[0], earnings: p.rows[0] });
+    } catch { return error("Dashboard metrics are temporarily unavailable.", 503); }
+  }
+
+  if (action === "providers") {
+    if (user.role !== "admin") return error("Operations access is required.", 403);
+    try {
+      const r = await query(
+        "SELECT u.id AS user_id,u.full_name,u.email,u.phone,pp.provider_type,pp.business_name,pp.service_area,pp.service_categories,pp.bio,pp.approval_status,pp.rejection_reason,pp.available,pp.verified_at,pp.completed_jobs,pp.rating_average,pp.rating_count,pp.created_at FROM users u JOIN provider_profiles pp ON pp.user_id=u.id WHERE u.role='provider' ORDER BY CASE pp.approval_status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, pp.created_at DESC LIMIT 300"
+      );
+      return NextResponse.json({ providers: r.rows });
+    } catch { return error("Provider list is temporarily unavailable.", 503); }
+  }
+
+  if (action === "providerProfile") {
+    if (user.role !== "provider") return error("Only providers have service profiles.", 403);
+    try {
+      const r = await query("SELECT u.full_name,u.email,u.phone,pp.provider_type,pp.business_name,pp.service_categories,pp.service_area,pp.bio,pp.approval_status,pp.rejection_reason,pp.available,pp.verified_at,pp.completed_jobs,pp.rating_average,pp.rating_count FROM users u JOIN provider_profiles pp ON pp.user_id=u.id WHERE u.id=$1", [user.id]);
+      return r.rows[0] ? NextResponse.json({ profile: r.rows[0] }) : error("Provider profile not found.", 404);
+    } catch { return error("Could not load provider profile.", 503); }
+  }
+
+  if (action === "payments") {
+    try {
+      let result;
+      if (user.role === "admin") {
+        result = await query(
+          "SELECT pr.*, e.public_code,e.title,e.status AS errand_status,c.full_name AS customer_name,p.full_name AS provider_name, recorder.full_name AS recorded_by_name FROM payment_records pr JOIN errands e ON e.id=pr.errand_id JOIN users c ON c.id=e.customer_id LEFT JOIN users p ON p.id=e.provider_id JOIN users recorder ON recorder.id=pr.recorded_by ORDER BY pr.created_at DESC LIMIT 300"
+        );
+      } else if (user.role === "provider") {
+        result = await query(
+          "SELECT pr.*,e.public_code,e.title,e.status AS errand_status,c.full_name AS customer_name,p.full_name AS provider_name FROM payment_records pr JOIN errands e ON e.id=pr.errand_id JOIN users c ON c.id=e.customer_id LEFT JOIN users p ON p.id=e.provider_id WHERE e.provider_id=$1 AND pr.record_type='provider_payout' ORDER BY pr.created_at DESC LIMIT 150",
+          [user.id]
+        );
+      } else {
+        result = await query(
+          "SELECT pr.*,e.public_code,e.title,e.status AS errand_status,c.full_name AS customer_name FROM payment_records pr JOIN errands e ON e.id=pr.errand_id JOIN users c ON c.id=e.customer_id WHERE e.customer_id=$1 AND pr.record_type IN ('customer_payment','refund') ORDER BY pr.created_at DESC LIMIT 150",
+          [user.id]
+        );
+      }
+      return NextResponse.json({ payments: result.rows });
+    } catch { return error("Payment records are temporarily unavailable.", 503); }
+  }
+
+  if (action === "notifications") {
+    try {
+      const r = await query("SELECT id,kind,title,body,href,read_at,created_at FROM notifications WHERE user_id=$1 ORDER BY created_at DESC LIMIT 50", [user.id]);
+      const unread = await query("SELECT count(*)::int AS count FROM notifications WHERE user_id=$1 AND read_at IS NULL", [user.id]);
+      return NextResponse.json({ notifications: r.rows, unread: unread.rows[0]?.count || 0 });
+    } catch { return error("Notifications are temporarily unavailable.", 503); }
+  }
+
+  if (action === "errandDetail") {
+    const id = text(params.get("id"), 80);
+    if (!id) return error("Errand identifier is required.");
+    try {
+      const errand = await getScopedErrand(id, user);
+      if (!errand) return error("Errand not found or access is not permitted.", 404);
+      const [events, messages, ratings] = await Promise.all([
+        query("SELECT ev.id,ev.event_type,ev.from_status,ev.to_status,ev.note,ev.created_at,u.full_name AS actor_name FROM errand_events ev LEFT JOIN users u ON u.id=ev.actor_id WHERE ev.errand_id=$1 ORDER BY ev.created_at ASC LIMIT 200", [id]),
+        query("SELECT m.id,m.sender_id,m.message,m.created_at,u.full_name AS sender_name,u.role AS sender_role FROM errand_messages m JOIN users u ON u.id=m.sender_id WHERE m.errand_id=$1 ORDER BY m.created_at ASC LIMIT 100", [id]),
+        query("SELECT r.id,r.score,r.comment,r.created_at,u.full_name AS reviewer_name FROM errand_ratings r JOIN users u ON u.id=r.reviewer_id WHERE r.errand_id=$1 ORDER BY r.created_at DESC", [id])
+      ]);
+      return NextResponse.json({ errand, events: events.rows, messages: messages.rows, ratings: ratings.rows });
+    } catch { return error("Unable to load errand details.", 503); }
+  }
+
+  return error("Unknown operation.", 404);
+}
+
+export async function POST(request: Request) {
+  if (!sameOrigin(request)) return error("Cross-origin request rejected.", 403);
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object") return error("A valid JSON request is required.");
+  const action = text(body.action, 50);
+
+  if (action === "register") {
+    const fullName = text(body.fullName, 120);
+    const email = emailText(body.email);
+    const phone = text(body.phone, 32);
+    const role: Exclude<UserRole, "admin"> = body.role === "provider" ? "provider" : "customer";
+    const password = typeof body.password === "string" ? body.password : "";
+    if (fullName.length < 2) return error("Enter your full name.");
+    if (!validEmail(email)) return error("Enter a valid email address.");
+    if (password.length < 12 || password.length > 128) return error("Choose a password between 12 and 128 characters.");
+    const identifier = hash("register:" + email);
+    try {
+      if (await attemptCount(identifier, "register") >= 8) return error("Too many registration attempts for this email. Try again in 15 minutes.", 429);
+      const client = await databasePool().connect();
+      let created: any;
+      try {
+        await client.query("BEGIN");
+        const passwordHash = await bcrypt.hash(password, 12);
+        const r = await client.query(
+          "INSERT INTO users(full_name,email,phone,password_hash,role) VALUES($1,$2,$3,$4,$5) RETURNING id,full_name,email,role,phone",
+          [fullName, email, phone || null, passwordHash, role]
+        );
+        created = r.rows[0];
+        if (role === "provider") await client.query("INSERT INTO provider_profiles(user_id,provider_type) VALUES($1,'individual')", [created.id]);
+        await client.query("COMMIT");
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        if (typeof e === "object" && e !== null && "code" in e && (e as { code?: string }).code === "23505") {
+          await recordAttempt(identifier, "register", false);
+          return error("An account with this email already exists.", 409);
+        }
+        throw e;
+      } finally { client.release(); }
+      await recordAttempt(identifier, "register", true).catch(() => undefined);
+      await createSession(created.id);
+      if (role === "provider") {
+        const admins = await query<{ id: string }>("SELECT id FROM users WHERE role='admin' AND is_active=true");
+        for (const admin of admins.rows) await notify(admin.id, "provider_application", "New provider application", fullName + " applied to join the provider network.", "/", "provider", created.id);
+      }
+      return NextResponse.json({ user: created }, { status: 201 });
+    } catch { return error("Account creation failed. Please retry.", 503); }
+  }
+
+  if (action === "login") {
+    const email = emailText(body.email);
+    const password = typeof body.password === "string" ? body.password : "";
+    if (!validEmail(email) || !password || password.length > 128) return error("Enter your email and password.");
+    const identifier = hash("login:" + email);
+    try {
+      if (await attemptCount(identifier, "login") >= 10) return error("Too many unsuccessful sign-in attempts. Try again in 15 minutes.", 429);
+      const r = await query<{ id: string; password_hash: string; is_active: boolean }>(
+        "SELECT id,password_hash,is_active FROM users WHERE lower(email)=$1 LIMIT 1", [email]
+      );
+      const u = r.rows[0];
+      if (!u || !u.is_active || !(await bcrypt.compare(password, u.password_hash))) {
+        await recordAttempt(identifier, "login", false);
+        return error("Email or password is incorrect.", 401);
+      }
+      await recordAttempt(identifier, "login", true).catch(() => undefined);
+      await createSession(u.id);
+      return NextResponse.json({ ok: true });
+    } catch { return error("Sign-in is temporarily unavailable.", 503); }
+  }
+
+  if (action === "logout") {
+    await destroySession().catch(() => undefined);
+    return NextResponse.json({ ok: true });
+  }
+
+  if (action === "bootstrap") {
+    const expected = process.env.ADMIN_BOOTSTRAP_TOKEN || "";
+    const supplied = request.headers.get("x-admin-bootstrap-token") || "";
+    const identifier = hash("bootstrap:" + supplied);
+    try {
+      if (await attemptCount(identifier, "bootstrap") >= 5) return error("Too many setup attempts. Contact the deployment administrator.", 429);
+      if (expected.length < 32 || supplied.length < 32 || supplied !== expected) {
+        await recordAttempt(identifier, "bootstrap", false).catch(() => undefined);
+        return error("Administrator setup token is invalid or not configured.", 403);
+      }
+      const fullName = text(body.fullName, 120);
+      const email = emailText(body.email);
+      const password = typeof body.password === "string" ? body.password : "";
+      if (fullName.length < 2 || !validEmail(email) || password.length < 14 || password.length > 128) return error("Enter a name, valid email and password of at least 14 characters.");
+      const client = await databasePool().connect();
+      let adminId = "";
+      try {
+        await client.query("BEGIN");
+        await client.query("SELECT pg_advisory_xact_lock(hashtext('sami_errands_admin_bootstrap'))");
+        const existing = await client.query("SELECT id FROM users WHERE role='admin' LIMIT 1");
+        if (existing.rowCount) {
+          await client.query("ROLLBACK");
+          return error("An administrator already exists. Sign in normally.", 409);
+        }
+        const passwordHash = await bcrypt.hash(password, 12);
+        const created = await client.query("INSERT INTO users(full_name,email,password_hash,role) VALUES($1,$2,$3,'admin') RETURNING id", [fullName, email, passwordHash]);
+        adminId = created.rows[0].id;
+        await client.query("COMMIT");
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        if (typeof e === "object" && e !== null && "code" in e && (e as { code?: string }).code === "23505") return error("That email is already registered.", 409);
+        return error("Administrator setup failed.", 503);
+      } finally { client.release(); }
+      await recordAttempt(identifier, "bootstrap", true).catch(() => undefined);
+      await createSession(adminId);
+      return NextResponse.json({ ok: true, message: "Administrator created and signed in." }, { status: 201 });
+    } catch {
+      await recordAttempt(identifier, "bootstrap", false).catch(() => undefined);
+      return error("Administrator setup failed.", 503);
+    }
+  }
+
+  const user = await getCurrentUser().catch(() => null);
+  if (!user) return error("Sign in to continue.", 401);
+
+  if (action === "createErrand") {
+    if (user.role !== "customer") return error("Only customer accounts can submit new errands.", 403);
+    const title = text(body.title, 160);
+    const category = text(body.category, 40);
+    const description = text(body.description, 5000);
+    const serviceArea = text(body.serviceArea, 180);
+    const pickup = text(body.pickupLocation, 300);
+    const destination = text(body.destinationLocation, 300);
+    const allowed = new Set(["shopping", "pickup_delivery", "personal_errand", "business_support", "local_assistance", "other"]);
+    const budget = num(body.budgetAmount);
+    const dueAt = text(body.dueAt, 60);
+    const due = dueAt ? new Date(dueAt) : null;
+    const priority = new Set(["low", "standard", "high", "urgent"]).has(text(body.priority, 20)) ? text(body.priority, 20) : "standard";
+    if (title.length < 3 || description.length < 5 || serviceArea.length < 2 || !allowed.has(category)) return error("Check the task title, detail, category and service area.");
+    if (budget !== null && (!Number.isFinite(budget) || budget < 0 || budget > 100000000)) return error("Enter a valid non-negative budget.");
+    if (due && (!Number.isFinite(due.getTime()) || due.getTime() < Date.now() - 86400000)) return error("Choose a valid due date.");
+    const code = randomCode();
+    const client = await databasePool().connect();
+    let row: any;
+    try {
       await client.query("BEGIN");
-      const hash=await bcrypt.hash(password,12);
-      const r=await client.query("INSERT INTO users(full_name,email,phone,password_hash,role) VALUES($1,$2,$3,$4,$5) RETURNING id,full_name,email,role",[fullName,email,phone||null,hash,role]);
-      if(role==="provider")await client.query("INSERT INTO provider_profiles(user_id) VALUES($1)",[r.rows[0].id]);
-      await client.query("COMMIT");await createSession(r.rows[0].id);
-      return NextResponse.json({user:r.rows[0]}, {status:201});
-    }catch(e){await client.query("ROLLBACK").catch(()=>undefined);if(typeof e==="object"&&e!==null&&"code" in e&&(e as {code?:string}).code==="23505")return error("An account with that email already exists.",409);return error("Account creation failed. Please try again.",500);}
-    finally{client.release();}
+      const r = await client.query(
+        "INSERT INTO errands(public_code,customer_id,title,category,description,pickup_location,destination_location,service_area,due_at,budget_amount,priority) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",
+        [code, user.id, title, category, description, pickup || null, destination || null, serviceArea, due, budget, priority]
+      );
+      row = r.rows[0];
+      await addEvent(client, row.id, user.id, "request_created", null, "requested", "Customer submitted an errand request.", { priority, category });
+      const admins = await client.query("SELECT id FROM users WHERE role='admin' AND is_active=true");
+      for (const admin of admins.rows) await client.query(
+        "INSERT INTO notifications(user_id,kind,title,body,href,entity_type,entity_id) VALUES($1,'new_errand','New errand request',$2,'/','errand',$3)",
+        [admin.id, code + " · " + title, row.id]
+      );
+      await client.query("COMMIT");
+      return NextResponse.json({ errand: row }, { status: 201 });
+    } catch {
+      await client.query("ROLLBACK").catch(() => undefined);
+      return error("The request could not be saved. Please retry.", 503);
+    } finally { client.release(); }
   }
-  if(op==="login"){
-    const email=typeof body?.email==="string"?body.email.trim().toLowerCase():"";
-    const password=typeof body?.password==="string"?body.password:"";
-    if(!email||!password||email.length>254||password.length>128)return error("Enter your email and password.");
-    try{const r=await query("SELECT id,password_hash,is_active FROM users WHERE lower(email)=$1 LIMIT 1",[email]);const u=r.rows[0];if(!u||!u.is_active||!(await bcrypt.compare(password,u.password_hash)))return error("Email or password is incorrect.",401);await createSession(u.id);return NextResponse.json({ok:true});}
-    catch{return error("Sign-in is temporarily unavailable.",503);}
+
+  if (action === "providerProfile") {
+    if (user.role !== "provider") return error("Only provider accounts can edit service profiles.", 403);
+    const providerType = new Set(["individual", "business", "team"]).has(text(body.providerType, 20)) ? text(body.providerType, 20) : "individual";
+    const businessName = text(body.businessName, 160);
+    const serviceArea = text(body.serviceArea, 180);
+    const bio = text(body.bio, 1200);
+    const categories = Array.isArray(body.serviceCategories) ? body.serviceCategories.map((v: unknown) => text(v, 40)).filter((v: string) => ["shopping","pickup_delivery","personal_errand","business_support","local_assistance","other"].includes(v)).slice(0, 6) : [];
+    if (serviceArea.length < 2 || categories.length === 0) return error("Add at least one service category and a service area before submitting your profile.");
+    if (providerType !== "individual" && businessName.length < 2) return error("Enter the team or business name.");
+    try {
+      const r = await query(
+        "UPDATE provider_profiles SET provider_type=$2,business_name=$3,service_area=$4,bio=$5,service_categories=$6,updated_at=now(),rejection_reason=NULL,approval_status=CASE WHEN approval_status='rejected' THEN 'pending' ELSE approval_status END WHERE user_id=$1 RETURNING approval_status",
+        [user.id, providerType, businessName || null, serviceArea, bio || null, categories]
+      );
+      if (!r.rowCount) return error("Provider profile not found.", 404);
+      if (r.rows[0].approval_status === "pending") {
+        const admins = await query<{ id: string }>("SELECT id FROM users WHERE role='admin' AND is_active=true");
+        for (const admin of admins.rows) await notify(admin.id, "provider_profile_updated", "Provider profile ready for review", user.full_name + " updated their service profile.", "/", "provider", user.id);
+      }
+      return NextResponse.json({ ok: true, message: "Service profile saved.", approvalStatus: r.rows[0].approval_status });
+    } catch { return error("Provider profile could not be saved.", 503); }
   }
-  if(op==="logout"){await destroySession().catch(()=>undefined);return NextResponse.json({ok:true});}
-  if(op==="bootstrap"){
-    const expected=process.env.ADMIN_BOOTSTRAP_TOKEN||"";
-    const supplied=request.headers.get("x-admin-bootstrap-token")||"";
-    if(expected.length<32||supplied.length<32||supplied!==expected)return error("Administrator setup token is invalid or not configured.",403);
-    const fullName=typeof body?.fullName==="string"?body.fullName.trim():"";
-    const email=typeof body?.email==="string"?body.email.trim().toLowerCase():"";
-    const password=typeof body?.password==="string"?body.password:"";
-    if(fullName.length<2||fullName.length>120||!validEmail(email)||password.length<12||password.length>128)return error("Enter a name, valid email and password of at least 12 characters.");
-    const client=await databasePool().connect();let adminId:string;
-    try{await client.query("BEGIN");const current=await client.query("SELECT id FROM users WHERE role='admin' LIMIT 1");if(current.rowCount){await client.query("ROLLBACK");return error("An administrator already exists. Sign in normally.",409);}const hash=await bcrypt.hash(password,12);const created=await client.query("INSERT INTO users(full_name,email,password_hash,role) VALUES($1,$2,$3,'admin') RETURNING id",[fullName,email,hash]);adminId=created.rows[0].id;await client.query("COMMIT");}
-    catch(e){await client.query("ROLLBACK").catch(()=>undefined);if(typeof e==="object"&&e!==null&&"code" in e&&(e as {code?:string}).code==="23505")return error("That email is already registered.",409);return error("Administrator setup failed.",500);}
-    finally{client.release();}
-    await createSession(adminId!);return NextResponse.json({ok:true,message:"Administrator created and signed in."},{status:201});
+
+  if (action === "providerAvailability") {
+    if (user.role !== "provider") return error("Only providers can update availability.", 403);
+    const available = body.available === true;
+    try {
+      const r = await query("UPDATE provider_profiles SET available=$2,updated_at=now() WHERE user_id=$1 AND approval_status='approved' RETURNING available", [user.id, available]);
+      if (!r.rowCount) return error("Your provider profile must be approved before you can accept assignments.", 409);
+      return NextResponse.json({ ok: true, available: r.rows[0].available, message: available ? "You are marked available." : "You are marked unavailable." });
+    } catch { return error("Availability could not be updated.", 503); }
   }
-  const user=await getCurrentUser().catch(()=>null);
-  if(!user)return error("Sign in to continue.",401);
-  if(op==="createErrand"){
-    if(user.role!=="customer")return error("Only customer accounts can submit requests.",403);
-    const title=typeof body?.title==="string"?body.title.trim():"";
-    const category=typeof body?.category==="string"?body.category.trim():"";
-    const description=typeof body?.description==="string"?body.description.trim():"";
-    const serviceArea=typeof body?.serviceArea==="string"?body.serviceArea.trim():"";
-    const pickup=typeof body?.pickupLocation==="string"?body.pickupLocation.trim():"";
-    const destination=typeof body?.destinationLocation==="string"?body.destinationLocation.trim():"";
-    const allowed=new Set(["shopping","pickup_delivery","personal_errand","business_support","local_assistance","other"]);
-    const budget=body?.budgetAmount===""||body?.budgetAmount==null?null:Number(body.budgetAmount);
-    const due=typeof body?.dueAt==="string"&&body.dueAt?new Date(body.dueAt):null;
-    if(title.length<3||title.length>160||description.length<5||description.length>5000||serviceArea.length<2||serviceArea.length>180||!allowed.has(category))return error("Check the title, task details, category and service area.");
-    if(budget!==null&&(!Number.isFinite(budget)||budget<0||budget>100000000))return error("Enter a valid budget.");
-    if(due&&(!Number.isFinite(due.getTime())||due.getTime()<Date.now()-86400000))return error("Choose a valid due date.");
-    const code="SE-"+new Date().toISOString().slice(0,10).replaceAll("-","")+"-"+randomBytes(3).toString("hex").toUpperCase();
-    const client=await databasePool().connect();
-    try{await client.query("BEGIN");const r=await client.query("INSERT INTO errands(public_code,customer_id,title,category,description,pickup_location,destination_location,service_area,due_at,budget_amount) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *",[code,user.id,title,category,description,pickup||null,destination||null,serviceArea,due,budget]);await client.query("INSERT INTO errand_events(errand_id,actor_id,event_type,to_status,note) VALUES($1,$2,'request_created','requested','Customer submitted an errand request.')",[r.rows[0].id,user.id]);await client.query("COMMIT");return NextResponse.json({errand:r.rows[0]},{status:201});}
-    catch{await client.query("ROLLBACK").catch(()=>undefined);return error("The request could not be saved. Please retry.",503);}
-    finally{client.release();}
+
+  if (action === "providerReview") {
+    if (user.role !== "admin") return error("Operations access is required.", 403);
+    const providerId = text(body.providerId, 80);
+    const decision = text(body.decision, 20);
+    if (!providerId || !["approve", "reject", "suspend", "reinstate"].includes(decision)) return error("Choose a provider and review decision.");
+    const status = decision === "approve" ? "approved" : decision === "reject" ? "rejected" : decision === "suspend" ? "suspended" : "approved";
+    const rejectionReason = text(body.reason, 1000);
+    if (decision === "reject" && rejectionReason.length < 5) return error("Give a short reason so the applicant knows what to improve.");
+    try {
+      const r = await query(
+        "UPDATE provider_profiles pp SET approval_status=$2,rejection_reason=$3,verified_at=CASE WHEN $2='approved' THEN now() ELSE pp.verified_at END,available=CASE WHEN $2='approved' THEN pp.available ELSE false END,updated_at=now() FROM users u WHERE pp.user_id=$1 AND u.id=pp.user_id AND u.role='provider' RETURNING pp.user_id,pp.approval_status",
+        [providerId, status, decision === "reject" ? rejectionReason : null]
+      );
+      if (!r.rowCount) return error("Provider profile not found.", 404);
+      await notify(providerId, "provider_review", "Provider application updated", decision === "approve" ? "Your service profile has been approved. You can now receive assignments." : decision === "reject" ? "Your service profile needs changes: " + rejectionReason : decision === "suspend" ? "Your provider access has been temporarily suspended. Contact operations for details." : "Your provider access has been reinstated.", "/", "provider", providerId);
+      return NextResponse.json({ ok: true, message: "Provider " + status + ".", approvalStatus: status });
+    } catch { return error("Provider review failed.", 503); }
   }
-  if(op==="providerReview"){
-    if(user.role!=="admin")return error("Operations access is required.",403);
-    const providerId=typeof body?.providerId==="string"?body.providerId:"";
-    const decision=body?.decision;
-    if(!providerId||!["approve","reject"].includes(decision))return error("Choose a provider and review decision.");
-    try{const status=decision==="approve"?"approved":"rejected";const r=await query("UPDATE provider_profiles pp SET approval_status=$2,updated_at=now() FROM users u WHERE pp.user_id=$1 AND u.id=pp.user_id AND u.role='provider' RETURNING pp.user_id",[providerId,status]);if(!r.rowCount)return error("Provider profile not found.",404);return NextResponse.json({ok:true,message:"Provider "+status+"."});}
-    catch{return error("Provider review failed.",503);}
+
+  if (action === "sendMessage") {
+    const errandId = text(body.errandId, 80);
+    const message = text(body.message, 4000);
+    if (message.length < 1) return error("Write a message before sending.");
+    const client = await databasePool().connect();
+    try {
+      await client.query("BEGIN");
+      const e = await client.query("SELECT * FROM errands WHERE id=$1 FOR UPDATE", [errandId]);
+      const row = e.rows[0];
+      if (!row || !(user.role === "admin" || row.customer_id === user.id || row.provider_id === user.id)) {
+        await client.query("ROLLBACK");
+        return error("Errand not found or messaging access is not permitted.", 404);
+      }
+      const m = await client.query("INSERT INTO errand_messages(errand_id,sender_id,message) VALUES($1,$2,$3) RETURNING id,message,created_at", [errandId, user.id, message]);
+      await addEvent(client, errandId, user.id, "message_sent", row.status, row.status, "Message sent.", { messageId: m.rows[0].id });
+      const recipients = [row.customer_id, row.provider_id, ...(user.role !== "admin" ? [] : [])].filter((id: string | null) => id && id !== user.id);
+      if (user.role !== "admin") {
+        const admins = await client.query("SELECT id FROM users WHERE role='admin' AND is_active=true AND id<>$1", [user.id]);
+        for (const admin of admins.rows) recipients.push(admin.id);
+      }
+      for (const recipient of new Set(recipients)) {
+        await client.query(
+          "INSERT INTO notifications(user_id,kind,title,body,href,entity_type,entity_id) VALUES($1,'message','New errand message',$2,'/','errand',$3)",
+          [recipient, row.public_code + " · " + message.slice(0, 150), errandId]
+        );
+      }
+      await client.query("COMMIT");
+      return NextResponse.json({ ok: true, message: m.rows[0] }, { status: 201 });
+    } catch { await client.query("ROLLBACK").catch(() => undefined); return error("Message could not be sent.", 503); }
+    finally { client.release(); }
   }
-  if(op==="errandAction"){
-    const id=typeof body?.id==="string"?body.id:"";const act=typeof body?.errandAction==="string"?body.errandAction:"";
-    if(!id)return error("Errand identifier is missing.");
-    const client=await databasePool().connect();
-    try{
-      await client.query("BEGIN");const selected=await client.query("SELECT * FROM errands WHERE id=$1 FOR UPDATE",[id]);const e=selected.rows[0];if(!e){await client.query("ROLLBACK");return error("Errand not found.",404);}
-      const old=e.status as string;let next=old;let note="";let event=act;
-      if(act==="quote"){
-        if(user.role!=="admin"||!["requested","declined","quoted"].includes(old))throw new Error("Only operations can quote requests awaiting review.");
-        const amount=Number(body.amount);const payout=body.providerPayout==null||body.providerPayout===""?null:Number(body.providerPayout);
-        if(!Number.isFinite(amount)||amount<0||amount>100000000||(payout!==null&&(!Number.isFinite(payout)||payout<0||payout>amount)))throw new Error("Enter a valid quote and payout; payout cannot exceed the quote.");
-        next="quoted";note="Operations prepared or updated the customer quote.";await client.query("UPDATE errands SET quote_amount=$2,provider_payout=$3,status=$4,updated_at=now() WHERE id=$1",[id,amount,payout,next]);
-      }else if(act==="assign"){
-        if(user.role!=="admin"||!["requested","quoted","declined"].includes(old))throw new Error("Only operations can assign a request awaiting assignment.");
-        const pid=typeof body.providerId==="string"?body.providerId:"";const p=await client.query("SELECT u.id FROM users u JOIN provider_profiles pp ON pp.user_id=u.id WHERE u.id=$1 AND u.role='provider' AND u.is_active=true AND pp.approval_status='approved' AND pp.available=true",[pid]);if(!p.rowCount)throw new Error("Choose an active, approved provider.");
-        next="assigned";note="Operations assigned the errand to an approved provider.";await client.query("UPDATE errands SET provider_id=$2,status=$3,updated_at=now() WHERE id=$1",[id,pid,next]);
-      }else if(act==="accept"||act==="decline"){
-        if(user.role!=="provider"||e.provider_id!==user.id||old!=="assigned")throw new Error("Only the assigned provider can respond to this assignment.");
-        next=act==="accept"?"accepted":"declined";note=act==="accept"?"Provider accepted the assignment.":"Provider declined the assignment.";await client.query("UPDATE errands SET status=$2,updated_at=now() WHERE id=$1",[id,next]);
-      }else if(act==="start"){
-        if(user.role!=="provider"||e.provider_id!==user.id||old!=="accepted")throw new Error("Only the assigned provider can start an accepted task.");
-        next="in_progress";note="Provider marked the task as in progress.";await client.query("UPDATE errands SET status=$2,updated_at=now() WHERE id=$1",[id,next]);
-      }else if(act==="complete"){
-        if(user.role!=="provider"||e.provider_id!==user.id||old!=="in_progress")throw new Error("Only the assigned provider can submit completion from an in-progress task.");
-        note=typeof body.completionNotes==="string"?body.completionNotes.trim().slice(0,4000):"";if(note.length<3)throw new Error("Add completion notes before submitting.");next="completion_submitted";await client.query("UPDATE errands SET status=$2,completion_notes=$3,updated_at=now() WHERE id=$1",[id,next,note]);
-      }else if(act==="confirm"||act==="dispute"){
-        if(user.role!=="customer"||e.customer_id!==user.id||old!=="completion_submitted")throw new Error("Only the requesting customer can confirm or dispute submitted completion.");
-        if(act==="confirm"){next="completed";note="Customer confirmed completion.";await client.query("UPDATE errands SET status=$2,customer_confirmed_at=now(),updated_at=now() WHERE id=$1",[id,next]);}
-        else{note=typeof body.note==="string"?body.note.trim().slice(0,1000):"";if(note.length<3)throw new Error("Explain the issue before opening a dispute.");next="disputed";await client.query("UPDATE errands SET status=$2,updated_at=now() WHERE id=$1",[id,next]);}
-      }else if(act==="cancel"){
-        const customerCan=user.role==="customer"&&e.customer_id===user.id&&["requested","quoted","assigned"].includes(old);const adminCan=user.role==="admin"&&!["completed","cancelled"].includes(old);
-        if(!customerCan&&!adminCan)throw new Error("This errand can no longer be cancelled by this account.");next="cancelled";note="Errand cancelled by "+user.role+".";await client.query("UPDATE errands SET status=$2,updated_at=now() WHERE id=$1",[id,next]);
-      }else if(act==="mark_paid"){
-        if(user.role!=="admin")throw new Error("Only operations can record payments.");
-        const amount=Number(body.amount);const method=typeof body.method==="string"?body.method.trim().slice(0,80):"";const reference=typeof body.reference==="string"?body.reference.trim().slice(0,160):"";
+
+  if (action === "markNotificationRead") {
+    const id = text(body.id, 80);
+    try {
+      if (id) await query("UPDATE notifications SET read_at=now() WHERE id=$1 AND user_id=$2", [id, user.id]);
+      else await query("UPDATE notifications SET read_at=now() WHERE user_id=$1 AND read_at IS NULL", [user.id]);
+      return NextResponse.json({ ok: true });
+    } catch { return error("Notification could not be updated.", 503); }
+  }
+
+  if (action === "addRating") {
+    if (user.role !== "customer") return error("Only customers can rate a completed errand.", 403);
+    const errandId = text(body.errandId, 80);
+    const score = Number(body.score);
+    const comment = text(body.comment, 1200);
+    if (!Number.isInteger(score) || score < 1 || score > 5) return error("Choose a rating from 1 to 5.");
+    const client = await databasePool().connect();
+    try {
+      await client.query("BEGIN");
+      const r = await client.query("SELECT * FROM errands WHERE id=$1 FOR UPDATE", [errandId]);
+      const e = r.rows[0];
+      if (!e || e.customer_id !== user.id || e.status !== "completed" || !e.provider_id) {
+        await client.query("ROLLBACK");
+        return error("Only a completed errand assigned to your account can be rated.", 409);
+      }
+      await client.query("INSERT INTO errand_ratings(errand_id,reviewer_id,reviewee_id,score,comment) VALUES($1,$2,$3,$4,$5)", [errandId, user.id, e.provider_id, score, comment || null]);
+      await client.query(
+        "UPDATE provider_profiles pp SET rating_average=(SELECT avg(score)::numeric(3,2) FROM errand_ratings WHERE reviewee_id=pp.user_id),rating_count=(SELECT count(*)::int FROM errand_ratings WHERE reviewee_id=pp.user_id),updated_at=now() WHERE pp.user_id=$1",
+        [e.provider_id]
+      );
+      await client.query("COMMIT");
+      await notify(e.provider_id, "rating", "You received a customer rating", "A customer left feedback after completing " + e.public_code + ".", "/", "errand", errandId);
+      return NextResponse.json({ ok: true, message: "Thank you for the feedback." }, { status: 201 });
+    } catch (e) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      if (typeof e === "object" && e !== null && "code" in e && (e as { code?: string }).code === "23505") return error("You have already rated this completed errand.", 409);
+      return error("Rating could not be saved.", 503);
+    } finally { client.release(); }
+  }
+
+  if (action === "createErrand" || action === "errandAction" || action === "recordPayout" || action === "reconcilePayment" || action === "recordRefund") {
+    // These actions are handled below through the same scoped transactional path.
+  } else if (action !== "") return error("Unknown operation.", 404);
+
+  if (action === "createErrand") {
+    if (user.role !== "customer") return error("Only customer accounts can submit new errands.", 403);
+    const title = text(body.title, 160);
+    const category = text(body.category, 40);
+    const description = text(body.description, 5000);
+    const serviceArea = text(body.serviceArea, 180);
+    const pickup = text(body.pickupLocation, 300);
+    const destination = text(body.destinationLocation, 300);
+    const allowed = new Set(["shopping", "pickup_delivery", "personal_errand", "business_support", "local_assistance", "other"]);
+    const budget = num(body.budgetAmount);
+    const dueAt = text(body.dueAt, 60);
+    const due = dueAt ? new Date(dueAt) : null;
+    const priority = new Set(["low", "standard", "high", "urgent"]).has(text(body.priority, 20)) ? text(body.priority, 20) : "standard";
+    if (title.length < 3 || description.length < 5 || serviceArea.length < 2 || !allowed.has(category)) return error("Check the task title, detail, category and service area.");
+    if (budget !== null && (!Number.isFinite(budget) || budget < 0 || budget > 100000000)) return error("Enter a valid non-negative budget.");
+    if (due && (!Number.isFinite(due.getTime()) || due.getTime() < Date.now() - 86400000)) return error("Choose a valid due date.");
+    const code = randomCode();
+    const client = await databasePool().connect();
+    try {
+      await client.query("BEGIN");
+      const r = await client.query("INSERT INTO errands(public_code,customer_id,title,category,description,pickup_location,destination_location,service_area,due_at,budget_amount,priority) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *", [code,user.id,title,category,description,pickup||null,destination||null,serviceArea,due,budget,priority]);
+      const e = r.rows[0];
+      await addEvent(client,e.id,user.id,"request_created",null,"requested","Customer submitted an errand request.",{priority,category});
+      const admins = await client.query("SELECT id FROM users WHERE role='admin' AND is_active=true");
+      for (const admin of admins.rows) await client.query("INSERT INTO notifications(user_id,kind,title,body,href,entity_type,entity_id) VALUES($1,'new_errand','New errand request',$2,'/','errand',$3)",[admin.id,e.public_code+" · "+e.title,e.id]);
+      await client.query("COMMIT");
+      return NextResponse.json({errand:e},{status:201});
+    } catch { await client.query("ROLLBACK").catch(()=>undefined); return error("The request could not be saved. Please retry.",503); }
+    finally { client.release(); }
+  }
+
+  if (action === "errandAction") {
+    const id = text(body.id, 80);
+    const act = text(body.errandAction, 40);
+    if (!id) return error("Errand identifier is required.");
+    const client = await databasePool().connect();
+    let resultMessage = "";
+    let notifyTarget: {id:string;kind:string;title:string;body:string;errandId:string}|null = null;
+    try {
+      await client.query("BEGIN");
+      const locked = await client.query("SELECT * FROM errands WHERE id=$1 FOR UPDATE", [id]);
+      const e = locked.rows[0];
+      if (!e) { await client.query("ROLLBACK"); return error("Errand not found.", 404); }
+      const previous = e.status as string;
+      let next = previous;
+      let eventNote = "";
+      let eventType = act;
+      if (act === "quote") {
+        if (user.role !== "admin" || !["requested","declined","quoted"].includes(previous)) throw new Error("Only operations can quote requests awaiting review.");
+        const amount = Number(body.amount);
+        const payout = num(body.providerPayout);
+        if (!Number.isFinite(amount) || amount < 0 || amount > 100000000 || (payout !== null && (!Number.isFinite(payout) || payout < 0 || payout > amount))) throw new Error("Enter a valid quote and payout; provider payout cannot exceed the quote.");
+        const fee = amount - (payout ?? amount);
+        next = "quoted";
+        eventNote = "Operations prepared or updated the customer quote.";
+        await client.query("UPDATE errands SET quote_amount=$2,provider_payout=$3,service_fee_amount=$4,status=$5,quote_approved=false,quote_decided_at=NULL,version=version+1,updated_at=now() WHERE id=$1",[id,amount,payout,fee,next]);
+        notifyTarget = {id:e.customer_id,kind:"quote",title:"Your errand has been quoted",body:e.public_code+" · Quote: KES "+amount.toFixed(2),errandId:id};
+      } else if (act === "approveQuote" || act === "declineQuote") {
+        if (user.role !== "customer" || e.customer_id !== user.id || previous !== "quoted" || e.quote_approved === true || e.quote_amount == null) throw new Error("Only the requesting customer can respond to an unapproved quote.");
+        const admins = await client.query("SELECT id FROM users WHERE role='admin' AND is_active=true");
+        if (act === "approveQuote") {
+          next = "quoted";
+          eventNote = "Customer approved the quote of KES " + Number(e.quote_amount).toFixed(2) + ".";
+          await client.query("UPDATE errands SET quote_approved=true,quote_decided_at=now(),version=version+1,updated_at=now() WHERE id=$1", [id]);
+          for (const admin of admins.rows) await client.query("INSERT INTO notifications(user_id,kind,title,body,href,entity_type,entity_id) VALUES($1,'quote_approved','Quote approved by customer',$2,'/','errand',$3)", [admin.id,e.public_code + " is ready for assignment.",id]);
+          notifyTarget = {id:e.customer_id,kind:"quote",title:"Quote approved",body:e.public_code + " · Operations will assign an approved provider.",errandId:id};
+        } else {
+          const reason = text(body.reason,500);
+          next = "requested";
+          eventNote = "Customer declined the quote." + (reason ? " Reason: " + reason : "");
+          await client.query("UPDATE errands SET status='requested',quote_amount=NULL,provider_payout=NULL,service_fee_amount=0,quote_approved=false,quote_decided_at=now(),version=version+1,updated_at=now() WHERE id=$1", [id]);
+          for (const admin of admins.rows) await client.query("INSERT INTO notifications(user_id,kind,title,body,href,entity_type,entity_id) VALUES($1,'quote_declined','Quote needs revision',$2,'/','errand',$3)", [admin.id,e.public_code + " · Customer declined the quote.",id]);
+          notifyTarget = {id:e.customer_id,kind:"quote",title:"Quote declined",body:"Operations has been asked to review the pricing for " + e.public_code + ".",errandId:id};
+        }
+      } else if (act === "assign") {
+        if (user.role !== "admin" || previous !== "quoted" || e.quote_approved !== true) throw new Error("The customer must approve a valid quote before operations can assign this errand.");
+        const providerId = text(body.providerId,80);
+        const provider = await client.query("SELECT u.id,pp.service_area FROM users u JOIN provider_profiles pp ON pp.user_id=u.id WHERE u.id=$1 AND u.role='provider' AND u.is_active=true AND pp.approval_status='approved' AND pp.available=true",[providerId]);
+        if (!provider.rowCount) throw new Error("Choose an active, approved provider marked available.");
+        next = "assigned";
+        eventNote = "Operations manually assigned the errand to an approved provider.";
+        await client.query("UPDATE errands SET provider_id=$2,status=$3,version=version+1,updated_at=now() WHERE id=$1",[id,providerId,next]);
+        notifyTarget = {id:providerId,kind:"assignment",title:"New errand assignment",body:e.public_code+" · "+e.title,errandId:id};
+      } else if (act === "accept" || act === "decline") {
+        if (user.role !== "provider" || e.provider_id !== user.id || previous !== "assigned") throw new Error("Only the assigned provider can respond to this assignment.");
+        next = act === "accept" ? "accepted" : "declined";
+        eventNote = act === "accept" ? "Provider accepted the assignment." : "Provider declined the assignment.";
+        await client.query("UPDATE errands SET status=$2,accepted_at=CASE WHEN $2='accepted' THEN now() ELSE accepted_at END,provider_id=CASE WHEN $2='declined' THEN NULL ELSE provider_id END,version=version+1,updated_at=now() WHERE id=$1",[id,next]);
+        const recipients = await client.query("SELECT id FROM users WHERE role='admin' AND is_active=true");
+        if (act === "decline") {
+          for (const admin of recipients.rows) await client.query("INSERT INTO notifications(user_id,kind,title,body,href,entity_type,entity_id) VALUES($1,'provider_declined','Provider declined assignment',$2,'/','errand',$3)",[admin.id,e.public_code+" needs reassignment",id]);
+          notifyTarget = {id:e.customer_id,kind:"assignment",title:"Your assignment is being reviewed",body:"Operations is arranging the next step for "+e.public_code+".",errandId:id};
+        } else notifyTarget = {id:e.customer_id,kind:"progress",title:"Provider accepted your errand",body:e.public_code+" · The provider will update progress here.",errandId:id};
+      } else if (act === "start") {
+        if (user.role !== "provider" || e.provider_id !== user.id || previous !== "accepted") throw new Error("Only the assigned provider can start an accepted task.");
+        next = "in_progress"; eventNote = "Provider marked the task as in progress.";
+        await client.query("UPDATE errands SET status=$2,started_at=now(),version=version+1,updated_at=now() WHERE id=$1",[id,next]);
+        notifyTarget = {id:e.customer_id,kind:"progress",title:"Your errand is in progress",body:e.public_code+" · Work has started.",errandId:id};
+      } else if (act === "complete") {
+        if (user.role !== "provider" || e.provider_id !== user.id || previous !== "in_progress") throw new Error("Only the assigned provider can submit completion from an in-progress task.");
+        const notes = text(body.completionNotes,4000);
+        if (notes.length < 3) throw new Error("Add completion notes before submitting.");
+        next = "completion_submitted"; eventNote = notes;
+        await client.query("UPDATE errands SET status=$2,completion_notes=$3,completed_at=now(),version=version+1,updated_at=now() WHERE id=$1",[id,next,notes]);
+        notifyTarget = {id:e.customer_id,kind:"completion",title:"Your errand is ready for review",body:e.public_code+" · Check the completion notes and confirm or raise a dispute.",errandId:id};
+      } else if (act === "confirm" || act === "dispute") {
+        if (user.role !== "customer" || e.customer_id !== user.id || previous !== "completion_submitted") throw new Error("Only the requesting customer can confirm or dispute submitted completion.");
+        if (act === "confirm") {
+          next="completed"; eventNote="Customer confirmed completion.";
+          await client.query("UPDATE errands SET status=$2,customer_confirmed_at=now(),version=version+1,updated_at=now() WHERE id=$1",[id,next]);
+          await client.query("UPDATE provider_profiles SET completed_jobs=completed_jobs+1,updated_at=now() WHERE user_id=$1",[e.provider_id]);
+          notifyTarget = e.provider_id ? {id:e.provider_id,kind:"completion",title:"Errand confirmed complete",body:e.public_code+" · The customer confirmed completion.",errandId:id} : null;
+        } else {
+          const reason=text(body.note,1000);
+          if(reason.length<3) throw new Error("Explain the issue before opening a dispute.");
+          next="disputed";eventNote=reason;
+          await client.query("UPDATE errands SET status=$2,disputed_at=now(),version=version+1,updated_at=now() WHERE id=$1",[id,next]);
+          const admins=await client.query("SELECT id FROM users WHERE role='admin' AND is_active=true");
+          for(const admin of admins.rows) await client.query("INSERT INTO notifications(user_id,kind,title,body,href,entity_type,entity_id) VALUES($1,'dispute','Errand dispute requires review',$2,'/','errand',$3)",[admin.id,e.public_code+" · "+reason.slice(0,140),id]);
+          notifyTarget = e.provider_id ? {id:e.provider_id,kind:"dispute",title:"A customer raised a dispute",body:e.public_code+" · Operations will review the details.",errandId:id} : null;
+        }
+      } else if (act === "cancel") {
+        const canCustomer=user.role==="customer"&&e.customer_id===user.id&&["requested","quoted","assigned"].includes(previous);
+        const canAdmin=user.role==="admin"&&!["completed","cancelled"].includes(previous);
+        if(!canCustomer&&!canAdmin)throw new Error("This errand can no longer be cancelled by this account.");
+        const reason=text(body.reason,1000);
+        next="cancelled";eventNote=reason||"Errand cancelled by "+user.role+".";
+        await client.query("UPDATE errands SET status=$2,cancellation_reason=$3,version=version+1,updated_at=now() WHERE id=$1",[id,next,reason||null]);
+        const other = user.id===e.customer_id ? e.provider_id : e.customer_id;
+        notifyTarget = other ? {id:other,kind:"cancellation",title:"Errand cancelled",body:e.public_code+" · "+eventNote,errandId:id} : null;
+      } else if (act === "mark_paid" || act === "recordPayout" || act === "recordRefund") {
+        if(user.role!=="admin")throw new Error("Only operations can create payment or payout records.");
+        const amount=Number(body.amount);
+        const method=text(body.method,80);
+        const reference=text(body.reference,160);
+        const idempotencyKey=text(body.idempotencyKey,100)||hash([id,act,amount,method,reference].join("|"));
         if(!Number.isFinite(amount)||amount<0||amount>100000000||method.length<2)throw new Error("Enter a valid amount and payment method.");
-        await client.query("INSERT INTO payment_records(errand_id,recorded_by,record_type,amount,currency,method,reference,status,notes) VALUES($1,$2,'customer_payment',$3,'KES',$4,$5,'recorded','Manually recorded by operations.')",[id,user.id,amount,method,reference||null]);await client.query("UPDATE errands SET payment_status='paid',payment_method=$2,payment_reference=$3,updated_at=now() WHERE id=$1",[id,method,reference||null]);note="Operations recorded a customer payment of KES "+amount.toFixed(2)+" ("+method+").";
-      }else if(act==="record_payout"){
-        if(user.role!=="admin"||!e.provider_id)throw new Error("Only operations can record payout for an assigned provider.");
-        const amount=Number(body.amount);const method=typeof body.method==="string"?body.method.trim().slice(0,80):"";const reference=typeof body.reference==="string"?body.reference.trim().slice(0,160):"";
-        if(!Number.isFinite(amount)||amount<0||amount>100000000||method.length<2)throw new Error("Enter a valid payout amount and method.");
-        await client.query("INSERT INTO payment_records(errand_id,recorded_by,record_type,amount,currency,method,reference,status,notes) VALUES($1,$2,'provider_payout',$3,'KES',$4,$5,'recorded','Manually recorded by operations.')",[id,user.id,amount,method,reference||null]);note="Operations recorded a provider payout of KES "+amount.toFixed(2)+".";
-      }else throw new Error("Unsupported errand action.");
-      await client.query("INSERT INTO errand_events(errand_id,actor_id,event_type,from_status,to_status,note,metadata) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb)",[id,user.id,event,old,next,note,JSON.stringify({role:user.role})]);
-      await client.query("COMMIT");return NextResponse.json({ok:true,message:"Errand "+e.public_code+" updated.",status:next});
-    }catch(ex){await client.query("ROLLBACK").catch(()=>undefined);const message=ex instanceof Error?ex.message:"Errand action failed.";return error(message,message.startsWith("Only ")||message.startsWith("This errand")?403:400);}
-    finally{client.release();}
+        if(act==="mark_paid"&&e.payment_status==="paid")throw new Error("A customer payment is already recorded for this errand. Review the ledger instead.");
+        if(act==="mark_paid"&&!["completion_submitted","completed","disputed"].includes(e.status))throw new Error("Record a customer payment only after completion has been submitted or an issue requires operations review.");
+        if(act==="recordPayout"&&(!e.provider_id||e.status!=="completed"))throw new Error("A provider payout can only be recorded for an assigned provider after customer-confirmed completion.");
+        if(act==="recordRefund"&&e.payment_status!=="paid")throw new Error("A refund can only be recorded against a paid errand.");
+        if(act==="recordRefund"){
+          const remainingPaid=await client.query("SELECT (coalesce(sum(amount) FILTER (WHERE record_type='customer_payment' AND status<>'reversed'),0)-coalesce(sum(amount) FILTER (WHERE record_type='refund' AND status<>'reversed'),0))::numeric AS total FROM payment_records WHERE errand_id=$1",[id]);
+          if(amount>Number(remainingPaid.rows[0]?.total||0))throw new Error("Refund amount cannot exceed the remaining recorded customer payments.");
+        }
+        const recordType=act==="recordPayout"?"provider_payout":act==="recordRefund"?"refund":"customer_payment";
+        const inserted=await client.query(
+          "INSERT INTO payment_records(errand_id,recorded_by,record_type,amount,currency,method,reference,status,notes,idempotency_key) VALUES($1,$2,$3,$4,'KES',$5,$6,'recorded',$7,$8) ON CONFLICT(errand_id,idempotency_key) DO NOTHING RETURNING id",
+          [id,user.id,recordType,amount,method,reference||null,"Manually recorded by operations.",idempotencyKey]
+        );
+        if(!inserted.rowCount){await client.query("COMMIT");return NextResponse.json({ok:true,message:"This payment action was already recorded.",status:previous});}
+        if(act==="mark_paid") {
+          await client.query("UPDATE errands SET payment_status='paid',payment_method=$2,payment_reference=$3,paid_at=now(),version=version+1,updated_at=now() WHERE id=$1",[id,method,reference||null]);
+          eventNote="Operations recorded customer payment KES "+amount.toFixed(2)+" ("+method+").";
+          notifyTarget=e.customer_id?{id:e.customer_id,kind:"payment",title:"Payment recorded",body:e.public_code+" · Customer payment has been recorded.",errandId:id}:null;
+        } else if(act==="recordRefund") {
+          await client.query("UPDATE errands SET payment_status='refunded',version=version+1,updated_at=now() WHERE id=$1",[id]);
+          eventNote="Operations recorded a refund KES "+amount.toFixed(2)+" ("+method+").";
+          notifyTarget=e.customer_id?{id:e.customer_id,kind:"payment",title:"Refund recorded",body:e.public_code+" · A refund record has been added.",errandId:id}:null;
+        } else {
+          eventNote="Operations recorded provider payout KES "+amount.toFixed(2)+" ("+method+").";
+          notifyTarget=e.provider_id?{id:e.provider_id,kind:"payment",title:"Provider payout recorded",body:e.public_code+" · A payout record has been added.",errandId:id}:null;
+        }
+      } else throw new Error("Unsupported errand action.");
+
+      await addEvent(client,id,user.id,eventType,previous,next,eventNote,{role:user.role});
+      await client.query("COMMIT");
+      resultMessage="Errand "+e.public_code+" updated.";
+    } catch(ex) {
+      await client.query("ROLLBACK").catch(()=>undefined);
+      const message=ex instanceof Error?ex.message:"Errand action failed.";
+      const status=message.startsWith("Only ")||message.startsWith("This errand")?403:400;
+      return error(message,status);
+    } finally { client.release(); }
+    if(notifyTarget) await notify(notifyTarget.id,notifyTarget.kind,notifyTarget.title,notifyTarget.body,"/","errand",notifyTarget.errandId);
+    return NextResponse.json({ok:true,message:resultMessage,status:undefined});
   }
-  return error("Unknown operation.",404);
+
+  if (action === "recordPayout" || action === "recordRefund") {
+    // Handled by errandAction to ensure the update and audit trail share a single lock.
+    return error("Use errandAction for payments.", 400);
+  }
+
+  if (action === "reconcilePayment") {
+    if (user.role !== "admin") return error("Operations access is required.", 403);
+    const paymentId = text(body.paymentId, 80);
+    try {
+      const client = await databasePool().connect();
+      let changed: any;
+      try {
+        await client.query("BEGIN");
+        const p = await client.query("SELECT pr.*,e.customer_id,e.provider_id,e.public_code,e.status AS errand_status FROM payment_records pr JOIN errands e ON e.id=pr.errand_id WHERE pr.id=$1 FOR UPDATE OF pr", [paymentId]);
+        if (!p.rowCount) { await client.query("ROLLBACK"); return error("Payment record not found.", 404); }
+        if (p.rows[0].status === "reversed") { await client.query("ROLLBACK"); return error("A reversed payment cannot be reconciled.", 409); }
+        changed = p.rows[0];
+        await client.query("UPDATE payment_records SET status='reconciled' WHERE id=$1", [paymentId]);
+        await addEvent(client, changed.errand_id, user.id, "payment_reconciled", changed.errand_status, changed.errand_status, "Operations reconciled " + changed.record_type.replaceAll("_"," ") + " of KES " + Number(changed.amount).toFixed(2) + ".", { paymentId: changed.id, recordType: changed.record_type, amount: Number(changed.amount), reference: changed.reference || null });
+        await client.query("COMMIT");
+      } catch(e) { await client.query("ROLLBACK").catch(()=>undefined); throw e; }
+      finally { client.release(); }
+      const target = changed.record_type === "provider_payout" ? changed.provider_id : changed.customer_id;
+      if (target) await notify(target,"payment_reconciled","Payment reconciled",changed.public_code+" · Operations reconciled a payment record.","/","errand",changed.errand_id);
+      return NextResponse.json({ok:true,message:"Payment record reconciled."});
+    } catch { return error("Payment could not be reconciled.", 503); }
+  }
+
+  return error("Unknown operation.", 404);
 }

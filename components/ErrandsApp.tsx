@@ -1,102 +1,445 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
 
-type User = {id:string;full_name:string;email:string;role:"customer"|"provider"|"admin"};
-type Errand = {id:string;public_code:string;customer_id:string;provider_id:string|null;title:string;category:string;description:string;service_area:string;pickup_location:string|null;destination_location:string|null;budget_amount:string|null;quote_amount:string|null;status:string;payment_status:string;payment_method:string|null;payment_reference:string|null;completion_notes:string|null;customer_name:string;provider_name:string|null};
-type Provider = {user_id:string;full_name:string;email:string;business_name:string|null;service_area:string|null;approval_status:string;available:boolean};
-const categories = [{id:"shopping",name:"Shopping & essentials",icon:"🛍️",body:"Groceries, household supplies and everyday purchases."},{id:"pickup_delivery",name:"Pickups & drop-offs",icon:"📦",body:"Documents, keys, parcels and local collections."},{id:"personal_errand",name:"Personal errands",icon:"🗓️",body:"Bookings, collections, queues and practical tasks."},{id:"business_support",name:"Business support",icon:"🏢",body:"Office runs, supplier collections and local operations."},{id:"local_assistance",name:"Local assistance",icon:"🧰",body:"Coordinate simple practical help and local services."},{id:"other",name:"Other legitimate tasks",icon:"🤝",body:"Describe the task and operations will review it."}];
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+type Role = "customer" | "provider" | "admin";
+type User = { id: string; full_name: string; email: string; role: Role; phone?: string | null };
+type Errand = {
+  id: string; public_code: string; customer_id: string; provider_id: string | null;
+  title: string; category: string; description: string; service_area: string;
+  pickup_location: string | null; destination_location: string | null; due_at: string | null;
+  budget_amount: string | null; quote_amount: string | null; provider_payout: string | null;
+  service_fee_amount?: string | null; priority?: string; quote_approved?: boolean; status: string; payment_status: string;
+  payment_method: string | null; payment_reference: string | null; completion_notes: string | null;
+  customer_name: string; provider_name: string | null; provider_business_name?: string | null;
+  created_at?: string; updated_at?: string; version?: number;
+};
+type Provider = {
+  user_id: string; full_name: string; email: string; phone?: string; provider_type: string;
+  business_name: string | null; service_area: string | null; service_categories: string[];
+  bio?: string | null; approval_status: string; rejection_reason?: string | null; available: boolean;
+  completed_jobs?: number; rating_average?: number; rating_count?: number; created_at?: string;
+};
+type Payment = {
+  id: string; errand_id: string; public_code: string; title: string; record_type: string;
+  amount: string; currency: string; method: string; reference: string | null; status: string;
+  created_at: string; customer_name?: string; provider_name?: string; recorded_by_name?: string;
+  errand_status?: string;
+};
+type EventItem = { id: number; event_type: string; from_status: string | null; to_status: string | null; note: string | null; created_at: string; actor_name: string | null };
+type Message = { id: number; sender_id: string; message: string; created_at: string; sender_name: string; sender_role: Role };
+type Notification = { id: string; kind: string; title: string; body: string; href: string | null; read_at: string | null; created_at: string };
+type ProviderProfile = {
+  full_name: string; email: string; phone: string | null; provider_type: string; business_name: string | null;
+  service_categories: string[]; service_area: string | null; bio: string | null; approval_status: string;
+  rejection_reason: string | null; available: boolean; verified_at: string | null;
+  completed_jobs: number; rating_average: number; rating_count: number;
+};
+type Detail = { errand: Errand; events: EventItem[]; messages: Message[]; ratings: { id: string; score: number; comment: string | null; reviewer_name: string; created_at: string }[] };
+type Tab = "overview" | "errands" | "providers" | "payments" | "profile";
+type PaymentKind = "mark_paid" | "recordPayout" | "recordRefund";
+const CATEGORIES = [
+  { id: "shopping", name: "Shopping & essentials", icon: "🛍", description: "Groceries, household supplies, everyday purchases" },
+  { id: "pickup_delivery", name: "Pickups & drop-offs", icon: "📦", description: "Documents, keys, parcels and local collections" },
+  { id: "personal_errand", name: "Personal errands", icon: "🗓", description: "Bookings, collections, queueing and practical tasks" },
+  { id: "business_support", name: "Business support", icon: "▦", description: "Office runs, supplier collections and local operations" },
+  { id: "local_assistance", name: "Local assistance", icon: "⌂", description: "Coordinate simple practical help and local services" },
+  { id: "other", name: "Other legitimate tasks", icon: "✳", description: "Describe the task; operations will review it" }
+];
+const STATUSES = ["requested","quoted","assigned","accepted","in_progress","completion_submitted","completed","disputed","cancelled","declined"];
+const statusLabel = (status: string) => status.replaceAll("_", " ").replace(/\b\w/g, m => m.toUpperCase());
+const money = (value: string | number | null | undefined) => value == null || value === "" ? "—" : "KES " + Number(value).toLocaleString("en-KE", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const dateTime = (value?: string | null) => value ? new Date(value).toLocaleString("en-KE", { dateStyle: "medium", timeStyle: "short" }) : "Not scheduled";
+const initials = (name: string) => name.trim().split(/\s+/).slice(0, 2).map(part => part[0]?.toUpperCase() || "").join("");
+const isActiveStatus = (status: string) => ["requested","quoted","assigned","accepted","in_progress","completion_submitted"].includes(status);
+
 export default function ErrandsApp() {
-  const [user,setUser] = useState<User|null>(null);
-  const [ready,setReady] = useState(false);
-  const [view,setView] = useState<"home"|"login"|"register"|"dashboard">("home");
-  const [errands,setErrands] = useState<Errand[]>([]);
-  const [providers,setProviders] = useState<Provider[]>([]);
-  const [error,setError] = useState("");
-  const [message,setMessage] = useState("");
-  const [busy,setBusy] = useState("");
-  const [showRequest,setShowRequest] = useState(false);
-  const [role,setRole] = useState("customer");
+  const [user, setUser] = useState<User | null>(null);
+  const [ready, setReady] = useState(false);
+  const [view, setView] = useState<"home"|"login"|"register"|"setup"|"app">("home");
+  const [tab, setTab] = useState<Tab>("overview");
+  const [errands, setErrands] = useState<Errand[]>([]);
+  const [providers, setProviders] = useState<Provider[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unread, setUnread] = useState(0);
+  const [profile, setProfile] = useState<ProviderProfile | null>(null);
+  const [metrics, setMetrics] = useState<Record<string, any>>({});
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState("");
+  const [authMode, setAuthMode] = useState<"login"|"register">("login");
+  const [registerRole, setRegisterRole] = useState<"customer"|"provider">("customer");
+  const [showRequest, setShowRequest] = useState(false);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [activeErrand, setActiveErrand] = useState<Detail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [messageDraft, setMessageDraft] = useState("");
+  const [paymentModal, setPaymentModal] = useState<{kind:PaymentKind;errand:Errand}|null>(null);
+  const [quoteForm, setQuoteForm] = useState<{id:string;amount:string;payout:string}|null>(null);
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const [profileDraft, setProfileDraft] = useState({
+    providerType:"individual", businessName:"", serviceArea:"", bio:"", serviceCategories:["shopping","pickup_delivery"] as string[]
+  });
 
-  const request = async (action:string, payload:Record<string,unknown> = {}, headers:Record<string,string> = {}) => {
-    const response = await fetch("/api/dispatch?action=" + encodeURIComponent(action),{cache:"no-store",headers:{"Content-Type":"application/json",...headers},body:undefined});
-    return response;
-  };
-  const post = async (action:string,payload:Record<string,unknown> = {},headers:Record<string,string> = {}) => {
-    const response = await fetch("/api/dispatch",{method:"POST",headers:{"Content-Type":"application/json",...headers},body:JSON.stringify({action,...payload})});
-    const data = await response.json();
-    if(!response.ok) throw new Error(data.error || "The request could not be completed.");
+  const post = async (action: string, payload: Record<string, unknown> = {}, headers: Record<string,string> = {}) => {
+    const response = await fetch("/api/dispatch", {
+      method:"POST", cache:"no-store",
+      headers:{ "Content-Type":"application/json", ...headers },
+      body:JSON.stringify({ action, ...payload })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "The request could not be completed.");
     return data;
   };
-  const refresh = useCallback(async () => {
-    if(!user) return;
-    setError("");
+  const get = async (url: string) => {
+    const response = await fetch(url, { cache:"no-store" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "The information could not be loaded.");
+    return data;
+  };
+
+  const refresh = useCallback(async (quiet = false) => {
+    if (!user) return;
+    if (!quiet) setError("");
     try {
-      const r = await fetch("/api/dispatch?action=errands",{cache:"no-store"});
-      const d = await r.json(); if(!r.ok) throw new Error(d.error || "Could not load errands.");
-      setErrands(d.errands || []);
-      if(user.role === "admin") {
-        const pr = await fetch("/api/dispatch?action=providers",{cache:"no-store"});
-        const pd = await pr.json(); if(pr.ok) setProviders(pd.providers || []);
+      const jobs: Promise<any>[] = [
+        get("/api/dispatch?action=errands"),
+        get("/api/dispatch?action=dashboard"),
+        get("/api/dispatch?action=notifications"),
+        get("/api/dispatch?action=payments")
+      ];
+      if (user.role === "admin") jobs.push(get("/api/dispatch?action=providers"));
+      if (user.role === "provider") jobs.push(get("/api/dispatch?action=providerProfile"));
+      const results = await Promise.all(jobs);
+      setErrands(results[0].errands || []);
+      setMetrics(results[1].metrics || {});
+      setNotifications(results[2].notifications || []);
+      setUnread(results[2].unread || 0);
+      setPayments(results[3].payments || []);
+      if (user.role === "admin") setProviders(results[4].providers || []);
+      if (user.role === "provider") {
+        const p: ProviderProfile = results[4].profile;
+        setProfile(p);
+        setProfileDraft({
+          providerType:p.provider_type || "individual",
+          businessName:p.business_name || "",
+          serviceArea:p.service_area || "",
+          bio:p.bio || "",
+          serviceCategories:p.service_categories || []
+        });
       }
-    } catch(e) { setError(e instanceof Error ? e.message : "Could not load workspace."); }
-  },[user]);
+    } catch (e) {
+      if (!quiet) setError(e instanceof Error ? e.message : "Could not load the workspace.");
+    }
+  }, [user]);
+
   useEffect(() => {
-    (async()=>{try{const r=await fetch("/api/dispatch?action=me",{cache:"no-store"});if(r.ok){const d=await r.json();setUser(d.user);setView("dashboard");}}catch{}finally{setReady(true);}})();
-  },[]);
-  useEffect(()=>{if(user)void refresh();},[user,refresh]);
-  async function authSubmit(event:React.FormEvent<HTMLFormElement>,action:"register"|"login") {
-    event.preventDefault();setError("");setBusy("auth");
-    const f=new FormData(event.currentTarget);
-    const payload:Record<string,unknown>={email:String(f.get("email")||"").trim(),password:String(f.get("password")||"")};
-    if(action==="register"){payload.fullName=String(f.get("fullName")||"").trim();payload.phone=String(f.get("phone")||"").trim();payload.role=role;}
-    try{await post(action,payload);const r=await fetch("/api/dispatch?action=me",{cache:"no-store"});const d=await r.json();setUser(d.user);setView("dashboard");setMessage(action==="register"&&role==="provider"?"Account created. Your provider profile is pending operations approval.":"Welcome to SaMi Errands.");}
-    catch(e){setError(e instanceof Error?e.message:"Authentication failed.");}finally{setBusy("");}
+    (async () => {
+      try {
+        const response = await fetch("/api/dispatch?action=me", { cache:"no-store" });
+        if (response.ok) {
+          const data = await response.json();
+          setUser(data.user);
+          setView("app");
+        }
+      } catch { /* The public landing page works without a session. */ }
+      finally { setReady(true); }
+    })();
+  }, []);
+
+  useEffect(() => { if (user && view === "app") void refresh(); }, [user, view, refresh]);
+
+  const visibleErrands = useMemo(() => errands.filter(e => {
+    const matchesStatus = statusFilter === "all" || e.status === statusFilter;
+    const matchesCategory = categoryFilter === "all" || e.category === categoryFilter;
+    const needle = search.trim().toLowerCase();
+    const matchesSearch = !needle || [e.public_code,e.title,e.description,e.service_area,e.customer_name,e.provider_name || ""].some(s => s.toLowerCase().includes(needle));
+    return matchesStatus && matchesCategory && matchesSearch;
+  }), [errands,statusFilter,categoryFilter,search]);
+
+  async function authSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setError(""); setNotice(""); setBusy("auth");
+    const form = new FormData(event.currentTarget);
+    const payload: Record<string,unknown> = {
+      email:String(form.get("email") || "").trim(),
+      password:String(form.get("password") || "")
+    };
+    if (authMode === "register") {
+      payload.fullName = String(form.get("fullName") || "").trim();
+      payload.phone = String(form.get("phone") || "").trim();
+      payload.role = registerRole;
+    }
+    try {
+      await post(authMode === "register" ? "register" : "login", payload);
+      const data = await get("/api/dispatch?action=me");
+      setUser(data.user);
+      setView("app"); setTab("overview");
+      setNotice(authMode === "register" && registerRole === "provider" ? "Account created. Complete your provider profile to be reviewed by operations." : "Welcome back. Your workspace is ready.");
+    } catch(e) { setError(e instanceof Error ? e.message : "Authentication failed."); }
+    finally { setBusy(""); }
   }
-  async function logout(){setBusy("logout");try{await post("logout");setUser(null);setErrands([]);setProviders([]);setView("home");setMessage("You have signed out.");}catch(e){setError(e instanceof Error?e.message:"Could not sign out.");}finally{setBusy("");}}
-  async function createErrand(event:React.FormEvent<HTMLFormElement>){event.preventDefault();setBusy("new");setError("");const f=new FormData(event.currentTarget);const payload=Object.fromEntries(f.entries());try{const d=await post("createErrand",payload);setMessage("Errand "+d.errand.public_code+" submitted for review and quote.");(event.currentTarget as HTMLFormElement).reset();setShowRequest(false);await refresh();}catch(e){setError(e instanceof Error?e.message:"Request failed.");}finally{setBusy("");}}
-  async function act(id:string,action:string,extra:Record<string,unknown>={}){setBusy(id);setError("");setMessage("");try{const d=await post("errandAction",{id,errandAction:action,...extra});setMessage(d.message||"Updated successfully.");await refresh();}catch(e){setError(e instanceof Error?e.message:"Action failed.");}finally{setBusy("");}}
-  async function reviewProvider(providerId:string,action:"approve"|"reject"){setBusy(providerId);try{const d=await post("providerReview",{providerId,decision:action});setMessage(d.message);await refresh();}catch(e){setError(e instanceof Error?e.message:"Provider review failed.");}finally{setBusy("");}}
-  const money=(a:string|null)=>a===null?"Not set":"KES "+Number(a).toLocaleString("en-KE",{maximumFractionDigits:2});
-  const brand=<a className="brand" href="/" onClick={(e)=>{e.preventDefault();setView("home");}}><span className="brand-mark">S</span><span>SaMi <span style={{color:"var(--brand)"}}>Errands</span></span></a>;
-  if(!ready)return <main className="shell"><nav className="nav">{brand}</nav><div className="empty">Loading SaMi Errands…</div></main>;
-  if(view==="login"||view==="register")return <main className="auth-wrap"><aside className="auth-aside">{brand}<div><div className="eyebrow">{view==="login"?"Welcome back":"Make room for your day"}</div><h1>{view==="login"?"Pick up where you left off.":"One account. All kinds of errands."}</h1><p className="lead">{view==="login"?"Review requests, assignments and progress updates.":"Request help with everyday tasks or apply to provide services as an independent provider."}</p></div><small className="muted">SaMi Errands · Everyday help, organised.</small></aside><section className="auth-main"><div className="auth-card"><h2>{view==="login"?"Sign in":"Create your account"}</h2><p className="muted">{view==="login"?"Enter your account details.":"Choose whether to request errands or provide services."}</p><form className="form-stack" onSubmit={(e)=>void authSubmit(e,view==="login"?"login":"register")}>
-    {view==="register"&&<><div className="field"><label htmlFor="fullName">Full name</label><input id="fullName" name="fullName" required minLength={2} maxLength={120} autoComplete="name"/></div><div className="field"><label htmlFor="phone">Phone (optional)</label><input id="phone" name="phone" maxLength={32} autoComplete="tel"/></div><div className="field"><label htmlFor="role">I want to</label><select id="role" value={role} onChange={e=>setRole(e.target.value)}><option value="customer">Request errands</option><option value="provider">Provide errand services</option></select></div></>}
-    <div className="field"><label htmlFor="email">Email address</label><input id="email" name="email" type="email" required maxLength={254} autoComplete="email"/></div><div className="field"><label htmlFor="password">Password</label><input id="password" name="password" type="password" required minLength={10} maxLength={128} autoComplete={view==="login"?"current-password":"new-password"}/><small className="muted">At least 10 characters.</small></div>
-    {error&&<p className="error" role="alert">{error}</p>}<button disabled={busy==="auth"}>{busy==="auth"?"Please wait…":view==="login"?"Sign in":"Create account"}</button></form><p className="muted" style={{fontSize:".9rem",marginTop:16}}>{view==="login"?"New to SaMi Errands? ":"Already registered? "}<button className="outline small-btn" onClick={()=>{setError("");setView(view==="login"?"register":"login");}}>{view==="login"?"Create an account":"Sign in"}</button></p><button className="outline" onClick={()=>setView("home")}>← Back to home</button></div></section></main>;
 
-  if(view==="dashboard"&&user)return <main className="shell"><nav className="nav">{brand}<div className="nav-links"><span className="muted" style={{fontSize:".88rem"}}>{user.full_name}</span><button className="outline" disabled={busy==="logout"} onClick={()=>void logout()}>Sign out</button></div></nav>
-    <header className="dash-head"><div><div className="eyebrow">{user.role==="admin"?"Operations workspace":user.role==="provider"?"Provider workspace":"Your errands"}</div><h1>{user.role==="admin"?"Keep every errand moving.":"Make space for your day."}</h1><p className="muted">{user.role==="admin"?"Review requests, quote tasks, approve providers and record manual payments.":user.role==="provider"?"Handle assignments, update progress and record completion details.":"Submit a task, review its quote and follow progress to completion."}</p></div><span className="pill">{user.role}</span></header>
-    {message&&<p className="success" role="status">{message}</p>}{error&&<p className="error" role="alert">{error}</p>}
-    <div className="stats"><div className="stat"><strong>{errands.length}</strong><span>{user.role==="admin"?"Errands in queue":"Your errands"}</span></div><div className="stat"><strong>{errands.filter(e=>["requested","quoted","assigned"].includes(e.status)).length}</strong><span>Awaiting next step</span></div><div className="stat"><strong>{errands.filter(e=>e.status==="completed").length}</strong><span>Completed</span></div></div>
-    <div className="dash-layout"><section>
-      {user.role==="customer"&&<div style={{marginBottom:16}}><button onClick={()=>setShowRequest(v=>!v)}>{showRequest?"Close request form":"+ Request an errand"}</button>{showRequest&&<article className="card" style={{marginTop:12}}><h3>What do you need done?</h3><p className="muted">Provide enough detail for a useful quote and assignment.</p><form className="form-stack" onSubmit={(e)=>void createErrand(e)}>
-      <div className="field"><label htmlFor="title">Task title</label><input id="title" name="title" required minLength={3} maxLength={160} placeholder="e.g. Buy groceries and deliver them"/></div><div className="field"><label htmlFor="category">Category</label><select id="category" name="category" required>{categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div><div className="field"><label htmlFor="description">Details and requirements</label><textarea id="description" name="description" required minLength={5} maxLength={5000} placeholder="List items, instructions, timing and anything the provider should know."/></div><div className="field"><label htmlFor="serviceArea">Area / neighbourhood</label><input id="serviceArea" name="serviceArea" required minLength={2} maxLength={180} placeholder="e.g. Westlands, Nairobi"/></div><div className="grid" style={{gridTemplateColumns:"repeat(2,minmax(0,1fr))"}}><div className="field"><label htmlFor="budgetAmount">Budget in KES (optional)</label><input id="budgetAmount" name="budgetAmount" type="number" min="0" step="0.01"/></div><div className="field"><label htmlFor="dueAt">Date / time (optional)</label><input id="dueAt" name="dueAt" type="datetime-local"/></div></div><div className="grid" style={{gridTemplateColumns:"repeat(2,minmax(0,1fr))"}}><div className="field"><label htmlFor="pickupLocation">Pickup point (optional)</label><input id="pickupLocation" name="pickupLocation" maxLength={300}/></div><div className="field"><label htmlFor="destinationLocation">Destination (optional)</label><input id="destinationLocation" name="destinationLocation" maxLength={300}/></div></div><button disabled={busy==="new"}>{busy==="new"?"Submitting…":"Submit request"}</button></form></article>}</div>}
-      <div className="section-title"><h2>{user.role==="admin"?"Errand operations":user.role==="provider"?"Your assignments":"Your requests"}</h2><button className="outline small-btn" onClick={()=>void refresh()}>Refresh</button></div>
-      {errands.length===0?<div className="empty"><strong>No errands here yet.</strong><br/>{user.role==="customer"?"Submit your first request to get started.":user.role==="provider"?"Approved providers will see assignments here after operations assigns a job.":"New requests will appear here for review."}</div>:<div className="stack">{errands.map(e=><article className="card" key={e.id}><div className="card-top"><div><div className="eyebrow">{e.public_code} · {e.category.replaceAll("_"," ")}</div><h3 style={{marginTop:5}}>{e.title}</h3><p className="muted" style={{margin:"4px 0"}}>{e.description}</p></div><span className={"status "+e.status}>{e.status.replaceAll("_"," ")}</span></div><div className="meta"><span>📍 {e.service_area}</span><span>Customer: {e.customer_name}</span><span>Provider: {e.provider_name||"Not assigned"}</span><span>Quote: {money(e.quote_amount)}</span><span>Payment: {e.payment_status}</span></div>{(e.pickup_location||e.destination_location)&&<p className="muted" style={{fontSize:".85rem"}}>{e.pickup_location?"Pickup: "+e.pickup_location:""}{e.pickup_location&&e.destination_location?" · ":""}{e.destination_location?"Destination: "+e.destination_location:""}</p>}{e.completion_notes&&<p style={{background:"#f5f7fa",borderRadius:10,padding:11,fontSize:".9rem"}}><strong>Completion notes:</strong> {e.completion_notes}</p>}<div className="card-actions">
-      {user.role==="admin"&&["requested","declined","quoted"].includes(e.status)&&<button disabled={!!busy} onClick={()=>{const raw=window.prompt("Customer quote amount in KES");if(raw===null)return;const amount=Number(raw);if(!Number.isFinite(amount)||amount<0){setError("Enter a valid quote.");return;}const payoutRaw=window.prompt("Provider payout in KES (optional)","");const providerPayout=payoutRaw===null||payoutRaw===""?null:Number(payoutRaw);void act(e.id,"quote",{amount,providerPayout});}}>Prepare quote</button>}
-      {user.role==="admin"&&["requested","quoted","declined"].includes(e.status)&&<form className="inline-form" onSubmit={ev=>{ev.preventDefault();const f=new FormData(ev.currentTarget);const providerId=String(f.get("providerId")||"");if(providerId)void act(e.id,"assign",{providerId});}}><select name="providerId" defaultValue="" required><option value="" disabled>Assign provider…</option>{providers.filter(p=>p.approval_status==="approved"&&p.available).map(p=><option key={p.user_id} value={p.user_id}>{p.business_name||p.full_name} · {p.service_area||"area n/a"}</option>)}</select><button className="secondary small-btn" disabled={!!busy}>Assign</button></form>}
-      {user.role==="provider"&&e.provider_id===user.id&&e.status==="assigned"&&<><button disabled={!!busy} onClick={()=>void act(e.id,"accept")}>Accept job</button><button className="danger" disabled={!!busy} onClick={()=>void act(e.id,"decline")}>Decline</button></>}
-      {user.role==="provider"&&e.provider_id===user.id&&e.status==="accepted"&&<button disabled={!!busy} onClick={()=>void act(e.id,"start")}>Start task</button>}
-      {user.role==="provider"&&e.provider_id===user.id&&e.status==="in_progress"&&<button disabled={!!busy} onClick={()=>{const notes=window.prompt("Describe what was completed and handover details");if(notes&&notes.trim().length>=3)void act(e.id,"complete",{completionNotes:notes.trim()});else if(notes!==null)setError("Please add completion notes.");}}>Submit completion</button>}
-      {user.role==="customer"&&e.customer_id===user.id&&e.status==="completion_submitted"&&<><button disabled={!!busy} onClick={()=>void act(e.id,"confirm")}>Confirm completion</button><button className="danger" disabled={!!busy} onClick={()=>{const note=window.prompt("What needs attention?");if(note&&note.trim())void act(e.id,"dispute",{note:note.trim()});}}>Raise dispute</button></>}
-      {user.role==="customer"&&e.customer_id===user.id&&["requested","quoted","assigned"].includes(e.status)&&<button className="outline" disabled={!!busy} onClick={()=>{if(window.confirm("Cancel this request?"))void act(e.id,"cancel");}}>Cancel request</button>}
-      {user.role==="admin"&&e.payment_status!=="paid"&&["completion_submitted","completed","disputed"].includes(e.status)&&<button className="secondary" disabled={!!busy} onClick={()=>{const raw=window.prompt("Customer payment received (KES)",e.quote_amount||"0");if(raw===null)return;const amount=Number(raw);if(!Number.isFinite(amount)||amount<0){setError("Enter a valid amount.");return;}const method=window.prompt("Payment method (M-Pesa, cash, bank transfer)","M-Pesa");if(!method)return;const reference=window.prompt("Payment reference (optional)","")||"";void act(e.id,"mark_paid",{amount,method,reference});}}>Record payment</button>}
-      {user.role==="admin"&&e.payment_status==="paid"&&<span className="pill">Payment recorded</span>}{busy===e.id&&<span className="muted">Saving…</span>}
-      </div></article>)}</div>}
-    </section><aside className="stack"><article className="card side-note"><div className="eyebrow">How it works</div><h3>One accountable workflow</h3><p className="muted" style={{fontSize:".9rem"}}>Request → quote → assignment → provider accepts → work in progress → completion notes → customer confirmation.</p><p className="muted" style={{fontSize:".9rem",marginBottom:0}}>Money movement is not automated in this MVP; operations records payments and payouts manually.</p></article>
-    {user.role==="provider"&&<article className="card"><h3>Provider approval</h3><p className="muted" style={{fontSize:".9rem"}}>New provider accounts remain pending until operations approves them.</p></article>}
-    {user.role==="admin"&&<article className="card"><h3>Provider applications</h3><p className="muted" style={{fontSize:".86rem"}}>Review providers before assigning jobs.</p>{providers.length===0?<p className="muted">No applications yet.</p>:providers.map(p=><div className="list-row" key={p.user_id}><div><strong style={{fontSize:".9rem"}}>{p.business_name||p.full_name}</strong><br/><small className="muted">{p.email}</small><br/><small className="muted">{p.service_area||"Area not entered"} · {p.approval_status}</small></div>{p.approval_status==="pending"&&<div style={{display:"grid",gap:5}}><button className="small-btn" disabled={!!busy} onClick={()=>void reviewProvider(p.user_id,"approve")}>Approve</button><button className="danger small-btn" disabled={!!busy} onClick={()=>void reviewProvider(p.user_id,"reject")}>Reject</button></div>}</div>)}</article>}
-    </aside></div>
-    <footer className="footer"><span>© {new Date().getFullYear()} SaMi Errands</span><span>Secure accounts · Audit trail · Manual operations controls</span></footer>
-  </main>;
+  async function logout() {
+    setBusy("logout");
+    try { await post("logout"); setUser(null); setErrands([]); setProviders([]); setPayments([]); setNotifications([]); setProfile(null); setView("home"); setTab("overview"); }
+    catch(e) { setError(e instanceof Error ? e.message : "Could not sign out."); }
+    finally { setBusy(""); }
+  }
 
-  return <main className="shell">
-    <nav className="nav">{brand}<div className="nav-links"><button className="outline" onClick={()=>setView("login")}>Sign in</button><button onClick={()=>{setRole("customer");setView("register");}}>Get started →</button></div></nav>
-    <section className="hero"><div><div className="eyebrow">Your day, made lighter</div><h1>Get everyday things done. <span>Without the runaround.</span></h1><p className="lead">SaMi Errands connects people and businesses with independent providers for daily tasks—from shopping and pickups to personal errands, local coordination and practical assistance.</p><div className="hero-actions"><button onClick={()=>{setRole("customer");setView("register");}}>Request an errand →</button><button className="secondary" onClick={()=>{setRole("provider");setView("register");}}>Become a provider</button></div><p className="muted" style={{fontSize:".86rem",marginTop:16}}>Clear requests. Transparent quotes. Human-reviewed assignments. Updates from start to finish.</p></div>
-      <div className="panel"><div className="panel-head"><div><strong>Today’s to-do list</strong><br/><small className="muted">A little time back in your day</small></div><span className="pill">Organised</span></div><div className="sample"><div className="sample-icon">🛒</div><div style={{flex:1}}><strong>Pick up household items</strong><br/><small className="muted">Westlands · Shopping</small></div><span className="pill">Quoted</span></div><div className="sample"><div className="sample-icon">📄</div><div style={{flex:1}}><strong>Collect signed documents</strong><br/><small className="muted">Kilimani · Collection</small></div><span className="pill">Assigned</span></div><div className="sample"><div className="sample-icon">🏢</div><div style={{flex:1}}><strong>Supplier office run</strong><br/><small className="muted">Business support</small></div><span className="pill">In progress</span></div><p className="muted" style={{fontSize:".82rem",marginBottom:0}}>Illustrative examples, not live customer data.</p></div>
+  async function createErrand(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy("create"); setError(""); setNotice("");
+    const form = new FormData(event.currentTarget);
+    const payload = Object.fromEntries(form.entries());
+    try {
+      const result = await post("createErrand", payload);
+      setNotice("Request " + result.errand.public_code + " is in the operations queue. You will be notified when it is quoted.");
+      (event.currentTarget as HTMLFormElement).reset();
+      setShowRequest(false); setTab("errands"); await refresh(true);
+    } catch(e) { setError(e instanceof Error ? e.message : "The request could not be submitted."); }
+    finally { setBusy(""); }
+  }
+
+  async function actionErrand(errand: Errand, action: string, extra: Record<string,unknown> = {}) {
+    setBusy(errand.id); setError(""); setNotice("");
+    try {
+      const result = await post("errandAction", { id:errand.id, errandAction:action, ...extra });
+      setNotice(result.message || "Errand updated.");
+      await refresh(true);
+      if (activeErrand?.errand.id === errand.id) await openDetail(errand.id, true);
+    } catch(e) { setError(e instanceof Error ? e.message : "The action could not be completed."); }
+    finally { setBusy(""); }
+  }
+
+  async function openDetail(id: string, quiet = false) {
+    if (!quiet) { setDetailLoading(true); setError(""); }
+    try {
+      const data = await get("/api/dispatch?action=errandDetail&id=" + encodeURIComponent(id));
+      setActiveErrand(data);
+    } catch(e) {
+      if (!quiet) setError(e instanceof Error ? e.message : "Could not load errand details.");
+    } finally { if (!quiet) setDetailLoading(false); }
+  }
+
+  async function sendMessage(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!activeErrand || !messageDraft.trim()) return;
+    setBusy("message"); setError("");
+    try {
+      await post("sendMessage", { errandId:activeErrand.errand.id, message:messageDraft.trim() });
+      setMessageDraft("");
+      await openDetail(activeErrand.errand.id, true);
+      await refresh(true);
+    } catch(e) { setError(e instanceof Error ? e.message : "Message could not be sent."); }
+    finally { setBusy(""); }
+  }
+
+  async function providerReview(provider: Provider, decision: "approve"|"reject"|"suspend"|"reinstate") {
+    let reason = "";
+    if (decision === "reject") {
+      const entered = window.prompt("Explain what the provider needs to improve (visible to the applicant).");
+      if (!entered || entered.trim().length < 5) { setError("A clear rejection reason is required."); return; }
+      reason = entered.trim();
+    }
+    setBusy(provider.user_id); setError(""); setNotice("");
+    try { const data = await post("providerReview",{providerId:provider.user_id,decision,reason}); setNotice(data.message); await refresh(true); }
+    catch(e) { setError(e instanceof Error ? e.message : "Provider review failed."); }
+    finally { setBusy(""); }
+  }
+
+  async function saveProviderProfile(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy("profile"); setError(""); setNotice("");
+    try {
+      const data = await post("providerProfile", profileDraft);
+      setNotice(data.message + (data.approvalStatus === "pending" ? " Operations can now review your application." : ""));
+      await refresh(true);
+    } catch(e) { setError(e instanceof Error ? e.message : "Profile could not be saved."); }
+    finally { setBusy(""); }
+  }
+
+  async function toggleAvailability(available: boolean) {
+    setBusy("availability"); setError(""); setNotice("");
+    try { const data = await post("providerAvailability",{available}); setNotice(data.message); await refresh(true); }
+    catch(e) { setError(e instanceof Error ? e.message : "Availability could not be updated."); }
+    finally { setBusy(""); }
+  }
+
+  async function savePayment(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!paymentModal) return;
+    setBusy("payment"); setError(""); setNotice("");
+    const form = new FormData(event.currentTarget);
+    const payload = {
+      id:paymentModal.errand.id,
+      errandAction:paymentModal.kind,
+      amount:Number(form.get("amount")),
+      method:String(form.get("method") || "").trim(),
+      reference:String(form.get("reference") || "").trim(),
+      idempotencyKey:crypto.randomUUID()
+    };
+    try {
+      const data = await post("errandAction",payload);
+      setNotice(data.message || "Payment record saved.");
+      setPaymentModal(null); await refresh(true);
+    } catch(e) { setError(e instanceof Error ? e.message : "Payment record could not be saved."); }
+    finally { setBusy(""); }
+  }
+
+  async function reconcilePayment(paymentId: string) {
+    setBusy(paymentId); setError(""); setNotice("");
+    try { const data = await post("reconcilePayment",{paymentId}); setNotice(data.message); await refresh(true); }
+    catch(e) { setError(e instanceof Error ? e.message : "Payment reconciliation failed."); }
+    finally { setBusy(""); }
+  }
+
+  async function markRead(id?: string) {
+    try { await post("markNotificationRead",{id}); setNotifications(current => current.map(n => !id || n.id===id ? {...n,read_at:new Date().toISOString()} : n)); setUnread(current => id ? Math.max(0,current-1) : 0); }
+    catch { /* Non-blocking inbox operation. */ }
+  }
+
+  async function rateProvider(errand: Errand, score: number) {
+    const comment = window.prompt("Add a short comment about the service (optional).") || "";
+    setBusy("rating"); setError(""); setNotice("");
+    try { const data = await post("addRating",{errandId:errand.id,score,comment}); setNotice(data.message); await openDetail(errand.id,true); await refresh(true); }
+    catch(e) { setError(e instanceof Error ? e.message : "Rating could not be saved."); }
+    finally { setBusy(""); }
+  }
+
+  async function bootstrapAdmin(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy("setup"); setError("");
+    const f = new FormData(event.currentTarget);
+    const token = String(f.get("token") || "");
+    try {
+      const data = await post("bootstrap",{fullName:f.get("fullName"),email:f.get("email"),password:f.get("password")},{"x-admin-bootstrap-token":token});
+      const me = await get("/api/dispatch?action=me"); setUser(me.user); setView("app"); setNotice(data.message);
+    } catch(e) { setError(e instanceof Error ? e.message : "Administrator setup failed."); }
+    finally { setBusy(""); }
+  }
+
+  const brand = <a className="brand" href="/" onClick={(e)=>{e.preventDefault();setView("home");setActiveErrand(null);}}><span className="brand-mark">S</span><span>SaMi <b>Errands</b></span></a>;
+  const roleName = user?.role === "admin" ? "Operations" : user?.role === "provider" ? "Service provider" : "Customer";
+  const openCount = errands.filter(e => isActiveStatus(e.status)).length;
+
+  if (!ready) return <main className="loading-screen"><div className="brand-mark">S</div><strong>SaMi Errands</strong><span className="muted">Preparing your workspace…</span></main>;
+
+  if (view === "setup") return <main className="auth-wrap"><aside className="auth-aside">{brand}<div><div className="eyebrow">Initial operations access</div><h1>Establish the control room.</h1><p className="lead">Create the first administrator account for provider reviews, assignments and payment reconciliation.</p></div><div className="trust-line">Private preview · One-time setup · Role-protected access</div></aside><section className="auth-main"><div className="auth-card"><div className="eyebrow">Secure setup</div><h2>Create administrator</h2><p className="muted">Only works while this database has no administrator account.</p><form className="form-stack" onSubmit={bootstrapAdmin}><div className="field"><label htmlFor="token">Preview bootstrap token</label><input id="token" name="token" type="password" required autoComplete="off"/></div><div className="field"><label htmlFor="fullName">Full name</label><input id="fullName" name="fullName" required minLength={2} maxLength={120}/></div><div className="field"><label htmlFor="setup-email">Email</label><input id="setup-email" name="email" type="email" required maxLength={254}/></div><div className="field"><label htmlFor="setup-password">Password</label><input id="setup-password" name="password" type="password" required minLength={14} maxLength={128} autoComplete="new-password"/><small className="muted">Use at least 14 characters.</small></div>{error && <div className="alert error" role="alert">{error}</div>}<button disabled={busy==="setup"}>{busy==="setup"?"Securing account…":"Create administrator"}</button></form><button className="button-link" onClick={()=>{setError("");setView("home");}}>← Back to website</button></div></section></main>;
+
+  if (view === "login" || view === "register") return <main className="auth-wrap"><aside className="auth-aside">{brand}<div><div className="eyebrow">{authMode==="login"?"Welcome back":"Make room for your day"}</div><h1>{authMode==="login"?"Your errands, under control.":"Everyday tasks. Better handled."}</h1><p className="lead">{authMode==="login"?"Track requests, messages, assignments and progress from one place.":"Join a marketplace built for everyday needs, local providers and accountable follow-through."}</p><div className="auth-highlights"><span>✓ Clear quotes</span><span>✓ Real status updates</span><span>✓ Human-reviewed assignments</span></div></div><div className="trust-line">SaMi Errands · Everyday help, organised.</div></aside><section className="auth-main"><div className="auth-card"><div className="eyebrow">{authMode==="login"?"Account access":"Create your account"}</div><h2>{authMode==="login"?"Sign in":"Start with SaMi"}</h2><p className="muted">{authMode==="login"?"Use your registered email and password.":"Choose how you’ll use the marketplace."}</p><form className="form-stack" onSubmit={authSubmit}>
+    {authMode==="register"&&<><div className="field"><label htmlFor="fullName">Full name</label><input id="fullName" name="fullName" required minLength={2} maxLength={120} autoComplete="name"/></div><div className="field"><label htmlFor="phone">Phone number <span className="optional">Optional</span></label><input id="phone" name="phone" maxLength={32} autoComplete="tel" placeholder="+254…"/></div><div className="role-choice"><button type="button" className={registerRole==="customer"?"role-option selected":"role-option"} onClick={()=>setRegisterRole("customer")}><span className="role-emoji">↗</span><span><b>Request errands</b><small>Personal or business tasks</small></span></button><button type="button" className={registerRole==="provider"?"role-option selected":"role-option"} onClick={()=>setRegisterRole("provider")}><span className="role-emoji">✦</span><span><b>Provide services</b><small>Manage and complete jobs</small></span></button></div></>}
+    <div className="field"><label htmlFor="email">Email address</label><input id="email" name="email" type="email" required maxLength={254} autoComplete="email" placeholder="you@example.com"/></div><div className="field"><label htmlFor="password">Password</label><input id="password" name="password" type="password" required minLength={12} maxLength={128} autoComplete={authMode==="login"?"current-password":"new-password"} placeholder="At least 12 characters"/>{authMode==="register"&&<small className="muted">Longer passwords are safer. Use a unique password.</small>}</div>
+    {error&&<div className="alert error" role="alert">{error}</div>}<button className="button full-width" disabled={busy==="auth"}>{busy==="auth"?"Please wait…":authMode==="login"?"Sign in securely":"Create account"}</button></form><p className="auth-switch">{authMode==="login"?"New to SaMi Errands?":"Already have an account?"} <button className="inline-link" onClick={()=>{setAuthMode(authMode==="login"?"register":"login");setError("");setNotice("");}}>{authMode==="login"?"Create an account":"Sign in"}</button></p><button className="button-link" onClick={()=>{setError("");setView("home");}}>← Back to website</button></div></section></main>;
+
+  if (view === "home") return <main className="public-site">
+    <nav className="public-nav shell">{brand}<div className="public-nav-links"><a href="#services">Services</a><a href="#how-it-works">How it works</a><button className="button ghost" onClick={()=>{setAuthMode("login");setError("");setView("login");}}>Sign in</button><button className="button" onClick={()=>{setAuthMode("register");setRegisterRole("customer");setError("");setView("register");}}>Get started <span>↗</span></button></div></nav>
+    <section className="public-hero shell"><div className="hero-copy"><div className="eyebrow"><span className="eyebrow-dot"></span> GOOD HELP, RIGHT WHEN YOU NEED IT</div><h1>Make room for <em>what matters.</em></h1><p className="hero-lead">From everyday shopping to the business run that can’t wait, SaMi connects your to-do list with people ready to get things done.</p><div className="hero-buttons"><button className="button button-large" onClick={()=>{setAuthMode("register");setRegisterRole("customer");setView("register");}}>Request an errand <span>↗</span></button><button className="button button-large button-white" onClick={()=>{setAuthMode("register");setRegisterRole("provider");setView("register");}}>Join as a provider</button></div><div className="hero-proof"><div className="proof-avatars"><span>A</span><span>M</span><span>J</span><span>+</span></div><div><b>Built around follow-through.</b><small>Clear requests. Human-reviewed jobs. Accountable updates.</small></div></div></div>
+      <div className="hero-art"><div className="art-glow"></div><div className="art-topline"><span className="live-dot"></span> THE EVERYDAY, HANDLED <span className="art-number">01 / 04</span></div><div className="task-board"><div className="board-head"><div><small>YOUR DAY, STREAMLINED</small><h3>The little things,<br/>under control.</h3></div><div className="board-mark">S</div></div><div className="mini-task"><span className="mini-icon gold">🛒</span><div><b>Pick up the essentials</b><small>Shopping · Westlands</small></div><span className="mini-status">Quoted</span></div><div className="mini-task"><span className="mini-icon teal">↗</span><div><b>Collect signed documents</b><small>Personal errand · Kilimani</small></div><span className="mini-status done">Assigned</span></div><div className="mini-task"><span className="mini-icon lilac">▦</span><div><b>Visit the supplier</b><small>Business support · Nairobi</small></div><span className="mini-status moving">In progress</span></div><div className="board-footer"><span><i className="tiny-dot"></i> Every step, in one place</span><span>saMi / errands</span></div></div><div className="floating-chip chip-one"><span>✓</span><div><b>Request received</b><small>Operations is on it</small></div></div><div className="floating-chip chip-two"><div className="chip-icon">↗</div><div><b>More time for you</b><small>That’s the point.</small></div></div></div>
     </section>
-    <section className="section"><div className="section-head"><div className="eyebrow">One place for everyday help</div><h2>Errands are more than deliveries.</h2><p className="muted">Request a task in plain language, review the quote, follow progress and confirm completion. Businesses can use the same workflow for daily operations.</p></div><div className="grid">{categories.map(c=><article className="feature" key={c.id}><div className="icon-box">{c.icon}</div><h3>{c.name}</h3><p>{c.body}</p></article>)}</div></section>
-    <section className="section"><div className="cta"><div><div className="eyebrow" style={{color:"var(--accent)"}}>Start with one task</div><h2 style={{marginTop:8}}>Your errands, organised.</h2><p>Create an account and submit what you need done.</p></div><button style={{background:"var(--accent)",color:"var(--ink)"}} onClick={()=>{setRole("customer");setView("register");}}>Create an account →</button></div></section>
-    <footer className="footer"><span>© {new Date().getFullYear()} SaMi Errands</span><a href="/admin-setup">Initial operations setup</a></footer>
+    <section className="trust-strip"><div className="shell trust-inner"><span>FOR YOUR PERSONAL LIFE</span><i></i><span>FOR YOUR BUSINESS</span><i></i><span>FOR THE THINGS THAT CAN’T WAIT</span><i></i><span>FOR YOUR COMMUNITY</span></div></section>
+    <section className="services-section shell" id="services"><div className="section-kicker">ONE MARKETPLACE. MANY POSSIBILITIES.</div><div className="section-intro"><div><h2>It’s not just delivery.<br/><em>It’s getting life done.</em></h2></div><p>Real life doesn’t fit into one category. SaMi is designed for the everyday tasks, local coordination and business errands that keep life moving.</p></div><div className="service-grid">{CATEGORIES.map((c,i)=><article key={c.id} className={"service-tile tile-"+i}><div className="tile-top"><span className="tile-icon">{c.icon}</span><span className="tile-index">0{i+1}</span></div><h3>{c.name}</h3><p>{c.description}.</p><span className="tile-arrow">↗</span></article>)}</div></section>
+    <section className="how-section" id="how-it-works"><div className="shell"><div className="section-kicker">A CLEAR WAY FORWARD</div><div className="section-intro"><div><h2>From “I need to…”<br/><em>to “it’s done.”</em></h2></div><p>Every request follows a transparent process. You know what’s happening, who’s responsible and what comes next.</p></div><div className="steps-grid"><article><span>01</span><h3>Tell us what you need</h3><p>Describe the task, location, timing and any useful details.</p></article><article><span>02</span><h3>Review a clear quote</h3><p>Operations reviews the request and prepares the price before assignment.</p></article><article><span>03</span><h3>Follow the progress</h3><p>A provider accepts the job, updates its status and records completion details.</p></article><article><span>04</span><h3>Close with confidence</h3><p>Confirm the result or raise an issue for operations to review.</p></article></div></div></section>
+    <section className="public-cta shell"><div><div className="eyebrow">YOUR NEXT THING, TAKEN CARE OF</div><h2>Give your to-do list<br/>a better ending.</h2><p>Create an account and put your first request in motion.</p></div><button className="button button-large" onClick={()=>{setAuthMode("register");setRegisterRole("customer");setView("register");}}>Get started with SaMi <span>↗</span></button></section>
+    <footer className="public-footer shell">{brand}<p>Everyday help, with follow-through.</p><div><a href="#services">Services</a><a href="#how-it-works">How it works</a><button onClick={()=>setView("setup")}>Operations setup</button></div><small>© {new Date().getFullYear()} SaMi Errands. Thoughtful help for everyday life.</small></footer>
   </main>;
+
+  const navItems: {id:Tab;icon:string;label:string;adminOnly?:boolean;providerOnly?:boolean}[] = [
+    {id:"overview",icon:"◫",label:"Overview"},
+    {id:"errands",icon:"↗",label:user?.role==="admin"?"Errand operations":user?.role==="provider"?"Assignments":"My errands"},
+    {id:"providers",icon:"♧",label:user?.role==="admin"?"Provider network":"",adminOnly:true},
+    {id:"payments",icon:"◈",label:user?.role==="admin"?"Payments & reconciliation":"Payments"},
+    {id:"profile",icon:"◎",label:user?.role==="provider"?"Service profile":"Account",providerOnly:true}
+  ].filter(item => (!item.adminOnly || user?.role==="admin") && (!item.providerOnly || user?.role==="provider") && item.label);
+  const pageTitle = tab==="overview" ? "Overview" : tab==="errands" ? (user?.role==="admin"?"Errand operations":user?.role==="provider"?"Assignments":"My errands") : tab==="providers"?"Provider network":tab==="payments"?"Payments & reconciliation":"Service profile";
+  const pageDescription = tab==="overview" ? "A real-time view of your errands and the next steps." : tab==="errands" ? "Review requests, track progress and manage every hand-off." : tab==="providers" ? "Review applications and keep the service network reliable." : tab==="payments" ? "Track payment records, payouts and reconciliation status." : "Tell customers what you do and where you can help.";
+
+  return <main className="app-shell">
+    <aside className="app-sidebar"><div className="sidebar-brand">{brand}<span className="product-tag">MARKETPLACE</span></div><div className="workspace-label">WORKSPACE</div><nav className="sidebar-nav">{navItems.map(item=><button key={item.id} className={tab===item.id?"nav-item current":"nav-item"} onClick={()=>{setTab(item.id);setActiveErrand(null);setError("");}}><span className="nav-glyph">{item.icon}</span><span>{item.label}</span>{item.id==="errands"&&openCount>0&&<span className="nav-count">{openCount}</span>}</button>)}</nav><div className="sidebar-bottom"><div className="support-mini"><span className="support-icon">✳</span><div><b>Need help?</b><small>Send a note from any errand.</small></div></div><div className="sidebar-profile"><div className="avatar">{initials(user?.full_name || "S")}</div><div className="sidebar-profile-copy"><b>{user?.full_name}</b><small>{roleName}</small></div><button className="icon-button" title="Sign out" aria-label="Sign out" onClick={()=>void logout()} disabled={busy==="logout"}>⇥</button></div></div></aside>
+    <section className="app-main"><header className="app-topbar"><div className="breadcrumbs"><span>SaMi Errands</span><b>/</b><strong>{pageTitle}</strong></div><div className="topbar-actions"><span className="account-pill"><i></i>{roleName}</span><button className="icon-button notification-button" aria-label="Notifications" title="Notifications" onClick={()=>setNotificationOpen(v=>!v)}>♧{unread>0&&<b>{unread>9?"9+":unread}</b>}</button><button className="avatar top-avatar" title={user?.full_name} onClick={()=>{if(user?.role==="provider")setTab("profile");else setTab("overview");}}>{initials(user?.full_name||"S")}</button></div></header>
+      {notice&&<div className="banner banner-success"><span>✓</span><p>{notice}</p><button aria-label="Dismiss" onClick={()=>setNotice("")}>×</button></div>}{error&&<div className="banner banner-error"><span>!</span><p>{error}</p><button aria-label="Dismiss" onClick={()=>setError("")}>×</button></div>}
+      <div className="page-content"><div className="page-heading"><div><div className="eyebrow">{user?.role==="admin"?"OPERATIONS CONSOLE":user?.role==="provider"?"PROVIDER WORKSPACE":"PERSONAL WORKSPACE"}</div><h1>{pageTitle}</h1><p>{pageDescription}</p></div><div className="page-heading-actions">{user?.role==="customer"&&<button className="button" onClick={()=>{setShowRequest(v=>!v);setTab("errands");}}><span className="button-plus">+</span> New errand</button>}{user?.role==="admin"&&<button className="button" onClick={()=>setTab("errands")}>Review queue <span>↗</span></button>}</div></div>
+
+      {tab==="overview"&&<div className="view-stack">
+        {user?.role==="admin"?<><div className="metrics-grid">
+          <Metric label="Total errands" value={metrics.total??"—"} hint="Across all requests" icon="↗" tone="teal"/>
+          <Metric label="Needs review" value={metrics.needs_review??"—"} hint="New requests waiting" icon="◷" tone="gold"/>
+          <Metric label="Active in workflow" value={metrics.active??"—"} hint="Quoted through completion" icon="↻" tone="blue"/>
+          <Metric label="Disputes" value={metrics.disputes??"—"} hint="Require an operations decision" icon="!" tone="rose"/>
+        </div><div className="overview-grid"><section className="surface-card"><div className="surface-heading"><div><h2>Needs your attention</h2><p>Prioritised items from the operations queue.</p></div><button className="text-action" onClick={()=>{setTab("errands");setStatusFilter("all");}}>View all <span>→</span></button></div><div className="attention-list">{errands.filter(e=>["disputed","requested","completion_submitted"].includes(e.status)).slice(0,5).map(e=><div className="attention-row" key={e.id}><span className={"attention-mark "+(e.status==="disputed"?"rose":e.status==="requested"?"gold":"blue")}>{e.status==="disputed"?"!":e.status==="requested"?"◷":"✓"}</span><div className="attention-copy"><b>{e.title}</b><small>{e.public_code} · {e.customer_name} · {e.service_area}</small></div><Status value={e.status}/><button className="row-open" title="Open details" onClick={()=>void openDetail(e.id)}>→</button></div>)}{errands.filter(e=>["disputed","requested","completion_submitted"].includes(e.status)).length===0&&<Empty title="Queue is clear" description="New requests and issues will appear here."/ >}</div></section><aside className="surface-card"><div className="surface-heading"><div><h2>Provider network</h2><p>Current operational readiness.</p></div><span className="soft-count">{providers.length}</span></div><div className="network-stats"><div><span>Pending review</span><b>{metrics.providers?.pending??providers.filter(p=>p.approval_status==="pending").length}</b></div><div><span>Available now</span><b>{metrics.providers?.available??providers.filter(p=>p.approval_status==="approved"&&p.available).length}</b></div></div><button className="button secondary full-width" onClick={()=>setTab("providers")}>Manage providers <span>→</span></button><div className="aside-divider"></div><div className="surface-heading compact"><div><h2>Payment control</h2><p>Recorded revenue</p></div></div><div className="big-amount">{money(metrics.recorded_revenue)}</div><p className="muted small-copy">{metrics.awaiting_payment??"—"} completed or review-stage errands awaiting a payment record.</p><button className="text-action" onClick={()=>setTab("payments")}>Open reconciliation <span>→</span></button></aside></div>
+        <section className="surface-card"><div className="surface-heading"><div><h2>Latest requests</h2><p>The newest work entering the marketplace.</p></div><button className="text-action" onClick={()=>setTab("errands")}>All errands <span>→</span></button></div><ErrandTable errands={errands.slice(0,6)} user={user!} busy={busy} onOpen={id=>void openDetail(id)}/></section></>
+        :<><div className="welcome-banner"><div className="welcome-copy"><span className="welcome-badge">{user?.role==="provider"?"PROVIDER DESK":"YOUR DAY, SIMPLIFIED"}</span><h2>{user?.role==="provider"?"Good work starts with a clear next step.":"Your time is valuable. Let’s use it well."}</h2><p>{user?.role==="provider"?"Keep your profile ready, accept suitable jobs and keep customers informed through every stage.":"Create a request, review the quote and follow the job until you’re happy with the result."}</p>{user?.role==="customer"?<button className="button" onClick={()=>{setTab("errands");setShowRequest(true);}}>Make a request <span>↗</span></button>:<button className="button" onClick={()=>setTab("profile")}>{profile?.approval_status==="approved"?"Manage service profile":"Complete provider profile"} <span>→</span></button>}</div><div className="welcome-ornament"><div className="ornament-circle one">S</div><div className="ornament-circle two">↗</div><div className="ornament-line"></div><div className="ornament-chip">SaMi <b>Errands</b></div></div></div>
+        <div className="metrics-grid three"><Metric label="All errands" value={metrics.total??errands.length} hint="Requests associated with you" icon="↗" tone="teal"/><Metric label="In progress" value={metrics.active??errands.filter(e=>isActiveStatus(e.status)).length} hint="Need a next step" icon="◷" tone="blue"/><Metric label="Completed" value={metrics.completed??errands.filter(e=>e.status==="completed").length} hint="Finished successfully" icon="✓" tone="gold"/></div>
+        {user?.role==="provider"&&<section className="surface-card provider-status-card"><div className="provider-status-copy"><div className="eyebrow">YOUR PROVIDER STATUS</div><h2>{statusLabel(profile?.approval_status||"pending")}</h2><p>{profile?.approval_status==="approved"?"Your service profile is approved. Keep availability and service areas accurate.":profile?.approval_status==="rejected"?"Update your profile based on operations feedback and resubmit it.":"Complete your service profile so operations can review your application."}</p>{profile?.rejection_reason&&<p className="status-reason"><b>Operations note:</b> {profile.rejection_reason}</p>}</div><div className="provider-status-actions">{profile?.approval_status==="approved"?<><span className={profile.available?"available-pill":"unavailable-pill"}><i></i>{profile.available?"Available for work":"Not available"}</span><button className="button secondary" disabled={busy==="availability"} onClick={()=>void toggleAvailability(!profile.available)}>{profile.available?"Pause availability":"Mark available"}</button></>:<button className="button" onClick={()=>setTab("profile")}>Complete profile →</button>}</div></section>}
+        <section className="surface-card"><div className="surface-heading"><div><h2>{user?.role==="provider"?"Recent assignments":"Your latest errands"}</h2><p>Keep track of every request from here.</p></div><button className="text-action" onClick={()=>setTab("errands")}>View all <span>→</span></button></div>{errands.length?<ErrandTable errands={errands.slice(0,6)} user={user!} busy={busy} onOpen={id=>void openDetail(id)}/>:<Empty title={user?.role==="provider"?"Your assignments will appear here":"Nothing on your list yet"} description={user?.role==="provider"?"Once your profile is approved, operations can assign suitable errands to you.":"Create your first errand and we’ll help move it forward."} action={user?.role==="customer"?<button className="button" onClick={()=>{setTab("errands");setShowRequest(true);}}>Create first errand</button>:undefined}/>}</section></>}
+      </div>}
+
+      {tab==="errands"&&<div className="view-stack">
+        {user?.role==="customer"&&showRequest&&<section className="surface-card request-form-card"><div className="surface-heading"><div><div className="eyebrow">NEW REQUEST</div><h2>What do you need done?</h2><p>Give us the detail needed to quote accurately and assign the right provider.</p></div><button className="icon-button" onClick={()=>setShowRequest(false)} aria-label="Close request form">×</button></div><form className="request-grid" onSubmit={createErrand}>
+          <div className="field wide"><label htmlFor="title">Give your errand a clear title</label><input id="title" name="title" required minLength={3} maxLength={160} placeholder="e.g. Pick up groceries and deliver to home"/></div>
+          <div className="field"><label htmlFor="category">Service category</label><select id="category" name="category" required>{CATEGORIES.map(c=><option value={c.id} key={c.id}>{c.name}</option>)}</select></div>
+          <div className="field"><label htmlFor="priority">Priority</label><select id="priority" name="priority"><option value="standard">Standard</option><option value="low">Flexible</option><option value="high">High priority</option><option value="urgent">Urgent — review required</option></select></div>
+          <div className="field wide"><label htmlFor="description">Task details and instructions</label><textarea id="description" name="description" required minLength={5} maxLength={5000} placeholder="What needs doing? Include quantities, preferences, contacts and any relevant instructions."/></div>
+          <div className="field"><label htmlFor="serviceArea">Area or neighbourhood</label><input id="serviceArea" name="serviceArea" required minLength={2} maxLength={180} placeholder="e.g. Westlands, Nairobi"/></div>
+          <div className="field"><label htmlFor="dueAt">When do you need it?</label><input id="dueAt" name="dueAt" type="datetime-local"/></div>
+          <div className="field"><label htmlFor="pickupLocation">Pickup location <span className="optional">Optional</span></label><input id="pickupLocation" name="pickupLocation" maxLength={300} placeholder="Building, street or landmark"/></div>
+          <div className="field"><label htmlFor="destinationLocation">Destination <span className="optional">Optional</span></label><input id="destinationLocation" name="destinationLocation" maxLength={300} placeholder="Destination or handover point"/></div>
+          <div className="field"><label htmlFor="budgetAmount">Your budget (KES) <span className="optional">Optional</span></label><input id="budgetAmount" name="budgetAmount" type="number" min="0" step="0.01" placeholder="Optional guide"/></div>
+          <div className="request-form-footer wide"><p><span>ⓘ</span> Operations will review the request and show you a quote before work is assigned.</p><div><button type="button" className="button ghost" onClick={()=>setShowRequest(false)}>Cancel</button><button className="button" disabled={busy==="create"}>{busy==="create"?"Submitting…":"Submit request ↗"}</button></div></div>
+        </form></section>}
+        <section className="surface-card"><div className="surface-heading"><div><h2>{user?.role==="admin"?"All errand requests":user?.role==="provider"?"Your assignments":"Your requests"}</h2><p>{visibleErrands.length} result{visibleErrands.length===1?"":"s"} · {errands.length} total</p></div>{user?.role==="customer"&&<button className="button" onClick={()=>setShowRequest(v=>!v)}>{showRequest?"Close form":"+ New errand"}</button>}</div>
+          <div className="filter-bar"><label className="search-box"><span>⌕</span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search title, code, area or customer…"/></label><select aria-label="Filter by status" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="all">All statuses</option>{STATUSES.map(s=><option value={s} key={s}>{statusLabel(s)}</option>)}</select><select aria-label="Filter by service category" value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)}><option value="all">All categories</option>{CATEGORIES.map(c=><option value={c.id} key={c.id}>{c.name}</option>)}</select><button className="button ghost" onClick={()=>{setSearch("");setStatusFilter("all");setCategoryFilter("all");}}>Reset</button></div>
+          {visibleErrands.length?<ErrandTable errands={visibleErrands} user={user!} busy={busy} onOpen={id=>void openDetail(id)} onQuote={e=>setQuoteForm({id:e.id,amount:e.quote_amount||"",payout:e.provider_payout||""})} onAssign={e=>{setActiveErrand({errand:e,events:[],messages:[],ratings:[]});setNotice("Open the errand details to manage assignment, messages and history.");}}/>:<Empty title="No errands match those filters" description="Try another status or search term, or create a new request." action={user?.role==="customer"?<button className="button" onClick={()=>setShowRequest(true)}>Create errand</button>:undefined}/>}
+        </section>
+      </div>}
+
+      {tab==="providers"&&user?.role==="admin"&&<div className="view-stack">
+        <div className="metrics-grid three"><Metric label="Applications" value={providers.length} hint="All registered providers" icon="♧" tone="teal"/><Metric label="Need review" value={providers.filter(p=>p.approval_status==="pending").length} hint="Awaiting a decision" icon="◷" tone="gold"/><Metric label="Available" value={providers.filter(p=>p.approval_status==="approved"&&p.available).length} hint="Eligible for manual dispatch" icon="✓" tone="blue"/></div>
+        <section className="surface-card"><div className="surface-heading"><div><h2>Provider network</h2><p>Review profiles and approve only providers with clear service coverage.</p></div><label className="search-box compact-search"><span>⌕</span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Find a provider…"/></label></div><div className="provider-grid">{providers.filter(p=>[p.full_name,p.email,p.business_name||"",p.service_area||""].some(s=>s.toLowerCase().includes(search.toLowerCase()))).map(p=><article className="provider-card" key={p.user_id}><div className="provider-card-head"><div className="provider-avatar">{initials(p.business_name||p.full_name)}</div><Status value={p.approval_status}/></div><h3>{p.business_name||p.full_name}</h3><p className="provider-person">{p.business_name?p.full_name+" · "+p.provider_type:"Independent provider"}</p><div className="provider-info"><span>✉ {p.email}</span><span>⌖ {p.service_area||"Service area not set"}</span></div><div className="provider-chip-row">{(p.service_categories||[]).length?(p.service_categories||[]).slice(0,3).map(cat=><span className="small-chip" key={cat}>{CATEGORIES.find(c=>c.id===cat)?.name||cat}</span>):<span className="small-chip warning-chip">No services listed</span>}</div><div className="provider-card-bottom"><div><b>★ {Number(p.rating_average||0).toFixed(1)}</b><small>{p.rating_count||0} reviews · {p.completed_jobs||0} completed</small></div>{p.approval_status==="pending"?<div className="provider-actions"><button className="button small" disabled={!!busy} onClick={()=>void providerReview(p,"approve")}>Approve</button><button className="button danger small" disabled={!!busy} onClick={()=>void providerReview(p,"reject")}>Review / reject</button></div>:p.approval_status==="approved"?<button className="button ghost small" disabled={!!busy} onClick={()=>void providerReview(p,"suspend")}>Suspend</button>:<button className="button secondary small" disabled={!!busy} onClick={()=>void providerReview(p,"reinstate")}>Reinstate</button>}</div>{p.rejection_reason&&<p className="provider-reason"><b>Last review:</b> {p.rejection_reason}</p>}</article>)}</div>{providers.length===0&&<Empty title="No provider applications yet" description="When people register to provide services, their profiles will appear here for review."/ >}</section>
+      </div>}
+
+      {tab==="payments"&&<div className="view-stack"><div className="metrics-grid three"><Metric label="Payment records" value={payments.length} hint="Customer payments, payouts and refunds" icon="◈" tone="teal"/><Metric label="Need reconciliation" value={payments.filter(p=>p.status==="recorded"||p.status==="pending").length} hint="Recorded but not reconciled" icon="◷" tone="gold"/><Metric label="Reconciled" value={payments.filter(p=>p.status==="reconciled").length} hint="Marked complete by operations" icon="✓" tone="blue"/></div>
+        <section className="surface-card"><div className="surface-heading"><div><h2>Payment ledger</h2><p>Manual payment records are tracked here. SaMi does not automatically move money in this MVP.</p></div><label className="search-box compact-search"><span>⌕</span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search reference or errand…"/></label></div><div className="table-scroller"><table className="data-table"><thead><tr><th>Reference</th><th>Errand</th><th>Record type</th><th>Amount</th><th>Method / reference</th><th>Status</th><th>Recorded</th>{user?.role==="admin"&&<th>Action</th>}</tr></thead><tbody>{payments.filter(p=>[p.public_code,p.title,p.reference||"",p.customer_name||"",p.provider_name||""].some(s=>s.toLowerCase().includes(search.toLowerCase()))).map(p=><tr key={p.id}><td><b>{p.public_code}</b><small>{p.id.slice(0,8)}</small></td><td><b>{p.title}</b><small>{p.customer_name||p.provider_name||"Marketplace task"}</small></td><td><span className="record-type">{p.record_type.replaceAll("_"," ")}</span></td><td className="money-cell">{money(p.amount)}</td><td><b>{p.method}</b><small>{p.reference||"No reference supplied"}</small></td><td><Status value={p.status}/></td><td><span className="date-cell">{dateTime(p.created_at)}</span></td>{user?.role==="admin"&&<td>{p.status!=="reconciled"&&p.status!=="reversed"?<button className="button secondary tiny" disabled={!!busy} onClick={()=>void reconcilePayment(p.id)}>{busy===p.id?"Saving…":"Reconcile"}</button>:<span className="muted small-copy">Complete</span>}</td>}</tr>)}</tbody></table></div>{payments.length===0&&<Empty title="No payment records yet" description="When operations records a customer payment, payout or refund, it will appear in this ledger."/ >}</section>
+      </div>}
+
+      {tab==="profile"&&user?.role==="provider"&&<div className="view-stack"><section className="provider-profile-hero"><div className="profile-avatar-large">{initials(profile?.business_name||user.full_name)}</div><div className="profile-hero-copy"><div className="eyebrow">YOUR PUBLIC SERVICE PROFILE</div><h2>{profile?.business_name||user.full_name}</h2><p>{profile?.service_area||"Add the areas where you can take jobs."}</p><div className="profile-badges"><Status value={profile?.approval_status||"pending"}/>{profile?.verified_at&&<span className="verified-badge">✓ Reviewed by operations</span>}{profile?.approval_status==="approved"&&<span className={profile.available?"available-pill":"unavailable-pill"}><i></i>{profile.available?"Available for work":"Not available"}</span>}</div></div><div className="profile-rating"><b>★ {Number(profile?.rating_average||0).toFixed(1)}</b><span>{profile?.rating_count||0} customer ratings</span><small>{profile?.completed_jobs||0} confirmed completions</small></div></section>
+        <section className="surface-card"><div className="surface-heading"><div><h2>Service details</h2><p>Make your coverage and services clear. Operations reviews new and updated profiles.</p></div></div><form className="request-grid" onSubmit={saveProviderProfile}><div className="field"><label htmlFor="providerType">Provider type</label><select id="providerType" value={profileDraft.providerType} onChange={e=>setProfileDraft(p=>({...p,providerType:e.target.value}))}><option value="individual">Independent individual</option><option value="business">Registered / service business</option><option value="team">Provider team</option></select></div>{profileDraft.providerType!=="individual"&&<div className="field"><label htmlFor="businessName">Business or team name</label><input id="businessName" value={profileDraft.businessName} onChange={e=>setProfileDraft(p=>({...p,businessName:e.target.value}))} required minLength={2} maxLength={160}/></div>}<div className="field"><label htmlFor="serviceArea">Service area</label><input id="serviceArea" value={profileDraft.serviceArea} onChange={e=>setProfileDraft(p=>({...p,serviceArea:e.target.value}))} required minLength={2} maxLength={180} placeholder="e.g. Nairobi CBD, Westlands, Kilimani"/></div><div className="field wide"><label>Services you can provide</label><div className="category-select-grid">{CATEGORIES.map(c=><label key={c.id} className={profileDraft.serviceCategories.includes(c.id)?"category-option chosen":"category-option"}><input type="checkbox" checked={profileDraft.serviceCategories.includes(c.id)} onChange={e=>setProfileDraft(p=>({...p,serviceCategories:e.target.checked?[...p.serviceCategories,c.id]:p.serviceCategories.filter(id=>id!==c.id)}))}/><span className="category-option-icon">{c.icon}</span><span><b>{c.name}</b><small>{c.description}</small></span></label>)}</div></div><div className="field wide"><label htmlFor="bio">Introduction <span className="optional">Optional</span></label><textarea id="bio" value={profileDraft.bio} onChange={e=>setProfileDraft(p=>({...p,bio:e.target.value}))} maxLength={1200} placeholder="Describe your experience, the kind of tasks you handle and what customers can expect."/></div><div className="request-form-footer wide"><p><span>ⓘ</span> Provider approval is manual. Only approved providers marked available can receive assignments.</p><div><button className="button" disabled={busy==="profile"}>{busy==="profile"?"Saving profile…":"Save service profile"}</button></div></div></form></section>
+      </div>}
+      <footer className="app-footer"><span>SaMi Errands <i>·</i> Everyday help, with follow-through.</span><span><i className="secure-dot"></i> Secure workspace <i>·</i> {roleName}</span></footer>
+      </div>
+    </section>
+
+    {notificationOpen&&<><button className="overlay-dismiss" aria-label="Close notifications" onClick={()=>setNotificationOpen(false)}></button><aside className="notification-panel"><div className="notification-head"><div><h2>Notifications</h2><p>{unread} unread updates</p></div><button className="icon-button" onClick={()=>void markRead()} title="Mark all as read">✓</button><button className="icon-button" onClick={()=>setNotificationOpen(false)} aria-label="Close">×</button></div><div className="notification-list">{notifications.map(n=><article key={n.id} className={n.read_at?"notification-item":"notification-item unread"}><div className="notification-symbol">{n.kind==="payment"||n.kind==="payment_reconciled"?"◈":n.kind==="message"?"✉":n.kind==="dispute"?"!":"↗"}</div><div><b>{n.title}</b><p>{n.body}</p><small>{dateTime(n.created_at)}</small>{!n.read_at&&<button className="inline-link" onClick={()=>void markRead(n.id)}>Mark as read</button>}</div></article>)}{notifications.length===0&&<Empty title="You're all caught up" description="Important updates will show here."/ >}</div></aside></>}
+
+    {activeErrand&&<div className="modal-backdrop" role="presentation" onClick={e=>{if(e.target===e.currentTarget)setActiveErrand(null);}}><section className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-title"><header className="detail-header"><div><div className="eyebrow">{activeErrand.errand.public_code} · ERRAND RECORD</div><h2 id="detail-title">{activeErrand.errand.title}</h2><p>{activeErrand.errand.service_area} · Created {dateTime(activeErrand.errand.created_at)}</p></div><button className="icon-button" aria-label="Close detail" onClick={()=>setActiveErrand(null)}>×</button></header><div className="detail-summary"><div><small>STATUS</small><Status value={activeErrand.errand.status}/></div><div><small>QUOTE</small><b>{money(activeErrand.errand.quote_amount)}</b></div><div><small>PAYMENT</small><Status value={activeErrand.errand.payment_status}/></div></div><div className="detail-body"><section className="detail-main-column"><div className="detail-section"><h3>Request details</h3><p>{activeErrand.errand.description}</p><div className="detail-info-grid"><div><small>Category</small><b>{CATEGORIES.find(c=>c.id===activeErrand.errand.category)?.name||activeErrand.errand.category}</b></div><div><small>Priority</small><b>{statusLabel(activeErrand.errand.priority||"standard")}</b></div><div><small>Customer</small><b>{activeErrand.errand.customer_name}</b></div><div><small>Provider</small><b>{activeErrand.errand.provider_business_name||activeErrand.errand.provider_name||"Not assigned"}</b></div><div><small>Pickup</small><b>{activeErrand.errand.pickup_location||"Not provided"}</b></div><div><small>Destination</small><b>{activeErrand.errand.destination_location||"Not provided"}</b></div><div><small>Budget</small><b>{money(activeErrand.errand.budget_amount)}</b></div><div><small>Due</small><b>{dateTime(activeErrand.errand.due_at)}</b></div></div>{activeErrand.errand.completion_notes&&<div className="completion-note"><b>Provider completion notes</b><p>{activeErrand.errand.completion_notes}</p></div>}</div>
+          <div className="detail-section"><h3>Conversation <span className="soft-count">{activeErrand.messages.length}</span></h3><div className="message-thread">{activeErrand.messages.map(m=><div className={m.sender_id===user?.id?"message-bubble mine":"message-bubble"} key={m.id}><div className="message-meta"><b>{m.sender_name}</b><span>{dateTime(m.created_at)}</span></div><p>{m.message}</p></div>)}{activeErrand.messages.length===0&&<p className="muted small-copy">No messages yet. Use this thread to clarify the work and record important handovers.</p>}</div><form className="message-composer" onSubmit={sendMessage}><textarea value={messageDraft} onChange={e=>setMessageDraft(e.target.value)} maxLength={4000} required placeholder="Write a message to the people involved…"/><button className="button small" disabled={busy==="message"||!messageDraft.trim()}>{busy==="message"?"Sending…":"Send ↗"}</button></form></div>
+        </section><aside className="detail-side-column"><div className="detail-section"><h3>Workflow history</h3><div className="timeline">{activeErrand.events.map(ev=><div className="timeline-item" key={ev.id}><span className="timeline-dot"></span><div><b>{statusLabel(ev.event_type)}</b><small>{ev.actor_name||"System"} · {dateTime(ev.created_at)}</small>{ev.note&&<p>{ev.note}</p>}{ev.to_status&&<span className="timeline-state">{statusLabel(ev.from_status||"new")} → {statusLabel(ev.to_status)}</span>}</div></div>)}{activeErrand.events.length===0&&<p className="muted small-copy">History is loading or no activity is recorded.</p>}</div></div>
+          {user?.role==="admin"&&<div className="detail-section"><h3>Operations actions</h3>{["requested","quoted","declined"].includes(activeErrand.errand.status)&&<button className="button secondary full-width" onClick={()=>setQuoteForm({id:activeErrand.errand.id,amount:activeErrand.errand.quote_amount||"",payout:activeErrand.errand.provider_payout||""})}>Prepare / update quote</button>}{activeErrand.errand.status==="quoted"&&activeErrand.errand.quote_approved===true&&<form className="form-stack compact-form" onSubmit={async e=>{e.preventDefault();const f=new FormData(e.currentTarget);const providerId=String(f.get("providerId")||"");if(!providerId)return;await actionErrand(activeErrand.errand,"assign",{providerId});}}><div className="field"><label>Assign approved provider</label><select name="providerId" required defaultValue=""><option value="" disabled>Select provider…</option>{providers.filter(p=>p.approval_status==="approved"&&p.available).map(p=><option key={p.user_id} value={p.user_id}>{p.business_name||p.full_name} · {p.service_area}</option>)}</select></div><button className="button full-width" disabled={!!busy}>Assign errand</button></form>}
+            {["completed","completion_submitted","disputed"].includes(activeErrand.errand.status)&&<div className="payment-action-stack"><button className="button full-width" onClick={()=>setPaymentModal({kind:"mark_paid",errand:activeErrand.errand})}>Record customer payment</button>{activeErrand.errand.provider_id&&activeErrand.errand.status==="completed"&&<button className="button secondary full-width" onClick={()=>setPaymentModal({kind:"recordPayout",errand:activeErrand.errand})}>Record provider payout</button>}{activeErrand.errand.payment_status==="paid"&&<button className="button ghost full-width" onClick={()=>setPaymentModal({kind:"recordRefund",errand:activeErrand.errand})}>Record refund</button>}</div>}
+          </div>}
+          {user?.role==="provider"&&activeErrand.errand.provider_id===user.id&&activeErrand.errand.status==="assigned"&&<div className="detail-section"><h3>Assignment response</h3><p className="muted small-copy">Accept this job only if the scope and timing are clear.</p><div className="payment-action-stack"><button className="button full-width" disabled={!!busy} onClick={()=>void actionErrand(activeErrand.errand,"accept")}>Accept assignment</button><button className="button danger full-width" disabled={!!busy} onClick={()=>{if(window.confirm("Decline this assignment? Operations will be notified to reassign it."))void actionErrand(activeErrand.errand,"decline");}}>Decline assignment</button></div></div>}
+          {user?.role==="provider"&&activeErrand.errand.provider_id===user.id&&activeErrand.errand.status==="accepted"&&<div className="detail-section"><h3>Ready to start?</h3><p className="muted small-copy">Mark the job in progress when work begins.</p><button className="button full-width" disabled={!!busy} onClick={()=>void actionErrand(activeErrand.errand,"start")}>Start task</button></div>}
+          {user?.role==="provider"&&activeErrand.errand.provider_id===user.id&&activeErrand.errand.status==="in_progress"&&<div className="detail-section"><h3>Submit completion</h3><p className="muted small-copy">Add clear notes about what was done and any handover details.</p><button className="button full-width" disabled={!!busy} onClick={()=>{const notes=window.prompt("Describe what was completed and any handover details.");if(notes&&notes.trim().length>=3)void actionErrand(activeErrand.errand,"complete",{completionNotes:notes.trim()});else if(notes!==null)setError("Please provide completion notes.");}}>Submit completion notes</button></div>}
+          {user?.role==="customer"&&activeErrand.errand.customer_id===user.id&&activeErrand.errand.status==="quoted"&&activeErrand.errand.quote_approved!==true&&<div className="detail-section"><h3>Review your quote</h3><p className="muted small-copy">Operations quoted this errand at <b>{money(activeErrand.errand.quote_amount)}</b>. Approve it before operations can assign a provider, or decline it and ask for a pricing review.</p><div className="payment-action-stack"><button className="button full-width" disabled={!!busy} onClick={()=>void actionErrand(activeErrand.errand,"approveQuote")}>Approve quote · {money(activeErrand.errand.quote_amount)}</button><button className="button danger full-width" disabled={!!busy} onClick={()=>{const reason=window.prompt("Why would you like the quote reviewed? (optional)")||"";if(window.confirm("Decline this quote and ask operations to revise it?"))void actionErrand(activeErrand.errand,"declineQuote",{reason});}}>Decline / request revision</button></div></div>}
+          {user?.role==="customer"&&activeErrand.errand.customer_id===user.id&&["requested","quoted","assigned"].includes(activeErrand.errand.status)&&<div className="detail-section"><h3>Request controls</h3><p className="muted small-copy">You can cancel before the provider has accepted the assignment.</p><button className="button danger full-width" disabled={!!busy} onClick={()=>{const reason=window.prompt("Reason for cancellation (optional).")||"";if(window.confirm("Cancel this errand request?"))void actionErrand(activeErrand.errand,"cancel",{reason});}}>Cancel request</button></div>}
+          {user?.role==="customer"&&activeErrand.errand.customer_id===user.id&&activeErrand.errand.status==="completion_submitted"&&<div className="detail-section"><h3>Review completion</h3><p className="muted small-copy">Check the completion notes and confirm the task or raise a dispute for operations review.</p><div className="payment-action-stack"><button className="button full-width" disabled={!!busy} onClick={()=>void actionErrand(activeErrand.errand,"confirm")}>Confirm completion</button><button className="button danger full-width" disabled={!!busy} onClick={()=>{const reason=window.prompt("Explain the issue so operations can review it.");if(reason&&reason.trim().length>2)void actionErrand(activeErrand.errand,"dispute",{note:reason.trim()});}}>Raise a dispute</button></div></div>}
+          {user?.role==="customer"&&activeErrand.errand.customer_id===user.id&&activeErrand.errand.status==="completed"&&activeErrand.errand.provider_id&&activeErrand.ratings.length===0&&<div className="detail-section"><h3>Rate your provider</h3><p className="muted small-copy">Your feedback helps maintain a reliable provider network.</p><div className="rating-buttons">{[1,2,3,4,5].map(n=><button key={n} aria-label={"Rate "+n+" out of 5"} onClick={()=>void rateProvider(activeErrand.errand,n)}>★</button>)}</div></div>}
+        </aside></div></section></div>}
+
+    {quoteForm&&<div className="modal-backdrop" role="presentation" onClick={e=>{if(e.target===e.currentTarget)setQuoteForm(null);}}><section className="small-modal" role="dialog" aria-modal="true" aria-labelledby="quote-title"><header className="detail-header"><div><div className="eyebrow">PRICING REVIEW</div><h2 id="quote-title">Prepare customer quote</h2><p>Set the customer price and provider payout before assigning work.</p></div><button className="icon-button" aria-label="Close" onClick={()=>setQuoteForm(null)}>×</button></header><form className="form-stack" onSubmit={async e=>{e.preventDefault();const f=new FormData(e.currentTarget);const amount=Number(f.get("amount"));const payout=f.get("payout")===""?null:Number(f.get("payout"));const errand=errands.find(item=>item.id===quoteForm.id);if(!errand)return;if(!Number.isFinite(amount)||amount<0||(payout!==null&&(!Number.isFinite(payout)||payout<0||payout>amount))){setError("The quote must be non-negative and provider payout cannot exceed the customer price.");return;}await actionErrand(errand,"quote",{amount,providerPayout:payout});setQuoteForm(null);}}><div className="field"><label htmlFor="quote-amount">Customer quote (KES)</label><input id="quote-amount" name="amount" type="number" min="0" step="0.01" required value={quoteForm.amount} onChange={e=>setQuoteForm(q=>q?{...q,amount:e.target.value}:q)}/></div><div className="field"><label htmlFor="quote-payout">Provider payout (KES)</label><input id="quote-payout" name="payout" type="number" min="0" step="0.01" value={quoteForm.payout} onChange={e=>setQuoteForm(q=>q?{...q,payout:e.target.value}:q)} placeholder="Leave empty to decide later"/></div><div className="quote-preview"><span>Marketplace service fee</span><b>{quoteForm.amount!==""&&quoteForm.payout!==""&&Number(quoteForm.amount)>=Number(quoteForm.payout)?money(Number(quoteForm.amount)-Number(quoteForm.payout)):"—"}</b></div><p className="muted small-copy">This records a quote. It does not charge the customer or transfer money.</p><div className="modal-actions"><button type="button" className="button ghost" onClick={()=>setQuoteForm(null)}>Cancel</button><button className="button" disabled={!!busy}>Save quote</button></div></form></section></div>}
+
+    {paymentModal&&<div className="modal-backdrop" role="presentation" onClick={e=>{if(e.target===e.currentTarget)setPaymentModal(null);}}><section className="small-modal" role="dialog" aria-modal="true" aria-labelledby="payment-title"><header className="detail-header"><div><div className="eyebrow">FINANCE OPERATIONS</div><h2 id="payment-title">{paymentModal.kind==="mark_paid"?"Record customer payment":paymentModal.kind==="recordPayout"?"Record provider payout":"Record customer refund"}</h2><p>{paymentModal.errand.public_code} · {paymentModal.errand.title}</p></div><button className="icon-button" aria-label="Close" onClick={()=>setPaymentModal(null)}>×</button></header><form className="form-stack" onSubmit={savePayment}><div className="field"><label htmlFor="payment-amount">Amount (KES)</label><input id="payment-amount" name="amount" type="number" min="0" step="0.01" required defaultValue={paymentModal.kind==="recordPayout"?paymentModal.errand.provider_payout||"":paymentModal.kind==="recordRefund"?paymentModal.errand.quote_amount||"":paymentModal.errand.quote_amount||""}/></div><div className="field"><label htmlFor="payment-method">Method</label><select id="payment-method" name="method" required defaultValue="M-Pesa"><option>M-Pesa</option><option>Cash</option><option>Bank transfer</option><option>Card terminal</option><option>Other manual method</option></select></div><div className="field"><label htmlFor="payment-reference">Reference <span className="optional">Optional</span></label><input id="payment-reference" name="reference" maxLength={160} placeholder="Transaction or receipt reference"/></div><div className="alert alert-neutral"><span>ⓘ</span><p>This creates an auditable manual record only. Confirm the actual transaction in your payment provider or bank.</p></div><div className="modal-actions"><button type="button" className="button ghost" onClick={()=>setPaymentModal(null)}>Cancel</button><button className="button" disabled={busy==="payment"}>{busy==="payment"?"Saving record…":"Save record"}</button></div></form></section></div>}
+  </main>;
+}
+
+function Metric({label,value,hint,icon,tone}:{label:string;value:string|number;hint:string;icon:string;tone:string}) {
+  return <article className="metric-card"><div className={"metric-icon "+tone}>{icon}</div><div className="metric-label">{label}</div><div className="metric-value">{value}</div><div className="metric-hint">{hint}</div></article>;
+}
+function Status({value}:{value:string}) {
+  const tone = ["completed","paid","approved","reconciled"].includes(value)?"positive":["disputed","cancelled","rejected","suspended","refunded"].includes(value)?"negative":["requested","pending","completion_submitted","high","urgent"].includes(value)?"attention":["in_progress","accepted","assigned","quoted","recorded"].includes(value)?"info":"neutral";
+  return <span className={"status-badge "+tone}>{statusLabel(value)}</span>;
+}
+function Empty({title,description,action}:{title:string;description:string;action?:React.ReactNode}) {
+  return <div className="empty-state"><div className="empty-icon">↗</div><h3>{title}</h3><p>{description}</p>{action&&<div className="empty-action">{action}</div>}</div>;
+}
+function ErrandTable({errands,user,busy,onOpen,onQuote,onAssign}:{errands:Errand[];user:User;busy:string;onOpen:(id:string)=>void;onQuote?:(errand:Errand)=>void;onAssign?:(errand:Errand)=>void}) {
+  return <div className="table-scroller"><table className="data-table"><thead><tr><th>Errand</th><th>Customer / provider</th><th>Service area</th><th>Quote</th><th>Status</th><th>Updated</th><th></th></tr></thead><tbody>{errands.map(e=><tr key={e.id}><td><button className="table-title" onClick={()=>onOpen(e.id)}><b>{e.title}</b><small>{e.public_code} · {CATEGORIES.find(c=>c.id===e.category)?.name||e.category}</small></button>{e.priority&&e.priority!=="standard"&&<span className={"priority-label "+e.priority}>{e.priority}</span>}</td><td><b>{user.role==="customer"?(e.provider_business_name||e.provider_name||"Awaiting provider"):user.role==="provider"?e.customer_name:e.customer_name}</b><small>{user.role==="admin"?"Request owner":user.role==="provider"?"Customer":"Assigned service provider"}</small></td><td><span className="area-cell">⌖ {e.service_area}</span></td><td><span className="money-cell">{money(e.quote_amount)}</span>{e.provider_payout&&user.role==="admin"&&<small>Payout {money(e.provider_payout)}</small>}</td><td><Status value={e.status}/></td><td><span className="date-cell">{dateTime(e.updated_at||e.created_at)}</span></td><td><div className="table-actions"><button className="icon-button row-open" title="Open details" aria-label={"Open "+e.public_code} onClick={()=>onOpen(e.id)}>→</button>{user.role==="admin"&&onQuote&&["requested","quoted","declined"].includes(e.status)&&<button className="icon-button row-open" title="Quote request" aria-label="Quote request" onClick={()=>onQuote(e)}>₨</button>}{busy===e.id&&<span className="mini-spinner"></span>}</div></td></tr>)}</tbody></table></div>;
 }
