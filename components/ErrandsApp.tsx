@@ -55,7 +55,7 @@ const isActiveStatus = (status: string) => ["requested","quoted","assigned","acc
 
 export default function ErrandsApp() {
   const [user, setUser] = useState<User | null>(null);
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(true);
   const [view, setView] = useState<"home"|"login"|"register"|"setup"|"app">("home");
   const [tab, setTab] = useState<Tab>("overview");
   const [errands, setErrands] = useState<Errand[]>([]);
