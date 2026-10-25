@@ -77,7 +77,7 @@ The feat/sami-errands-transformation branch uses a Preview-scoped database conne
 
 Health check: /api/dispatch?action=health. It returns database connectivity and schema version without credentials. Service pricing: /api/dispatch?action=pricing.
 
-Tests: npm test; the Vercel build runs the workflow/schema tests before next build. Tests cover the no-quotation workflow, route/item/value-based service pricing, separate seller goods, admin bootstrap diagnostics, pricing audit and the M-PESA callback validation. Preview checks performed so far: successful production build, connected isolated database, nine readable category pricing rules, and a public Errands landing page with the old business-workspace branding removed. Full role workflows, actual M-PESA checkout/callback, and payment reconciliation still require end-to-end tests.
+Tests: npm test; the Vercel build runs the workflow/schema tests before next build. Tests cover the no-quotation workflow, route/item/value-based service pricing, separate seller goods, admin bootstrap diagnostics, pricing audit and the M-PESA callback validation. Preview checks performed so far: successful production build, connected isolated database, nine readable category pricing rules, and a public SaMi landing page with the old business-workspace branding removed. Full role workflows, actual M-PESA checkout/callback, and payment reconciliation still require end-to-end tests.
 
 ## Later hosting migration
 
