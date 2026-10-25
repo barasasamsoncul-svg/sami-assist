@@ -342,13 +342,13 @@ export default function ErrandsApp() {
     <footer className="public-footer shell">{brand}<p>Everyday help, with follow-through.</p><div><a href="#services">Services</a><a href="#how-it-works">How it works</a><button onClick={()=>setView("setup")}>Operations setup</button></div><small>© {new Date().getFullYear()} SaMi Errands. Thoughtful help for everyday life.</small></footer>
   </main>;
 
-  const navItems: {id:Tab;icon:string;label:string;adminOnly?:boolean;providerOnly?:boolean}[] = [
+  const navItems = ([
     {id:"overview",icon:"◫",label:"Overview"},
     {id:"errands",icon:"↗",label:user?.role==="admin"?"Errand operations":user?.role==="provider"?"Assignments":"My errands"},
     {id:"providers",icon:"♧",label:user?.role==="admin"?"Provider network":"",adminOnly:true},
     {id:"payments",icon:"◈",label:user?.role==="admin"?"Payments & reconciliation":"Payments"},
     {id:"profile",icon:"◎",label:user?.role==="provider"?"Service profile":"Account",providerOnly:true}
-  ].filter(item => (!item.adminOnly || user?.role==="admin") && (!item.providerOnly || user?.role==="provider") && item.label);
+  ] as {id:Tab;icon:string;label:string;adminOnly?:boolean;providerOnly?:boolean}[]).filter(item => (!item.adminOnly || user?.role==="admin") && (!item.providerOnly || user?.role==="provider") && item.label);
   const pageTitle = tab==="overview" ? "Overview" : tab==="errands" ? (user?.role==="admin"?"Errand operations":user?.role==="provider"?"Assignments":"My errands") : tab==="providers"?"Provider network":tab==="payments"?"Payments & reconciliation":"Service profile";
   const pageDescription = tab==="overview" ? "A real-time view of your errands and the next steps." : tab==="errands" ? "Review requests, track progress and manage every hand-off." : tab==="providers" ? "Review applications and keep the service network reliable." : tab==="payments" ? "Track payment records, payouts and reconciliation status." : "Tell customers what you do and where you can help.";
 
