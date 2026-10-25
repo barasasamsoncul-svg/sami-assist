@@ -197,5 +197,6 @@ INSERT INTO schema_migrations(version) VALUES
  ('2026-10-25-sami-errands-broad-categories'),
  ('2026-10-25-sami-errands-service-payment-model'),
  ('2026-10-25-sami-errands-pricing-audit'),
- ('2026-10-25-sami-errands-mpesa-payment-attempts')
+ ('2026-10-25-sami-errands-mpesa-payment-attempts'),
+ ('2026-10-25-sami-errands-route-item-pricing')
 ON CONFLICT DO NOTHING;
