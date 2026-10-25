@@ -83,3 +83,40 @@ test("operations can audit changes to category fees and commission", () => {
   assert.ok(ui.includes('tab==="pricing"'));
   assert.ok(ui.includes("Save pricing rule"));
 });
+
+test("available providers can discover and accept eligible open requests", () => {
+  assert.ok(route.includes("e.provider_id IS NULL AND e.status='requested'"));
+  assert.ok(route.includes("viewer.approval_status='approved' AND viewer.available=true"));
+  assert.ok(route.includes("e.category=ANY(viewer.service_categories)"));
+  assert.ok(route.includes("Provider accepted an open marketplace request."));
+  assert.ok(route.includes("Another provider accepted this request first. Refresh the job list."));
+  assert.ok(route.includes("Only provider accounts can respond to job requests."));
+  assert.ok(ui.includes("Open marketplace request"));
+  assert.ok(ui.includes("Accept this request"));
+});
+
+test("provider acceptance is race-safe and hides further jobs while active", () => {
+  assert.ok(route.includes("FOR UPDATE OF pp"));
+  assert.ok(route.includes("Finish your active assignment before accepting another request."));
+  assert.ok(route.includes("active.status IN ('assigned','accepted','in_progress','completion_submitted')"));
+  assert.ok(route.includes("e.provider_id IS NULL AND e.status='requested' AND EXISTS"));
+});
+
+test("manual service payments cannot settle a short amount or create an unpaid payout", () => {
+  assert.ok(route.includes("The recorded service payment must equal the saved service fee"));
+  assert.ok(route.includes("e.service_payment_method!==\"in_app\"||!e.provider_id||e.status!==\"completed\"||e.payment_status!==\"paid\""));
+  assert.ok(route.includes("Payout exceeds the remaining provider share"));
+  assert.ok(route.includes("A payout amount and payment method"));
+});
+
+test("partial refunds stay refundable until the collected fee is fully refunded", () => {
+  assert.ok(route.includes("A refund can only be recorded against a paid service fee that has not been fully refunded."));
+  assert.ok(route.includes("A balance remains refundable."));
+  assert.ok(route.includes("Refund amount cannot exceed the remaining recorded errand-service payments."));
+});
+
+test("active request and payment details refresh while a job is underway", () => {
+  assert.ok(ui.includes("const needsLiveRefresh = errands.some"));
+  assert.ok(ui.includes("window.setInterval"));
+  assert.ok(ui.includes('fetch("/api/dispatch?action=errandDetail&id=" + encodeURIComponent(activeErrandId)'));
+});
