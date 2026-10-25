@@ -86,6 +86,7 @@ export default function ErrandsApp() {
   const [paymentModal, setPaymentModal] = useState<{kind:PaymentKind;errand:Errand}|null>(null);
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [pricing, setPricing] = useState<Record<string, any>>({});
+  const [mpesaConfigured, setMpesaConfigured] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("shopping");
   const [selectedPriority, setSelectedPriority] = useState("standard");
   const [profileDraft, setProfileDraft] = useState({
@@ -146,6 +147,7 @@ export default function ErrandsApp() {
 
   useEffect(() => {
     void get("/api/dispatch?action=pricing").then(d => setPricing(Object.fromEntries((d.pricing || []).map((p:any) => [p.category,p])))).catch(() => undefined);
+    void get("/api/payments/mpesa/status").then(d => setMpesaConfigured(Boolean(d.configured))).catch(() => setMpesaConfigured(false));
   }, []);
 
   useEffect(() => {
@@ -207,10 +209,30 @@ export default function ErrandsApp() {
     const payload = Object.fromEntries(form.entries());
     try {
       const result = await post("createErrand", payload);
-      setNotice("Request " + result.errand.public_code + " is in the operations queue. You will be notified when it is requested.");
+      setNotice("Request " + result.errand.public_code + " received. The upfront errand-service fee is saved; any seller/goods cost is separate. Operations can assign an approved provider directly.");
       (event.currentTarget as HTMLFormElement).reset();
       setShowRequest(false); setTab("errands"); await refresh(true);
     } catch(e) { setError(e instanceof Error ? e.message : "The request could not be submitted."); }
+    finally { setBusy(""); }
+  }
+
+  async function startInAppPayment(errand: Errand) {
+    if (!mpesaConfigured) { setError("M-PESA checkout is not configured in this Preview yet. Cash remains available."); return; }
+    const phone = window.prompt("Enter the Kenyan M-PESA phone number that should receive the payment prompt.", user?.phone || "");
+    if (!phone || !phone.trim()) return;
+    setBusy(errand.id); setError(""); setNotice("");
+    try {
+      const response = await fetch("/api/payments/mpesa/checkout", {
+        method:"POST", cache:"no-store",
+        headers:{ "Content-Type":"application/json" },
+        body:JSON.stringify({ errandId:errand.id, phone:phone.trim() })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "M-PESA checkout could not be started.");
+      setNotice((data.message || "M-PESA prompt sent.") + (data.customerMessage ? " " + data.customerMessage : ""));
+      await refresh(true);
+      await openDetail(errand.id,true);
+    } catch(e) { setError(e instanceof Error ? e.message : "M-PESA checkout could not be started."); }
     finally { setBusy(""); }
   }
 
@@ -356,7 +378,7 @@ export default function ErrandsApp() {
   const openCount = errands.filter(e => isActiveStatus(e.status)).length;
   const activePriceRule = pricing[selectedCategory];
   const activeMultiplier = activePriceRule ? Number(activePriceRule[selectedPriority + "_priority_multiplier"] ?? activePriceRule.standard_priority_multiplier ?? 1) : 1;
-  const displayedServiceFee = activePriceRule ? Math.round(Number(activePriceRule.base_fee) * activeMultiplier * 100) / 100 : null;
+  const displayedServiceFee = activePriceRule ? Math.round(Number(activePriceRule.base_fee) * activeMultiplier) : null;
 
   if (!ready) return <main className="loading-screen"><div className="brand-mark">S</div><strong>SaMi Errands</strong><span className="muted">Preparing your workspace…</span></main>;
 
@@ -421,7 +443,7 @@ export default function ErrandsApp() {
           <div className="field"><label htmlFor="pickupLocation">Pickup location <span className="optional">Optional</span></label><input id="pickupLocation" name="pickupLocation" maxLength={300} placeholder="Building, street or landmark"/></div>
           <div className="field"><label htmlFor="destinationLocation">Destination <span className="optional">Optional</span></label><input id="destinationLocation" name="destinationLocation" maxLength={300} placeholder="Destination or handover point"/></div>
           <div className="field"><label htmlFor="itemBudgetAmount">Estimated goods / seller cost (KES) <span className="optional">Optional</span></label><input id="itemBudgetAmount" name="itemBudgetAmount" type="number" min="0" step="0.01" placeholder="Separate from the errand fee"/></div>
-          <div className="field"><label htmlFor="servicePaymentMethod">How will you pay the errand service fee?</label><select id="servicePaymentMethod" name="servicePaymentMethod" defaultValue="cash"><option value="cash">Cash to the errand provider</option><option value="in_app">In-app payment</option></select><small className="muted">Goods are paid to the seller separately. In-app payment is not complete until confirmed by the payment provider.</small></div>
+          <div className="field"><label htmlFor="servicePaymentMethod">How will you pay the errand service fee?</label><select id="servicePaymentMethod" name="servicePaymentMethod" defaultValue="cash"><option value="cash">Cash to the errand provider</option><option value="in_app" disabled={!mpesaConfigured}>M-PESA in-app payment{mpesaConfigured ? "" : " (setup required)"}</option></select><small className="muted">{mpesaConfigured ? "M-PESA will send a PIN prompt for the errand service fee. Goods are paid to the seller separately." : "M-PESA checkout is not enabled in this Preview yet; cash is available until Daraja credentials are configured. Seller goods remain separate."}</small></div>
           <div className="wide service-fee-preview"><div><span>Errand service fee upfront</span><strong>{displayedServiceFee === null ? "Loading price…" : money(displayedServiceFee)}</strong></div><p>This is the errand-service charge only—not clothing, groceries or goods bought from a seller. SaMi commission applies to this service fee.</p></div>
           <div className="request-form-footer wide"><p><span>ⓘ</span> Your errand fee is shown before you submit. Goods are paid to the seller separately; operations assigns a provider without a quotation step.</p><div><button type="button" className="button ghost" onClick={()=>setShowRequest(false)}>Cancel</button><button className="button" disabled={busy==="create"}>{busy==="create"?"Submitting…":"Submit request ↗"}</button></div></div>
         </form></section>}
@@ -475,6 +497,7 @@ export default function ErrandsApp() {
           {user?.role==="provider"&&activeErrand.errand.provider_id===user.id&&activeErrand.errand.status==="in_progress"&&<div className="detail-section"><h3>Submit completion</h3><p className="muted small-copy">Add clear notes about what was done and any handover details.</p><button className="button full-width" disabled={!!busy} onClick={()=>{const notes=window.prompt("Describe what was completed and any handover details.");if(notes&&notes.trim().length>=3)void actionErrand(activeErrand.errand,"complete",{completionNotes:notes.trim()});else if(notes!==null)setError("Please provide completion notes.");}}>Submit completion notes</button></div>}
           {user?.role==="provider"&&activeErrand.errand.provider_id===user.id&&activeErrand.errand.seller_payment_status==="due"&&["accepted","in_progress","completion_submitted","completed"].includes(activeErrand.errand.status)&&<div className="detail-section"><h3>Seller / goods payment</h3><p className="muted small-copy">Record what was paid to the seller separately from SaMi’s service fee.</p><button className="button secondary full-width" disabled={!!busy} onClick={()=>setPaymentModal({kind:"recordSellerPayment",errand:activeErrand.errand})}>Record seller payment separately</button></div>}
           {user?.role==="provider"&&activeErrand.errand.provider_id===user.id&&activeErrand.errand.service_payment_method==="cash"&&activeErrand.errand.payment_status!=="paid"&&["completion_submitted","completed","disputed"].includes(activeErrand.errand.status)&&<div className="detail-section"><h3>Errand service fee</h3><p className="muted small-copy">Record the cash service fee received from the customer. Goods paid to a seller are separate.</p><button className="button full-width" disabled={!!busy} onClick={()=>setPaymentModal({kind:"mark_paid",errand:activeErrand.errand})}>Record cash service fee received</button></div>}
+          {user?.role==="customer"&&activeErrand.errand.customer_id===user.id&&activeErrand.errand.service_payment_method==="in_app"&&activeErrand.errand.payment_status!=="paid"&&activeErrand.errand.status!=="cancelled"&&activeErrand.errand.status!=="disputed"&&<div className="detail-section"><h3>Pay the errand service fee</h3><p className="muted small-copy">Service fee: <b>{money(activeErrand.errand.service_fee_amount)}</b>. This pays SaMi’s errand-service charge only; clothes, groceries or other goods are paid to the seller separately.</p>{activeErrand.errand.app_payment_checkout_status==="initiated"?<div className="alert alert-neutral"><span>◷</span><p>M-PESA prompt sent. Check the selected phone and enter your PIN; SaMi will mark the service fee paid only after the callback matches the amount, phone and receipt.</p></div>:<><button className="button full-width" disabled={!mpesaConfigured||busy===activeErrand.errand.id} onClick={()=>void startInAppPayment(activeErrand.errand)}>{!mpesaConfigured?"M-PESA checkout setup required":busy===activeErrand.errand.id?"Starting M-PESA…":"Pay "+money(activeErrand.errand.service_fee_amount)+" with M-PESA"}</button>{!mpesaConfigured&&<p className="muted small-copy">This Preview has no Daraja credentials configured yet. The errand remains unpaid; choose cash for new requests until M-PESA setup is complete.</p>}</>}</div>}
           {user?.role==="customer"&&activeErrand.errand.customer_id===user.id&&["requested","assigned"].includes(activeErrand.errand.status)&&<div className="detail-section"><h3>Request controls</h3><p className="muted small-copy">You can cancel before the provider has accepted the assignment.</p><button className="button danger full-width" disabled={!!busy} onClick={()=>{const reason=window.prompt("Reason for cancellation (optional).")||"";if(window.confirm("Cancel this errand request?"))void actionErrand(activeErrand.errand,"cancel",{reason});}}>Cancel request</button></div>}
           {user?.role==="customer"&&activeErrand.errand.customer_id===user.id&&activeErrand.errand.status==="completion_submitted"&&<div className="detail-section"><h3>Review completion</h3><p className="muted small-copy">Check the completion notes and confirm the task or raise a dispute for operations review.</p><div className="payment-action-stack"><button className="button full-width" disabled={!!busy} onClick={()=>void actionErrand(activeErrand.errand,"confirm")}>Confirm completion</button><button className="button danger full-width" disabled={!!busy} onClick={()=>{const reason=window.prompt("Explain the issue so operations can review it.");if(reason&&reason.trim().length>2)void actionErrand(activeErrand.errand,"dispute",{note:reason.trim()});}}>Raise a dispute</button></div></div>}
           {user?.role==="customer"&&activeErrand.errand.customer_id===user.id&&activeErrand.errand.status==="completed"&&activeErrand.errand.provider_id&&activeErrand.ratings.length===0&&<div className="detail-section"><h3>Rate your provider</h3><p className="muted small-copy">Your feedback helps maintain a reliable provider network.</p><div className="rating-buttons">{[1,2,3,4,5].map(n=><button key={n} aria-label={"Rate "+n+" out of 5"} onClick={()=>void rateProvider(activeErrand.errand,n)}>★</button>)}</div></div>}

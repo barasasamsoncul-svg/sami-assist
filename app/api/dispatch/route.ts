@@ -359,6 +359,7 @@ export async function POST(request: Request) {
     const priority = new Set(["low","standard","high","urgent"]).has(text(body.priority, 20)) ? text(body.priority, 20) : "standard";
     const servicePaymentMethod = body.servicePaymentMethod === "in_app" ? "in_app" : "cash";
     if (title.length < 3 || description.length < 5 || serviceArea.length < 2 || !allowed.has(category)) return error("Check the task title, details, category and service area.");
+    if (servicePaymentMethod === "in_app" && ["MPESA_SHORTCODE","MPESA_CONSUMER_KEY","MPESA_CONSUMER_SECRET","MPESA_PASSKEY","MPESA_CALLBACK_TOKEN"].some(key => !process.env[key])) return error("M-PESA in-app checkout is not configured for this Preview yet. Choose cash until Daraja credentials are configured.",503);
     if (itemBudget !== null && (!Number.isFinite(itemBudget) || itemBudget < 0 || itemBudget > 100000000)) return error("Enter a valid estimated seller/goods budget.");
     if (due && (!Number.isFinite(due.getTime()) || due.getTime() < Date.now() - 86400000)) return error("Choose a valid due date.");
     try {
@@ -367,7 +368,7 @@ export async function POST(request: Request) {
       if (!rule) return error("This errand category is not currently available.", 409);
       const multiplierKey = priority + "_priority_multiplier";
       const multiplier = Number(rule[multiplierKey] ?? rule.standard_priority_multiplier);
-      const serviceFee = Math.round(Number(rule.base_fee) * multiplier * 100) / 100;
+      const serviceFee = Math.round(Number(rule.base_fee) * multiplier);
       const commissionRate = Number(rule.commission_rate);
       const commission = Math.round(serviceFee * commissionRate) / 100;
       const providerEarning = Math.round((serviceFee - commission) * 100) / 100;

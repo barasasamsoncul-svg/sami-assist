@@ -4,6 +4,9 @@ import { readFileSync } from "node:fs";
 
 const route = readFileSync(new URL("../app/api/dispatch/route.ts", import.meta.url), "utf8");
 const ui = readFileSync(new URL("../components/ErrandsApp.tsx", import.meta.url), "utf8");
+const checkout = readFileSync(new URL("../app/api/payments/mpesa/checkout/route.ts", import.meta.url), "utf8");
+const callback = readFileSync(new URL("../app/api/payments/mpesa/callback/route.ts", import.meta.url), "utf8");
+const schema = readFileSync(new URL("../database/schema.sql", import.meta.url), "utf8");
 
 test("the customer workflow has no quotation or quote-approval step", () => {
   for (const removed of ["quote_amount", "quote_approved", "quote_decided_at", "approveQuote", "declineQuote", 'act === "quote"', "'quoted'"]) {
@@ -14,9 +17,9 @@ test("the customer workflow has no quotation or quote-approval step", () => {
   assert.ok(route.includes('["requested","declined"].includes(previous)'));
 });
 
-test("service fee, commission and provider share are computed from database pricing", () => {
+test("service fee, commission and provider share are calculated from database pricing", () => {
   assert.ok(route.includes('SELECT * FROM service_pricing WHERE category=$1 AND enabled=true'));
-  assert.ok(route.includes("Math.round(Number(rule.base_fee) * multiplier * 100) / 100"));
+  assert.ok(route.includes("Math.round(Number(rule.base_fee) * multiplier)"));
   assert.ok(route.includes("Math.round(serviceFee * commissionRate) / 100"));
   assert.ok(route.includes("Math.round((serviceFee - commission) * 100) / 100"));
   assert.ok(ui.includes("service-fee-preview"));
@@ -31,11 +34,29 @@ test("seller goods are tracked separately from service-fee payments", () => {
   assert.ok(ui.includes("Goods are paid to the seller separately"));
 });
 
+test("M-PESA checkout only starts when server credentials exist and records pending status", () => {
+  assert.ok(checkout.includes("MPESA_CONSUMER_KEY"));
+  assert.ok(checkout.includes("/mpesa/stkpush/v1/processrequest"));
+  assert.ok(checkout.includes("status='pending'"));
+  assert.ok(checkout.includes("service_fee_amount"));
+  assert.ok(checkout.includes("CallBackURL"));
+});
+
+test("M-PESA callback checks the secret, checkout, amount, phone and receipt before marking paid", () => {
+  assert.ok(callback.includes("MPESA_CALLBACK_TOKEN"));
+  assert.ok(callback.includes("checkout_request_id"));
+  assert.ok(callback.includes("actualAmount === Number(attempt.amount)"));
+  assert.ok(callback.includes("actualPhone === expectedPhone"));
+  assert.ok(callback.includes("receipt.length >= 6"));
+  assert.ok(callback.includes("payment_status='paid'"));
+  assert.ok(schema.includes("CREATE TABLE IF NOT EXISTS payment_attempts"));
+});
+
 test("cash and in-app choices cannot silently claim a payment succeeded", () => {
   assert.ok(route.includes('body.servicePaymentMethod === "in_app" ? "in_app" : "cash"'));
   assert.ok(route.includes("Enter the verified in-app transaction reference before recording the service payment."));
   assert.ok(ui.includes('option value="cash">Cash to the errand provider'));
-  assert.ok(ui.includes('option value="in_app">In-app payment'));
+  assert.ok(ui.includes('value="in_app" disabled={!mpesaConfigured}>M-PESA in-app payment'));
 });
 
 test("operations can audit changes to category fees and commission", () => {

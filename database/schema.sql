@@ -117,6 +117,28 @@ CREATE UNIQUE INDEX IF NOT EXISTS payment_records_idempotency_unique ON payment_
 CREATE INDEX IF NOT EXISTS payment_records_errand_idx ON payment_records(errand_id,created_at DESC);
 CREATE INDEX IF NOT EXISTS payment_records_reconcile_idx ON payment_records(status,created_at DESC);
 
+CREATE TABLE IF NOT EXISTS payment_attempts (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ errand_id uuid NOT NULL REFERENCES errands(id) ON DELETE RESTRICT,
+ customer_id uuid NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+ provider text NOT NULL DEFAULT 'mpesa' CHECK(provider IN ('mpesa')),
+ status text NOT NULL DEFAULT 'initiating' CHECK(status IN ('initiating','pending','succeeded','failed','verification_pending')),
+ amount numeric(12,2) NOT NULL CHECK(amount > 0),
+ phone_number text NOT NULL,
+ idempotency_key text NOT NULL UNIQUE,
+ merchant_request_id text,
+ checkout_request_id text UNIQUE,
+ provider_receipt text,
+ provider_result_code integer,
+ provider_result_description text,
+ provider_response jsonb,
+ callback_payload jsonb,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS payment_attempts_errand_idx ON payment_attempts(errand_id,created_at DESC);
+CREATE INDEX IF NOT EXISTS payment_attempts_pending_idx ON payment_attempts(status,created_at DESC) WHERE status IN ('initiating','pending','verification_pending');
+
 CREATE TABLE IF NOT EXISTS user_sessions (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
  token_hash text NOT NULL UNIQUE, expires_at timestamptz NOT NULL,
@@ -162,5 +184,6 @@ INSERT INTO schema_migrations(version) VALUES
  ('2026-10-25-sami-errands-no-quotes-service-fees'),
  ('2026-10-25-sami-errands-broad-categories'),
  ('2026-10-25-sami-errands-service-payment-model'),
- ('2026-10-25-sami-errands-pricing-audit')
+ ('2026-10-25-sami-errands-pricing-audit'),
+ ('2026-10-25-sami-errands-mpesa-payment-attempts')
 ON CONFLICT DO NOTHING;
