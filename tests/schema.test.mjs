@@ -10,3 +10,8 @@ test("payment amounts are non-negative and duplicate records are guarded",()=>{a
 test("accounts store password hashes and sessions store token hashes",()=>{assert.ok(schema.includes("password_hash text NOT NULL"));assert.ok(schema.includes("token_hash text NOT NULL UNIQUE"));});
 test("pricing changes and errand lifecycle can be audited",()=>{assert.ok(schema.includes("pricing_audit_events"));assert.ok(schema.includes("metadata jsonb NOT NULL DEFAULT '{}'::jsonb"));});
 test("migrations are idempotent",()=>{assert.ok(schema.includes("ON CONFLICT DO NOTHING"));});
+test("distance, item-size and item-value pricing are stored with the errand",()=>{
+  for(const column of ["distance_km numeric(8,2)","item_size text NOT NULL DEFAULT 'none'","distance_fee_amount numeric(12,2)","item_size_fee_amount numeric(12,2)","value_surcharge_amount numeric(12,2)"])assert.ok(schema.includes(column),"missing errand pricing column "+column);
+  for(const column of ["distance_rate_per_km numeric(12,2)","small_item_fee numeric(12,2)","medium_item_fee numeric(12,2)","large_item_fee numeric(12,2)","bulky_item_fee numeric(12,2)","value_surcharge_threshold numeric(12,2)","value_surcharge_rate numeric(5,2)"])assert.ok(schema.includes(column),"missing pricing control "+column);
+  assert.ok(schema.includes("'2026-10-25-sami-errands-route-item-pricing'"));
+});
