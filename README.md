@@ -6,7 +6,7 @@
 - **Parent-company identity:** SaMi Technologies may be used on formal corporate materials, but the product itself is branded simply as **SaMi**.
 - **Wordmark:** use the shared `components/Brand.tsx` component. It displays the SaMi mark and wordmark only.
 - **Tagline:** “Everyday help, organised.”
-- **Primary palette:** deep teal `#087E76`, deep teal hover `#065B56`, navy `#102C38`, pale mint `#A7E6D8`, and amber `#F4BB4B`. UI surfaces stay light with high-contrast text.
+- **Primary identity:** original SaMi custom blue wordmark (`#4A7AFF` through deep navy `#0A1A40`), royal-blue actions, light-blue surfaces, and amber highlights. UI surfaces stay light with high-contrast text.
 - **Voice:** calm, direct, practical and accountable. SaMi supports legitimate personal, local and business tasks, not only delivery work.
 - **Product promise:** clear service fees upfront, goods/seller costs kept separate, visible progress, and accountable hand-offs.
 - **Consistency:** keep the brand mark, page metadata, manifest, app icon, marketing footer and authenticated workspace aligned. Avoid alternative spellings and extra suffixes in the brand name.
@@ -18,10 +18,10 @@ SaMi is a marketplace for all kinds of legitimate everyday errands—shopping, c
 1. The customer describes the errand, location, timing and relevant details.
 2. The estimated service fee is shown before submission and combines the category base fee, entered end-to-end route distance, item-size handling fee, configured high-value handling surcharge, and priority multiplier.
 3. The customer chooses cash or M-PESA in-app payment for the errand-service fee. M-PESA checkout becomes available once Daraja credentials are configured.
-4. Operations assigns an approved provider directly; the customer does not wait for or approve a separate quote.
+4. Approved, available providers can see open requests that match their listed service categories and accept one directly; operations can still manually assign a provider when needed. A provider can hold one active assignment at a time.
 5. For shopping and clothing errands, the estimated goods budget is tracked separately. The seller is paid separately when the goods are bought/received. Goods are not part of SaMi's service fee or commission base.
 6. The provider accepts, starts, messages relevant parties, records separate seller-payment details if applicable, submits completion notes, and the customer confirms or disputes.
-7. Operations tracks service-fee payments, provider payouts, refunds and reconciliation.
+7. Operations tracks service-fee payments, provider payouts from confirmed in-app collections, refunds and reconciliation. The interface refreshes active request/payment state while work is underway.
 
 ## Commission
 
@@ -59,7 +59,7 @@ The Preview currently has only the database and initial-admin environment values
 ## Roles and responsibilities
 
 - Customers/businesses: submit freeform lawful tasks, see the service fee upfront, choose a payment method, track updates, message participants, confirm completion or raise a dispute, and rate providers.
-- Providers/provider businesses: maintain a service profile, list categories and service areas, submit for approval, control availability, accept/decline assigned tasks, update progress and submit completion notes. Seller/goods payment is tracked separately.
+- Providers/provider businesses: maintain a service profile, list categories and service areas, submit for approval, control availability, see eligible open requests, accept one request atomically, update progress and submit completion notes. Seller/goods payment is tracked separately.
 - Operations: approve/suspend providers, assign requested errands directly, review disputes, manage fees and commissions, record/reconcile cash payments and payouts, verify exceptions, and manage refunds.
 
 ## Runtime and database
