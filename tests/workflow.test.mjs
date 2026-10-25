@@ -19,10 +19,27 @@ test("the customer workflow has no quotation or quote-approval step", () => {
 
 test("service fee, commission and provider share are calculated from database pricing", () => {
   assert.ok(route.includes('SELECT * FROM service_pricing WHERE category=$1 AND enabled=true'));
-  assert.ok(route.includes("Math.round(Number(rule.base_fee) * multiplier)"));
+  assert.ok(route.includes("function calculateServicePrice"));
+  assert.ok(route.includes("distance_rate_per_km"));
+  assert.ok(route.includes("item + \"_item_fee\""));
+  assert.ok(route.includes("value_surcharge_threshold"));
+  assert.ok(route.includes("serviceFee = Math.round((baseFee + distanceFeeRaw + sizeFeeRaw + valueFeeRaw) * multiplier)"));
   assert.ok(route.includes("Math.round(serviceFee * commissionRate) / 100"));
   assert.ok(route.includes("Math.round((serviceFee - commission) * 100) / 100"));
   assert.ok(ui.includes("service-fee-preview"));
+  assert.ok(ui.includes("name=\"distanceKm\""));
+  assert.ok(ui.includes("name=\"itemSize\""));
+  assert.ok(ui.includes("value_surcharge_rate"));
+});
+
+test("admin bootstrap reports readiness and actionable errors without exposing the token", () => {
+  assert.ok(route.includes('action === "bootstrapStatus"'));
+  assert.ok(route.includes("tokenConfigured, setupAvailable"));
+  assert.ok(route.includes("ADMIN_BOOTSTRAP_TOKEN"));
+  assert.ok(route.includes("does not match this deployment"));
+  assert.ok(ui.includes("bootstrapStatus"));
+  assert.ok(ui.includes("ADMIN_BOOTSTRAP_TOKEN for Preview"));
+  assert.ok(ui.includes("minLength={14}"));
 });
 
 test("seller goods are tracked separately from service-fee payments", () => {
