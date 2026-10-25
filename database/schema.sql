@@ -35,6 +35,13 @@ CREATE TABLE IF NOT EXISTS service_pricing (
  standard_priority_multiplier numeric(5,2) NOT NULL DEFAULT 1 CHECK(standard_priority_multiplier>0 AND standard_priority_multiplier<=5),
  high_priority_multiplier numeric(5,2) NOT NULL DEFAULT 1.25 CHECK(high_priority_multiplier>0 AND high_priority_multiplier<=5),
  urgent_priority_multiplier numeric(5,2) NOT NULL DEFAULT 1.5 CHECK(urgent_priority_multiplier>0 AND urgent_priority_multiplier<=5),
+ distance_rate_per_km numeric(12,2) NOT NULL DEFAULT 25 CHECK(distance_rate_per_km BETWEEN 0 AND 100000),
+ small_item_fee numeric(12,2) NOT NULL DEFAULT 0 CHECK(small_item_fee BETWEEN 0 AND 100000),
+ medium_item_fee numeric(12,2) NOT NULL DEFAULT 50 CHECK(medium_item_fee BETWEEN 0 AND 100000),
+ large_item_fee numeric(12,2) NOT NULL DEFAULT 100 CHECK(large_item_fee BETWEEN 0 AND 100000),
+ bulky_item_fee numeric(12,2) NOT NULL DEFAULT 200 CHECK(bulky_item_fee BETWEEN 0 AND 100000),
+ value_surcharge_threshold numeric(12,2) NOT NULL DEFAULT 10000 CHECK(value_surcharge_threshold BETWEEN 0 AND 100000000),
+ value_surcharge_rate numeric(5,2) NOT NULL DEFAULT 0.5 CHECK(value_surcharge_rate BETWEEN 0 AND 100),
  enabled boolean NOT NULL DEFAULT true, updated_at timestamptz NOT NULL DEFAULT now()
 );
 INSERT INTO service_pricing(category,service_name,base_fee,commission_rate,low_priority_multiplier,standard_priority_multiplier,high_priority_multiplier,urgent_priority_multiplier,enabled) VALUES
@@ -58,6 +65,11 @@ CREATE TABLE IF NOT EXISTS errands (
  category text NOT NULL CHECK(category IN ('shopping','clothing_retail','pickup_delivery','documents_admin','personal_errand','queue_appointments','business_support','local_assistance','other')),
  description text NOT NULL CHECK(length(trim(description)) BETWEEN 5 AND 5000),
  pickup_location text, destination_location text, service_area text NOT NULL, due_at timestamptz,
+ distance_km numeric(8,2) NOT NULL DEFAULT 0 CHECK(distance_km BETWEEN 0 AND 500),
+ item_size text NOT NULL DEFAULT 'none' CHECK(item_size IN ('none','small','medium','large','bulky')),
+ distance_fee_amount numeric(12,2) NOT NULL DEFAULT 0 CHECK(distance_fee_amount>=0),
+ item_size_fee_amount numeric(12,2) NOT NULL DEFAULT 0 CHECK(item_size_fee_amount>=0),
+ value_surcharge_amount numeric(12,2) NOT NULL DEFAULT 0 CHECK(value_surcharge_amount>=0),
  budget_amount numeric(12,2) CHECK(budget_amount IS NULL OR budget_amount>=0),
  item_budget_amount numeric(12,2) CHECK(item_budget_amount IS NULL OR item_budget_amount>=0),
  seller_actual_amount numeric(12,2) CHECK(seller_actual_amount IS NULL OR seller_actual_amount>=0),
