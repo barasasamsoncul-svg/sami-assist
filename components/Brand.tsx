@@ -23,11 +23,10 @@ type BrandProps = {
 
 export default function Brand({ href = "/", onClick, className = "", compact = false }: BrandProps) {
   return (
-    <a className={[`brand`, compact ? "brand--compact" : "", className].filter(Boolean).join(" ")} href={href} onClick={onClick} aria-label="SaMi Errands home">
+    <a className={[`brand`, compact ? "brand--compact" : "", className].filter(Boolean).join(" ")} href={href} onClick={onClick} aria-label="SaMi home">
       <BrandMark />
       <span className="brand-lockup">
         <span className="brand-name">SaMi</span>
-        <span className="brand-product">ERRANDS</span>
       </span>
     </a>
   );
