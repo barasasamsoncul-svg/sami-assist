@@ -740,7 +740,7 @@ export async function POST(request: Request) {
         if(act==="mark_paid"&&Math.abs(amount-Number(e.service_fee_amount))>0.01)throw new Error("The recorded service payment must equal the saved service fee of KES "+Number(e.service_fee_amount).toFixed(2)+".");
         if(act==="mark_paid"&&e.service_payment_method==="cash"&&!["completion_submitted","completed","disputed"].includes(e.status))throw new Error("Cash service fees can be recorded after the errand service has been performed.");
         if(act==="mark_paid"&&e.service_payment_method==="in_app"&&reference.length<4)throw new Error("Enter the verified in-app transaction reference before recording the service payment.");
-        if(act==="recordPayout"&&(!e.provider_id||e.status!=="completed"||e.payment_status!=="paid"))throw new Error("A provider payout can only be recorded after customer-confirmed completion and confirmed payment.");
+        if(act==="recordPayout"&&(e.service_payment_method!=="in_app"||!e.provider_id||e.status!=="completed"||e.payment_status!=="paid"))throw new Error("Provider payouts can only be recorded for a completed errand whose in-app service payment is confirmed.");
         if(act==="recordPayout"){
           const existingPayout=await client.query("SELECT coalesce(sum(amount),0)::numeric AS total FROM payment_records WHERE errand_id=$1 AND record_type='provider_payout' AND status<>'reversed'",[id]);
           const availablePayout=Math.max(0,Number(e.provider_earning_amount||0)-Number(existingPayout.rows[0]?.total||0));
