@@ -1,6 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
-  <rect width="48" height="48" rx="14" fill="#087E76"/>
-  <path d="M31.6 13.7c-2.8-3.1-10.8-3.5-14.7-.2-3.8 3.2-1.8 7.4 3 8.9l7.5 2.3c4.7 1.4 6.6 5.2 3 9.2-3.5 3.8-11.4 3.5-15-.1" stroke="#fff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <circle cx="32.2" cy="13.2" r="3.4" fill="#F4BB4B"/>
-  <circle cx="15.2" cy="34" r="2.6" fill="#A7E6D8"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="140 35 220 230">
+  <title>SaMi</title>
+  <defs>
+    <linearGradient id="sami-icon-bg" x1="140" y1="35" x2="360" y2="265" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1A3E8C"/>
+      <stop offset="1" stop-color="#0A1A40"/>
+    </linearGradient>
+    <linearGradient id="sami-icon-mark" x1="160" y1="54" x2="326" y2="248" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6A9AFF"/>
+      <stop offset=".45" stop-color="#2B5CFF"/>
+      <stop offset="1" stop-color="#B8D4FF"/>
+    </linearGradient>
+  </defs>
+  <rect x="140" y="35" width="220" height="230" rx="42" fill="url(#sami-icon-bg)"/>
+  <path d="M 326 78 C 294 54 231 54 195 75 C 163 94 160 124 188 137 C 216 150 279 144 304 159 C 334 176 323 212 289 229 C 251 248 189 241 158 217" fill="none" stroke="url(#sami-icon-mark)" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
