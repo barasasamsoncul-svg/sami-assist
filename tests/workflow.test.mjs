@@ -21,7 +21,7 @@ test("service fee, commission and provider share are calculated from database pr
   assert.ok(route.includes('SELECT * FROM service_pricing WHERE category=$1 AND enabled=true'));
   assert.ok(route.includes("function calculateServicePrice"));
   assert.ok(route.includes("distance_rate_per_km"));
-  assert.ok(route.includes("item + \"_item_fee\""));
+  assert.ok(route.includes('input.itemSize + "_item_fee"'));
   assert.ok(route.includes("value_surcharge_threshold"));
   assert.ok(route.includes("serviceFee = Math.round((baseFee + distanceFeeRaw + sizeFeeRaw + valueFeeRaw) * multiplier)"));
   assert.ok(route.includes("Math.round(serviceFee * commissionRate) / 100"));
