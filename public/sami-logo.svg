@@ -1,8 +1,37 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 245 64" role="img" aria-labelledby="title desc">
-  <title id="title">SaMi</title><desc id="desc">SaMi brand mark and wordmark.</desc>
-  <defs><linearGradient id="brand" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#0B8B7D"/><stop offset="1" stop-color="#065B56"/></linearGradient></defs>
-  <rect x="2" y="8" width="48" height="48" rx="14" fill="url(#brand)"/>
-  <path d="M33.6 21.7c-2.8-3.1-10.8-3.5-14.7-.2-3.8 3.2-1.8 7.4 3 8.9l7.5 2.3c4.7 1.4 6.6 5.2 3 9.2-3.5 3.8-11.4 3.5-15-.1" stroke="#fff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <circle cx="34.2" cy="21.2" r="3.4" fill="#F4BB4B"/><circle cx="17.2" cy="42" r="2.6" fill="#A7E6D8"/>
-  <text x="64" y="41" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="31" font-weight="850" letter-spacing="-1.2" fill="#102C38">SaMi</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="130 25 760 245" role="img" aria-labelledby="title desc">
+  <title id="title">SaMi</title>
+  <desc id="desc">The original SaMi custom blue gradient wordmark.</desc>
+  <defs>
+    <linearGradient id="sami-main" x1="150" y1="40" x2="850" y2="270" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4A7AFF"/>
+      <stop offset=".25" stop-color="#2B5CFF"/>
+      <stop offset=".5" stop-color="#1A3E8C"/>
+      <stop offset=".75" stop-color="#0F2B66"/>
+      <stop offset="1" stop-color="#0A1A40"/>
+    </linearGradient>
+    <linearGradient id="sami-rim" x1="160" y1="35" x2="860" y2="265" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6A9AFF"/>
+      <stop offset=".4" stop-color="#2B5CFF"/>
+      <stop offset="1" stop-color="#0F2B66"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke="url(#sami-rim)" stroke-width="62" stroke-linecap="round" stroke-linejoin="round" opacity=".78">
+    <path d="M 326 78 C 294 54, 231 54, 195 75 C 163 94, 160 124, 188 137 C 216 150, 279 144, 304 159 C 334 176, 323 212, 289 229 C 251 248, 189 241, 158 217"/>
+    <path d="M 419 147 C 391 126, 352 134, 338 166 C 324 198, 341 228, 371 228 C 402 228, 420 201, 425 168 M 425 150 L 410 226"/>
+    <path d="M 489 228 L 521 78 L 582 192 L 674 77 L 643 228"/>
+    <path d="M 713 146 L 696 227"/>
+  </g>
+  <g fill="none" stroke="url(#sami-main)" stroke-width="56" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 326 78 C 294 54, 231 54, 195 75 C 163 94, 160 124, 188 137 C 216 150, 279 144, 304 159 C 334 176, 323 212, 289 229 C 251 248, 189 241, 158 217"/>
+    <path d="M 419 147 C 391 126, 352 134, 338 166 C 324 198, 341 228, 371 228 C 402 228, 420 201, 425 168 M 425 150 L 410 226"/>
+    <path d="M 489 228 L 521 78 L 582 192 L 674 77 L 643 228"/>
+    <path d="M 713 146 L 696 227"/>
+  </g>
+  <circle cx="727" cy="93" r="12" fill="url(#sami-main)"/>
+  <g fill="none" stroke="#B8D4FF" stroke-width="4" stroke-linecap="round" opacity=".62">
+    <path d="M319 74 C284 56 229 60 200 79"/>
+    <path d="M353 153 C369 138 396 139 412 152"/>
+    <path d="M525 84 L579 183"/>
+    <path d="M671 84 L647 198"/>
+  </g>
 </svg>
