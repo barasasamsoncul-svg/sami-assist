@@ -66,7 +66,7 @@ async function addEvent(client: { query: (...args: any[]) => Promise<any> }, err
 }
 async function getScopedErrand(id: string, user: { id: string; role: UserRole }) {
   const result = await query(
-    "SELECT e.*, c.full_name AS customer_name, c.email AS customer_email, c.phone AS customer_phone, p.full_name AS provider_name, p.email AS provider_email, pp.business_name AS provider_business_name, pp.service_area AS provider_service_area, live.latitude AS provider_latitude, live.longitude AS provider_longitude, live.accuracy_meters AS provider_location_accuracy_meters, live.heading_degrees AS provider_heading_degrees, live.speed_meters_per_second AS provider_speed_meters_per_second, live.updated_at AS provider_location_updated_at FROM errands e JOIN users c ON c.id=e.customer_id LEFT JOIN users p ON p.id=e.provider_id LEFT JOIN provider_profiles pp ON pp.user_id=p.id LEFT JOIN errand_live_locations live ON live.errand_id=e.id WHERE e.id=$1 AND ($2='admin' OR e.customer_id=$3 OR e.provider_id=$3 OR ($2='provider' AND e.provider_id IS NULL AND e.status='requested' AND EXISTS (SELECT 1 FROM provider_profiles viewer WHERE viewer.user_id=$3 AND viewer.approval_status='approved' AND viewer.available=true AND (COALESCE(array_length(viewer.service_categories,1),0)=0 OR e.category=ANY(viewer.service_categories) OR 'other'=ANY(viewer.service_categories)) AND NOT EXISTS (SELECT 1 FROM errands active WHERE active.provider_id=$3 AND active.status IN ('assigned','accepted','in_progress','completion_submitted'))))) LIMIT 1",
+    "SELECT e.*, c.full_name AS customer_name, c.email AS customer_email, c.phone AS customer_phone, p.full_name AS provider_name, p.email AS provider_email, pp.business_name AS provider_business_name, pp.service_area AS provider_service_area, live.latitude AS provider_latitude, live.longitude AS provider_longitude, live.accuracy_meters AS provider_location_accuracy_meters, live.heading_degrees AS provider_heading_degrees, live.speed_meters_per_second AS provider_speed_meters_per_second, live.updated_at AS provider_location_updated_at FROM errands e JOIN users c ON c.id=e.customer_id LEFT JOIN users p ON p.id=e.provider_id LEFT JOIN provider_profiles pp ON pp.user_id=p.id LEFT JOIN errand_live_locations live ON live.errand_id=e.id AND live.updated_at>now()-interval '90 seconds' AND e.status IN ('accepted','in_progress') WHERE e.id=$1 AND ($2='admin' OR e.customer_id=$3 OR e.provider_id=$3 OR ($2='provider' AND e.provider_id IS NULL AND e.status='requested' AND EXISTS (SELECT 1 FROM provider_profiles viewer WHERE viewer.user_id=$3 AND viewer.approval_status='approved' AND viewer.available=true AND (COALESCE(array_length(viewer.service_categories,1),0)=0 OR e.category=ANY(viewer.service_categories) OR 'other'=ANY(viewer.service_categories)) AND NOT EXISTS (SELECT 1 FROM errands active WHERE active.provider_id=$3 AND active.status IN ('assigned','accepted','in_progress','completion_submitted'))))) LIMIT 1",
     [id, user.role, user.id]
   );
   return result.rows[0] || null;
@@ -108,9 +108,11 @@ export async function GET(request: Request) {
   const user = await getCurrentUser().catch(() => null);
   if (action === "me") return user ? NextResponse.json({ user }) : error("Not signed in.", 401);
   if (!user) return error("Sign in to continue.", 401);
-  try { await ensureErrandLocationSchema(); } catch (e) {
-    console.error("[SaMi location migration] Could not prepare location tracking schema.", e instanceof Error ? e.message : "unknown error");
-    return error("SaMi location tracking is not ready. Check the errands database migration.", 503);
+  if (["errands","errandDetail"].includes(action)) {
+    try { await ensureErrandLocationSchema(); } catch (e) {
+      console.error("[SaMi location migration] Could not prepare location tracking schema.", e instanceof Error ? e.message : "unknown error");
+      return error("SaMi location tracking is not ready. Check the errands database migration.", 503);
+    }
   }
 
   if (action === "errands") {
@@ -349,9 +351,11 @@ export async function POST(request: Request) {
 
   const user = await getCurrentUser().catch(() => null);
   if (!user) return error("Sign in to continue.", 401);
-  try { await ensureErrandLocationSchema(); } catch (e) {
-    console.error("[SaMi location migration] Could not prepare location tracking schema.", e instanceof Error ? e.message : "unknown error");
-    return error("SaMi location tracking is not ready. Check the errands database migration.", 503);
+  if (["createErrand","errandAction","updateProviderLocation"].includes(action)) {
+    try { await ensureErrandLocationSchema(); } catch (e) {
+      console.error("[SaMi location migration] Could not prepare location tracking schema.", e instanceof Error ? e.message : "unknown error");
+      return error("SaMi location tracking is not ready. Check the errands database migration.", 503);
+    }
   }
 
   if (action === "updateProviderLocation") {
