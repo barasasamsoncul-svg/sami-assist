@@ -61,8 +61,8 @@
 .errand-map-loading,.errand-map-error{position:absolute;z-index:1000;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;background:#f5f8fc;color:#64748b;font-size:11px;line-height:1.6}
 .errand-map-error{color:#9f3045;background:#fff4f5}
 .sami-map-marker{background:transparent!important;border:0!important}
-.sami-map-marker>span{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:3px solid #fff;border-radius:50% 50% 50% 7px;transform:rotate(-45deg);background:var(--marker-color,#2b5cff);color:#fff;font-size:12px;font-weight:950;box-shadow:0 4px 12px #102c3855}
-.sami-map-marker>span::first-letter{transform:rotate(45deg)}
+.sami-map-marker>span{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:3px solid #fff;border-radius:50%;background:var(--marker-color,#2b5cff);color:#fff;font-size:12px;font-weight:950;box-shadow:0 4px 12px #102c3855}
+
 .errand-map-footer{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-top:11px}
 .map-legend{display:flex;flex-wrap:wrap;gap:10px 13px;color:#64748b;font-size:9px}
 .map-legend span{display:inline-flex;align-items:center;gap:5px}
