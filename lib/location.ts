@@ -131,7 +131,7 @@ export async function geocodeAddress(address: string): Promise<{ point: Coordina
   url.searchParams.set("format", "jsonv2");
   url.searchParams.set("limit", "1");
   url.searchParams.set("q", query);
-  const headers: Record<string, string> = { "Accept-Language": "en", "User-Agent": "SaMi-Errands/1.0" };
+  const headers: Record<string, string> = { "Accept-Language": "en", "User-Agent": "SaMi/1.0" };
   if (process.env.MAP_CONTACT_EMAIL) headers["From"] = process.env.MAP_CONTACT_EMAIL;
   const response = await fetch(url, { headers, cache: "no-store", signal: AbortSignal.timeout(10000) });
   const body = await response.json().catch(() => []);
