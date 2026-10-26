@@ -3,6 +3,8 @@ import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "node:crypto";
 import { databasePool, query } from "@/lib/db";
 import { createSession, destroySession, getCurrentUser } from "@/lib/auth";
+import { getRoadRoute } from "@/lib/location";
+import { ensureErrandLocationSchema } from "@/lib/errand-location-schema";
 
 export const runtime = "nodejs";
 type UserRole = "customer" | "provider" | "admin";
@@ -64,7 +66,7 @@ async function addEvent(client: { query: (...args: any[]) => Promise<any> }, err
 }
 async function getScopedErrand(id: string, user: { id: string; role: UserRole }) {
   const result = await query(
-    "SELECT e.*, c.full_name AS customer_name, c.email AS customer_email, c.phone AS customer_phone, p.full_name AS provider_name, p.email AS provider_email, pp.business_name AS provider_business_name, pp.service_area AS provider_service_area FROM errands e JOIN users c ON c.id=e.customer_id LEFT JOIN users p ON p.id=e.provider_id LEFT JOIN provider_profiles pp ON pp.user_id=p.id WHERE e.id=$1 AND ($2='admin' OR e.customer_id=$3 OR e.provider_id=$3 OR ($2='provider' AND e.provider_id IS NULL AND e.status='requested' AND EXISTS (SELECT 1 FROM provider_profiles viewer WHERE viewer.user_id=$3 AND viewer.approval_status='approved' AND viewer.available=true AND (COALESCE(array_length(viewer.service_categories,1),0)=0 OR e.category=ANY(viewer.service_categories) OR 'other'=ANY(viewer.service_categories)) AND NOT EXISTS (SELECT 1 FROM errands active WHERE active.provider_id=$3 AND active.status IN ('assigned','accepted','in_progress','completion_submitted'))))) LIMIT 1",
+    "SELECT e.*, c.full_name AS customer_name, c.email AS customer_email, c.phone AS customer_phone, p.full_name AS provider_name, p.email AS provider_email, pp.business_name AS provider_business_name, pp.service_area AS provider_service_area, live.latitude AS provider_latitude, live.longitude AS provider_longitude, live.accuracy_meters AS provider_location_accuracy_meters, live.heading_degrees AS provider_heading_degrees, live.speed_meters_per_second AS provider_speed_meters_per_second, live.updated_at AS provider_location_updated_at FROM errands e JOIN users c ON c.id=e.customer_id LEFT JOIN users p ON p.id=e.provider_id LEFT JOIN provider_profiles pp ON pp.user_id=p.id LEFT JOIN errand_live_locations live ON live.errand_id=e.id WHERE e.id=$1 AND ($2='admin' OR e.customer_id=$3 OR e.provider_id=$3 OR ($2='provider' AND e.provider_id IS NULL AND e.status='requested' AND EXISTS (SELECT 1 FROM provider_profiles viewer WHERE viewer.user_id=$3 AND viewer.approval_status='approved' AND viewer.available=true AND (COALESCE(array_length(viewer.service_categories,1),0)=0 OR e.category=ANY(viewer.service_categories) OR 'other'=ANY(viewer.service_categories)) AND NOT EXISTS (SELECT 1 FROM errands active WHERE active.provider_id=$3 AND active.status IN ('assigned','accepted','in_progress','completion_submitted'))))) LIMIT 1",
     [id, user.role, user.id]
   );
   return result.rows[0] || null;
@@ -106,6 +108,10 @@ export async function GET(request: Request) {
   const user = await getCurrentUser().catch(() => null);
   if (action === "me") return user ? NextResponse.json({ user }) : error("Not signed in.", 401);
   if (!user) return error("Sign in to continue.", 401);
+  try { await ensureErrandLocationSchema(); } catch (e) {
+    console.error("[SaMi location migration] Could not prepare location tracking schema.", e instanceof Error ? e.message : "unknown error");
+    return error("SaMi location tracking is not ready. Check the errands database migration.", 503);
+  }
 
   if (action === "errands") {
     const status = text(params.get("status"), 40);
@@ -343,6 +349,44 @@ export async function POST(request: Request) {
 
   const user = await getCurrentUser().catch(() => null);
   if (!user) return error("Sign in to continue.", 401);
+  try { await ensureErrandLocationSchema(); } catch (e) {
+    console.error("[SaMi location migration] Could not prepare location tracking schema.", e instanceof Error ? e.message : "unknown error");
+    return error("SaMi location tracking is not ready. Check the errands database migration.", 503);
+  }
+
+  if (action === "updateProviderLocation") {
+    if (user.role !== "provider") return error("Only provider accounts can share live task locations.", 403);
+    const id = text(body.id, 80);
+    const latitude = num(body.latitude);
+    const longitude = num(body.longitude);
+    const accuracy = num(body.accuracyMeters);
+    const heading = num(body.headingDegrees);
+    const speed = num(body.speedMetersPerSecond);
+    if (!id || latitude === null || longitude === null || !Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+      return error("Valid provider latitude and longitude are required.");
+    }
+    if (accuracy !== null && (!Number.isFinite(accuracy) || accuracy < 0 || accuracy > 10000)) return error("Invalid GPS accuracy.");
+    if (heading !== null && (!Number.isFinite(heading) || heading < 0 || heading > 360)) return error("Invalid heading.");
+    if (speed !== null && (!Number.isFinite(speed) || speed < 0 || speed > 150)) return error("Invalid GPS speed.");
+    const client = await databasePool().connect();
+    try {
+      await client.query("BEGIN");
+      const task = await client.query("SELECT id,provider_id,status FROM errands WHERE id=$1 FOR UPDATE", [id]);
+      const errand = task.rows[0];
+      if (!errand || errand.provider_id !== user.id) { await client.query("ROLLBACK"); return error("Only the assigned provider can share location for this errand.", 403); }
+      if (!["accepted","in_progress"].includes(errand.status)) { await client.query("ROLLBACK"); return error("Provider location sharing is available only while an accepted task is active.", 409); }
+      const upsert = await client.query(
+        "INSERT INTO errand_live_locations(errand_id,provider_id,latitude,longitude,accuracy_meters,heading_degrees,speed_meters_per_second,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,now()) ON CONFLICT(errand_id) DO UPDATE SET provider_id=EXCLUDED.provider_id,latitude=EXCLUDED.latitude,longitude=EXCLUDED.longitude,accuracy_meters=EXCLUDED.accuracy_meters,heading_degrees=EXCLUDED.heading_degrees,speed_meters_per_second=EXCLUDED.speed_meters_per_second,updated_at=now() RETURNING updated_at",
+        [id,user.id,latitude,longitude,accuracy,heading,speed]
+      );
+      await client.query("COMMIT");
+      return NextResponse.json({ ok:true, updatedAt:upsert.rows[0]?.updated_at });
+    } catch (e) {
+      await client.query("ROLLBACK").catch(()=>undefined);
+      console.error("[SaMi live location] Update failed.", e instanceof Error ? e.message : "unknown error");
+      return error("Provider location could not be shared right now.", 503);
+    } finally { client.release(); }
+  }
 
   if (action === "updatePricing") {
     if (user.role !== "admin") return error("Operations access is required.", 403);
@@ -409,9 +453,36 @@ export async function POST(request: Request) {
     const serviceArea = text(body.serviceArea, 180);
     const pickup = text(body.pickupLocation, 300);
     const destination = text(body.destinationLocation, 300);
+    const coordinate = (value: unknown, min: number, max: number) => {
+      const parsed = num(value);
+      return parsed !== null && Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : null;
+    };
+    const pickupLatitude = coordinate(body.pickupLatitude, -90, 90);
+    const pickupLongitude = coordinate(body.pickupLongitude, -180, 180);
+    const destinationLatitude = coordinate(body.destinationLatitude, -90, 90);
+    const destinationLongitude = coordinate(body.destinationLongitude, -180, 180);
+    const anyCoordinates = [body.pickupLatitude,body.pickupLongitude,body.destinationLatitude,body.destinationLongitude].some(value => value !== "" && value !== null && value !== undefined);
+    const hasCompletePoints = pickupLatitude !== null && pickupLongitude !== null && destinationLatitude !== null && destinationLongitude !== null;
     const allowed = new Set(["shopping","clothing_retail","pickup_delivery","documents_admin","personal_errand","queue_appointments","business_support","local_assistance","other"]);
     const itemBudget = num(body.itemBudgetAmount);
-    const distanceKm = Number(body.distanceKm ?? 0);
+    let distanceKm = Number(body.distanceKm ?? 0);
+    let routeDistanceMeters: number | null = null;
+    let routeDurationSeconds: number | null = null;
+    if (anyCoordinates && !hasCompletePoints) return error("Select both pickup and destination on the map so SaMi can calculate a road route.");
+    if (hasCompletePoints) {
+      try {
+        const route = await getRoadRoute(
+          { lat: pickupLatitude as number, lng: pickupLongitude as number },
+          { lat: destinationLatitude as number, lng: destinationLongitude as number },
+        );
+        distanceKm = Math.round(route.distanceKm * 100) / 100;
+        routeDistanceMeters = Math.round(route.distanceMeters);
+        routeDurationSeconds = Math.round(route.durationSeconds);
+      } catch (e) {
+        console.error("[SaMi route pricing] Road route failed.", e instanceof Error ? e.message : "unknown error");
+        return error("SaMi could not calculate a road route for these locations. Try selecting both points again or configure GOOGLE_ROUTES_API_KEY / MAP_ROUTING_BASE_URL.", 502);
+      }
+    }
     const itemSize = itemSizes.has(text(body.itemSize, 20)) ? text(body.itemSize, 20) : "none";
     const dueAt = text(body.dueAt, 60);
     const due = dueAt ? new Date(dueAt) : null;
@@ -435,8 +506,8 @@ export async function POST(request: Request) {
       try {
         await client.query("BEGIN");
         const insert = await client.query(
-          "INSERT INTO errands(public_code,customer_id,title,category,description,pickup_location,destination_location,service_area,due_at,distance_km,item_size,distance_fee_amount,item_size_fee_amount,value_surcharge_amount,budget_amount,item_budget_amount,priority,service_fee_amount,commission_rate,commission_amount,provider_earning_amount,service_payment_method,payment_status,app_payment_checkout_status,seller_payment_status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING *",
-          [code,user.id,title,category,description,pickup||null,destination||null,serviceArea,due,distanceKm,itemSize,distanceFee,itemSizeFee,valueSurcharge,itemBudget,priority,serviceFee,commissionRate,commission,providerEarning,servicePaymentMethod,servicePaymentMethod==="in_app"?"pending":"unpaid","not_started",itemBudget === null ? "not_applicable" : "due"]
+          "INSERT INTO errands(public_code,customer_id,title,category,description,pickup_location,destination_location,service_area,due_at,distance_km,item_size,distance_fee_amount,item_size_fee_amount,value_surcharge_amount,budget_amount,item_budget_amount,priority,service_fee_amount,commission_rate,commission_amount,provider_earning_amount,service_payment_method,payment_status,app_payment_checkout_status,seller_payment_status,pickup_latitude,pickup_longitude,destination_latitude,destination_longitude,route_distance_meters,route_duration_seconds) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30) RETURNING *",
+          [code,user.id,title,category,description,pickup||null,destination||null,serviceArea,due,distanceKm,itemSize,distanceFee,itemSizeFee,valueSurcharge,itemBudget,priority,serviceFee,commissionRate,commission,providerEarning,servicePaymentMethod,servicePaymentMethod==="in_app"?"pending":"unpaid","not_started",itemBudget === null ? "not_applicable" : "due",pickupLatitude,pickupLongitude,destinationLatitude,destinationLongitude,routeDistanceMeters,routeDurationSeconds]
         );
         row = insert.rows[0];
         await addEvent(client,row.id,user.id,"request_created",null,"requested","Customer submitted an errand request.",{
