@@ -65,6 +65,12 @@ CREATE TABLE IF NOT EXISTS errands (
  category text NOT NULL CHECK(category IN ('shopping','clothing_retail','pickup_delivery','documents_admin','personal_errand','queue_appointments','business_support','local_assistance','other')),
  description text NOT NULL CHECK(length(trim(description)) BETWEEN 5 AND 5000),
  pickup_location text, destination_location text, service_area text NOT NULL, due_at timestamptz,
+ pickup_latitude double precision CHECK(pickup_latitude IS NULL OR pickup_latitude BETWEEN -90 AND 90),
+ pickup_longitude double precision CHECK(pickup_longitude IS NULL OR pickup_longitude BETWEEN -180 AND 180),
+ destination_latitude double precision CHECK(destination_latitude IS NULL OR destination_latitude BETWEEN -90 AND 90),
+ destination_longitude double precision CHECK(destination_longitude IS NULL OR destination_longitude BETWEEN -180 AND 180),
+ route_distance_meters integer CHECK(route_distance_meters IS NULL OR route_distance_meters >= 0),
+ route_duration_seconds integer CHECK(route_duration_seconds IS NULL OR route_duration_seconds >= 0),
  distance_km numeric(8,2) NOT NULL DEFAULT 0 CHECK(distance_km BETWEEN 0 AND 500),
  item_size text NOT NULL DEFAULT 'none' CHECK(item_size IN ('none','small','medium','large','bulky')),
  distance_fee_amount numeric(12,2) NOT NULL DEFAULT 0 CHECK(distance_fee_amount>=0),
@@ -106,6 +112,18 @@ CREATE TABLE IF NOT EXISTS errand_events (
  created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS errand_events_timeline_idx ON errand_events(errand_id,created_at ASC);
+
+CREATE TABLE IF NOT EXISTS errand_live_locations (
+ errand_id uuid PRIMARY KEY REFERENCES errands(id) ON DELETE CASCADE,
+ provider_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ latitude double precision NOT NULL CHECK(latitude BETWEEN -90 AND 90),
+ longitude double precision NOT NULL CHECK(longitude BETWEEN -180 AND 180),
+ accuracy_meters double precision CHECK(accuracy_meters IS NULL OR accuracy_meters >= 0),
+ heading_degrees double precision CHECK(heading_degrees IS NULL OR heading_degrees BETWEEN 0 AND 360),
+ speed_meters_per_second double precision CHECK(speed_meters_per_second IS NULL OR speed_meters_per_second >= 0),
+ updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS errand_live_locations_provider_updated_idx ON errand_live_locations(provider_id,updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS errand_messages (
  id bigserial PRIMARY KEY, errand_id uuid NOT NULL REFERENCES errands(id) ON DELETE CASCADE,
@@ -198,5 +216,6 @@ INSERT INTO schema_migrations(version) VALUES
  ('2026-10-25-sami-errands-service-payment-model'),
  ('2026-10-25-sami-errands-pricing-audit'),
  ('2026-10-25-sami-errands-mpesa-payment-attempts'),
- ('2026-10-25-sami-errands-route-item-pricing')
+ ('2026-10-25-sami-errands-route-item-pricing'),
+ ('2026-10-26-sami-errands-location-tracking')
 ON CONFLICT DO NOTHING;
