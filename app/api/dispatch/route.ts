@@ -851,6 +851,7 @@ export async function POST(request: Request) {
         }
       } else throw new Error("Unsupported errand action.");
 
+      if (!["accepted","in_progress"].includes(next)) await client.query("DELETE FROM errand_live_locations WHERE errand_id=$1", [id]);
       await addEvent(client,id,user.id,eventType,previous,next,eventNote,{role:user.role});
       await client.query("COMMIT");
       resultMessage="Errand "+e.public_code+" updated.";
