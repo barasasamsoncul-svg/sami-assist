@@ -461,14 +461,17 @@ export async function POST(request: Request) {
     const pickupLongitude = coordinate(body.pickupLongitude, -180, 180);
     const destinationLatitude = coordinate(body.destinationLatitude, -90, 90);
     const destinationLongitude = coordinate(body.destinationLongitude, -180, 180);
-    const anyCoordinates = [body.pickupLatitude,body.pickupLongitude,body.destinationLatitude,body.destinationLongitude].some(value => value !== "" && value !== null && value !== undefined);
-    const hasCompletePoints = pickupLatitude !== null && pickupLongitude !== null && destinationLatitude !== null && destinationLongitude !== null;
+    const partialPickupPoint = (pickupLatitude === null) !== (pickupLongitude === null);
+    const partialDestinationPoint = (destinationLatitude === null) !== (destinationLongitude === null);
+    const hasCompletePickupPoint = pickupLatitude !== null && pickupLongitude !== null;
+    const hasCompleteDestinationPoint = destinationLatitude !== null && destinationLongitude !== null;
+    const hasCompletePoints = hasCompletePickupPoint && hasCompleteDestinationPoint;
     const allowed = new Set(["shopping","clothing_retail","pickup_delivery","documents_admin","personal_errand","queue_appointments","business_support","local_assistance","other"]);
     const itemBudget = num(body.itemBudgetAmount);
     let distanceKm = Number(body.distanceKm ?? 0);
     let routeDistanceMeters: number | null = null;
     let routeDurationSeconds: number | null = null;
-    if (anyCoordinates && !hasCompletePoints) return error("Select both pickup and destination on the map so SaMi can calculate a road route.");
+    if (partialPickupPoint || partialDestinationPoint) return error("Each selected map point needs both latitude and longitude.");
     if (hasCompletePoints) {
       try {
         const route = await getRoadRoute(
