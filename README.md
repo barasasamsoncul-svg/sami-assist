@@ -16,7 +16,7 @@ SaMi is a marketplace for all kinds of legitimate everyday errands—shopping, c
 ## Customer pricing model (no quotation step)
 
 1. The customer describes the errand, location, timing and relevant details.
-2. The estimated service fee is shown before submission and combines the category base fee, entered end-to-end route distance, item-size handling fee, configured high-value handling surcharge, and priority multiplier.
+2. The estimated service fee is shown before submission and combines the category base fee, road distance from the selected map route, item-size handling fee, configured high-value handling surcharge, and priority multiplier.
 3. The customer chooses cash or M-PESA in-app payment for the errand-service fee. M-PESA checkout becomes available once Daraja credentials are configured.
 4. Approved, available providers can see open requests that match their listed service categories and accept one directly; operations can still manually assign a provider when needed. A provider can hold one active assignment at a time.
 5. For shopping and clothing errands, the estimated goods budget is tracked separately. The seller is paid separately when the goods are bought/received. Goods are not part of SaMi's service fee or commission base.
@@ -32,7 +32,28 @@ Each category has configurable base fee, distance rate per kilometre, handling f
 - Provider share: the remaining part of the service fee after SaMi commission.
 - Goods/seller cost: separate; paid to the seller and excluded from SaMi commission.
 
-Administrators manage the base fee, commission, distance rate, item-size charges, high-value threshold/rate and priority multipliers for each category from Service pricing. Pricing changes are written to an audit table. The Preview currently asks the customer to enter an estimated end-to-end route distance; it does not yet geocode addresses or call a road-routing API automatically.
+Administrators manage the base fee, commission, distance rate, item-size charges, high-value threshold/rate and priority multipliers for each category from Service pricing. Pricing changes are written to an audit table. When both pickup and destination points are selected on the map, the server recalculates the road distance before saving the request and deriving the service fee. A manually entered distance remains available for requests without route coordinates.
+
+## Maps, road routes and provider tracking
+
+- The request form contains an interactive map: search for a street or landmark, use the device's current location, click the map, or drag the pickup/drop-off markers.
+- With both points selected, SaMi obtains a road route and uses its distance for service-fee pricing. It stores the pickup/drop-off coordinates and the calculated road distance/duration with the errand.
+- Approved providers sharing location from an active accepted/in-progress task send their current GPS position to SaMi. The latest location is only returned through the assigned errand's access-controlled detail endpoint; it is not a public tracking link. Sharing works while the provider's browser/app is open, HTTPS is active, and location permission is granted.
+- The default map uses OpenStreetMap tiles and an OSRM-compatible driving router, with Nominatim for user-triggered address search. This requires no map API key for initial development. Public OSM services are best-effort and rate-limited; use a suitable hosted/self-managed map provider for sustained production traffic and retain the required map attribution.
+- Optional Google endpoints are supported for road routing and geocoding when their API keys are configured. Set `GOOGLE_ROUTES_API_KEY` or `GOOGLE_GEOCODING_API_KEY`; `GOOGLE_MAPS_API_KEY` can serve as the shared server-side key when the relevant Google APIs are enabled. Alternatively change `MAP_ROUTING_BASE_URL` and `MAP_GEOCODING_BASE_URL` to compatible endpoints. `NEXT_PUBLIC_MAP_TILE_URL` selects the tile URL template.
+- The location migration is additive and runs lazily against the SaMi Errands database. It adds coordinate and route columns and creates the current provider-location table; it does not touch the separate SaMi ERP database.
+
+For local development, copy `.env.example` to `.env.local` and fill in your local values. `.env.local` is ignored by Git. Configure the same server-side variables in the relevant Vercel Preview/Production environment before deploying there. Never commit API credentials or put server-side Google/M-PESA secrets in a `NEXT_PUBLIC_*` variable.
+
+```dotenv
+NEXT_PUBLIC_MAP_TILE_URL=https://tile.openstreetmap.org/{z}/{x}/{y}.png
+MAP_ROUTING_BASE_URL=https://router.project-osrm.org
+MAP_GEOCODING_BASE_URL=https://nominatim.openstreetmap.org
+MAP_CONTACT_EMAIL=
+GOOGLE_ROUTES_API_KEY=
+GOOGLE_GEOCODING_API_KEY=
+GOOGLE_MAPS_API_KEY=
+```
 
 ## Payment model
 
@@ -77,7 +98,7 @@ The feat/sami-errands-transformation branch uses a Preview-scoped database conne
 
 Health check: /api/dispatch?action=health. It returns database connectivity and schema version without credentials. Service pricing: /api/dispatch?action=pricing.
 
-Tests: npm test; the Vercel build runs the workflow/schema tests before next build. Tests cover the no-quotation workflow, route/item/value-based service pricing, separate seller goods, admin bootstrap diagnostics, pricing audit and the M-PESA callback validation. Preview checks performed so far: successful production build, connected isolated database, nine readable category pricing rules, and a public SaMi landing page with the old business-workspace branding removed. Full role workflows, actual M-PESA checkout/callback, and payment reconciliation still require end-to-end tests.
+Tests: npm test; the Vercel build runs the workflow/schema tests before next build. Tests cover the no-quotation workflow, route/item/value-based service pricing, interactive map controls, server-side road-distance calculation, pickup/drop-off coordinate persistence, scoped provider GPS updates, separate seller goods, admin bootstrap diagnostics, pricing audit and the M-PESA callback validation. Preview checks performed so far: successful production build, connected isolated database, nine readable category pricing rules, and a public SaMi landing page with the old business-workspace branding removed. Full role workflows, actual M-PESA checkout/callback, and payment reconciliation still require end-to-end tests.
 
 ## Later hosting migration
 
