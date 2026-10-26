@@ -54,6 +54,8 @@ test("provider GPS is restricted to the assigned provider during an active erran
   assert.ok(dispatch.includes('["accepted","in_progress"].includes(errand.status)'));
   assert.ok(dispatch.includes("ON CONFLICT(errand_id) DO UPDATE"));
   assert.ok(dispatch.includes("LEFT JOIN errand_live_locations live"));
+  assert.ok(dispatch.includes("live.updated_at>now()-interval '90 seconds'"));
+  assert.ok(dispatch.includes('DELETE FROM errand_live_locations WHERE errand_id=$1'));
   assert.ok(ui.includes("navigator.geolocation.watchPosition"));
   assert.ok(ui.includes("updateProviderLocation"));
 });
