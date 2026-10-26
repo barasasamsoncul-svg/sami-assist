@@ -116,11 +116,12 @@ export default function ErrandMap({
         maxZoom: 19,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>',
       }).addTo(map);
-      map.on("movestart", () => { movedRef.current = true; });
+      map.on("dragstart", () => { movedRef.current = true; });
       map.on("click", (event: any) => {
         const current = pointsRef.current;
         if (current.mode !== "pick") return;
         const point = { lat: Number(event.latlng.lat), lng: Number(event.latlng.lng) };
+        movedRef.current = false;
         applyPoint(selectedStopRef.current, point);
       });
       mapRef.current = map;
@@ -243,6 +244,7 @@ export default function ErrandMap({
       const response = await fetch("/api/location?" + params.toString(), { cache: "no-store" });
       const body = await response.json();
       if (!response.ok || !body.point) throw new Error(body.error || "Location search failed.");
+      movedRef.current = false;
       applyPoint(activeStop, body.point, body.label);
       setSearchText(body.label || searchText);
       mapRef.current?.setView([body.point.lat, body.point.lng], 16);
@@ -260,6 +262,7 @@ export default function ErrandMap({
     setMapStatus("");
     navigator.geolocation.getCurrentPosition(position => {
       const point = { lat: position.coords.latitude, lng: position.coords.longitude };
+      movedRef.current = false;
       applyPoint(activeStop, point, "Current device location");
       mapRef.current?.setView([point.lat, point.lng], 16);
       setLocationBusy(false);
