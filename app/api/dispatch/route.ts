@@ -457,12 +457,17 @@ export async function POST(request: Request) {
       const parsed = num(value);
       return parsed !== null && Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : null;
     };
+    const provided = (value: unknown) => value !== "" && value !== null && value !== undefined;
     const pickupLatitude = coordinate(body.pickupLatitude, -90, 90);
     const pickupLongitude = coordinate(body.pickupLongitude, -180, 180);
     const destinationLatitude = coordinate(body.destinationLatitude, -90, 90);
     const destinationLongitude = coordinate(body.destinationLongitude, -180, 180);
-    const partialPickupPoint = (pickupLatitude === null) !== (pickupLongitude === null);
-    const partialDestinationPoint = (destinationLatitude === null) !== (destinationLongitude === null);
+    if ((provided(body.pickupLatitude) && pickupLatitude === null) ||
+        (provided(body.pickupLongitude) && pickupLongitude === null) ||
+        (provided(body.destinationLatitude) && destinationLatitude === null) ||
+        (provided(body.destinationLongitude) && destinationLongitude === null)) return error("Map coordinates are outside valid latitude/longitude ranges.");
+    const partialPickupPoint = provided(body.pickupLatitude) !== provided(body.pickupLongitude);
+    const partialDestinationPoint = provided(body.destinationLatitude) !== provided(body.destinationLongitude);
     const hasCompletePickupPoint = pickupLatitude !== null && pickupLongitude !== null;
     const hasCompleteDestinationPoint = destinationLatitude !== null && destinationLongitude !== null;
     const hasCompletePoints = hasCompletePickupPoint && hasCompleteDestinationPoint;
