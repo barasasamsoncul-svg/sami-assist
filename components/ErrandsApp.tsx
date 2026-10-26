@@ -1,7 +1,8 @@
 "use client";
 
 import Brand, { BrandMark } from "@/components/Brand";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import ErrandMap, { type LocationPoint } from "@/components/ErrandMap";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Role = "customer" | "provider" | "admin";
 type User = { id: string; full_name: string; email: string; role: Role; phone?: string | null };
@@ -9,6 +10,12 @@ type Errand = {
   id: string; public_code: string; customer_id: string; provider_id: string | null;
   title: string; category: string; description: string; service_area: string;
   pickup_location: string | null; destination_location: string | null; due_at: string | null;
+  pickup_latitude?: number | string | null; pickup_longitude?: number | string | null;
+  destination_latitude?: number | string | null; destination_longitude?: number | string | null;
+  route_distance_meters?: number | null; route_duration_seconds?: number | null;
+  provider_latitude?: number | string | null; provider_longitude?: number | string | null;
+  provider_location_accuracy_meters?: number | string | null; provider_location_updated_at?: string | null;
+  provider_heading_degrees?: number | string | null; provider_speed_meters_per_second?: number | string | null;
   budget_amount: string | null; item_budget_amount?: string | null; service_fee_amount?: string | null;
   commission_rate?: string | number; commission_amount?: string | null; provider_earning_amount?: string | null;
   service_payment_method?: "cash" | "in_app"; app_payment_checkout_status?: string; app_payment_reference?: string | null;
@@ -91,6 +98,11 @@ export default function ErrandsApp() {
   const [selectedCategory, setSelectedCategory] = useState("shopping");
   const [selectedPriority, setSelectedPriority] = useState("standard");
   const [selectedDistanceKm, setSelectedDistanceKm] = useState("1");
+  const [pickupAddress, setPickupAddress] = useState("");
+  const [destinationAddress, setDestinationAddress] = useState("");
+  const [pickupPoint, setPickupPoint] = useState<LocationPoint | null>(null);
+  const [destinationPoint, setDestinationPoint] = useState<LocationPoint | null>(null);
+  const locationWatchSentAt = useRef(0);
   const [selectedItemSize, setSelectedItemSize] = useState("none");
   const [selectedItemValue, setSelectedItemValue] = useState("");
   const [profileDraft, setProfileDraft] = useState({
@@ -177,6 +189,44 @@ export default function ErrandsApp() {
     isActiveStatus(e.status) || e.status === "disputed" ||
     e.payment_status === "pending" || e.app_payment_checkout_status === "initiated"
   );
+  const activeProviderErrand = user?.role === "provider"
+    ? errands.find(e => e.provider_id === user.id && ["accepted","in_progress"].includes(e.status))
+    : undefined;
+
+  // Provider GPS is shared only during an active assigned task and only while this
+  // workspace is open. Customers/admins can retrieve it through the scoped errand detail.
+  useEffect(() => {
+    if (!activeProviderErrand || user?.role !== "provider" || !navigator.geolocation) return;
+    let disposed = false;
+    const watcher = navigator.geolocation.watchPosition(position => {
+      const now = Date.now();
+      if (disposed || now - locationWatchSentAt.current < 8000) return;
+      locationWatchSentAt.current = now;
+      void fetch("/api/dispatch", {
+        method: "POST",
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "updateProviderLocation",
+          id: activeProviderErrand.id,
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracyMeters: position.coords.accuracy,
+          headingDegrees: position.coords.heading,
+          speedMetersPerSecond: position.coords.speed,
+        }),
+      }).catch(() => undefined);
+    }, () => {
+      // A denied permission should not interrupt the provider workflow; live tracking
+      // simply remains unavailable until location access is allowed.
+    }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 12000 });
+    return () => {
+      disposed = true;
+      navigator.geolocation.clearWatch(watcher);
+    };
+  }, [activeProviderErrand?.id, activeProviderErrand?.status, user?.id, user?.role]);
+
   useEffect(() => {
     if (!user || view !== "app" || (!needsLiveRefresh && !activeErrandId)) return;
     const timer = window.setInterval(() => {
@@ -241,7 +291,7 @@ export default function ErrandsApp() {
       const result = await post("createErrand", payload);
       setNotice("Request " + result.errand.public_code + " received. The upfront errand-service fee is saved; any seller/goods cost is separate. Operations can assign an approved provider directly.");
       (event.currentTarget as HTMLFormElement).reset();
-      setSelectedDistanceKm("1"); setSelectedItemSize("none"); setSelectedItemValue("");
+      setSelectedDistanceKm("1"); setPickupAddress(""); setDestinationAddress(""); setPickupPoint(null); setDestinationPoint(null); setSelectedItemSize("none"); setSelectedItemValue("");
       setShowRequest(false); setTab("errands"); await refresh(true);
     } catch(e) { setError(e instanceof Error ? e.message : "The request could not be submitted."); }
     finally { setBusy(""); }
@@ -484,9 +534,24 @@ export default function ErrandsApp() {
           <div className="field wide"><label htmlFor="description">Task details and instructions</label><textarea id="description" name="description" required minLength={5} maxLength={5000} placeholder="What needs doing? Include quantities, preferences, contacts and any relevant instructions."/></div>
           <div className="field"><label htmlFor="serviceArea">Area or neighbourhood</label><input id="serviceArea" name="serviceArea" required minLength={2} maxLength={180} placeholder="e.g. Westlands, Nairobi"/></div>
           <div className="field"><label htmlFor="dueAt">When do you need it?</label><input id="dueAt" name="dueAt" type="datetime-local"/></div>
-          <div className="field"><label htmlFor="pickupLocation">Pickup / starting location <span className="optional">Optional for non-travel errands</span></label><input id="pickupLocation" name="pickupLocation" maxLength={300} placeholder="Building, street or landmark"/></div>
-          <div className="field"><label htmlFor="destinationLocation">Destination / final stop <span className="optional">Optional for non-travel errands</span></label><input id="destinationLocation" name="destinationLocation" maxLength={300} placeholder="Destination or handover point"/></div>
-          <div className="field"><label htmlFor="distanceKm">Estimated total route distance (km)</label><input id="distanceKm" name="distanceKm" type="number" min="0" max="500" step="0.1" required value={selectedDistanceKm} onChange={e=>setSelectedDistanceKm(e.target.value)}/><small className="muted">Use the estimated end-to-end route, including any additional stops. This version uses the distance you enter.</small></div>
+          <div className="field"><label htmlFor="pickupLocation">Pickup / starting location <span className="optional">Optional for non-travel errands</span></label><input id="pickupLocation" name="pickupLocation" maxLength={300} value={pickupAddress} onChange={e=>setPickupAddress(e.target.value)} placeholder="Search the map or enter a street / landmark"/></div>
+          <div className="field"><label htmlFor="destinationLocation">Destination / final stop <span className="optional">Optional for non-travel errands</span></label><input id="destinationLocation" name="destinationLocation" maxLength={300} value={destinationAddress} onChange={e=>setDestinationAddress(e.target.value)} placeholder="Search the map or enter a destination"/></div>
+          <div className="wide">
+            <ErrandMap
+              mode="pick"
+              pickup={pickupPoint}
+              destination={destinationPoint}
+              provider={null}
+              onPickupChange={(point,label)=>{setPickupPoint(point);if(label)setPickupAddress(label);}}
+              onDestinationChange={(point,label)=>{setDestinationPoint(point);if(label)setDestinationAddress(label);}}
+              onRouteCalculated={route=>setSelectedDistanceKm(route?route.distanceKm.toFixed(2):(pickupPoint&&destinationPoint?"0":"1"))}
+            />
+            <input type="hidden" name="pickupLatitude" value={pickupPoint?.lat ?? ""}/>
+            <input type="hidden" name="pickupLongitude" value={pickupPoint?.lng ?? ""}/>
+            <input type="hidden" name="destinationLatitude" value={destinationPoint?.lat ?? ""}/>
+            <input type="hidden" name="destinationLongitude" value={destinationPoint?.lng ?? ""}/>
+          </div>
+          <div className="field"><label htmlFor="distanceKm">Road distance (km)</label><input id="distanceKm" name="distanceKm" type="number" min="0" max="500" step="0.01" required readOnly={Boolean(pickupPoint&&destinationPoint)} value={selectedDistanceKm} onChange={e=>setSelectedDistanceKm(e.target.value)}/><small className="muted">{pickupPoint&&destinationPoint?"SaMi calculates the road distance from your selected map points. The server recalculates it when you submit.":"Choose both pickup and destination points on the map to calculate road distance and price automatically."}</small></div>
           <div className="field"><label htmlFor="itemSize">Item size / handling</label><select id="itemSize" name="itemSize" value={selectedItemSize} onChange={e=>setSelectedItemSize(e.target.value)}><option value="none">No item to carry</option><option value="small">Small — documents, keys, small parcel</option><option value="medium">Medium — handbag or shopping bag</option><option value="large">Large — box or several bags</option><option value="bulky">Bulky / heavy / fragile item</option></select><small className="muted">Handling charges are set by operations for each category.</small></div>
           <div className="field"><label htmlFor="itemBudgetAmount">Estimated goods / seller cost (KES) <span className="optional">Optional</span></label><input id="itemBudgetAmount" name="itemBudgetAmount" type="number" min="0" max="100000000" step="0.01" placeholder="Paid separately to the seller" value={selectedItemValue} onChange={e=>setSelectedItemValue(e.target.value)}/><small className="muted">Above the configurable threshold, only the handling surcharge is added to the service fee. The goods amount remains separate.</small></div>
           <div className="field"><label htmlFor="servicePaymentMethod">How will you pay the errand service fee?</label><select id="servicePaymentMethod" name="servicePaymentMethod" defaultValue="cash"><option value="cash">Cash to the errand provider</option><option value="in_app" disabled={!mpesaConfigured}>M-PESA in-app payment{mpesaConfigured ? "" : " (setup required)"}</option></select><small className="muted">{mpesaConfigured ? "M-PESA will send a PIN prompt for the errand service fee. Goods are paid to the seller separately." : "M-PESA checkout is not enabled in this Preview yet; cash is available until Daraja credentials are configured. Seller goods remain separate."}</small></div>
@@ -548,6 +613,7 @@ export default function ErrandsApp() {
     {notificationOpen&&<><button className="overlay-dismiss" aria-label="Close notifications" onClick={()=>setNotificationOpen(false)}></button><aside className="notification-panel"><div className="notification-head"><div><h2>Notifications</h2><p>{unread} unread updates</p></div><button className="icon-button" onClick={()=>void markRead()} title="Mark all as read">✓</button><button className="icon-button" onClick={()=>setNotificationOpen(false)} aria-label="Close">×</button></div><div className="notification-list">{notifications.map(n=><article key={n.id} className={n.read_at?"notification-item":"notification-item unread"}><div className="notification-symbol">{n.kind==="payment"||n.kind==="payment_reconciled"?"◈":n.kind==="message"?"✉":n.kind==="dispute"?"!":"↗"}</div><div><b>{n.title}</b><p>{n.body}</p><small>{dateTime(n.created_at)}</small>{!n.read_at&&<button className="inline-link" onClick={()=>void markRead(n.id)}>Mark as read</button>}</div></article>)}{notifications.length===0&&<Empty title="You're all caught up" description="Important updates will show here."/ >}</div></aside></>}
 
     {activeErrand&&<div className="modal-backdrop" role="presentation" onClick={e=>{if(e.target===e.currentTarget)setActiveErrand(null);}}><section className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-title"><header className="detail-header"><div><div className="eyebrow">{activeErrand.errand.public_code} · ERRAND RECORD</div><h2 id="detail-title">{activeErrand.errand.title}</h2><p>{activeErrand.errand.service_area} · Created {dateTime(activeErrand.errand.created_at)}</p></div><button className="icon-button" aria-label="Close detail" onClick={()=>setActiveErrand(null)}>×</button></header><div className="detail-summary"><div><small>STATUS</small><Status value={activeErrand.errand.status}/></div><div><small>ERRAND SERVICE FEE</small><b>{money(activeErrand.errand.service_fee_amount)}</b></div><div><small>PAYMENT</small><Status value={activeErrand.errand.payment_status}/></div></div><div className="detail-body"><section className="detail-main-column"><div className="detail-section"><h3>Request details</h3><p>{activeErrand.errand.description}</p><div className="detail-info-grid"><div><small>Category</small><b>{CATEGORIES.find(c=>c.id===activeErrand.errand.category)?.name||activeErrand.errand.category}</b></div><div><small>Priority</small><b>{statusLabel(activeErrand.errand.priority||"standard")}</b></div><div><small>Customer</small><b>{activeErrand.errand.customer_name}</b></div><div><small>Provider</small><b>{activeErrand.errand.provider_business_name||activeErrand.errand.provider_name||"Not assigned"}</b></div><div><small>Pickup</small><b>{activeErrand.errand.pickup_location||"Not provided"}</b></div><div><small>Destination</small><b>{activeErrand.errand.destination_location||"Not provided"}</b></div><div><small>Goods / seller estimate</small><b>{money(activeErrand.errand.item_budget_amount)}</b></div><div><small>Service fee payment</small><b>{activeErrand.errand.service_payment_method==="in_app"?"In-app":"Cash"}</b></div><div><small>Seller payment</small><b>{activeErrand.errand.seller_payment_status==="paid"?"Recorded as paid":activeErrand.errand.seller_payment_status==="due"?"Due separately":"Not applicable"}</b></div><div><small>Due</small><b>{dateTime(activeErrand.errand.due_at)}</b></div></div>{activeErrand.errand.completion_notes&&<div className="completion-note"><b>Provider completion notes</b><p>{activeErrand.errand.completion_notes}</p></div>}</div>
+          {(activeErrand.errand.pickup_latitude!=null||activeErrand.errand.destination_latitude!=null||activeErrand.errand.provider_latitude!=null)&&<div className="detail-section"><ErrandMap mode="track" pickup={activeErrand.errand.pickup_latitude!=null&&activeErrand.errand.pickup_longitude!=null?{lat:Number(activeErrand.errand.pickup_latitude),lng:Number(activeErrand.errand.pickup_longitude)}:null} destination={activeErrand.errand.destination_latitude!=null&&activeErrand.errand.destination_longitude!=null?{lat:Number(activeErrand.errand.destination_latitude),lng:Number(activeErrand.errand.destination_longitude)}:null} provider={activeErrand.errand.provider_latitude!=null&&activeErrand.errand.provider_longitude!=null?{lat:Number(activeErrand.errand.provider_latitude),lng:Number(activeErrand.errand.provider_longitude)}:null}/>{activeErrand.errand.provider_location_updated_at&&<p className="muted small-copy">Last provider location update: {dateTime(activeErrand.errand.provider_location_updated_at)}</p>}</div>}
           <div className="detail-section"><h3>Conversation <span className="soft-count">{activeErrand.messages.length}</span></h3><div className="message-thread">{activeErrand.messages.map(m=><div className={m.sender_id===user?.id?"message-bubble mine":"message-bubble"} key={m.id}><div className="message-meta"><b>{m.sender_name}</b><span>{dateTime(m.created_at)}</span></div><p>{m.message}</p></div>)}{activeErrand.messages.length===0&&<p className="muted small-copy">No messages yet. Use this thread to clarify the work and record important handovers.</p>}</div><form className="message-composer" onSubmit={sendMessage}><textarea value={messageDraft} onChange={e=>setMessageDraft(e.target.value)} maxLength={4000} required placeholder="Write a message to the people involved…"/><button className="button small" disabled={busy==="message"||!messageDraft.trim()}>{busy==="message"?"Sending…":"Send ↗"}</button></form></div>
         </section><aside className="detail-side-column"><div className="detail-section"><h3>Workflow history</h3><div className="timeline">{activeErrand.events.map(ev=><div className="timeline-item" key={ev.id}><span className="timeline-dot"></span><div><b>{statusLabel(ev.event_type)}</b><small>{ev.actor_name||"System"} · {dateTime(ev.created_at)}</small>{ev.note&&<p>{ev.note}</p>}{ev.to_status&&<span className="timeline-state">{statusLabel(ev.from_status||"new")} → {statusLabel(ev.to_status)}</span>}</div></div>)}{activeErrand.events.length===0&&<p className="muted small-copy">History is loading or no activity is recorded.</p>}</div></div>
           {user?.role==="admin"&&<div className="detail-section"><h3>Operations actions</h3>{["requested","declined"].includes(activeErrand.errand.status)&&<form className="form-stack compact-form" onSubmit={async e=>{e.preventDefault();const f=new FormData(e.currentTarget);const providerId=String(f.get("providerId")||"");if(!providerId)return;await actionErrand(activeErrand.errand,"assign",{providerId});}}><div className="field"><label>Assign approved provider</label><select name="providerId" required defaultValue=""><option value="" disabled>Select provider…</option>{providers.filter(p=>p.approval_status==="approved"&&p.available).map(p=><option key={p.user_id} value={p.user_id}>{p.business_name||p.full_name} · {p.service_area}</option>)}</select></div><button className="button full-width" disabled={!!busy}>Assign errand</button></form>}
