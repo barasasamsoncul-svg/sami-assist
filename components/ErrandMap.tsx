@@ -84,6 +84,7 @@ export default function ErrandMap({
   const [activeStop, setActiveStop] = useState<"pickup" | "destination">("pickup");
   const [searchText, setSearchText] = useState("");
   const [searchBusy, setSearchBusy] = useState(false);
+  const lastGeocodeAtRef = useRef(0);
   const [locationBusy, setLocationBusy] = useState(false);
   const [mapStatus, setMapStatus] = useState("");
   const [routeInfo, setRouteInfo] = useState<CalculatedRoadRoute | null>(null);
@@ -171,6 +172,7 @@ export default function ErrandMap({
         if (config.draggable) {
           marker.on("dragend", (event: any) => {
             const latlng = event.target.getLatLng();
+            movedRef.current = false;
             applyPoint(config.key as "pickup" | "destination", { lat: Number(latlng.lat), lng: Number(latlng.lng) });
           });
         }
@@ -237,6 +239,12 @@ export default function ErrandMap({
   async function searchAddress(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (mode !== "pick" || searchBusy) return;
+    const now = Date.now();
+    if (now - lastGeocodeAtRef.current < 1100) {
+      setMapStatus("Please wait a moment before searching again.");
+      return;
+    }
+    lastGeocodeAtRef.current = now;
     setSearchBusy(true);
     setMapStatus("");
     try {
