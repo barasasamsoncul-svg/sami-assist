@@ -8,11 +8,7 @@ function apiBase(): string {
   return value;
 }
 
-export type ApiOptions = {
-  method?: "GET" | "POST";
-  body?: unknown;
-  nativeAuth?: boolean;
-};
+export type ApiOptions = { method?: "GET" | "POST"; body?: unknown; nativeAuth?: boolean };
 
 export async function apiRequest<T = any>(path: string, options: ApiOptions = {}): Promise<T> {
   const token = await SecureStore.getItemAsync(SESSION_KEY).catch(() => null);
@@ -33,17 +29,17 @@ export async function apiRequest<T = any>(path: string, options: ApiOptions = {}
   }
 
   const payload = await response.json().catch(() => ({}));
+  const action = (options.body as { action?: string } | undefined)?.action;
   if (!response.ok) {
-    if (response.status === 401 && !path.includes("action=login") && !path.includes("action=register")) {
+    if (response.status === 401 && action !== "login" && action !== "register") {
       await SecureStore.deleteItemAsync(SESSION_KEY).catch(() => undefined);
     }
     throw new Error(typeof payload?.error === "string" ? payload.error : "SaMi could not complete that request.");
   }
-
   if (typeof payload?.token === "string" && payload.token.length >= 40) {
     await SecureStore.setItemAsync(SESSION_KEY, payload.token);
   }
-  if (path.includes("action=logout")) {
+  if (action === "logout" || path.includes("action=logout")) {
     await SecureStore.deleteItemAsync(SESSION_KEY).catch(() => undefined);
   }
   return payload as T;
@@ -55,11 +51,7 @@ export function dispatchGet<T = any>(action: string, params: Record<string, stri
 }
 
 export function dispatchPost<T = any>(action: string, fields: Record<string, unknown> = {}) {
-  return apiRequest<T>("/api/dispatch", {
-    method: "POST",
-    nativeAuth: true,
-    body: { action, ...fields },
-  });
+  return apiRequest<T>("/api/dispatch", { method: "POST", nativeAuth: true, body: { action, ...fields } });
 }
 
 export function locationGet<T = any>(params: Record<string, string>) {
