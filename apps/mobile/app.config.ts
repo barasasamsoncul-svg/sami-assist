@@ -9,6 +9,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     process.env.EXPO_UPDATE_URL?.trim() ||
     config.updates?.url ||
     (projectId ? `https://u.expo.dev/${projectId}` : undefined);
+  const requestedAndroidVersionCode = Number.parseInt(process.env.EXPO_ANDROID_VERSION_CODE ?? "", 10);
+  const androidVersionCode =
+    Number.isSafeInteger(requestedAndroidVersionCode) && requestedAndroidVersionCode > 0
+      ? requestedAndroidVersionCode
+      : config.android?.versionCode;
   const updateChannel =
     process.env.EXPO_UPDATE_CHANNEL?.trim() ||
     config.updates?.requestHeaders?.["expo-channel-name"] ||
@@ -52,6 +57,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     name: config.name ?? "SaMi",
     slug: config.slug ?? "sami-mobile",
     extra,
+    android: {
+      ...config.android,
+      ...(androidVersionCode ? { versionCode: androidVersionCode } : {}),
+    },
     updates,
     runtimeVersion: config.runtimeVersion ?? { policy: "fingerprint" },
   };
