@@ -14,25 +14,54 @@ on:
 
 jobs:
   android-app:
-    name: Validate native app
+    name: Validate and build Android app
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: apps/mobile
+    env:
+      EXPO_PUBLIC_SAMI_API_URL: https://sami-assist-git-feat-sami-2bf3a4-barasasamsoncul-svgs-projects.vercel.app
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "22.13"
+
       - name: Install mobile dependencies
         run: npm install --no-audit --no-fund
+
       - name: Check Expo SDK dependency compatibility
         run: npx expo install --check
+
       - name: Type-check native app
         run: npm run typecheck
+
       - name: Check Expo project health
         run: npx expo-doctor
+
       - name: Bundle Android app
         run: npx expo export --platform android --output-dir /tmp/sami-android-export
+
+      - name: Set up Java for Android
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Generate native Android project
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Build installable Android debug APK
+        run: cd android && ./gradlew --no-daemon :app:assembleDebug
+
+      - name: Upload SaMi Android debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: sami-android-debug-apk
+          path: apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
