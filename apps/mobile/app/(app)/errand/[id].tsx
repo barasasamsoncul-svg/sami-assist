@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, SafeAreaView, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, RefreshControl, SafeAreaView, ScrollView, Text, TextInput, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import * as Location from "expo-location";
 import MapPicker, { type MapPoint } from "@/components/MapPicker";
@@ -16,7 +16,12 @@ type Errand = {
   provider_latitude?: number | string | null; provider_longitude?: number | string | null;
   provider_location_updated_at?: string | null; provider_name?: string | null; customer_name?: string;
   service_fee_amount?: number | string | null; item_budget_amount?: number | string | null;
+  provider_earning_amount?: number | string | null; commission_amount?: number | string | null;
   service_payment_method?: string | null; payment_status?: string | null;
+  payment_method?: string | null; payment_reference?: string | null;
+  app_payment_checkout_status?: string | null;
+  seller_payment_status?: string | null; seller_actual_amount?: number | string | null;
+  seller_payment_method?: string | null; seller_payment_reference?: string | null;
   completion_notes?: string | null; cancellation_reason?: string | null;
 };
 type Event = { id: string; event_type: string; note?: string; created_at: string; actor_name?: string | null };
@@ -52,6 +57,15 @@ export default function ErrandDetailScreen() {
   const [completionNotes, setCompletionNotes] = useState("");
   const [disputeNote, setDisputeNote] = useState("");
   const [mpesaPhone, setMpesaPhone] = useState("");
+  const [paymentReference, setPaymentReference] = useState("");
+  const [sellerAmount, setSellerAmount] = useState("");
+  const [sellerMethod, setSellerMethod] = useState("M-Pesa");
+  const [sellerReference, setSellerReference] = useState("");
+  const [payoutAmount, setPayoutAmount] = useState("");
+  const [payoutMethod, setPayoutMethod] = useState("M-Pesa");
+  const [payoutReference, setPayoutReference] = useState("");
+  const [refundAmount, setRefundAmount] = useState("");
+  const [refundReference, setRefundReference] = useState("");
   const [messageText, setMessageText] = useState("");
   const [ratingScore, setRatingScore] = useState(5);
   const [ratingComment, setRatingComment] = useState("");
@@ -66,15 +80,6 @@ export default function ErrandDetailScreen() {
       ]);
       setUser(me.user);
       setDetail(data);
-      const e = data.errand;
-      const fromLat = num(e.pickup_latitude), fromLng = num(e.pickup_longitude);
-      const toLat = num(e.destination_latitude), toLng = num(e.destination_longitude);
-      if (fromLat !== null && fromLng !== null && toLat !== null && toLng !== null) {
-        locationGet<{ route: RoadRoute }>({
-          action: "route", fromLat: String(fromLat), fromLng: String(fromLng),
-          toLat: String(toLat), toLng: String(toLng),
-        }).then((r) => setMapRoute(r.route.coordinates || [])).catch(() => setMapRoute([]));
-      } else setMapRoute([]);
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load errand details.");
@@ -82,6 +87,28 @@ export default function ErrandDetailScreen() {
   }, [id]);
 
   useEffect(() => { load(true); }, [load]);
+  useEffect(() => {
+    const e = detail?.errand;
+    if (!e) { setMapRoute([]); return; }
+    const fromLat = num(e.pickup_latitude), fromLng = num(e.pickup_longitude);
+    const toLat = num(e.destination_latitude), toLng = num(e.destination_longitude);
+    if (fromLat === null || fromLng === null || toLat === null || toLng === null) {
+      setMapRoute([]);
+      return;
+    }
+    let active = true;
+    locationGet<{ route: RoadRoute }>({
+      action: "route", fromLat: String(fromLat), fromLng: String(fromLng),
+      toLat: String(toLat), toLng: String(toLng),
+    }).then((result) => { if (active) setMapRoute(result.route.coordinates || []); })
+      .catch(() => { if (active) setMapRoute([]); });
+    return () => { active = false; };
+  }, [
+    detail?.errand?.pickup_latitude, detail?.errand?.pickup_longitude,
+    detail?.errand?.destination_latitude, detail?.errand?.destination_longitude,
+  ]);
+
+
   useEffect(() => {
     const e = detail?.errand;
     if (!e || !["accepted", "in_progress"].includes(e.status)) return;
@@ -130,6 +157,7 @@ export default function ErrandDetailScreen() {
 
   const isCustomer = user?.role === "customer" && user.id === errand?.customer_id;
   const isAssignedProvider = user?.role === "provider" && user.id === errand?.provider_id;
+  const isOperations = user?.role === "admin";
   const canAccept = user?.role === "provider" && Boolean(errand && (
     (errand.status === "requested" && !errand.provider_id) ||
     (errand.status === "assigned" && isAssignedProvider)
@@ -174,6 +202,40 @@ export default function ErrandDetailScreen() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Rating could not be saved.");
     } finally { setWorking(""); }
+  }
+
+  async function recordCashServiceFee() {
+    if (!errand) return;
+    Alert.alert(
+      "Confirm cash received",
+      "Only record this if the full SaMi service fee of KES " + serviceFee.toLocaleString("en-KE") + " has actually been received.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Record received", onPress: () => { void act("mark_paid", { amount: serviceFee, method: "Cash", reference: "" }, "Cash service fee recorded."); } },
+      ],
+    );
+  }
+
+  async function recordSellerPayment() {
+    if (!errand) return;
+    const amount = Number(sellerAmount);
+    if (!Number.isFinite(amount) || amount <= 0) { setError("Enter the actual amount paid to the seller."); return; }
+    if (!sellerMethod) { setError("Choose the seller payment method."); return; }
+    await act("recordSellerPayment", { amount, method: sellerMethod, reference: sellerReference.trim() }, "Separate seller/goods payment recorded.");
+  }
+
+  async function recordProviderPayout() {
+    if (!errand) return;
+    const amount = Number(payoutAmount || num(errand.provider_earning_amount) || 0);
+    if (!Number.isFinite(amount) || amount <= 0) { setError("Enter a valid provider payout amount."); return; }
+    await act("recordPayout", { amount, method: payoutMethod, reference: payoutReference.trim() }, "Provider payout recorded.");
+  }
+
+  async function recordRefund() {
+    if (!errand) return;
+    const amount = Number(refundAmount);
+    if (!Number.isFinite(amount) || amount <= 0) { setError("Enter a valid refund amount."); return; }
+    await act("recordRefund", { amount, method: errand.payment_method || "M-Pesa", reference: refundReference.trim() }, "Refund recorded for operations reconciliation.");
   }
 
   async function startMpesa() {
@@ -257,6 +319,69 @@ export default function ErrandDetailScreen() {
                 <Text style={common.subtitle}>This payment is for SaMi's service fee only. You pay any shop or seller separately.</Text>
                 <TextInput value={mpesaPhone || user?.phone || ""} onChangeText={setMpesaPhone} keyboardType="phone-pad" placeholder="07XXXXXXXX" placeholderTextColor="#929BAD" style={common.input} />
                 <ActionButton title={working === "mpesa" ? "Requesting payment…" : "Send M-PESA prompt"} disabled={Boolean(working)} onPress={startMpesa} />
+              </View>
+            ) : null}
+
+            {((isAssignedProvider || isOperations) && errand.service_payment_method === "cash" && errand.payment_status !== "paid" && ["completion_submitted", "completed", "disputed"].includes(errand.status)) ? (
+              <View style={common.card}>
+                <Text style={{ color: colors.navy, fontSize: 17, fontWeight: "800" }}>Cash service fee</Text>
+                <Text style={common.subtitle}>Record the SaMi service fee only after cash has actually been received. Seller/goods payments are recorded separately.</Text>
+                <ActionButton title={working === "mark_paid" ? "Recording…" : "Record cash received · KES " + serviceFee.toLocaleString("en-KE")} disabled={Boolean(working)} onPress={recordCashServiceFee} />
+              </View>
+            ) : null}
+
+            {isOperations && errand.service_payment_method === "in_app" && errand.payment_status !== "paid" ? (
+              <View style={common.card}>
+                <Text style={{ color: colors.navy, fontSize: 17, fontWeight: "800" }}>Verify service payment</Text>
+                <Text style={common.subtitle}>Use only after checking the actual M-PESA/provider transaction confirmation. This records the server-side payment ledger; it does not trigger an M-PESA charge.</Text>
+                <TextInput value={paymentReference} onChangeText={setPaymentReference} placeholder="Verified transaction reference" placeholderTextColor="#929BAD" style={common.input} autoCapitalize="characters" />
+                <ActionButton title={working === "mark_paid" ? "Recording…" : "Record verified M-PESA payment"} disabled={Boolean(working) || paymentReference.trim().length < 4} onPress={() => act("mark_paid", { amount: serviceFee, method: "M-Pesa", reference: paymentReference.trim() }, "Verified service payment recorded.")} />
+              </View>
+            ) : null}
+
+            {(isAssignedProvider || isOperations) && errand.item_budget_amount !== null && errand.item_budget_amount !== undefined && errand.seller_payment_status !== "paid" && errand.seller_payment_status !== "not_applicable" && errand.status !== "cancelled" ? (
+              <View style={common.card}>
+                <Text style={{ color: colors.navy, fontSize: 17, fontWeight: "800" }}>Separate seller / goods payment</Text>
+                <Text style={common.subtitle}>Record the actual amount paid to the shop or seller, not SaMi's service fee.</Text>
+                <TextInput value={sellerAmount} onChangeText={setSellerAmount} keyboardType="decimal-pad" placeholder={"Estimated budget KES " + Number(errand.item_budget_amount || 0).toLocaleString("en-KE")} placeholderTextColor="#929BAD" style={common.input} />
+                <Text style={common.label}>Payment method</Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                  {(["M-Pesa", "Cash", "Bank transfer", "Other manual method"] as const).map((method) => (
+                    <Pressable key={method} onPress={() => setSellerMethod(method)} style={{ paddingHorizontal: 11, paddingVertical: 9, borderRadius: 12, borderWidth: 1, borderColor: sellerMethod === method ? colors.blue : colors.border, backgroundColor: sellerMethod === method ? colors.blueSoft : colors.white }}>
+                      <Text style={{ color: colors.navy, fontSize: 12, fontWeight: "800" }}>{method}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <TextInput value={sellerReference} onChangeText={setSellerReference} placeholder="Seller receipt/reference (optional)" placeholderTextColor="#929BAD" style={common.input} />
+                <ActionButton title={working === "recordSellerPayment" ? "Recording…" : "Record seller payment"} disabled={Boolean(working)} onPress={recordSellerPayment} />
+              </View>
+            ) : null}
+
+            {isOperations && errand.service_payment_method === "in_app" && errand.payment_status === "paid" && errand.status === "completed" && Boolean(errand.provider_id) ? (
+              <View style={common.card}>
+                <Text style={{ color: colors.navy, fontSize: 17, fontWeight: "800" }}>Provider payout</Text>
+                <Text style={common.subtitle}>The saved provider share is KES {Number(errand.provider_earning_amount || 0).toLocaleString("en-KE")}. Record the amount actually paid; the backend prevents recording more than the remaining share.</Text>
+                <TextInput value={payoutAmount} onChangeText={setPayoutAmount} keyboardType="decimal-pad" placeholder={String(Number(errand.provider_earning_amount || 0))} placeholderTextColor="#929BAD" style={common.input} />
+                <Text style={common.label}>Payout method</Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                  {(["M-Pesa", "Cash", "Bank transfer", "Other manual method"] as const).map((method) => (
+                    <Pressable key={method} onPress={() => setPayoutMethod(method)} style={{ paddingHorizontal: 11, paddingVertical: 9, borderRadius: 12, borderWidth: 1, borderColor: payoutMethod === method ? colors.blue : colors.border, backgroundColor: payoutMethod === method ? colors.blueSoft : colors.white }}>
+                      <Text style={{ color: colors.navy, fontSize: 12, fontWeight: "800" }}>{method}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <TextInput value={payoutReference} onChangeText={setPayoutReference} placeholder="Payout receipt/reference (optional)" placeholderTextColor="#929BAD" style={common.input} />
+                <ActionButton title={working === "recordPayout" ? "Recording…" : "Record provider payout"} disabled={Boolean(working)} onPress={recordProviderPayout} />
+              </View>
+            ) : null}
+
+            {isOperations && errand.payment_status === "paid" && !["cancelled"].includes(errand.status) ? (
+              <View style={common.card}>
+                <Text style={{ color: colors.navy, fontSize: 17, fontWeight: "800" }}>Refund</Text>
+                <Text style={common.subtitle}>Record a refund only after it has actually been sent. The backend rejects refunds that exceed recorded service collections.</Text>
+                <TextInput value={refundAmount} onChangeText={setRefundAmount} keyboardType="decimal-pad" placeholder="Refund amount in KES" placeholderTextColor="#929BAD" style={common.input} />
+                <TextInput value={refundReference} onChangeText={setRefundReference} placeholder="Refund transaction reference (optional)" placeholderTextColor="#929BAD" style={common.input} />
+                <ActionButton title={working === "recordRefund" ? "Recording…" : "Record refund"} secondary disabled={Boolean(working)} onPress={recordRefund} />
               </View>
             ) : null}
 

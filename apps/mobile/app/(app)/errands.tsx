@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, SafeAreaView, ScrollView, Text, View } from "react-native";
-import * as Location from "expo-location";
 import { router } from "expo-router";
-import { apiRequest, dispatchGet, dispatchPost } from "@/api";
+import { dispatchGet, dispatchPost } from "@/api";
 import { colors, common } from "@/theme";
 
 type User = { id: string; role: "customer" | "provider" | "admin" };
@@ -37,38 +36,11 @@ export default function ErrandsScreen() {
 
   useEffect(() => { load(); }, [load]);
 
-  useEffect(() => {
-    if (user?.role !== "provider") return;
-    const active = items.find((item) => ["accepted", "in_progress"].includes(item.status) && item.provider_id === user.id);
-    if (!active) return;
-    let cancelled = false;
-    let subscription: Location.LocationSubscription | null = null;
-    (async () => {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (!permission.granted || cancelled) return;
-      subscription = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.Balanced, timeInterval: 8000, distanceInterval: 10 },
-        (position) => {
-          dispatchPost("updateProviderLocation", {
-            id: active.id,
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            accuracyMeters: position.coords.accuracy,
-            headingDegrees: position.coords.heading,
-            speedMetersPerSecond: position.coords.speed,
-          }).catch(() => undefined);
-        },
-      );
-    })().catch(() => undefined);
-    return () => { cancelled = true; subscription?.remove(); };
-  }, [user, items]);
-
   async function accept(item: Errand) {
     setWorkingId(item.id); setError(""); setNotice("");
     try {
       await dispatchPost("errandAction", { id: item.id, errandAction: "accept" });
-      setNotice("You accepted " + item.public_code + ". Keep location sharing enabled while the errand is active.");
-      await load();
+      router.push({ pathname: "/(app)/errand/[id]", params: { id: item.id } });
     } catch (e) { setError(e instanceof Error ? e.message : "The errand could not be accepted."); }
     finally { setWorkingId(""); }
   }

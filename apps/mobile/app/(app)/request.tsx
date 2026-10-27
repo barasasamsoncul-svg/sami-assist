@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
+import * as Location from "expo-location";
 import MapPicker, { type MapPoint } from "@/components/MapPicker";
 import { apiRequest, dispatchGet, dispatchPost, locationGet } from "@/api";
 import { colors, common } from "@/theme";
@@ -77,6 +78,7 @@ export default function RequestScreen() {
   const [selecting, setSelecting] = useState<"pickup" | "destination">("pickup");
   const [route, setRoute] = useState<RoadRoute | null>(null);
   const [routeLoading, setRouteLoading] = useState(false);
+  const [locationBusy, setLocationBusy] = useState("");
   const [routeError, setRouteError] = useState("");
   const [manualDistance, setManualDistance] = useState("1");
   const [itemSize, setItemSize] = useState("none");
@@ -127,6 +129,41 @@ export default function RequestScreen() {
   function onMapPoint(slot: "pickup" | "destination", point: MapPoint) {
     if (slot === "pickup") setPickup(point); else setDestination(point);
     setRoute(null);
+  }
+
+  async function useCurrentLocation() {
+    setLocationBusy("gps"); setRouteError("");
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (!permission.granted) throw new Error("Allow SaMi to use your location, or set the pickup pin on the map.");
+      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const point = { lat: position.coords.latitude, lng: position.coords.longitude };
+      setPickup(point);
+      setPickupLocation("Phone GPS pin (" + point.lat.toFixed(5) + ", " + point.lng.toFixed(5) + ")");
+      setSelecting("destination");
+    } catch (e) {
+      setRouteError(e instanceof Error ? e.message : "Your current location could not be read.");
+    } finally { setLocationBusy(""); }
+  }
+
+  async function findAddress(slot: "pickup" | "destination") {
+    const address = slot === "pickup" ? pickupLocation.trim() : destinationLocation.trim();
+    if (address.length < 3) { setRouteError("Enter a full address or landmark before searching."); return; }
+    setLocationBusy(slot); setRouteError("");
+    try {
+      const result = await locationGet<{ point: MapPoint; label: string }>({ action: "geocode", q: address });
+      if (slot === "pickup") {
+        setPickup(result.point);
+        setPickupLocation(result.label || address);
+        setSelecting("destination");
+      } else {
+        setDestination(result.point);
+        setDestinationLocation(result.label || address);
+        setSelecting("destination");
+      }
+    } catch (e) {
+      setRouteError(e instanceof Error ? e.message : "That address could not be found. Try a nearby landmark or pin the location directly.");
+    } finally { setLocationBusy(""); }
   }
 
   async function submit() {
@@ -203,8 +240,17 @@ export default function RequestScreen() {
                 </Pressable>
               </View>
               <MapPicker selecting={selecting} pickup={pickup} destination={destination} route={route?.coordinates.map(([lat,lng]) => ({ lat, lng })) || []} onPoint={onMapPoint} />
+              <Pressable disabled={locationBusy==="gps"} onPress={useCurrentLocation} style={[common.secondaryButton,{opacity:locationBusy==="gps"?0.6:1}]}>
+                {locationBusy==="gps" ? <ActivityIndicator color={colors.blue}/> : <Text style={common.secondaryButtonText}>Use my current location as pickup</Text>}
+              </Pressable>
               <Field label="Pickup address / landmark" value={pickupLocation} onChangeText={setPickupLocation} placeholder="Street, building, shop or landmark" />
+              <Pressable disabled={locationBusy==="pickup"} onPress={() => findAddress("pickup")} style={[common.secondaryButton,{opacity:locationBusy==="pickup"?0.6:1}]}>
+                {locationBusy==="pickup" ? <ActivityIndicator color={colors.blue}/> : <Text style={common.secondaryButtonText}>Find pickup on map</Text>}
+              </Pressable>
               <Field label="Destination address / landmark" value={destinationLocation} onChangeText={setDestinationLocation} placeholder="Where the errand should end" />
+              <Pressable disabled={locationBusy==="destination"} onPress={() => findAddress("destination")} style={[common.secondaryButton,{opacity:locationBusy==="destination"?0.6:1}]}>
+                {locationBusy==="destination" ? <ActivityIndicator color={colors.blue}/> : <Text style={common.secondaryButtonText}>Find destination on map</Text>}
+              </Pressable>
               {routeLoading ? <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}><ActivityIndicator color={colors.blue} /><Text style={{ color: colors.muted }}>Calculating driving route…</Text></View> : null}
               {route ? <Text style={{ color: colors.green, fontWeight: "800" }}>Road route: {route.distanceKm.toFixed(2)} km • about {Math.max(1, Math.round(route.durationSeconds / 60))} min</Text> : null}
               {routeError ? <Text style={common.error}>{routeError}</Text> : null}

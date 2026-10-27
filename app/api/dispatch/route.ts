@@ -33,7 +33,7 @@ function calculateServicePrice(rule: Record<string, any>, input: { distanceKm: n
   return { serviceFee, commissionRate, commission, providerEarning, distanceFee, itemSizeFee, valueSurcharge, multiplier, baseFee };
 }
 function error(message: string, status = 400) { return NextResponse.json({ error: message }, { status }); }
-function isNativeClient(request: Request) { return request.headers.get("x-sami-client") === "native"; }
+function isNativeClient(request: Request) { return request.headers.get("x-sami-client") === "native" && !request.headers.get("origin"); }
 function randomCode() { return "SE-" + new Date().toISOString().slice(0, 10).replaceAll("-", "") + "-" + randomBytes(3).toString("hex").toUpperCase(); }
 function sameOrigin(request: Request) {
   const origin = request.headers.get("origin");
@@ -347,8 +347,12 @@ export async function POST(request: Request) {
         return error("Admin account creation failed because of a database or email constraint. Check the Preview database connection and try again.", 503);
       } finally { client.release(); }
       await recordAttempt(identifier, "bootstrap", true).catch(() => undefined);
-      await createSession(adminId);
-      return NextResponse.json({ ok: true, message: "Administrator created and signed in." }, { status: 201 });
+      const sessionToken = await createSession(adminId);
+      return NextResponse.json({
+        ok: true,
+        message: "Administrator created and signed in.",
+        ...(isNativeClient(request) ? { token: sessionToken } : {}),
+      }, { status: 201 });
     } catch (e) {
       await recordAttempt(identifier, "bootstrap", false).catch(() => undefined);
       console.error("[SaMi admin bootstrap] Request failed before account creation.", e instanceof Error ? e.message : "unknown error");

@@ -8,7 +8,7 @@ function apiBase(): string {
   return value;
 }
 
-export type ApiOptions = { method?: "GET" | "POST"; body?: unknown; nativeAuth?: boolean };
+export type ApiOptions = { method?: "GET" | "POST"; body?: unknown; nativeAuth?: boolean; headers?: Record<string, string> };
 
 export async function apiRequest<T = any>(path: string, options: ApiOptions = {}): Promise<T> {
   const token = await SecureStore.getItemAsync(SESSION_KEY).catch(() => null);
@@ -16,6 +16,7 @@ export async function apiRequest<T = any>(path: string, options: ApiOptions = {}
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
   if (token) headers.Authorization = "Bearer " + token;
   if (options.nativeAuth) headers["x-sami-client"] = "native";
+  if (options.headers) Object.assign(headers, options.headers);
 
   let response: Response;
   try {
@@ -50,8 +51,17 @@ export function dispatchGet<T = any>(action: string, params: Record<string, stri
   return apiRequest<T>("/api/dispatch?" + query.toString());
 }
 
-export function dispatchPost<T = any>(action: string, fields: Record<string, unknown> = {}) {
-  return apiRequest<T>("/api/dispatch", { method: "POST", nativeAuth: true, body: { action, ...fields } });
+export function dispatchPost<T = any>(
+  action: string,
+  fields: Record<string, unknown> = {},
+  headers: Record<string, string> = {},
+) {
+  return apiRequest<T>("/api/dispatch", {
+    method: "POST",
+    nativeAuth: true,
+    headers,
+    body: { action, ...fields },
+  });
 }
 
 export function locationGet<T = any>(params: Record<string, string>) {
