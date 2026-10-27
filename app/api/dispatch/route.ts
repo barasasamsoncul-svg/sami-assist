@@ -33,6 +33,7 @@ function calculateServicePrice(rule: Record<string, any>, input: { distanceKm: n
   return { serviceFee, commissionRate, commission, providerEarning, distanceFee, itemSizeFee, valueSurcharge, multiplier, baseFee };
 }
 function error(message: string, status = 400) { return NextResponse.json({ error: message }, { status }); }
+function isNativeClient(request: Request) { return request.headers.get("x-sami-client") === "native"; }
 function randomCode() { return "SE-" + new Date().toISOString().slice(0, 10).replaceAll("-", "") + "-" + randomBytes(3).toString("hex").toUpperCase(); }
 function sameOrigin(request: Request) {
   const origin = request.headers.get("origin");
@@ -105,7 +106,7 @@ export async function GET(request: Request) {
       return error("Service pricing is temporarily unavailable. The pricing migration may not have been applied.", 503);
     }
   }
-  const user = await getCurrentUser().catch(() => null);
+  const user = await getCurrentUser(request).catch(() => null);
   if (action === "me") return user ? NextResponse.json({ user }) : error("Not signed in.", 401);
   if (!user) return error("Sign in to continue.", 401);
   if (["errands","errandDetail"].includes(action)) {
@@ -267,12 +268,12 @@ export async function POST(request: Request) {
         throw e;
       } finally { client.release(); }
       await recordAttempt(identifier, "register", true).catch(() => undefined);
-      await createSession(created.id);
+      const sessionToken = await createSession(created.id);
       if (role === "provider") {
         const admins = await query<{ id: string }>("SELECT id FROM users WHERE role='admin' AND is_active=true");
         for (const admin of admins.rows) await notify(admin.id, "provider_application", "New provider application", fullName + " applied to join the provider network.", "/", "provider", created.id);
       }
-      return NextResponse.json({ user: created }, { status: 201 });
+      return NextResponse.json({ user: created, ...(isNativeClient(request) ? { token: sessionToken } : {}) }, { status: 201 });
     } catch { return error("Account creation failed. Please retry.", 503); }
   }
 
@@ -292,13 +293,19 @@ export async function POST(request: Request) {
         return error("Email or password is incorrect.", 401);
       }
       await recordAttempt(identifier, "login", true).catch(() => undefined);
-      await createSession(u.id);
+      const sessionToken = await createSession(u.id);
+      if (isNativeClient(request)) {
+        const profile = await query<{ id: string; full_name: string; email: string; role: UserRole; phone: string | null }>(
+          "SELECT id,full_name,email,role,phone FROM users WHERE id=$1 AND is_active=true LIMIT 1", [u.id]
+        );
+        return NextResponse.json({ ok: true, token: sessionToken, user: profile.rows[0] });
+      }
       return NextResponse.json({ ok: true });
     } catch { return error("Sign-in is temporarily unavailable.", 503); }
   }
 
   if (action === "logout") {
-    await destroySession().catch(() => undefined);
+    await destroySession(request).catch(() => undefined);
     return NextResponse.json({ ok: true });
   }
 
@@ -349,7 +356,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const user = await getCurrentUser().catch(() => null);
+  const user = await getCurrentUser(request).catch(() => null);
   if (!user) return error("Sign in to continue.", 401);
   if (["createErrand","errandAction","updateProviderLocation"].includes(action)) {
     try { await ensureErrandLocationSchema(); } catch (e) {
