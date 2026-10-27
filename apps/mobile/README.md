@@ -4,11 +4,14 @@ This is SaMi Errands' native Android app (React Native + Expo) with iOS support 
 
 ## What is in the app
 
-- Native sign-in and registration for customers and errand providers.
-- Customer dashboard and request form with map-picked pickup/drop-off points, road-route pricing, size, item budget, priority, and cash or in-app M-PESA choice.
-- Errand list and task detail screens with status, activity history, accept/start/complete, customer confirmation/dispute and cancellation actions.
-- Provider application review status, availability switch, and foreground GPS updates for an assigned active errand.
-- M-PESA credentials and Google Maps credentials remain server-side; the app only receives the public API base URL.
+- Native sign-in and registration, including a customer account or pending provider application.
+- Customer dashboard and request form with interactive pickup/drop-off map, server-calculated road-route pricing, item-size/value handling, priority, and cash or in-app M-PESA choice.
+- Errand list/detail, activity history, assignment acceptance, start, completion notes, customer confirmation or dispute, cancellation, and in-errand messaging.
+- Foreground provider GPS updates while an assigned errand is accepted/in progress; customer and operations tracking refreshes live position during the active errand.
+- Provider service profile editing, application status, eligible job discovery and availability controls.
+- Operations control room for provider approval/suspension, errand queue visibility and eligible provider assignment.
+- Notifications, payment history, and customer ratings after completion.
+- M-PESA and Google server credentials stay in the backend. The app receives only the public API URL.
 
 ## Run locally on Windows
 
@@ -49,4 +52,6 @@ Runtime compatibility uses the `fingerprint` policy so incompatible native build
 
 ## Notes
 
-Provider GPS is shared only while the provider is actively viewing SaMi with an assigned accepted/in-progress task. Background tracking is not enabled. The preview API deployment is for testing; switch `EXPO_PUBLIC_SAMI_API_URL` to the dedicated SaMi Errands production backend before public release.
+Provider GPS is shared only while the provider has an assigned accepted/in-progress task and the SaMi app screen is active. Background tracking is not enabled. Location data is only visible to authorized customer/provider/operations accounts, and stale provider positions are hidden after 90 seconds. The preview API deployment is for testing; switch `EXPO_PUBLIC_SAMI_API_URL` and the EAS profiles to the dedicated SaMi Errands production backend before public release.
+
+Before release, validate sign-in, provider approval, request creation/pricing, route provider availability, in-app payment callbacks, tracking permissions and dispute handling on real Android hardware. CI bundles the Android JavaScript app; it does not sign or publish an APK. An installable APK still requires EAS setup and a successful EAS Android build.
