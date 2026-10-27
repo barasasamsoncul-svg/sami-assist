@@ -6,15 +6,19 @@ on:
       - feat/sami-native-app
     paths:
       - "apps/mobile/**"
+      - "database/**"
+      - "lib/errand-location-schema.ts"
+      - "tests/**"
       - ".github/workflows/sami-native-check.yml"
-  pull_request:
-    paths:
-      - "apps/mobile/**"
-      - ".github/workflows/sami-native-check.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: sami-native-android-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   android-app:
-    name: Validate and build Android app
+    name: Validate and build Android standalone APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
     defaults:
@@ -22,6 +26,7 @@ jobs:
         working-directory: apps/mobile
     env:
       EXPO_PUBLIC_SAMI_API_URL: https://sami-assist-git-feat-sami-2bf3a4-barasasamsoncul-svgs-projects.vercel.app
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -52,11 +57,32 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Cache Gradle dependencies
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
 
-      - name: Build standalone Android release APK
-        run: cd android && ./gradlew --no-daemon :app:assembleRelease
+      # The release variant bundles JavaScript. Signing it with the CI debug key
+      # makes an installable test APK without production signing credentials.
+      - name: Configure standalone test signing
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("android/app/build.gradle")
+          text = path.read_text()
+          target = "signingConfig signingConfigs.release"
+          count = text.count(target)
+          if count != 1:
+              raise SystemExit(f"Expected one release signing config in {path}, found {count}")
+          path.write_text(text.replace(target, "signingConfig signingConfigs.debug", 1))
+          PY
+
+      - name: Build standalone Android APK
+        run: cd android && ./gradlew --no-daemon --stacktrace --console=plain --max-workers=2 :app:assembleRelease
+
+      - name: Verify standalone APK exists
+        run: test -s android/app/build/outputs/apk/release/app-release.apk
 
       - name: Upload SaMi Android standalone APK
         uses: actions/upload-artifact@v4
