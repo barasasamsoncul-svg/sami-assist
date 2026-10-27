@@ -18,6 +18,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
 
   return {
     ...config,
+    name: config.name ?? "SaMi",
+    slug: config.slug ?? "sami-mobile",
     updates,
     runtimeVersion: config.runtimeVersion ?? { policy: "fingerprint" },
   };
