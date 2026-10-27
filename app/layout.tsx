@@ -1,65 +1,37 @@
-import type { Metadata } from 'next';
-
-import {
-  headers,
-} from 'next/headers';
-
-import SaMiThemeProvider from '@/app/components/SaMiThemeProvider';
-
-import './globals.css';
+import type { Metadata, Viewport } from "next";
+import "./globals.css";
 
 export const metadata: Metadata = {
-  title: 'SaMi - AI-Powered Business Workspace',
-  description: 'Run your business with AI on your side.',
+  title: {
+    default: "SaMi — Everyday help, organised.",
+    template: "%s | SaMi"
+  },
+  description: "From shopping and collections to personal and business tasks, SaMi helps people and businesses get everyday tasks done with clear fees and accountable updates.",
+  applicationName: "SaMi",
+  category: "services",
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    shortcut: ["/icon.svg"],
+    apple: [{ url: "/icon.svg", type: "image/svg+xml" }]
+  },
+  openGraph: {
+    type: "website",
+    siteName: "SaMi",
+    title: "SaMi — Everyday help, organised.",
+    description: "Everyday and business tasks, handled with clear service fees and accountable updates."
+  },
+  twitter: {
+    card: "summary",
+    title: "SaMi — Everyday help, organised.",
+    description: "Everyday and business tasks, handled with clear service fees and accountable updates."
+  }
 };
 
-export default async function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  /*
-   * proxy.ts creates a fresh CSP nonce for every document request
-   * and forwards it through x-nonce.
-   *
-   * Reading request headers here is intentional:
-   * - it keeps nonce-bearing HTML request-bound instead of static
-   * - it lets application-owned scripts use the same nonce as the
-   *   Next.js framework/runtime scripts
-   * - it prevents cached/prerendered HTML from being paired with a
-   *   different response nonce, which would block hydration
-   */
-  const nonce =
-    (
-      await headers()
-    )
-      .get(
-        'x-nonce',
-      )
-      ?.trim() ||
-    undefined;
+export const viewport: Viewport = {
+  themeColor: "#0A1A40",
+  colorScheme: "light"
+};
 
-  return (
-    <html
-      lang="en"
-      suppressHydrationWarning
-    >
-      <head>
-        {/*
-         * External, same-origin bootstrap keeps first paint theme
-         * deterministic without requiring unsafe-inline in CSP.
-         */}
-        <script
-          id="sami-theme-bootstrap"
-          src="/sami-theme-bootstrap.js"
-          nonce={nonce}
-        />
-      </head>
-
-      <body>
-        <SaMiThemeProvider />
-        {children}
-      </body>
-    </html>
-  );
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  return <html lang="en"><body>{children}</body></html>;
 }

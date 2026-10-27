@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 64" role="img" aria-labelledby="title desc">
+  <title id="title">SaMi Technologies</title><desc id="desc">SaMi Technologies parent brand.</desc>
+  <defs><linearGradient id="brand" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#0B8B7D"/><stop offset="1" stop-color="#065B56"/></linearGradient></defs>
+  <rect x="2" y="8" width="48" height="48" rx="14" fill="url(#brand)"/>
+  <path d="M33.6 21.7c-2.8-3.1-10.8-3.5-14.7-.2-3.8 3.2-1.8 7.4 3 8.9l7.5 2.3c4.7 1.4 6.6 5.2 3 9.2-3.5 3.8-11.4 3.5-15-.1" stroke="#fff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <circle cx="34.2" cy="21.2" r="3.4" fill="#F4BB4B"/><circle cx="17.2" cy="42" r="2.6" fill="#A7E6D8"/>
+  <text x="64" y="33" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="27" font-weight="850" letter-spacing="-1.2" fill="#102C38">SaMi</text>
+  <text x="65" y="47" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="9" font-weight="900" letter-spacing="2.4" fill="#087E76">TECHNOLOGIES</text>
+</svg>
