@@ -79,7 +79,7 @@ jobs:
 
           for attempt in 1 2 3; do
             echo "Installing NDK 27.0.12077973 (attempt $attempt/3)"
-            if yes | "$SDKMANAGER" --install "ndk;27.0.12077973"; then
+            if "$SDKMANAGER" --install "ndk;27.0.12077973"; then
               if [[ -x "$SDK_ROOT/ndk/27.0.12077973/ndk-build" ]]; then
                 echo "NDK 27.0.12077973 is installed and verified."
                 exit 0
