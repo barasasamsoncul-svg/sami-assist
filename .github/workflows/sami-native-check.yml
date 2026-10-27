@@ -63,24 +63,25 @@ jobs:
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
 
-      - name: Configure Gradle and Kotlin memory for CI
+      - name: Configure Gradle memory for CI
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
           path = Path("android/gradle.properties")
-          content = path.read_text()
+          lines = path.read_text().splitlines()
           gradle_args = "org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8"
-          kotlin_args = "kotlin.daemon.jvmargs=-Xmx1g -XX:MaxMetaspaceSize=768m"
-          if re.search(r"(?m)^org\.gradle\.jvmargs=", content):
-              content = re.sub(r"(?m)^org\.gradle\.jvmargs=.*$", gradle_args, content)
-          else:
-              content += "\n" + gradle_args + "\n"
-          if re.search(r"(?m)^kotlin\.daemon\.jvmargs=", content):
-              content = re.sub(r"(?m)^kotlin\.daemon\.jvmargs=.*$", kotlin_args, content)
-          else:
-              content += kotlin_args + "\n"
-          path.write_text(content)
+          lines = [line for line in lines if not line.startswith("kotlin.daemon.jvmargs=")]
+          found = False
+          for index, line in enumerate(lines):
+              if line.startswith("org.gradle.jvmargs="):
+                  lines[index] = gradle_args
+                  found = True
+                  break
+          if not found:
+              lines.append(gradle_args)
+          if not any(line.startswith("kotlin.compiler.execution.strategy=") for line in lines):
+              lines.append("kotlin.compiler.execution.strategy=in-process")
+          path.write_text("\\n".join(lines) + "\\n")
           PY
 
       - name: Build standalone Android APK
