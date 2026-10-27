@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "SaMi",
+    "slug": "sami-mobile",
+    "scheme": "sami",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "SaMi uses your location to set errand pickup points and share a provider's live position during an active assignment."
+        }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": true
+        }
+      ]
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.sami.errands",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "SaMi uses your location to set pickup points and share provider location during active errands."
+      }
+    },
+    "android": {
+      "package": "com.sami.errands",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
+    },
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
