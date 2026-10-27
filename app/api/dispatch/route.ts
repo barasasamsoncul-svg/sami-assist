@@ -576,6 +576,44 @@ export async function POST(request: Request) {
     } catch { return error("Provider profile could not be saved.", 503); }
   }
 
+  if (action === "updateProviderProfile") {
+    if (user.role !== "provider") return error("Only provider accounts can edit provider profiles.", 403);
+    const providerType = new Set(["individual", "business", "team"]).has(text(body.providerType, 20))
+      ? text(body.providerType, 20) : "individual";
+    const businessName = text(body.businessName, 160);
+    const serviceArea = text(body.serviceArea, 180);
+    const bio = text(body.bio, 1500);
+    const allowedCategories = new Set(["shopping","clothing_retail","pickup_delivery","documents_admin","personal_errand","queue_appointments","business_support","local_assistance","other"]);
+    const serviceCategories = Array.isArray(body.serviceCategories)
+      ? [...new Set(body.serviceCategories.filter((value: unknown): value is string => typeof value === "string").map((value: string) => text(value, 40)).filter((value: string) => allowedCategories.has(value)))]
+      : [];
+    if (serviceArea.length < 2) return error("Enter the towns or areas where you can provide service.");
+    if (providerType === "business" && businessName.length < 2) return error("Enter your business name.");
+    if (!serviceCategories.length) return error("Choose at least one errand category you can handle.");
+    try {
+      const saved = await query<{ approval_status: string }>(
+        "UPDATE provider_profiles SET provider_type=$2,business_name=$3,service_area=$4,bio=$5,service_categories=$6::text[],approval_status=CASE WHEN approval_status='rejected' THEN 'pending' ELSE approval_status END,rejection_reason=CASE WHEN approval_status='rejected' THEN NULL ELSE rejection_reason END,available=CASE WHEN approval_status='approved' THEN available ELSE false END,updated_at=now() WHERE user_id=$1 RETURNING approval_status",
+        [user.id, providerType, providerType === "individual" ? null : (businessName || null), serviceArea, bio || null, serviceCategories]
+      );
+      if (!saved.rowCount) return error("Provider profile not found.", 404);
+      if (saved.rows[0].approval_status === "pending") {
+        const admins = await query<{ id: string }>("SELECT id FROM users WHERE role='admin' AND is_active=true");
+        for (const admin of admins.rows) {
+          await notify(admin.id, "provider_application", "Provider profile ready for review", user.full_name + " updated their provider profile and is awaiting review.", "/", "provider", user.id);
+        }
+      }
+      return NextResponse.json({
+        ok: true,
+        approvalStatus: saved.rows[0].approval_status,
+        message: saved.rows[0].approval_status === "approved"
+          ? "Provider profile updated."
+          : "Provider profile saved. SaMi operations must approve it before you can accept errands."
+      });
+    } catch {
+      return error("Provider profile could not be saved. Try again.", 503);
+    }
+  }
+
   if (action === "providerAvailability") {
     if (user.role !== "provider") return error("Only providers can update availability.", 403);
     const available = body.available === true;
