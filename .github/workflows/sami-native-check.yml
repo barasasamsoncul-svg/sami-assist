@@ -28,6 +28,7 @@ jobs:
       EXPO_PUBLIC_SAMI_API_URL: https://sami-assist-git-feat-sami-2bf3a4-barasasamsoncul-svgs-projects.vercel.app
       EXPO_PROJECT_ID: ${{ vars.EXPO_PROJECT_ID }}
       EXPO_UPDATE_CHANNEL: preview
+      EXPO_ANDROID_VERSION_CODE: ${{ github.run_number }}
       SAMI_ANDROID_KEYSTORE_BASE64: ${{ secrets.SAMI_ANDROID_KEYSTORE_BASE64 }}
       SAMI_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.SAMI_ANDROID_KEYSTORE_PASSWORD }}
       SAMI_ANDROID_KEY_ALIAS: ${{ secrets.SAMI_ANDROID_KEY_ALIAS }}
