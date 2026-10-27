@@ -72,14 +72,14 @@ jobs:
           content = path.read_text()
           gradle_args = "org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8"
           kotlin_args = "kotlin.daemon.jvmargs=-Xmx1g -XX:MaxMetaspaceSize=768m"
-          if re.search(r"(?m)^org\\.gradle\\.jvmargs=", content):
-              content = re.sub(r"(?m)^org\\.gradle\\.jvmargs=.*$", gradle_args, content)
+          if re.search(r"(?m)^org\.gradle\.jvmargs=", content):
+              content = re.sub(r"(?m)^org\.gradle\.jvmargs=.*$", gradle_args, content)
           else:
-              content += "\\n" + gradle_args + "\\n"
-          if re.search(r"(?m)^kotlin\\.daemon\\.jvmargs=", content):
-              content = re.sub(r"(?m)^kotlin\\.daemon\\.jvmargs=.*$", kotlin_args, content)
+              content += "\n" + gradle_args + "\n"
+          if re.search(r"(?m)^kotlin\.daemon\.jvmargs=", content):
+              content = re.sub(r"(?m)^kotlin\.daemon\.jvmargs=.*$", kotlin_args, content)
           else:
-              content += kotlin_args + "\\n"
+              content += kotlin_args + "\n"
           path.write_text(content)
           PY
 
