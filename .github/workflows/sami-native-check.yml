@@ -81,6 +81,15 @@ jobs:
               lines.append(gradle_args)
           if not any(line.startswith("kotlin.compiler.execution.strategy=") for line in lines):
               lines.append("kotlin.compiler.execution.strategy=in-process")
+          architectures = "reactNativeArchitectures=armeabi-v7a,arm64-v8a"
+          found_architectures = False
+          for index, line in enumerate(lines):
+              if line.startswith("reactNativeArchitectures="):
+                  lines[index] = architectures
+                  found_architectures = True
+                  break
+          if not found_architectures:
+              lines.append(architectures)
           path.write_text("\n".join(lines) + "\n")
           PY
 
