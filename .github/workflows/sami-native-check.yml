@@ -55,13 +55,13 @@ jobs:
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
 
-      - name: Build installable Android debug APK
-        run: cd android && ./gradlew --no-daemon :app:assembleDebug
+      - name: Build standalone Android release APK
+        run: cd android && ./gradlew --no-daemon :app:assembleRelease
 
-      - name: Upload SaMi Android debug APK
+      - name: Upload SaMi Android standalone APK
         uses: actions/upload-artifact@v4
         with:
-          name: sami-android-debug-apk
-          path: apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          name: sami-android-standalone-apk
+          path: apps/mobile/android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 14
