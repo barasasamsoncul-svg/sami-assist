@@ -41,17 +41,19 @@ npm run build:android:apk
 
 The build will be uploaded to Expo's build service and return a build page/download link when complete. The first EAS build requires you to sign in and let Expo configure Android signing credentials; no EAS account or credentials are embedded in this repository.
 
-## Easy updates
+## Automatic app updates
 
-- JavaScript and compatible UI fixes can be published to an app build with EAS Update after the EAS project and update URL are configured:
-  `npm run update:preview`
-- Native dependencies, Android permissions, app identity, or other native configuration changes require a new APK/AAB build.
-- Use the preview channel for testing, then publish to production only after validating the live API, map routing, GPS permissions, and M-PESA callback flow.
+The app is configured for Expo EAS Update. Once the project is linked and the GitHub settings below are configured, changes to compatible JavaScript, screens, styling, and bundled assets can be published automatically to the installed app's update channel. The app checks for updates when it opens and applies a downloaded update on a subsequent restart.
 
-Runtime compatibility uses the `fingerprint` policy so incompatible native builds do not receive the wrong JavaScript update. Expo documents runtime-version compatibility and update publishing in the [EAS Update guide](https://docs.expo.dev/build/updates/) and [runtime versions guide](https://docs.expo.dev/eas-update/runtime-versions/).
+- One-time setup: from `apps/mobile`, sign in with `npx eas-cli login`, then run `npx eas-cli init` and `npx eas-cli update:configure`. This links the app to an Expo project and writes its project ID/update URL to the Expo configuration.
+- In GitHub repository settings, add the repository **variable** `EXPO_PROJECT_ID` with that exact Expo project ID, and the repository **secret** `EXPO_TOKEN` with an Expo access token. The native APK workflow embeds the project ID and preview channel; the OTA workflow uses the token to publish compatible updates.
+- Pushes that change `apps/mobile/**` publish to `preview` from `feat/sami-native-app` and to `production` from `main`, once those settings are in place. Manual publishing is also available with `npm run update:preview` or `npm run update:production`.
+- The first APK installed by a user must be built with the EAS Update URL embedded. Existing installed APKs without that URL cannot be made OTA-capable retroactively.
+
+OTA updates cannot change native resources already compiled into the APK. Launcher icons, Android permissions, app identity, and native-module changes still require a new APK/AAB distribution. The `fingerprint` runtime policy prevents an update from targeting a native binary that is incompatible with it. See the [official EAS Update setup guide](https://docs.expo.dev/eas-update/getting-started/) and [runtime versions guide](https://docs.expo.dev/eas-update/runtime-versions/).
 
 ## Notes
 
 Provider GPS is shared only while the provider has an assigned accepted/in-progress task and the SaMi app screen is active. Background tracking is not enabled. Location data is only visible to authorized customer/provider/operations accounts, and stale provider positions are hidden after 90 seconds. The preview API deployment is for testing; switch `EXPO_PUBLIC_SAMI_API_URL` and the EAS profiles to the dedicated SaMi Errands production backend before public release.
 
-Before release, validate sign-in, provider approval, request creation/pricing, route provider availability, in-app payment callbacks, tracking permissions and dispute handling on real Android hardware. The GitHub Actions workflow builds an installable **debug/test APK** and uploads it as the `sami-android-debug-apk` artifact for 14 days on the workflow run. This debug APK is for internal testing, not a production Play Store release. For a production-signed release, initialize the owner's EAS project, configure Android signing, and run `npm run build:android:play` to create the production Android App Bundle (AAB).
+Before release, validate sign-in, provider approval, request creation/pricing, route provider availability, in-app payment callbacks, tracking permissions, OTA delivery, and dispute handling on real Android hardware. The GitHub Actions native workflow builds the standalone Android APK and uploads it as the `sami-android-standalone-apk` artifact for 14 days. For a Play Store release, initialize the owner's EAS project, configure Android signing, and run `npm run build:android:play` to create the production Android App Bundle (AAB).

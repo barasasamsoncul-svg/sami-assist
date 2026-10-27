@@ -26,6 +26,8 @@ jobs:
         working-directory: apps/mobile
     env:
       EXPO_PUBLIC_SAMI_API_URL: https://sami-assist-git-feat-sami-2bf3a4-barasasamsoncul-svgs-projects.vercel.app
+      EXPO_PROJECT_ID: ${{ vars.EXPO_PROJECT_ID }}
+      EXPO_UPDATE_CHANNEL: preview
 
     steps:
       - name: Checkout
