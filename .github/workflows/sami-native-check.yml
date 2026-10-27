@@ -63,21 +63,6 @@ jobs:
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
 
-      # The release variant bundles JavaScript. Signing it with the CI debug key
-      # makes an installable test APK without production signing credentials.
-      - name: Configure standalone test signing
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path("android/app/build.gradle")
-          text = path.read_text()
-          target = "signingConfig signingConfigs.release"
-          count = text.count(target)
-          if count != 1:
-              raise SystemExit(f"Expected one release signing config in {path}, found {count}")
-          path.write_text(text.replace(target, "signingConfig signingConfigs.debug", 1))
-          PY
-
       - name: Build standalone Android APK
         run: cd android && ./gradlew --no-daemon --stacktrace --console=plain --max-workers=2 :app:assembleRelease
 
