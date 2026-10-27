@@ -1,30 +1,52 @@
-# SaMi mobile app
+# SaMi Android-first native app
 
-This is the native Android/iOS client for SaMi Errands. It is an Expo + React Native app, separate from the Next.js website and uses the same SaMi Errands API and database. The existing SaMi ERP work is not modified by this app.
+This is SaMi Errands' native Android app (React Native + Expo) with iOS support from the same codebase. It is an app, not a website wrapper. It lives in `apps/mobile` and uses the existing SaMi Errands backend. The original SaMi ERP code and production app are separate and are not changed by this mobile branch.
 
-## Run it locally
+## What is in the app
+
+- Native sign-in and registration for customers and errand providers.
+- Customer dashboard and request form with map-picked pickup/drop-off points, road-route pricing, size, item budget, priority, and cash or in-app M-PESA choice.
+- Errand list and task detail screens with status, activity history, accept/start/complete, customer confirmation/dispute and cancellation actions.
+- Provider application review status, availability switch, and foreground GPS updates for an assigned active errand.
+- M-PESA credentials and Google Maps credentials remain server-side; the app only receives the public API base URL.
+
+## Run locally on Windows
 
 1. Install Node.js 22.13 or later.
-2. Open a terminal in apps/mobile.
-3. Copy .env.example to .env and set EXPO_PUBLIC_SAMI_API_URL to the current SaMi Errands API deployment.
-4. Run npm install.
-5. Run npx expo install --fix to align native package versions with this Expo SDK.
-6. Run npx expo start and scan the QR code with an Expo Go build that supports SDK 57.
+2. Open PowerShell at the repository root, then:
+   ```powershell
+   cd apps/mobile
+   Copy-Item .env.example .env
+   npm install
+   npx expo install --fix
+   npx expo start
+   ```
+3. Scan the Expo Go QR code to open the app during development. Use a development build once native changes need to be tested. A phone must be able to reach the configured HTTPS API URL.
 
-PowerShell example: Copy-Item .env.example .env
+The environment file contains only a public API URL. Never place M-PESA consumer secrets, passkeys, callback tokens, Google server API keys, database credentials, or an admin bootstrap token in the mobile app.
 
-For local API development, use the reachable LAN address of your development machine; localhost on a physical phone refers to the phone, not your PC. Use HTTPS for deployed APIs.
+## First Android APK build
 
-## Authentication and security
+The repo includes `eas.json` with an internal-test APK profile and a Google Play App Bundle profile. EAS builds require your own Expo account/project. From `apps/mobile`, initialize the app once and configure over-the-air updates:
 
-The app requests a native-only session token from the SaMi API and stores it with Expo SecureStore. Authenticated API calls send it as a Bearer token. Tokens are hashed before being stored in the backend database and expire after 14 days. Do not commit .env files or real credentials.
+```powershell
+npx eas-cli login
+npx eas-cli init
+npx eas-cli update:configure
+npm run build:android:apk
+```
 
-M-PESA credentials and Google routing/geocoding credentials stay on the server in Vercel Environment Variables. Only the public API base URL belongs in this app's environment file.
+The build will be uploaded to Expo's build service and return a build page/download link when complete. The first EAS build requires you to sign in and let Expo configure Android signing credentials; no EAS account or credentials are embedded in this repository.
 
-## Updating the app
+## Easy updates
 
-Source changes live under apps/mobile and can be reviewed in GitHub independently from the web UI. During development, Expo Fast Refresh applies local edits quickly. After a development build and EAS project are configured, JavaScript/UI updates can be published with EAS Update when they are compatible with the installed native binary. Changes to native dependencies or permissions require a new app build. Store distribution/build credentials and EAS project IDs still need to be configured before shipping.
+- JavaScript and compatible UI fixes can be published to an app build with EAS Update after the EAS project and update URL are configured:
+  `npm run update:preview`
+- Native dependencies, Android permissions, app identity, or other native configuration changes require a new APK/AAB build.
+- Use the preview channel for testing, then publish to production only after validating the live API, map routing, GPS permissions, and M-PESA callback flow.
 
-## Current scope
+Runtime compatibility uses the `fingerprint` policy so incompatible native builds do not receive the wrong JavaScript update. Expo documents runtime-version compatibility and update publishing in the [EAS Update guide](https://docs.expo.dev/build/updates/) and [runtime versions guide](https://docs.expo.dev/eas-update/runtime-versions/).
 
-The initial app shell includes sign-in and registration, a customer dashboard, errand list, request creation with an OpenStreetMap-backed map picker and server-calculated road route, and provider foreground GPS sharing for an active accepted/in-progress assignment. Payment checkout and end-to-end device validation should be completed before production release.
+## Notes
+
+Provider GPS is shared only while the provider is actively viewing SaMi with an assigned accepted/in-progress task. Background tracking is not enabled. The preview API deployment is for testing; switch `EXPO_PUBLIC_SAMI_API_URL` to the dedicated SaMi Errands production backend before public release.

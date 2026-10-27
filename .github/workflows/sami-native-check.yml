@@ -1,0 +1,38 @@
+name: SaMi native app checks
+
+on:
+  push:
+    branches:
+      - feat/sami-native-app
+    paths:
+      - "apps/mobile/**"
+      - ".github/workflows/sami-native-check.yml"
+  pull_request:
+    paths:
+      - "apps/mobile/**"
+      - ".github/workflows/sami-native-check.yml"
+
+jobs:
+  android-app:
+    name: Validate native app
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.13"
+      - name: Install mobile dependencies
+        run: npm install --no-audit --no-fund
+      - name: Check Expo SDK dependency compatibility
+        run: npx expo install --check
+      - name: Type-check native app
+        run: npm run typecheck
+      - name: Check Expo project health
+        run: npx expo-doctor
+      - name: Bundle Android app
+        run: npx expo export --platform android --output-dir /tmp/sami-android-export

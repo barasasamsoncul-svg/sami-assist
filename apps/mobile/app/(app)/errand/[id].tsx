@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, SafeAreaView, ScrollView, Text, TextInput, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import * as Location from "expo-location";
 import MapPicker, { type MapPoint } from "@/components/MapPicker";
 import { apiRequest, dispatchGet, dispatchPost, locationGet } from "@/api";
 import { colors, common } from "@/theme";
@@ -82,6 +83,31 @@ export default function ErrandDetailScreen() {
     const timer = setInterval(() => { load(false); }, 12000);
     return () => clearInterval(timer);
   }, [detail?.errand?.status, load]);
+
+  useEffect(() => {
+    const e = detail?.errand;
+    if (!e || user?.role !== "provider" || e.provider_id !== user.id || !["accepted", "in_progress"].includes(e.status)) return;
+    let cancelled = false;
+    let subscription: Location.LocationSubscription | null = null;
+    (async () => {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (!permission.granted || cancelled) return;
+      subscription = await Location.watchPositionAsync(
+        { accuracy: Location.Accuracy.Balanced, timeInterval: 8000, distanceInterval: 10 },
+        (position) => {
+          dispatchPost("updateProviderLocation", {
+            id: e.id,
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracyMeters: position.coords.accuracy,
+            headingDegrees: position.coords.heading,
+            speedMetersPerSecond: position.coords.speed,
+          }).catch(() => undefined);
+        },
+      );
+    })().catch(() => undefined);
+    return () => { cancelled = true; subscription?.remove(); };
+  }, [user?.id, user?.role, detail?.errand?.id, detail?.errand?.provider_id, detail?.errand?.status]);
 
   const errand = detail?.errand;
   const pickup = useMemo<MapPoint | null>(() => {
