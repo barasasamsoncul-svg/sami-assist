@@ -33,6 +33,7 @@ function calculateServicePrice(rule: Record<string, any>, input: { distanceKm: n
   return { serviceFee, commissionRate, commission, providerEarning, distanceFee, itemSizeFee, valueSurcharge, multiplier, baseFee };
 }
 function error(message: string, status = 400) { return NextResponse.json({ error: message }, { status }); }
+function isNativeClient(request: Request) { return request.headers.get("x-sami-client") === "native" && !request.headers.get("origin"); }
 function randomCode() { return "SE-" + new Date().toISOString().slice(0, 10).replaceAll("-", "") + "-" + randomBytes(3).toString("hex").toUpperCase(); }
 function sameOrigin(request: Request) {
   const origin = request.headers.get("origin");
@@ -105,7 +106,7 @@ export async function GET(request: Request) {
       return error("Service pricing is temporarily unavailable. The pricing migration may not have been applied.", 503);
     }
   }
-  const user = await getCurrentUser().catch(() => null);
+  const user = await getCurrentUser(request).catch(() => null);
   if (action === "me") return user ? NextResponse.json({ user }) : error("Not signed in.", 401);
   if (!user) return error("Sign in to continue.", 401);
   if (["errands","errandDetail"].includes(action)) {
@@ -267,12 +268,12 @@ export async function POST(request: Request) {
         throw e;
       } finally { client.release(); }
       await recordAttempt(identifier, "register", true).catch(() => undefined);
-      await createSession(created.id);
+      const sessionToken = await createSession(created.id);
       if (role === "provider") {
         const admins = await query<{ id: string }>("SELECT id FROM users WHERE role='admin' AND is_active=true");
         for (const admin of admins.rows) await notify(admin.id, "provider_application", "New provider application", fullName + " applied to join the provider network.", "/", "provider", created.id);
       }
-      return NextResponse.json({ user: created }, { status: 201 });
+      return NextResponse.json({ user: created, ...(isNativeClient(request) ? { token: sessionToken } : {}) }, { status: 201 });
     } catch { return error("Account creation failed. Please retry.", 503); }
   }
 
@@ -292,13 +293,19 @@ export async function POST(request: Request) {
         return error("Email or password is incorrect.", 401);
       }
       await recordAttempt(identifier, "login", true).catch(() => undefined);
-      await createSession(u.id);
+      const sessionToken = await createSession(u.id);
+      if (isNativeClient(request)) {
+        const profile = await query<{ id: string; full_name: string; email: string; role: UserRole; phone: string | null }>(
+          "SELECT id,full_name,email,role,phone FROM users WHERE id=$1 AND is_active=true LIMIT 1", [u.id]
+        );
+        return NextResponse.json({ ok: true, token: sessionToken, user: profile.rows[0] });
+      }
       return NextResponse.json({ ok: true });
     } catch { return error("Sign-in is temporarily unavailable.", 503); }
   }
 
   if (action === "logout") {
-    await destroySession().catch(() => undefined);
+    await destroySession(request).catch(() => undefined);
     return NextResponse.json({ ok: true });
   }
 
@@ -340,8 +347,12 @@ export async function POST(request: Request) {
         return error("Admin account creation failed because of a database or email constraint. Check the Preview database connection and try again.", 503);
       } finally { client.release(); }
       await recordAttempt(identifier, "bootstrap", true).catch(() => undefined);
-      await createSession(adminId);
-      return NextResponse.json({ ok: true, message: "Administrator created and signed in." }, { status: 201 });
+      const sessionToken = await createSession(adminId);
+      return NextResponse.json({
+        ok: true,
+        message: "Administrator created and signed in.",
+        ...(isNativeClient(request) ? { token: sessionToken } : {}),
+      }, { status: 201 });
     } catch (e) {
       await recordAttempt(identifier, "bootstrap", false).catch(() => undefined);
       console.error("[SaMi admin bootstrap] Request failed before account creation.", e instanceof Error ? e.message : "unknown error");
@@ -349,7 +360,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const user = await getCurrentUser().catch(() => null);
+  const user = await getCurrentUser(request).catch(() => null);
   if (!user) return error("Sign in to continue.", 401);
   if (["createErrand","errandAction","updateProviderLocation"].includes(action)) {
     try { await ensureErrandLocationSchema(); } catch (e) {
@@ -567,6 +578,44 @@ export async function POST(request: Request) {
       }
       return NextResponse.json({ ok: true, message: "Service profile saved.", approvalStatus: r.rows[0].approval_status });
     } catch { return error("Provider profile could not be saved.", 503); }
+  }
+
+  if (action === "updateProviderProfile") {
+    if (user.role !== "provider") return error("Only provider accounts can edit provider profiles.", 403);
+    const providerType = new Set(["individual", "business", "team"]).has(text(body.providerType, 20))
+      ? text(body.providerType, 20) : "individual";
+    const businessName = text(body.businessName, 160);
+    const serviceArea = text(body.serviceArea, 180);
+    const bio = text(body.bio, 1500);
+    const allowedCategories = new Set(["shopping","clothing_retail","pickup_delivery","documents_admin","personal_errand","queue_appointments","business_support","local_assistance","other"]);
+    const serviceCategories = Array.isArray(body.serviceCategories)
+      ? [...new Set(body.serviceCategories.filter((value: unknown): value is string => typeof value === "string").map((value: string) => text(value, 40)).filter((value: string) => allowedCategories.has(value)))]
+      : [];
+    if (serviceArea.length < 2) return error("Enter the towns or areas where you can provide service.");
+    if (providerType === "business" && businessName.length < 2) return error("Enter your business name.");
+    if (!serviceCategories.length) return error("Choose at least one errand category you can handle.");
+    try {
+      const saved = await query<{ approval_status: string }>(
+        "UPDATE provider_profiles SET provider_type=$2,business_name=$3,service_area=$4,bio=$5,service_categories=$6::text[],approval_status=CASE WHEN approval_status='rejected' THEN 'pending' ELSE approval_status END,rejection_reason=CASE WHEN approval_status='rejected' THEN NULL ELSE rejection_reason END,available=CASE WHEN approval_status='approved' THEN available ELSE false END,updated_at=now() WHERE user_id=$1 RETURNING approval_status",
+        [user.id, providerType, providerType === "individual" ? null : (businessName || null), serviceArea, bio || null, serviceCategories]
+      );
+      if (!saved.rowCount) return error("Provider profile not found.", 404);
+      if (saved.rows[0].approval_status === "pending") {
+        const admins = await query<{ id: string }>("SELECT id FROM users WHERE role='admin' AND is_active=true");
+        for (const admin of admins.rows) {
+          await notify(admin.id, "provider_application", "Provider profile ready for review", user.full_name + " updated their provider profile and is awaiting review.", "/", "provider", user.id);
+        }
+      }
+      return NextResponse.json({
+        ok: true,
+        approvalStatus: saved.rows[0].approval_status,
+        message: saved.rows[0].approval_status === "approved"
+          ? "Provider profile updated."
+          : "Provider profile saved. SaMi operations must approve it before you can accept errands."
+      });
+    } catch {
+      return error("Provider profile could not be saved. Try again.", 503);
+    }
   }
 
   if (action === "providerAvailability") {

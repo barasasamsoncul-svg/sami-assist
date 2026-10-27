@@ -12,7 +12,7 @@ const finiteCoordinate = (value: string | null, min: number, max: number) => {
 };
 
 export async function GET(request: Request) {
-  const user = await getCurrentUser().catch(() => null);
+  const user = await getCurrentUser(request).catch(() => null);
   if (!user) return NextResponse.json({ error: "Sign in to use SaMi location tools." }, { status: 401 });
 
   const params = new URL(request.url).searchParams;

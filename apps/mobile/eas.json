@@ -1,0 +1,29 @@
+{
+  "cli": {
+    "version": ">= 16.19.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "preview": {
+      "distribution": "internal",
+      "channel": "preview",
+      "env": {
+        "EXPO_PUBLIC_SAMI_API_URL": "https://sami-assist-git-feat-sami-2bf3a4-barasasamsoncul-svgs-projects.vercel.app",
+        "EXPO_UPDATE_CHANNEL": "preview"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "production": {
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_SAMI_API_URL": "https://sami-assist-git-feat-sami-2bf3a4-barasasamsoncul-svgs-projects.vercel.app",
+        "EXPO_UPDATE_CHANNEL": "production"
+      },
+      "android": {
+        "buildType": "app-bundle"
+      }
+    }
+  }
+}

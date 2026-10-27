@@ -53,7 +53,7 @@ async function markAttemptFailed(id: string, errandId: string, message: string) 
 export async function POST(request: Request) {
   const origin = request.headers.get("origin");
   if (origin && origin !== new URL(request.url).origin) return fail("Cross-origin checkout is not permitted.", 403);
-  const user = await getCurrentUser().catch(() => null);
+  const user = await getCurrentUser(request).catch(() => null);
   if (!user || user.role !== "customer") return fail("Sign in with a customer account to pay for an errand.", 401);
   const config = configuration();
   if (config.missing.length) return fail("M-PESA in-app checkout is not configured in this Preview yet. Missing server settings: " + config.missing.join(", ") + ".", 503);
