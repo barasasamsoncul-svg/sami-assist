@@ -4,6 +4,7 @@
     "slug": "sami-mobile",
     "scheme": "sami",
     "version": "1.0.0",
+    "icon": "./assets/icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "plugins": [
@@ -30,6 +31,10 @@
     },
     "android": {
       "package": "com.sami.errands",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#0A1A40"
+      },
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION"
