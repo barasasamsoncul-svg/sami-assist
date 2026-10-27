@@ -135,6 +135,8 @@ export default function HomeScreen() {
 
         <Text style={{ color: colors.navy, fontSize: 19, fontWeight: "800", marginTop: 2 }}>{user?.role === "provider" ? "Work" : user?.role === "admin" ? "Operations" : "Your SaMi"}</Text>
         <ActionCard icon="↗" title={user?.role === "provider" ? "Available errands" : user?.role === "admin" ? "Errand queue" : "My errands"} body={user?.role === "provider" ? "Review eligible open jobs, assignments and live task progress." : user?.role === "admin" ? "Review requests, assignments, completion and disputes." : "Review requests, assignments and progress."} onPress={() => router.push("/(app)/errands")} />
+        <ActionCard icon="◉" title="Notifications" body="Messages, assignments and errand status updates." onPress={() => router.push("/(app)/notifications")} />
+        <ActionCard icon="KES" title="Payment history" body="Review service payments, seller entries, payouts and refunds." onPress={() => router.push("/(app)/payments")} />
         {user?.role === "admin" ? <ActionCard icon="⌘" title="Operations control room" body="Approve providers, assign errands and monitor the dispatch queue." onPress={() => router.push("/(app)/operations")} /> : null}
         {user?.role === "provider" ? <ActionCard icon="⚙" title="Manage provider profile" body="Set your service area, categories and introduction." onPress={() => router.push("/(app)/profile")} /> : null}
         {user?.role !== "provider" && user?.role !== "admin" ? <ActionCard icon="＋" title="Request a task" body="Set the details, pick locations and review the service fee." onPress={() => router.push("/(app)/request")} /> : null}

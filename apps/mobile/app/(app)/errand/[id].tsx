@@ -20,7 +20,9 @@ type Errand = {
   completion_notes?: string | null; cancellation_reason?: string | null;
 };
 type Event = { id: string; event_type: string; note?: string; created_at: string; actor_name?: string | null };
-type Detail = { errand: Errand; events: Event[] };
+type ErrandMessage = { id: string; sender_id: string; message: string; created_at: string; sender_name: string; sender_role: string };
+type Rating = { id: string; score: number; comment?: string | null; created_at: string; reviewer_name: string };
+type Detail = { errand: Errand; events: Event[]; messages?: ErrandMessage[]; ratings?: Rating[] };
 type RoadRoute = { coordinates: [number, number][] };
 
 const readable = (value?: string | null) => (value || "unknown").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -50,6 +52,9 @@ export default function ErrandDetailScreen() {
   const [completionNotes, setCompletionNotes] = useState("");
   const [disputeNote, setDisputeNote] = useState("");
   const [mpesaPhone, setMpesaPhone] = useState("");
+  const [messageText, setMessageText] = useState("");
+  const [ratingScore, setRatingScore] = useState(5);
+  const [ratingComment, setRatingComment] = useState("");
 
   const load = useCallback(async (showSpinner = false) => {
     if (!id) { setError("Errand identifier is missing."); setBusy(false); return; }
@@ -142,6 +147,32 @@ export default function ErrandDetailScreen() {
       await load(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "That action could not be completed.");
+    } finally { setWorking(""); }
+  }
+
+  async function sendMessage() {
+    if (!errand || !messageText.trim()) return;
+    setWorking("message"); setError(""); setNotice("");
+    try {
+      await dispatchPost("sendMessage", { errandId: errand.id, message: messageText.trim() });
+      setMessageText("");
+      setNotice("Message sent.");
+      await load(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Message could not be sent.");
+    } finally { setWorking(""); }
+  }
+
+  async function submitRating() {
+    if (!errand) return;
+    setWorking("rating"); setError(""); setNotice("");
+    try {
+      await dispatchPost("addRating", { errandId: errand.id, score: ratingScore, comment: ratingComment.trim() });
+      setNotice("Thank you for rating the completed errand.");
+      setRatingComment("");
+      await load(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Rating could not be saved.");
     } finally { setWorking(""); }
   }
 
@@ -251,6 +282,51 @@ export default function ErrandDetailScreen() {
             ) : null}
 
             {isCustomer && ["requested", "assigned"].includes(errand.status) ? <ActionButton title={working === "cancel" ? "Cancelling…" : "Cancel request"} secondary disabled={Boolean(working)} onPress={() => act("cancel", { reason: "Cancelled by customer in the SaMi mobile app." }, "Errand request cancelled.")} /> : null}
+
+            {(detail?.messages?.length || ["customer","provider","admin"].includes(user?.role || "")) ? (
+              <View style={common.card}>
+                <Text style={{ color: colors.navy, fontSize: 17, fontWeight: "800" }}>Errand messages</Text>
+                <Text style={common.subtitle}>Keep task-related instructions and hand-off notes in one place.</Text>
+                {detail?.messages?.length ? detail.messages.map((item) => (
+                  <View key={item.id} style={{ backgroundColor: item.sender_id === user?.id ? colors.blueSoft : "#F5F7FB", borderRadius: 13, padding: 12, gap: 4 }}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 8 }}>
+                      <Text style={{ color: colors.navy, fontWeight: "800", fontSize: 12 }}>{item.sender_name}{item.sender_id === user?.id ? " · You" : ""}</Text>
+                      <Text style={{ color: colors.muted, fontSize: 10 }}>{new Date(item.created_at).toLocaleString()}</Text>
+                    </View>
+                    <Text style={{ color: colors.ink, fontSize: 14, lineHeight: 20 }}>{item.message}</Text>
+                  </View>
+                )) : <Text style={{ color: colors.muted, fontSize: 13 }}>No messages yet.</Text>}
+                <TextInput value={messageText} onChangeText={setMessageText} multiline placeholder="Write a task-related message…" placeholderTextColor="#929BAD" textAlignVertical="top" style={[common.input, { minHeight: 75 }]} />
+                <ActionButton title={working === "message" ? "Sending…" : "Send message"} disabled={Boolean(working) || !messageText.trim()} onPress={sendMessage} />
+              </View>
+            ) : null}
+
+            {isCustomer && errand.status === "completed" && errand.provider_id ? (
+              <View style={common.card}>
+                <Text style={{ color: colors.navy, fontSize: 17, fontWeight: "800" }}>Rate this errand</Text>
+                {(detail?.ratings || []).map((rating) => (
+                  <View key={rating.id} style={{ borderRadius: 12, backgroundColor: "#F5F7FB", padding: 12, gap: 4 }}>
+                    <Text style={{ color: colors.navy, fontWeight: "800" }}>{rating.reviewer_name === user?.full_name ? "Your rating" : rating.reviewer_name}</Text>
+                    <Text style={{ color: colors.amber, fontSize: 17 }}>{("★".repeat(Math.max(0,Math.min(5,Number(rating.score)||0)))) + ("☆".repeat(Math.max(0,5-Math.min(5,Number(rating.score)||0))))}</Text>
+                    {rating.comment ? <Text style={{ color: colors.ink, fontSize: 13, lineHeight: 19 }}>{rating.comment}</Text> : null}
+                  </View>
+                ))}
+                {!(detail?.ratings || []).some((rating) => rating.reviewer_name === user?.full_name) ? (
+                  <>
+                    <Text style={common.subtitle}>How was the provider’s service?</Text>
+                    <View style={{ flexDirection: "row", justifyContent: "center", gap: 10 }}>
+                      {[1,2,3,4,5].map((score) => (
+                        <Pressable key={score} accessibilityRole="button" accessibilityLabel={score + " stars"} onPress={() => setRatingScore(score)} style={{ padding: 5 }}>
+                          <Text style={{ fontSize: 29, color: score <= ratingScore ? colors.amber : "#C7CDD8" }}>★</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    <TextInput value={ratingComment} onChangeText={setRatingComment} multiline placeholder="Optional feedback" placeholderTextColor="#929BAD" textAlignVertical="top" style={[common.input,{minHeight:70}]} />
+                    <ActionButton title={working === "rating" ? "Submitting…" : "Submit rating"} disabled={Boolean(working)} onPress={submitRating} />
+                  </>
+                ) : <Text style={{ color: colors.green, fontWeight: "700" }}>You have submitted feedback for this errand.</Text>}
+              </View>
+            ) : null}
 
             {detail?.events?.length ? (
               <View style={common.card}>
