@@ -81,7 +81,7 @@ jobs:
               lines.append(gradle_args)
           if not any(line.startswith("kotlin.compiler.execution.strategy=") for line in lines):
               lines.append("kotlin.compiler.execution.strategy=in-process")
-          path.write_text("\\n".join(lines) + "\\n")
+          path.write_text("\n".join(lines) + "\n")
           PY
 
       - name: Build standalone Android APK
