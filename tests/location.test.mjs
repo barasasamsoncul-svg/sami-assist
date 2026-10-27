@@ -6,7 +6,8 @@ const map = readFileSync(new URL("../components/ErrandMap.tsx", import.meta.url)
 const locations = readFileSync(new URL("../lib/location.ts", import.meta.url), "utf8");
 const api = readFileSync(new URL("../app/api/location/route.ts", import.meta.url), "utf8");
 const dispatch = readFileSync(new URL("../app/api/dispatch/route.ts", import.meta.url), "utf8");
-const migration = readFileSync(new URL("../lib/errand-location-schema.ts", import.meta.url), "utf8");
+const migration = readFileSync(new URL("../database/migrations/2026-10-26-sami-errands-location-tracking.sql", import.meta.url), "utf8");
+const locationGuard = readFileSync(new URL("../lib/errand-location-schema.ts", import.meta.url), "utf8");
 const schema = readFileSync(new URL("../database/schema.sql", import.meta.url), "utf8");
 const ui = readFileSync(new URL("../components/ErrandsApp.tsx", import.meta.url), "utf8");
 const env = readFileSync(new URL("../.env.example", import.meta.url), "utf8");
@@ -60,13 +61,14 @@ test("provider GPS is restricted to the assigned provider during an active erran
   assert.ok(ui.includes("updateProviderLocation"));
 });
 
-test("location schema migration is additive and does not need credentials to run", () => {
+test("location schema migration is additive and separated from request handling", () => {
   for (const field of ["pickup_latitude","pickup_longitude","destination_latitude","destination_longitude","route_distance_meters","route_duration_seconds"]) {
     assert.ok(migration.includes("ADD COLUMN IF NOT EXISTS " + field));
     assert.ok(schema.includes(field));
   }
-  assert.ok(migration.includes("CREATE TABLE IF NOT EXISTS errand_live_locations"));
+  assert.ok(migration.includes("CREATE TABLE IF NOT EXISTS public.errand_live_locations"));
   assert.ok(migration.includes("2026-10-26-sami-errands-location-tracking"));
+  assert.equal(locationGuard.includes('client.query("ALTER TABLE'), false);
 });
 
 test("map and payment configuration is documented outside committed secrets", () => {

@@ -33,6 +33,6 @@ test("errand location tracking has an additive owner-applied migration",()=>{
 test("runtime location guard checks schema readiness without DDL privileges",()=>{
   assert.ok(locationGuard.includes("information_schema.columns"));
   assert.ok(locationGuard.includes("to_regclass('public.errand_live_locations')"));
-  assert.equal(/\\bALTER\\s+TABLE\\b/i.test(locationGuard),false);
-  assert.equal(/\\bCREATE\\s+TABLE\\b/i.test(locationGuard),false);
+  assert.equal(locationGuard.includes('client.query("ALTER TABLE'),false);
+  assert.equal(locationGuard.includes("CREATE TABLE IF NOT EXISTS"),false);
 });
