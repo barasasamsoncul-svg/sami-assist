@@ -11,8 +11,8 @@
     "doctor": "expo-doctor",
     "build:android:apk": "npx eas-cli build --platform android --profile preview",
     "build:android:play": "npx eas-cli build --platform android --profile production",
-    "update:preview": "npx eas-cli update --channel preview",
-    "update:production": "npx eas-cli update --channel production"
+    "update:preview": "npx eas-cli update --channel preview --environment preview",
+    "update:production": "npx eas-cli update --channel production --environment production"
   },
   "dependencies": {
     "expo": "~57.0.31",

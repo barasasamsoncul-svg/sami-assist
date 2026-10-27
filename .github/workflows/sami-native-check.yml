@@ -26,6 +26,13 @@ jobs:
         working-directory: apps/mobile
     env:
       EXPO_PUBLIC_SAMI_API_URL: https://sami-assist-git-feat-sami-2bf3a4-barasasamsoncul-svgs-projects.vercel.app
+      EXPO_PROJECT_ID: ${{ vars.EXPO_PROJECT_ID }}
+      EXPO_UPDATE_CHANNEL: preview
+      EXPO_ANDROID_VERSION_CODE: ${{ github.run_number }}
+      SAMI_ANDROID_KEYSTORE_BASE64: ${{ secrets.SAMI_ANDROID_KEYSTORE_BASE64 }}
+      SAMI_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.SAMI_ANDROID_KEYSTORE_PASSWORD }}
+      SAMI_ANDROID_KEY_ALIAS: ${{ secrets.SAMI_ANDROID_KEY_ALIAS }}
+      SAMI_ANDROID_KEY_PASSWORD: ${{ secrets.SAMI_ANDROID_KEY_PASSWORD }}
 
     steps:
       - name: Checkout
@@ -56,6 +63,41 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Install NDK required by Expo Updates
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          if [[ -z "$SDK_ROOT" ]]; then
+            echo "ANDROID_HOME or ANDROID_SDK_ROOT is not configured" >&2
+            exit 1
+          fi
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "$SDKMANAGER" ]]; then
+            SDKMANAGER="$(command -v sdkmanager || true)"
+          fi
+          if [[ -z "$SDKMANAGER" || ! -x "$SDKMANAGER" ]]; then
+            echo "Android sdkmanager was not found" >&2
+            exit 1
+          fi
+
+          for attempt in 1 2 3; do
+            echo "Installing NDK 27.0.12077973 (attempt $attempt/3)"
+            if "$SDKMANAGER" --install "ndk;27.0.12077973"; then
+              if [[ -x "$SDK_ROOT/ndk/27.0.12077973/ndk-build" ]]; then
+                echo "NDK 27.0.12077973 is installed and verified."
+                exit 0
+              fi
+              echo "sdkmanager returned success but the NDK folder is incomplete." >&2
+            fi
+            if [[ "$attempt" -lt 3 ]]; then
+              rm -rf "$SDK_ROOT/.temp"/*
+              sleep "$((attempt * 8))"
+            fi
+          done
+          echo "Failed to install NDK 27.0.12077973 after three attempts." >&2
+          exit 1
 
       - name: Cache Gradle dependencies
         uses: gradle/actions/setup-gradle@v4
@@ -96,13 +138,54 @@ jobs:
       - name: Build standalone Android APK
         run: cd android && ./gradlew --no-daemon --stacktrace --console=plain --max-workers=2 -x lintVitalAnalyzeRelease -x lintVitalReportRelease -x :app:lintVitalRelease :app:assembleRelease
 
+      - name: Sign preview APK for Android installation
+        shell: bash
+        run: |
+          set -euo pipefail
+          unsigned_apk="android/app/build/outputs/apk/release/app-release.apk"
+          signed_apk="android/app/build/outputs/apk/release/app-release-preview.apk"
+          key_dir="$(mktemp -d)"
+          key_store="$key_dir/sami-preview.keystore"
+          cleanup() { rm -rf "$key_dir"; }
+          trap cleanup EXIT
+
+          if [[ -n "$SAMI_ANDROID_KEYSTORE_BASE64" && -n "$SAMI_ANDROID_KEYSTORE_PASSWORD" && -n "$SAMI_ANDROID_KEY_ALIAS" && -n "$SAMI_ANDROID_KEY_PASSWORD" ]]; then
+            echo "$SAMI_ANDROID_KEYSTORE_BASE64" | base64 --decode > "$key_store"
+            store_password="$SAMI_ANDROID_KEYSTORE_PASSWORD"
+            key_alias="$SAMI_ANDROID_KEY_ALIAS"
+            key_password="$SAMI_ANDROID_KEY_PASSWORD"
+            echo "Using the configured persistent preview signing key."
+          elif [[ -z "$SAMI_ANDROID_KEYSTORE_BASE64" && -z "$SAMI_ANDROID_KEYSTORE_PASSWORD" && -z "$SAMI_ANDROID_KEY_ALIAS" && -z "$SAMI_ANDROID_KEY_PASSWORD" ]]; then
+            store_password="$(openssl rand -hex 24)"
+            key_alias="sami-preview"
+            key_password="$store_password"
+            keytool -genkeypair -noprompt               -keystore "$key_store"               -storepass "$store_password"               -keypass "$key_password"               -alias "$key_alias"               -keyalg RSA -keysize 2048 -validity 10000               -dname "CN=SaMi Preview, OU=Development, O=SaMi Technologies, L=Nairobi, ST=Nairobi, C=KE"
+            echo "No persistent preview key is configured; this APK uses a temporary preview key."
+            echo "For in-place upgrades between native preview builds, configure all four SAMI_ANDROID_KEYSTORE_* repository secrets."
+            echo "### Preview APK signing" >> "$GITHUB_STEP_SUMMARY"
+            echo "This APK is signed and installable, but uses a temporary signing key. Installing the next preview APK may require uninstalling this build first." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Preview signing secrets are incomplete. Configure all four SAMI_ANDROID_KEYSTORE_* secrets or remove all four to use a temporary preview key." >&2
+            exit 1
+          fi
+
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)"
+          if [[ -z "$sdk_root" || -z "$apksigner" || ! -x "$apksigner" ]]; then
+            echo "Android apksigner was not found in the configured SDK." >&2
+            exit 1
+          fi
+          "$apksigner" sign             --ks "$key_store"             --ks-key-alias "$key_alias"             --ks-pass "pass:$store_password"             --key-pass "pass:$key_password"             --out "$signed_apk"             "$unsigned_apk"
+          "$apksigner" verify --verbose "$signed_apk"
+          test -s "$signed_apk"
+
       - name: Verify standalone APK exists
-        run: test -s android/app/build/outputs/apk/release/app-release.apk
+        run: test -s android/app/build/outputs/apk/release/app-release-preview.apk
 
       - name: Upload SaMi Android standalone APK
         uses: actions/upload-artifact@v4
         with:
           name: sami-android-standalone-apk
-          path: apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+          path: apps/mobile/android/app/build/outputs/apk/release/app-release-preview.apk
           if-no-files-found: error
           retention-days: 14
