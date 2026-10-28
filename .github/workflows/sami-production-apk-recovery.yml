@@ -30,6 +30,9 @@ jobs:
         with:
           node-version: "22.13"
 
+      - name: Install mobile dependencies for Expo config resolution
+        run: npm install --no-audit --no-fund
+
       - name: Install EAS CLI
         run: npm install --global eas-cli@latest
 
