@@ -36,7 +36,6 @@ jobs:
       EXPO_PROJECT_ID: ${{ vars.EXPO_PROJECT_ID }}
       EXPO_PUBLIC_SAMI_API_URL: https://sami-assist.vercel.app
       EXPO_UPDATE_CHANNEL: production
-      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY || vars.GOOGLE_MAPS_API_KEY }}
       EXPECTED_ANDROID_SIGNING_CERT_SHA256: 591DF420FCA82C7900E5BB9B336F417C130E2F8977C9E88034EE82B47A05AB91
 
     steps:
@@ -82,12 +81,27 @@ jobs:
       - name: Verify Android JavaScript bundle
         run: npx expo export --platform android --output-dir "$RUNNER_TEMP/sami-production-bundle"
 
-      - name: Configure native Google Maps for production
+      - name: Load restricted Google Maps key from EAS production environment
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$GOOGLE_MAPS_API_KEY" || { echo "Google Maps needs a restricted Android SDK key. Add GOOGLE_MAPS_API_KEY as a GitHub Actions secret or variable before building." >&2; exit 1; }
-          npx eas-cli@latest env:set --name GOOGLE_MAPS_API_KEY --value "$GOOGLE_MAPS_API_KEY" --environment production --visibility sensitive --non-interactive
+          MAP_ENV_FILE="$RUNNER_TEMP/sami-eas-production.env"
+          npx eas-cli@latest env:pull --environment production --path "$MAP_ENV_FILE" --non-interactive
+          node - "$MAP_ENV_FILE" "$GITHUB_ENV" <<'NODE'
+          const fs = require("node:fs");
+          const [envPath, githubEnv] = process.argv.slice(2);
+          const line = fs.readFileSync(envPath, "utf8").split(/\r?\n/).find((item) => item.startsWith("GOOGLE_MAPS_API_KEY="));
+          let key = line?.slice("GOOGLE_MAPS_API_KEY=".length).trim() || "";
+          if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) key = key.slice(1, -1);
+          if (key.length < 20) {
+            console.error("GOOGLE_MAPS_API_KEY is missing from EAS production variables or is not pullable. Add it in Expo > SaMi project > Environment variables as Sensitive, then rerun the build.");
+            process.exit(1);
+          }
+          console.log("::add-mask::" + key);
+          fs.appendFileSync(githubEnv, "GOOGLE_MAPS_API_KEY=" + key + "\n");
+          fs.unlinkSync(envPath);
+          console.log("Restricted Google Maps key loaded for native config; value was not logged.");
+          NODE
 
       - name: Build signed production APK using existing credentials only
         shell: bash
