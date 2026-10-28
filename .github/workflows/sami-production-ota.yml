@@ -10,6 +10,7 @@ on:
       - "apps/mobile/src/**"
       - "apps/mobile/assets/**"
       - "!apps/mobile/assets/icon.png"
+      - "!apps/mobile/assets/adaptive-icon.png"
   workflow_dispatch:
 
 permissions:
