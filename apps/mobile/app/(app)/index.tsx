@@ -3,6 +3,7 @@ import { ActivityIndicator, Platform, Pressable, RefreshControl, SafeAreaView, S
 import { router } from "expo-router";
 import { dispatchGet, dispatchPost } from "@/api";
 import { colors, common } from "@/theme";
+import SaMiLogoMark from "@/components/SaMiLogoMark";
 
 type User = { id: string; full_name: string; email: string; role: "customer" | "provider" | "admin"; phone: string | null };
 type Metrics = { total?: number; active?: number; completed?: number; disputes?: number };
@@ -105,12 +106,13 @@ export default function HomeScreen() {
       >
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-            <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: colors.navy, alignItems: "center", justifyContent: "center" }}>
-              <Text style={{ color: colors.white, fontSize: 23, fontWeight: "900" }}>S</Text>
-            </View>
+            <SaMiLogoMark size={42} />
             <View style={{ gap: 1 }}>
-              <Text style={{ color: colors.navy, fontSize: 23, fontWeight: "900", letterSpacing: -0.6 }}>SaMi</Text>
-              <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "600" }}>Errands</Text>
+              <View style={{ flexDirection: "row", alignItems: "baseline" }}>
+                <Text style={{ color: colors.navy, fontSize: 23, fontWeight: "900", letterSpacing: -0.8 }}>Sa</Text>
+                <Text style={{ color: colors.blue, fontSize: 23, fontWeight: "900", letterSpacing: -0.8 }}>Mi</Text>
+              </View>
+              <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "800", letterSpacing: 1.25 }}>ERRANDS</Text>
             </View>
           </View>
           <View style={{ flexDirection: "row", gap: 8 }}>
