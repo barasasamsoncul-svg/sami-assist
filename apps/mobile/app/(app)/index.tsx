@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, SafeAreaView, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, RefreshControl, SafeAreaView, ScrollView, Text, View } from "react-native";
 import { router } from "expo-router";
 import { dispatchGet, dispatchPost } from "@/api";
 import { colors, common } from "@/theme";
@@ -105,7 +105,7 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={common.screen}>
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 34, gap: 20 }}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: Platform.OS === "android" ? 40 : 12, paddingBottom: 34, gap: 20 }}
         refreshControl={<RefreshControl refreshing={busy} onRefresh={load} tintColor={colors.blue} />}
         showsVerticalScrollIndicator={false}
       >
