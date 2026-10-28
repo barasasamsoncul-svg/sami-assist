@@ -9,12 +9,10 @@ type Metrics = { total?: number; active?: number; completed?: number; disputes?:
 type ProviderProfile = { approval_status: "pending" | "approved" | "rejected" | "suspended"; rejection_reason?: string | null; available: boolean; service_area?: string | null; completed_jobs?: number; rating_average?: number | string | null; rating_count?: number };
 
 const customerServices = [
-  { category: "shopping", icon: "🛍️", title: "Shopping", caption: "Buy and collect items" },
-  { category: "pickup_delivery", icon: "↗", title: "Pick-up & drop-off", caption: "Move items from A to B" },
-  { category: "documents_admin", icon: "▤", title: "Documents", caption: "Forms and office errands" },
-  { category: "personal_errand", icon: "✦", title: "Personal errands", caption: "Everyday tasks" },
-  { category: "queue_appointments", icon: "◷", title: "Queues & bookings", caption: "Appointments and waiting" },
-  { category: "other", icon: "＋", title: "Something else", caption: "Describe what you need" },
+  { id: "shopping", category: "shopping", icon: "🛍️", title: "Shopping", caption: "Buy items for me" },
+  { id: "pickups", category: "pickup_delivery", icon: "↙", title: "Pickups", caption: "Collect something" },
+  { id: "deliveries", category: "pickup_delivery", icon: "↗", title: "Deliveries", caption: "Send something" },
+  { id: "other", category: "other", icon: "＋", title: "Other errands", caption: "Describe your task" },
 ] as const;
 
 function HeaderButton({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) {
@@ -56,6 +54,7 @@ export default function HomeScreen() {
   const [availabilityBusy, setAvailabilityBusy] = useState(false);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
+  const [taskDraft, setTaskDraft] = useState("");
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -94,10 +93,6 @@ export default function HomeScreen() {
     }
   }
 
-  async function logout() {
-    try { await dispatchPost("logout"); } catch { /* The API client clears the local session token after logout requests. */ }
-    router.replace("/(auth)/login");
-  }
 
   const firstName = user?.full_name.trim().split(/\s+/)[0] || "there";
   const greeting = new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 17 ? "Good afternoon" : "Good evening";
@@ -121,7 +116,7 @@ export default function HomeScreen() {
           </View>
           <View style={{ flexDirection: "row", gap: 8 }}>
             <HeaderButton icon="◉" label="Notifications" onPress={() => router.push("/(app)/notifications")} />
-            <HeaderButton icon={firstName.slice(0, 1).toUpperCase()} label="Profile and sign out" onPress={() => router.push("/(app)/profile")} />
+            <HeaderButton icon={firstName.slice(0, 1).toUpperCase()} label="Profile and sign out" onPress={() => router.push("/(app)/account")} />
           </View>
         </View>
 
@@ -284,9 +279,7 @@ export default function HomeScreen() {
           </View>
         )}
 
-        <Pressable accessibilityRole="button" onPress={logout} style={{ alignSelf: "center", paddingVertical: 10, paddingHorizontal: 16 }}>
-          <Text style={{ color: colors.muted, fontWeight: "700", fontSize: 12 }}>Sign out</Text>
-        </Pressable>
+
       </ScrollView>
     </SafeAreaView>
   );
