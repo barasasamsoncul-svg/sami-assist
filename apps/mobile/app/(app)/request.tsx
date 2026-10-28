@@ -67,7 +67,7 @@ function ChoiceRow({ label, options, value, onChange }: {
 }
 
 export default function RequestScreen() {
-  const { category: categoryParam } = useLocalSearchParams<{ category?: string }>();
+  const { category: categoryParam, description: descriptionParam } = useLocalSearchParams<{ category?: string; description?: string }>();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("personal_errand");
@@ -112,6 +112,13 @@ export default function RequestScreen() {
       setCategory(categoryParam);
     }
   }, [categoryParam]);
+
+  useEffect(() => {
+    if (typeof descriptionParam !== "string" || !descriptionParam.trim()) return;
+    const initialDescription = descriptionParam.trim();
+    setDescription((current) => current || initialDescription);
+    setTitle((current) => current || initialDescription.split(/\\s+/).slice(0, 6).join(" ").slice(0, 80));
+  }, [descriptionParam]);
 
   useEffect(() => {
     if (!pickup || !destination) { setRoute(null); setRouteError(""); setRouteLoading(false); return; }
