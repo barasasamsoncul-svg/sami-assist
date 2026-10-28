@@ -99,7 +99,7 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={common.screen}>
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: Platform.OS === "android" ? 40 : 12, paddingBottom: 34, gap: 20 }}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: Platform.OS === "android" ? 20 : 12, paddingBottom: 34, gap: 20 }}
         refreshControl={<RefreshControl refreshing={busy} onRefresh={load} tintColor={colors.blue} />}
         showsVerticalScrollIndicator={false}
       >
