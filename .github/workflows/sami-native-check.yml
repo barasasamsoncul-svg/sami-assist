@@ -50,28 +50,6 @@ jobs:
       - name: Install mobile dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Load restricted Google Maps key from EAS production environment
-        shell: bash
-        run: |
-          set -euo pipefail
-          MAP_ENV_FILE="$RUNNER_TEMP/sami-eas-production.env"
-          npx eas-cli@latest env:pull --environment production --path "$MAP_ENV_FILE" --non-interactive
-          node - "$MAP_ENV_FILE" "$GITHUB_ENV" <<'NODE'
-          const fs = require("node:fs");
-          const [envPath, githubEnv] = process.argv.slice(2);
-          const line = fs.readFileSync(envPath, "utf8").split(/\r?\n/).find((item) => item.startsWith("GOOGLE_MAPS_API_KEY="));
-          let key = line?.slice("GOOGLE_MAPS_API_KEY=".length).trim() || "";
-          if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) key = key.slice(1, -1);
-          if (key.length < 20) {
-            console.error("GOOGLE_MAPS_API_KEY is missing from EAS production variables or is not pullable. Add it in Expo > SaMi project > Environment variables as Sensitive, then rerun the build.");
-            process.exit(1);
-          }
-          console.log("::add-mask::" + key);
-          fs.appendFileSync(githubEnv, "GOOGLE_MAPS_API_KEY=" + key + "\n");
-          fs.unlinkSync(envPath);
-          console.log("Restricted Google Maps key loaded for native config; value was not logged.");
-          NODE
-
       - name: Validate production release configuration
         shell: bash
         run: |
@@ -102,6 +80,28 @@ jobs:
 
       - name: Verify Android JavaScript bundle
         run: npx expo export --platform android --output-dir "$RUNNER_TEMP/sami-production-bundle"
+
+      - name: Load restricted Google Maps key from EAS production environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAP_ENV_FILE="$RUNNER_TEMP/sami-eas-production.env"
+          npx eas-cli@latest env:pull --environment production --path "$MAP_ENV_FILE" --non-interactive
+          node - "$MAP_ENV_FILE" "$GITHUB_ENV" <<'NODE'
+          const fs = require("node:fs");
+          const [envPath, githubEnv] = process.argv.slice(2);
+          const line = fs.readFileSync(envPath, "utf8").split(/\r?\n/).find((item) => item.startsWith("GOOGLE_MAPS_API_KEY="));
+          let key = line?.slice("GOOGLE_MAPS_API_KEY=".length).trim() || "";
+          if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) key = key.slice(1, -1);
+          if (key.length < 20) {
+            console.error("GOOGLE_MAPS_API_KEY is missing from EAS production variables or is not pullable. Add it in Expo > SaMi project > Environment variables as Sensitive, then rerun the build.");
+            process.exit(1);
+          }
+          console.log("::add-mask::" + key);
+          fs.appendFileSync(githubEnv, "GOOGLE_MAPS_API_KEY=" + key + "\n");
+          fs.unlinkSync(envPath);
+          console.log("Restricted Google Maps key loaded for native config; value was not logged.");
+          NODE
 
       - name: Build signed production APK using existing credentials only
         shell: bash
