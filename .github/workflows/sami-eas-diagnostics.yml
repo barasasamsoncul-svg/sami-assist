@@ -1,4 +1,4 @@
-name: SaMi EAS failed-build diagnostics
+name: SaMi EAS failed-build diagnostics # refresh
 
 on:
   push:
