@@ -1,0 +1,77 @@
+name: SaMi production APK artifact recovery
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/sami-production-apk-recovery.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  recover-apk:
+    name: Download completed production APK from EAS
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      BUILD_ID: a921828b-ad5b-4796-b4df-503c449b33f0
+    steps:
+      - name: Checkout production source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.13"
+
+      - name: Install EAS CLI
+        run: npm install --global eas-cli@latest
+
+      - name: Verify completed production EAS build
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$EXPO_TOKEN" || { echo "EXPO_TOKEN is missing." >&2; exit 1; }
+          eas build:view "$BUILD_ID" --json > "$RUNNER_TEMP/sami-eas-build.json"
+          node - "$RUNNER_TEMP/sami-eas-build.json" <<'NODE'
+          const fs = require("node:fs");
+          const data = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const build = data.build || data;
+          if (build.id !== process.env.BUILD_ID) throw new Error("Unexpected EAS build ID.");
+          if (String(build.status).toUpperCase() !== "FINISHED") throw new Error("EAS build is not finished: " + build.status);
+          if (String(build.platform).toUpperCase() !== "ANDROID") throw new Error("EAS build is not Android.");
+          if (build.buildProfile !== "production") throw new Error("EAS build is not the production profile.");
+          if (!build.artifacts?.applicationArchiveUrl) throw new Error("EAS build has no application archive URL.");
+          console.log("Verified finished production Android build: " + build.id);
+          console.log("APK URL: " + build.artifacts.applicationArchiveUrl);
+          NODE
+
+      - name: Download signed production APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/sami-apk"
+          cd "$RUNNER_TEMP/sami-apk"
+          eas build:download --build-id "$BUILD_ID" --non-interactive
+          APK_PATH="$(find . -maxdepth 3 -type f -iname '*.apk' -print -quit)"
+          test -n "$APK_PATH" || { echo "EAS did not provide an APK file." >&2; exit 1; }
+          test -s "$APK_PATH" || { echo "Downloaded APK is empty." >&2; exit 1; }
+          mv "$APK_PATH" "$RUNNER_TEMP/SaMi-production.apk"
+          file "$RUNNER_TEMP/SaMi-production.apk"
+          sha256sum "$RUNNER_TEMP/SaMi-production.apk" | tee "$RUNNER_TEMP/sami-apk-sha256.txt"
+          echo "EAS build ID: $BUILD_ID" >> "$GITHUB_STEP_SUMMARY"
+          echo "Package: com.sami.errands" >> "$GITHUB_STEP_SUMMARY"
+          echo "Build profile: production; update channel: production" >> "$GITHUB_STEP_SUMMARY"
+          echo "APK bytes: $(stat -c%s "$RUNNER_TEMP/SaMi-production.apk")" >> "$GITHUB_STEP_SUMMARY"
+          echo "SHA-256: $(cut -d' ' -f1 "$RUNNER_TEMP/sami-apk-sha256.txt")" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload installable production APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: sami-production-android-apk
+          path: ${{ runner.temp }}/SaMi-production.apk
+          if-no-files-found: error
+          retention-days: 30
