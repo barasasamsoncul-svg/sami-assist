@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, RefreshControl, SafeAreaView, ScrollView, Text, TextInput, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import MapPicker, { type MapPoint } from "@/components/MapPicker";
 import { apiRequest, dispatchGet, dispatchPost, locationGet } from "@/api";
@@ -29,6 +30,7 @@ type ErrandMessage = { id: string; sender_id: string; message: string; created_a
 type Rating = { id: string; score: number; comment?: string | null; created_at: string; reviewer_name: string };
 type Detail = { errand: Errand; events: Event[]; messages?: ErrandMessage[]; ratings?: Rating[] };
 type RoadRoute = { coordinates: [number, number][] };
+type VoiceCall = { id: string; errand_id: string; caller_id: string; callee_id: string; status: "ringing" | "active" | "rejected" | "ended" | "missed" | "failed"; caller_name: string; callee_name: string; public_code: string; errand_title: string };
 
 const readable = (value?: string | null) => (value || "unknown").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 const num = (value: string | number | null | undefined): number | null => {
@@ -67,6 +69,8 @@ export default function ErrandDetailScreen() {
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReference, setRefundReference] = useState("");
   const [messageText, setMessageText] = useState("");
+  const [voiceCall, setVoiceCall] = useState<VoiceCall | null>(null);
+  const [decliningCall, setDecliningCall] = useState(false);
   const [ratingScore, setRatingScore] = useState(5);
   const [ratingComment, setRatingComment] = useState("");
 
@@ -111,8 +115,8 @@ export default function ErrandDetailScreen() {
 
   useEffect(() => {
     const e = detail?.errand;
-    if (!e || !["accepted", "in_progress"].includes(e.status)) return;
-    const timer = setInterval(() => { load(false); }, 12000);
+    if (!e || !["assigned", "accepted", "in_progress", "completion_submitted"].includes(e.status)) return;
+    const timer = setInterval(() => { load(false); }, 5000);
     return () => clearInterval(timer);
   }, [detail?.errand?.status, load]);
 
@@ -158,6 +162,29 @@ export default function ErrandDetailScreen() {
   const isCustomer = user?.role === "customer" && user.id === errand?.customer_id;
   const isAssignedProvider = user?.role === "provider" && user.id === errand?.provider_id;
   const isOperations = user?.role === "admin";
+
+  useEffect(() => {
+    if (!errand || (!isCustomer && !isAssignedProvider) || !errand.provider_id ||
+        !["assigned", "accepted", "in_progress", "completion_submitted"].includes(errand.status)) {
+      setVoiceCall(null);
+      return;
+    }
+    let active = true;
+    const syncCall = () => {
+      dispatchGet<{ call: VoiceCall | null }>("callSync", { errandId: errand.id })
+        .then((result) => { if (active) setVoiceCall(result.call); })
+        .catch(() => { /* Calling may be unavailable until the additive database migration is applied. */ });
+    };
+    void syncCall();
+    const timer = setInterval(syncCall, 2500);
+    return () => { active = false; clearInterval(timer); };
+  }, [errand?.id, errand?.provider_id, errand?.status, isCustomer, isAssignedProvider]);
+
+  const canCallOnErrand = Boolean(errand?.provider_id &&
+    (isCustomer || isAssignedProvider) &&
+    ["assigned", "accepted", "in_progress", "completion_submitted"].includes(errand?.status || ""));
+  const incomingVoiceCall = Boolean(voiceCall?.status === "ringing" && voiceCall.callee_id === user?.id);
+
   const canAccept = user?.role === "provider" && Boolean(errand && (
     (errand.status === "requested" && !errand.provider_id) ||
     (errand.status === "assigned" && isAssignedProvider)
@@ -176,6 +203,33 @@ export default function ErrandDetailScreen() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "That action could not be completed.");
     } finally { setWorking(""); }
+  }
+
+
+  function openVoiceCall() {
+    if (!errand || !canCallOnErrand) return;
+    router.push({
+      pathname: "/(app)/errand/[id]/call",
+      params: {
+        id: errand.id,
+        ...(incomingVoiceCall && voiceCall ? { callId: voiceCall.id } : {}),
+      },
+    });
+  }
+
+  async function declineVoiceCall() {
+    if (!voiceCall) return;
+    setDecliningCall(true);
+    setError("");
+    try {
+      await dispatchPost("rejectErrandCall", { callId: voiceCall.id });
+      setVoiceCall(null);
+      setNotice("Call declined.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The call could not be declined.");
+    } finally {
+      setDecliningCall(false);
+    }
   }
 
   async function sendMessage() {
@@ -303,6 +357,60 @@ export default function ErrandDetailScreen() {
               {errand.cancellation_reason ? <Text style={{ color: colors.muted }}>Cancellation note: {errand.cancellation_reason}</Text> : null}
             </View>
 
+            {isCustomer && !errand.provider_id ? (
+              <View style={[common.card, { flexDirection: "row", alignItems: "center", gap: 12 }]}>
+                <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: colors.blueSoft, alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="chatbubbles-outline" size={22} color={colors.blue} />
+                </View>
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text style={{ color: colors.navy, fontSize: 15, fontWeight: "900" }}>Chat and calls</Text>
+                  <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>Messaging and in-app voice calls unlock when a provider accepts this errand. Your personal number stays private.</Text>
+                </View>
+              </View>
+            ) : null}
+
+            {canCallOnErrand ? (
+              <View style={[common.card, { gap: 12 }]}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 11 }}>
+                  <View style={{ width: 44, height: 44, borderRadius: 15, backgroundColor: colors.blueSoft, alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="call-outline" size={22} color={colors.blue} />
+                  </View>
+                  <View style={{ flex: 1, gap: 4 }}>
+                    <Text style={{ color: colors.navy, fontSize: 16, fontWeight: "900" }}>Stay connected</Text>
+                    <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>
+                      {incomingVoiceCall
+                        ? (voiceCall?.caller_name || "Your errand contact") + " is calling about this errand."
+                        : voiceCall?.status === "active"
+                          ? "An in-app call is currently active."
+                          : voiceCall?.status === "ringing" && voiceCall.caller_id === user?.id
+                            ? "Calling " + (isCustomer ? (errand.provider_name || "your provider") : (errand.customer_name || "the customer")) + "…"
+                            : "Call the assigned " + (isCustomer ? "provider" : "customer") + " without sharing personal phone numbers."}
+                    </Text>
+                  </View>
+                </View>
+                {incomingVoiceCall ? (
+                  <View style={{ flexDirection: "row", gap: 9 }}>
+                    <Pressable accessibilityRole="button" disabled={decliningCall} onPress={declineVoiceCall} style={[common.secondaryButton, { flex: 1, borderColor: "#F0C9CD", backgroundColor: "#FFF4F4" }]}>
+                      {decliningCall ? <ActivityIndicator color={colors.red} /> : <Text style={{ color: colors.red, fontWeight: "900" }}>Decline</Text>}
+                    </Pressable>
+                    <Pressable accessibilityRole="button" onPress={openVoiceCall} style={[common.primaryButton, { flex: 1, flexDirection: "row", gap: 7 }]}>
+                      <Ionicons name="call" size={17} color={colors.white} />
+                      <Text style={common.primaryButtonText}>Answer call</Text>
+                    </Pressable>
+                  </View>
+                ) : voiceCall?.status === "active" ? (
+                  <Text style={{ color: colors.green, fontSize: 12, fontWeight: "800" }}>Call connected. Return to the call screen to continue talking.</Text>
+                ) : voiceCall?.status === "ringing" && voiceCall.caller_id === user?.id ? (
+                  <Text style={{ color: colors.blue, fontSize: 12, fontWeight: "800" }}>Ringing… keep this errand open while the other person answers.</Text>
+                ) : (
+                  <Pressable accessibilityRole="button" onPress={openVoiceCall} style={[common.primaryButton, { flexDirection: "row", gap: 8 }]}>
+                    <Ionicons name="call" size={18} color={colors.white} />
+                    <Text style={common.primaryButtonText}>Call {isCustomer ? "provider" : "customer"}</Text>
+                  </Pressable>
+                )}
+              </View>
+            ) : null}
+
             {(pickup || destination || provider) ? (
               <View style={common.card}>
                 <Text style={{ color: colors.navy, fontSize: 17, fontWeight: "800" }}>Route and live location</Text>
@@ -408,10 +516,13 @@ export default function ErrandDetailScreen() {
 
             {isCustomer && ["requested", "assigned"].includes(errand.status) ? <ActionButton title={working === "cancel" ? "Cancelling…" : "Cancel request"} secondary disabled={Boolean(working)} onPress={() => act("cancel", { reason: "Cancelled by customer in the SaMi mobile app." }, "Errand request cancelled.")} /> : null}
 
-            {(detail?.messages?.length || ["customer","provider","admin"].includes(user?.role || "")) ? (
+            {(isOperations || isAssignedProvider || (isCustomer && Boolean(errand.provider_id))) ? (
               <View style={common.card}>
-                <Text style={{ color: colors.navy, fontSize: 17, fontWeight: "800" }}>Errand messages</Text>
-                <Text style={common.subtitle}>Keep task-related instructions and hand-off notes in one place.</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Ionicons name="chatbubbles-outline" size={20} color={colors.blue} />
+                  <Text style={{ color: colors.navy, fontSize: 17, fontWeight: "900" }}>Errand messages</Text>
+                </View>
+                <Text style={common.subtitle}>Messages are private to this errand and appear here as the conversation updates.</Text>
                 {detail?.messages?.length ? detail.messages.map((item) => (
                   <View key={item.id} style={{ backgroundColor: item.sender_id === user?.id ? colors.blueSoft : "#F5F7FB", borderRadius: 13, padding: 12, gap: 4 }}>
                     <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 8 }}>
@@ -423,6 +534,13 @@ export default function ErrandDetailScreen() {
                 )) : <Text style={{ color: colors.muted, fontSize: 13 }}>No messages yet.</Text>}
                 <TextInput value={messageText} onChangeText={setMessageText} multiline placeholder="Write a task-related message…" placeholderTextColor="#929BAD" textAlignVertical="top" style={[common.input, { minHeight: 75 }]} />
                 <ActionButton title={working === "message" ? "Sending…" : "Send message"} disabled={Boolean(working) || !messageText.trim()} onPress={sendMessage} />
+              </View>
+            ) : null}
+
+            {isCustomer && !errand.provider_id ? (
+              <View style={common.card}>
+                <Text style={{ color: colors.navy, fontSize: 15, fontWeight: "900" }}>Your conversation will appear here</Text>
+                <Text style={common.subtitle}>Once a provider is assigned, you can exchange instructions, send updates and make an in-app voice call from this errand.</Text>
               </View>
             ) : null}
 
