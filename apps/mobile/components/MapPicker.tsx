@@ -11,12 +11,13 @@ type Props = {
   provider?: MapPoint | null;
   route: MapPoint[];
   readOnly?: boolean;
+  height?: number;
   onPoint?: (slot: "pickup" | "destination", point: MapPoint) => void;
 };
 
-const MAP_HTML = "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'><link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'><style>html,body,#map{height:100%;width:100%;margin:0;background:#eef2f8}.leaflet-container{font-family:Arial,sans-serif}.leaflet-control-attribution{font-size:9px}</style></head><body><div id='map'></div><script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script><script>var map=L.map('map',{zoomControl:false}).setView([-1.286389,36.817223],12);L.control.zoom({position:'bottomright'}).addTo(map);L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(map);var pickupMarker=null,destinationMarker=null,providerMarker=null,routeLine=null;window.samiSlot='pickup';window.samiReadOnly=false;window.setPoint=function(slot,point){var name=slot+'Marker';if(window[name])map.removeLayer(window[name]);if(!point)return;var label=slot==='pickup'?'Pickup':slot==='destination'?'Drop-off':'Provider';var color=slot==='pickup'?'#3568F5':slot==='destination'?'#E9A23B':'#16845B';window[name]=L.circleMarker([point.lat,point.lng],{radius:slot==='provider'?10:8,color:'#fff',weight:3,fillColor:color,fillOpacity:1}).addTo(map).bindPopup(label);};window.setRoute=function(coords){if(routeLine){map.removeLayer(routeLine);routeLine=null;}if(coords&&coords.length>1){routeLine=L.polyline(coords,{color:'#3568F5',weight:5,opacity:.85}).addTo(map);map.fitBounds(routeLine.getBounds().pad(.18));}};map.on('click',function(e){if(window.samiReadOnly)return;window.ReactNativeWebView.postMessage(JSON.stringify({type:'point',slot:window.samiSlot||'pickup',lat:e.latlng.lat,lng:e.latlng.lng}));});</script></body></html>";
+const MAP_HTML = "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'><link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'><style>html,body,#map{height:100%;width:100%;margin:0;background:#eef2f8}.leaflet-container{font-family:Arial,sans-serif}.leaflet-control-attribution{font-size:9px}</style></head><body><div id='map'></div><script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script><script>var map=L.map('map',{zoomControl:false}).setView([-1.286389,36.817223],12);L.control.zoom({position:'bottomright'}).addTo(map);L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(map);var pickupMarker=null,destinationMarker=null,providerMarker=null,routeLine=null;window.samiSlot='pickup';window.samiReadOnly=false;window.setPoint=function(slot,point){var name=slot+'Marker';if(window[name])map.removeLayer(window[name]);if(!point)return;var label=slot==='pickup'?'Pickup':slot==='destination'?'Drop-off':'Provider';var color=slot==='pickup'?'#3568F5':slot==='destination'?'#E9A23B':'#16845B';window[name]=L.circleMarker([point.lat,point.lng],{radius:slot==='provider'?10:8,color:'#fff',weight:3,fillColor:color,fillOpacity:1}).addTo(map).bindPopup(label);map.setView([point.lat,point.lng],14);};window.setRoute=function(coords){if(routeLine){map.removeLayer(routeLine);routeLine=null;}if(coords&&coords.length>1){routeLine=L.polyline(coords,{color:'#3568F5',weight:5,opacity:.85}).addTo(map);map.fitBounds(routeLine.getBounds().pad(.18));}};map.on('click',function(e){if(window.samiReadOnly)return;window.ReactNativeWebView.postMessage(JSON.stringify({type:'point',slot:window.samiSlot||'pickup',lat:e.latlng.lat,lng:e.latlng.lng}));});</script></body></html>";
 
-export default function MapPicker({ selecting, pickup, destination, provider, route, readOnly = false, onPoint }: Props) {
+export default function MapPicker({ selecting, pickup, destination, provider, route, readOnly = false, height = 290, onPoint }: Props) {
   const web = useRef<WebView>(null);
   const [ready, setReady] = useState(false);
   useEffect(() => {
@@ -40,7 +41,7 @@ export default function MapPicker({ selecting, pickup, destination, provider, ro
   return (
     <View style={styles.container}>
       <WebView ref={web} source={{ html: MAP_HTML }} originWhitelist={["*"]} javaScriptEnabled
-        onMessage={handleMessage} onLoadEnd={() => setReady(true)} style={styles.map}
+        onMessage={handleMessage} onLoadEnd={() => setReady(true)} style={[styles.map, { height }]}
         setSupportMultipleWindows={false} allowFileAccess={false} allowsInlineMediaPlayback />
       <Text style={styles.caption}>{readOnly ? "Live position is only available while the provider is sharing an active errand." : "Map data © OpenStreetMap contributors. Tap to place the selected point."}</Text>
     </View>
