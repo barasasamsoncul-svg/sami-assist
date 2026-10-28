@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { databasePool, query } from "@/lib/db";
 import { createSession, destroySession, getCurrentUser } from "@/lib/auth";
 import { getRoadRoute } from "@/lib/location";
 import { ensureErrandLocationSchema } from "@/lib/errand-location-schema";
+import { ensureErrandCallSchema } from "@/lib/errand-call-schema";
 
 export const runtime = "nodejs";
 type UserRole = "customer" | "provider" | "admin";
@@ -35,6 +36,21 @@ function calculateServicePrice(rule: Record<string, any>, input: { distanceKm: n
 function error(message: string, status = 400) { return NextResponse.json({ error: message }, { status }); }
 function isNativeClient(request: Request) { return request.headers.get("x-sami-client") === "native" && !request.headers.get("origin"); }
 function randomCode() { return "SE-" + new Date().toISOString().slice(0, 10).replaceAll("-", "") + "-" + randomBytes(3).toString("hex").toUpperCase(); }
+function buildIceServers(userId: string) {
+  const servers: Array<Record<string, unknown>> = [
+    { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
+  ];
+  const turnUrls = (process.env.TURN_SERVER_URL || "").split(",").map(value => value.trim()).filter(Boolean);
+  const turnSecret = process.env.TURN_SHARED_SECRET || "";
+  if (turnUrls.length && turnSecret.length >= 32) {
+    const expiry = Math.floor(Date.now() / 1000) + 3600;
+    const username = expiry + ":" + userId;
+    const credential = createHmac("sha1", turnSecret).update(username).digest("base64");
+    servers.push({ urls: turnUrls, username, credential });
+  }
+  return servers;
+}
+
 function sameOrigin(request: Request) {
   const origin = request.headers.get("origin");
   return !origin || origin === new URL(request.url).origin;
@@ -225,6 +241,52 @@ export async function GET(request: Request) {
       const unread = await query("SELECT count(*)::int AS count FROM notifications WHERE user_id=$1 AND read_at IS NULL", [user.id]);
       return NextResponse.json({ notifications: r.rows, unread: unread.rows[0]?.count || 0 });
     } catch { return error("Notifications are temporarily unavailable.", 503); }
+  }
+
+  if (action === "callSync") {
+    try { await ensureErrandCallSchema(); } catch (e) {
+      console.error("[SaMi call schema] Calling is not ready.", e instanceof Error ? e.message : "unknown error");
+      return error("In-app calling is not enabled yet. The production database call migration must be applied first.", 503);
+    }
+
+    const callId = text(params.get("callId"), 80);
+    const errandId = text(params.get("errandId"), 80);
+    const afterValue = Number(params.get("after") || 0);
+    const after = Number.isSafeInteger(afterValue) && afterValue >= 0 ? afterValue : 0;
+    try {
+      await query(
+        "UPDATE errand_calls SET status='missed',ended_at=now(),updated_at=now() WHERE status='ringing' AND created_at < now()-interval '45 seconds'"
+      );
+      await query(
+        "UPDATE errand_calls SET status='ended',ended_at=now(),updated_at=now() WHERE status='active' AND updated_at < now()-interval '2 hours'"
+      );
+      const paramsForCall = callId
+        ? [callId, user.id]
+        : [errandId, user.id];
+      const sql = callId
+        ? "SELECT c.*,e.public_code,e.title AS errand_title,e.status AS errand_status,caller.full_name AS caller_name,callee.full_name AS callee_name FROM errand_calls c JOIN errands e ON e.id=c.errand_id JOIN users caller ON caller.id=c.caller_id JOIN users callee ON callee.id=c.callee_id WHERE c.id=$1 AND (c.caller_id=$2 OR c.callee_id=$2) LIMIT 1"
+        : "SELECT c.*,e.public_code,e.title AS errand_title,e.status AS errand_status,caller.full_name AS caller_name,callee.full_name AS callee_name FROM errand_calls c JOIN errands e ON e.id=c.errand_id JOIN users caller ON caller.id=c.caller_id JOIN users callee ON callee.id=c.callee_id WHERE c.errand_id=$1 AND (c.caller_id=$2 OR c.callee_id=$2) AND c.status IN ('ringing','active') ORDER BY c.created_at DESC LIMIT 1";
+      if (!callId && !errandId) return error("An errand or call identifier is required.");
+      const result = await query(sql, paramsForCall);
+      const call = result.rows[0] || null;
+      if (!call) return NextResponse.json({ call: null, signals: [], iceServers: buildIceServers(user.id) });
+      if (user.role === "admin" || ![call.caller_id, call.callee_id].includes(user.id)) {
+        return error("Only the customer and assigned provider can join this errand call.", 403);
+      }
+      const signals = await query(
+        "SELECT id,signal_type,payload,from_user_id,created_at FROM errand_call_signals WHERE call_id=$1 AND id>$2 AND from_user_id<>$3 ORDER BY id ASC LIMIT 100",
+        [call.id, after, user.id]
+      );
+      return NextResponse.json({
+        call,
+        signals: signals.rows,
+        nextAfter: signals.rows.length ? Number(signals.rows[signals.rows.length - 1].id) : after,
+        iceServers: buildIceServers(user.id),
+      }, { headers: { "Cache-Control": "no-store" } });
+    } catch (e) {
+      console.error("[SaMi call sync] Signalling lookup failed.", e instanceof Error ? e.message : "unknown error");
+      return error("Call status could not be checked right now.", 503);
+    }
   }
 
   if (action === "exportMyData") {
@@ -501,6 +563,166 @@ export async function POST(request: Request) {
       console.error("[SaMi account deletion] Request failed.", e instanceof Error ? e.message : "unknown error");
       return error("Your account could not be deleted right now. No deletion was completed; please retry or contact SaMi support.", 503);
     } finally { client.release(); }
+  }
+
+  if (["startErrandCall","answerErrandCall","sendErrandCallSignal","endErrandCall","rejectErrandCall"].includes(action)) {
+    try { await ensureErrandCallSchema(); } catch (e) {
+      console.error("[SaMi call schema] Calling is not ready.", e instanceof Error ? e.message : "unknown error");
+      return error("In-app calling is not enabled yet. The production database call migration must be applied first.", 503);
+    }
+
+    if (user.role === "admin") return error("Operations accounts cannot join customer-provider voice calls.", 403);
+    const callId = text(body.callId, 80);
+
+    if (action === "startErrandCall") {
+      const errandId = text(body.errandId, 80);
+      const offer = body.offer;
+      if (!errandId || !offer || typeof offer !== "object" || Array.isArray(offer) || JSON.stringify(offer).length > 12000) {
+        return error("A valid errand and voice-call offer are required.");
+      }
+      const client = await databasePool().connect();
+      try {
+        await client.query("BEGIN");
+        const e = await client.query(
+          "SELECT id,customer_id,provider_id,status,public_code,title FROM errands WHERE id=$1 FOR UPDATE",
+          [errandId]
+        );
+        const row = e.rows[0];
+        if (!row || !row.provider_id || !["assigned","accepted","in_progress","completion_submitted"].includes(row.status)) {
+          await client.query("ROLLBACK");
+          return error("Voice calling becomes available after an errand provider has been assigned.", 409);
+        }
+        let calleeId: string;
+        if (user.role === "customer" && row.customer_id === user.id) calleeId = row.provider_id;
+        else if (user.role === "provider" && row.provider_id === user.id) calleeId = row.customer_id;
+        else {
+          await client.query("ROLLBACK");
+          return error("Only the customer and assigned provider can start this call.", 403);
+        }
+
+        await client.query(
+          "UPDATE errand_calls SET status=CASE WHEN status='ringing' THEN 'missed' ELSE 'ended' END,ended_at=now(),updated_at=now() WHERE errand_id=$1 AND status IN ('ringing','active') AND ((status='ringing' AND created_at < now()-interval '45 seconds') OR (status='active' AND updated_at < now()-interval '2 hours'))",
+          [errandId]
+        );
+        const existing = await client.query(
+          "SELECT id FROM errand_calls WHERE errand_id=$1 AND status IN ('ringing','active') LIMIT 1",
+          [errandId]
+        );
+        if (existing.rowCount) {
+          await client.query("ROLLBACK");
+          return error("There is already a call for this errand. Join it or wait until it ends.", 409);
+        }
+        const inserted = await client.query(
+          "INSERT INTO errand_calls(errand_id,caller_id,callee_id,status) VALUES($1,$2,$3,'ringing') RETURNING id,status,created_at",
+          [errandId,user.id,calleeId]
+        );
+        const created = inserted.rows[0];
+        const signal = await client.query(
+          "INSERT INTO errand_call_signals(call_id,from_user_id,signal_type,payload) VALUES($1,$2,'offer',$3::jsonb) RETURNING id",
+          [created.id,user.id,JSON.stringify(offer)]
+        );
+        await client.query(
+          "INSERT INTO notifications(user_id,kind,title,body,href,entity_type,entity_id) VALUES($1,'incoming_call','Incoming SaMi call',$2,'/','errand',$3)",
+          [calleeId,row.public_code+" · "+row.title,errandId]
+        );
+        await client.query("COMMIT");
+        return NextResponse.json({ call: created, offerSignalId: Number(signal.rows[0].id), iceServers: buildIceServers(user.id) }, { status: 201 });
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        if (typeof e === "object" && e !== null && "code" in e && (e as { code?: string }).code === "23505") {
+          return error("A voice call for this errand is already in progress.", 409);
+        }
+        console.error("[SaMi start call] Could not create call.", e instanceof Error ? e.message : "unknown error");
+        return error("The call could not be started. Please try again.", 503);
+      } finally { client.release(); }
+    }
+
+    if (!callId) return error("A call identifier is required.");
+    if (action === "answerErrandCall") {
+      const answer = body.answer;
+      if (!answer || typeof answer !== "object" || Array.isArray(answer) || JSON.stringify(answer).length > 12000) {
+        return error("A valid voice-call answer is required.");
+      }
+      const client = await databasePool().connect();
+      try {
+        await client.query("BEGIN");
+        const r = await client.query(
+          "SELECT c.*,e.status AS errand_status FROM errand_calls c JOIN errands e ON e.id=c.errand_id WHERE c.id=$1 FOR UPDATE OF c",
+          [callId]
+        );
+        const call = r.rows[0];
+        if (!call || call.callee_id !== user.id) { await client.query("ROLLBACK"); return error("Only the invited participant can answer this call.", 403); }
+        if (call.status !== "ringing" || !["assigned","accepted","in_progress","completion_submitted"].includes(call.errand_status)) {
+          await client.query("ROLLBACK");
+          return error("This call has ended or is no longer available.", 409);
+        }
+        await client.query("UPDATE errand_calls SET status='active',answered_at=now(),updated_at=now() WHERE id=$1", [callId]);
+        await client.query(
+          "INSERT INTO errand_call_signals(call_id,from_user_id,signal_type,payload) VALUES($1,$2,'answer',$3::jsonb)",
+          [callId,user.id,JSON.stringify(answer)]
+        );
+        await client.query("COMMIT");
+        return NextResponse.json({ ok:true, status:"active" });
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        console.error("[SaMi answer call] Could not answer call.", e instanceof Error ? e.message : "unknown error");
+        return error("This call could not be answered.", 503);
+      } finally { client.release(); }
+    }
+
+    if (action === "sendErrandCallSignal") {
+      const signalType = text(body.signalType, 30);
+      const payload = body.payload;
+      if (signalType !== "ice_candidate" || !payload || typeof payload !== "object" || Array.isArray(payload) || JSON.stringify(payload).length > 12000) {
+        return error("Only valid WebRTC connection candidates can be sent.");
+      }
+      try {
+        const call = await query(
+          "SELECT id,caller_id,callee_id,status FROM errand_calls WHERE id=$1 LIMIT 1",
+          [callId]
+        );
+        const row = call.rows[0];
+        if (!row || ![row.caller_id,row.callee_id].includes(user.id)) return error("Call not found or access is not permitted.", 404);
+        if (!["ringing","active"].includes(row.status)) return error("This call has ended.", 409);
+        await query(
+          "INSERT INTO errand_call_signals(call_id,from_user_id,signal_type,payload) VALUES($1,$2,'ice_candidate',$3::jsonb)",
+          [callId,user.id,JSON.stringify(payload)]
+        );
+        await query("UPDATE errand_calls SET updated_at=now() WHERE id=$1", [callId]);
+        return NextResponse.json({ ok:true });
+      } catch (e) {
+        console.error("[SaMi call candidate] Signalling failed.", e instanceof Error ? e.message : "unknown error");
+        return error("The call connection could not be updated.", 503);
+      }
+    }
+
+    if (action === "endErrandCall" || action === "rejectErrandCall") {
+      const client = await databasePool().connect();
+      try {
+        await client.query("BEGIN");
+        const r = await client.query("SELECT * FROM errand_calls WHERE id=$1 FOR UPDATE", [callId]);
+        const call = r.rows[0];
+        if (!call || ![call.caller_id,call.callee_id].includes(user.id)) {
+          await client.query("ROLLBACK");
+          return error("Call not found or access is not permitted.", 404);
+        }
+        if (action === "rejectErrandCall" && (call.callee_id !== user.id || call.status !== "ringing")) {
+          await client.query("ROLLBACK");
+          return error("Only the invited participant can decline a ringing call.", 409);
+        }
+        const nextStatus = action === "rejectErrandCall" ? "rejected" : "ended";
+        await client.query(
+          "UPDATE errand_calls SET status=$2,ended_at=now(),updated_at=now() WHERE id=$1 AND status IN ('ringing','active')",
+          [callId,nextStatus]
+        );
+        await client.query("COMMIT");
+        return NextResponse.json({ ok:true,status:nextStatus });
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        console.error("[SaMi end call] Could not finish call.", e instanceof Error ? e.message : "unknown error");
+        return error("The call could not be ended.", 503);
+      } finally { client.release(); }
+    }
   }
 
   if (action === "updateProviderLocation") {
