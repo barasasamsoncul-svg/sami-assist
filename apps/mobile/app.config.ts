@@ -3,6 +3,19 @@ import type { ConfigContext, ExpoConfig } from "expo/config";
 export default ({ config }: ConfigContext): ExpoConfig => {
   const projectId =
     process.env.EXPO_PROJECT_ID?.trim() || config.extra?.eas?.projectId;
+  const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim();
+  const android = googleMapsApiKey
+    ? {
+        ...config.android,
+        config: {
+          ...config.android?.config,
+          googleMaps: {
+            ...config.android?.config?.googleMaps,
+            apiKey: googleMapsApiKey,
+          },
+        },
+      }
+    : config.android;
   const updateUrl =
     process.env.EXPO_UPDATE_URL?.trim() ||
     config.updates?.url ||
@@ -43,6 +56,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
 
   return {
     ...config,
+    android,
     name: config.name ?? "SaMi",
     slug: config.slug ?? "sami-mobile",
     extra,
