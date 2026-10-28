@@ -260,6 +260,19 @@ export async function GET(request: Request) {
       await query(
         "UPDATE errand_calls SET status='ended',ended_at=now(),updated_at=now() WHERE status='active' AND updated_at < now()-interval '2 hours'"
       );
+      if (user.role === "admin") return error("Operations accounts cannot join customer-provider voice calls.", 403);
+      if (!callId && errandId) {
+        const errandAccess = await query(
+          "SELECT customer_id,provider_id,status FROM errands WHERE id=$1 LIMIT 1",
+          [errandId]
+        );
+        const errandRow = errandAccess.rows[0];
+        const participant = Boolean(errandRow && (
+          (user.role === "customer" && errandRow.customer_id === user.id) ||
+          (user.role === "provider" && errandRow.provider_id === user.id)
+        ));
+        if (!participant) return error("Only the customer and assigned provider can check calls for this errand.", 403);
+      }
       const paramsForCall = callId
         ? [callId, user.id]
         : [errandId, user.id];
@@ -269,8 +282,11 @@ export async function GET(request: Request) {
       if (!callId && !errandId) return error("An errand or call identifier is required.");
       const result = await query(sql, paramsForCall);
       const call = result.rows[0] || null;
-      if (!call) return NextResponse.json({ call: null, signals: [], iceServers: buildIceServers(user.id) });
-      if (user.role === "admin" || ![call.caller_id, call.callee_id].includes(user.id)) {
+      if (!call) {
+        if (callId) return error("Call not found or access is not permitted.", 404);
+        return NextResponse.json({ call: null, signals: [], iceServers: buildIceServers(user.id) }, { headers: { "Cache-Control": "no-store" } });
+      }
+      if (![call.caller_id, call.callee_id].includes(user.id)) {
         return error("Only the customer and assigned provider can join this errand call.", 403);
       }
       const signals = await query(
