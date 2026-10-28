@@ -1,47 +1,29 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ComponentProps } from "react";
 import { ActivityIndicator, Alert, Linking, Modal, Platform, Pressable, RefreshControl, SafeAreaView, ScrollView, Text, View } from "react-native";
 import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import MapPicker, { type MapPoint } from "@/components/MapPicker";
 import { dispatchGet, dispatchPost } from "@/api";
 import { colors, common } from "@/theme";
 import SaMiLogoMark from "@/components/SaMiLogoMark";
 
+type IoniconName = ComponentProps<typeof Ionicons>["name"];
+
 type User = { id: string; full_name: string; email: string; role: "customer" | "provider" | "admin"; phone: string | null };
 type Metrics = { total?: number; active?: number; completed?: number; disputes?: number };
 type ProviderProfile = { approval_status: "pending" | "approved" | "rejected" | "suspended"; rejection_reason?: string | null; available: boolean; service_area?: string | null; completed_jobs?: number; rating_average?: number | string | null; rating_count?: number };
 
 const customerServices = [
-  { id: "shopping", category: "shopping", icon: "🛍️", title: "Shopping", caption: "Buy or collect items" },
-  { id: "pickup", category: "pickup_delivery", icon: "↗", title: "Pick-up & drop-off", caption: "Move something safely" },
-  { id: "documents", category: "documents_admin", icon: "▤", title: "Documents", caption: "Forms and office runs" },
-  { id: "queues", category: "queue_appointments", icon: "◷", title: "Queues & bookings", caption: "Appointments and waiting" },
-  { id: "personal", category: "personal_errand", icon: "✦", title: "Personal errands", caption: "Everyday tasks" },
-  { id: "business", category: "business_support", icon: "⌂", title: "Business errands", caption: "Help your workday" },
-  { id: "clothing", category: "clothing_retail", icon: "◇", title: "Clothing", caption: "Purchases and returns" },
-  { id: "other", category: "other", icon: "＋", title: "Something else", caption: "Tell us what you need" },
+  { id: "shopping", category: "shopping", icon: "bag-handle-outline", title: "Shopping", caption: "Buy or collect items" },
+  { id: "pickup", category: "pickup_delivery", icon: "cube-outline", title: "Pick-up & drop-off", caption: "Move something safely" },
+  { id: "documents", category: "documents_admin", icon: "document-text-outline", title: "Documents", caption: "Forms and office runs" },
+  { id: "queues", category: "queue_appointments", icon: "time-outline", title: "Queues & bookings", caption: "Appointments and waiting" },
+  { id: "personal", category: "personal_errand", icon: "sparkles-outline", title: "Personal errands", caption: "Everyday tasks" },
+  { id: "business", category: "business_support", icon: "briefcase-outline", title: "Business errands", caption: "Help your workday" },
+  { id: "clothing", category: "clothing_retail", icon: "shirt-outline", title: "Clothing", caption: "Purchases and returns" },
+  { id: "other", category: "other", icon: "add-outline", title: "Something else", caption: "Tell us what you need" },
 ] as const;
-
-function BellGlyph() {
-  return (
-    <View style={{ width: 24, height: 25, alignItems: "center", justifyContent: "center" }}>
-      <View style={{ width: 15, height: 16, borderWidth: 1.8, borderColor: colors.navy, borderTopLeftRadius: 9, borderTopRightRadius: 9, borderBottomLeftRadius: 4, borderBottomRightRadius: 4, borderBottomWidth: 2 }} />
-      <View style={{ position: "absolute", top: 1, width: 5, height: 3, borderTopWidth: 1.8, borderColor: colors.navy, borderTopLeftRadius: 3, borderTopRightRadius: 3 }} />
-      <View style={{ position: "absolute", bottom: 2, width: 4, height: 4, borderRadius: 2, backgroundColor: colors.navy }} />
-      <View style={{ position: "absolute", bottom: 0, width: 9, height: 2, borderRadius: 2, backgroundColor: colors.navy }} />
-    </View>
-  );
-}
-
-function MenuGlyph() {
-  return (
-    <View style={{ width: 22, gap: 4, alignItems: "flex-start" }}>
-      <View style={{ width: 20, height: 2, borderRadius: 2, backgroundColor: colors.navy }} />
-      <View style={{ width: 14, height: 2, borderRadius: 2, backgroundColor: colors.navy }} />
-      <View style={{ width: 18, height: 2, borderRadius: 2, backgroundColor: colors.navy }} />
-    </View>
-  );
-}
 
 function HeaderButton({ icon, label, onPress, badgeCount = 0 }: {
   icon: string; label: string; onPress: () => void; badgeCount?: number;
@@ -55,7 +37,13 @@ function HeaderButton({ icon, label, onPress, badgeCount = 0 }: {
       onPress={onPress}
       style={{ width: 44, height: 44, borderRadius: 15, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white, alignItems: "center", justifyContent: "center" }}
     >
-      {isBell ? <BellGlyph /> : isMenu ? <MenuGlyph /> : <Text style={{ color: colors.navy, fontSize: 21, fontWeight: "800" }}>{icon}</Text>}
+      {isBell ? (
+        <Ionicons name="notifications-outline" size={22} color={colors.navy} />
+      ) : isMenu ? (
+        <Ionicons name="menu-outline" size={25} color={colors.navy} />
+      ) : (
+        <Text style={{ color: colors.navy, fontSize: 21, fontWeight: "800" }}>{icon}</Text>
+      )}
       {isBell && badgeCount > 0 ? (
         <View style={{ position: "absolute", top: 5, right: 5, minWidth: 15, height: 15, borderRadius: 8, backgroundColor: colors.red, borderWidth: 1.5, borderColor: colors.white, alignItems: "center", justifyContent: "center", paddingHorizontal: 3 }}>
           <Text style={{ color: colors.white, fontSize: 8, fontWeight: "900" }}>{badgeCount > 9 ? "9+" : badgeCount}</Text>
@@ -272,7 +260,7 @@ export default function HomeScreen() {
                     style={[common.card, { width: "48%", minHeight: 118, flexGrow: 1, padding: 14, gap: 8 }]}
                   >
                     <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: colors.blueSoft, alignItems: "center", justifyContent: "center" }}>
-                      <Text style={{ color: colors.navy, fontSize: 19, fontWeight: "800" }}>{service.icon}</Text>
+                      <Ionicons name={service.icon} size={20} color={colors.navy} />
                     </View>
                     <Text style={{ color: colors.navy, fontSize: 14, fontWeight: "900" }}>{service.title}</Text>
                     <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 15 }}>{service.caption}</Text>
@@ -397,13 +385,13 @@ export default function HomeScreen() {
             </View>
             <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19, marginBottom: 22 }}>Your account, privacy and app permissions.</Text>
             <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 8 }} />
-            {[
-              { key: "security", icon: "◇", title: "Account security", detail: "Password and signed-in sessions" },
-              { key: "privacy", icon: "▣", title: "Data & privacy", detail: "Export or delete your account" },
-              { key: "notifications", icon: "♧", title: "Notifications", detail: "Errand and service updates" },
-              { key: "location", icon: "⌖", title: "Location & maps", detail: "Manage location permission" },
-              { key: "about", icon: "ⓘ", title: "About SaMi", detail: "App information" },
-            ].map((item) => (
+            {([
+              { key: "security", icon: "shield-checkmark-outline", title: "Account security", detail: "Password and signed-in sessions" },
+              { key: "privacy", icon: "lock-closed-outline", title: "Data & privacy", detail: "Export or delete your account" },
+              { key: "notifications", icon: "notifications-outline", title: "Notifications", detail: "Errand and service updates" },
+              { key: "location", icon: "location-outline", title: "Location & maps", detail: "Manage location permission" },
+              { key: "about", icon: "information-circle-outline", title: "About SaMi", detail: "App information" },
+            ] as const).map((item) => (
               <Pressable
                 key={item.key}
                 accessibilityRole="button"
@@ -411,7 +399,7 @@ export default function HomeScreen() {
                 style={{ flexDirection: "row", alignItems: "center", gap: 13, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: "#EEF1F6" }}
               >
                 <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: colors.blueSoft, alignItems: "center", justifyContent: "center" }}>
-                  <Text style={{ color: colors.blue, fontSize: 20, fontWeight: "900" }}>{item.icon}</Text>
+                  <Ionicons name={item.icon as IoniconName} size={20} color={colors.blue} />
                 </View>
                 <View style={{ flex: 1, gap: 4 }}>
                   <Text style={{ color: colors.navy, fontSize: 14, fontWeight: "900" }}>{item.title}</Text>
