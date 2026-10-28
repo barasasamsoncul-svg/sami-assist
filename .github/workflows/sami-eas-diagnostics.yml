@@ -36,46 +36,78 @@ jobs:
       - name: Install EAS CLI
         run: npm install --global eas-cli@latest
 
-      - name: Inspect failed EAS build and retrieve available logs
+      - name: Inspect latest production EAS build and collect available logs
         shell: bash
+        env:
+          TARGET_SHA: 969b5a77f2b65bc2a61a79457eb442fd45977acb
         run: |
-          set +e
-          BUILD_ID="e2f5149f-8fb9-4ab7-a61a-1754bef2b1ab"
+          set -euo pipefail
           DIAG="$RUNNER_TEMP/sami-eas-diagnostics"
           mkdir -p "$DIAG/download"
-          eas build:view "$BUILD_ID" --json > "$DIAG/build.json" 2> "$DIAG/build-view.stderr"
-          VIEW_EXIT=$?
-          echo "eas build:view exit code: $VIEW_EXIT" > "$DIAG/commands.txt"
-          cat "$DIAG/build-view.stderr" >> "$DIAG/commands.txt"
-          node - "$DIAG/build.json" >> "$DIAG/commands.txt" <<'NODE'
+          eas build:list --platform android --build-profile production --limit 20 --json --non-interactive > "$DIAG/build-list.json"
+          BUILD_ID="$(node - "$DIAG/build-list.json" "$TARGET_SHA" <<'NODE'
           const fs = require("node:fs");
-          try {
-            const data = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-            const b = data.build || data;
-            const summary = {
-              id: b.id,
-              status: b.status,
-              platform: b.platform,
-              buildProfile: b.buildProfile,
-              createdAt: b.createdAt,
-              completedAt: b.completedAt,
-              logs: b.logs,
-              artifacts: b.artifacts
-            };
-            console.log(JSON.stringify(summary, null, 2));
-          } catch (error) {
-            console.log("Could not parse build:view JSON: " + error.message);
-          }
+          const data = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const target = process.argv[3];
+          const builds = Array.isArray(data) ? data : (data.builds || data.data || data.items || []);
+          const date = b => Date.parse(b.createdAt || b.created_at || "") || 0;
+          const exact = builds.filter(b => b.gitCommitHash === target).sort((a,b) => date(b)-date(a));
+          const selected = exact[0] || builds.sort((a,b) => date(b)-date(a))[0];
+          process.stdout.write(selected?.id || "");
           NODE
-          cd "$DIAG/download"
-          eas build:download --build-id "$BUILD_ID" --all-artifacts --non-interactive > "$DIAG/download.stdout" 2> "$DIAG/download.stderr"
-          DOWNLOAD_EXIT=$?
-          echo "eas build:download exit code: $DOWNLOAD_EXIT" >> "$DIAG/commands.txt"
-          cat "$DIAG/download.stderr" >> "$DIAG/commands.txt"
-          find "$DIAG" -maxdepth 5 -type f -printf '%p %s bytes\n' >> "$DIAG/commands.txt"
-          echo "EAS failed-build diagnostics collected." >> "$GITHUB_STEP_SUMMARY"
-          echo "Build: $BUILD_ID" >> "$GITHUB_STEP_SUMMARY"
-          echo "Build status and available logs are in the uploaded diagnostic artifact." >> "$GITHUB_STEP_SUMMARY"
+          )"
+          test -n "$BUILD_ID" || { echo "No production EAS build found." >&2; exit 1; }
+          echo "$BUILD_ID" > "$DIAG/build-id.txt"
+          eas build:view "$BUILD_ID" --json > "$DIAG/build-raw.json"
+          node - "$DIAG/build-raw.json" "$DIAG/build-summary.json" <<'NODE'
+          const fs = require("node:fs");
+          const data = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const build = data.build || data;
+          const safe = {
+            id: build.id,
+            status: build.status,
+            platform: build.platform,
+            buildProfile: build.buildProfile,
+            gitCommitHash: build.gitCommitHash,
+            createdAt: build.createdAt,
+            completedAt: build.completedAt,
+            error: build.error,
+            logFileCount: Array.isArray(build.logFiles) ? build.logFiles.length : 0,
+            artifacts: build.artifacts || {}
+          };
+          fs.writeFileSync(process.argv[3], JSON.stringify(safe, null, 2));
+          const log = Array.isArray(build.logFiles) ? build.logFiles[0] : null;
+          fs.writeFileSync(process.argv[3] + ".url", log || "");
+          console.log(JSON.stringify(safe, null, 2));
+          NODE
+          LOG_URL="$(cat "$DIAG/build-summary.json.url")"
+          if [[ -n "$LOG_URL" ]]; then
+            curl --fail --silent --show-error --location "$LOG_URL" --output "$DIAG/download/build-log.br"
+            node - "$DIAG/download/build-log.br" "$DIAG/download/build-log.jsonl" <<'NODE'
+          const fs = require("node:fs");
+          const zlib = require("node:zlib");
+          fs.writeFileSync(process.argv[3], zlib.brotliDecompressSync(fs.readFileSync(process.argv[2])));
+          NODE
+            node - "$DIAG/download/build-log.jsonl" "$DIAG/download/build-log.txt" <<'NODE'
+          const fs = require("node:fs");
+          const rows = fs.readFileSync(process.argv[2], "utf8").split(/\r?\n/).filter(Boolean);
+          const out = [];
+          for (const line of rows) {
+            try {
+              const o = JSON.parse(line);
+              out.push(`${o.time || ""} [${o.phase || ""}] ${o.source || "stdout"}: ${o.msg || ""}`);
+            } catch {
+              out.push(line);
+            }
+          }
+          fs.writeFileSync(process.argv[3], out.join("\n"));
+          console.log(out.filter(l => /INSTALL_DEPENDENCIES|npm error|ERESOLVE|FAIL|ERROR/i.test(l)).slice(-100).join("\n"));
+          NODE
+            rm -f "$DIAG/download/build-log.br" "$DIAG/build-summary.json.url"
+          fi
+          rm -f "$DIAG/build-raw.json" "$DIAG/build-list.json"
+          echo "EAS build: $BUILD_ID" >> "$GITHUB_STEP_SUMMARY"
+          echo "Status: $(node -p 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).status' "$DIAG/build-summary.json")" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload EAS failure diagnostics
         if: always()
