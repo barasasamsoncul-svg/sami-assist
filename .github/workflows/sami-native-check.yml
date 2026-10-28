@@ -5,9 +5,14 @@ on:
     branches:
       - main
     paths:
-      - "apps/mobile/**"
-      - ".github/workflows/sami-native-check.yml"
-      - ".github/workflows/sami-production-ota.yml"
+      - "apps/mobile/app.json"
+      - "apps/mobile/app.config.ts"
+      - "apps/mobile/eas.json"
+      - "apps/mobile/package.json"
+      - "apps/mobile/assets/icon.png"
+      - "apps/mobile/plugins/**"
+      - "apps/mobile/android/**"
+      - "apps/mobile/ios/**"
   workflow_dispatch:
 
 permissions:
@@ -30,6 +35,7 @@ jobs:
       EXPO_PROJECT_ID: ${{ vars.EXPO_PROJECT_ID }}
       EXPO_PUBLIC_SAMI_API_URL: https://sami-assist.vercel.app
       EXPO_UPDATE_CHANNEL: production
+      EXPECTED_ANDROID_SIGNING_CERT_SHA256: 591DF420FCA82C7900E5BB9B336F417C130E2F8977C9E88034EE82B47A05AB91
 
     steps:
       - name: Checkout production source
@@ -58,6 +64,7 @@ jobs:
           if (eas.build?.production?.channel !== "production") throw new Error("Production build is not assigned to the production update channel.");
           if (eas.build?.production?.env?.EXPO_PUBLIC_SAMI_API_URL !== "https://sami-assist.vercel.app") throw new Error("Production profile is not using the live SaMi API.");
           if (eas.build?.production?.android?.buildType !== "apk") throw new Error("Production direct-download build must produce an APK.");
+          if (!/^[A-F0-9]{64}$/.test(process.env.EXPECTED_ANDROID_SIGNING_CERT_SHA256 || "")) throw new Error("Expected production signing certificate fingerprint is missing.");
           NODE
 
       - name: Check Expo SDK dependency compatibility
@@ -72,56 +79,64 @@ jobs:
       - name: Verify Android JavaScript bundle
         run: npx expo export --platform android --output-dir "$RUNNER_TEMP/sami-production-bundle"
 
-      - name: Build signed production APK using EAS
+      - name: Build signed production APK using existing credentials only
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update -y
-          sudo apt-get install -y expect
           npm install --global eas-cli@latest
-          cat > "$RUNNER_TEMP/sami-production-build.exp" <<'EXPECT'
-          set timeout -1
-          log_user 1
-          log_file -noappend "$env(RUNNER_TEMP)/sami-production-build.log"
-          spawn env CI=false eas build --platform android --profile production --wait
-          expect {
-            -nocase -re {generate.*keystore} { send "\r"; exp_continue }
-            -nocase -re {generate new keystore} { send "\r"; exp_continue }
-            -nocase -re {would you like to generate.*keystore} { send "y\r"; exp_continue }
-            -nocase -re {do you want to generate.*keystore} { send "y\r"; exp_continue }
-            eof {}
-          }
-          set result [wait]
-          exit [lindex $result 3]
-          EXPECT
-          expect "$RUNNER_TEMP/sami-production-build.exp"
+          # Non-interactive mode intentionally fails if EAS credentials are missing.
+          # It never accepts prompts to create or replace the production signing key.
+          eas build --platform android --profile production --wait --non-interactive 2>&1 | tee "$RUNNER_TEMP/sami-production-build.log"
 
           BUILD_ID="$(python3 - <<'PY'
           import re
           from pathlib import Path
-          log = Path(__import__("os").environ["RUNNER_TEMP"], "sami-production-build.log").read_text(errors="replace")
+          import os
+          log = Path(os.environ["RUNNER_TEMP"], "sami-production-build.log").read_text(errors="replace")
           matches = re.findall(r"/builds/([0-9a-fA-F-]{36})", log)
           print(matches[-1] if matches else "")
           PY
           )"
           if [[ -z "$BUILD_ID" ]]; then
-            echo "EAS did not report a build ID. Review the EAS output above before retrying." >&2
+            echo "EAS did not report a build ID. Review the EAS output above; no alternative key will be generated." >&2
             exit 1
           fi
           echo "Production EAS build ID: $BUILD_ID"
           eas build:download --build-id "$BUILD_ID" --non-interactive
-          APK_PATH="$(find . -maxdepth 4 -type f -iname '*.apk' -not -path '*/node_modules/*' -print -quit)"
+
+          APK_PATH="$(find /tmp/runner/eas-cli-nodejs/eas-build-run-cache -maxdepth 3 -type f -iname '*.apk' -print -quit 2>/dev/null || true)"
+          if [[ -z "$APK_PATH" ]]; then
+            APK_PATH="$(find . -maxdepth 5 -type f -iname '*.apk' -not -path '*/node_modules/*' -print -quit)"
+          fi
           if [[ -z "$APK_PATH" || ! -s "$APK_PATH" ]]; then
-            echo "The completed EAS build did not download an APK artifact." >&2
+            echo "The completed EAS build did not provide a downloadable APK." >&2
             exit 1
           fi
+
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          APKSIGNER="$(find "$SDK_ROOT/build-tools" -name apksigner -print 2>/dev/null | sort -V | tail -n 1)"
+          if [[ -z "$APKSIGNER" ]]; then
+            echo "Android apksigner is not available; refusing to deliver an unverified APK." >&2
+            exit 1
+          fi
+          "$APKSIGNER" verify "$APK_PATH"
+          APK_FP="$("$APKSIGNER" verify --print-certs "$APK_PATH" 2>&1 | grep -Eo '[[:xdigit:]:]{64,95}' | head -n 1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
+          if [[ "$APK_FP" != "$EXPECTED_ANDROID_SIGNING_CERT_SHA256" ]]; then
+            echo "The new APK signing fingerprint does not match the verified SaMi production key." >&2
+            echo "Expected: $EXPECTED_ANDROID_SIGNING_CERT_SHA256" >&2
+            echo "Actual:   $APK_FP" >&2
+            echo "The APK will not be published as a workflow artifact." >&2
+            exit 1
+          fi
+
           cp "$APK_PATH" "$RUNNER_TEMP/SaMi-production.apk"
           echo "Production APK: $RUNNER_TEMP/SaMi-production.apk"
           echo "Build ID: $BUILD_ID" >> "$GITHUB_STEP_SUMMARY"
           echo "API: https://sami-assist.vercel.app" >> "$GITHUB_STEP_SUMMARY"
           echo "Update channel: production" >> "$GITHUB_STEP_SUMMARY"
           echo "Android package: com.sami.errands" >> "$GITHUB_STEP_SUMMARY"
-          echo "APK signing uses the persistent EAS-managed production key; no temporary-key fallback is allowed." >> "$GITHUB_STEP_SUMMARY"
+          echo "Verified signing fingerprint: $APK_FP" >> "$GITHUB_STEP_SUMMARY"
+          echo "The existing production signing key was preserved; no credential-generation fallback is used." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload production APK
         uses: actions/upload-artifact@v4
