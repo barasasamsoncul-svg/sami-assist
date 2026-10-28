@@ -1,17 +1,20 @@
 import { Stack, router, usePathname, type Href } from "expo-router";
+import type { ComponentProps } from "react";
+import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { dispatchGet } from "@/api";
 import { colors } from "@/theme";
 
 type Role = "customer" | "provider" | "admin";
-type NavItem = { path: string; href: Href; label: string; icon: string };
+type IoniconName = ComponentProps<typeof Ionicons>["name"];
+type NavItem = { path: string; href: Href; label: string; icon: string; activeIcon?: IoniconName };
 
 const customerTabs: NavItem[] = [
-  { path: "/", href: "/(app)", label: "Home", icon: "⌂" },
-  { path: "/errands", href: "/(app)/errands", label: "My Errands", icon: "▤" },
-  { path: "/payments", href: "/(app)/payments", label: "Payments", icon: "▱" },
-  { path: "/account", href: "/(app)/account", label: "Account", icon: "●" },
+  { path: "/", href: "/(app)", label: "Home", icon: "home-outline", activeIcon: "home" },
+  { path: "/errands", href: "/(app)/errands", label: "My Errands", icon: "receipt-outline", activeIcon: "receipt" },
+  { path: "/payments", href: "/(app)/payments", label: "Payments", icon: "card-outline", activeIcon: "card" },
+  { path: "/account", href: "/(app)/account", label: "Account", icon: "person-outline", activeIcon: "person" },
 ];
 
 const providerTabs: NavItem[] = [
@@ -65,7 +68,11 @@ export default function AppLayout() {
                 style={styles.tabButton}
               >
                 <View style={[styles.iconWrap, selected && styles.activeIconWrap]}>
-                  <Text style={[styles.tabIcon, selected && styles.activeTabIcon]}>{tab.icon}</Text>
+                  {role === "customer" ? (
+                    <Ionicons name={(selected ? tab.activeIcon || tab.icon : tab.icon) as IoniconName} size={22} color={selected ? colors.blue : colors.muted} />
+                  ) : (
+                    <Text style={[styles.tabIcon, selected && styles.activeTabIcon]}>{tab.icon}</Text>
+                  )}
                 </View>
                 <Text numberOfLines={1} style={[styles.tabLabel, selected && styles.activeTabLabel]}>{tab.label}</Text>
               </Pressable>
