@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Platform, Pressable, RefreshControl, SafeAreaView, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, RefreshControl, SafeAreaView, ScrollView, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import { dispatchGet, dispatchPost } from "@/api";
 import { colors, common } from "@/theme";
@@ -125,42 +125,48 @@ export default function HomeScreen() {
 
         {user?.role === "customer" ? (
           <>
-            <View style={{ gap: 6, marginTop: 2 }}>
-              <Text style={common.eyebrow}>{greeting}</Text>
-              <Text style={{ color: colors.navy, fontSize: 29, lineHeight: 35, fontWeight: "900", letterSpacing: -0.8 }}>Hi {firstName}, what needs doing?</Text>
-              <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20 }}>Choose a task or start a request. Your service fee is shown before you submit.</Text>
+            <Pressable accessibilityRole="button" onPress={() => router.push("/(app)/request")} style={{ flexDirection: "row", alignItems: "center", gap: 11, paddingVertical: 8 }}>
+              <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: colors.blueSoft, alignItems: "center", justifyContent: "center" }}>
+                <Text style={{ color: colors.blue, fontSize: 22, fontWeight: "900" }}>⌖</Text>
+              </View>
+              <View style={{ flex: 1, gap: 3 }}>
+                <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "900", letterSpacing: 1 }}>YOUR LOCATION</Text>
+                <Text style={{ color: colors.navy, fontSize: 14, fontWeight: "800" }}>Choose your location</Text>
+              </View>
+              <Text style={{ color: colors.blue, fontSize: 24, fontWeight: "800" }}>›</Text>
+            </Pressable>
+
+            <View style={{ gap: 7, marginTop: 2 }}>
+              <Text style={{ color: colors.navy, fontSize: 28, lineHeight: 34, fontWeight: "900", letterSpacing: -0.8 }}>What do you need done?</Text>
+              <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20 }}>Tell us what you need. SaMi helps you get it done.</Text>
             </View>
 
-            <View style={{ backgroundColor: colors.navy, borderRadius: 24, padding: 20, gap: 12 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: "rgba(255,255,255,0.13)", alignItems: "center", justifyContent: "center" }}>
-                  <Text style={{ color: colors.white, fontSize: 20, fontWeight: "800" }}>✦</Text>
-                </View>
-                <Text style={{ color: "#D8E0F4", fontSize: 12, fontWeight: "800", letterSpacing: 0.8 }}>START SOMETHING NEW</Text>
-              </View>
-              <Text style={{ color: colors.white, fontSize: 23, lineHeight: 28, fontWeight: "900" }}>One request. Clear service fees.</Text>
-              <Text style={{ color: "#D8E0F4", fontSize: 13, lineHeight: 19 }}>Set the task and locations, review the calculated fee, then send it to SaMi.</Text>
-              <Pressable accessibilityRole="button" onPress={() => router.push("/(app)/request")} style={[common.primaryButton, { backgroundColor: colors.white, marginTop: 2 }]}>
-                <Text style={{ color: colors.navy, fontSize: 15, fontWeight: "900" }}>＋  Request an errand</Text>
+            <View style={[common.card, { padding: 16, gap: 13 }]}>
+              <TextInput
+                accessibilityLabel="Describe your errand"
+                value={taskDraft}
+                onChangeText={setTaskDraft}
+                placeholder="Describe your errand..."
+                placeholderTextColor="#929BAD"
+                multiline
+                textAlignVertical="top"
+                style={{ minHeight: 72, color: colors.ink, fontSize: 15, lineHeight: 21, paddingHorizontal: 2, paddingTop: 2 }}
+              />
+              <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: "/(app)/request", params: taskDraft.trim() ? { description: taskDraft.trim() } : {} })} style={common.primaryButton}>
+                <Text style={common.primaryButtonText}>Request an errand  ›</Text>
               </Pressable>
             </View>
 
             <View style={{ gap: 12 }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <Text style={{ color: colors.navy, fontSize: 19, fontWeight: "900" }}>Quick services</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <Text style={{ color: colors.navy, fontSize: 19, fontWeight: "900" }}>Explore errands</Text>
                 <Pressable accessibilityRole="button" onPress={() => router.push("/(app)/request")} hitSlop={8}>
                   <Text style={{ color: colors.blue, fontSize: 12, fontWeight: "800" }}>All tasks ›</Text>
                 </Pressable>
               </View>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
                 {customerServices.map((service) => (
-                  <Pressable
-                    key={service.category}
-                    accessibilityRole="button"
-                    accessibilityLabel={service.title}
-                    onPress={() => router.push({ pathname: "/(app)/request", params: { category: service.category } })}
-                    style={[common.card, { width: "48%", minHeight: 132, flexGrow: 1, padding: 14, gap: 8 }]}
-                  >
+                  <Pressable key={service.id} accessibilityRole="button" accessibilityLabel={service.title} onPress={() => router.push({ pathname: "/(app)/request", params: { category: service.category } })} style={[common.card, { width: "48%", minHeight: 122, flexGrow: 1, padding: 14, gap: 8 }]}>
                     <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: colors.blueSoft, alignItems: "center", justifyContent: "center" }}>
                       <Text style={{ color: colors.navy, fontSize: 20, fontWeight: "800" }}>{service.icon}</Text>
                     </View>
@@ -171,35 +177,23 @@ export default function HomeScreen() {
               </View>
             </View>
 
-            <View style={{ gap: 12 }}>
+            <View style={{ gap: 11 }}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                <Text style={{ color: colors.navy, fontSize: 19, fontWeight: "900" }}>Your activity</Text>
+                <Text style={{ color: colors.navy, fontSize: 19, fontWeight: "900" }}>Your active errand</Text>
                 <Pressable accessibilityRole="button" onPress={() => router.push("/(app)/errands")} hitSlop={8}>
-                  <Text style={{ color: colors.blue, fontSize: 12, fontWeight: "800" }}>View errands ›</Text>
+                  <Text style={{ color: colors.blue, fontSize: 12, fontWeight: "800" }}>View all ›</Text>
                 </Pressable>
               </View>
-              <View style={{ flexDirection: "row", gap: 9 }}>
-                <StatCard label="All requests" value={metrics?.total} />
-                <StatCard label="In progress" value={metrics?.active} accent={colors.blue} />
-                <StatCard label="Completed" value={metrics?.completed} accent={colors.green} />
-              </View>
               <Pressable accessibilityRole="button" onPress={() => router.push("/(app)/errands")} style={[common.card, { flexDirection: "row", alignItems: "center", padding: 15 }]}>
-                <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: colors.blueSoft, alignItems: "center", justifyContent: "center" }}>
+                <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: colors.blueSoft, alignItems: "center", justifyContent: "center" }}>
                   <Text style={{ color: colors.navy, fontSize: 21, fontWeight: "900" }}>↗</Text>
                 </View>
                 <View style={{ flex: 1, gap: 4 }}>
-                  <Text style={{ color: colors.navy, fontSize: 14, fontWeight: "900" }}>Track your errands</Text>
-                  <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 17 }}>See assignments, progress and completion updates.</Text>
+                  <Text style={{ color: colors.navy, fontSize: 14, fontWeight: "900" }}>{(metrics?.active ?? 0) > 0 ? String(metrics?.active) + ((metrics?.active ?? 0) === 1 ? " active errand" : " active errands") : "No active errand"}</Text>
+                  <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 17 }}>{(metrics?.active ?? 0) > 0 ? "Check the latest status and progress of your requests." : "Your current requests and progress will appear here."}</Text>
                 </View>
                 <Text style={{ color: colors.blue, fontSize: 22, fontWeight: "900" }}>›</Text>
               </Pressable>
-            </View>
-
-            <View style={{ gap: 10 }}>
-              <Text style={{ color: colors.navy, fontSize: 19, fontWeight: "900" }}>Account</Text>
-              <ActionCard icon="KES" title="Payments" body="Service fee payments and transaction history." onPress={() => router.push("/(app)/payments")} />
-              <ActionCard icon="◉" title="Notifications" body="Errand status and service updates." onPress={() => router.push("/(app)/notifications")} />
-              <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 16 }}>Goods paid to a shop or seller are separate from SaMi’s service fee.</Text>
             </View>
           </>
         ) : user?.role === "provider" ? (
