@@ -33,6 +33,7 @@ jobs:
       EXPO_PROJECT_ID: ${{ vars.EXPO_PROJECT_ID }}
       EXPO_PUBLIC_SAMI_API_URL: https://sami-assist.vercel.app
       EXPO_UPDATE_CHANNEL: production
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY || vars.GOOGLE_MAPS_API_KEY }}
 
     steps:
       - name: Checkout production source
@@ -51,6 +52,7 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$EXPO_TOKEN" || { echo "EXPO_TOKEN is missing from GitHub Actions secrets." >&2; exit 1; }
+          test -n "$GOOGLE_MAPS_API_KEY" || { echo "GOOGLE_MAPS_API_KEY must be configured before publishing the native-map customer app." >&2; exit 1; }
           test "$EXPO_PROJECT_ID" = "c09e119e-8a6b-4a1e-a7c6-b85cfd4e330d" || { echo "EXPO_PROJECT_ID must point to the SaMi production Expo project." >&2; exit 1; }
           npx expo config --type public --json > "$RUNNER_TEMP/sami-production-expo-config.json"
           node - "$RUNNER_TEMP/sami-production-expo-config.json" <<'NODE'
@@ -79,6 +81,7 @@ jobs:
       - name: Publish compatible production Android update
         run: >
           npx eas-cli@latest update
+          --environment production
           --channel production
           --platform android
           --message "SaMi production update ${GITHUB_SHA}"
