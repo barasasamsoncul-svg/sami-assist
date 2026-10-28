@@ -84,7 +84,7 @@ jobs:
           log_file -noappend "$env(RUNNER_TEMP)/sami-production-build.log"
           spawn env CI=false npx eas-cli@latest build --platform android --profile production --wait
           expect {
-            -nocase -re {generate a new android keystore} { send "\r"; exp_continue }
+            -nocase -re {generate.*keystore} { send "\r"; exp_continue }
             -nocase -re {generate new keystore} { send "\r"; exp_continue }
             -nocase -re {would you like to generate.*keystore} { send "y\r"; exp_continue }
             -nocase -re {do you want to generate.*keystore} { send "y\r"; exp_continue }
