@@ -33,13 +33,23 @@
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION"
-      ]
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#0A1A40"
+      }
     },
     "experiments": {
       "typedRoutes": true
     },
     "runtimeVersion": {
       "policy": "fingerprint"
+    },
+    "icon": "./assets/icon.png",
+    "extra": {
+      "eas": {
+        "projectId": "c09e119e-8a6b-4a1e-a7c6-b85cfd4e330d"
+      }
     }
   }
 }
