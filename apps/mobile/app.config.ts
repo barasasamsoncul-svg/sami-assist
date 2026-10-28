@@ -3,6 +3,8 @@ import type { ConfigContext, ExpoConfig } from "expo/config";
 export default ({ config }: ConfigContext): ExpoConfig => {
   const projectId =
     process.env.EXPO_PROJECT_ID?.trim() || config.extra?.eas?.projectId;
+  // Keep the restricted key in the EAS production environment; never commit it.
+  // Google Maps embeds this key in the APK, so its Android package/certificate restrictions are required.
   const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim();
   const android = googleMapsApiKey
     ? {
