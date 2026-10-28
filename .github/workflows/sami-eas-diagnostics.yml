@@ -1,0 +1,84 @@
+name: SaMi EAS failed-build diagnostics
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/sami-eas-diagnostics.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-failed-build:
+    name: Collect EAS build details and available logs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/mobile
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EXPO_PROJECT_ID: ${{ vars.EXPO_PROJECT_ID }}
+    steps:
+      - name: Checkout production source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.13"
+
+      - name: Install EAS CLI
+        run: npm install --global eas-cli@latest
+
+      - name: Inspect failed EAS build and retrieve available logs
+        shell: bash
+        run: |
+          set +e
+          BUILD_ID="e2f5149f-8fb9-4ab7-a61a-1754bef2b1ab"
+          DIAG="$RUNNER_TEMP/sami-eas-diagnostics"
+          mkdir -p "$DIAG/download"
+          eas build:view "$BUILD_ID" --json > "$DIAG/build.json" 2> "$DIAG/build-view.stderr"
+          VIEW_EXIT=$?
+          echo "eas build:view exit code: $VIEW_EXIT" > "$DIAG/commands.txt"
+          cat "$DIAG/build-view.stderr" >> "$DIAG/commands.txt"
+          node - "$DIAG/build.json" >> "$DIAG/commands.txt" <<'NODE'
+          const fs = require("node:fs");
+          try {
+            const data = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+            const b = data.build || data;
+            const summary = {
+              id: b.id,
+              status: b.status,
+              platform: b.platform,
+              buildProfile: b.buildProfile,
+              createdAt: b.createdAt,
+              completedAt: b.completedAt,
+              logs: b.logs,
+              artifacts: b.artifacts
+            };
+            console.log(JSON.stringify(summary, null, 2));
+          } catch (error) {
+            console.log("Could not parse build:view JSON: " + error.message);
+          }
+          NODE
+          cd "$DIAG/download"
+          eas build:download --build-id "$BUILD_ID" --all-artifacts --non-interactive > "$DIAG/download.stdout" 2> "$DIAG/download.stderr"
+          DOWNLOAD_EXIT=$?
+          echo "eas build:download exit code: $DOWNLOAD_EXIT" >> "$DIAG/commands.txt"
+          cat "$DIAG/download.stderr" >> "$DIAG/commands.txt"
+          find "$DIAG" -maxdepth 5 -type f -printf '%p %s bytes\n' >> "$DIAG/commands.txt"
+          echo "EAS failed-build diagnostics collected." >> "$GITHUB_STEP_SUMMARY"
+          echo "Build: $BUILD_ID" >> "$GITHUB_STEP_SUMMARY"
+          echo "Build status and available logs are in the uploaded diagnostic artifact." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload EAS failure diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sami-eas-failure-diagnostics
+          path: ${{ runner.temp }}/sami-eas-diagnostics/
+          if-no-files-found: warn
+          retention-days: 7
