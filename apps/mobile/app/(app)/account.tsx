@@ -9,7 +9,8 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
+import { useRef } from "react";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { dispatchGet, dispatchPost } from "@/api";
@@ -58,6 +59,9 @@ export default function AccountScreen() {
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const params = useLocalSearchParams<{ section?: string | string[] }>();
+  const scrollRef = useRef<ScrollView>(null);
+  const [sectionOffsets, setSectionOffsets] = useState<Record<string, number>>({});
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -155,10 +159,17 @@ export default function AccountScreen() {
 
   const roleLabel = user?.role === "provider" ? "Errand provider" : user?.role === "admin" ? "Administrator" : "Customer";
   const isCustomer = user?.role === "customer";
+  const requestedSection = Array.isArray(params.section) ? params.section[0] : params.section;
+
+  useEffect(() => {
+    if (!requestedSection || sectionOffsets[requestedSection] === undefined) return;
+    const offset = sectionOffsets[requestedSection];
+    requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: Math.max(0, offset - 12), animated: true }));
+  }, [requestedSection, sectionOffsets]);
 
   return (
     <SafeAreaView style={common.screen}>
-      <ScrollView contentContainerStyle={[common.content, { paddingTop: 22, paddingBottom: 30 }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} contentContainerStyle={[common.content, { paddingTop: 22, paddingBottom: 30 }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={{ gap: 5 }}>
           <Text style={common.eyebrow}>{isCustomer ? "PERSONAL ACCOUNT" : "YOUR SAMI ACCOUNT"}</Text>
           <Text style={common.title}>Account</Text>
@@ -194,7 +205,7 @@ export default function AccountScreen() {
 
         {isCustomer ? (
           <>
-            <View style={{ gap: 13 }}>
+            <View onLayout={(event) => setSectionOffsets((old) => ({ ...old, security: event.nativeEvent.layout.y }))} style={{ gap: 13 }}>
               <SectionTitle eyebrow="SECURITY" title="Account security" body="Change your password. Other active sessions are signed out after a successful change." />
               <View style={[common.card, { gap: 12 }]}>
                 <View style={{ gap: 6 }}>
@@ -237,7 +248,7 @@ export default function AccountScreen() {
               </View>
             </View>
 
-            <View style={{ gap: 13 }}>
+            <View onLayout={(event) => setSectionOffsets((old) => ({ ...old, privacy: event.nativeEvent.layout.y }))} style={{ gap: 13 }}>
               <SectionTitle eyebrow="YOUR INFORMATION" title="Data & privacy" body="You can request a copy of your SaMi data or remove your account and personal details." />
               <View style={[common.card, { gap: 12 }]}>
                 <View style={{ gap: 5 }}>
