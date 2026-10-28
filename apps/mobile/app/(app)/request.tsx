@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import * as Location from "expo-location";
 import MapPicker, { type MapPoint } from "@/components/MapPicker";
 import { apiRequest, dispatchGet, dispatchPost, locationGet } from "@/api";
@@ -67,6 +67,7 @@ function ChoiceRow({ label, options, value, onChange }: {
 }
 
 export default function RequestScreen() {
+  const { category: categoryParam } = useLocalSearchParams<{ category?: string }>();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("personal_errand");
@@ -94,6 +95,12 @@ export default function RequestScreen() {
   useEffect(() => {
     dispatchGet<{ pricing: PricingRule[] }>("pricing").then((data) => setRules(data.pricing || [])).catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    if (categoryParam && categories.some(([value]) => value === categoryParam)) {
+      setCategory(categoryParam);
+    }
+  }, [categoryParam]);
 
   useEffect(() => {
     if (!pickup || !destination) { setRoute(null); setRouteError(""); setRouteLoading(false); return; }
