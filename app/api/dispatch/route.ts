@@ -227,6 +227,34 @@ export async function GET(request: Request) {
     } catch { return error("Notifications are temporarily unavailable.", 503); }
   }
 
+  if (action === "exportMyData") {
+    if (user.role !== "customer") return error("Customer data export is available from a customer account.", 403);
+    try {
+      const [profile, errands, payments, notifications, messages, ratings] = await Promise.all([
+        query("SELECT id,full_name,email,phone,role FROM users WHERE id=$1", [user.id]),
+        query("SELECT * FROM errands WHERE customer_id=$1 ORDER BY created_at DESC", [user.id]),
+        query("SELECT pr.* FROM payment_records pr JOIN errands e ON e.id=pr.errand_id WHERE e.customer_id=$1 ORDER BY pr.created_at DESC", [user.id]),
+        query("SELECT id,kind,title,body,href,read_at,created_at FROM notifications WHERE user_id=$1 ORDER BY created_at DESC", [user.id]),
+        query("SELECT m.id,m.errand_id,m.sender_id,m.message,m.created_at FROM errand_messages m JOIN errands e ON e.id=m.errand_id WHERE e.customer_id=$1 ORDER BY m.created_at ASC", [user.id]),
+        query("SELECT id,errand_id,score,comment,created_at FROM errand_ratings WHERE reviewer_id=$1 ORDER BY created_at DESC", [user.id]),
+      ]);
+      return NextResponse.json({
+        exportVersion: 1,
+        exportedAt: new Date().toISOString(),
+        retentionNote: "This export includes your customer profile, errands, payment records, notifications, errand messages and ratings. SaMi's financial and audit records may be retained as required by applicable law.",
+        profile: profile.rows[0] || null,
+        errands: errands.rows,
+        payments: payments.rows,
+        notifications: notifications.rows,
+        messages: messages.rows,
+        ratings: ratings.rows,
+      }, { headers: { "Cache-Control": "no-store" } });
+    } catch (e) {
+      console.error("[SaMi data export] Customer export failed.", e instanceof Error ? e.message : "unknown error");
+      return error("Your data export could not be prepared right now. Please retry.", 503);
+    }
+  }
+
   if (action === "errandDetail") {
     const id = text(params.get("id"), 80);
     if (!id) return error("Errand identifier is required.");
@@ -383,6 +411,96 @@ export async function POST(request: Request) {
       console.error("[SaMi location migration] Could not prepare location tracking schema.", e instanceof Error ? e.message : "unknown error");
       return error("SaMi location tracking is not ready. Check the errands database migration.", 503);
     }
+  }
+
+  if (action === "changePassword") {
+    if (user.role !== "customer") return error("Password settings in this customer app are available to customer accounts.", 403);
+    const currentPassword = typeof body.currentPassword === "string" ? body.currentPassword : "";
+    const newPassword = typeof body.newPassword === "string" ? body.newPassword : "";
+    if (!currentPassword || newPassword.length < 12 || newPassword.length > 128) {
+      return error("Enter your current password and a new password of 12–128 characters.");
+    }
+    try {
+      const result = await query<{ password_hash: string }>("SELECT password_hash FROM users WHERE id=$1 AND is_active=true LIMIT 1", [user.id]);
+      const existingHash = result.rows[0]?.password_hash;
+      if (!existingHash || !(await bcrypt.compare(currentPassword, existingHash))) return error("Your current password is incorrect.", 401);
+      if (currentPassword === newPassword) return error("Choose a new password that differs from your current password.");
+      const nextHash = await bcrypt.hash(newPassword, 12);
+      const bearer = /^Bearer\\s+([A-Za-z0-9_-]{40,128})$/i.exec(request.headers.get("authorization") || "");
+      const currentSessionHash = bearer?.[1] ? hash(bearer[1]) : "";
+      const client = await databasePool().connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("UPDATE users SET password_hash=$2 WHERE id=$1 AND is_active=true", [user.id, nextHash]);
+        if (currentSessionHash) {
+          await client.query("DELETE FROM user_sessions WHERE user_id=$1 AND token_hash<>$2", [user.id, currentSessionHash]);
+        } else {
+          await client.query("DELETE FROM user_sessions WHERE user_id=$1", [user.id]);
+        }
+        await client.query("COMMIT");
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw e;
+      } finally { client.release(); }
+      return NextResponse.json({ ok: true, message: "Password updated. Other signed-in sessions have been revoked." });
+    } catch (e) {
+      console.error("[SaMi password change] Update failed.", e instanceof Error ? e.message : "unknown error");
+      return error("Your password could not be updated right now. Please retry.", 503);
+    }
+  }
+
+  if (action === "deleteAccount") {
+    if (user.role !== "customer") return error("Only customer accounts can be deleted from this customer app.", 403);
+    const password = typeof body.password === "string" ? body.password : "";
+    if (text(body.confirmation, 12) !== "DELETE") return error("Type DELETE to confirm account deletion.");
+    if (!password) return error("Enter your current password to confirm account deletion.");
+    const client = await databasePool().connect();
+    try {
+      await client.query("BEGIN");
+      const current = await client.query<{ password_hash: string }>(
+        "SELECT password_hash FROM users WHERE id=$1 AND is_active=true FOR UPDATE", [user.id]
+      );
+      if (!current.rows[0] || !(await bcrypt.compare(password, current.rows[0].password_hash))) {
+        await client.query("ROLLBACK");
+        return error("Your current password is incorrect.", 401);
+      }
+      const active = await client.query<{ count: number }>(
+        "SELECT count(*)::int AS count FROM errands WHERE customer_id=$1 AND status NOT IN ('completed','cancelled')",
+        [user.id]
+      );
+      if (Number(active.rows[0]?.count || 0) > 0) {
+        await client.query("ROLLBACK");
+        return error("Finish or cancel your open errands and resolve any disputes before deleting your account.", 409);
+      }
+
+      // Remove customer-provided details from closed errand records while preserving
+      // financial amounts, statuses, references and timestamps required for reconciliation.
+      await client.query(
+        "UPDATE errands SET title='Errand details removed',description='Personal details removed at the customer’s request.',pickup_location=NULL,destination_location=NULL,service_area='Removed',pickup_latitude=NULL,pickup_longitude=NULL,destination_latitude=NULL,destination_longitude=NULL WHERE customer_id=$1 AND status IN ('completed','cancelled')",
+        [user.id]
+      );
+      await client.query(
+        "UPDATE errand_messages SET message='Message removed at the customer’s request.' WHERE sender_id=$1 AND errand_id IN (SELECT id FROM errands WHERE customer_id=$1)",
+        [user.id]
+      );
+      await client.query("UPDATE errand_ratings SET comment=NULL WHERE reviewer_id=$1", [user.id]);
+      await client.query("DELETE FROM notifications WHERE user_id=$1", [user.id]);
+      await client.query("DELETE FROM user_sessions WHERE user_id=$1", [user.id]);
+      const replacementHash = await bcrypt.hash(randomBytes(32).toString("hex"), 12);
+      await client.query(
+        "UPDATE users SET full_name='Deleted customer',email='deleted+'||id::text||'@deleted.sami.invalid',phone=NULL,password_hash=$2,is_active=false WHERE id=$1",
+        [user.id, replacementHash]
+      );
+      await client.query("COMMIT");
+      return NextResponse.json({
+        ok: true,
+        message: "Your account has been deactivated and personal profile details removed. Errand descriptions, locations, messages and ratings comments were redacted. Financial amounts, transaction references and audit timestamps are retained where needed for reconciliation and legal obligations.",
+      });
+    } catch (e) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      console.error("[SaMi account deletion] Request failed.", e instanceof Error ? e.message : "unknown error");
+      return error("Your account could not be deleted right now. No deletion was completed; please retry or contact SaMi support.", 503);
+    } finally { client.release(); }
   }
 
   if (action === "updateProviderLocation") {
