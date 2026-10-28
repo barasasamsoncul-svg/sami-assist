@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet } from "react-native";
-import { WebView, type WebViewMessageEvent } from "react-native-webview";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Platform, StyleSheet, Text, View } from "react-native";
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type Region } from "react-native-maps";
 import { colors } from "@/theme";
 
 export type MapPoint = { lat: number; lng: number };
@@ -15,41 +15,189 @@ type Props = {
   onPoint?: (slot: "pickup" | "destination", point: MapPoint) => void;
 };
 
-const MAP_HTML = "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'><link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'><style>html,body,#map{height:100%;width:100%;margin:0;background:#eef2f8}.leaflet-container{font-family:Arial,sans-serif}.leaflet-control-attribution{font-size:9px}</style></head><body><div id='map'></div><script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script><script>var map=L.map('map',{zoomControl:false}).setView([-1.286389,36.817223],12);L.control.zoom({position:'bottomright'}).addTo(map);L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(map);var pickupMarker=null,destinationMarker=null,providerMarker=null,routeLine=null;window.samiSlot='pickup';window.samiReadOnly=false;window.setPoint=function(slot,point){var name=slot+'Marker';if(window[name])map.removeLayer(window[name]);if(!point)return;var label=slot==='pickup'?'Pickup':slot==='destination'?'Drop-off':'Provider';var color=slot==='pickup'?'#3568F5':slot==='destination'?'#E9A23B':'#16845B';window[name]=L.circleMarker([point.lat,point.lng],{radius:slot==='provider'?10:8,color:'#fff',weight:3,fillColor:color,fillOpacity:1}).addTo(map).bindPopup(label);map.setView([point.lat,point.lng],14);};window.setRoute=function(coords){if(routeLine){map.removeLayer(routeLine);routeLine=null;}if(coords&&coords.length>1){routeLine=L.polyline(coords,{color:'#3568F5',weight:5,opacity:.85}).addTo(map);map.fitBounds(routeLine.getBounds().pad(.18));}};map.on('click',function(e){if(window.samiReadOnly)return;window.ReactNativeWebView.postMessage(JSON.stringify({type:'point',slot:window.samiSlot||'pickup',lat:e.latlng.lat,lng:e.latlng.lng}));});</script></body></html>";
+const NAIROBI = { latitude: -1.286389, longitude: 36.817223 };
+const asCoordinate = (point: MapPoint) => ({ latitude: point.lat, longitude: point.lng });
 
-export default function MapPicker({ selecting, pickup, destination, provider, route, readOnly = false, height = 290, onPoint }: Props) {
-  const web = useRef<WebView>(null);
+export default function MapPicker({
+  selecting,
+  pickup,
+  destination,
+  provider,
+  route,
+  readOnly = false,
+  height = 290,
+  onPoint,
+}: Props) {
+  const map = useRef<MapView>(null);
   const [ready, setReady] = useState(false);
+
+  const initialRegion = useMemo<Region>(() => {
+    const first = pickup || destination || provider;
+    const center = first ? asCoordinate(first) : NAIROBI;
+    return {
+      ...center,
+      latitudeDelta: 0.035,
+      longitudeDelta: 0.035,
+    };
+  }, []);
+
   useEffect(() => {
-    if (!ready) return;
-    const script = "window.samiSlot=" + JSON.stringify(selecting) + ";" +
-      "window.samiReadOnly=" + JSON.stringify(readOnly) + ";" +
-      "window.setPoint('pickup'," + JSON.stringify(pickup) + ");" +
-      "window.setPoint('destination'," + JSON.stringify(destination) + ");" +
-      "window.setPoint('provider'," + JSON.stringify(provider || null) + ");" +
-      "window.setRoute(" + JSON.stringify(route) + ");true;";
-    web.current?.injectJavaScript(script);
-  }, [ready, selecting, pickup, destination, provider, route, readOnly]);
-  function handleMessage(event: WebViewMessageEvent) {
+    if (!ready || !map.current) return;
+    const points = route.length > 1
+      ? route
+      : [pickup, destination, provider].filter((point): point is MapPoint => Boolean(point));
+
+    if (points.length > 1) {
+      map.current.fitToCoordinates(points.map(asCoordinate), {
+        edgePadding: { top: 44, right: 42, bottom: 44, left: 42 },
+        animated: true,
+      });
+      return;
+    }
+
+    const point = points[0];
+    if (point) {
+      map.current.animateToRegion({
+        ...asCoordinate(point),
+        latitudeDelta: 0.018,
+        longitudeDelta: 0.018,
+      }, 260);
+    }
+  }, [ready, pickup, destination, provider, route]);
+
+  function placePin(point: MapPoint) {
     if (readOnly || !onPoint) return;
-    try {
-      const data = JSON.parse(event.nativeEvent.data);
-      if (data.type === "point" && (data.slot === "pickup" || data.slot === "destination") &&
-          Number.isFinite(data.lat) && Number.isFinite(data.lng)) onPoint(data.slot, { lat: data.lat, lng: data.lng });
-    } catch { /* Ignore malformed embedded-map events. */ }
+    onPoint(selecting, point);
   }
+
+  const providerMap = Platform.OS === "android" ? PROVIDER_GOOGLE : undefined;
+  const hint = readOnly
+    ? "Map position is shown only while location sharing is active."
+    : selecting === "pickup"
+      ? "Tap the map to place your pickup pin."
+      : "Tap the map to place your drop-off pin.";
+
   return (
     <View style={styles.container}>
-      <WebView ref={web} source={{ html: MAP_HTML }} originWhitelist={["*"]} javaScriptEnabled
-        onMessage={handleMessage} onLoadEnd={() => setReady(true)} style={[styles.map, { height }]}
-        setSupportMultipleWindows={false} allowFileAccess={false} allowsInlineMediaPlayback />
-      <Text style={styles.caption}>{readOnly ? "Live position is only available while the provider is sharing an active errand." : "Map data © OpenStreetMap contributors. Tap to place the selected point."}</Text>
+      <View style={styles.mapWrap}>
+        <MapView
+          ref={map}
+          provider={providerMap}
+          style={[styles.map, { height }]}
+          initialRegion={initialRegion}
+          mapType="standard"
+          onMapReady={() => setReady(true)}
+          onPress={(event) => placePin({
+            lat: event.nativeEvent.coordinate.latitude,
+            lng: event.nativeEvent.coordinate.longitude,
+          })}
+          loadingEnabled
+          loadingBackgroundColor="#F5F7FB"
+          loadingIndicatorColor={colors.blue}
+          moveOnMarkerPress={false}
+          rotateEnabled={false}
+          pitchEnabled={false}
+          toolbarEnabled={false}
+          showsCompass
+          showsMyLocationButton={false}
+          showsUserLocation={false}
+        >
+          {pickup ? (
+            <Marker
+              coordinate={asCoordinate(pickup)}
+              title="Pickup point"
+              description="Where your errand begins"
+              pinColor={colors.blue}
+              tracksViewChanges={false}
+            />
+          ) : null}
+          {destination ? (
+            <Marker
+              coordinate={asCoordinate(destination)}
+              title="Drop-off point"
+              description="Where your errand ends"
+              pinColor={colors.amber}
+              tracksViewChanges={false}
+            />
+          ) : null}
+          {provider ? (
+            <Marker
+              coordinate={asCoordinate(provider)}
+              title="Errand provider"
+              description="Shared live position"
+              pinColor={colors.green}
+              tracksViewChanges={false}
+            />
+          ) : null}
+          {route.length > 1 ? (
+            <Polyline
+              coordinates={route.map(asCoordinate)}
+              strokeColor={colors.blue}
+              strokeWidth={4}
+              lineCap="round"
+              lineJoin="round"
+            />
+          ) : null}
+        </MapView>
+
+        {!readOnly ? (
+          <View pointerEvents="none" style={styles.pinHint}>
+            <View style={[styles.pinDot, { backgroundColor: selecting === "pickup" ? colors.blue : colors.amber }]} />
+            <Text style={styles.pinHintText}>{selecting === "pickup" ? "PICKUP PIN" : "DROP-OFF PIN"}</Text>
+          </View>
+        ) : null}
+      </View>
+      <View style={styles.captionRow}>
+        <View style={styles.mapGlyph}>
+          <Text style={styles.mapGlyphText}>⌖</Text>
+        </View>
+        <Text style={styles.caption}>{hint} Powered by {Platform.OS === "ios" ? "Apple Maps" : "Google Maps"}.</Text>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { borderRadius: 18, overflow: "hidden", borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white },
-  map: { height: 290, backgroundColor: "#EEF2F8" },
-  caption: { paddingHorizontal: 12, paddingVertical: 9, fontSize: 11, lineHeight: 16, color: colors.muted },
+  container: {
+    borderRadius: 20,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+  },
+  mapWrap: { position: "relative" },
+  map: { width: "100%", backgroundColor: "#F5F7FB" },
+  pinHint: {
+    position: "absolute",
+    top: 12,
+    left: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    borderRadius: 30,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    borderWidth: 1,
+    borderColor: "#E2E8F3",
+  },
+  pinDot: { width: 8, height: 8, borderRadius: 4 },
+  pinHintText: { color: colors.navy, fontSize: 9, fontWeight: "900", letterSpacing: 0.8 },
+  captionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  mapGlyph: {
+    width: 25,
+    height: 25,
+    borderRadius: 9,
+    backgroundColor: colors.blueSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mapGlyphText: { color: colors.blue, fontSize: 17, fontWeight: "900" },
+  caption: { flex: 1, color: colors.muted, fontSize: 10, lineHeight: 15 },
 });
