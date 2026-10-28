@@ -1012,9 +1012,14 @@ export async function POST(request: Request) {
       await client.query("BEGIN");
       const e = await client.query("SELECT * FROM errands WHERE id=$1 FOR UPDATE", [errandId]);
       const row = e.rows[0];
-      if (!row || !(user.role === "admin" || row.customer_id === user.id || row.provider_id === user.id)) {
+      const canParticipate = Boolean(row && (
+        user.role === "admin" ||
+        (user.role === "customer" && row.customer_id === user.id && row.provider_id) ||
+        (user.role === "provider" && row.provider_id === user.id)
+      ));
+      if (!canParticipate) {
         await client.query("ROLLBACK");
-        return error("Errand not found or messaging access is not permitted.", 404);
+        return error("Messaging becomes available when the errand has an assigned provider, and only errand participants can message.", 404);
       }
       const m = await client.query("INSERT INTO errand_messages(errand_id,sender_id,message) VALUES($1,$2,$3) RETURNING id,message,created_at", [errandId, user.id, message]);
       await addEvent(client, errandId, user.id, "message_sent", row.status, row.status, "Message sent.", { messageId: m.rows[0].id });
