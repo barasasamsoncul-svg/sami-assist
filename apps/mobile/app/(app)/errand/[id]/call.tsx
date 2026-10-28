@@ -19,8 +19,6 @@ import {
   RTCIceCandidate,
   RTCSessionDescription,
   type MediaStream,
-  type RTCIceCandidateInit,
-  type RTCIceServer,
 } from "react-native-webrtc";
 import { dispatchGet, dispatchPost } from "@/api";
 import { colors } from "@/theme";
@@ -42,11 +40,22 @@ type Signal = {
   payload: Record<string, unknown>;
   from_user_id: string;
 };
+type IceCandidateInit = {
+  candidate?: string;
+  sdpMid?: string | null;
+  sdpMLineIndex?: number | null;
+  usernameFragment?: string | null;
+};
+type IceServerConfig = {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+};
 type CallSync = {
   call: VoiceCall | null;
   signals: Signal[];
   nextAfter: number;
-  iceServers: RTCIceServer[];
+  iceServers: IceServerConfig[];
 };
 type UserResponse = { user: { id: string; full_name: string; role: "customer" | "provider" | "admin" } };
 type ErrandResponse = { errand: { id: string; customer_id: string; provider_id: string | null; status: string; customer_name?: string; provider_name?: string; title: string; public_code: string } };
@@ -102,7 +111,7 @@ export default function ErrandVoiceCallScreen() {
   const callIdRef = useRef("");
   const afterRef = useRef(0);
   const candidatesBeforeCallRef = useRef<RTCIceCandidateInit[]>([]);
-  const remoteCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+  const remoteCandidatesRef = useRef<IceCandidateInit[]>([]);
   const remoteDescriptionSetRef = useRef(false);
   const startedRef = useRef(false);
   const connectedAtRef = useRef<number | null>(null);
@@ -131,7 +140,7 @@ export default function ErrandVoiceCallScreen() {
 
     async function flushRemoteCandidates(peer: RTCPeerConnection) {
       for (const candidate of remoteCandidatesRef.current.splice(0)) {
-        try { await peer.addIceCandidate(new RTCIceCandidate(candidate)); } catch { /* A stale ICE candidate can be ignored. */ }
+        try { await peer.addIceCandidate(new RTCIceCandidate(candidate as never)); } catch { /* A stale ICE candidate can be ignored. */ }
       }
     }
 
@@ -149,7 +158,7 @@ export default function ErrandVoiceCallScreen() {
         return;
       }
       if (signal.signal_type === "ice_candidate") {
-        const candidate = signal.payload as RTCIceCandidateInit;
+        const candidate = signal.payload as IceCandidateInit;
         if (!remoteDescriptionSetRef.current) remoteCandidatesRef.current.push(candidate);
         else {
           try { await peer.addIceCandidate(new RTCIceCandidate(candidate)); } catch { /* Ignore late or duplicate candidates. */ }
@@ -207,7 +216,7 @@ export default function ErrandVoiceCallScreen() {
 
         let incomingSync: CallSync | null = null;
         let chosenCallId = incomingId;
-        let iceServers: RTCIceServer[] = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }];
+        let iceServers: IceServerConfig[] = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }];
         if (incomingId) {
           incomingSync = await dispatchGet<CallSync>("callSync", { callId: incomingId, after: "0" });
           if (!incomingSync.call) throw new Error("This errand call is no longer available.");
@@ -254,7 +263,7 @@ export default function ErrandVoiceCallScreen() {
         localPeer = peer;
         peerRef.current = peer;
         localStream.getTracks().forEach((track) => peer.addTrack(track, localStream!));
-        peer.ontrack = (event) => {
+        peer.ontrack = (event: { streams?: MediaStream[] }) => {
           if (event.streams?.[0]) setRemoteAudioReady(event.streams[0].getAudioTracks().length > 0);
         };
         peer.onconnectionstatechange = () => {
@@ -271,7 +280,7 @@ export default function ErrandVoiceCallScreen() {
             }
           }
         };
-        peer.onicecandidate = (event) => {
+        peer.onicecandidate = (event: { candidate?: { toJSON: () => IceCandidateInit } | null }) => {
           const candidate = event.candidate?.toJSON();
           if (!candidate) return;
           const activeId = callIdRef.current;
