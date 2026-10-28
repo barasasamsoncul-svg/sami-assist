@@ -15,6 +15,9 @@ jobs:
     name: Download completed production APK from EAS
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/mobile
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       BUILD_ID: a921828b-ad5b-4796-b4df-503c449b33f0
@@ -53,13 +56,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/sami-apk"
-          cd "$RUNNER_TEMP/sami-apk"
           eas build:download --build-id "$BUILD_ID" --non-interactive
-          APK_PATH="$(find . -maxdepth 3 -type f -iname '*.apk' -print -quit)"
+          APK_PATH="$(find . -maxdepth 5 -type f -iname '*.apk' -not -path '*/node_modules/*' -print -quit)"
           test -n "$APK_PATH" || { echo "EAS did not provide an APK file." >&2; exit 1; }
           test -s "$APK_PATH" || { echo "Downloaded APK is empty." >&2; exit 1; }
-          mv "$APK_PATH" "$RUNNER_TEMP/SaMi-production.apk"
+          cp "$APK_PATH" "$RUNNER_TEMP/SaMi-production.apk"
           file "$RUNNER_TEMP/SaMi-production.apk"
           sha256sum "$RUNNER_TEMP/SaMi-production.apk" | tee "$RUNNER_TEMP/sami-apk-sha256.txt"
           echo "EAS build ID: $BUILD_ID" >> "$GITHUB_STEP_SUMMARY"
