@@ -107,7 +107,7 @@ export default function SaMiLogoMark({ size = 42 }: { size?: number }) {
           width: size * 0.31,
           height: size * 0.31,
           borderRadius: size * 0.16,
-          backgroundColor: colors.green === "#16845B" ? "#25C9AC" : colors.green,
+          backgroundColor: "#25C9AC",
           borderWidth: Math.max(1, size * 0.035),
           borderColor: colors.navy,
           alignItems: "center",
