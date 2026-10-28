@@ -25,6 +25,18 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     config.updates?.requestHeaders?.["expo-channel-name"] ||
     "production";
 
+  const plugins = (config.plugins ?? []).map((plugin) => {
+    const entry = Array.isArray(plugin) ? plugin : [plugin, {}];
+    if (entry[0] !== "react-native-maps") return plugin;
+    return [
+      "react-native-maps",
+      {
+        ...(Array.isArray(entry) && typeof entry[1] === "object" ? entry[1] : {}),
+        ...(googleMapsApiKey ? { androidGoogleMapsApiKey: googleMapsApiKey } : {}),
+      },
+    ] as const;
+  });
+
   const requestHeaders = {
     ...config.updates?.requestHeaders,
     "expo-channel-name": updateChannel,
@@ -57,6 +69,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   return {
     ...config,
     android,
+    plugins,
     name: config.name ?? "SaMi",
     slug: config.slug ?? "sami-mobile",
     extra,
