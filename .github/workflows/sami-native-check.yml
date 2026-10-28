@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: sami-production-android
+  group: sami-production-android-v2
   cancel-in-progress: true
 
 jobs:
