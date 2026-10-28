@@ -46,8 +46,8 @@ jobs:
       - name: Install mobile dependencies
         run: npm install --no-audit --no-fund
 
-function mapsStep() {
-  return `      - name: Load restricted Google Maps key from EAS production environment
+
+      - name: Load restricted Google Maps key from EAS production environment
         shell: bash
         run: |
           set -euo pipefail
@@ -56,7 +56,7 @@ function mapsStep() {
           node - "$MAP_ENV_FILE" "$GITHUB_ENV" <<'NODE'
           const fs = require("node:fs");
           const [envPath, githubEnv] = process.argv.slice(2);
-          const line = fs.readFileSync(envPath, "utf8").split(/\\r?\\n/).find((item) => item.startsWith("GOOGLE_MAPS_API_KEY="));
+          const line = fs.readFileSync(envPath, "utf8").split(/\r?\n/).find((item) => item.startsWith("GOOGLE_MAPS_API_KEY="));
           let key = line?.slice("GOOGLE_MAPS_API_KEY=".length).trim() || "";
           if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) key = key.slice(1, -1);
           if (key.length < 20) {
@@ -64,13 +64,12 @@ function mapsStep() {
             process.exit(1);
           }
           console.log("::add-mask::" + key);
-          fs.appendFileSync(githubEnv, "GOOGLE_MAPS_API_KEY=" + key + "\\n");
+          fs.appendFileSync(githubEnv, "GOOGLE_MAPS_API_KEY=" + key + "\n");
           fs.unlinkSync(envPath);
           console.log("Restricted Google Maps key loaded for native config; value was not logged.");
           NODE
 
-`;
-}      - name: Validate production update target
+      - name: Validate production update target
         shell: bash
         run: |
           set -euo pipefail
