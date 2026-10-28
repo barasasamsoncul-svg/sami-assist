@@ -36,7 +36,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         ...(Array.isArray(entry) && typeof entry[1] === "object" ? entry[1] : {}),
         ...(googleMapsApiKey ? { androidGoogleMapsApiKey: googleMapsApiKey } : {}),
       },
-    ] as const;
+    ] as [string, Record<string, unknown>];
   });
 
   const requestHeaders = {
