@@ -67,7 +67,7 @@ function ChoiceRow({ label, options, value, onChange }: {
 }
 
 export default function RequestScreen() {
-  const { category: categoryParam, description: descriptionParam } = useLocalSearchParams<{ category?: string; description?: string }>();
+  const { category: categoryParam, description: descriptionParam, pickupLat: pickupLatParam, pickupLng: pickupLngParam } = useLocalSearchParams<{ category?: string; description?: string; pickupLat?: string; pickupLng?: string }>();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("personal_errand");
@@ -119,6 +119,15 @@ export default function RequestScreen() {
     setDescription((current) => current || initialDescription);
     setTitle((current) => current || initialDescription.split(/\s+/).slice(0, 6).join(" ").slice(0, 80));
   }, [descriptionParam]);
+
+  useEffect(() => {
+    const lat = typeof pickupLatParam === "string" ? Number(pickupLatParam) : NaN;
+    const lng = typeof pickupLngParam === "string" ? Number(pickupLngParam) : NaN;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return;
+    setPickup((current) => current || { lat, lng });
+    setPickupLocation((current) => current || "Pickup pin selected on home map (" + lat.toFixed(5) + ", " + lng.toFixed(5) + ")");
+    setSelecting("destination");
+  }, [pickupLatParam, pickupLngParam]);
 
   useEffect(() => {
     if (!pickup || !destination) { setRoute(null); setRouteError(""); setRouteLoading(false); return; }
