@@ -19,7 +19,8 @@
         {
           "configureAndroidBackup": true
         }
-      ]
+      ],
+      "react-native-maps"
     ],
     "ios": {
       "supportsTablet": true,
