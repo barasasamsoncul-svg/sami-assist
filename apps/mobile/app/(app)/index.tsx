@@ -95,7 +95,6 @@ export default function HomeScreen() {
 
 
   const firstName = user?.full_name.trim().split(/\s+/)[0] || "there";
-  const greeting = new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 17 ? "Good afternoon" : "Good evening";
 
   return (
     <SafeAreaView style={common.screen}>
