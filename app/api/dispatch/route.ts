@@ -308,24 +308,28 @@ export async function GET(request: Request) {
   if (action === "exportMyData") {
     if (user.role !== "customer") return error("Customer data export is available from a customer account.", 403);
     try {
-      const [profile, errands, payments, notifications, messages, ratings] = await Promise.all([
+      const [profile, errands, payments, notifications, messages, ratings, events, calls] = await Promise.all([
         query("SELECT id,full_name,email,phone,role FROM users WHERE id=$1", [user.id]),
         query("SELECT * FROM errands WHERE customer_id=$1 ORDER BY created_at DESC", [user.id]),
         query("SELECT pr.* FROM payment_records pr JOIN errands e ON e.id=pr.errand_id WHERE e.customer_id=$1 ORDER BY pr.created_at DESC", [user.id]),
         query("SELECT id,kind,title,body,href,read_at,created_at FROM notifications WHERE user_id=$1 ORDER BY created_at DESC", [user.id]),
         query("SELECT m.id,m.errand_id,m.sender_id,m.message,m.created_at FROM errand_messages m JOIN errands e ON e.id=m.errand_id WHERE e.customer_id=$1 ORDER BY m.created_at ASC", [user.id]),
         query("SELECT id,errand_id,score,comment,created_at FROM errand_ratings WHERE reviewer_id=$1 ORDER BY created_at DESC", [user.id]),
+        query("SELECT ev.id,ev.errand_id,ev.event_type,ev.from_status,ev.to_status,ev.note,ev.metadata,ev.created_at,u.full_name AS actor_name FROM errand_events ev JOIN errands e ON e.id=ev.errand_id LEFT JOIN users u ON u.id=ev.actor_id WHERE e.customer_id=$1 ORDER BY ev.created_at ASC", [user.id]),
+        query("SELECT c.id,c.errand_id,c.caller_id,c.callee_id,c.status,c.answered_at,c.ended_at,c.created_at FROM errand_calls c JOIN errands e ON e.id=c.errand_id WHERE e.customer_id=$1 ORDER BY c.created_at DESC", [user.id]).catch(() => ({ rows: [] })),
       ]);
       return NextResponse.json({
         exportVersion: 1,
         exportedAt: new Date().toISOString(),
-        retentionNote: "This export includes your customer profile, errands, payment records, notifications, errand messages and ratings. SaMi's financial and audit records may be retained as required by applicable law.",
+        retentionNote: "This export includes your profile, errands, payments, notifications, messages, ratings, event history and available errand-call records. Financial and audit records may be retained where legally required.",
         profile: profile.rows[0] || null,
         errands: errands.rows,
         payments: payments.rows,
         notifications: notifications.rows,
         messages: messages.rows,
         ratings: ratings.rows,
+        events: events.rows,
+        calls: calls.rows,
       }, { headers: { "Cache-Control": "no-store" } });
     } catch (e) {
       console.error("[SaMi data export] Customer export failed.", e instanceof Error ? e.message : "unknown error");
@@ -561,6 +565,21 @@ export async function POST(request: Request) {
         "UPDATE errand_messages SET message='Message removed at the customer’s request.' WHERE sender_id=$1 AND errand_id IN (SELECT id FROM errands WHERE customer_id=$1)",
         [user.id]
       );
+      await client.query(
+        "UPDATE errand_messages SET message='Conversation content removed at the customer’s request.' WHERE errand_id IN (SELECT id FROM errands WHERE customer_id=$1)",
+        [user.id]
+      );
+      await client.query(
+        "UPDATE errand_events SET actor_id=NULL,note='Event actor details removed at customer request.' WHERE actor_id=$1 AND errand_id IN (SELECT id FROM errands WHERE customer_id=$1)",
+        [user.id]
+      );
+      const callTables = await client.query<{ has_calls: boolean; has_signals: boolean }>(
+        "SELECT to_regclass('public.errand_calls') IS NOT NULL AS has_calls, to_regclass('public.errand_call_signals') IS NOT NULL AS has_signals"
+      );
+      if (callTables.rows[0]?.has_calls && callTables.rows[0]?.has_signals) {
+        await client.query("DELETE FROM errand_call_signals WHERE call_id IN (SELECT id FROM errand_calls WHERE errand_id IN (SELECT id FROM errands WHERE customer_id=$1))", [user.id]);
+        await client.query("DELETE FROM errand_calls WHERE errand_id IN (SELECT id FROM errands WHERE customer_id=$1)", [user.id]);
+      }
       await client.query("UPDATE errand_ratings SET comment=NULL WHERE reviewer_id=$1", [user.id]);
       await client.query("DELETE FROM notifications WHERE user_id=$1", [user.id]);
       await client.query("DELETE FROM user_sessions WHERE user_id=$1", [user.id]);
