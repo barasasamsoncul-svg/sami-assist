@@ -117,7 +117,7 @@ export default function RequestScreen() {
     if (typeof descriptionParam !== "string" || !descriptionParam.trim()) return;
     const initialDescription = descriptionParam.trim();
     setDescription((current) => current || initialDescription);
-    setTitle((current) => current || initialDescription.split(/\\s+/).slice(0, 6).join(" ").slice(0, 80));
+    setTitle((current) => current || initialDescription.split(/\s+/).slice(0, 6).join(" ").slice(0, 80));
   }, [descriptionParam]);
 
   useEffect(() => {
