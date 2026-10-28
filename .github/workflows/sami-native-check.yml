@@ -9,6 +9,8 @@ on:
       - "apps/mobile/app.config.ts"
       - "apps/mobile/eas.json"
       - "apps/mobile/package.json"
+      - "apps/mobile/assets/icon.png"
+      - "apps/mobile/assets/adaptive-icon.png"
       - "apps/mobile/plugins/**"
       - "apps/mobile/android/**"
       - "apps/mobile/ios/**"
