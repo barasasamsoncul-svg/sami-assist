@@ -18,7 +18,7 @@ import { colors, common } from "@/theme";
 
 type User = {
   id: string;
-  full_name: string;
+  full_name?: string | null;
   email?: string | null;
   phone?: string | null;
   role: "customer" | "provider" | "admin";
@@ -157,6 +157,7 @@ export default function AccountScreen() {
     }
   }
 
+  const displayName = typeof user?.full_name === "string" ? user.full_name.trim() : "";
   const roleLabel = user?.role === "provider" ? "Errand provider" : user?.role === "admin" ? "Administrator" : "Customer";
   const isCustomer = user?.role === "customer";
   const requestedSection = Array.isArray(params.section) ? params.section[0] : params.section;
@@ -184,11 +185,11 @@ export default function AccountScreen() {
           <View style={{ flexDirection: "row", alignItems: "center", gap: 13 }}>
             <View style={{ width: 56, height: 56, borderRadius: 19, backgroundColor: colors.navy, alignItems: "center", justifyContent: "center" }}>
               <Text style={{ color: colors.white, fontSize: 24, fontWeight: "900" }}>
-                {(user?.full_name.trim().charAt(0) || "S").toUpperCase()}
+                {(displayName.charAt(0) || "S").toUpperCase()}
               </Text>
             </View>
             <View style={{ flex: 1, gap: 4 }}>
-              <Text style={{ color: colors.navy, fontSize: 18, fontWeight: "900" }}>{user?.full_name || "SaMi account"}</Text>
+              <Text style={{ color: colors.navy, fontSize: 18, fontWeight: "900" }}>{displayName || "SaMi account"}</Text>
               <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "700" }}>{roleLabel}</Text>
             </View>
           </View>
@@ -205,7 +206,10 @@ export default function AccountScreen() {
 
         {isCustomer ? (
           <>
-            <View onLayout={(event) => setSectionOffsets((old) => ({ ...old, security: event.nativeEvent.layout.y }))} style={{ gap: 13 }}>
+            <View onLayout={(event) => {
+              const y = event.nativeEvent.layout.y;
+              setSectionOffsets((old) => old.security === y ? old : { ...old, security: y });
+            }} style={{ gap: 13 }}>
               <SectionTitle eyebrow="SECURITY" title="Account security" body="Change your password. Other active sessions are signed out after a successful change." />
               <View style={[common.card, { gap: 12 }]}>
                 <View style={{ gap: 6 }}>
@@ -248,7 +252,10 @@ export default function AccountScreen() {
               </View>
             </View>
 
-            <View onLayout={(event) => setSectionOffsets((old) => ({ ...old, privacy: event.nativeEvent.layout.y }))} style={{ gap: 13 }}>
+            <View onLayout={(event) => {
+              const y = event.nativeEvent.layout.y;
+              setSectionOffsets((old) => old.privacy === y ? old : { ...old, privacy: y });
+            }} style={{ gap: 13 }}>
               <SectionTitle eyebrow="YOUR INFORMATION" title="Data & privacy" body="You can request a copy of your SaMi data or remove your account and personal details." />
               <View style={[common.card, { gap: 12 }]}>
                 <View style={{ gap: 5 }}>
@@ -337,3 +344,41 @@ export default function AccountScreen() {
     </SafeAreaView>
   );
 }
+
+/**
+ * Keep a route-level rendering error from leaving the Account tab completely blank.
+ * Expo Router can retry the screen without forcing the user to reinstall SaMi.
+ */
+export function ErrorBoundary({ error, retry }: { error: Error; retry: () => void }) {
+  return (
+    <SafeAreaView style={common.screen}>
+      <View style={[common.content, { flex: 1, justifyContent: "center", gap: 14, padding: 24 }]}>
+        <Text style={common.eyebrow}>SAMI ACCOUNT</Text>
+        <Text style={common.title}>Account couldn't open</Text>
+        <Text style={common.subtitle}>
+          SaMi encountered a problem while opening this screen. Your account and errands have not been deleted.
+        </Text>
+        {__DEV__ ? (
+          <Text selectable style={{ color: colors.red, fontSize: 12, lineHeight: 18 }}>
+            {error.name}: {error.message}
+          </Text>
+        ) : null}
+        <Pressable
+          accessibilityRole="button"
+          onPress={retry}
+          style={common.primaryButton}
+        >
+          <Text style={common.primaryButtonText}>Try again</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.replace("/(app)")}
+          style={common.secondaryButton}
+        >
+          <Text style={common.secondaryButtonText}>Back to home</Text>
+        </Pressable>
+      </View>
+    </SafeAreaView>
+  );
+}
+
