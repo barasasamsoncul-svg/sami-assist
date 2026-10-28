@@ -78,11 +78,12 @@ jobs:
           set -euo pipefail
           sudo apt-get update -y
           sudo apt-get install -y expect
+          npm install --global eas-cli@latest
           cat > "$RUNNER_TEMP/sami-production-build.exp" <<'EXPECT'
           set timeout -1
           log_user 1
           log_file -noappend "$env(RUNNER_TEMP)/sami-production-build.log"
-          spawn env CI=false npx eas-cli@latest build --platform android --profile production --wait
+          spawn env CI=false eas build --platform android --profile production --wait
           expect {
             -nocase -re {generate.*keystore} { send "\r"; exp_continue }
             -nocase -re {generate new keystore} { send "\r"; exp_continue }
@@ -108,7 +109,7 @@ jobs:
             exit 1
           fi
           echo "Production EAS build ID: $BUILD_ID"
-          npx eas-cli@latest build:download --build-id "$BUILD_ID" --non-interactive
+          eas build:download --build-id "$BUILD_ID" --non-interactive
           APK_PATH="$(find . -maxdepth 4 -type f -iname '*.apk' -not -path '*/node_modules/*' -print -quit)"
           if [[ -z "$APK_PATH" || ! -s "$APK_PATH" ]]; then
             echo "The completed EAS build did not download an APK artifact." >&2
