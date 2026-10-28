@@ -1,0 +1,182 @@
+name: SaMi Android signing identity audit
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/sami-signing-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sami-signing-audit
+  cancel-in-progress: false
+
+jobs:
+  verify-signing-identity:
+    name: Compare delivered APK with EAS production keystore
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: apps/mobile
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EXPO_PROJECT_ID: ${{ vars.EXPO_PROJECT_ID }}
+      BUILD_ID: a921828b-ad5b-4796-b4df-503c449b33f0
+      EXPECTED_PACKAGE: com.sami.errands
+    steps:
+      - name: Checkout production source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.13"
+
+      - name: Install app dependencies for Expo config resolution
+        run: npm install --no-audit --no-fund
+
+      - name: Install EAS CLI
+        run: npm install --global eas-cli@latest
+
+      - name: Validate the target EAS build
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$EXPO_TOKEN" || { echo "::error::EXPO_TOKEN is missing from GitHub Actions secrets."; exit 1; }
+          test "$EXPO_PROJECT_ID" = "c09e119e-8a6b-4a1e-a7c6-b85cfd4e330d" || { echo "::error::EXPO_PROJECT_ID does not match SaMi production."; exit 1; }
+          eas build:view "$BUILD_ID" --json > "$RUNNER_TEMP/sami-eas-build.json"
+          node - "$RUNNER_TEMP/sami-eas-build.json" <<'NODE'
+          const fs = require("node:fs");
+          const value = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const build = value.build || value;
+          if (build.id !== process.env.BUILD_ID) throw new Error("EAS build ID mismatch.");
+          if (String(build.status).toUpperCase() !== "FINISHED") throw new Error("Target EAS build is not finished.");
+          if (String(build.platform).toUpperCase() !== "ANDROID") throw new Error("Target build is not Android.");
+          if (build.buildProfile !== "production") throw new Error("Target build is not the production profile.");
+          if (!build.artifacts?.applicationArchiveUrl) throw new Error("Target build has no application archive.");
+          console.log("Verified finished SaMi production Android build " + build.id);
+          console.log("Profile: " + build.buildProfile);
+          NODE
+
+      - name: Download the exact APK already delivered
+        shell: bash
+        run: |
+          set -euo pipefail
+          eas build:download --build-id "$BUILD_ID" --non-interactive
+          APK_PATH="$(find /tmp/runner/eas-cli-nodejs/eas-build-run-cache -maxdepth 3 -type f -iname '*.apk' -print -quit 2>/dev/null || true)"
+          if [[ -z "$APK_PATH" ]]; then
+            APK_PATH="$(find . -maxdepth 5 -type f -iname '*.apk' -not -path '*/node_modules/*' -print -quit)"
+          fi
+          test -n "$APK_PATH" && test -s "$APK_PATH" || { echo "::error::Could not download the existing APK."; exit 1; }
+          cp "$APK_PATH" "$RUNNER_TEMP/SaMi-production.apk"
+          echo "Downloaded APK bytes: $(stat -c%s "$RUNNER_TEMP/SaMi-production.apk")"
+
+      - name: Extract APK signer certificate fingerprint
+        id: apk-fingerprint
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          APKSIGNER="$(find "$SDK_ROOT/build-tools" -type f -name apksigner -print 2>/dev/null | sort -V | tail -n 1)"
+          if [[ -z "$APKSIGNER" ]]; then
+            echo "::error::Android apksigner is not installed on this runner; no credential changes were made."
+            exit 1
+          fi
+          "$APKSIGNER" verify --verbose "$RUNNER_TEMP/SaMi-production.apk"
+          APK_FP="$("$APKSIGNER" verify --print-certs "$RUNNER_TEMP/SaMi-production.apk" | sed -n 's/.*Signer #1 certificate SHA-256 digest: *//p' | head -n 1 | tr '[:lower:]' '[:upper:]')"
+          APK_FP="$(printf '%s' "$APK_FP" | tr -d ':[:space:]')"
+          test "${#APK_FP}" -eq 64 || { echo "::error::Could not extract a 64-character SHA-256 APK certificate fingerprint."; exit 1; }
+          echo "fingerprint=$APK_FP" >> "$GITHUB_OUTPUT"
+          echo "APK certificate SHA-256: $APK_FP"
+          echo "APK certificate SHA-256: $APK_FP" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Read EAS production keystore fingerprint without changing credentials
+        id: eas-fingerprint
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo apt-get install -y expect
+          cat > "$RUNNER_TEMP/read-eas-fingerprint.exp" <<'EXPECT'
+          set timeout 180
+          log_user 1
+          log_file -noappend "$env(RUNNER_TEMP)/sami-eas-credentials-readonly.log"
+          spawn env CI=false eas credentials -p android
+          expect {
+            -re {SHA256 Fingerprint} {
+              # The credential summary is printed before the menu. Interrupt before any menu selection.
+              after 500
+              send "\003"
+              expect eof
+            }
+            -re {No credentials set up yet} {
+              send "\003"
+              expect eof
+            }
+            -re {Authentication required|Not authenticated|EXPO_TOKEN} {
+              send "\003"
+              expect eof
+            }
+            timeout {
+              send "\003"
+              expect eof
+              exit 2
+            }
+            eof {}
+          }
+          EXPECT
+          # eas credentials is an interactive read-only menu here; the script interrupts immediately
+          # after the current remote certificate summary, before any option can be selected.
+          expect "$RUNNER_TEMP/read-eas-fingerprint.exp" || true
+          node - "$RUNNER_TEMP/sami-eas-credentials-readonly.log" <<'NODE'
+          const fs = require("node:fs");
+          const p = process.argv[2];
+          let s = fs.readFileSync(p, "utf8").replace(/\u001b\[[0-9;]*m/g, "");
+          const match = s.match(/SHA256 Fingerprint[^\r\n]*?([A-F0-9]{2}(?::[A-F0-9]{2}){31}|[A-F0-9]{64}|unavailable)/i);
+          if (!match) {
+            console.error("Could not read the production EAS keystore fingerprint. See the job log for a non-secret diagnostic; no credentials were changed.");
+            process.exit(1);
+          }
+          const fingerprint = match[1].toUpperCase().replace(/:/g, "");
+          if (fingerprint === "UNAVAILABLE") {
+            console.error("EAS reports the production keystore fingerprint as unavailable.");
+            process.exit(1);
+          }
+          if (!/^[A-F0-9]{64}$/.test(fingerprint)) throw new Error("Unexpected EAS certificate fingerprint format.");
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, "fingerprint=" + fingerprint + "\n");
+          console.log("EAS production keystore certificate SHA-256: " + fingerprint);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, "EAS production keystore certificate SHA-256: " + fingerprint + "\n");
+          NODE
+
+      - name: Compare signing identities
+        shell: bash
+        env:
+          APK_FP: ${{ steps.apk-fingerprint.outputs.fingerprint }}
+          EAS_FP: ${{ steps.eas-fingerprint.outputs.fingerprint }}
+        run: |
+          set -euo pipefail
+          if [[ "$APK_FP" != "$EAS_FP" ]]; then
+            {
+              echo "## Android signing identity: MISMATCH"
+              echo ""
+              echo "The delivered APK does not match the current EAS production keystore."
+              echo "Do not build another APK or delete/reset any keystore until the correct original key is recovered."
+              echo ""
+              echo "- APK fingerprint: $APK_FP"
+              echo "- Current EAS fingerprint: $EAS_FP"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Signing certificate mismatch. No signing credentials were changed."
+            exit 1
+          fi
+          {
+            echo "## Android signing identity: MATCH"
+            echo ""
+            echo "The delivered APK and current EAS production keystore have the same SHA-256 certificate fingerprint."
+            echo "Future APK builds must continue using this existing keystore."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Signing certificate match confirmed. No signing credentials were changed."
