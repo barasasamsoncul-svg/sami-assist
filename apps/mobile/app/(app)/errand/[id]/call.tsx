@@ -173,6 +173,12 @@ export default function ErrandVoiceCallScreen() {
           if (name) setCounterpart(name);
           if (terminalStatuses.has(sync.call.status)) {
             setPeerState(sync.call.status);
+            localPeer?.close();
+            localPeer = null;
+            peerRef.current = null;
+            localStream?.getTracks().forEach((track) => track.stop());
+            localStream = null;
+            streamRef.current = null;
             return;
           }
         }
