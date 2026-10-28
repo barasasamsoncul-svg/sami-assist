@@ -162,7 +162,7 @@ export default function HomeScreen() {
   function openCustomerSetting(setting: "security" | "privacy" | "notifications" | "location" | "about") {
     setSettingsOpen(false);
     if (setting === "security" || setting === "privacy") {
-      router.push("/(app)/account");
+      router.push({ pathname: "/(app)/account", params: { section: setting } });
     } else if (setting === "notifications") {
       router.push("/(app)/notifications");
     } else if (setting === "location") {
