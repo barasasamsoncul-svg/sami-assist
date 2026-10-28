@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   group: sami-production-android
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   production-android:
@@ -99,7 +99,7 @@ jobs:
           import re
           from pathlib import Path
           log = Path(__import__("os").environ["RUNNER_TEMP"], "sami-production-build.log").read_text(errors="replace")
-          matches = re.findall(r"https://expo\\.dev/[^\\s]*/builds/([0-9a-fA-F-]{36})", log)
+          matches = re.findall(r"/builds/([0-9a-fA-F-]{36})", log)
           print(matches[-1] if matches else "")
           PY
           )"
