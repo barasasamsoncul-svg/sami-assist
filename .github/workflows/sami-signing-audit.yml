@@ -88,7 +88,7 @@ jobs:
             exit 1
           fi
           "$APKSIGNER" verify --verbose "$RUNNER_TEMP/SaMi-production.apk"
-          APK_FP="$("$APKSIGNER" verify --print-certs "$RUNNER_TEMP/SaMi-production.apk" | sed -n 's/.*Signer #1 certificate SHA-256 digest: *//p' | head -n 1 | tr '[:lower:]' '[:upper:]')"
+          APK_FP="$("$APKSIGNER" verify --print-certs "$RUNNER_TEMP/SaMi-production.apk" 2>&1 | sed -n 's/.*Signer #1 certificate SHA-256 digest: *//p' | head -n 1 | tr '[:lower:]' '[:upper:]')"
           APK_FP="$(printf '%s' "$APK_FP" | tr -d ':[:space:]')"
           test "${#APK_FP}" -eq 64 || { echo "::error::Could not extract a 64-character SHA-256 APK certificate fingerprint."; exit 1; }
           echo "fingerprint=$APK_FP" >> "$GITHUB_OUTPUT"
