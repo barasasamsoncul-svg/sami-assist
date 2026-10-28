@@ -96,6 +96,22 @@ export async function GET(request: Request) {
       return error("Database connectivity or schema check failed.", 503);
     }
   }
+  if (action === "paymentMethods") {
+    const requiredSettings = [
+      process.env.MPESA_SHORTCODE,
+      process.env.MPESA_CONSUMER_KEY,
+      process.env.MPESA_CONSUMER_SECRET,
+      process.env.MPESA_PASSKEY,
+      process.env.MPESA_CALLBACK_TOKEN,
+    ];
+    const transactionType = process.env.MPESA_TRANSACTION_TYPE || "CustomerPayBillOnline";
+    const mpesaInApp = requiredSettings.every(value => typeof value === "string" && value.trim().length > 0)
+      && ["CustomerPayBillOnline", "CustomerBuyGoodsOnline"].includes(transactionType);
+    return NextResponse.json(
+      { paymentMethods: { cash: true, mpesaInApp } },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  }
   if (action === "pricing") {
     try {
       const r = await query("SELECT category,service_name,base_fee,commission_rate,low_priority_multiplier,standard_priority_multiplier,high_priority_multiplier,urgent_priority_multiplier,distance_rate_per_km,small_item_fee,medium_item_fee,large_item_fee,bulky_item_fee,value_surcharge_threshold,value_surcharge_rate FROM service_pricing WHERE enabled=true ORDER BY category");

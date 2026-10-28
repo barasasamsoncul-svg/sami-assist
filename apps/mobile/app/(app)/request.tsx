@@ -87,6 +87,7 @@ export default function RequestScreen() {
   const [priority, setPriority] = useState("standard");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [mpesaPhone, setMpesaPhone] = useState("");
+  const [mpesaInAppAvailable, setMpesaInAppAvailable] = useState(false);
   const [rules, setRules] = useState<PricingRule[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -95,6 +96,16 @@ export default function RequestScreen() {
   useEffect(() => {
     dispatchGet<{ pricing: PricingRule[] }>("pricing").then((data) => setRules(data.pricing || [])).catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    dispatchGet<{ paymentMethods?: { cash?: boolean; mpesaInApp?: boolean } }>("paymentMethods")
+      .then((data) => setMpesaInAppAvailable(data.paymentMethods?.mpesaInApp === true))
+      .catch(() => setMpesaInAppAvailable(false));
+  }, []);
+
+  useEffect(() => {
+    if (!mpesaInAppAvailable && paymentMethod === "in_app") setPaymentMethod("cash");
+  }, [mpesaInAppAvailable, paymentMethod]);
 
   useEffect(() => {
     if (categoryParam && categories.some(([value]) => value === categoryParam)) {
@@ -122,6 +133,9 @@ export default function RequestScreen() {
   }, [pickup, destination]);
 
   const rule = rules.find((row) => row.category === category);
+  const paymentOptions: readonly (readonly [string, string])[] = mpesaInAppAvailable
+    ? [["cash", "Cash"], ["in_app", "M-PESA in app"]]
+    : [["cash", "Cash"]];
   const estimate = useMemo(() => {
     if (!rule) return null;
     const n = (value: number | string | null | undefined) => Number(value ?? 0);
@@ -178,6 +192,7 @@ export default function RequestScreen() {
     try {
       if (title.trim().length < 3 || description.trim().length < 5 || serviceArea.trim().length < 2) throw new Error("Add a clear task title, task details and service area.");
       if ((pickupLocation.trim() || destinationLocation.trim()) && !route && !(Number(manualDistance) > 0)) throw new Error("Choose the map points or enter a valid estimated distance.");
+      if (paymentMethod === "in_app" && !mpesaInAppAvailable) throw new Error("M-PESA in-app payments are temporarily unavailable. Please choose cash.");
       if (paymentMethod === "in_app" && !mpesaPhone.trim()) throw new Error("Enter the Kenyan M-PESA number for the payment prompt.");
       const created = await dispatchPost<{ errand: { id: string; public_code: string; service_fee_amount: number | string } }>("createErrand", {
         title: title.trim(), description: description.trim(), category, serviceArea: serviceArea.trim(),
@@ -275,7 +290,8 @@ export default function RequestScreen() {
                 <Text style={{ color: colors.navy, fontSize: 28, fontWeight: "900" }}>{estimate === null ? "Checking…" : "KES " + estimate.toLocaleString("en-KE")}</Text>
                 <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 17 }}>Final distance and fee are recalculated by the server when you submit.</Text>
               </View>
-              <ChoiceRow label="How will you pay SaMi's service fee?" options={[["cash","Cash"],["in_app","M-PESA in app"]] as const} value={paymentMethod} onChange={setPaymentMethod} />
+              <ChoiceRow label="How will you pay SaMi's service fee?" options={paymentOptions} value={paymentMethod} onChange={setPaymentMethod} />
+              {!mpesaInAppAvailable ? <Text style={common.subtitle}>In-app M-PESA is temporarily unavailable. You can still pay SaMi's service fee in cash. Any shop or seller payment remains separate.</Text> : null}
               {paymentMethod === "in_app" ? <Field label="M-PESA phone number" value={mpesaPhone} onChangeText={setMpesaPhone} placeholder="07XXXXXXXX" keyboardType="phone-pad" /> : null}
             </View>
             {error ? <Text accessibilityRole="alert" style={common.error}>{error}</Text> : null}

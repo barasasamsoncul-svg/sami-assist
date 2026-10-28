@@ -56,7 +56,10 @@ export async function POST(request: Request) {
   const user = await getCurrentUser(request).catch(() => null);
   if (!user || user.role !== "customer") return fail("Sign in with a customer account to pay for an errand.", 401);
   const config = configuration();
-  if (config.missing.length) return fail("M-PESA in-app checkout is not configured in this Preview yet. Missing server settings: " + config.missing.join(", ") + ".", 503);
+  if (config.missing.length) {
+    console.error("[SaMi M-PESA] In-app checkout is disabled because server configuration is incomplete.");
+    return fail("In-app M-PESA payments are temporarily unavailable. Choose cash payment or contact SaMi support.", 503);
+  }
 
   let body: any;
   try { body = await request.json(); } catch { return fail("Invalid checkout request."); }
