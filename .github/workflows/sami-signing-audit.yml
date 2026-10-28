@@ -82,7 +82,7 @@ jobs:
         run: |
           set -euo pipefail
           SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
-          APKSIGNER="$(find "$SDK_ROOT/build-tools" -type f -name apksigner -print 2>/dev/null | sort -V | tail -n 1)"
+          APKSIGNER="$(find "$SDK_ROOT/build-tools" -name apksigner -print 2>/dev/null | sort -V | tail -n 1)"
           if [[ -z "$APKSIGNER" ]]; then
             echo "::error::Android apksigner is not installed on this runner; no credential changes were made."
             exit 1
