@@ -60,7 +60,10 @@ jobs:
         run: |
           set -euo pipefail
           eas build:download --build-id "$BUILD_ID" --non-interactive
-          APK_PATH="$(find . -maxdepth 5 -type f -iname '*.apk' -not -path '*/node_modules/*' -print -quit)"
+          APK_PATH="$(find /tmp/runner/eas-cli-nodejs/eas-build-run-cache -maxdepth 2 -type f -iname '*.apk' -print -quit 2>/dev/null || true)"
+          if [[ -z "$APK_PATH" ]]; then
+            APK_PATH="$(find . -maxdepth 5 -type f -iname '*.apk' -not -path '*/node_modules/*' -print -quit)"
+          fi
           test -n "$APK_PATH" || { echo "EAS did not provide an APK file." >&2; exit 1; }
           test -s "$APK_PATH" || { echo "Downloaded APK is empty." >&2; exit 1; }
           cp "$APK_PATH" "$RUNNER_TEMP/SaMi-production.apk"
