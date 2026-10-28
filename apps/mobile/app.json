@@ -20,7 +20,13 @@
           "configureAndroidBackup": true
         }
       ],
-      "react-native-maps"
+      "react-native-maps",
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "microphonePermission": "SaMi uses the microphone for voice calls with the customer or assigned errand provider."
+        }
+      ]
     ],
     "ios": {
       "supportsTablet": true,
@@ -33,7 +39,9 @@
       "package": "com.sami.errands",
       "permissions": [
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
+        "ACCESS_FINE_LOCATION",
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
