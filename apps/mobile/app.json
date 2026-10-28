@@ -32,7 +32,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.sami.errands",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "SaMi uses your location to set pickup points and share provider location during active errands."
+        "NSLocationWhenInUseUsageDescription": "SaMi uses your location to set pickup points and share provider location during active errands.",
+        "NSMicrophoneUsageDescription": "SaMi uses your microphone only while you are on an in-app voice call with the assigned participant for an errand."
       }
     },
     "android": {
