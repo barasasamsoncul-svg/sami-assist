@@ -152,7 +152,7 @@ export default function LoginScreen() {
               }}
             >
               <View style={{ gap: 5 }}>
-                <Text style={{ color: "#173B67", fontSize: 20, fontWeight: "850", letterSpacing: -0.45 }}>
+                <Text style={{ color: "#173B67", fontSize: 20, fontWeight: "800", letterSpacing: -0.45 }}>
                   Sign in
                 </Text>
                 <Text style={{ color: "#69788D", fontSize: 13, lineHeight: 19 }}>
@@ -280,7 +280,7 @@ export default function LoginScreen() {
                   <ActivityIndicator color="#FFFFFF" />
                 ) : (
                   <>
-                    <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "850" }}>Sign in securely</Text>
+                    <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "800" }}>Sign in securely</Text>
                     <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
                   </>
                 )}
