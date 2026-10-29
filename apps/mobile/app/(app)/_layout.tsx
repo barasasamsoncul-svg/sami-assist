@@ -25,10 +25,10 @@ const providerTabs: NavItem[] = [
 ];
 
 const adminTabs: NavItem[] = [
-  { path: "/", href: "/(app)", label: "Overview", icon: "⌂" },
-  { path: "/errands", href: "/(app)/errands", label: "Errands", icon: "▤" },
+  { path: "/", href: "/(app)", label: "Overview", icon: "home-outline", activeIcon: "home" },
+  { path: "/errands", href: "/(app)/errands", label: "Errands", icon: "receipt-outline", activeIcon: "receipt" },
   { path: "/operations", href: "/(app)/operations", label: "Operations", icon: "settings-outline", activeIcon: "settings" },
-  { path: "/account", href: "/(app)/account", label: "Account", icon: "●" },
+  { path: "/account", href: "/(app)/account", label: "Account", icon: "person-outline", activeIcon: "person" },
 ];
 
 export default function AppLayout() {
