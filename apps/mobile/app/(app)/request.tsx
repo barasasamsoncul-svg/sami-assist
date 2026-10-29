@@ -343,7 +343,7 @@ export default function RequestScreen() {
 
             {step === 2 ? (
             <View style={common.card}>
-              <Text style={{ color: colors.navy, fontSize: 17, fontWeight: "800" }}>Handling and timing</Text>
+              <Text style={{ color: colors.navy, fontSize: 17, fontWeight: "800" }}>Review & confirm</Text>
               <ChoiceRow label="Item size" options={sizes} value={itemSize} onChange={setItemSize} />
               <Field label="Estimated item / goods budget (KES, optional)" value={itemBudget} onChangeText={setItemBudget} placeholder="0" keyboardType="decimal-pad" />
               <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>This is the expected seller/goods cost, not SaMi's fee. Pay the seller separately when the goods are bought or received.</Text>
