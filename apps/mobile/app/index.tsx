@@ -56,18 +56,19 @@ export default function WelcomeScreen() {
         }
       }
 
+      // Show the signed-out welcome screen immediately; setup verification must not
+      // block first paint and leave visitors staring at a blank screen.
+      if (active) setShowWelcome(true);
+
+      // Keep first-run administrator setup behavior, but resolve it in the background.
       try {
         const status = await dispatchGet<BootstrapStatus>("bootstrapStatus");
-        if (!active) return;
-        if (!status.adminExists) {
+        if (active && !status.adminExists) {
           router.replace("/(auth)/setup-admin");
-          return;
         }
       } catch {
-        // The welcome actions remain available if the network is temporarily unavailable.
+        // The welcome actions remain usable if the network is temporarily unavailable.
       }
-
-      if (active) setShowWelcome(true);
     }
 
     void decideInitialRoute().catch(() => {
@@ -80,7 +81,7 @@ export default function WelcomeScreen() {
   }, []);
 
   if (!showWelcome) {
-    // Do not flash the welcome screen for returning users while their session is checked.
+    // Only returning sessions wait here for local token and session verification.
     return <View style={{ flex: 1, backgroundColor: paper }} />;
   }
 
