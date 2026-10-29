@@ -111,8 +111,8 @@ export default function WelcomeScreen() {
               width: 160,
               textAlign: "center",
               color: navy,
-              fontSize: 52,
-              lineHeight: 60,
+              fontSize: 55,
+              lineHeight: 63,
               fontWeight: "900",
               fontStyle: "italic",
               letterSpacing: -3.2,
@@ -124,11 +124,11 @@ export default function WelcomeScreen() {
           <View
             style={{
               position: "absolute",
-              top: 45,
+              top: 47,
               left: 52,
-              width: 63,
-              height: 12,
-              borderBottomWidth: 3.5,
+              width: 65,
+              height: 13,
+              borderBottomWidth: 4,
               borderColor: blue,
               borderBottomLeftRadius: 42,
               borderBottomRightRadius: 42,
@@ -141,7 +141,7 @@ export default function WelcomeScreen() {
           style={{
             width: "100%",
             alignItems: "center",
-            marginTop: compact ? 8 : 14,
+            marginTop: compact ? 10 : 17,
           }}
         >
           <Image
@@ -152,10 +152,10 @@ export default function WelcomeScreen() {
           />
           <Text
             style={{
-              marginTop: compact ? 2 : 7,
+              marginTop: compact ? 4 : 10,
               color: navy,
-              fontSize: compact ? 23 : 25,
-              lineHeight: compact ? 29 : 32,
+              fontSize: compact ? 24 : 27,
+              lineHeight: compact ? 31 : 35,
               fontWeight: "900",
               letterSpacing: -0.5,
               textAlign: "center",
@@ -170,8 +170,8 @@ export default function WelcomeScreen() {
             width: "100%",
             maxWidth: 390,
             alignItems: "center",
-            marginTop: compact ? 12 : 20,
-            gap: 3,
+            marginTop: compact ? 14 : 23,
+            gap: 5,
           }}
         >
           <Pressable
@@ -180,8 +180,8 @@ export default function WelcomeScreen() {
             onPress={() => router.push("/(auth)/choose-role")}
             style={({ pressed }) => ({
               width: "100%",
-              minHeight: 56,
-              borderRadius: 17,
+              minHeight: 59,
+              borderRadius: 18,
               backgroundColor: pressed ? "#1D5297" : blue,
               alignItems: "center",
               justifyContent: "center",
@@ -194,17 +194,17 @@ export default function WelcomeScreen() {
               elevation: 3,
             })}
           >
-            <Text style={{ color: "#FFFFFF", fontSize: 17, fontWeight: "900" }}>
+            <Text style={{ color: "#FFFFFF", fontSize: 18, fontWeight: "900" }}>
               Get started
             </Text>
-            <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+            <Ionicons name="arrow-forward" size={21} color="#FFFFFF" />
           </Pressable>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Sign in"
             onPress={() => router.push("/(auth)/login")}
             style={({ pressed }) => ({
-              minHeight: 42,
+              minHeight: 44,
               alignItems: "center",
               justifyContent: "center",
               paddingHorizontal: 20,
@@ -213,7 +213,7 @@ export default function WelcomeScreen() {
               backgroundColor: pressed ? "#EAF1FC" : "transparent",
             })}
           >
-            <Text style={{ color: navy, fontSize: 15, fontWeight: "800" }}>
+            <Text style={{ color: navy, fontSize: 16, fontWeight: "800" }}>
               Sign in
             </Text>
           </Pressable>
