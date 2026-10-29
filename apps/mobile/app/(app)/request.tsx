@@ -16,9 +16,17 @@ type PricingRule = {
 type RoadRoute = { distanceKm: number; durationSeconds: number; coordinates: [number, number][] };
 const categories = [
   ["shopping", "Shopping and buying items"],
-  ["clothing_retail", "Clothing purchase or return"],
+  ["groceries", "Groceries and essentials"],
+  ["food_delivery", "Food and restaurant delivery"],
   ["pickup_delivery", "Pickup or drop-off"],
+  ["bill_payments", "Bills and payments assistance"],
+  ["laundry_cleaning", "Laundry and dry cleaning"],
   ["documents_admin", "Documents and administration"],
+  ["clothing_retail", "Clothing purchase or return"],
+  ["shopping_gifts", "Shopping and gifts"],
+  ["home_services", "Home services and household tasks"],
+  ["pharmacy_health", "Pharmacy and permitted health errands"],
+  ["pet_care", "Pet care errands"],
   ["personal_errand", "Personal errand"],
   ["queue_appointments", "Queue or appointment"],
   ["business_support", "Business support"],
