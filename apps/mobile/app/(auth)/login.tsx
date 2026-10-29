@@ -25,9 +25,9 @@ export default function LoginScreen() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={[common.content, { flexGrow: 1, justifyContent: "center", paddingTop: 34 }]}>
           <View style={{ gap: 8, marginBottom: 14 }}>
-            <Text style={{ color: colors.green, fontSize: 16, fontWeight: "900", fontStyle: "italic", letterSpacing: -0.4 }}>SaMi · Tuko Pamoja</Text>
+            <Text style={{ color: colors.green, fontSize: 16, fontWeight: "900", fontStyle: "italic", letterSpacing: -0.4 }}>SaMi</Text>
             <Text style={common.title}>Get things done.</Text>
-            <Text style={common.subtitle}>Sign in to request help, follow progress, and manage your errands.</Text>
+            <Text style={common.subtitle}>Your Everyday Help Organised. Request help, follow progress, and manage your errands in one place.</Text>
           </View>
           <View style={common.card}>
             <View>
