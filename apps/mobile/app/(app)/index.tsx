@@ -159,9 +159,12 @@ export default function HomeScreen() {
       >
         {user?.role === "customer" ? (
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <View style={{ flexDirection: "row", alignItems: "baseline", gap: 5 }}>
-              <Text style={{ color: colors.navy, fontSize: 28, fontWeight: "900", fontStyle: "italic", letterSpacing: -1.1 }}>SaMi</Text>
-              <Text style={{ color: colors.blue, fontSize: 10, fontWeight: "800", letterSpacing: 0.25 }}>Your Everyday Help Organised</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <SaMiLogoMark size={44} />
+              <View style={{ gap: 2 }}>
+                <Text style={{ color: colors.navy, fontSize: 27, fontWeight: "900", fontStyle: "italic", letterSpacing: -1.1 }}>SaMi</Text>
+                <Text style={{ color: colors.blue, fontSize: 9, fontWeight: "800", letterSpacing: 0.35 }}>YOUR EVERYDAY HELP ORGANISED</Text>
+              </View>
             </View>
             <View style={{ flexDirection: "row", gap: 8 }}>
               <HeaderButton icon="bell" label="Notifications" badgeCount={unreadNotifications} onPress={() => router.push("/(app)/notifications")} />
@@ -200,11 +203,16 @@ export default function HomeScreen() {
                 <TextInput value={serviceSearch} onChangeText={setServiceSearch} placeholder="What can we do for you today?" placeholderTextColor={colors.muted} returnKeyType="search" style={{ flex: 1, minHeight: 50, color: colors.navy, fontSize: 14 }} accessibilityLabel="Search SaMi errand services" />
                 {serviceSearch ? <Pressable accessibilityRole="button" accessibilityLabel="Clear service search" onPress={() => setServiceSearch("")}><Ionicons name="close-circle" size={19} color={colors.muted} /></Pressable> : null}
               </View>
-              <Pressable accessibilityRole="button" onPress={() => startCustomerRequest()} style={{ backgroundColor: "#EAF1FC", borderRadius: 22, padding: 18, gap: 10, overflow: "hidden" }}>
-                <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: colors.blue, alignItems: "center", justifyContent: "center" }}><Ionicons name="navigate-outline" size={23} color={colors.white} /></View>
-                <Text style={{ color: colors.navy, fontSize: 19, lineHeight: 25, fontWeight: "900" }}>Your errands, your way.</Text>
-                <Text style={{ color: colors.ink, fontSize: 13, lineHeight: 19 }}>Request a helping hand for shopping, collections, personal tasks and more.</Text>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginTop: 2 }}><Text style={{ color: colors.blue, fontSize: 14, fontWeight: "900" }}>Create an errand</Text><Ionicons name="arrow-forward" size={17} color={colors.blue} /></View>
+              <Pressable accessibilityRole="button" onPress={() => startCustomerRequest()} style={{ backgroundColor: colors.navy, borderRadius: 24, padding: 20, gap: 12, overflow: "hidden" }}>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <View style={{ width: 46, height: 46, borderRadius: 16, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center" }}><Ionicons name="navigate-outline" size={24} color={colors.blue} /></View>
+                  <View style={{ paddingHorizontal: 11, paddingVertical: 7, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.14)" }}><Text style={{ color: "#FFFFFF", fontSize: 10, fontWeight: "800", letterSpacing: 0.7 }}>MADE FOR YOUR DAY</Text></View>
+                </View>
+                <Text style={{ color: colors.white, fontSize: 23, lineHeight: 29, fontWeight: "900", letterSpacing: -0.4 }}>Big or small, we run your errands.</Text>
+                <Text style={{ color: "#DCE8FA", fontSize: 13, lineHeight: 20 }}>From shopping and collections to the everyday tasks you cannot get to.</Text>
+                <View style={{ minHeight: 46, borderRadius: 14, backgroundColor: colors.white, paddingHorizontal: 15, flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 2 }}>
+                  <Text style={{ color: colors.navy, fontSize: 14, fontWeight: "900" }}>Create an errand</Text><Ionicons name="arrow-forward" size={18} color={colors.blue} />
+                </View>
               </Pressable>
             </View>
 
@@ -220,10 +228,10 @@ export default function HomeScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={service.title}
                     onPress={() => startCustomerRequest(service.category)}
-                    style={[common.card, { width: "48%", minHeight: 118, flexGrow: 1, padding: 14, gap: 8 }]}
+                    style={[common.card, { width: "47%", minHeight: 132, flexGrow: 1, padding: 15, gap: 9, borderRadius: 19, borderColor: "#E3EAF5" }]}
                   >
-                    <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: colors.blueSoft, alignItems: "center", justifyContent: "center" }}>
-                      <Ionicons name={service.icon} size={20} color={colors.navy} />
+                    <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: colors.blueSoft, alignItems: "center", justifyContent: "center" }}>
+                      <Ionicons name={service.icon} size={22} color={colors.blue} />
                     </View>
                     <Text style={{ color: colors.navy, fontSize: 14, fontWeight: "900" }}>{service.title}</Text>
                     <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 15 }}>{service.caption}</Text>
