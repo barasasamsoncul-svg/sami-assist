@@ -63,7 +63,7 @@ export default function AppLayout() {
                 return (
                   <Pressable key={tab.path} accessibilityRole="tab" accessibilityLabel={tab.label} accessibilityState={{ selected }} onPress={() => { if (!selected) router.replace(tab.href); }} style={styles.tabButton}>
                     <View style={[styles.iconWrap, selected && styles.activeIconWrap]}>
-                      <Ionicons name={(selected ? tab.activeIcon || tab.icon : tab.icon) as IoniconName} size={22} color={selected ? colors.green : colors.muted} />
+                      <Ionicons name={(selected ? tab.activeIcon || tab.icon : tab.icon) as IoniconName} size={22} color={selected ? colors.blue : colors.muted} />
                     </View>
                     <Text numberOfLines={1} style={[styles.tabLabel, selected && styles.activeTabLabel]}>{tab.label}</Text>
                   </Pressable>
@@ -78,7 +78,7 @@ export default function AppLayout() {
                 return (
                   <Pressable key={tab.path} accessibilityRole="tab" accessibilityLabel={tab.label} accessibilityState={{ selected }} onPress={() => { if (!selected) router.replace(tab.href); }} style={styles.tabButton}>
                     <View style={[styles.iconWrap, selected && styles.activeIconWrap]}>
-                      <Ionicons name={(selected ? tab.activeIcon || tab.icon : tab.icon) as IoniconName} size={22} color={selected ? colors.green : colors.muted} />
+                      <Ionicons name={(selected ? tab.activeIcon || tab.icon : tab.icon) as IoniconName} size={22} color={selected ? colors.blue : colors.muted} />
                     </View>
                     <Text numberOfLines={1} style={[styles.tabLabel, selected && styles.activeTabLabel]}>{tab.label}</Text>
                   </Pressable>
@@ -131,12 +131,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  activeIconWrap: { backgroundColor: "#E2F3E8" },
+  activeIconWrap: { backgroundColor: "#EAF1FC" },
   tabIcon: { color: colors.muted, fontSize: 20, lineHeight: 24, fontWeight: "800" },
-  activeTabIcon: { color: colors.green },
+  activeTabIcon: { color: colors.blue },
   createTabButton: { flex: 1, minWidth: 0, alignItems: "center", justifyContent: "center", gap: 2 },
-  createTabIcon: { width: 48, height: 38, marginTop: -14, borderRadius: 16, backgroundColor: colors.green, alignItems: "center", justifyContent: "center", borderWidth: 4, borderColor: colors.white },
-  createTabLabel: { color: colors.green, fontSize: 10, fontWeight: "900" },
+  createTabIcon: { width: 48, height: 38, marginTop: -14, borderRadius: 16, backgroundColor: colors.blue, alignItems: "center", justifyContent: "center", borderWidth: 4, borderColor: colors.white },
+  createTabLabel: { color: colors.blue, fontSize: 10, fontWeight: "900" },
   tabLabel: { color: colors.muted, fontSize: 10, fontWeight: "700", letterSpacing: 0.1 },
-  activeTabLabel: { color: colors.green, fontWeight: "900" },
+  activeTabLabel: { color: colors.blue, fontWeight: "900" },
 });
