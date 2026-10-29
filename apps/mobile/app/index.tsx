@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import {
+  Image,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -20,16 +21,12 @@ type BootstrapStatus = {
 
 const blue = "#2463B8";
 const navy = "#173B67";
-const paper = "#F7F9FD";
+const paper = "#F8FAFD";
 
 export default function WelcomeScreen() {
   const { width, height } = useWindowDimensions();
-  const compact = height < 760 || width < 360;
-  const illustrationSize = Math.min(
-    270,
-    Math.max(218, Math.min(width - 64, height * 0.36)),
-  );
-  const illustrationScale = illustrationSize / 270;
+  const compact = height < 720 || width < 360;
+  const heroWidth = Math.min(width - 40, 400);
 
   useEffect(() => {
     let active = true;
@@ -66,17 +63,31 @@ export default function WelcomeScreen() {
         <View
           style={{
             flexGrow: 1,
+            minHeight: Math.max(height - 32, compact ? 590 : 650),
             alignItems: "center",
-            paddingHorizontal: 28,
-            paddingTop: compact ? 12 : 24,
-            paddingBottom: compact ? 12 : 24,
+            justifyContent: "space-between",
+            paddingHorizontal: 20,
+            paddingTop: compact ? 18 : 28,
+            paddingBottom: compact ? 16 : 24,
           }}
         >
-          <View style={{ alignItems: "center", marginTop: 8 }}>
+          <View
+            accessibilityLabel="SaMi"
+            style={{
+              width: 160,
+              height: 72,
+              alignItems: "center",
+              justifyContent: "flex-start",
+              position: "relative",
+            }}
+          >
             <Text
               style={{
+                width: 160,
+                textAlign: "center",
                 color: navy,
-                fontSize: 48,
+                fontSize: 54,
+                lineHeight: 64,
                 fontWeight: "900",
                 fontStyle: "italic",
                 letterSpacing: -3.2,
@@ -88,214 +99,48 @@ export default function WelcomeScreen() {
             <View
               style={{
                 position: "absolute",
-                width: 49,
-                height: 13,
-                top: 39,
-                left: 28,
-                borderBottomWidth: 3,
+                top: 48,
+                left: 55,
+                width: 61,
+                height: 15,
+                borderBottomWidth: 4,
                 borderColor: blue,
-                borderBottomLeftRadius: 40,
-                borderBottomRightRadius: 40,
-                transform: [{ rotate: "-4deg" }],
+                borderBottomLeftRadius: 42,
+                borderBottomRightRadius: 42,
               }}
             />
           </View>
 
           <View
             style={{
-              flex: 1,
               width: "100%",
               alignItems: "center",
-              justifyContent: "center",
-              paddingVertical: compact ? 8 : 20,
-              minHeight: illustrationSize + 54,
+              marginTop: 18,
+              marginBottom: 10,
             }}
           >
-            <View
+            <Image
+              source={require("../assets/sami-errands-hero.jpg")}
+              accessibilityLabel="A customer requesting an errand, a home location, a request checklist, and a SaMi errand courier"
+              resizeMode="contain"
               style={{
-                width: illustrationSize,
-                height: illustrationSize,
-                alignItems: "center",
-                justifyContent: "center",
+                width: heroWidth,
+                aspectRatio: 400 / 327,
+                maxWidth: 400,
               }}
-            >
-              <View
-                style={{
-                  width: 270,
-                  height: 270,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  transform: [{ scale: illustrationScale }],
-                }}
-              >
-                <View
-                  style={{
-                    position: "absolute",
-                    width: 238,
-                    height: 238,
-                    borderRadius: 119,
-                    backgroundColor: "#EAF1FC",
-                  }}
-                />
-                <View
-                  style={{
-                    position: "absolute",
-                    width: 194,
-                    height: 194,
-                    borderRadius: 97,
-                    borderWidth: 1,
-                    borderColor: "#D5E3F8",
-                  }}
-                />
-                <View
-                  style={{
-                    position: "absolute",
-                    top: 23,
-                    right: 27,
-                    width: 50,
-                    height: 50,
-                    borderRadius: 17,
-                    backgroundColor: "#FFFFFF",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    transform: [{ rotate: "10deg" }],
-                    elevation: 3,
-                    shadowColor: navy,
-                    shadowOpacity: 0.08,
-                    shadowRadius: 8,
-                  }}
-                >
-                  <Ionicons name="location" size={26} color={blue} />
-                </View>
-                <View
-                  style={{
-                    position: "absolute",
-                    left: 18,
-                    top: 88,
-                    width: 55,
-                    height: 55,
-                    borderRadius: 18,
-                    backgroundColor: "#FFFFFF",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    transform: [{ rotate: "-9deg" }],
-                    elevation: 3,
-                    shadowColor: navy,
-                    shadowOpacity: 0.08,
-                    shadowRadius: 8,
-                  }}
-                >
-                  <Ionicons name="receipt-outline" size={26} color="#E39A36" />
-                </View>
-                <View
-                  style={{
-                    position: "absolute",
-                    right: 13,
-                    bottom: 55,
-                    width: 57,
-                    height: 57,
-                    borderRadius: 19,
-                    backgroundColor: "#FFFFFF",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    transform: [{ rotate: "8deg" }],
-                    elevation: 3,
-                    shadowColor: navy,
-                    shadowOpacity: 0.08,
-                    shadowRadius: 8,
-                  }}
-                >
-                  <Ionicons name="bag-handle-outline" size={28} color="#2E9A78" />
-                </View>
-                <View
-                  style={{
-                    width: 130,
-                    height: 148,
-                    borderRadius: 30,
-                    backgroundColor: navy,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    transform: [{ rotate: "-4deg" }],
-                    elevation: 8,
-                    shadowColor: navy,
-                    shadowOpacity: 0.2,
-                    shadowRadius: 15,
-                    shadowOffset: { width: 0, height: 8 },
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 76,
-                      height: 76,
-                      borderRadius: 25,
-                      backgroundColor: "#FFFFFF",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Ionicons name="bicycle-outline" size={43} color={blue} />
-                  </View>
-                  <View
-                    style={{
-                      marginTop: 13,
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 6,
-                    }}
-                  >
-                    <View
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: 3,
-                        backgroundColor: "#8DB8F4",
-                      }}
-                    />
-                    <Text
-                      style={{
-                        color: "#FFFFFF",
-                        fontSize: 10,
-                        fontWeight: "900",
-                        letterSpacing: 1,
-                      }}
-                    >
-                      ERRAND ON ITS WAY
-                    </Text>
-                  </View>
-                </View>
-                <View
-                  style={{
-                    position: "absolute",
-                    left: 39,
-                    bottom: 27,
-                    width: 44,
-                    height: 44,
-                    borderRadius: 15,
-                    backgroundColor: "#FFFFFF",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    elevation: 3,
-                    shadowColor: navy,
-                    shadowOpacity: 0.08,
-                    shadowRadius: 8,
-                  }}
-                >
-                  <Ionicons name="checkmark-circle" size={26} color={blue} />
-                </View>
-              </View>
-            </View>
-
+            />
             <Text
               style={{
-                marginTop: compact ? 0 : 8,
+                marginTop: compact ? 6 : 12,
                 color: navy,
-                fontSize: compact ? 22 : 25,
-                fontWeight: "900",
-                letterSpacing: -0.7,
+                fontSize: 24,
+                lineHeight: 32,
+                fontWeight: "800",
+                letterSpacing: -0.5,
                 textAlign: "center",
               }}
             >
-              Every errand, handled.
+              Consider it done.
             </Text>
           </View>
 
@@ -304,7 +149,7 @@ export default function WelcomeScreen() {
               width: "100%",
               maxWidth: 390,
               alignItems: "center",
-              gap: compact ? 4 : 10,
+              gap: 8,
             }}
           >
             <Pressable
@@ -313,7 +158,7 @@ export default function WelcomeScreen() {
               onPress={() => router.push("/(auth)/choose-role")}
               style={({ pressed }) => ({
                 width: "100%",
-                minHeight: compact ? 52 : 57,
+                minHeight: 58,
                 borderRadius: 18,
                 backgroundColor: pressed ? "#1D5297" : blue,
                 alignItems: "center",
@@ -321,32 +166,32 @@ export default function WelcomeScreen() {
                 flexDirection: "row",
                 gap: 10,
                 shadowColor: navy,
-                shadowOpacity: 0.16,
+                shadowOpacity: 0.14,
                 shadowRadius: 12,
                 shadowOffset: { width: 0, height: 5 },
                 elevation: 3,
               })}
             >
-              <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "900" }}>
+              <Text style={{ color: "#FFFFFF", fontSize: 17, fontWeight: "900" }}>
                 Get started
               </Text>
-              <Ionicons name="arrow-forward" size={19} color="#FFFFFF" />
+              <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
             </Pressable>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Sign in"
               onPress={() => router.push("/(auth)/login")}
               style={({ pressed }) => ({
-                minHeight: 42,
+                minHeight: 46,
                 alignItems: "center",
                 justifyContent: "center",
-                paddingHorizontal: 18,
-                paddingVertical: 7,
+                paddingHorizontal: 20,
+                paddingVertical: 8,
                 borderRadius: 14,
                 backgroundColor: pressed ? "#EAF1FC" : "transparent",
               })}
             >
-              <Text style={{ color: navy, fontSize: 14, fontWeight: "800" }}>
+              <Text style={{ color: navy, fontSize: 15, fontWeight: "800" }}>
                 Sign in
               </Text>
             </Pressable>
