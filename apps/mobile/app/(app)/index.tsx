@@ -132,9 +132,21 @@ export default function HomeScreen() {
   const firstName = user?.full_name?.trim().split(/\s+/)[0] || "there";
 
   function startCustomerRequest(category?: string) {
-    const params: { category?: string } = {};
-    if (category) params.category = category;
-    router.push({ pathname: "/(app)/request", params });
+    const serviceRoutes: Record<string, string> = {
+      shopping: "/(app)/services/shopping",
+      clothing_retail: "/(app)/services/clothing",
+      pickup_delivery: "/(app)/services/pickup",
+      documents_admin: "/(app)/services/documents",
+      queue_appointments: "/(app)/services/queues",
+      personal_errand: "/(app)/services/personal",
+      business_support: "/(app)/services/business",
+      other: "/(app)/services/other",
+    };
+    if (category && serviceRoutes[category]) {
+      router.push(serviceRoutes[category] as never);
+      return;
+    }
+    router.push("/(app)/request");
   }
 
   function openCustomerSetting(setting: "security" | "privacy" | "notifications" | "location" | "about") {
