@@ -87,7 +87,7 @@ export default function AppLayout() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.paper },
   tabBar: {
-    minHeight: 68,
+    minHeight: 70,
     flexDirection: "row",
     alignItems: "stretch",
     justifyContent: "space-around",
@@ -113,9 +113,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  activeIconWrap: { backgroundColor: colors.blueSoft },
+  activeIconWrap: { backgroundColor: "#E2F3E8" },
   tabIcon: { color: colors.muted, fontSize: 20, lineHeight: 24, fontWeight: "800" },
-  activeTabIcon: { color: colors.blue },
+  activeTabIcon: { color: colors.green },
   tabLabel: { color: colors.muted, fontSize: 10, fontWeight: "700", letterSpacing: 0.1 },
-  activeTabLabel: { color: colors.blue, fontWeight: "900" },
+  activeTabLabel: { color: colors.green, fontWeight: "900" },
 });
