@@ -45,8 +45,8 @@ export default function LoginScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#F6F7F3" }}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F6F7F3" />
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#F5F7FB" }}>
+      <StatusBar barStyle="dark-content" backgroundColor="#F5F7FB" />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -70,7 +70,7 @@ export default function LoginScreen() {
                     width: 52,
                     height: 52,
                     borderRadius: 17,
-                    backgroundColor: "#153D32",
+                    backgroundColor: "#173B67",
                     alignItems: "center",
                     justifyContent: "center",
                   }}
@@ -92,10 +92,10 @@ export default function LoginScreen() {
                   />
                 </View>
                 <View style={{ gap: 3 }}>
-                  <Text style={{ color: "#153D32", fontSize: 25, fontWeight: "900", letterSpacing: -1.1 }}>
+                  <Text style={{ color: "#173B67", fontSize: 25, fontWeight: "900", letterSpacing: -1.1 }}>
                     SaMi
                   </Text>
-                  <Text style={{ color: "#63766D", fontSize: 11, fontWeight: "800", letterSpacing: 1.15 }}>
+                  <Text style={{ color: "#69788D", fontSize: 11, fontWeight: "800", letterSpacing: 1.15 }}>
                     ERRANDS, MADE EASIER
                   </Text>
                 </View>
@@ -111,17 +111,17 @@ export default function LoginScreen() {
                     paddingHorizontal: 11,
                     paddingVertical: 7,
                     borderRadius: 30,
-                    backgroundColor: "#E7EEE7",
+                    backgroundColor: "#EAF1FC",
                   }}
                 >
-                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#27825E" }} />
-                  <Text style={{ color: "#285B45", fontSize: 10, fontWeight: "800", letterSpacing: 1 }}>
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#2463B8" }} />
+                  <Text style={{ color: "#214E8C", fontSize: 10, fontWeight: "800", letterSpacing: 1 }}>
                     YOUR DAY, A LITTLE LIGHTER
                   </Text>
                 </View>
                 <Text
                   style={{
-                    color: "#153D32",
+                    color: "#173B67",
                     fontSize: 35,
                     lineHeight: 41,
                     fontWeight: "900",
@@ -130,7 +130,7 @@ export default function LoginScreen() {
                 >
                   Good to have{"\n"}you back.
                 </Text>
-                <Text style={{ color: "#65756D", fontSize: 15, lineHeight: 23, maxWidth: 330 }}>
+                <Text style={{ color: "#69788D", fontSize: 15, lineHeight: 23, maxWidth: 330 }}>
                   Your everyday help, all in one place. Sign in to request an errand and keep everything moving.
                 </Text>
               </View>
@@ -141,7 +141,7 @@ export default function LoginScreen() {
                 backgroundColor: "#FFFFFF",
                 borderRadius: 26,
                 borderWidth: 1,
-                borderColor: "#E4E9E2",
+                borderColor: "#DCE5F2",
                 padding: 21,
                 gap: 18,
                 shadowColor: "#17392D",
@@ -152,16 +152,16 @@ export default function LoginScreen() {
               }}
             >
               <View style={{ gap: 5 }}>
-                <Text style={{ color: "#183C30", fontSize: 20, fontWeight: "850", letterSpacing: -0.45 }}>
+                <Text style={{ color: "#173B67", fontSize: 20, fontWeight: "850", letterSpacing: -0.45 }}>
                   Sign in
                 </Text>
-                <Text style={{ color: "#7A887F", fontSize: 13, lineHeight: 19 }}>
+                <Text style={{ color: "#69788D", fontSize: 13, lineHeight: 19 }}>
                   Enter your details to continue.
                 </Text>
               </View>
 
               <View style={{ gap: 8 }}>
-                <Text style={{ color: "#29463A", fontSize: 12, fontWeight: "800", letterSpacing: 0.2 }}>
+                <Text style={{ color: "#263E5E", fontSize: 12, fontWeight: "800", letterSpacing: 0.2 }}>
                   EMAIL ADDRESS
                 </Text>
                 <View
@@ -173,11 +173,11 @@ export default function LoginScreen() {
                     paddingHorizontal: 14,
                     borderRadius: 15,
                     borderWidth: 1,
-                    borderColor: "#DDE5DC",
-                    backgroundColor: "#FBFCFA",
+                    borderColor: "#DCE5F2",
+                    backgroundColor: "#FBFCFF",
                   }}
                 >
-                  <Ionicons name="mail-outline" size={19} color="#74877B" />
+                  <Ionicons name="mail-outline" size={19} color="#71839B" />
                   <TextInput
                     accessibilityLabel="Email address"
                     autoCapitalize="none"
@@ -186,16 +186,16 @@ export default function LoginScreen() {
                     returnKeyType="next"
                     textContentType="emailAddress"
                     placeholder="you@example.com"
-                    placeholderTextColor="#9AA69E"
+                    placeholderTextColor="#94A2B6"
                     value={email}
                     onChangeText={setEmail}
-                    style={{ flex: 1, color: "#183C30", fontSize: 15, paddingVertical: 13 }}
+                    style={{ flex: 1, color: "#173B67", fontSize: 15, paddingVertical: 13 }}
                   />
                 </View>
               </View>
 
               <View style={{ gap: 8 }}>
-                <Text style={{ color: "#29463A", fontSize: 12, fontWeight: "800", letterSpacing: 0.2 }}>
+                <Text style={{ color: "#263E5E", fontSize: 12, fontWeight: "800", letterSpacing: 0.2 }}>
                   PASSWORD
                 </Text>
                 <View
@@ -208,11 +208,11 @@ export default function LoginScreen() {
                     paddingRight: 8,
                     borderRadius: 15,
                     borderWidth: 1,
-                    borderColor: "#DDE5DC",
-                    backgroundColor: "#FBFCFA",
+                    borderColor: "#DCE5F2",
+                    backgroundColor: "#FBFCFF",
                   }}
                 >
-                  <Ionicons name="lock-closed-outline" size={19} color="#74877B" />
+                  <Ionicons name="lock-closed-outline" size={19} color="#71839B" />
                   <TextInput
                     accessibilityLabel="Password"
                     autoCapitalize="none"
@@ -222,10 +222,10 @@ export default function LoginScreen() {
                     secureTextEntry={!showPassword}
                     textContentType="password"
                     placeholder="Enter your password"
-                    placeholderTextColor="#9AA69E"
+                    placeholderTextColor="#94A2B6"
                     value={password}
                     onChangeText={setPassword}
-                    style={{ flex: 1, color: "#183C30", fontSize: 15, paddingVertical: 13 }}
+                    style={{ flex: 1, color: "#173B67", fontSize: 15, paddingVertical: 13 }}
                   />
                   <Pressable
                     accessibilityRole="button"
@@ -234,7 +234,7 @@ export default function LoginScreen() {
                     onPress={() => setShowPassword((value) => !value)}
                     style={{ width: 36, height: 40, alignItems: "center", justifyContent: "center" }}
                   >
-                    <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={19} color="#74877B" />
+                    <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={19} color="#71839B" />
                   </Pressable>
                 </View>
               </View>
@@ -263,13 +263,13 @@ export default function LoginScreen() {
                 style={({ pressed }) => ({
                   minHeight: 56,
                   borderRadius: 16,
-                  backgroundColor: pressed ? "#1B5B45" : "#176B4D",
+                  backgroundColor: pressed ? "#1D5297" : "#2463B8",
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "center",
                   gap: 9,
                   opacity: busy ? 0.75 : 1,
-                  shadowColor: "#176B4D",
+                  shadowColor: "#2463B8",
                   shadowOpacity: 0.17,
                   shadowRadius: 10,
                   shadowOffset: { width: 0, height: 5 },
@@ -288,7 +288,7 @@ export default function LoginScreen() {
 
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, flexWrap: "wrap" }}>
                 <Text style={{ color: "#748278", fontSize: 13 }}>New to SaMi?</Text>
-                <Link href="/(auth)/register" style={{ color: "#176B4D", fontSize: 13, fontWeight: "800" }}>
+                <Link href="/(auth)/register" style={{ color: "#2463B8", fontSize: 13, fontWeight: "800" }}>
                   Create an account
                 </Link>
               </View>
@@ -296,12 +296,12 @@ export default function LoginScreen() {
 
             <View style={{ alignItems: "center", gap: 8 }}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                <Ionicons name="shield-checkmark-outline" size={15} color="#718277" />
-                <Text style={{ color: "#718277", fontSize: 11, fontWeight: "700" }}>
+                <Ionicons name="shield-checkmark-outline" size={15} color="#71839B" />
+                <Text style={{ color: "#71839B", fontSize: 11, fontWeight: "700" }}>
                   Your account stays protected
                 </Text>
               </View>
-              <Text style={{ color: "#8A968D", fontSize: 11, textAlign: "center", lineHeight: 17 }}>
+              <Text style={{ color: "#8794A8", fontSize: 11, textAlign: "center", lineHeight: 17 }}>
                 Your Everyday Help Organised.
               </Text>
             </View>
