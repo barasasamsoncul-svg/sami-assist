@@ -161,7 +161,7 @@ export default function HomeScreen() {
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <View style={{ flexDirection: "row", alignItems: "baseline", gap: 5 }}>
               <Text style={{ color: colors.navy, fontSize: 28, fontWeight: "900", fontStyle: "italic", letterSpacing: -1.1 }}>SaMi</Text>
-              <Text style={{ color: colors.green, fontSize: 14, fontWeight: "800", letterSpacing: 0.4 }}>Tuko Pamoja</Text>
+              <Text style={{ color: colors.green, fontSize: 10, fontWeight: "800", letterSpacing: 0.25 }}>Your Everyday Help Organised</Text>
             </View>
             <View style={{ flexDirection: "row", gap: 8 }}>
               <HeaderButton icon="bell" label="Notifications" badgeCount={unreadNotifications} onPress={() => router.push("/(app)/notifications")} />
