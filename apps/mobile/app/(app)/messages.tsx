@@ -45,18 +45,18 @@ export default function MessagesScreen() {
 
   return (
     <SafeAreaView style={common.screen}>
-      <ScrollView contentContainerStyle={common.content} refreshControl={<RefreshControl refreshing={busy} onRefresh={load} tintColor={colors.green} />}>
+      <ScrollView contentContainerStyle={common.content} refreshControl={<RefreshControl refreshing={busy} onRefresh={load} tintColor={colors.blue} />}>
         <View style={{ gap: 5 }}>
           <Text style={common.eyebrow}>STAY IN THE LOOP</Text>
           <Text style={common.title}>Messages</Text>
           <Text style={common.subtitle}>Keep every errand conversation connected to its request. Open an errand to message or call the other person.</Text>
         </View>
         {error ? <Text accessibilityRole="alert" style={common.error}>{error}</Text> : null}
-        {busy && items.length === 0 ? <ActivityIndicator color={colors.green} size="large" /> : null}
+        {busy && items.length === 0 ? <ActivityIndicator color={colors.blue} size="large" /> : null}
         {!busy && !error && items.length === 0 ? (
           <View style={[common.card, { alignItems: "center", padding: 24, gap: 10 }]}>
-            <View style={{ width: 58, height: 58, borderRadius: 20, backgroundColor: "#E2F3E8", alignItems: "center", justifyContent: "center" }}>
-              <Ionicons name="chatbubbles-outline" size={28} color={colors.green} />
+            <View style={{ width: 58, height: 58, borderRadius: 20, backgroundColor: "#EAF1FC", alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name="chatbubbles-outline" size={28} color={colors.blue} />
             </View>
             <Text style={{ color: colors.navy, fontSize: 18, fontWeight: "900" }}>Your conversations will appear here</Text>
             <Text style={{ color: colors.muted, textAlign: "center", lineHeight: 20 }}>Once an errand has an assigned worker, you can message and call them from its details.</Text>
@@ -69,8 +69,8 @@ export default function MessagesScreen() {
           const otherPerson = user?.role === "provider" ? item.customer_name || "Customer" : item.provider_name || "Your errand worker";
           return (
             <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={"Open conversation for " + item.title} onPress={() => router.push({ pathname: "/(app)/errand/[id]", params: { id: item.id } })} style={[common.card, { flexDirection: "row", alignItems: "center", gap: 12 }]}>
-              <View style={{ width: 48, height: 48, borderRadius: 17, backgroundColor: "#E2F3E8", alignItems: "center", justifyContent: "center" }}>
-                <Ionicons name="chatbubble-ellipses-outline" size={23} color={colors.green} />
+              <View style={{ width: 48, height: 48, borderRadius: 17, backgroundColor: "#EAF1FC", alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="chatbubble-ellipses-outline" size={23} color={colors.blue} />
               </View>
               <View style={{ flex: 1, gap: 4 }}>
                 <Text style={{ color: colors.navy, fontSize: 15, fontWeight: "900" }}>{otherPerson}</Text>
