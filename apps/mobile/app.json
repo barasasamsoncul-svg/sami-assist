@@ -9,6 +9,12 @@
     "plugins": [
       "expo-router",
       [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#071A33"
+        }
+      ],
+      [
         "expo-location",
         {
           "locationWhenInUsePermission": "SaMi uses your location to set errand pickup points and share a provider's live position during an active assignment."
@@ -34,7 +40,8 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "SaMi uses your location to set pickup points and share provider location during active errands.",
         "NSMicrophoneUsageDescription": "SaMi uses your microphone only while you are on an in-app voice call with the assigned participant for an errand."
-      }
+      },
+      "backgroundColor": "#071A33"
     },
     "android": {
       "package": "com.sami.errands",
@@ -47,7 +54,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0A1A40"
-      }
+      },
+      "backgroundColor": "#071A33"
     },
     "experiments": {
       "typedRoutes": true
@@ -60,6 +68,10 @@
       "eas": {
         "projectId": "c09e119e-8a6b-4a1e-a7c6-b85cfd4e330d"
       }
+    },
+    "backgroundColor": "#071A33",
+    "web": {
+      "backgroundColor": "#071A33"
     }
   }
 }

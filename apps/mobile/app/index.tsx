@@ -6,6 +6,7 @@ import {
   Text,
   View,
   useWindowDimensions,
+  StatusBar,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -18,9 +19,12 @@ type BootstrapStatus = {
 };
 
 const SESSION_KEY = "sami_errands_access_token";
-const blue = "#2463B8";
-const navy = "#173B67";
-const paper = "#F8FAFD";
+const blue = "#428DFF";
+const navy = "#071A33";
+const background = navy;
+const lightText = "#F7FAFF";
+const sky = "#72D5FF";
+const gold = "#FFC779";
 
 export default function WelcomeScreen() {
   const { width, height } = useWindowDimensions();
@@ -84,12 +88,17 @@ export default function WelcomeScreen() {
   }, []);
 
   if (!showWelcome) {
-    // Only returning sessions wait here for local token and session verification.
-    return <View style={{ flex: 1, backgroundColor: paper }} />;
+    // Keep the first React frame on the same navy as the native splash and welcome page.
+    return (
+      <View style={{ flex: 1, backgroundColor: background }}>
+        <StatusBar barStyle="light-content" backgroundColor={background} />
+      </View>
+    );
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: paper }}>
+    <View style={{ flex: 1, backgroundColor: background }}>
+      <StatusBar barStyle="light-content" backgroundColor={background} />
       <View
         style={{
           alignItems: "center",
@@ -109,7 +118,7 @@ export default function WelcomeScreen() {
             includeFontPadding: false,
           }}
         >
-          <Text style={{ color: navy }}>Sa</Text><Text style={{ color: blue }}>Mi</Text>
+          <Text style={{ color: lightText }}>Sa</Text><Text style={{ color: sky }}>Mi</Text>
         </Text>
         <Text
           numberOfLines={1}
@@ -118,7 +127,7 @@ export default function WelcomeScreen() {
             alignSelf: "stretch",
             marginTop: compact ? 0 : 2,
             paddingLeft: Math.round(width * 0.49),
-            color: "#D97732",
+            color: gold,
             fontSize: compact ? 17 : 20,
             lineHeight: compact ? 23 : 27,
             fontWeight: "900",
@@ -176,7 +185,7 @@ export default function WelcomeScreen() {
             width: "100%",
             minHeight: 62,
             borderRadius: 18,
-            backgroundColor: pressed ? "#1D5297" : blue,
+            backgroundColor: pressed ? "#2868CD" : blue,
             alignItems: "center",
             justifyContent: "center",
             flexDirection: "row",
@@ -204,10 +213,12 @@ export default function WelcomeScreen() {
             paddingHorizontal: 22,
             paddingVertical: 6,
             borderRadius: 14,
-            backgroundColor: pressed ? "#EAF1FC" : "transparent",
+            backgroundColor: pressed ? "rgba(255,255,255,0.12)" : "transparent",
+            borderColor: "rgba(180,205,238,0.50)",
+            borderWidth: 1,
           })}
         >
-          <Text style={{ color: navy, fontSize: 17, fontWeight: "800" }}>
+          <Text style={{ color: lightText, fontSize: 17, fontWeight: "800" }}>
             Sign in
           </Text>
         </Pressable>
