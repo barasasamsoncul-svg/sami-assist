@@ -13,13 +13,21 @@ type Metrics = { total?: number; active?: number; completed?: number; disputes?:
 type ProviderProfile = { approval_status: "pending" | "approved" | "rejected" | "suspended"; rejection_reason?: string | null; available: boolean; service_area?: string | null; completed_jobs?: number; rating_average?: number | string | null; rating_count?: number };
 
 const customerServices = [
-  { id: "shopping", category: "shopping", icon: "cart-outline", title: "Shopping & essentials", caption: "Buy items and groceries" },
+  { id: "shopping", category: "shopping", icon: "cart-outline", title: "Shopping & essentials", caption: "Buy items and everyday essentials" },
+  { id: "groceries", category: "groceries", icon: "basket-outline", title: "Groceries", caption: "Market and supermarket shopping" },
+  { id: "food", category: "food_delivery", icon: "fast-food-outline", title: "Food delivery", caption: "Collect restaurant and food orders" },
   { id: "pickup", category: "pickup_delivery", icon: "cube-outline", title: "Pick-up & drop-off", caption: "Send or collect items" },
+  { id: "bills", category: "bill_payments", icon: "receipt-outline", title: "Bills & payments", caption: "Get help with legitimate bill errands" },
+  { id: "laundry", category: "laundry_cleaning", icon: "shirt-outline", title: "Laundry & dry cleaning", caption: "Arrange collection and return" },
   { id: "documents", category: "documents_admin", icon: "document-text-outline", title: "Documents & admin", caption: "Forms and office runs" },
+  { id: "clothing", category: "clothing_retail", icon: "shirt-outline", title: "Clothing & returns", caption: "Purchases, exchanges and returns" },
+  { id: "gifts", category: "shopping_gifts", icon: "gift-outline", title: "Shopping & gifts", caption: "Find, collect or deliver gifts" },
+  { id: "home", category: "home_services", icon: "home-outline", title: "Home services", caption: "Household tasks and supplies" },
+  { id: "pharmacy", category: "pharmacy_health", icon: "medkit-outline", title: "Pharmacy & health errands", caption: "Permitted pharmacy collections" },
+  { id: "petcare", category: "pet_care", icon: "paw-outline", title: "Pet care", caption: "Pet supplies and suitable errands" },
   { id: "queues", category: "queue_appointments", icon: "time-outline", title: "Queues & appointments", caption: "Waiting and bookings" },
   { id: "personal", category: "personal_errand", icon: "sparkles-outline", title: "Personal assistance", caption: "Everyday tasks, handled" },
   { id: "business", category: "business_support", icon: "briefcase-outline", title: "Business errands", caption: "Keep work moving" },
-  { id: "clothing", category: "clothing_retail", icon: "shirt-outline", title: "Clothing & returns", caption: "Purchases, exchanges, returns" },
   { id: "other", category: "other", icon: "add-outline", title: "Custom errand", caption: "Tell us what you need" },
 ] as const;
 
@@ -134,9 +142,17 @@ export default function HomeScreen() {
   function startCustomerRequest(category?: string) {
     const serviceRoutes: Record<string, string> = {
       shopping: "/(app)/services/shopping",
-      clothing_retail: "/(app)/services/clothing",
+      groceries: "/(app)/services/groceries",
+      food_delivery: "/(app)/services/food",
       pickup_delivery: "/(app)/services/pickup",
+      bill_payments: "/(app)/services/bills",
+      laundry_cleaning: "/(app)/services/laundry",
       documents_admin: "/(app)/services/documents",
+      clothing_retail: "/(app)/services/clothing",
+      shopping_gifts: "/(app)/services/gifts",
+      home_services: "/(app)/services/home",
+      pharmacy_health: "/(app)/services/pharmacy",
+      pet_care: "/(app)/services/petcare",
       queue_appointments: "/(app)/services/queues",
       personal_errand: "/(app)/services/personal",
       business_support: "/(app)/services/business",
