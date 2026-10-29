@@ -90,7 +90,7 @@ export default function AppLayout() {
             return (
               <Pressable key={tab.path} accessibilityRole="tab" accessibilityLabel={tab.label} accessibilityState={{ selected }} onPress={() => { if (!selected) router.replace(tab.href); }} style={styles.tabButton}>
                 <View style={[styles.iconWrap, selected && styles.activeIconWrap]}>
-                  <Text style={[styles.tabIcon, selected && styles.activeTabIcon]}>{tab.icon}</Text>
+                  <Ionicons name={(selected ? tab.activeIcon || tab.icon : tab.icon) as IoniconName} size={22} color={selected ? colors.blue : colors.muted} />
                 </View>
                 <Text numberOfLines={1} style={[styles.tabLabel, selected && styles.activeTabLabel]}>{tab.label}</Text>
               </Pressable>
