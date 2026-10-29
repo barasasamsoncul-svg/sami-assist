@@ -13,7 +13,7 @@ type Errand = {
 };
 
 const readableStatus = (status: string) => status.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-const statusColor = (status: string) => status === "completed" ? colors.green : status === "disputed" ? colors.red : colors.blue;
+const statusColor = (status: string) => status === "completed" ? colors.blue : status === "disputed" ? colors.red : colors.blue;
 
 export default function ErrandsScreen() {
   const [user, setUser] = useState<User | null>(null);
@@ -57,7 +57,7 @@ export default function ErrandsScreen() {
             <Text style={common.title}>My errands</Text>
           </View>
         </View>
-        {notice ? <Text style={{ color: colors.green, backgroundColor: "#E5F6EE", borderRadius: 12, padding: 12 }}>{notice}</Text> : null}
+        {notice ? <Text style={{ color: colors.blue, backgroundColor: "#EAF1FC", borderRadius: 12, padding: 12 }}>{notice}</Text> : null}
         {error ? <Text accessibilityRole="alert" style={common.error}>{error}</Text> : null}
         {busy && items.length === 0 ? <ActivityIndicator color={colors.blue} /> : null}
         {!busy && items.length === 0 && !error ? (
@@ -78,7 +78,7 @@ export default function ErrandsScreen() {
                   <Text style={{ color: colors.navy, fontSize: 17, lineHeight: 22, fontWeight: "800" }}>{item.title}</Text>
                   <Text style={{ color: colors.muted, fontSize: 13 }}>{item.category.replaceAll("_", " ")}</Text>
                 </View>
-                <View style={[common.pill, { backgroundColor: item.status === "completed" ? "#E5F6EE" : item.status === "disputed" ? "#FDECEC" : colors.blueSoft }]}>
+                <View style={[common.pill, { backgroundColor: item.status === "completed" ? "#EAF1FC" : item.status === "disputed" ? "#FDECEC" : colors.blueSoft }]}>
                   <Text style={{ fontSize: 11, fontWeight: "800", color: statusColor(item.status) }}>{readableStatus(item.status)}</Text>
                 </View>
               </View>
