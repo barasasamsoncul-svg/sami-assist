@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ComponentProps } from "react";
+import { Ionicons } from "@expo/vector-icons";
 import { ActivityIndicator, Pressable, RefreshControl, SafeAreaView, ScrollView, Text, View } from "react-native";
 import { router } from "expo-router";
 import { dispatchGet, dispatchPost } from "@/api";
 import { colors, common } from "@/theme";
 
 type User = { id: string; role: "customer" | "provider" | "admin" };
+type IoniconName = ComponentProps<typeof Ionicons>["name"];
 type Errand = {
   id: string; public_code: string; title: string; category: string; description?: string;
   status: string; customer_name?: string; provider_name?: string | null; provider_id?: string | null;
@@ -58,11 +60,11 @@ export default function ErrandsScreen() {
       <ScrollView contentContainerStyle={common.content} refreshControl={<RefreshControl refreshing={busy} onRefresh={load} tintColor={colors.blue} />}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
           <Pressable onPress={() => router.back()} style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: colors.white, alignItems: "center", justifyContent: "center", borderColor: colors.border, borderWidth: 1 }}>
-            <Text style={{ color: colors.navy, fontSize: 23 }}>‹</Text>
+            <Ionicons name="chevron-back" size={21} color={colors.navy} />
           </Pressable>
           <View style={{ flex: 1, gap: 4 }}>
-            <Text style={common.eyebrow}>SaMi workspace</Text>
-            <Text style={common.title}>My errands</Text>
+            <Text style={common.eyebrow}>{user?.role === "customer" ? "YOUR SAMI ACTIVITY" : user?.role === "provider" ? "PROVIDER WORKSPACE" : "SAMI OPERATIONS"}</Text>
+            <Text style={common.title}>{user?.role === "customer" ? "Your errands" : user?.role === "provider" ? "Available & assigned errands" : "Errand queue"}</Text>
           </View>
         </View>
         {notice ? <Text style={{ color: colors.blue, backgroundColor: "#EAF1FC", borderRadius: 12, padding: 12 }}>{notice}</Text> : null}
@@ -89,9 +91,9 @@ export default function ErrandsScreen() {
         {busy && items.length === 0 ? <ActivityIndicator color={colors.blue} /> : null}
         {!busy && visibleItems.length === 0 && !error ? (
           <View style={[common.card, { alignItems: "center", paddingVertical: 30 }]}>
-            <Text style={{ fontSize: 32 }}>✦</Text>
+            <Ionicons name={items.length === 0 ? "receipt-outline" : "filter-outline"} size={34} color={colors.blue} />
             <Text style={{ color: colors.navy, fontSize: 18, fontWeight: "800" }}>{items.length === 0 ? "No errands yet" : "Nothing in this view"}</Text>
-            <Text style={{ color: colors.muted, textAlign: "center", lineHeight: 20 }}>{items.length === 0 ? "Your requests or available assignments will appear here." : "Try another filter to find the errand you are looking for."}</Text>
+            <Text style={{ color: colors.muted, textAlign: "center", lineHeight: 20 }}>{items.length === 0 ? (user?.role === "customer" ? "When you create an errand, you can follow its status and updates here." : "Available requests and assignments will appear here.") : "Try another filter to find the errand you are looking for."}</Text>
             {user?.role === "customer" ? <Pressable onPress={() => router.push("/(app)/request")} style={common.primaryButton}><Text style={common.primaryButtonText}>Request an errand</Text></Pressable> : null}
           </View>
         ) : null}
@@ -127,7 +129,7 @@ export default function ErrandsScreen() {
             </View>
           );
         })}
-        <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>Provider GPS updates are sent only for an assigned errand in accepted or in-progress status while this screen is active.</Text>
+        {user?.role === "provider" ? <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>Location updates are shared only for an assigned errand while it is accepted or in progress and this screen is active.</Text> : null}
       </ScrollView>
     </SafeAreaView>
   );
