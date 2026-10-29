@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useState, type ComponentProps } from "react";
-import { ActivityIndicator, Alert, Linking, Modal, Platform, Pressable, RefreshControl, SafeAreaView, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Modal, Platform, Pressable, RefreshControl, SafeAreaView, ScrollView, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import * as Location from "expo-location";
-import MapPicker, { type MapPoint } from "@/components/MapPicker";
 import { dispatchGet, dispatchPost } from "@/api";
 import { colors, common } from "@/theme";
 import SaMiLogoMark from "@/components/SaMiLogoMark";
@@ -15,14 +13,14 @@ type Metrics = { total?: number; active?: number; completed?: number; disputes?:
 type ProviderProfile = { approval_status: "pending" | "approved" | "rejected" | "suspended"; rejection_reason?: string | null; available: boolean; service_area?: string | null; completed_jobs?: number; rating_average?: number | string | null; rating_count?: number };
 
 const customerServices = [
-  { id: "shopping", category: "shopping", icon: "bag-handle-outline", title: "Shopping", caption: "Buy or collect items" },
-  { id: "pickup", category: "pickup_delivery", icon: "cube-outline", title: "Pick-up & drop-off", caption: "Move something safely" },
-  { id: "documents", category: "documents_admin", icon: "document-text-outline", title: "Documents", caption: "Forms and office runs" },
-  { id: "queues", category: "queue_appointments", icon: "time-outline", title: "Queues & bookings", caption: "Appointments and waiting" },
-  { id: "personal", category: "personal_errand", icon: "sparkles-outline", title: "Personal errands", caption: "Everyday tasks" },
-  { id: "business", category: "business_support", icon: "briefcase-outline", title: "Business errands", caption: "Help your workday" },
-  { id: "clothing", category: "clothing_retail", icon: "shirt-outline", title: "Clothing", caption: "Purchases and returns" },
-  { id: "other", category: "other", icon: "add-outline", title: "Something else", caption: "Tell us what you need" },
+  { id: "shopping", category: "shopping", icon: "cart-outline", title: "Shopping & essentials", caption: "Buy items and groceries" },
+  { id: "pickup", category: "pickup_delivery", icon: "cube-outline", title: "Pick-up & drop-off", caption: "Send or collect items" },
+  { id: "documents", category: "documents_admin", icon: "document-text-outline", title: "Documents & admin", caption: "Forms and office runs" },
+  { id: "queues", category: "queue_appointments", icon: "time-outline", title: "Queues & appointments", caption: "Waiting and bookings" },
+  { id: "personal", category: "personal_errand", icon: "sparkles-outline", title: "Personal assistance", caption: "Everyday tasks, handled" },
+  { id: "business", category: "business_support", icon: "briefcase-outline", title: "Business errands", caption: "Keep work moving" },
+  { id: "clothing", category: "clothing_retail", icon: "shirt-outline", title: "Clothing & returns", caption: "Purchases, exchanges, returns" },
+  { id: "other", category: "other", icon: "add-outline", title: "Custom errand", caption: "Tell us what you need" },
 ] as const;
 
 function HeaderButton({ icon, label, onPress, badgeCount = 0 }: {
@@ -84,8 +82,7 @@ export default function HomeScreen() {
   const [availabilityBusy, setAvailabilityBusy] = useState(false);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
-  const [homePickup, setHomePickup] = useState<MapPoint | null>(null);
-  const [locationBusy, setLocationBusy] = useState(false);
+  const [serviceSearch, setServiceSearch] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
 
@@ -132,30 +129,11 @@ export default function HomeScreen() {
   }
 
 
-  const firstName = user?.full_name.trim().split(/\s+/)[0] || "there";
-
-  async function useHomeLocation() {
-    setLocationBusy(true);
-    setError("");
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (!permission.granted) throw new Error("Allow SaMi to access your location, or tap the map to set a pickup point.");
-      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      setHomePickup({ lat: position.coords.latitude, lng: position.coords.longitude });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Your location could not be found.");
-    } finally {
-      setLocationBusy(false);
-    }
-  }
+  const firstName = user?.full_name?.trim().split(/\s+/)[0] || "there";
 
   function startCustomerRequest(category?: string) {
-    const params: { category?: string; pickupLat?: string; pickupLng?: string } = {};
+    const params: { category?: string } = {};
     if (category) params.category = category;
-    if (homePickup) {
-      params.pickupLat = String(homePickup.lat);
-      params.pickupLng = String(homePickup.lng);
-    }
     router.push({ pathname: "/(app)/request", params });
   }
 
@@ -182,8 +160,8 @@ export default function HomeScreen() {
         {user?.role === "customer" ? (
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <View style={{ flexDirection: "row", alignItems: "baseline", gap: 5 }}>
-              <Text style={{ color: colors.navy, fontFamily: "serif", fontSize: 27, fontWeight: "900", fontStyle: "italic", letterSpacing: -1.25 }}>SaMi</Text>
-              <Text style={{ color: colors.blue, fontFamily: "serif", fontSize: 20, fontWeight: "800", fontStyle: "italic", letterSpacing: -0.7 }}>errands</Text>
+              <Text style={{ color: colors.navy, fontSize: 28, fontWeight: "900", fontStyle: "italic", letterSpacing: -1.1 }}>SaMi</Text>
+              <Text style={{ color: colors.green, fontSize: 14, fontWeight: "800", letterSpacing: 0.4 }}>Tuko Pamoja</Text>
             </View>
             <View style={{ flexDirection: "row", gap: 8 }}>
               <HeaderButton icon="bell" label="Notifications" badgeCount={unreadNotifications} onPress={() => router.push("/(app)/notifications")} />
@@ -211,47 +189,32 @@ export default function HomeScreen() {
 
         {user?.role === "customer" ? (
           <>
-            <View style={{ gap: 12 }}>
+            <View style={{ gap: 14 }}>
               <View style={{ gap: 5 }}>
-                <Text style={common.eyebrow}>PICKUP AREA</Text>
-                <Text style={{ color: colors.navy, fontSize: 25, lineHeight: 31, fontWeight: "900", letterSpacing: -0.7 }}>Where should we start?</Text>
-                <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19 }}>Set the starting point for your errand. You can confirm the pickup and destination before sending a request.</Text>
+                <Text style={common.eyebrow}>TUKO PAMOJA</Text>
+                <Text style={{ color: colors.navy, fontSize: 29, lineHeight: 35, fontWeight: "900", letterSpacing: -0.8 }}>Big or small, we run your errands.</Text>
+                <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20 }}>Your day, made easier. Tell us what you need and we’ll help get it done.</Text>
               </View>
-              <MapPicker
-                selecting="pickup"
-                pickup={homePickup}
-                destination={null}
-                route={[]}
-                height={208}
-                onPoint={(_, point) => setHomePickup(point)}
-              />
-              <View style={{ flexDirection: "row", gap: 9 }}>
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={locationBusy}
-                  onPress={useHomeLocation}
-                  style={[common.secondaryButton, { flex: 1, minHeight: 46, flexDirection: "row", gap: 8, opacity: locationBusy ? 0.65 : 1 }]}
-                >
-                  {locationBusy ? <ActivityIndicator size="small" color={colors.blue} /> : <Text style={{ color: colors.blue, fontSize: 17, fontWeight: "900" }}>⌖</Text>}
-                  {!locationBusy ? <Text style={common.secondaryButtonText}>Use my location</Text> : null}
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => startCustomerRequest()}
-                  style={[common.primaryButton, { flex: 1, minHeight: 46, flexDirection: "row", gap: 7 }]}
-                >
-                  <Text style={common.primaryButtonText}>Plan an errand  ›</Text>
-                </Pressable>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, minHeight: 52, paddingHorizontal: 14, borderRadius: 16, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border }}>
+                <Ionicons name="search-outline" size={21} color={colors.muted} />
+                <TextInput value={serviceSearch} onChangeText={setServiceSearch} placeholder="What can we do for you today?" placeholderTextColor={colors.muted} returnKeyType="search" style={{ flex: 1, minHeight: 50, color: colors.navy, fontSize: 14 }} accessibilityLabel="Search SaMi errand services" />
+                {serviceSearch ? <Pressable accessibilityRole="button" accessibilityLabel="Clear service search" onPress={() => setServiceSearch("")}><Ionicons name="close-circle" size={19} color={colors.muted} /></Pressable> : null}
               </View>
+              <Pressable accessibilityRole="button" onPress={() => startCustomerRequest()} style={{ backgroundColor: "#E2F3E8", borderRadius: 22, padding: 18, gap: 10, overflow: "hidden" }}>
+                <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: colors.green, alignItems: "center", justifyContent: "center" }}><Ionicons name="navigate-outline" size={23} color={colors.white} /></View>
+                <Text style={{ color: colors.navy, fontSize: 19, lineHeight: 25, fontWeight: "900" }}>Your errands. Your time.</Text>
+                <Text style={{ color: colors.ink, fontSize: 13, lineHeight: 19 }}>Request a helping hand for shopping, collections, personal tasks and more.</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginTop: 2 }}><Text style={{ color: colors.green, fontSize: 14, fontWeight: "900" }}>Create an errand</Text><Ionicons name="arrow-forward" size={17} color={colors.green} /></View>
+              </Pressable>
             </View>
 
             <View style={{ gap: 13 }}>
               <View style={{ gap: 4 }}>
-                <Text style={{ color: colors.navy, fontSize: 20, fontWeight: "900", letterSpacing: -0.35 }}>What can we help with?</Text>
+                <Text style={{ color: colors.navy, fontSize: 20, fontWeight: "900", letterSpacing: -0.35 }}>Explore our services</Text>
                 <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19 }}>Choose a service to start a request with the right details.</Text>
               </View>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                {customerServices.map((service) => (
+                {customerServices.filter((service) => (service.title + " " + service.caption).toLowerCase().includes(serviceSearch.trim().toLowerCase())).map((service) => (
                   <Pressable
                     key={service.id}
                     accessibilityRole="button"
