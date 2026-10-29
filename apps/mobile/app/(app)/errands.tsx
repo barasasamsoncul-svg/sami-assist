@@ -22,6 +22,7 @@ export default function ErrandsScreen() {
   const [workingId, setWorkingId] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [filter, setFilter] = useState<"all" | "active" | "completed" | "cancelled">("all");
 
   const load = useCallback(async () => {
     setError(""); setNotice("");
@@ -35,6 +36,13 @@ export default function ErrandsScreen() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const visibleItems = items.filter((item) => {
+    if (filter === "completed") return item.status === "completed";
+    if (filter === "cancelled") return item.status === "cancelled";
+    if (filter === "active") return !["completed", "cancelled"].includes(item.status);
+    return true;
+  });
 
   async function accept(item: Errand) {
     setWorkingId(item.id); setError(""); setNotice("");
@@ -59,16 +67,35 @@ export default function ErrandsScreen() {
         </View>
         {notice ? <Text style={{ color: colors.blue, backgroundColor: "#EAF1FC", borderRadius: 12, padding: 12 }}>{notice}</Text> : null}
         {error ? <Text accessibilityRole="alert" style={common.error}>{error}</Text> : null}
+        <View style={{ gap: 10 }}>
+          <Text style={{ color: colors.navy, fontSize: 21, fontWeight: "900", letterSpacing: -0.4 }}>Your activity</Text>
+          <View accessibilityRole="tablist" style={{ flexDirection: "row", gap: 7, padding: 4, borderRadius: 15, backgroundColor: "#EEF2F8" }}>
+            {([
+              ["all", "All"],
+              ["active", "Active"],
+              ["completed", "Completed"],
+              ["cancelled", "Cancelled"],
+            ] as const).map(([value, label]) => {
+              const selected = filter === value;
+              return (
+                <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => setFilter(value)} style={{ flex: 1, minHeight: 38, paddingHorizontal: 5, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: selected ? colors.white : "transparent", borderWidth: selected ? 1 : 0, borderColor: selected ? colors.border : "transparent" }}>
+                  <Text numberOfLines={1} style={{ color: selected ? colors.navy : colors.muted, fontSize: 11, fontWeight: selected ? "900" : "700" }}>{label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={{ color: colors.muted, fontSize: 12 }}>{visibleItems.length} {visibleItems.length === 1 ? "errand" : "errands"}</Text>
+        </View>
         {busy && items.length === 0 ? <ActivityIndicator color={colors.blue} /> : null}
-        {!busy && items.length === 0 && !error ? (
+        {!busy && visibleItems.length === 0 && !error ? (
           <View style={[common.card, { alignItems: "center", paddingVertical: 30 }]}>
             <Text style={{ fontSize: 32 }}>✦</Text>
-            <Text style={{ color: colors.navy, fontSize: 18, fontWeight: "800" }}>No errands yet</Text>
-            <Text style={{ color: colors.muted, textAlign: "center", lineHeight: 20 }}>Your requests or available assignments will appear here.</Text>
+            <Text style={{ color: colors.navy, fontSize: 18, fontWeight: "800" }}>{items.length === 0 ? "No errands yet" : "Nothing in this view"}</Text>
+            <Text style={{ color: colors.muted, textAlign: "center", lineHeight: 20 }}>{items.length === 0 ? "Your requests or available assignments will appear here." : "Try another filter to find the errand you are looking for."}</Text>
             {user?.role === "customer" ? <Pressable onPress={() => router.push("/(app)/request")} style={common.primaryButton}><Text style={common.primaryButtonText}>Request an errand</Text></Pressable> : null}
           </View>
         ) : null}
-        {items.map((item) => {
+        {visibleItems.map((item) => {
           const openForProvider = user?.role === "provider" && !item.provider_id && item.status === "requested";
           return (
             <View key={item.id} style={common.card}>

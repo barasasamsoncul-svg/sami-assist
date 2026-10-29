@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import MapPicker, { type MapPoint } from "@/components/MapPicker";
 import { apiRequest, dispatchGet, dispatchPost, locationGet } from "@/api";
@@ -298,8 +299,22 @@ export default function RequestScreen() {
                 <Text style={common.eyebrow}>CREATE AN ERRAND</Text>
                 <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "800" }}>STEP {step + 1} OF 3</Text>
               </View>
-              <View style={{ flexDirection: "row", gap: 7 }}>
-                {[0, 1, 2].map((item) => <View key={item} style={{ flex: 1, height: 5, borderRadius: 4, backgroundColor: item <= step ? colors.blue : colors.border }} />)}
+              <View accessibilityRole="progressbar" accessibilityValue={{ min: 1, max: 3, now: step + 1 }} style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", paddingTop: 2 }}>
+                {(["Details", "Locations", "Review"] as const).map((label, item) => {
+                  const complete = item < step;
+                  const current = item === step;
+                  return (
+                    <View key={label} style={{ flex: 1, alignItems: item === 0 ? "flex-start" : item === 2 ? "flex-end" : "center", gap: 6 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", width: "100%", justifyContent: item === 0 ? "flex-start" : item === 2 ? "flex-end" : "center" }}>
+                        {item > 0 ? <View style={{ position: "absolute", right: "50%", left: "-50%", top: 15, height: 3, backgroundColor: complete || current ? colors.blue : colors.border }} /> : null}
+                        <View style={{ width: 31, height: 31, borderRadius: 16, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: item <= step ? colors.blue : colors.border, backgroundColor: complete ? colors.blue : current ? colors.blueSoft : colors.white }}>
+                          {complete ? <Ionicons name="checkmark" size={16} color={colors.white} /> : <Text style={{ color: current ? colors.blue : colors.muted, fontSize: 12, fontWeight: "900" }}>{item + 1}</Text>}
+                        </View>
+                      </View>
+                      <Text style={{ color: current ? colors.blue : item < step ? colors.navy : colors.muted, fontSize: 11, fontWeight: current ? "900" : "700" }}>{label}</Text>
+                    </View>
+                  );
+                })}
               </View>
               <Text style={{ color: colors.navy, fontSize: 19, fontWeight: "900" }}>{["Tell us what you need", "Choose the locations", "Review and confirm"][step]}</Text>
               <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19 }}>{["Describe the task and choose the closest service category.", "Set pickup and drop-off details so SaMi can estimate the travel distance.", "Review the service fee, handling details and payment method before posting."][step]}</Text>

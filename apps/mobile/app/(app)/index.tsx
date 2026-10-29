@@ -258,11 +258,11 @@ export default function HomeScreen() {
                     onPress={() => startCustomerRequest(service.category)}
                     style={({ pressed }) => ({
                       width: "48%",
-                      minHeight: 124,
-                      paddingHorizontal: 12,
+                      minHeight: 142,
+                      paddingHorizontal: 13,
                       paddingVertical: 14,
-                      gap: 9,
-                      alignItems: "center",
+                      gap: 8,
+                      alignItems: "flex-start",
                       justifyContent: "flex-start",
                       borderRadius: 16,
                       borderWidth: 1,
@@ -273,7 +273,8 @@ export default function HomeScreen() {
                     <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: colors.blueSoft, alignItems: "center", justifyContent: "center" }}>
                       <Ionicons name={service.icon} size={22} color={colors.blue} />
                     </View>
-                    <Text numberOfLines={2} style={{ color: colors.navy, fontSize: 13, lineHeight: 17, fontWeight: "800", textAlign: "left" }}>{service.title}</Text>
+                    <Text numberOfLines={2} style={{ color: colors.navy, fontSize: 13, lineHeight: 17, fontWeight: "800" }}>{service.title}</Text>
+                    <Text numberOfLines={2} style={{ color: colors.muted, fontSize: 10, lineHeight: 14 }}>{service.caption}</Text>
                   </Pressable>
                 ))}
               </View>
