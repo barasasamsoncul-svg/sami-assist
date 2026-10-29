@@ -25,11 +25,10 @@ const paper = "#F8FAFD";
 export default function WelcomeScreen() {
   const { width, height } = useWindowDimensions();
   const [showWelcome, setShowWelcome] = useState(false);
-  const compact = height < 580 || width < 360;
-  const heroWidth = Math.min(
-    width - 32,
-    390,
-    Math.max(220, (height - 285) * 1.46),
+  const compact = height < 650 || width < 360;
+  const heroWidth = Math.max(
+    200,
+    Math.min(width - 16, 420, ((height - 385) / (301 / 440))),
   );
   const heroHeight = heroWidth * (301 / 440);
 
@@ -89,34 +88,31 @@ export default function WelcomeScreen() {
     <View style={{ flex: 1, backgroundColor: paper }}>
       <View
         style={{
-          flex: 1,
-          minHeight: Math.max(height - 56, 400),
           alignItems: "center",
-          justifyContent: "center",
-          paddingHorizontal: 20,
-          paddingTop: compact ? 8 : 12,
-          paddingBottom: compact ? 8 : 12,
+          paddingTop: compact ? 6 : 12,
+          height: compact ? 82 : 96,
+          justifyContent: "flex-start",
         }}
       >
         <View
           accessibilityLabel="SaMi"
           style={{
-            width: 160,
-            height: 62,
+            width: 230,
+            height: 82,
             alignItems: "center",
             position: "relative",
           }}
         >
           <Text
             style={{
-              width: 160,
+              width: 230,
               textAlign: "center",
               color: navy,
-              fontSize: 55,
-              lineHeight: 63,
+              fontSize: compact ? 62 : 70,
+              lineHeight: compact ? 72 : 80,
               fontWeight: "900",
               fontStyle: "italic",
-              letterSpacing: -3.2,
+              letterSpacing: -4,
               includeFontPadding: false,
             }}
           >
@@ -126,110 +122,116 @@ export default function WelcomeScreen() {
             pointerEvents="none"
             style={{
               position: "absolute",
-              top: 49,
-              left: 49,
-              width: 69,
-              height: 22,
+              top: compact ? 60 : 66,
+              left: compact ? 89 : 88,
+              width: 48,
+              height: 15,
               overflow: "hidden",
             }}
           >
             <View
               style={{
                 position: "absolute",
-                top: -22,
+                top: -15,
                 left: 0,
-                width: 69,
-                height: 44,
-                borderWidth: 4,
+                width: 48,
+                height: 30,
+                borderWidth: 3,
                 borderColor: blue,
-                borderRadius: 35,
-                transform: [{ rotate: "-2deg" }],
+                borderRadius: 24,
               }}
             />
           </View>
         </View>
+      </View>
 
-        <View
+      <View
+        style={{
+          flex: 1,
+          minHeight: 0,
+          width: "100%",
+          alignItems: "center",
+          justifyContent: "center",
+          paddingHorizontal: 8,
+          paddingBottom: 150,
+        }}
+      >
+        <Image
+          source={require("../assets/sami-errands-scene.jpg")}
+          accessibilityLabel="3D illustration of a customer using a phone, a home location, an errand route, and a courier"
+          resizeMode="contain"
+          style={{ width: heroWidth, height: heroHeight }}
+        />
+        <Text
           style={{
-            width: "100%",
-            alignItems: "center",
-            marginTop: compact ? 10 : 17,
+            marginTop: compact ? 2 : 8,
+            color: navy,
+            fontSize: compact ? 25 : 29,
+            lineHeight: compact ? 31 : 37,
+            fontWeight: "900",
+            letterSpacing: -0.5,
+            textAlign: "center",
           }}
         >
-          <Image
-            source={require("../assets/sami-errands-scene.jpg")}
-            accessibilityLabel="3D illustration of a customer using a phone, a home location, an errand route, and a courier"
-            resizeMode="contain"
-            style={{ width: heroWidth, height: heroHeight }}
-          />
-          <Text
-            style={{
-              marginTop: compact ? 4 : 10,
-              color: navy,
-              fontSize: compact ? 24 : 27,
-              lineHeight: compact ? 31 : 35,
-              fontWeight: "900",
-              letterSpacing: -0.5,
-              textAlign: "center",
-            }}
-          >
-            Consider it done.
+          Consider it done.
+        </Text>
+      </View>
+
+      <View
+        style={{
+          position: "absolute",
+          left: 20,
+          right: 20,
+          bottom: 86,
+          maxWidth: 390,
+          alignSelf: "center",
+          alignItems: "center",
+          gap: 4,
+        }}
+      >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Get started"
+          onPress={() => router.push("/(auth)/choose-role")}
+          style={({ pressed }) => ({
+            width: "100%",
+            minHeight: 62,
+            borderRadius: 18,
+            backgroundColor: pressed ? "#1D5297" : blue,
+            alignItems: "center",
+            justifyContent: "center",
+            flexDirection: "row",
+            gap: 10,
+            shadowColor: navy,
+            shadowOpacity: 0.14,
+            shadowRadius: 10,
+            shadowOffset: { width: 0, height: 4 },
+            elevation: 3,
+          })}
+        >
+          <Text style={{ color: "#FFFFFF", fontSize: 19, fontWeight: "900" }}>
+            Get started
           </Text>
-        </View>
-
-        <View
-          style={{
-            width: "100%",
-            maxWidth: 390,
+          <Ionicons name="arrow-forward" size={22} color="#FFFFFF" />
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Sign in"
+          onPress={() => router.push("/(auth)/login")}
+          style={({ pressed }) => ({
+            minHeight: 44,
             alignItems: "center",
-            marginTop: compact ? 14 : 23,
-            gap: 5,
-          }}
+            justifyContent: "center",
+            paddingHorizontal: 22,
+            paddingVertical: 6,
+            borderRadius: 14,
+            backgroundColor: pressed ? "#EAF1FC" : "transparent",
+          })}
         >
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Get started"
-            onPress={() => router.push("/(auth)/choose-role")}
-            style={({ pressed }) => ({
-              width: "100%",
-              minHeight: 59,
-              borderRadius: 18,
-              backgroundColor: pressed ? "#1D5297" : blue,
-              alignItems: "center",
-              justifyContent: "center",
-              flexDirection: "row",
-              gap: 10,
-              shadowColor: navy,
-              shadowOpacity: 0.14,
-              shadowRadius: 10,
-              shadowOffset: { width: 0, height: 4 },
-              elevation: 3,
-            })}
-          >
-            <Text style={{ color: "#FFFFFF", fontSize: 18, fontWeight: "900" }}>
-              Get started
-            </Text>
-            <Ionicons name="arrow-forward" size={21} color="#FFFFFF" />
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Sign in"
-            onPress={() => router.push("/(auth)/login")}
-            style={({ pressed }) => ({
-              minHeight: 44,
-              alignItems: "center",
-              justifyContent: "center",
-              paddingHorizontal: 20,
-              paddingVertical: 6,
-              borderRadius: 14,
-              backgroundColor: pressed ? "#EAF1FC" : "transparent",
-            })}
-          >
-            <Text style={{ color: navy, fontSize: 16, fontWeight: "800" }}>
-              Sign in
-            </Text>
-          </Pressable>
-        </View>
+          <Text style={{ color: navy, fontSize: 17, fontWeight: "800" }}>
+            Sign in
+          </Text>
+        </Pressable>
       </View>
     </View>
   );
