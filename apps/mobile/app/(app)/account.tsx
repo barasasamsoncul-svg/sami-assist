@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import type { ComponentProps } from "react";
+import { Ionicons } from "@expo/vector-icons";
 import {
   ActivityIndicator,
   Alert,
@@ -16,6 +18,8 @@ import * as Sharing from "expo-sharing";
 import { dispatchGet, dispatchPost } from "@/api";
 import { colors, common } from "@/theme";
 
+type IoniconName = ComponentProps<typeof Ionicons>["name"];
+
 type User = {
   id: string;
   full_name?: string | null;
@@ -25,20 +29,20 @@ type User = {
 };
 
 function AccountAction({ icon, title, subtitle, onPress }: {
-  icon: string; title: string; subtitle: string; onPress: () => void;
+  icon: IoniconName; title: string; subtitle: string; onPress: () => void;
 }) {
   return (
     <Pressable accessibilityRole="button" onPress={onPress} style={[common.card, {
       flexDirection: "row", alignItems: "center", padding: 15,
     }]}>
       <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: colors.blueSoft, alignItems: "center", justifyContent: "center" }}>
-        <Text style={{ color: colors.navy, fontSize: 20, fontWeight: "800" }}>{icon}</Text>
+        <Ionicons name={icon} size={21} color={colors.navy} />
       </View>
       <View style={{ flex: 1, gap: 4 }}>
         <Text style={{ color: colors.navy, fontSize: 14, fontWeight: "900" }}>{title}</Text>
         <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 17 }}>{subtitle}</Text>
       </View>
-      <Text style={{ color: colors.blue, fontSize: 23, fontWeight: "800" }}>›</Text>
+      <Ionicons name="chevron-forward" size={19} color={colors.blue} />
     </Pressable>
   );
 }
@@ -268,7 +272,7 @@ export default function AccountScreen() {
                   onPress={exportData}
                   style={[common.secondaryButton, { flexDirection: "row", gap: 8, opacity: exporting ? 0.6 : 1 }]}
                 >
-                  {exporting ? <ActivityIndicator color={colors.blue} /> : <Text style={{ color: colors.navy, fontSize: 17, fontWeight: "900" }}>⇩</Text>}
+                  {exporting ? <ActivityIndicator color={colors.blue} /> : <Ionicons name="download-outline" size={19} color={colors.navy} />}
                   {!exporting ? <Text style={common.secondaryButtonText}>Export my data</Text> : null}
                 </Pressable>
               </View>
@@ -325,11 +329,11 @@ export default function AccountScreen() {
         ) : (
           <View style={{ gap: 11 }}>
             <Text style={{ color: colors.navy, fontSize: 18, fontWeight: "900" }}>Your SaMi</Text>
-            <AccountAction icon="▤" title={user?.role === "provider" ? "My work" : "Errands"} subtitle={user?.role === "provider" ? "Review assignments and eligible errands." : "Review errand operations."} onPress={() => router.push("/(app)/errands")} />
-            <AccountAction icon="▱" title={user?.role === "provider" ? "Earnings" : "Payments"} subtitle={user?.role === "provider" ? "Review recorded service earnings and payment activity." : "Review service payments and refunds."} onPress={() => router.push("/(app)/payments")} />
-            <AccountAction icon="◉" title="Notifications" subtitle="See errand updates and important service notices." onPress={() => router.push("/(app)/notifications")} />
-            {user?.role === "provider" ? <AccountAction icon="⚙" title="Provider profile" subtitle="Manage your service area, categories and introduction." onPress={() => router.push("/(app)/profile")} /> : null}
-            {user?.role === "admin" ? <AccountAction icon="⌘" title="Operations control" subtitle="Provider approvals, assignments and service issues." onPress={() => router.push("/(app)/operations")} /> : null}
+            <AccountAction icon="receipt-outline" title={user?.role === "provider" ? "My work" : "Errands"} subtitle={user?.role === "provider" ? "Review assignments and eligible errands." : "Review errand operations."} onPress={() => router.push("/(app)/errands")} />
+            <AccountAction icon="wallet-outline" title={user?.role === "provider" ? "Earnings" : "Payments"} subtitle={user?.role === "provider" ? "Review recorded service earnings and payment activity." : "Review service payments and refunds."} onPress={() => router.push("/(app)/payments")} />
+            <AccountAction icon="notifications-outline" title="Notifications" subtitle="See errand updates and important service notices." onPress={() => router.push("/(app)/notifications")} />
+            {user?.role === "provider" ? <AccountAction icon="person-circle-outline" title="Provider profile" subtitle="Manage your service area, categories and introduction." onPress={() => router.push("/(app)/profile")} /> : null}
+            {user?.role === "admin" ? <AccountAction icon="settings-outline" title="Operations control" subtitle="Provider approvals, assignments and service issues." onPress={() => router.push("/(app)/operations")} /> : null}
           </View>
         )}
 
