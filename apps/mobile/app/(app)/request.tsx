@@ -104,6 +104,7 @@ export default function RequestScreen() {
   const [paymentFeedback, setPaymentFeedback] = useState("");
   const [paymentNeedsRetry, setPaymentNeedsRetry] = useState(false);
   const [createdErrandId, setCreatedErrandId] = useState("");
+  const [createdServiceFee, setCreatedServiceFee] = useState<number | null>(null);
   const [step, setStep] = useState(0);
 
   useEffect(() => {
@@ -245,7 +246,7 @@ export default function RequestScreen() {
   }
 
   async function submit() {
-    setBusy(true); setError(""); setSuccess(""); setPaymentFeedback(""); setPaymentNeedsRetry(false); setCreatedErrandId("");
+    setBusy(true); setError(""); setSuccess(""); setPaymentFeedback(""); setPaymentNeedsRetry(false); setCreatedErrandId(""); setCreatedServiceFee(null);
     try {
       if (title.trim().length < 3 || description.trim().length < 5 || serviceArea.trim().length < 2) throw new Error("Add a clear task title, task details and service area.");
       if ((pickupLocation.trim() || destinationLocation.trim()) && !route && !(Number(manualDistance) > 0)) throw new Error("Choose the map points or enter a valid estimated distance.");
@@ -260,6 +261,7 @@ export default function RequestScreen() {
         itemBudgetAmount: itemBudget === "" ? "" : Number(itemBudget), priority, servicePaymentMethod: paymentMethod,
       });
       setCreatedErrandId(created.errand.id);
+      setCreatedServiceFee(Number(created.errand.service_fee_amount || 0));
       setSuccess("Request " + created.errand.public_code + " was created successfully.");
       if (paymentMethod === "in_app") {
         try {
@@ -302,13 +304,13 @@ export default function RequestScreen() {
             <View style={{ backgroundColor: paymentNeedsRetry ? "#FFF4E5" : colors.blueSoft, borderRadius: 14, padding: 14, gap: 6 }}>
               <Text style={{ color: colors.navy, fontWeight: "900", fontSize: 13 }}>{paymentNeedsRetry ? "PAYMENT PROMPT NOT STARTED" : paymentMethod === "in_app" ? "M-PESA NEXT STEP" : "PAYMENT METHOD"}</Text>
               <Text style={{ color: colors.ink, fontSize: 13, lineHeight: 20 }}>{paymentFeedback}</Text>
-              <Text style={{ color: colors.muted, fontSize: 12 }}>SaMi service fee: KES {Number(estimate || 0).toLocaleString("en-KE")}. This is not a payment receipt; check the errand’s payment status for confirmation.</Text>
+              <Text style={{ color: colors.muted, fontSize: 12 }}>SaMi service fee: KES {Number(createdServiceFee ?? estimate ?? 0).toLocaleString("en-KE")}. This is not a payment receipt; check the errand’s payment status for confirmation.</Text>
             </View>
             {paymentNeedsRetry && createdErrandId ? (
               <Pressable accessibilityRole="button" onPress={() => router.replace({ pathname: "/(app)/errand/[id]", params: { id: createdErrandId } })} style={common.primaryButton}><Text style={common.primaryButtonText}>Open errand & retry payment</Text></Pressable>
             ) : null}
             <Pressable onPress={() => router.replace("/(app)/errands")} style={paymentNeedsRetry ? common.secondaryButton : common.primaryButton}><Text style={paymentNeedsRetry ? common.secondaryButtonText : common.primaryButtonText}>View my errands</Text></Pressable>
-            <Pressable onPress={() => { setSuccess(""); setPaymentFeedback(""); setPaymentNeedsRetry(false); setCreatedErrandId(""); setStep(0); setTitle(""); setDescription(""); setPickupLocation(""); setDestinationLocation(""); setPickup(null); setDestination(null); setRoute(null); }} style={common.secondaryButton}><Text style={common.secondaryButtonText}>Create another request</Text></Pressable>
+            <Pressable onPress={() => { setSuccess(""); setPaymentFeedback(""); setPaymentNeedsRetry(false); setCreatedErrandId(""); setCreatedServiceFee(null); setStep(0); setTitle(""); setDescription(""); setPickupLocation(""); setDestinationLocation(""); setPickup(null); setDestination(null); setRoute(null); }} style={common.secondaryButton}><Text style={common.secondaryButtonText}>Create another request</Text></Pressable>
           </View>
         ) : (
           <>
