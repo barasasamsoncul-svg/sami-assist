@@ -26,9 +26,13 @@ export default function WelcomeScreen() {
   const { width, height } = useWindowDimensions();
   const [showWelcome, setShowWelcome] = useState(false);
   const compact = height < 650 || width < 360;
+  // A literal 6 cm inset would overlap the logo, artwork and actions on a phone.
+  // Use a responsive inset capped at 22% of viewport height to preserve the full layout.
+  const edgeOffset = Math.min(6 * 160 / 2.54, Math.max(44, Math.round(height * 0.22)));
+  const availableHeroHeight = Math.max(96, height - edgeOffset * 2 - (compact ? 225 : 244));
   const heroWidth = Math.max(
-    200,
-    Math.min(width - 16, 420, ((height - 385) / (301 / 440))),
+    145,
+    Math.min(width - 16, 420, availableHeroHeight / (301 / 440)),
   );
   const heroHeight = heroWidth * (301 / 440);
 
@@ -89,60 +93,38 @@ export default function WelcomeScreen() {
       <View
         style={{
           alignItems: "center",
-          paddingTop: compact ? 6 : 12,
-          height: compact ? 82 : 96,
-          justifyContent: "flex-start",
+          paddingTop: edgeOffset,
+          paddingHorizontal: 16,
         }}
       >
-        <View
-          accessibilityLabel="SaMi"
+        <Text
+          accessibilityLabel="Sami"
           style={{
-            width: 230,
-            height: 82,
-            alignItems: "center",
-            position: "relative",
+            textAlign: "center",
+            color: navy,
+            fontSize: compact ? 62 : 70,
+            lineHeight: compact ? 72 : 80,
+            fontWeight: "900",
+            fontStyle: "italic",
+            letterSpacing: -3,
+            includeFontPadding: false,
           }}
         >
-          <Text
-            style={{
-              width: 230,
-              textAlign: "center",
-              color: navy,
-              fontSize: compact ? 62 : 70,
-              lineHeight: compact ? 72 : 80,
-              fontWeight: "900",
-              fontStyle: "italic",
-              letterSpacing: -4,
-              includeFontPadding: false,
-            }}
-          >
-            SaMi
-          </Text>
-          <View
-            pointerEvents="none"
-            style={{
-              position: "absolute",
-              top: compact ? 60 : 66,
-              left: compact ? 89 : 88,
-              width: 48,
-              height: 15,
-              overflow: "hidden",
-            }}
-          >
-            <View
-              style={{
-                position: "absolute",
-                top: -15,
-                left: 0,
-                width: 48,
-                height: 30,
-                borderWidth: 3,
-                borderColor: blue,
-                borderRadius: 24,
-              }}
-            />
-          </View>
-        </View>
+          Sami
+        </Text>
+        <Text
+          style={{
+            marginTop: compact ? 0 : 2,
+            color: "#D97732",
+            fontSize: compact ? 19 : 22,
+            lineHeight: compact ? 25 : 29,
+            fontWeight: "800",
+            letterSpacing: 0.1,
+            textAlign: "center",
+          }}
+        >
+          Consider it done.
+        </Text>
       </View>
 
       <View
@@ -153,7 +135,7 @@ export default function WelcomeScreen() {
           alignItems: "center",
           justifyContent: "center",
           paddingHorizontal: 8,
-          paddingBottom: 150,
+          paddingBottom: edgeOffset + 112,
         }}
       >
         <Image
@@ -162,19 +144,6 @@ export default function WelcomeScreen() {
           resizeMode="contain"
           style={{ width: heroWidth, height: heroHeight }}
         />
-        <Text
-          style={{
-            marginTop: compact ? 2 : 8,
-            color: navy,
-            fontSize: compact ? 25 : 29,
-            lineHeight: compact ? 31 : 37,
-            fontWeight: "900",
-            letterSpacing: -0.5,
-            textAlign: "center",
-          }}
-        >
-          Consider it done.
-        </Text>
       </View>
 
       <View
@@ -182,7 +151,7 @@ export default function WelcomeScreen() {
           position: "absolute",
           left: 20,
           right: 20,
-          bottom: 86,
+          bottom: edgeOffset,
           maxWidth: 390,
           alignSelf: "center",
           alignItems: "center",
