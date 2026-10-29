@@ -67,7 +67,7 @@ function ChoiceRow({ label, options, value, onChange }: {
 }
 
 export default function RequestScreen() {
-  const { category: categoryParam, description: descriptionParam, pickupLat: pickupLatParam, pickupLng: pickupLngParam } = useLocalSearchParams<{ category?: string; description?: string; pickupLat?: string; pickupLng?: string }>();
+  const { category: categoryParam, description: descriptionParam, title: titleParam, pickupLat: pickupLatParam, pickupLng: pickupLngParam } = useLocalSearchParams<{ category?: string; description?: string; title?: string; pickupLat?: string; pickupLng?: string }>();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("personal_errand");
@@ -118,8 +118,8 @@ export default function RequestScreen() {
     if (typeof descriptionParam !== "string" || !descriptionParam.trim()) return;
     const initialDescription = descriptionParam.trim();
     setDescription((current) => current || initialDescription);
-    setTitle((current) => current || initialDescription.split(/\s+/).slice(0, 6).join(" ").slice(0, 80));
-  }, [descriptionParam]);
+    setTitle((current) => current || (typeof titleParam === "string" && titleParam.trim() ? titleParam.trim().slice(0, 100) : initialDescription.split(/\s+/).slice(0, 6).join(" ").slice(0, 80)));
+  }, [descriptionParam, titleParam]);
 
   useEffect(() => {
     const lat = typeof pickupLatParam === "string" ? Number(pickupLatParam) : NaN;
