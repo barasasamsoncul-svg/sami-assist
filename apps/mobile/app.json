@@ -78,6 +78,11 @@
     "backgroundColor": "#071A33",
     "web": {
       "backgroundColor": "#071A33"
+    },
+    "androidNavigationBar": {
+      "backgroundColor": "#071A33",
+      "barStyle": "light-content",
+      "enforceContrast": false
     }
   }
 }
