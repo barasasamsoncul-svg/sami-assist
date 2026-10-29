@@ -122,19 +122,30 @@ export default function WelcomeScreen() {
             SaMi
           </Text>
           <View
+            pointerEvents="none"
             style={{
               position: "absolute",
-              top: 47,
-              left: 52,
-              width: 65,
-              height: 13,
-              borderBottomWidth: 4,
-              borderColor: blue,
-              borderBottomLeftRadius: 42,
-              borderBottomRightRadius: 42,
-              transform: [{ rotate: "-2deg" }],
+              top: 49,
+              left: 49,
+              width: 69,
+              height: 22,
+              overflow: "hidden",
             }}
-          />
+          >
+            <View
+              style={{
+                position: "absolute",
+                top: -22,
+                left: 0,
+                width: 69,
+                height: 44,
+                borderWidth: 4,
+                borderColor: blue,
+                borderRadius: 35,
+                transform: [{ rotate: "-2deg" }],
+              }}
+            />
+          </View>
         </View>
 
         <View
