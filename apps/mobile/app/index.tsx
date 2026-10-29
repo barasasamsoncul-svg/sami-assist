@@ -98,29 +98,33 @@ export default function WelcomeScreen() {
         }}
       >
         <Text
-          accessibilityLabel="Sami"
+          accessibilityLabel="SaMi"
           style={{
             textAlign: "center",
-            color: navy,
-            fontSize: compact ? 62 : 70,
-            lineHeight: compact ? 72 : 80,
+            fontSize: compact ? 72 : 84,
+            lineHeight: compact ? 80 : 94,
             fontWeight: "900",
             fontStyle: "italic",
-            letterSpacing: -3,
+            letterSpacing: -3.5,
             includeFontPadding: false,
           }}
         >
-          Sami
+          <Text style={{ color: navy }}>Sa</Text><Text style={{ color: blue }}>Mi</Text>
         </Text>
         <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
           style={{
+            alignSelf: "stretch",
             marginTop: compact ? 0 : 2,
+            paddingLeft: Math.round(width * 0.49),
             color: "#D97732",
-            fontSize: compact ? 19 : 22,
-            lineHeight: compact ? 25 : 29,
-            fontWeight: "800",
-            letterSpacing: 0.1,
-            textAlign: "center",
+            fontSize: compact ? 17 : 20,
+            lineHeight: compact ? 23 : 27,
+            fontWeight: "900",
+            fontStyle: "italic",
+            letterSpacing: -0.25,
+            textAlign: "left",
           }}
         >
           Consider it done.
@@ -149,15 +153,21 @@ export default function WelcomeScreen() {
       <View
         style={{
           position: "absolute",
-          left: 20,
-          right: 20,
+          left: 0,
+          right: 0,
           bottom: edgeOffset,
-          maxWidth: 390,
-          alignSelf: "center",
           alignItems: "center",
-          gap: 4,
+          paddingHorizontal: 20,
         }}
       >
+        <View
+          style={{
+            width: "100%",
+            maxWidth: 390,
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Get started"
@@ -201,6 +211,7 @@ export default function WelcomeScreen() {
             Sign in
           </Text>
         </Pressable>
+        </View>
       </View>
     </View>
   );
