@@ -246,15 +246,26 @@ export default function ErrandDetailScreen() {
   }
 
   async function submitRating() {
-    if (!errand) return;
+    if (!errand || !isCustomer || errand.status !== "completed" || !errand.provider_id) {
+      setError("Ratings are available to the customer after the errand is completed.");
+      return;
+    }
+    if (!Number.isInteger(ratingScore) || ratingScore < 1 || ratingScore > 5) {
+      setError("Choose a rating from 1 to 5 stars.");
+      return;
+    }
+    if ((detail?.ratings || []).some((rating) => rating.reviewer_name === user?.full_name)) {
+      setNotice("You have already submitted feedback for this errand.");
+      return;
+    }
     setWorking("rating"); setError(""); setNotice("");
     try {
       await dispatchPost("addRating", { errandId: errand.id, score: ratingScore, comment: ratingComment.trim() });
-      setNotice("Thank you for rating the completed errand.");
       setRatingComment("");
       await load(false);
+      setNotice("Thank you — your rating has been submitted.");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Rating could not be saved.");
+      setError(e instanceof Error ? e.message : "Rating could not be saved. Please try again.");
     } finally { setWorking(""); }
   }
 
@@ -567,24 +578,27 @@ export default function ErrandDetailScreen() {
             {isCustomer && errand.status === "completed" && errand.provider_id ? (
               <View style={common.card}>
                 <Text style={{ color: colors.navy, fontSize: 17, fontWeight: "800" }}>Rate this errand</Text>
-                {(detail?.ratings || []).map((rating) => (
+                {(detail?.ratings || []).length === 0 ? (
+                  <Text style={common.subtitle}>No feedback has been submitted for this errand yet. Your rating helps improve the SaMi experience.</Text>
+                ) : (detail?.ratings || []).map((rating) => (
                   <View key={rating.id} style={{ borderRadius: 12, backgroundColor: "#F5F7FB", padding: 12, gap: 4 }}>
                     <Text style={{ color: colors.navy, fontWeight: "800" }}>{rating.reviewer_name === user?.full_name ? "Your rating" : rating.reviewer_name}</Text>
-                    <Text style={{ color: colors.amber, fontSize: 17 }}>{("★".repeat(Math.max(0,Math.min(5,Number(rating.score)||0)))) + ("☆".repeat(Math.max(0,5-Math.min(5,Number(rating.score)||0))))}</Text>
+                    <Text accessibilityLabel={Number(rating.score) + " out of 5 stars"} style={{ color: colors.amber, fontSize: 17 }}>{("★".repeat(Math.max(0,Math.min(5,Number(rating.score)||0)))) + ("☆".repeat(Math.max(0,5-Math.min(5,Number(rating.score)||0))))}</Text>
                     {rating.comment ? <Text style={{ color: colors.ink, fontSize: 13, lineHeight: 19 }}>{rating.comment}</Text> : null}
                   </View>
                 ))}
                 {!(detail?.ratings || []).some((rating) => rating.reviewer_name === user?.full_name) ? (
                   <>
                     <Text style={common.subtitle}>How was the provider’s service?</Text>
-                    <View style={{ flexDirection: "row", justifyContent: "center", gap: 10 }}>
+                    <View accessibilityRole="radiogroup" style={{ flexDirection: "row", justifyContent: "center", gap: 10 }}>
                       {[1,2,3,4,5].map((score) => (
-                        <Pressable key={score} accessibilityRole="button" accessibilityLabel={score + " stars"} onPress={() => setRatingScore(score)} style={{ padding: 5 }}>
+                        <Pressable key={score} accessibilityRole="radio" accessibilityLabel={score + " out of 5 stars"} accessibilityState={{ selected: ratingScore === score }} onPress={() => setRatingScore(score)} style={{ padding: 5 }}>
                           <Text style={{ fontSize: 29, color: score <= ratingScore ? colors.amber : "#C7CDD8" }}>★</Text>
                         </Pressable>
                       ))}
                     </View>
-                    <TextInput value={ratingComment} onChangeText={setRatingComment} multiline placeholder="Optional feedback" placeholderTextColor="#929BAD" textAlignVertical="top" style={[common.input,{minHeight:70}]} />
+                    <Text style={{ color: colors.muted, fontSize: 12, textAlign: "center" }}>{ratingScore} out of 5 stars selected</Text>
+                    <TextInput value={ratingComment} onChangeText={setRatingComment} multiline maxLength={500} placeholder="Optional feedback (up to 500 characters)" placeholderTextColor="#929BAD" textAlignVertical="top" style={[common.input,{minHeight:70}]} />
                     <ActionButton title={working === "rating" ? "Submitting…" : "Submit rating"} disabled={Boolean(working)} onPress={submitRating} />
                   </>
                 ) : <Text style={{ color: colors.green, fontWeight: "700" }}>You have submitted feedback for this errand.</Text>}
