@@ -323,8 +323,26 @@ export default function ErrandDetailScreen() {
 
         {busy && !errand ? <ActivityIndicator color={colors.blue} /> : null}
         {notice ? <Text style={{ color: colors.green, backgroundColor: "#E5F6EE", borderRadius: 12, padding: 12, lineHeight: 20 }}>{notice}</Text> : null}
-        {error ? <Text accessibilityRole="alert" style={common.error}>{error}</Text> : null}
-        {!busy && !errand && !error ? <View style={common.card}><Text style={common.subtitle}>This errand could not be found.</Text></View> : null}
+        {error ? (
+          <View style={[common.card, { gap: 10, borderColor: "#F2B8B5" }]}>
+            <Text accessibilityRole="alert" style={common.error}>{error}</Text>
+            {!errand ? (
+              <Pressable accessibilityRole="button" onPress={() => load(true)} disabled={busy} style={[common.secondaryButton, { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, opacity: busy ? 0.6 : 1 }]}>
+                {busy ? <ActivityIndicator color={colors.blue} /> : <Ionicons name="refresh-outline" size={17} color={colors.blue} />}
+                <Text style={common.secondaryButtonText}>{busy ? "Retrying…" : "Try again"}</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+        {!busy && !errand && !error ? (
+          <View style={[common.card, { gap: 10 }]}>
+            <Text style={common.subtitle}>This errand could not be found. It may have been removed or you may not have access to it.</Text>
+            <Pressable accessibilityRole="button" onPress={() => load(true)} style={[common.secondaryButton, { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }]}>
+              <Ionicons name="refresh-outline" size={17} color={colors.blue} />
+              <Text style={common.secondaryButtonText}>Reload errand</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         {errand ? (
           <>
