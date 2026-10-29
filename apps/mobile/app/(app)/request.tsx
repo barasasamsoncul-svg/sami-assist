@@ -276,7 +276,7 @@ export default function RequestScreen() {
       <ScrollView contentContainerStyle={common.content} keyboardShouldPersistTaps="handled">
         <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
           <Pressable onPress={() => router.back()} style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: colors.white, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border }}>
-            <Text style={{ color: colors.navy, fontSize: 23 }}>‹</Text>
+            <Ionicons name="chevron-back" size={21} color={colors.navy} />
           </Pressable>
           <View style={{ flex: 1, gap: 4 }}>
             <Text style={common.eyebrow}>New request</Text>
@@ -365,6 +365,41 @@ export default function RequestScreen() {
             ) : null}
 
             {step === 2 ? (
+            <View style={{ gap: 12 }}>
+            <View style={[common.card, { gap: 12 }]}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: colors.blueSoft, alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="clipboard-outline" size={21} color={colors.blue} />
+                </View>
+                <View style={{ flex: 1, gap: 3 }}>
+                  <Text style={{ color: colors.navy, fontSize: 16, fontWeight: "900" }}>Your request summary</Text>
+                  <Text style={{ color: colors.muted, fontSize: 12 }}>Check these details before posting.</Text>
+                </View>
+              </View>
+              <View style={{ gap: 4 }}>
+                <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "800" }}>TASK</Text>
+                <Text style={{ color: colors.navy, fontSize: 15, fontWeight: "900" }}>{title.trim() || "Untitled errand"}</Text>
+                <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19 }}>{description.trim() || "No task details entered."}</Text>
+              </View>
+              <View style={{ height: 1, backgroundColor: colors.border }} />
+              <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+                <Ionicons name="grid-outline" size={17} color={colors.blue} />
+                <View style={{ flex: 1, gap: 3 }}>
+                  <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "800" }}>SERVICE</Text>
+                  <Text style={{ color: colors.navy, fontSize: 13, fontWeight: "700" }}>{categories.find(([value]) => value === category)?.[1] || category}</Text>
+                  <Text style={{ color: colors.muted, fontSize: 12 }}>{serviceArea.trim()}</Text>
+                </View>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+                <Ionicons name="location-outline" size={17} color={colors.blue} />
+                <View style={{ flex: 1, gap: 7 }}>
+                  <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "800" }}>LOCATIONS</Text>
+                  <Text style={{ color: colors.navy, fontSize: 13, lineHeight: 18 }}>Pickup: {pickupLocation.trim() || (pickup ? pickup.lat.toFixed(5) + ", " + pickup.lng.toFixed(5) : "Not specified")}</Text>
+                  <Text style={{ color: colors.navy, fontSize: 13, lineHeight: 18 }}>Drop-off: {destinationLocation.trim() || (destination ? destination.lat.toFixed(5) + ", " + destination.lng.toFixed(5) : "Not specified")}</Text>
+                  <Text style={{ color: colors.muted, fontSize: 12 }}>{route ? route.distanceKm.toFixed(2) + " km road distance · about " + Math.max(1, Math.round(route.durationSeconds / 60)) + " min" : "Estimated distance: " + Math.max(0, Number(manualDistance) || 0).toFixed(2) + " km"}</Text>
+                </View>
+              </View>
+            </View>
             <View style={common.card}>
               <Text style={{ color: colors.navy, fontSize: 17, fontWeight: "800" }}>Review & confirm</Text>
               <ChoiceRow label="Item size" options={sizes} value={itemSize} onChange={setItemSize} />
@@ -379,6 +414,7 @@ export default function RequestScreen() {
               <ChoiceRow label="How will you pay SaMi's service fee?" options={paymentOptions} value={paymentMethod} onChange={setPaymentMethod} />
               {!mpesaInAppAvailable ? <Text style={common.subtitle}>In-app M-PESA is temporarily unavailable. You can still pay SaMi's service fee in cash. Any shop or seller payment remains separate.</Text> : null}
               {paymentMethod === "in_app" ? <Field label="M-PESA phone number" value={mpesaPhone} onChangeText={setMpesaPhone} placeholder="07XXXXXXXX" keyboardType="phone-pad" /> : null}
+            </View>
             </View>
             ) : null}
             {error ? <Text accessibilityRole="alert" style={common.error}>{error}</Text> : null}
