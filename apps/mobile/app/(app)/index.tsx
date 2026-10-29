@@ -191,7 +191,7 @@ export default function HomeScreen() {
           <>
             <View style={{ gap: 14 }}>
               <View style={{ gap: 5 }}>
-                <Text style={common.eyebrow}>TUKO PAMOJA</Text>
+                <Text style={common.eyebrow}>YOUR DAY, MADE EASIER</Text>
                 <Text style={{ color: colors.navy, fontSize: 29, lineHeight: 35, fontWeight: "900", letterSpacing: -0.8 }}>Big or small, we run your errands.</Text>
                 <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20 }}>Your day, made easier. Tell us what you need and we’ll help get it done.</Text>
               </View>
@@ -230,6 +230,7 @@ export default function HomeScreen() {
                   </Pressable>
                 ))}
               </View>
+              {customerServices.filter((service) => (service.title + " " + service.caption).toLowerCase().includes(serviceSearch.trim().toLowerCase())).length === 0 ? <Text style={[common.subtitle, { textAlign: "center", paddingVertical: 10 }]}>No matching service. Choose Custom errand to describe what you need.</Text> : null}
             </View>
 
             <Pressable
