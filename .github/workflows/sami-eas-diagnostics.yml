@@ -39,7 +39,7 @@ jobs:
       - name: Inspect latest production EAS build and collect available logs
         shell: bash
         env:
-          TARGET_SHA: a1a407beade65cde2d684a30ffd8ccd0ebddcd2a
+          TARGET_SHA: 76fdaa27d552c0b12b0046a95d3e97fe0fc8bf5e
         run: |
           set -euo pipefail
           DIAG="$RUNNER_TEMP/sami-eas-diagnostics"
