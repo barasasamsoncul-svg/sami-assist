@@ -13,8 +13,8 @@ type NavItem = { path: string; href: Href; label: string; icon: string; activeIc
 const customerTabs: NavItem[] = [
   { path: "/", href: "/(app)", label: "Home", icon: "home-outline", activeIcon: "home" },
   { path: "/errands", href: "/(app)/errands", label: "My Errands", icon: "receipt-outline", activeIcon: "receipt" },
-  { path: "/payments", href: "/(app)/payments", label: "Payments", icon: "card-outline", activeIcon: "card" },
-  { path: "/account", href: "/(app)/account", label: "Account", icon: "person-outline", activeIcon: "person" },
+  { path: "/messages", href: "/(app)/messages", label: "Messages", icon: "chatbubble-ellipses-outline", activeIcon: "chatbubble-ellipses" },
+  { path: "/account", href: "/(app)/account", label: "Profile", icon: "person-outline", activeIcon: "person" },
 ];
 
 const providerTabs: NavItem[] = [
@@ -56,23 +56,41 @@ export default function AppLayout() {
       }} />
       {showTabBar ? (
         <View accessibilityRole="tablist" style={styles.tabBar}>
-          {tabs.map((tab) => {
+          {role === "customer" ? (
+            <>
+              {tabs.filter((tab) => tab.path === "/" || tab.path === "/errands").map((tab) => {
+                const selected = tab.path === currentPath;
+                return (
+                  <Pressable key={tab.path} accessibilityRole="tab" accessibilityLabel={tab.label} accessibilityState={{ selected }} onPress={() => { if (!selected) router.replace(tab.href); }} style={styles.tabButton}>
+                    <View style={[styles.iconWrap, selected && styles.activeIconWrap]}>
+                      <Ionicons name={(selected ? tab.activeIcon || tab.icon : tab.icon) as IoniconName} size={22} color={selected ? colors.green : colors.muted} />
+                    </View>
+                    <Text numberOfLines={1} style={[styles.tabLabel, selected && styles.activeTabLabel]}>{tab.label}</Text>
+                  </Pressable>
+                );
+              })}
+              <Pressable accessibilityRole="button" accessibilityLabel="Create an errand" onPress={() => router.push("/(app)/request")} style={styles.createTabButton}>
+                <View style={styles.createTabIcon}><Ionicons name="add" size={30} color={colors.white} /></View>
+                <Text style={styles.createTabLabel}>Create</Text>
+              </Pressable>
+              {tabs.filter((tab) => tab.path === "/messages" || tab.path === "/account").map((tab) => {
+                const selected = tab.path === currentPath;
+                return (
+                  <Pressable key={tab.path} accessibilityRole="tab" accessibilityLabel={tab.label} accessibilityState={{ selected }} onPress={() => { if (!selected) router.replace(tab.href); }} style={styles.tabButton}>
+                    <View style={[styles.iconWrap, selected && styles.activeIconWrap]}>
+                      <Ionicons name={(selected ? tab.activeIcon || tab.icon : tab.icon) as IoniconName} size={22} color={selected ? colors.green : colors.muted} />
+                    </View>
+                    <Text numberOfLines={1} style={[styles.tabLabel, selected && styles.activeTabLabel]}>{tab.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </>
+          ) : tabs.map((tab) => {
             const selected = tab.path === currentPath;
             return (
-              <Pressable
-                key={tab.path}
-                accessibilityRole="tab"
-                accessibilityLabel={tab.label}
-                accessibilityState={{ selected }}
-                onPress={() => { if (!selected) router.replace(tab.href); }}
-                style={styles.tabButton}
-              >
+              <Pressable key={tab.path} accessibilityRole="tab" accessibilityLabel={tab.label} accessibilityState={{ selected }} onPress={() => { if (!selected) router.replace(tab.href); }} style={styles.tabButton}>
                 <View style={[styles.iconWrap, selected && styles.activeIconWrap]}>
-                  {role === "customer" ? (
-                    <Ionicons name={(selected ? tab.activeIcon || tab.icon : tab.icon) as IoniconName} size={22} color={selected ? colors.blue : colors.muted} />
-                  ) : (
-                    <Text style={[styles.tabIcon, selected && styles.activeTabIcon]}>{tab.icon}</Text>
-                  )}
+                  <Text style={[styles.tabIcon, selected && styles.activeTabIcon]}>{tab.icon}</Text>
                 </View>
                 <Text numberOfLines={1} style={[styles.tabLabel, selected && styles.activeTabLabel]}>{tab.label}</Text>
               </Pressable>
@@ -116,6 +134,9 @@ const styles = StyleSheet.create({
   activeIconWrap: { backgroundColor: "#E2F3E8" },
   tabIcon: { color: colors.muted, fontSize: 20, lineHeight: 24, fontWeight: "800" },
   activeTabIcon: { color: colors.green },
+  createTabButton: { flex: 1, minWidth: 0, alignItems: "center", justifyContent: "center", gap: 2 },
+  createTabIcon: { width: 48, height: 38, marginTop: -14, borderRadius: 16, backgroundColor: colors.green, alignItems: "center", justifyContent: "center", borderWidth: 4, borderColor: colors.white },
+  createTabLabel: { color: colors.green, fontSize: 10, fontWeight: "900" },
   tabLabel: { color: colors.muted, fontSize: 10, fontWeight: "700", letterSpacing: 0.1 },
   activeTabLabel: { color: colors.green, fontWeight: "900" },
 });
