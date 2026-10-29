@@ -249,20 +249,31 @@ export default function HomeScreen() {
                 <Text style={{ color: colors.navy, fontSize: 20, fontWeight: "900", letterSpacing: -0.35 }}>Explore our services</Text>
                 <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19 }}>Choose a service to start a request with the right details.</Text>
               </View>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 9 }}>
                 {customerServices.filter((service) => (service.title + " " + service.caption).toLowerCase().includes(serviceSearch.trim().toLowerCase())).map((service) => (
                   <Pressable
                     key={service.id}
                     accessibilityRole="button"
-                    accessibilityLabel={service.title}
+                    accessibilityLabel={service.title + ". " + service.caption}
                     onPress={() => startCustomerRequest(service.category)}
-                    style={[common.card, { width: "47%", minHeight: 132, flexGrow: 1, padding: 15, gap: 9, borderRadius: 19, borderColor: "#E3EAF5" }]}
+                    style={({ pressed }) => ({
+                      width: "23.5%",
+                      minHeight: 104,
+                      paddingHorizontal: 5,
+                      paddingVertical: 11,
+                      gap: 8,
+                      alignItems: "center",
+                      justifyContent: "flex-start",
+                      borderRadius: 16,
+                      borderWidth: 1,
+                      borderColor: pressed ? colors.blue : "#E3EAF5",
+                      backgroundColor: pressed ? colors.blueSoft : colors.white,
+                    })}
                   >
-                    <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: colors.blueSoft, alignItems: "center", justifyContent: "center" }}>
-                      <Ionicons name={service.icon} size={22} color={colors.blue} />
+                    <View style={{ width: 38, height: 38, borderRadius: 13, backgroundColor: colors.blueSoft, alignItems: "center", justifyContent: "center" }}>
+                      <Ionicons name={service.icon} size={20} color={colors.blue} />
                     </View>
-                    <Text style={{ color: colors.navy, fontSize: 14, fontWeight: "900" }}>{service.title}</Text>
-                    <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 15 }}>{service.caption}</Text>
+                    <Text numberOfLines={2} style={{ color: colors.navy, fontSize: 10, lineHeight: 13, fontWeight: "800", textAlign: "center" }}>{service.title}</Text>
                   </Pressable>
                 ))}
               </View>
