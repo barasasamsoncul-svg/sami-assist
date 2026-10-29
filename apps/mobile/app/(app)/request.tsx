@@ -92,6 +92,7 @@ export default function RequestScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [step, setStep] = useState(0);
 
   useEffect(() => {
     dispatchGet<{ pricing: PricingRule[] }>("pricing").then((data) => setRules(data.pricing || [])).catch(() => undefined);
@@ -203,6 +204,34 @@ export default function RequestScreen() {
     } finally { setLocationBusy(""); }
   }
 
+  function advanceStep() {
+    setError("");
+    if (step === 0) {
+      if (title.trim().length < 3 || description.trim().length < 5 || serviceArea.trim().length < 2) {
+        setError("Add a clear task title, task details and service area before continuing.");
+        return;
+      }
+    }
+    if (step === 1) {
+      const hasPickup = Boolean(pickupLocation.trim() || pickup);
+      const hasDestination = Boolean(destinationLocation.trim() || destination);
+      if (hasPickup !== hasDestination) {
+        setError("Add both pickup and drop-off details, or leave both for a single-location errand.");
+        return;
+      }
+      if (pickup && destination && !route && !routeLoading && !routeError && !(Number(manualDistance) > 0)) {
+        setError("SaMi needs a valid road distance to estimate this errand.");
+        return;
+      }
+    }
+    setStep((current) => Math.min(2, current + 1));
+  }
+
+  function previousStep() {
+    setError("");
+    setStep((current) => Math.max(0, current - 1));
+  }
+
   async function submit() {
     setBusy(true); setError(""); setSuccess("");
     try {
@@ -252,10 +281,22 @@ export default function RequestScreen() {
             <Text style={{ color: colors.navy, fontWeight: "900", fontSize: 21, lineHeight: 28 }}>{success}</Text>
             <Text style={common.subtitle}>Your request is now in SaMi. Approved providers can accept eligible open requests, and operations can assign a provider.</Text>
             <Pressable onPress={() => router.replace("/(app)/errands")} style={common.primaryButton}><Text style={common.primaryButtonText}>View my errands</Text></Pressable>
-            <Pressable onPress={() => { setSuccess(""); setTitle(""); setDescription(""); setPickupLocation(""); setDestinationLocation(""); setPickup(null); setDestination(null); setRoute(null); }} style={common.secondaryButton}><Text style={common.secondaryButtonText}>Create another request</Text></Pressable>
+            <Pressable onPress={() => { setSuccess(""); setStep(0); setTitle(""); setDescription(""); setPickupLocation(""); setDestinationLocation(""); setPickup(null); setDestination(null); setRoute(null); }} style={common.secondaryButton}><Text style={common.secondaryButtonText}>Create another request</Text></Pressable>
           </View>
         ) : (
           <>
+            <View style={{ gap: 12, paddingVertical: 4 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <Text style={common.eyebrow}>CREATE AN ERRAND</Text>
+                <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "800" }}>STEP {step + 1} OF 3</Text>
+              </View>
+              <View style={{ flexDirection: "row", gap: 7 }}>
+                {[0, 1, 2].map((item) => <View key={item} style={{ flex: 1, height: 5, borderRadius: 4, backgroundColor: item <= step ? colors.green : colors.border }} />)}
+              </View>
+              <Text style={{ color: colors.navy, fontSize: 19, fontWeight: "900" }}>{["Tell us what you need", "Choose the locations", "Review and confirm"][step]}</Text>
+              <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19 }}>{["Describe the task and choose the closest service category.", "Set pickup and drop-off details so SaMi can estimate the travel distance.", "Review the service fee, handling details and payment method before posting."][step]}</Text>
+            </View>
+            {step === 0 ? (
             <View style={common.card}>
               <Text style={{ color: colors.navy, fontSize: 17, fontWeight: "800" }}>Describe the task</Text>
               <Field label="Task title" value={title} onChangeText={setTitle} placeholder="e.g. Collect a parcel from town" />
@@ -264,6 +305,9 @@ export default function RequestScreen() {
               <Field label="Service area / town" value={serviceArea} onChangeText={setServiceArea} placeholder="e.g. Nairobi, Westlands" />
             </View>
 
+            ) : null}
+
+            {step === 1 ? (
             <View style={common.card}>
               <Text style={{ color: colors.navy, fontSize: 17, fontWeight: "800" }}>Set locations on the map</Text>
               <Text style={common.subtitle}>Choose pickup, then drop-off. Road distance is calculated by SaMi's routing service.</Text>
@@ -295,6 +339,9 @@ export default function RequestScreen() {
               {!route ? <Field label="Estimated distance (km)" value={manualDistance} onChangeText={setManualDistance} placeholder="1.0" keyboardType="decimal-pad" /> : null}
             </View>
 
+            ) : null}
+
+            {step === 2 ? (
             <View style={common.card}>
               <Text style={{ color: colors.navy, fontSize: 17, fontWeight: "800" }}>Handling and timing</Text>
               <ChoiceRow label="Item size" options={sizes} value={itemSize} onChange={setItemSize} />
@@ -310,10 +357,18 @@ export default function RequestScreen() {
               {!mpesaInAppAvailable ? <Text style={common.subtitle}>In-app M-PESA is temporarily unavailable. You can still pay SaMi's service fee in cash. Any shop or seller payment remains separate.</Text> : null}
               {paymentMethod === "in_app" ? <Field label="M-PESA phone number" value={mpesaPhone} onChangeText={setMpesaPhone} placeholder="07XXXXXXXX" keyboardType="phone-pad" /> : null}
             </View>
+            ) : null}
             {error ? <Text accessibilityRole="alert" style={common.error}>{error}</Text> : null}
-            <Pressable disabled={busy} onPress={submit} style={[common.primaryButton, busy && { opacity: 0.65 }]}>
-              {busy ? <ActivityIndicator color="#fff" /> : <Text style={common.primaryButtonText}>Submit errand request</Text>}
-            </Pressable>
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              {step > 0 ? <Pressable accessibilityRole="button" onPress={previousStep} disabled={busy} style={[common.secondaryButton, { flex: 1 }]}><Text style={common.secondaryButtonText}>Back</Text></Pressable> : null}
+              {step < 2 ? (
+                <Pressable accessibilityRole="button" onPress={advanceStep} style={[common.primaryButton, { flex: 2 }]}><Text style={common.primaryButtonText}>Continue · Step {step + 2}</Text></Pressable>
+              ) : (
+                <Pressable accessibilityRole="button" disabled={busy} onPress={submit} style={[common.primaryButton, { flex: 2 }, busy && { opacity: 0.65 }]}>
+                  {busy ? <ActivityIndicator color="#fff" /> : <Text style={common.primaryButtonText}>Confirm & post errand</Text>}
+                </Pressable>
+              )}
+            </View>
             <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>No quote stage. You see the estimated service fee before submitting; a provider or operations team can then take the request.</Text>
           </>
         )}
