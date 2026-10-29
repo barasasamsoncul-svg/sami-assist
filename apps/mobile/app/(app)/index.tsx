@@ -161,7 +161,7 @@ export default function HomeScreen() {
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <View style={{ flexDirection: "row", alignItems: "baseline", gap: 5 }}>
               <Text style={{ color: colors.navy, fontSize: 28, fontWeight: "900", fontStyle: "italic", letterSpacing: -1.1 }}>SaMi</Text>
-              <Text style={{ color: colors.green, fontSize: 10, fontWeight: "800", letterSpacing: 0.25 }}>Your Everyday Help Organised</Text>
+              <Text style={{ color: colors.blue, fontSize: 10, fontWeight: "800", letterSpacing: 0.25 }}>Your Everyday Help Organised</Text>
             </View>
             <View style={{ flexDirection: "row", gap: 8 }}>
               <HeaderButton icon="bell" label="Notifications" badgeCount={unreadNotifications} onPress={() => router.push("/(app)/notifications")} />
@@ -200,11 +200,11 @@ export default function HomeScreen() {
                 <TextInput value={serviceSearch} onChangeText={setServiceSearch} placeholder="What can we do for you today?" placeholderTextColor={colors.muted} returnKeyType="search" style={{ flex: 1, minHeight: 50, color: colors.navy, fontSize: 14 }} accessibilityLabel="Search SaMi errand services" />
                 {serviceSearch ? <Pressable accessibilityRole="button" accessibilityLabel="Clear service search" onPress={() => setServiceSearch("")}><Ionicons name="close-circle" size={19} color={colors.muted} /></Pressable> : null}
               </View>
-              <Pressable accessibilityRole="button" onPress={() => startCustomerRequest()} style={{ backgroundColor: "#E2F3E8", borderRadius: 22, padding: 18, gap: 10, overflow: "hidden" }}>
-                <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: colors.green, alignItems: "center", justifyContent: "center" }}><Ionicons name="navigate-outline" size={23} color={colors.white} /></View>
-                <Text style={{ color: colors.navy, fontSize: 19, lineHeight: 25, fontWeight: "900" }}>Your errands. Your time.</Text>
+              <Pressable accessibilityRole="button" onPress={() => startCustomerRequest()} style={{ backgroundColor: "#EAF1FC", borderRadius: 22, padding: 18, gap: 10, overflow: "hidden" }}>
+                <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: colors.blue, alignItems: "center", justifyContent: "center" }}><Ionicons name="navigate-outline" size={23} color={colors.white} /></View>
+                <Text style={{ color: colors.navy, fontSize: 19, lineHeight: 25, fontWeight: "900" }}>Your errands, your way.</Text>
                 <Text style={{ color: colors.ink, fontSize: 13, lineHeight: 19 }}>Request a helping hand for shopping, collections, personal tasks and more.</Text>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginTop: 2 }}><Text style={{ color: colors.green, fontSize: 14, fontWeight: "900" }}>Create an errand</Text><Ionicons name="arrow-forward" size={17} color={colors.green} /></View>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginTop: 2 }}><Text style={{ color: colors.blue, fontSize: 14, fontWeight: "900" }}>Create an errand</Text><Ionicons name="arrow-forward" size={17} color={colors.blue} /></View>
               </Pressable>
             </View>
 
@@ -270,7 +270,7 @@ export default function HomeScreen() {
             <View style={common.card}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                 <Text style={{ color: colors.navy, fontSize: 17, fontWeight: "900" }}>Provider application</Text>
-                <Text style={{ color: providerProfile?.approval_status === "approved" ? colors.green : providerProfile?.approval_status === "rejected" || providerProfile?.approval_status === "suspended" ? colors.red : colors.amber, fontSize: 11, fontWeight: "900" }}>
+                <Text style={{ color: providerProfile?.approval_status === "approved" ? colors.blue : providerProfile?.approval_status === "rejected" || providerProfile?.approval_status === "suspended" ? colors.red : colors.amber, fontSize: 11, fontWeight: "900" }}>
                   {providerProfile ? providerProfile.approval_status.replaceAll("_", " ").toUpperCase() : "LOADING"}
                 </Text>
               </View>
@@ -291,7 +291,7 @@ export default function HomeScreen() {
             <View style={{ flexDirection: "row", gap: 9 }}>
               <StatCard label="Total" value={metrics?.total} />
               <StatCard label="Active" value={metrics?.active} accent={colors.blue} />
-              <StatCard label="Completed" value={metrics?.completed} accent={colors.green} />
+              <StatCard label="Completed" value={metrics?.completed} accent={colors.blue} />
             </View>
             <ActionCard icon="↗" title="My errands" body="Assignments, status and active task progress." onPress={() => router.push("/(app)/errands")} />
             <ActionCard icon="⚙" title="Provider profile" body="Manage your service area, categories and introduction." onPress={() => router.push("/(app)/profile")} />
@@ -314,7 +314,7 @@ export default function HomeScreen() {
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 9 }}>
               <StatCard label="All errands" value={metrics?.total} />
               <StatCard label="Active" value={metrics?.active} accent={colors.blue} />
-              <StatCard label="Completed" value={metrics?.completed} accent={colors.green} />
+              <StatCard label="Completed" value={metrics?.completed} accent={colors.blue} />
               <StatCard label="Disputes" value={metrics?.disputes} accent={colors.red} />
             </View>
             <ActionCard icon="▤" title="Errand queue" body="Review requests, assignments and completion." onPress={() => router.push("/(app)/errands")} />
