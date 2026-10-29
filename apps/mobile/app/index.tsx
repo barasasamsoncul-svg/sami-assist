@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Pressable, SafeAreaView, StatusBar, Text, View } from "react-native";
+import { Pressable, SafeAreaView, StatusBar, Text, View, useWindowDimensions, ScrollView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { dispatchGet } from "@/api";
@@ -37,14 +37,14 @@ export default function WelcomeScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: paper }}>
       <StatusBar barStyle="dark-content" backgroundColor={paper} />
-      <View style={{ flex: 1, alignItems: "center", paddingHorizontal: 28, paddingTop: 30, paddingBottom: 28 }}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false} bounces={false}>\n      <View style={{ flexGrow: 1, alignItems: "center", paddingHorizontal: 28, paddingTop: compact ? 12 : 24, paddingBottom: compact ? 14 : 24 }}>
         <View style={{ alignItems: "center", marginTop: 8 }}>
           <Text style={{ color: navy, fontSize: 48, fontWeight: "900", fontStyle: "italic", letterSpacing: -3.2 }}>SaMi</Text>
           <View style={{ position: "absolute", width: 49, height: 13, top: 45, left: 28, borderBottomWidth: 3, borderColor: blue, borderBottomLeftRadius: 40, borderBottomRightRadius: 40, transform: [{ rotate: "-4deg" }] }} />
         </View>
 
-        <View style={{ flex: 1, width: "100%", alignItems: "center", justifyContent: "center", minHeight: 280 }}>
-          <View style={{ width: 270, height: 270, alignItems: "center", justifyContent: "center" }}>
+        <View style={{ flex: 1, width: "100%", alignItems: "center", justifyContent: "center", minHeight: compact ? 250 : 330, paddingVertical: compact ? 8 : 14 }}>
+          <View style={{ width: 270, height: 270, alignItems: "center", justifyContent: "center", transform: [{ scale: illustrationScale }], marginVertical: compact ? -22 : 0 }}>
             <View style={{ position: "absolute", width: 238, height: 238, borderRadius: 119, backgroundColor: "#EAF1FC" }} />
             <View style={{ position: "absolute", width: 194, height: 194, borderRadius: 97, borderWidth: 1, borderColor: "#D5E3F8" }} />
             <View style={{ position: "absolute", top: 23, right: 27, width: 50, height: 50, borderRadius: 17, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center", transform: [{ rotate: "10deg" }], elevation: 3, shadowColor: navy, shadowOpacity: 0.08, shadowRadius: 8 }}>
@@ -69,15 +69,15 @@ export default function WelcomeScreen() {
               <Ionicons name="checkmark-circle" size={26} color={blue} />
             </View>
           </View>
-          <Text style={{ marginTop: 3, color: navy, fontSize: 25, fontWeight: "900", letterSpacing: -0.7, textAlign: "center" }}>Your day, made easier.</Text>
-          <Text style={{ marginTop: 9, color: muted, fontSize: 14, lineHeight: 21, textAlign: "center", maxWidth: 290 }}>
+          <Text style={{ marginTop: 3, color: navy, fontSize: compact ? 22 : 25, fontWeight: "900", letterSpacing: -0.7, textAlign: "center" }}>Your day, made easier.</Text>
+          <Text style={{ marginTop: 9, color: muted, fontSize: 14, lineHeight: 20, textAlign: "center", maxWidth: 290 }}>
             Shopping, pick-ups, and everyday errands — handled with care.
           </Text>
         </View>
 
-        <View style={{ width: "100%", maxWidth: 390, alignItems: "center", gap: 13 }}>
+        <View style={{ width: "100%", maxWidth: 390, alignItems: "center", gap: compact ? 5 : 13 }}>
           <Pressable accessibilityRole="button" onPress={() => router.push("/(auth)/choose-role")}
-            style={({ pressed }) => ({ width: "100%", minHeight: 57, borderRadius: 18, backgroundColor: pressed ? "#1D5297" : blue, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 10, shadowColor: navy, shadowOpacity: 0.16, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 3 })}>
+            style={({ pressed }) => ({ width: "100%", minHeight: compact ? 52 : 57, borderRadius: 18, backgroundColor: pressed ? "#1D5297" : blue, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 10, shadowColor: navy, shadowOpacity: 0.16, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 3 })}>
             <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "900" }}>Get started</Text>
             <Ionicons name="arrow-forward" size={19} color="#FFFFFF" />
           </Pressable>
