@@ -101,6 +101,9 @@ export default function RequestScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [paymentFeedback, setPaymentFeedback] = useState("");
+  const [paymentNeedsRetry, setPaymentNeedsRetry] = useState(false);
+  const [createdErrandId, setCreatedErrandId] = useState("");
   const [step, setStep] = useState(0);
 
   useEffect(() => {
@@ -242,7 +245,7 @@ export default function RequestScreen() {
   }
 
   async function submit() {
-    setBusy(true); setError(""); setSuccess("");
+    setBusy(true); setError(""); setSuccess(""); setPaymentFeedback(""); setPaymentNeedsRetry(false); setCreatedErrandId("");
     try {
       if (title.trim().length < 3 || description.trim().length < 5 || serviceArea.trim().length < 2) throw new Error("Add a clear task title, task details and service area.");
       if ((pickupLocation.trim() || destinationLocation.trim()) && !route && !(Number(manualDistance) > 0)) throw new Error("Choose the map points or enter a valid estimated distance.");
@@ -256,16 +259,23 @@ export default function RequestScreen() {
         distanceKm: route?.distanceKm ?? (Number(manualDistance) || 1), itemSize,
         itemBudgetAmount: itemBudget === "" ? "" : Number(itemBudget), priority, servicePaymentMethod: paymentMethod,
       });
-      let paymentMessage = "Choose cash payment for the SaMi service fee. Any shop/seller payment stays separate.";
+      setCreatedErrandId(created.errand.id);
+      setSuccess("Request " + created.errand.public_code + " was created successfully.");
       if (paymentMethod === "in_app") {
         try {
-          await apiRequest("/api/payments/mpesa/checkout", { method: "POST", body: { errandId: created.errand.id, phone: mpesaPhone.trim() } });
-          paymentMessage = "M-PESA payment prompt requested. Follow the prompt on your phone.";
+          const checkout = await apiRequest<{ message?: string; CustomerMessage?: string }>(
+            "/api/payments/mpesa/checkout",
+            { method: "POST", body: { errandId: created.errand.id, phone: mpesaPhone.trim() } }
+          );
+          setPaymentFeedback(checkout.CustomerMessage || checkout.message || "M-PESA checkout was requested. Follow the payment prompt on your phone. This does not mean payment is confirmed yet.");
+          setPaymentNeedsRetry(false);
         } catch (e) {
-          paymentMessage = "The errand was saved, but M-PESA checkout could not start: " + (e instanceof Error ? e.message : "please retry from support.");
+          setPaymentFeedback("Your errand is saved, but the M-PESA prompt could not be started. Open the errand to check payment status and retry.");
+          setPaymentNeedsRetry(true);
         }
+      } else {
+        setPaymentFeedback("Payment method: cash for SaMi’s service fee. Your errand is created; pay only when the service fee is due. Shop or seller costs are separate.");
       }
-      setSuccess("Request " + created.errand.public_code + " received. Service fee: KES " + Number(created.errand.service_fee_amount || estimate || 0).toLocaleString("en-KE") + ". " + paymentMessage);
     } catch (e) {
       setError(e instanceof Error ? e.message : "The request could not be submitted.");
     } finally { setBusy(false); }
@@ -289,8 +299,16 @@ export default function RequestScreen() {
             <Text style={{ color: colors.blue, fontWeight: "900", fontSize: 12, letterSpacing: 1 }}>REQUEST CREATED</Text>
             <Text style={{ color: colors.navy, fontWeight: "900", fontSize: 21, lineHeight: 28 }}>{success}</Text>
             <Text style={common.subtitle}>Your request is now in SaMi. Approved providers can accept eligible open requests, and operations can assign a provider.</Text>
-            <Pressable onPress={() => router.replace("/(app)/errands")} style={common.primaryButton}><Text style={common.primaryButtonText}>View my errands</Text></Pressable>
-            <Pressable onPress={() => { setSuccess(""); setStep(0); setTitle(""); setDescription(""); setPickupLocation(""); setDestinationLocation(""); setPickup(null); setDestination(null); setRoute(null); }} style={common.secondaryButton}><Text style={common.secondaryButtonText}>Create another request</Text></Pressable>
+            <View style={{ backgroundColor: paymentNeedsRetry ? "#FFF4E5" : colors.blueSoft, borderRadius: 14, padding: 14, gap: 6 }}>
+              <Text style={{ color: colors.navy, fontWeight: "900", fontSize: 13 }}>{paymentNeedsRetry ? "PAYMENT PROMPT NOT STARTED" : paymentMethod === "in_app" ? "M-PESA NEXT STEP" : "PAYMENT METHOD"}</Text>
+              <Text style={{ color: colors.ink, fontSize: 13, lineHeight: 20 }}>{paymentFeedback}</Text>
+              <Text style={{ color: colors.muted, fontSize: 12 }}>SaMi service fee: KES {Number(estimate || 0).toLocaleString("en-KE")}. This is not a payment receipt; check the errand’s payment status for confirmation.</Text>
+            </View>
+            {paymentNeedsRetry && createdErrandId ? (
+              <Pressable accessibilityRole="button" onPress={() => router.replace({ pathname: "/(app)/errand/[id]", params: { id: createdErrandId } })} style={common.primaryButton}><Text style={common.primaryButtonText}>Open errand & retry payment</Text></Pressable>
+            ) : null}
+            <Pressable onPress={() => router.replace("/(app)/errands")} style={paymentNeedsRetry ? common.secondaryButton : common.primaryButton}><Text style={paymentNeedsRetry ? common.secondaryButtonText : common.primaryButtonText}>View my errands</Text></Pressable>
+            <Pressable onPress={() => { setSuccess(""); setPaymentFeedback(""); setPaymentNeedsRetry(false); setCreatedErrandId(""); setStep(0); setTitle(""); setDescription(""); setPickupLocation(""); setDestinationLocation(""); setPickup(null); setDestination(null); setRoute(null); }} style={common.secondaryButton}><Text style={common.secondaryButtonText}>Create another request</Text></Pressable>
           </View>
         ) : (
           <>
