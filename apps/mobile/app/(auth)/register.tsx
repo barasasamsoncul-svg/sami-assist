@@ -188,7 +188,7 @@ export default function RegisterScreen() {
                           <Ionicons name={selected ? "checkmark-circle" : "ellipse-outline"} size={18} color={selected ? BLUE : "#A8B3C2"} />
                         </View>
                         <View style={{ gap: 3 }}>
-                          <Text style={{ color: NAVY, fontSize: 13, fontWeight: "850" }}>{option.title}</Text>
+                          <Text style={{ color: NAVY, fontSize: 13, fontWeight: "800" }}>{option.title}</Text>
                           <Text style={{ color: MUTED, fontSize: 11, lineHeight: 15 }}>{option.detail}</Text>
                         </View>
                       </Pressable>
@@ -253,7 +253,7 @@ export default function RegisterScreen() {
               >
                 {busy ? <ActivityIndicator color="#FFFFFF" /> : (
                   <>
-                    <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "850" }}>
+                    <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "800" }}>
                       {role === "provider" ? "Apply as an errand provider" : "Create account"}
                     </Text>
                     <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
