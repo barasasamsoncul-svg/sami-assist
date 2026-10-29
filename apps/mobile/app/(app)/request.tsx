@@ -277,7 +277,7 @@ export default function RequestScreen() {
 
         {success ? (
           <View style={[common.card, { borderColor: "#A7E3C8", padding: 22 }]}>
-            <Text style={{ color: colors.green, fontWeight: "900", fontSize: 12, letterSpacing: 1 }}>REQUEST CREATED</Text>
+            <Text style={{ color: colors.blue, fontWeight: "900", fontSize: 12, letterSpacing: 1 }}>REQUEST CREATED</Text>
             <Text style={{ color: colors.navy, fontWeight: "900", fontSize: 21, lineHeight: 28 }}>{success}</Text>
             <Text style={common.subtitle}>Your request is now in SaMi. Approved providers can accept eligible open requests, and operations can assign a provider.</Text>
             <Pressable onPress={() => router.replace("/(app)/errands")} style={common.primaryButton}><Text style={common.primaryButtonText}>View my errands</Text></Pressable>
@@ -291,7 +291,7 @@ export default function RequestScreen() {
                 <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "800" }}>STEP {step + 1} OF 3</Text>
               </View>
               <View style={{ flexDirection: "row", gap: 7 }}>
-                {[0, 1, 2].map((item) => <View key={item} style={{ flex: 1, height: 5, borderRadius: 4, backgroundColor: item <= step ? colors.green : colors.border }} />)}
+                {[0, 1, 2].map((item) => <View key={item} style={{ flex: 1, height: 5, borderRadius: 4, backgroundColor: item <= step ? colors.blue : colors.border }} />)}
               </View>
               <Text style={{ color: colors.navy, fontSize: 19, fontWeight: "900" }}>{["Tell us what you need", "Choose the locations", "Review and confirm"][step]}</Text>
               <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19 }}>{["Describe the task and choose the closest service category.", "Set pickup and drop-off details so SaMi can estimate the travel distance.", "Review the service fee, handling details and payment method before posting."][step]}</Text>
@@ -334,7 +334,7 @@ export default function RequestScreen() {
                 {locationBusy==="destination" ? <ActivityIndicator color={colors.blue}/> : <Text style={common.secondaryButtonText}>Find destination on map</Text>}
               </Pressable>
               {routeLoading ? <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}><ActivityIndicator color={colors.blue} /><Text style={{ color: colors.muted }}>Calculating driving route…</Text></View> : null}
-              {route ? <Text style={{ color: colors.green, fontWeight: "800" }}>Road route: {route.distanceKm.toFixed(2)} km • about {Math.max(1, Math.round(route.durationSeconds / 60))} min</Text> : null}
+              {route ? <Text style={{ color: colors.blue, fontWeight: "800" }}>Road route: {route.distanceKm.toFixed(2)} km • about {Math.max(1, Math.round(route.durationSeconds / 60))} min</Text> : null}
               {routeError ? <Text style={common.error}>{routeError}</Text> : null}
               {!route ? <Field label="Estimated distance (km)" value={manualDistance} onChangeText={setManualDistance} placeholder="1.0" keyboardType="decimal-pad" /> : null}
             </View>
