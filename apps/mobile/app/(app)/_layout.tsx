@@ -8,7 +8,7 @@ import { colors } from "@/theme";
 
 type Role = "customer" | "provider" | "admin";
 type IoniconName = ComponentProps<typeof Ionicons>["name"];
-type NavItem = { path: string; href: Href; label: string; icon: string; activeIcon?: IoniconName };
+type NavItem = { path: string; href: Href; label: string; icon: IoniconName; activeIcon?: IoniconName };
 
 const customerTabs: NavItem[] = [
   { path: "/", href: "/(app)", label: "Home", icon: "home-outline", activeIcon: "home" },
@@ -18,16 +18,16 @@ const customerTabs: NavItem[] = [
 ];
 
 const providerTabs: NavItem[] = [
-  { path: "/", href: "/(app)", label: "Home", icon: "⌂" },
-  { path: "/errands", href: "/(app)/errands", label: "Errands", icon: "▤" },
-  { path: "/payments", href: "/(app)/payments", label: "Earnings", icon: "▱" },
-  { path: "/account", href: "/(app)/account", label: "Account", icon: "●" },
+  { path: "/", href: "/(app)", label: "Home", icon: "home-outline", activeIcon: "home" },
+  { path: "/errands", href: "/(app)/errands", label: "Errands", icon: "receipt-outline", activeIcon: "receipt" },
+  { path: "/payments", href: "/(app)/payments", label: "Earnings", icon: "wallet-outline", activeIcon: "wallet" },
+  { path: "/account", href: "/(app)/account", label: "Account", icon: "person-outline", activeIcon: "person" },
 ];
 
 const adminTabs: NavItem[] = [
   { path: "/", href: "/(app)", label: "Overview", icon: "⌂" },
   { path: "/errands", href: "/(app)/errands", label: "Errands", icon: "▤" },
-  { path: "/operations", href: "/(app)/operations", label: "Operations", icon: "⌘" },
+  { path: "/operations", href: "/(app)/operations", label: "Operations", icon: "settings-outline", activeIcon: "settings" },
   { path: "/account", href: "/(app)/account", label: "Account", icon: "●" },
 ];
 
@@ -90,7 +90,7 @@ export default function AppLayout() {
             return (
               <Pressable key={tab.path} accessibilityRole="tab" accessibilityLabel={tab.label} accessibilityState={{ selected }} onPress={() => { if (!selected) router.replace(tab.href); }} style={styles.tabButton}>
                 <View style={[styles.iconWrap, selected && styles.activeIconWrap]}>
-                  <Text style={[styles.tabIcon, selected && styles.activeTabIcon]}>{tab.icon}</Text>
+                  <Ionicons name={(selected ? tab.activeIcon || tab.icon : tab.icon) as IoniconName} size={22} color={selected ? colors.blue : colors.muted} />
                 </View>
                 <Text numberOfLines={1} style={[styles.tabLabel, selected && styles.activeTabLabel]}>{tab.label}</Text>
               </Pressable>
