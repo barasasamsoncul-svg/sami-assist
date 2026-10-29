@@ -61,7 +61,7 @@ export default function WelcomeScreen() {
           <View style={{ gap: 13 }}>
             <Pressable accessibilityRole="button" onPress={() => router.push("/(auth)/choose-role")}
               style={({ pressed }) => ({ minHeight: 60, borderRadius: 17, backgroundColor: pressed ? "#1D5297" : "#2463B8", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 })}>
-              <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "850" }}>Get started</Text>
+              <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "800" }}>Get started</Text>
               <Ionicons name="arrow-forward" size={19} color="#FFFFFF" />
             </Pressable>
             <Pressable accessibilityRole="button" onPress={() => router.push("/(auth)/login")}
