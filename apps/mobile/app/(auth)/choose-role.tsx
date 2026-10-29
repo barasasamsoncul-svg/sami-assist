@@ -10,7 +10,7 @@ export default function ChooseRoleScreen() {
         <View style={{ width: "100%", maxWidth: 460, alignSelf: "center", flex: 1, gap: 25 }}>
           <Pressable accessibilityRole="button" onPress={() => router.back()} style={{ flexDirection: "row", alignItems: "center", gap: 8, alignSelf: "flex-start", paddingVertical: 8 }}>
             <Ionicons name="arrow-back" size={20} color="#173B67" />
-            <Text style={{ color: "#173B67", fontSize: 14, fontWeight: "750" }}>Back</Text>
+            <Text style={{ color: "#173B67", fontSize: 14, fontWeight: "700" }}>Back</Text>
           </Pressable>
 
           <View style={{ gap: 10 }}>
@@ -33,7 +33,7 @@ export default function ChooseRoleScreen() {
                 <Ionicons name="bag-handle-outline" size={26} color="#2463B8" />
               </View>
               <View style={{ flex: 1, gap: 5 }}>
-                <Text style={{ color: "#173B67", fontSize: 17, fontWeight: "850" }}>I need help</Text>
+                <Text style={{ color: "#173B67", fontSize: 17, fontWeight: "800" }}>I need help</Text>
                 <Text style={{ color: "#69788D", fontSize: 13, lineHeight: 19 }}>Request pickups, purchases and everyday errands.</Text>
               </View>
               <Ionicons name="chevron-forward" size={21} color="#2463B8" />
@@ -45,7 +45,7 @@ export default function ChooseRoleScreen() {
                 <Ionicons name="bicycle-outline" size={26} color="#2463B8" />
               </View>
               <View style={{ flex: 1, gap: 5 }}>
-                <Text style={{ color: "#173B67", fontSize: 17, fontWeight: "850" }}>I want to complete errands</Text>
+                <Text style={{ color: "#173B67", fontSize: 17, fontWeight: "800" }}>I want to complete errands</Text>
                 <Text style={{ color: "#69788D", fontSize: 13, lineHeight: 19 }}>Join as a provider and earn by helping people.</Text>
               </View>
               <Ionicons name="chevron-forward" size={21} color="#2463B8" />
@@ -55,7 +55,7 @@ export default function ChooseRoleScreen() {
           <View style={{ marginTop: "auto", alignItems: "center", gap: 12 }}>
             <Text style={{ color: "#71839B", fontSize: 12 }}>Already registered?</Text>
             <Pressable accessibilityRole="button" onPress={() => router.push("/(auth)/login")} style={{ padding: 8 }}>
-              <Text style={{ color: "#2463B8", fontSize: 14, fontWeight: "850" }}>Sign in to SaMi</Text>
+              <Text style={{ color: "#2463B8", fontSize: 14, fontWeight: "800" }}>Sign in to SaMi</Text>
             </Pressable>
           </View>
         </View>
