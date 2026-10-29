@@ -12,7 +12,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Link, router } from "expo-router";
+import { Link, router, useLocalSearchParams } from "expo-router";
 import { dispatchPost } from "@/api";
 
 type AccountRole = "customer" | "provider";
@@ -25,10 +25,12 @@ const BORDER = "#DCE5F2";
 const PALE_BLUE = "#EAF1FC";
 
 export default function RegisterScreen() {
+  const params = useLocalSearchParams<{ role?: string }>();
+  const initialRole: AccountRole = params.role === "provider" ? "provider" : "customer";
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [role, setRole] = useState<AccountRole>("customer");
+  const [role, setRole] = useState<AccountRole>(initialRole);
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
