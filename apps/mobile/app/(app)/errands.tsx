@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ComponentProps } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { ActivityIndicator, Pressable, RefreshControl, SafeAreaView, ScrollView, Text, View } from "react-native";
 import { router } from "expo-router";
@@ -6,7 +6,6 @@ import { dispatchGet, dispatchPost } from "@/api";
 import { colors, common } from "@/theme";
 
 type User = { id: string; role: "customer" | "provider" | "admin" };
-type IoniconName = ComponentProps<typeof Ionicons>["name"];
 type Errand = {
   id: string; public_code: string; title: string; category: string; description?: string;
   status: string; customer_name?: string; provider_name?: string | null; provider_id?: string | null;
