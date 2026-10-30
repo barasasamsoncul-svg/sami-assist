@@ -28,7 +28,7 @@ export default function WelcomeScreen() {
   const [showWelcome, setShowWelcome] = useState(false);
 
   // The artwork already contains the SaMi wordmark, tagline and parcel handover.
-  // Keep the welcome artwork on a rich navy field that reaches the status-bar edge.
+  // Keep the welcome artwork on a rich navy field that reaches the system-bar edge.
   const availableImageHeight = Math.max(260, height - 150);
   const heroWidth = Math.min(width, 420, availableImageHeight * (420 / 469));
   const heroHeight = heroWidth * (469 / 420);
