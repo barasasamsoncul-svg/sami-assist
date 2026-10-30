@@ -19,13 +19,12 @@ type BootstrapStatus = {
 };
 
 const SESSION_KEY = "sami_errands_access_token";
-const navy = "#061426";
+const navy = "#04142D";
 const blue = "#1683FF";
 const orange = "#FF951C";
 const lightText = "#F7FAFF";
-const sceneSourceWidth = 420;
-const sceneSourceHeight = 469;
-const sceneCropTop = 165;
+const sceneSourceWidth = 560;
+const sceneSourceHeight = 381;
 
 export default function WelcomeScreen() {
   const { width, height } = useWindowDimensions();
@@ -33,12 +32,10 @@ export default function WelcomeScreen() {
   const compact = height < 740;
   const logoSize = Math.max(56, Math.min(82, width * 0.205));
 
-  // The source illustration contains an old wordmark at its top. Crop that area
-  // out and display only the customer/provider scene; branding is native text.
-  const sceneWidth = Math.min(width * 1.12, height * 0.43 * sceneSourceWidth / (sceneSourceHeight - sceneCropTop));
-  const sceneHeight = sceneWidth * (sceneSourceHeight - sceneCropTop) / sceneSourceWidth;
-  const fullImageHeight = sceneWidth * sceneSourceHeight / sceneSourceWidth;
-  const cropOffset = sceneWidth * sceneCropTop / sceneSourceWidth;
+  // This is a separate illustration-only asset. SaMi branding and actions are
+  // native app UI, never baked into the image.
+  const sceneWidth = Math.min(width * 1.04, height * 0.40 * sceneSourceWidth / sceneSourceHeight);
+  const sceneHeight = sceneWidth * sceneSourceHeight / sceneSourceWidth;
 
   useEffect(() => {
     let active = true;
@@ -140,19 +137,18 @@ export default function WelcomeScreen() {
             width: "100%",
             height: sceneHeight,
             overflow: "hidden",
+            alignItems: "center",
+            justifyContent: "center",
             backgroundColor: navy,
           }}
         >
           <Image
-            source={require("../assets/sami-welcome-design.jpg")}
+            source={require("../assets/sami-welcome-illustration.jpg")}
             accessibilityLabel="Customer using a phone while an errand provider hands over a parcel"
-            resizeMode="stretch"
+            resizeMode="contain"
             style={{
-              position: "absolute",
               width: sceneWidth,
-              height: fullImageHeight,
-              left: (width - sceneWidth) / 2,
-              top: -cropOffset,
+              height: sceneHeight,
             }}
           />
         </View>
