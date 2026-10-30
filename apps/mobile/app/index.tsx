@@ -28,7 +28,7 @@ export default function WelcomeScreen() {
   const [showWelcome, setShowWelcome] = useState(false);
 
   // The artwork already contains the SaMi wordmark, tagline and parcel handover.
-  // Keep the welcome artwork on a rich navy field that reaches the Android system bars.
+  // Keep the welcome artwork on a rich navy field that reaches the Android system bars. Legacy production APK runtime is explicitly targeted by the OTA workflow.
   const availableImageHeight = Math.max(260, height - 150);
   const heroWidth = Math.min(width, 420, availableImageHeight * (420 / 469));
   const heroHeight = heroWidth * (469 / 420);
