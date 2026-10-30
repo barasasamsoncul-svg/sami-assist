@@ -23,8 +23,12 @@ const navy = "#04142D";
 const blue = "#1683FF";
 const orange = "#FF951C";
 const lightText = "#F7FAFF";
-const sceneSourceWidth = 560;
-const sceneSourceHeight = 381;
+const sceneSourceWidth = 420;
+const sceneSourceHeight = 469;
+const sceneCropLeft = 38;
+const sceneCropTop = 170;
+const sceneCropWidth = 350;
+const sceneCropHeight = 275;
 
 export default function WelcomeScreen() {
   const { width, height } = useWindowDimensions();
@@ -32,10 +36,13 @@ export default function WelcomeScreen() {
   const compact = height < 740;
   const logoSize = Math.max(56, Math.min(82, width * 0.205));
 
-  // This is a separate illustration-only asset. SaMi branding and actions are
-  // native app UI, never baked into the image.
-  const sceneWidth = Math.min(width * 1.04, height * 0.40 * sceneSourceWidth / sceneSourceHeight);
-  const sceneHeight = sceneWidth * sceneSourceHeight / sceneSourceWidth;
+  // Crop the original artwork below its embedded wordmark. The brand and
+  // tagline above remain native text; no photo-frame or image card is rendered.
+  const sceneWidth = Math.min(width, height * 0.40 * sceneCropWidth / sceneCropHeight);
+  const cropScale = sceneWidth / sceneCropWidth;
+  const sceneHeight = cropScale * sceneCropHeight;
+  const imageWidth = cropScale * sceneSourceWidth;
+  const imageHeight = cropScale * sceneSourceHeight;
 
   useEffect(() => {
     let active = true;
@@ -137,18 +144,19 @@ export default function WelcomeScreen() {
             width: "100%",
             height: sceneHeight,
             overflow: "hidden",
-            alignItems: "center",
-            justifyContent: "center",
             backgroundColor: navy,
           }}
         >
           <Image
-            source={require("../assets/sami-welcome-illustration.jpg")}
+            source={require("../assets/sami-welcome-design.jpg")}
             accessibilityLabel="Customer using a phone while an errand provider hands over a parcel"
-            resizeMode="contain"
+            resizeMode="stretch"
             style={{
-              width: sceneWidth,
-              height: sceneHeight,
+              position: "absolute",
+              width: imageWidth,
+              height: imageHeight,
+              left: -cropScale * sceneCropLeft,
+              top: -cropScale * sceneCropTop,
             }}
           />
         </View>
