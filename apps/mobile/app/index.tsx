@@ -115,7 +115,7 @@ export default function WelcomeScreen() {
           position: "absolute",
           left: 20,
           right: 20,
-          bottom: 18,
+          bottom: 68, 
           alignItems: "center",
         }}
       >
@@ -125,7 +125,7 @@ export default function WelcomeScreen() {
             accessibilityLabel="Get started"
             onPress={() => router.push("/(auth)/choose-role")}
             style={({ pressed }) => ({
-              width: "74%",
+              width: "66%",
               minHeight: 46,
               borderRadius: 30,
               backgroundColor: pressed ? "#0869D7" : blue,
