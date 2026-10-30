@@ -19,7 +19,7 @@ type BootstrapStatus = {
 };
 
 const SESSION_KEY = "sami_errands_access_token";
-const navy = "#000005";
+const navy = "#061426";
 const blue = "#1683FF";
 const lightText = "#F7FAFF";
 
@@ -115,7 +115,7 @@ export default function WelcomeScreen() {
           position: "absolute",
           left: 20,
           right: 20,
-          bottom: 44,
+          bottom: 18,
           alignItems: "center",
         }}
       >
@@ -125,9 +125,9 @@ export default function WelcomeScreen() {
             accessibilityLabel="Get started"
             onPress={() => router.push("/(auth)/choose-role")}
             style={({ pressed }) => ({
-              width: "100%",
-              minHeight: 62,
-              borderRadius: 34,
+              width: "74%",
+              minHeight: 46,
+              borderRadius: 30,
               backgroundColor: pressed ? "#0869D7" : blue,
               alignItems: "center",
               justifyContent: "center",
@@ -140,10 +140,10 @@ export default function WelcomeScreen() {
               elevation: 5,
             })}
           >
-            <Text style={{ color: "#FFFFFF", fontSize: 19, fontWeight: "900" }}>
+            <Text style={{ color: "#FFFFFF", fontSize: 17, fontWeight: "800" }}>
               Get started
             </Text>
-            <Ionicons name="arrow-forward" size={23} color="#FFFFFF" />
+            <Ionicons name="arrow-forward" size={22} color="#FFFFFF" />
           </Pressable>
 
           <Pressable
@@ -151,7 +151,7 @@ export default function WelcomeScreen() {
             accessibilityLabel="Sign in"
             onPress={() => router.push("/(auth)/login")}
             style={({ pressed }) => ({
-              minHeight: 52,
+              minHeight: 40,
               marginTop: 10,
               paddingHorizontal: 24,
               paddingVertical: 6,
@@ -161,7 +161,7 @@ export default function WelcomeScreen() {
               backgroundColor: pressed ? "rgba(255,255,255,0.10)" : "transparent",
             })}
           >
-            <Text style={{ color: lightText, fontSize: 18, fontWeight: "700" }}>
+            <Text style={{ color: lightText, fontSize: 17, fontWeight: "600" }}>
               Sign in
             </Text>
           </Pressable>
