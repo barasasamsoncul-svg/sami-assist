@@ -1,0 +1,52 @@
+name: SaMi Mobile Production OTA
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/mobile/**"
+
+concurrency:
+  group: sami-mobile-production
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish-android:
+    name: Publish Android production update
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Require Expo authentication
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error title=Missing EXPO_TOKEN::Add an Expo access token as the EXPO_TOKEN GitHub Actions repository secret."
+            exit 1
+          fi
+
+      - name: Publish Android update to production channel
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          npx --yes eas-cli@latest update \
+            --channel production \
+            --platform android \
+            --message "SaMi mobile production update $GITHUB_SHA" \
+            --non-interactive
