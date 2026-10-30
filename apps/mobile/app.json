@@ -11,11 +11,11 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#061426",
+          "backgroundColor": "#000005",
           "image": "./assets/icon.png",
           "imageWidth": 160,
           "dark": {
-            "backgroundColor": "#061426",
+            "backgroundColor": "#000005",
             "image": "./assets/icon.png"
           }
         }
@@ -47,7 +47,7 @@
         "NSLocationWhenInUseUsageDescription": "SaMi uses your location to set pickup points and share provider location during active errands.",
         "NSMicrophoneUsageDescription": "SaMi uses your microphone only while you are on an in-app voice call with the assigned participant for an errand."
       },
-      "backgroundColor": "#061426"
+      "backgroundColor": "#000005"
     },
     "android": {
       "package": "com.sami.errands",
@@ -61,7 +61,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0A1A40"
       },
-      "backgroundColor": "#061426"
+      "backgroundColor": "#000005"
     },
     "experiments": {
       "typedRoutes": true
@@ -75,17 +75,17 @@
         "projectId": "c09e119e-8a6b-4a1e-a7c6-b85cfd4e330d"
       }
     },
-    "backgroundColor": "#061426",
+    "backgroundColor": "#000005",
     "web": {
-      "backgroundColor": "#061426"
+      "backgroundColor": "#000005"
     },
     "androidNavigationBar": {
-      "backgroundColor": "#061426",
+      "backgroundColor": "#000005",
       "barStyle": "light-content",
       "enforceContrast": false
     },
     "androidStatusBar": {
-      "backgroundColor": "#061426",
+      "backgroundColor": "#000005",
       "barStyle": "light-content",
       "translucent": false
     }
