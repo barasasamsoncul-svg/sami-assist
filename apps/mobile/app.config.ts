@@ -76,6 +76,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     slug: config.slug ?? "sami-mobile",
     extra,
     updates,
-    runtimeVersion: config.runtimeVersion ?? { policy: "fingerprint" },
+    runtimeVersion:
+      process.env.SAMI_RUNTIME_VERSION?.trim() ||
+      config.runtimeVersion ||
+      { policy: "fingerprint" },
   };
 };
