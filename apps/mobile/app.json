@@ -79,11 +79,6 @@
     "web": {
       "backgroundColor": "#000005"
     },
-    "androidNavigationBar": {
-      "backgroundColor": "#000005",
-      "barStyle": "light-content",
-      "enforceContrast": false
-    },
     "androidStatusBar": {
       "backgroundColor": "#000005",
       "barStyle": "light-content",
