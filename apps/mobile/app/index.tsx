@@ -23,15 +23,22 @@ const navy = "#061426";
 const blue = "#1683FF";
 const orange = "#FF951C";
 const lightText = "#F7FAFF";
-const artworkRatio = 941 / 730;
+const sceneSourceWidth = 420;
+const sceneSourceHeight = 469;
+const sceneCropTop = 165;
 
 export default function WelcomeScreen() {
   const { width, height } = useWindowDimensions();
   const [showWelcome, setShowWelcome] = useState(false);
-  const wordmarkSize = Math.max(58, Math.min(84, width * 0.21));
-  const artworkWidth = Math.min(width, 480, height * 0.45 * artworkRatio);
-  const artworkHeight = artworkWidth / artworkRatio;
-  const compact = height < 720;
+  const compact = height < 740;
+  const logoSize = Math.max(56, Math.min(82, width * 0.205));
+
+  // The source illustration contains an old wordmark at its top. Crop that area
+  // out and display only the customer/provider scene; branding is native text.
+  const sceneWidth = Math.min(width * 1.12, height * 0.43 * sceneSourceWidth / (sceneSourceHeight - sceneCropTop));
+  const sceneHeight = sceneWidth * (sceneSourceHeight - sceneCropTop) / sceneSourceWidth;
+  const fullImageHeight = sceneWidth * sceneSourceHeight / sceneSourceWidth;
+  const cropOffset = sceneWidth * sceneCropTop / sceneSourceWidth;
 
   useEffect(() => {
     let active = true;
@@ -90,22 +97,23 @@ export default function WelcomeScreen() {
       <View
         style={{
           flex: 1,
+          minHeight: 0,
           alignItems: "center",
           justifyContent: "space-between",
-          paddingTop: compact ? 10 : 24,
-          paddingBottom: compact ? 8 : 18,
+          paddingTop: compact ? 10 : 18,
+          paddingBottom: compact ? 4 : 10,
         }}
       >
-        <View style={{ width: "82%", maxWidth: 330, alignItems: "center" }}>
+        <View style={{ width: "84%", maxWidth: 340, alignItems: "center" }}>
           <Text
             accessibilityLabel="SaMi"
             style={{
               color: "#FFFFFF",
-              fontSize: wordmarkSize,
+              fontSize: logoSize,
               fontWeight: "900",
               fontStyle: "italic",
-              letterSpacing: -4,
-              lineHeight: wordmarkSize * 1.06,
+              letterSpacing: -4.2,
+              lineHeight: logoSize * 1.02,
               textAlign: "center",
             }}
           >
@@ -114,8 +122,8 @@ export default function WelcomeScreen() {
           <Text
             style={{
               alignSelf: "flex-end",
-              marginTop: compact ? -3 : -6,
-              marginRight: 3,
+              marginTop: -5,
+              marginRight: 2,
               color: orange,
               fontSize: compact ? 15 : 18,
               lineHeight: compact ? 19 : 23,
@@ -127,15 +135,27 @@ export default function WelcomeScreen() {
           </Text>
         </View>
 
-        <Image
-          source={require("../assets/sami-welcome-scene.jpg")}
-          accessibilityLabel="A customer using her phone while an errand provider hands over a parcel"
-          resizeMode="contain"
+        <View
           style={{
-            width: artworkWidth,
-            height: artworkHeight,
+            width: "100%",
+            height: sceneHeight,
+            overflow: "hidden",
+            backgroundColor: navy,
           }}
-        />
+        >
+          <Image
+            source={require("../assets/sami-welcome-design.jpg")}
+            accessibilityLabel="Customer using a phone while an errand provider hands over a parcel"
+            resizeMode="stretch"
+            style={{
+              position: "absolute",
+              width: sceneWidth,
+              height: fullImageHeight,
+              left: (width - sceneWidth) / 2,
+              top: -cropOffset,
+            }}
+          />
+        </View>
 
         <View
           style={{
@@ -151,15 +171,15 @@ export default function WelcomeScreen() {
             style={({ pressed }) => ({
               width: "84%",
               maxWidth: 390,
-              minHeight: compact ? 54 : 60,
-              borderRadius: 36,
+              minHeight: compact ? 56 : 62,
+              borderRadius: 38,
               backgroundColor: pressed ? "#0869D7" : blue,
               alignItems: "center",
               justifyContent: "center",
               flexDirection: "row",
               gap: 14,
               shadowColor: blue,
-              shadowOpacity: 0.38,
+              shadowOpacity: 0.42,
               shadowRadius: 20,
               shadowOffset: { width: 0, height: 5 },
               elevation: 8,
@@ -168,7 +188,7 @@ export default function WelcomeScreen() {
             <Text style={{ color: "#FFFFFF", fontSize: compact ? 18 : 20, fontWeight: "800" }}>
               Get started
             </Text>
-            <Ionicons name="arrow-forward" size={compact ? 23 : 25} color="#FFFFFF" />
+            <Ionicons name="arrow-forward" size={compact ? 24 : 26} color="#FFFFFF" />
           </Pressable>
 
           <Pressable
@@ -176,7 +196,7 @@ export default function WelcomeScreen() {
             accessibilityLabel="Sign in"
             onPress={() => router.push("/(auth)/login")}
             style={({ pressed }) => ({
-              minHeight: 48,
+              minHeight: 50,
               marginTop: 8,
               paddingHorizontal: 24,
               alignItems: "center",
