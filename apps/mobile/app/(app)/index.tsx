@@ -191,7 +191,7 @@ export default function HomeScreen() {
               <SaMiLogoMark size={44} />
               <View style={{ gap: 2 }}>
                 <Text style={{ color: colors.navy, fontSize: 27, fontWeight: "900", fontStyle: "italic", letterSpacing: -1.1 }}>SaMi</Text>
-                <Text style={{ color: colors.blue, fontSize: 9, fontWeight: "800", letterSpacing: 0.35 }}>YOUR EVERYDAY HELP ORGANISED</Text>
+                <Text style={{ color: colors.blue, fontSize: 9, fontWeight: "800", letterSpacing: 0.35 }}>Consider it done.</Text>
               </View>
             </View>
             <View style={{ flexDirection: "row", gap: 8 }}>
@@ -222,9 +222,9 @@ export default function HomeScreen() {
           <>
             <View style={{ gap: 14 }}>
               <View style={{ gap: 5 }}>
-                <Text style={common.eyebrow}>YOUR DAY, MADE EASIER</Text>
-                <Text style={{ color: colors.navy, fontSize: 29, lineHeight: 35, fontWeight: "900", letterSpacing: -0.8 }}>Big or small, we run your errands.</Text>
-                <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20 }}>Your day, made easier. Tell us what you need and we’ll help get it done.</Text>
+                <Text style={common.eyebrow}>YOUR TO-DO LIST, HANDLED</Text>
+                <Text style={{ color: colors.navy, fontSize: 29, lineHeight: 35, fontWeight: "900", letterSpacing: -0.8 }}>What needs doing today?</Text>
+                <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20 }}>Tell SaMi what needs doing. We’ll connect you with an approved errand provider to get it handled.</Text>
               </View>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10, minHeight: 52, paddingHorizontal: 14, borderRadius: 16, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border }}>
                 <Ionicons name="search-outline" size={21} color={colors.muted} />
@@ -236,8 +236,8 @@ export default function HomeScreen() {
                   <View style={{ width: 46, height: 46, borderRadius: 16, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center" }}><Ionicons name="navigate-outline" size={24} color={colors.blue} /></View>
                   <View style={{ paddingHorizontal: 11, paddingVertical: 7, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.14)" }}><Text style={{ color: "#FFFFFF", fontSize: 10, fontWeight: "800", letterSpacing: 0.7 }}>MADE FOR YOUR DAY</Text></View>
                 </View>
-                <Text style={{ color: colors.white, fontSize: 23, lineHeight: 29, fontWeight: "900", letterSpacing: -0.4 }}>Big or small, we run your errands.</Text>
-                <Text style={{ color: "#DCE8FA", fontSize: 13, lineHeight: 20 }}>From shopping and collections to the everyday tasks you cannot get to.</Text>
+                <Text style={{ color: colors.white, fontSize: 23, lineHeight: 29, fontWeight: "900", letterSpacing: -0.4 }}>Leave the running around to us.</Text>
+                <Text style={{ color: "#DCE8FA", fontSize: 13, lineHeight: 20 }}>Shopping, collections, deliveries and everyday tasks—start with one simple request.</Text>
                 <View style={{ minHeight: 46, borderRadius: 14, backgroundColor: colors.white, paddingHorizontal: 15, flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 2 }}>
                   <Text style={{ color: colors.navy, fontSize: 14, fontWeight: "900" }}>Create an errand</Text><Ionicons name="arrow-forward" size={18} color={colors.blue} />
                 </View>
