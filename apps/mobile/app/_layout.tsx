@@ -10,17 +10,23 @@ const androidSafeAreaEdges: Array<"top" | "right" | "bottom" | "left"> = [
   "left",
 ];
 
+const welcomeNavy = "#04142D";
+
 export default function RootLayout() {
   const pathname = usePathname();
   const isWelcome = pathname === "/";
-  const shellBackground = isWelcome ? "#061426" : colors.paper;
+  const shellBackground = isWelcome ? welcomeNavy : colors.paper;
 
   return (
     <SafeAreaProvider>
-      <StatusBar barStyle={isWelcome ? "light-content" : "dark-content"} backgroundColor={shellBackground} />
+      <StatusBar
+        barStyle={isWelcome ? "light-content" : "dark-content"}
+        backgroundColor={shellBackground}
+        translucent={false}
+      />
       <SafeAreaView
         style={{ flex: 1, backgroundColor: shellBackground }}
-        edges={Platform.OS === "android" ? androidSafeAreaEdges : []}
+        edges={Platform.OS === "android" && !isWelcome ? androidSafeAreaEdges : []}
       >
         <Stack
           screenOptions={{
