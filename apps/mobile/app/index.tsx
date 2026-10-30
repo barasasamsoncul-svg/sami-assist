@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as SecureStore from "expo-secure-store";
 import {
+  Animated,
   Image,
   Pressable,
   Text,
@@ -21,28 +22,43 @@ type BootstrapStatus = {
 const SESSION_KEY = "sami_errands_access_token";
 const navy = "#04142D";
 const blue = "#1683FF";
-const orange = "#FF951C";
 const lightText = "#F7FAFF";
-const sceneSourceWidth = 420;
-const sceneSourceHeight = 469;
-const sceneCropLeft = 38;
-const sceneCropTop = 170;
-const sceneCropWidth = 350;
-const sceneCropHeight = 275;
 
 export default function WelcomeScreen() {
   const { width, height } = useWindowDimensions();
-  const [showWelcome, setShowWelcome] = useState(false);
-  const compact = height < 740;
-  const logoSize = Math.max(56, Math.min(82, width * 0.205));
+  const [showWelcome, setShowWelcome] = useState(true);
+  const compact = height < 700;
+  const heroOpacity = useRef(new Animated.Value(0)).current;
+  const heroLift = useRef(new Animated.Value(18)).current;
+  const actionsOpacity = useRef(new Animated.Value(0)).current;
 
-  // Crop the original artwork below its embedded wordmark. The brand and
-  // tagline above remain native text; no photo-frame or image card is rendered.
-  const sceneWidth = Math.min(width, height * 0.40 * sceneCropWidth / sceneCropHeight);
-  const cropScale = sceneWidth / sceneCropWidth;
-  const sceneHeight = cropScale * sceneCropHeight;
-  const imageWidth = cropScale * sceneSourceWidth;
-  const imageHeight = cropScale * sceneSourceHeight;
+  // Preserve the full original illustration and its embedded SaMi branding.
+  // The matching blurred layer fills the viewport so the artwork has no frame.
+  const heroHeight = Math.min(height * 0.64, width * (469 / 420));
+
+  useEffect(() => {
+    const entrance = Animated.sequence([
+      Animated.parallel([
+        Animated.timing(heroOpacity, {
+          toValue: 1,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+        Animated.timing(heroLift, {
+          toValue: 0,
+          duration: 720,
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.timing(actionsOpacity, {
+        toValue: 1,
+        duration: 380,
+        useNativeDriver: true,
+      }),
+    ]);
+    entrance.start();
+    return () => entrance.stop();
+  }, [actionsOpacity, heroLift, heroOpacity]);
 
   useEffect(() => {
     let active = true;
@@ -88,84 +104,62 @@ export default function WelcomeScreen() {
   }, []);
 
   if (!showWelcome) {
-    return (
-      <View style={{ flex: 1, backgroundColor: navy }}>
-        <StatusBar barStyle="light-content" backgroundColor={navy} />
-      </View>
-    );
+    return <View style={{ flex: 1, backgroundColor: navy }} />;
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: navy }}>
-      <StatusBar barStyle="light-content" backgroundColor={navy} />
+    <View style={{ flex: 1, backgroundColor: navy, overflow: "hidden" }}>
+      <StatusBar barStyle="light-content" backgroundColor={navy} translucent={false} />
+
+      <Image
+        source={require("../assets/sami-welcome-design.jpg")}
+        accessible={false}
+        blurRadius={28}
+        resizeMode="cover"
+        style={{
+          position: "absolute",
+          top: -height * 0.12,
+          left: -width * 0.18,
+          width: width * 1.36,
+          height: height * 1.24,
+          opacity: 0.42,
+        }}
+      />
+
       <View
         style={{
           flex: 1,
-          minHeight: 0,
           alignItems: "center",
-          justifyContent: "space-between",
-          paddingTop: compact ? 10 : 18,
-          paddingBottom: compact ? 4 : 10,
+          justifyContent: "flex-start",
+          paddingTop: compact ? 0 : 8,
+          paddingBottom: compact ? 4 : 12,
         }}
       >
-        <View style={{ width: "84%", maxWidth: 340, alignItems: "center" }}>
-          <Text
-            accessibilityLabel="SaMi"
-            style={{
-              color: "#FFFFFF",
-              fontSize: logoSize,
-              fontWeight: "900",
-              fontStyle: "italic",
-              letterSpacing: -4.2,
-              lineHeight: logoSize * 1.02,
-              textAlign: "center",
-            }}
-          >
-            Sa<Text style={{ color: blue }}>Mi</Text>
-          </Text>
-          <Text
-            style={{
-              alignSelf: "flex-end",
-              marginTop: -5,
-              marginRight: 2,
-              color: orange,
-              fontSize: compact ? 15 : 18,
-              lineHeight: compact ? 19 : 23,
-              fontWeight: "800",
-              fontStyle: "italic",
-            }}
-          >
-            Consider it done.
-          </Text>
-        </View>
-
-        <View
+        <Animated.View
           style={{
-            width: "100%",
-            height: sceneHeight,
-            overflow: "hidden",
-            backgroundColor: navy,
+            width,
+            height: heroHeight,
+            alignItems: "center",
+            justifyContent: "center",
+            opacity: heroOpacity,
+            transform: [{ translateY: heroLift }],
           }}
         >
           <Image
             source={require("../assets/sami-welcome-design.jpg")}
-            accessibilityLabel="Customer using a phone while an errand provider hands over a parcel"
-            resizeMode="stretch"
-            style={{
-              position: "absolute",
-              width: imageWidth,
-              height: imageHeight,
-              left: -cropScale * sceneCropLeft,
-              top: -cropScale * sceneCropTop,
-            }}
+            accessibilityLabel="SaMi. Consider it done. A customer and an errand provider completing a delivery."
+            resizeMode="contain"
+            style={{ width, height: heroHeight }}
           />
-        </View>
+        </Animated.View>
 
-        <View
+        <Animated.View
           style={{
             width: "100%",
             alignItems: "center",
             paddingHorizontal: 20,
+            marginTop: "auto",
+            opacity: actionsOpacity,
           }}
         >
           <Pressable
@@ -175,18 +169,19 @@ export default function WelcomeScreen() {
             style={({ pressed }) => ({
               width: "84%",
               maxWidth: 390,
-              minHeight: compact ? 56 : 62,
-              borderRadius: 38,
+              minHeight: compact ? 56 : 64,
+              borderRadius: 40,
               backgroundColor: pressed ? "#0869D7" : blue,
               alignItems: "center",
               justifyContent: "center",
               flexDirection: "row",
               gap: 14,
               shadowColor: blue,
-              shadowOpacity: 0.42,
-              shadowRadius: 20,
-              shadowOffset: { width: 0, height: 5 },
-              elevation: 8,
+              shadowOpacity: 0.46,
+              shadowRadius: 24,
+              shadowOffset: { width: 0, height: 6 },
+              elevation: 10,
+              transform: [{ scale: pressed ? 0.985 : 1 }],
             })}
           >
             <Text style={{ color: "#FFFFFF", fontSize: compact ? 18 : 20, fontWeight: "800" }}>
@@ -200,19 +195,17 @@ export default function WelcomeScreen() {
             accessibilityLabel="Sign in"
             onPress={() => router.push("/(auth)/login")}
             style={({ pressed }) => ({
-              minHeight: 50,
-              marginTop: 8,
-              paddingHorizontal: 24,
+              minHeight: 52,
+              marginTop: 6,
+              paddingHorizontal: 28,
               alignItems: "center",
               justifyContent: "center",
               backgroundColor: pressed ? "rgba(255,255,255,0.10)" : "transparent",
             })}
           >
-            <Text style={{ color: lightText, fontSize: 19, fontWeight: "600" }}>
-              Sign in
-            </Text>
+            <Text style={{ color: lightText, fontSize: 19, fontWeight: "600" }}>Sign in</Text>
           </Pressable>
-        </View>
+        </Animated.View>
       </View>
     </View>
   );
