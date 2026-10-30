@@ -74,6 +74,27 @@ jobs:
       - name: Check Expo project health
         run: npx expo-doctor
 
+      - name: Inspect runtime embedded in the latest successful production APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx eas-cli@latest build:view afeeaf0c-122d-4489-b716-808193f2ecd1 --json > "$RUNNER_TEMP/sami-installed-apk-build.json"
+          node - "$RUNNER_TEMP/sami-installed-apk-build.json" <<'NODE'
+          const fs = require("node:fs");
+          const parsed = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const build = parsed.build || parsed;
+          const keys = Object.keys(build).filter((key) => /runtime|fingerprint|channel|profile|version|status|platform|id/i.test(key));
+          const summary = Object.fromEntries(keys.map((key) => [key, build[key]]));
+          console.log("Latest successful APK build metadata:");
+          console.log(JSON.stringify(summary, null, 2));
+          const runtime = build.runtimeVersion || build.runtime?.version || build.fingerprint?.hash;
+          if (typeof runtime !== "string" || !runtime) {
+            throw new Error("EAS build metadata did not expose the embedded runtime version.");
+          }
+          fs.appendFileSync(process.env.GITHUB_ENV, "SAMI_INSTALLED_APK_RUNTIME=" + runtime + "\\n");
+          console.log("Verified installed APK runtime: " + runtime);
+          NODE
+
       - name: Verify production Android JavaScript bundle
         run: npx expo export --platform android --output-dir "$RUNNER_TEMP/sami-production-ota-bundle"
 
