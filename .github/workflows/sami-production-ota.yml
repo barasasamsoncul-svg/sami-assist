@@ -99,18 +99,7 @@ jobs:
           console.log("Restricted Google Maps key loaded for native config; value was not logged.");
           NODE
 
-      - name: Publish compatibility update for the installed production APK
-        env:
-          SAMI_RUNTIME_VERSION: 2ce5234afa8954f4d3c759fb6c313d1d283c9ccc
-        run: >
-          npx eas-cli@latest update
-          --environment production
-          --channel production
-          --platform android
-          --message "SaMi welcome screen update for installed production APK"
-          --non-interactive
-
-      - name: Publish update for the current native fingerprint
+      - name: Publish compatible production Android update
         run: >
           npx eas-cli@latest update
           --environment production
