@@ -17,6 +17,7 @@
       }
     },
     "production": {
+      "environment": "production",
       "channel": "production",
       "env": {
         "EXPO_PUBLIC_SAMI_API_URL": "https://sami-assist.vercel.app",
@@ -28,6 +29,7 @@
     },
     "production-apk": {
       "extends": "production",
+      "environment": "production",
       "distribution": "internal",
       "android": {
         "buildType": "apk"
