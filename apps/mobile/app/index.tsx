@@ -25,26 +25,22 @@ const blue = "#1683FF";
 const lightText = "#F7FAFF";
 
 export default function WelcomeScreen() {
-  const { width, height } = useWindowDimensions();
+  const { height } = useWindowDimensions();
   const [showWelcome, setShowWelcome] = useState(true);
   const compact = height < 700;
-  const heroOpacity = useRef(new Animated.Value(0)).current;
-  const heroLift = useRef(new Animated.Value(18)).current;
+  const brandOpacity = useRef(new Animated.Value(0)).current;
+  const brandLift = useRef(new Animated.Value(18)).current;
   const actionsOpacity = useRef(new Animated.Value(0)).current;
-
-  // Preserve the full original illustration and its embedded SaMi branding.
-  // The matching blurred layer fills the viewport so the artwork has no frame.
-  const heroHeight = Math.min(height * 0.64, width * (469 / 420));
 
   useEffect(() => {
     const entrance = Animated.sequence([
       Animated.parallel([
-        Animated.timing(heroOpacity, {
+        Animated.timing(brandOpacity, {
           toValue: 1,
           duration: 650,
           useNativeDriver: true,
         }),
-        Animated.timing(heroLift, {
+        Animated.timing(brandLift, {
           toValue: 0,
           duration: 720,
           useNativeDriver: true,
@@ -58,7 +54,7 @@ export default function WelcomeScreen() {
     ]);
     entrance.start();
     return () => entrance.stop();
-  }, [actionsOpacity, heroLift, heroOpacity]);
+  }, [actionsOpacity, brandLift, brandOpacity]);
 
   useEffect(() => {
     let active = true;
@@ -109,104 +105,134 @@ export default function WelcomeScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: navy, overflow: "hidden" }}>
-      <StatusBar barStyle="light-content" backgroundColor={navy} translucent={false} />
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
       <Image
-        source={require("../assets/sami-welcome-design.jpg")}
+        source={require("../assets/sami-welcome-photo.jpg")}
         accessible={false}
-        blurRadius={28}
         resizeMode="cover"
         style={{
           position: "absolute",
-          top: -height * 0.12,
-          left: -width * 0.18,
-          width: width * 1.36,
-          height: height * 1.24,
-          opacity: 0.42,
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          width: "100%",
+          height: "100%",
         }}
       />
 
       <View
+        pointerEvents="none"
         style={{
-          flex: 1,
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(3, 14, 32, 0.20)",
+        }}
+      />
+
+      <Animated.View
+        style={{
+          position: "absolute",
+          top: compact ? 76 : 96,
+          left: 0,
+          right: 0,
           alignItems: "center",
-          justifyContent: "flex-start",
-          paddingTop: compact ? 0 : 8,
-          paddingBottom: compact ? 4 : 12,
+          paddingHorizontal: 24,
+          opacity: brandOpacity,
+          transform: [{ translateY: brandLift }],
         }}
       >
-        <Animated.View
+        <Text
           style={{
-            width,
-            height: heroHeight,
+            color: "#FFFFFF",
+            fontSize: compact ? 54 : 64,
+            lineHeight: compact ? 62 : 72,
+            fontWeight: "900",
+            fontStyle: "italic",
+            letterSpacing: -2.5,
+            textShadowColor: "rgba(0, 10, 28, 0.72)",
+            textShadowOffset: { width: 0, height: 3 },
+            textShadowRadius: 12,
+          }}
+        >
+          SaMi
+        </Text>
+        <Text
+          style={{
+            marginTop: 2,
+            color: "#FFFFFF",
+            fontSize: compact ? 16 : 18,
+            fontWeight: "700",
+            letterSpacing: 1.0,
+            textShadowColor: "rgba(0, 10, 28, 0.82)",
+            textShadowOffset: { width: 0, height: 2 },
+            textShadowRadius: 8,
+          }}
+        >
+          Consider it done.
+        </Text>
+      </Animated.View>
+
+      <Animated.View
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: compact ? 24 : 34,
+          width: "100%",
+          alignItems: "center",
+          paddingHorizontal: 20,
+          opacity: actionsOpacity,
+        }}
+      >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Get started"
+          onPress={() => router.push("/(auth)/choose-role")}
+          style={({ pressed }) => ({
+            width: "84%",
+            maxWidth: 390,
+            minHeight: compact ? 56 : 64,
+            borderRadius: 40,
+            backgroundColor: pressed ? "#0869D7" : blue,
             alignItems: "center",
             justifyContent: "center",
-            opacity: heroOpacity,
-            transform: [{ translateY: heroLift }],
-          }}
+            flexDirection: "row",
+            gap: 14,
+            shadowColor: blue,
+            shadowOpacity: 0.46,
+            shadowRadius: 24,
+            shadowOffset: { width: 0, height: 6 },
+            elevation: 10,
+            transform: [{ scale: pressed ? 0.985 : 1 }],
+          })}
         >
-          <Image
-            source={require("../assets/sami-welcome-design.jpg")}
-            accessibilityLabel="SaMi. Consider it done. A customer and an errand provider completing a delivery."
-            resizeMode="contain"
-            style={{ width, height: heroHeight }}
-          />
-        </Animated.View>
+          <Text style={{ color: "#FFFFFF", fontSize: compact ? 18 : 20, fontWeight: "800" }}>
+            Get started
+          </Text>
+          <Ionicons name="arrow-forward" size={compact ? 24 : 26} color="#FFFFFF" />
+        </Pressable>
 
-        <Animated.View
-          style={{
-            width: "100%",
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Sign in"
+          onPress={() => router.push("/(auth)/login")}
+          style={({ pressed }) => ({
+            minHeight: 52,
+            marginTop: 6,
+            paddingHorizontal: 28,
             alignItems: "center",
-            paddingHorizontal: 20,
-            marginTop: "auto",
-            opacity: actionsOpacity,
-          }}
+            justifyContent: "center",
+            backgroundColor: pressed ? "rgba(255,255,255,0.10)" : "transparent",
+          })}
         >
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Get started"
-            onPress={() => router.push("/(auth)/choose-role")}
-            style={({ pressed }) => ({
-              width: "84%",
-              maxWidth: 390,
-              minHeight: compact ? 56 : 64,
-              borderRadius: 40,
-              backgroundColor: pressed ? "#0869D7" : blue,
-              alignItems: "center",
-              justifyContent: "center",
-              flexDirection: "row",
-              gap: 14,
-              shadowColor: blue,
-              shadowOpacity: 0.46,
-              shadowRadius: 24,
-              shadowOffset: { width: 0, height: 6 },
-              elevation: 10,
-              transform: [{ scale: pressed ? 0.985 : 1 }],
-            })}
-          >
-            <Text style={{ color: "#FFFFFF", fontSize: compact ? 18 : 20, fontWeight: "800" }}>
-              Get started
-            </Text>
-            <Ionicons name="arrow-forward" size={compact ? 24 : 26} color="#FFFFFF" />
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Sign in"
-            onPress={() => router.push("/(auth)/login")}
-            style={({ pressed }) => ({
-              minHeight: 52,
-              marginTop: 6,
-              paddingHorizontal: 28,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: pressed ? "rgba(255,255,255,0.10)" : "transparent",
-            })}
-          >
-            <Text style={{ color: lightText, fontSize: 19, fontWeight: "600" }}>Sign in</Text>
-          </Pressable>
-        </Animated.View>
-      </View>
+          <Text style={{ color: lightText, fontSize: 19, fontWeight: "600" }}>Sign in</Text>
+        </Pressable>
+      </Animated.View>
     </View>
   );
 }
