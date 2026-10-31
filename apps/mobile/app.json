@@ -12,18 +12,18 @@
     "plugins": [
       "expo-router",
       [
-        "expo-splash-screen",
-        {
-          "backgroundColor": "#000535",
-          "image": "./assets/sami-welcome-wordmark-transparent.png",
-          "imageWidth": 260,
-          "resizeMode": "contain",
-          "dark": {
-            "backgroundColor": "#000535",
-            "image": "./assets/sami-welcome-wordmark-transparent.png"
-          }
-        }
-      ],
+  "expo-splash-screen",
+  {
+    "backgroundColor": "#000535",
+    "image": "./assets/sami-splash-logo-1024.png",
+    "imageWidth": 288,
+    "resizeMode": "contain",
+    "dark": {
+      "backgroundColor": "#000535",
+      "image": "./assets/sami-splash-logo-1024.png"
+    }
+  }
+],
       [
         "expo-location",
         {
