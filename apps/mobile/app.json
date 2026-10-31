@@ -5,22 +5,22 @@
     "slug": "sami-mobile",
     "scheme": "sami",
     "version": "1.0.0",
-    "icon": "./assets/sami-app-icon.png",
+    "icon": "./assets/sami-app-icon-1024.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "backgroundColor": "#061B49",
+    "backgroundColor": "#000535",
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#061B49",
-          "image": "./assets/sami-app-icon.png",
-          "imageWidth": 130,
+          "backgroundColor": "#000535",
+          "image": "./assets/sami-welcome-wordmark-transparent.png",
+          "imageWidth": 260,
           "resizeMode": "contain",
           "dark": {
-            "backgroundColor": "#061B49",
-            "image": "./assets/sami-app-icon.png"
+            "backgroundColor": "#000535",
+            "image": "./assets/sami-welcome-wordmark-transparent.png"
           }
         }
       ],
@@ -46,10 +46,10 @@
     },
     "android": {
       "package": "com.sami.errands",
-      "backgroundColor": "#061B49",
+      "backgroundColor": "#000535",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/sami-app-icon.png",
-        "backgroundColor": "#0A1A40"
+        "foregroundImage": "./assets/sami-app-icon-1024.png",
+        "backgroundColor": "#000535"
       },
       "permissions": [
         "ACCESS_COARSE_LOCATION",

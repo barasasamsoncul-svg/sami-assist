@@ -1,9 +1,15 @@
 
-import { ImageBackground, Pressable, StatusBar, Text, View } from "react-native";
+import {
+  Image,
+  ImageBackground,
+  Pressable,
+  StatusBar,
+  Text,
+  View,
+} from "react-native";
 import { router } from "expo-router";
 
-const NAVY = "#061B49";
-const GOLD = "#F1C66D";
+const NAVY = "#000535";
 
 export default function WelcomeScreen() {
   return (
@@ -21,34 +27,21 @@ export default function WelcomeScreen() {
       <View
         style={{
           flex: 1,
-          backgroundColor: "rgba(4, 15, 42, 0.25)",
+          backgroundColor: "rgba(0, 5, 35, 0.20)",
           alignItems: "center",
         }}
       >
-        {/* SaMi brand */}
-        <View
+        {/* Original SaMi logo and tagline */}
+        <Image
+          source={require("../assets/sami-welcome-wordmark-transparent.png")}
+          resizeMode="contain"
           style={{
-            flex: 1,
-            justifyContent: "center",
-            alignItems: "center",
+            position: "absolute",
+            top: 378,
+            width: "88%",
+            aspectRatio: 852 / 382,
           }}
-        >
-          <Text
-            style={{
-              fontSize: 96,
-              fontWeight: "900",
-              fontStyle: "italic",
-              color: GOLD,
-              letterSpacing: -5,
-              transform: [{ rotate: "-12deg" }],
-              textShadowColor: "rgba(0,0,0,0.35)",
-              textShadowOffset: { width: 2, height: 4 },
-              textShadowRadius: 8,
-            }}
-          >
-            SaMi
-          </Text>
-        </View>
+        />
 
         {/* Welcome actions */}
         <View
@@ -92,7 +85,7 @@ export default function WelcomeScreen() {
               height: 58,
               borderRadius: 17,
               borderWidth: 1.5,
-              borderColor: "rgba(255,255,255,0.85)",
+              borderColor: "#FFFFFF",
               backgroundColor: "rgba(255,255,255,0.10)",
               alignItems: "center",
               justifyContent: "center",
