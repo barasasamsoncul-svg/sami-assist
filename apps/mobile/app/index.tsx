@@ -37,7 +37,7 @@ export default function WelcomeScreen() {
           resizeMode="contain"
           style={{
             position: "absolute",
-            top: 378,
+            top: 150,
             width: "88%",
             aspectRatio: 852 / 382,
           }}
