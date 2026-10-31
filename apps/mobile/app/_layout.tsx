@@ -1,15 +1,21 @@
+
 import { Stack } from "expo-router";
 import { StatusBar } from "react-native";
-import { colors } from "@/theme";
+
+const NAVY = "#061B49";
 
 export default function RootLayout() {
   return (
     <>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.paper} />
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor={NAVY}
+      />
+
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: colors.paper },
+          contentStyle: { backgroundColor: NAVY },
         }}
       >
         <Stack.Screen name="index" />

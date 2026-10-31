@@ -1,60 +1,16 @@
-import { useEffect } from "react";
-import {
-  ActivityIndicator,
-  ImageBackground,
-  StatusBar,
-  Text,
-  View,
-} from "react-native";
+
+import { ImageBackground, Pressable, StatusBar, Text, View } from "react-native";
 import { router } from "expo-router";
-import { dispatchGet } from "@/api";
-import { colors } from "@/theme";
 
-type BootstrapStatus = {
-  adminExists: boolean;
-  tokenConfigured: boolean;
-  setupAvailable: boolean;
-};
+const NAVY = "#061B49";
+const GOLD = "#F1C66D";
 
-export default function EntryScreen() {
-  useEffect(() => {
-    let active = true;
-
-    dispatchGet<BootstrapStatus>("bootstrapStatus")
-      .then(async (status) => {
-        if (!active) return;
-
-        if (!status.adminExists) {
-          router.replace("/(auth)/setup-admin");
-          return;
-        }
-
-        try {
-          await dispatchGet("me");
-          if (active) router.replace("/(app)");
-        } catch {
-          if (active) router.replace("/(auth)/login");
-        }
-      })
-      .catch(async () => {
-        try {
-          await dispatchGet("me");
-          if (active) router.replace("/(app)");
-        } catch {
-          if (active) router.replace("/(auth)/login");
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
+export default function WelcomeScreen() {
   return (
     <ImageBackground
       source={require("../assets/sami-welcome-photo.png")}
       resizeMode="cover"
-      style={{ flex: 1, backgroundColor: colors.navy }}
+      style={{ flex: 1, backgroundColor: NAVY }}
     >
       <StatusBar
         translucent
@@ -65,28 +21,94 @@ export default function EntryScreen() {
       <View
         style={{
           flex: 1,
+          backgroundColor: "rgba(4, 15, 42, 0.25)",
           alignItems: "center",
-          justifyContent: "center",
-          gap: 14,
-          backgroundColor: "rgba(4, 18, 48, 0.30)",
         }}
       >
-        <Text
+        {/* SaMi brand */}
+        <View
           style={{
-            fontSize: 40,
-            fontWeight: "900",
-            color: "#FFFFFF",
-            letterSpacing: -1,
+            flex: 1,
+            justifyContent: "center",
+            alignItems: "center",
           }}
         >
-          SaMi
-        </Text>
+          <Text
+            style={{
+              fontSize: 96,
+              fontWeight: "900",
+              fontStyle: "italic",
+              color: GOLD,
+              letterSpacing: -5,
+              transform: [{ rotate: "-12deg" }],
+              textShadowColor: "rgba(0,0,0,0.35)",
+              textShadowOffset: { width: 2, height: 4 },
+              textShadowRadius: 8,
+            }}
+          >
+            SaMi
+          </Text>
+        </View>
 
-        <Text style={{ color: "#FFFFFF", fontSize: 15 }}>
-          Everyday help, organised.
-        </Text>
+        {/* Welcome actions */}
+        <View
+          style={{
+            position: "absolute",
+            bottom: 185,
+            width: "100%",
+            alignItems: "center",
+            paddingHorizontal: 28,
+            gap: 14,
+          }}
+        >
+          <Pressable
+            onPress={() => router.push("/(auth)/register")}
+            style={{
+              width: "100%",
+              maxWidth: 360,
+              height: 58,
+              borderRadius: 17,
+              backgroundColor: "#FFFFFF",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text
+              style={{
+                color: NAVY,
+                fontSize: 16,
+                fontWeight: "800",
+              }}
+            >
+              Get started
+            </Text>
+          </Pressable>
 
-        <ActivityIndicator size="small" color="#FFFFFF" />
+          <Pressable
+            onPress={() => router.push("/(auth)/login")}
+            style={{
+              width: "100%",
+              maxWidth: 360,
+              height: 58,
+              borderRadius: 17,
+              borderWidth: 1.5,
+              borderColor: "rgba(255,255,255,0.85)",
+              backgroundColor: "rgba(255,255,255,0.10)",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text
+              style={{
+                color: "#FFFFFF",
+                fontSize: 16,
+                fontWeight: "800",
+              }}
+            >
+              Sign in
+            </Text>
+          </Pressable>
+        </View>
       </View>
     </ImageBackground>
   );

@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "SaMi",
@@ -7,8 +8,22 @@
     "icon": "./assets/sami-app-icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "backgroundColor": "#061B49",
     "plugins": [
       "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#061B49",
+          "image": "./assets/sami-app-icon.png",
+          "imageWidth": 130,
+          "resizeMode": "contain",
+          "dark": {
+            "backgroundColor": "#061B49",
+            "image": "./assets/sami-app-icon.png"
+          }
+        }
+      ],
       [
         "expo-location",
         {
@@ -31,10 +46,11 @@
     },
     "android": {
       "package": "com.sami.errands",
+      "backgroundColor": "#061B49",
       "adaptiveIcon": {
-  "foregroundImage": "./assets/sami-app-icon.png",
-  "backgroundColor": "#0A1A40"
-},
+        "foregroundImage": "./assets/sami-app-icon.png",
+        "backgroundColor": "#0A1A40"
+      },
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION"
