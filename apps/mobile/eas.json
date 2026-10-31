@@ -18,7 +18,7 @@
     "production": {
       "channel": "production",
       "env": {
-        "EXPO_PUBLIC_SAMI_API_URL": "https://sami-assist-git-feat-sami-2bf3a4-barasasamsoncul-svgs-projects.vercel.app",
+        "EXPO_PUBLIC_SAMI_API_URL": "https://sami-assist.vercel.app",
         "EXPO_UPDATE_CHANNEL": "production"
       },
       "android": {

@@ -1,4 +1,5 @@
-name: SaMi mobile OTA updates
+
+name: SaMi Production Releases
 
 on:
   push:
@@ -14,23 +15,20 @@ permissions:
   contents: read
 
 concurrency:
-  group: sami-mobile-ota-${{ github.ref }}
+  group: sami-production-release-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  publish-update:
-    name: Publish compatible app update
+  release:
+    name: Publish SaMi Production Release
     runs-on: ubuntu-latest
+
     defaults:
       run:
         working-directory: apps/mobile
+
     env:
-      CI: "1"
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-      EXPO_PROJECT_ID: ${{ vars.EXPO_PROJECT_ID }}
-      EXPO_UPDATE_CHANNEL: ${{ github.ref_name == 'main' && 'production' || 'preview' }}
-      EXPO_EAS_ENVIRONMENT: ${{ github.ref_name == 'main' && 'production' || 'preview' }}
-      EXPO_PUBLIC_SAMI_API_URL: ${{ github.ref_name == 'main' && 'https://sami-assist.vercel.app' || 'https://sami-assist-git-feat-sami-2bf3a4-barasasamsoncul-svgs-projects.vercel.app' }}
 
     steps:
       - name: Checkout
@@ -41,24 +39,45 @@ jobs:
         with:
           node-version: "22.13"
 
-      - name: Install mobile dependencies
+      - name: Install dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Publish compatible Android app update
-        if: ${{ env.EXPO_TOKEN != '' && env.EXPO_PROJECT_ID != '' }}
+      - name: Verify Expo authentication
+        shell: bash
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::GitHub secret EXPO_TOKEN is missing."
+            exit 1
+          fi
+
+      - name: Select release type
+        id: release
+        shell: bash
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message || '' }}
+        run: |
+          if [[ "$COMMIT_MESSAGE" == *"[build-aab]"* ]]; then
+            echo "mode=aab" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=ota" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish production OTA update
+        if: steps.release.outputs.mode == 'ota'
         run: >
           npx eas-cli@latest update
-          --channel "$EXPO_UPDATE_CHANNEL"
-          --message "Automated SaMi Android update ${GITHUB_SHA}"
-          --environment "$EXPO_EAS_ENVIRONMENT"
+          --channel production
+          --message "SaMi production OTA ${GITHUB_SHA}"
+          --environment production
           --platform android
+          --non-interactive
 
-      - name: Explain why publishing was skipped
-        if: ${{ env.EXPO_TOKEN == '' || env.EXPO_PROJECT_ID == '' }}
-        run: |
-          {
-            echo "### OTA update not published"
-            echo
-            echo "Set the GitHub repository variable `EXPO_PROJECT_ID` and secret `EXPO_TOKEN` after linking the mobile app to an Expo project."
-            echo "This workflow will then publish compatible mobile code changes automatically."
-          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Build production Android AAB
+        if: steps.release.outputs.mode == 'aab'
+        run: >
+          npx eas-cli@latest build
+          --platform android
+          --profile production
+          --non-interactive
+          --no-wait
+
