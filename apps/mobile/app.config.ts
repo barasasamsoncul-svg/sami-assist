@@ -68,6 +68,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       }
     : config.extra;
 
+  // Production APKs and OTA updates must derive the same native runtime fingerprint.
+  // Never pin production OTA publishing to a historical, one-off runtime hash.
+  const runtimeVersion = { policy: "fingerprint" } as const;
+
   return {
     ...config,
     android,
@@ -76,6 +80,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     slug: config.slug ?? "sami-mobile",
     extra,
     updates,
-    runtimeVersion: config.runtimeVersion ?? { policy: "fingerprint" },
+    runtimeVersion,
   };
 };
