@@ -9,6 +9,7 @@ on:
     paths:
       - "apps/mobile/**"
       - ".github/workflows/sami-mobile-ota-update.yml"
+
   workflow_dispatch:
 
 permissions:
@@ -56,7 +57,9 @@ jobs:
         env:
           COMMIT_MESSAGE: ${{ github.event.head_commit.message || '' }}
         run: |
-          if [[ "$COMMIT_MESSAGE" == *"[build-aab]"* ]]; then
+          if [[ "$COMMIT_MESSAGE" == *"[build-apk]"* ]]; then
+            echo "mode=apk" >> "$GITHUB_OUTPUT"
+          elif [[ "$COMMIT_MESSAGE" == *"[build-aab]"* ]]; then
             echo "mode=aab" >> "$GITHUB_OUTPUT"
           else
             echo "mode=ota" >> "$GITHUB_OUTPUT"
@@ -79,5 +82,13 @@ jobs:
           --platform android
           --profile production
           --non-interactive
-          --no-wait
+          --wait
 
+      - name: Build production Android APK
+        if: steps.release.outputs.mode == 'apk'
+        run: >
+          npx eas-cli@latest build
+          --platform android
+          --profile production-apk
+          --non-interactive
+          --wait
