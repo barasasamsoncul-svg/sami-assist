@@ -136,58 +136,56 @@ export async function sendEmailOtp(
     ? "complete your SaMi account registration"
     : "securely sign in to your SaMi account";
 
-  const digitsHtml = code
-    .split("")
-    .map((digit) =>
-      '<td align="center" valign="middle" style="width:42px;height:52px;border:1px solid #DCE3F0;border-radius:10px;background:#F7F9FD;color:#000535;font-family:Arial,sans-serif;font-size:25px;font-weight:700;">' +
-      escapeEmailHtml(digit) +
-      "</td>",
-    )
-    .join('<td style="width:7px;font-size:0;line-height:0;">&nbsp;</td>');
-
+  const safeCode = escapeEmailHtml(code);
   const textBody =
     greeting + "\n\n" +
-    "Use the verification code below to " + action + ":\n\n" +
+    "Your SaMi one-time verification code is:\n\n" +
     code + "\n\n" +
-    "This code expires in 10 minutes.\n" +
-    "Never share this code with anyone, including someone claiming to work for SaMi.\n\n" +
-    "If you did not request this code, you can safely ignore this email. Your account will not be changed.\n\n" +
+    "Use this code to " + action + ".\n" +
+    "It expires in 10 minutes.\n\n" +
+    "Keep this code private. SaMi will never ask you to share it.\n\n" +
+    "If you did not request this code, you can ignore this email. No changes will be made to your account.\n\n" +
     "SaMi Technologies\nCONSIDER IT DONE";
 
   const htmlBody =
     '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width,initial-scale=1">' +
-    '<meta name="color-scheme" content="light">' +
-    '<meta name="supported-color-schemes" content="light">' +
+    '<meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light">' +
     "<title>" + escapeEmailHtml(subject) + "</title></head>" +
-    '<body style="margin:0;padding:0;background:#F3F5FA;color:#172033;font-family:Arial,Helvetica,sans-serif;">' +
+    '<body style="margin:0;padding:0;background:#EEF2F8;color:#172033;font-family:Arial,Helvetica,sans-serif;">' +
     '<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">' +
-    "Your SaMi verification code is inside. It expires in 10 minutes.</div>" +
-    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#F3F5FA;padding:32px 12px;">' +
+    "Your SaMi verification code is " + safeCode + ". It expires in 10 minutes.</div>" +
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#EEF2F8;padding:36px 12px;">' +
     "<tr><td align=\"center\">" +
-    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:560px;background:#FFFFFF;border:1px solid #E7EAF1;border-radius:18px;overflow:hidden;">' +
-    '<tr><td align="center" style="background:#000535;padding:30px 24px 27px;">' +
-    '<div style="font-size:34px;line-height:40px;font-weight:700;font-style:italic;letter-spacing:-1.5px;color:#FFFFFF;">SaMi</div>' +
-    '<div style="margin-top:7px;font-size:10px;line-height:15px;font-weight:700;letter-spacing:3px;color:#C9D5F5;">CONSIDER IT DONE</div>' +
-    '<div style="width:54px;height:3px;margin:18px auto 0;background:#4D8BFF;border-radius:3px;"></div>' +
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:560px;background:#FFFFFF;border:1px solid #E2E7F0;border-radius:20px;overflow:hidden;">' +
+    '<tr><td align="center" style="background:#000535;padding:32px 24px 28px;">' +
+    '<div style="font-size:38px;line-height:42px;font-weight:700;font-style:italic;letter-spacing:-1.8px;color:#FFFFFF;">Sa<span style="color:#82ACFF;">Mi</span></div>' +
+    '<div style="margin-top:7px;font-size:10px;line-height:15px;font-weight:700;letter-spacing:3px;color:#D5E0FA;">CONSIDER IT DONE</div>' +
+    '<div style="display:inline-block;margin-top:19px;padding:6px 11px;border:1px solid #38466F;border-radius:20px;color:#D6E2FF;font-size:9px;line-height:13px;font-weight:700;letter-spacing:1.5px;">ACCOUNT SECURITY</div>' +
     "</td></tr>" +
-    '<tr><td style="padding:34px 34px 18px;">' +
-    '<p style="margin:0 0 18px;color:#172033;font-size:16px;line-height:25px;">' + htmlGreeting + "</p>" +
-    '<h1 style="margin:0 0 12px;color:#000535;font-size:24px;line-height:31px;font-weight:700;">' + heading + "</h1>" +
-    '<p style="margin:0;color:#5E687C;font-size:15px;line-height:25px;">Use the verification code below to ' + purposeText + ".</p>" +
-    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:28px auto 22px;"><tr>' +
-    digitsHtml +
-    "</tr></table>" +
-    '<p style="margin:0;text-align:center;color:#5E687C;font-size:13px;line-height:21px;">This code expires in <strong style="color:#000535;">10 minutes</strong>.</p>' +
-    '<div style="height:1px;margin:28px 0 21px;background:#E9EDF4;"></div>' +
-    '<p style="margin:0 0 9px;color:#263247;font-size:13px;line-height:21px;font-weight:700;">A quick security reminder</p>' +
-    '<p style="margin:0;color:#687388;font-size:13px;line-height:22px;">Never share this code with anyone. SaMi will never ask you to disclose your verification code.</p>' +
-    '<p style="margin:17px 0 0;color:#687388;font-size:13px;line-height:22px;">Did not request this code? You can safely ignore this email. Your account will not be changed.</p>' +
+    '<tr><td style="padding:36px 34px 30px;">' +
+    '<p style="margin:0 0 11px;color:#3478E5;font-size:11px;line-height:16px;font-weight:700;letter-spacing:1.8px;">' +
+    (isRegistration ? "WELCOME TO SAMI" : "SECURE SIGN IN") +
+    "</p>" +
+    '<p style="margin:0 0 15px;color:#172033;font-size:16px;line-height:25px;">' + htmlGreeting + "</p>" +
+    '<h1 style="margin:0 0 12px;color:#000535;font-size:27px;line-height:34px;font-weight:700;letter-spacing:-0.5px;">' + heading + "</h1>" +
+    '<p style="margin:0;color:#657087;font-size:15px;line-height:25px;">Use this secure, one-time code to ' + purposeText + ".</p>" +
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:27px 0 17px;"><tr>' +
+    '<td align="center" style="padding:20px 12px;background:#F1F5FF;border:1px solid #DCE6FF;border-radius:14px;">' +
+    '<div style="color:#000535;font-family:Arial,Helvetica,sans-serif;font-size:32px;line-height:42px;font-weight:700;letter-spacing:8px;padding-left:8px;">' + safeCode + "</div>" +
+    "</td></tr></table>" +
+    '<p style="margin:0;text-align:center;color:#657087;font-size:13px;line-height:21px;">This code expires in <strong style="color:#000535;">10 minutes</strong>.</p>' +
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:28px 0 0;"><tr>' +
+    '<td style="padding:16px 17px;background:#F5F8FE;border-left:3px solid #3478E5;border-radius:8px;">' +
+    '<p style="margin:0 0 5px;color:#000535;font-size:13px;line-height:19px;font-weight:700;">Keep this code private</p>' +
+    '<p style="margin:0;color:#657087;font-size:13px;line-height:21px;">SaMi will never ask you to share this code. Only enter it in the SaMi app to continue.</p>' +
+    "</td></tr></table>" +
+    '<p style="margin:21px 0 0;color:#7B8495;font-size:12px;line-height:21px;">Did not request this code? You can ignore this email. No changes will be made to your account.</p>' +
     "</td></tr>" +
-    '<tr><td style="padding:20px 34px 26px;background:#FAFBFE;border-top:1px solid #EEF1F6;text-align:center;">' +
+    '<tr><td align="center" style="padding:21px 28px 25px;background:#FAFBFE;border-top:1px solid #EDF0F5;">' +
     '<p style="margin:0;color:#000535;font-size:13px;line-height:20px;font-weight:700;">SaMi Technologies</p>' +
-    '<p style="margin:4px 0 0;color:#8992A3;font-size:10px;line-height:16px;font-weight:700;letter-spacing:2px;">CONSIDER IT DONE</p>' +
-    '<p style="margin:12px 0 0;color:#A0A8B6;font-size:11px;line-height:17px;">This is an automated security email. Please do not reply directly to this message.</p>' +
+    '<p style="margin:4px 0 0;color:#8B94A5;font-size:10px;line-height:16px;font-weight:700;letter-spacing:2px;">CONSIDER IT DONE</p>' +
+    '<p style="margin:12px 0 0;color:#A0A8B6;font-size:11px;line-height:17px;">Automated security message. Please do not reply directly to this email.</p>' +
     "</td></tr></table></td></tr></table></body></html>";
 
   const transporter = createTransport({

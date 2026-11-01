@@ -381,7 +381,7 @@ const styles = StyleSheet.create({
   },
 
   brandHeader: {
-    minHeight: 150,
+    minHeight: 140,
     backgroundColor: NAVY,
     alignItems: "center",
     justifyContent: "center",
@@ -393,8 +393,9 @@ const styles = StyleSheet.create({
   },
 
   wordmark: {
-    width: 224,
-    height: 104,
+    width: 212,
+    height: 92,
+    tintColor: "#FFFFFF",
   },
 
   keyboard: {
@@ -408,16 +409,18 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 25,
-    paddingTop: 36,
+    paddingTop: 48,
+    paddingBottom: 36,
   },
 
   content: {
     flexGrow: 1,
+    justifyContent: "space-between",
   },
 
   intro: {
-    gap: 10,
-    marginBottom: 35,
+    gap: 12,
+    marginBottom: 20,
   },
 
   eyebrow: {
@@ -448,7 +451,7 @@ const styles = StyleSheet.create({
   },
 
   form: {
-    gap: 18,
+    gap: 22,
   },
 
   codeCard: {
@@ -573,7 +576,7 @@ const styles = StyleSheet.create({
 
   bottomNote: {
     alignItems: "center",
-    marginTop: 30,
+    marginTop: 16,
     paddingVertical: 12,
   },
 

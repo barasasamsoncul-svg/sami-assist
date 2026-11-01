@@ -356,7 +356,7 @@ const styles = StyleSheet.create({
   },
 
   brandHeader: {
-    minHeight: 150,
+    minHeight: 140,
     backgroundColor: NAVY,
     alignItems: "center",
     justifyContent: "center",
@@ -368,8 +368,9 @@ const styles = StyleSheet.create({
   },
 
   wordmark: {
-    width: 224,
-    height: 104,
+    width: 212,
+    height: 92,
+    tintColor: "#FFFFFF",
   },
 
   keyboard: {
@@ -382,13 +383,15 @@ const styles = StyleSheet.create({
 
   scrollContent: {
     flexGrow: 1,
+    justifyContent: "space-between",
     paddingHorizontal: 25,
-    paddingTop: 36,
+    paddingTop: 48,
+    paddingBottom: 36,
   },
 
   intro: {
-    marginBottom: 34,
-    gap: 10,
+    marginBottom: 24,
+    gap: 12,
   },
 
   eyebrow: {
