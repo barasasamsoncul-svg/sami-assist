@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS public.auth_otp_challenges (
   consumed_at timestamptz,
   CHECK (expires_at > created_at),
   CHECK (
-    (purpose = 'register' AND full_name IS NOT NULL AND user_id IS NULL)
+    (purpose = 'register' AND full_name IS NOT NULL)
     OR
     (purpose = 'login' AND user_id IS NOT NULL)
   )
