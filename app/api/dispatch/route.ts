@@ -470,7 +470,10 @@ export async function POST(request: Request) {
         let providerSid: string | null = null;
         if (channel === "email") {
           const emailCode = createEmailOtpCode(challengeId);
-          await sendEmailOtp(destination, emailCode);
+          await sendEmailOtp(destination, emailCode, {
+            purpose,
+            recipientName: fullName,
+          });
         } else {
           providerSid = await sendOtp(destination, channel);
         }
