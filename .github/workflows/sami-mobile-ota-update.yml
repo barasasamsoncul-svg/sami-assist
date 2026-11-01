@@ -1,4 +1,3 @@
-
 name: SaMi Production Releases
 
 on:
@@ -67,6 +66,9 @@ jobs:
 
       - name: Publish production OTA update
         if: steps.release.outputs.mode == 'ota'
+        env:
+          EXPO_PUBLIC_SAMI_API_URL: https://sami-assist.vercel.app
+          EXPO_UPDATE_CHANNEL: production
         run: >
           npx eas-cli@latest update
           --channel production
