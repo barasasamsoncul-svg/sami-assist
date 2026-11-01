@@ -20,7 +20,7 @@ const NAVY = "#000535";
 const BLUE = "#3478E5";
 const MUTED = "#778197";
 const BORDER = "#DCE2EC";
-const PAGE = "#F7F8FC";
+const PAGE = "#FFFFFF";
 
 export default function VerifyScreen() {
   const params = useLocalSearchParams<{
@@ -216,7 +216,7 @@ export default function VerifyScreen() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <StatusBar backgroundColor={NAVY} barStyle="light-content" />
+      <StatusBar backgroundColor={PAGE} barStyle="dark-content" />
 
       {/* BRAND HEADER */}
       <View style={styles.brandHeader}>
@@ -381,21 +381,18 @@ const styles = StyleSheet.create({
   },
 
   brandHeader: {
-    minHeight: 140,
-    backgroundColor: NAVY,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 24,
-    paddingTop: 12,
-    paddingBottom: 20,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
+    minHeight: 104,
+    backgroundColor: PAGE,
+    alignItems: "flex-start",
+    justifyContent: "flex-end",
+    paddingHorizontal: 25,
+    paddingTop: 8,
+    paddingBottom: 0,
   },
 
   wordmark: {
-    width: 212,
-    height: 92,
-    tintColor: "#FFFFFF",
+    width: 184,
+    height: 78,
   },
 
   keyboard: {
@@ -409,18 +406,17 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 25,
-    paddingTop: 48,
-    paddingBottom: 36,
+    paddingTop: 22,
+    paddingBottom: 28,
   },
 
   content: {
     flexGrow: 1,
-    justifyContent: "space-between",
   },
 
   intro: {
-    gap: 12,
-    marginBottom: 20,
+    gap: 10,
+    marginBottom: 24,
   },
 
   eyebrow: {
@@ -576,7 +572,7 @@ const styles = StyleSheet.create({
 
   bottomNote: {
     alignItems: "center",
-    marginTop: 16,
+    marginTop: 20,
     paddingVertical: 12,
   },
 

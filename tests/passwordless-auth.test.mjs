@@ -76,3 +76,16 @@ test("login and verification use OTP and continue to the customer app", () => {
   assert.match(verify, /Verify and continue/);
   assert.match(verify, /router\.replace\("\/\(app\)"\)/);
 });
+
+
+test("native authentication screens use one white canvas and a compact vertical layout", () => {
+  for (const screen of [login, register, verify]) {
+    assert.match(screen, /const PAGE = "#FFFFFF"/);
+    assert.match(screen, /StatusBar backgroundColor=\{PAGE\} barStyle="dark-content"/);
+    assert.doesNotMatch(screen, /tintColor:\s*"#FFFFFF"/);
+    assert.doesNotMatch(screen, /justifyContent:\s*"space-between"/);
+  }
+  assert.match(login, /width: 184/);
+  assert.match(register, /width: 184/);
+  assert.match(verify, /width: 184/);
+});
