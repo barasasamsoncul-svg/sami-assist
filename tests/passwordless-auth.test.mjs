@@ -30,7 +30,10 @@ test("email OTP uses SMTP and timing-safe verification", () => {
   assert.match(otp, /sendEmailOtp/);
   assert.match(otp, /createEmailOtpCode/);
   assert.match(otp, /timingSafeEqual/);
-  assert.match(dispatch, /sendEmailOtp\(destination, emailCode\)/);
+  assert.match(
+    dispatch,
+    /sendEmailOtp\(destination, emailCode, \{\s*purpose,\s*recipientName: fullName,\s*\}\)/,
+  );
   assert.match(dispatch, /verifyEmailOtp\(challenge\.id, code\)/);
 });
 test("API exposes email-only OTP request and verification with rate limits", () => {
