@@ -4,16 +4,11 @@ import { Link, router } from "expo-router";
 import { dispatchPost } from "@/api";
 import { colors, common } from "@/theme";
 
-type OtpChannel = "sms" | "whatsapp" | "email";
-const channels: { value: OtpChannel; label: string }[] = [
-  { value: "sms", label: "SMS" },
-  { value: "whatsapp", label: "WhatsApp" },
-  { value: "email", label: "Email" },
-];
+type OtpChannel = "email";
 
 export default function LoginScreen() {
   const [identifier, setIdentifier] = useState("");
-  const [channel, setChannel] = useState<OtpChannel>("sms");
+  const channel: OtpChannel = "email";
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -73,38 +68,10 @@ export default function LoginScreen() {
               />
             </View>
 
-            <View style={{ gap: 9 }}>
-              <Text style={common.label}>Send verification code by</Text>
-              <View style={{ flexDirection: "row", gap: 7 }}>
-                {channels.map((item) => {
-                  const selected = channel === item.value;
-                  return (
-                    <Pressable
-                      key={item.value}
-                      accessibilityRole="radio"
-                      accessibilityState={{ selected }}
-                      onPress={() => setChannel(item.value)}
-                      style={{
-                        flex: 1,
-                        minHeight: 44,
-                        borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: selected ? colors.navy : colors.border,
-                        backgroundColor: selected ? colors.navy : colors.white,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        paddingHorizontal: 4,
-                      }}
-                    >
-                      <Text style={{ color: selected ? colors.white : colors.ink, fontSize: 12, fontWeight: "800" }}>
-                        {item.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+            <View style={{ gap: 6 }}>
+              <Text style={common.label}>Verification method</Text>
               <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 17 }}>
-                {channel === "email" ? "Code will be sent to the account email address." : "Code will be sent to the account phone number."}
+                Email is currently the only available verification method. We’ll send the code to the email address linked to your account.
               </Text>
             </View>
 
