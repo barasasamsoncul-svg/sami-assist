@@ -43,7 +43,10 @@ test("email OTP uses SMTP while Twilio remains a separate future provider", () =
   assert.match(otp, /timingSafeEqual/);
   assert.ok(dispatch.includes("isOtpProviderConfigured(channel)"));
   assert.match(dispatch, /Email verification is not configured\. Contact SaMi support/);
-  assert.ok(dispatch.includes("sendEmailOtp(destination, emailCode)"));
+  assert.match(
+    dispatch,
+    /sendEmailOtp\\(destination, emailCode, \\{\\s*purpose,\\s*recipientName: fullName,\\s*\\}\\)/,
+  );
   assert.ok(dispatch.includes("verifyEmailOtp(challenge.id, code)"));
 });
 
@@ -60,7 +63,8 @@ test("registration collects mandatory identity fields without a password", () =>
 test("login and verification use OTP and continue to the customer app", () => {
   assert.match(login, /Email address or phone number/);
   assert.match(login, /Send verification code/);
-  assert.match(login, /Email is currently the only available verification method/);
+  assert.match(login, /Password-free access/);
+  assert.match(login, /email address linked to your account/);
   assert.match(login, /const channel: OtpChannel = "email"/);
   assert.doesNotMatch(login, /SMS|WhatsApp|channels\.map/);
   assert.match(dispatch, /body\.channel !== "email"/);
