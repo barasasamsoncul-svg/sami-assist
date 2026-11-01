@@ -5,11 +5,35 @@
 CREATE TABLE IF NOT EXISTS users (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
  full_name text NOT NULL CHECK(length(trim(full_name)) BETWEEN 2 AND 120),
- email text NOT NULL, phone text, password_hash text NOT NULL,
+ email text NOT NULL, phone text, password_hash text,
  role text NOT NULL CHECK(role IN ('customer','provider','admin')),
- is_active boolean NOT NULL DEFAULT true, email_verified_at timestamptz,
+ is_active boolean NOT NULL DEFAULT true, email_verified_at timestamptz, phone_verified_at timestamptz,
  created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS auth_otp_challenges (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ purpose text NOT NULL CHECK (purpose IN ('register', 'login')),
+ channel text NOT NULL CHECK (channel IN ('sms', 'whatsapp', 'email')),
+ destination text NOT NULL CHECK (length(trim(destination)) BETWEEN 3 AND 320),
+ email text NOT NULL CHECK (length(trim(email)) BETWEEN 3 AND 254),
+ phone text,
+ full_name text,
+ user_id uuid REFERENCES users(id) ON DELETE CASCADE,
+ provider_sid text UNIQUE,
+ status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'consumed', 'failed', 'expired', 'superseded')),
+ attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+ created_at timestamptz NOT NULL DEFAULT now(),
+ expires_at timestamptz NOT NULL DEFAULT now() + interval '10 minutes',
+ verified_at timestamptz,
+ consumed_at timestamptz,
+ CHECK (expires_at > created_at),
+ CHECK ((purpose = 'register' AND full_name IS NOT NULL) OR (purpose = 'login' AND user_id IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS auth_otp_email_purpose_created_idx ON auth_otp_challenges (lower(email), purpose, created_at DESC);
+CREATE INDEX IF NOT EXISTS auth_otp_destination_purpose_created_idx ON auth_otp_challenges (destination, purpose, created_at DESC);
+CREATE INDEX IF NOT EXISTS auth_otp_pending_expiry_idx ON auth_otp_challenges (expires_at) WHERE status = 'pending';
+
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_unique ON users(lower(email));
 
 CREATE TABLE IF NOT EXISTS provider_profiles (
@@ -255,5 +279,6 @@ INSERT INTO schema_migrations(version) VALUES
  ('2026-10-25-sami-errands-pricing-audit'),
  ('2026-10-25-sami-errands-mpesa-payment-attempts'),
  ('2026-10-25-sami-errands-route-item-pricing'),
- ('2026-10-26-sami-errands-location-tracking')
+ ('2026-10-26-sami-errands-location-tracking'),
+ ('2026-11-01-sami-passwordless-otp-auth')
 ON CONFLICT DO NOTHING;

@@ -12,10 +12,8 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Link, router, useLocalSearchParams } from "expo-router";
+import { Link, router } from "expo-router";
 import { dispatchPost } from "@/api";
-
-type AccountRole = "customer" | "provider";
 
 const BLUE = "#2463B8";
 const NAVY = "#173B67";
@@ -25,12 +23,9 @@ const BORDER = "#DCE5F2";
 const PALE_BLUE = "#EAF1FC";
 
 export default function RegisterScreen() {
-  const params = useLocalSearchParams<{ role?: string }>();
-  const initialRole: AccountRole = params.role === "provider" ? "provider" : "customer";
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [role, setRole] = useState<AccountRole>(initialRole);
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -49,7 +44,7 @@ export default function RegisterScreen() {
         email: email.trim().toLowerCase(),
         phone: phone.trim(),
         password,
-        role,
+        role: "provider",
       });
       router.replace("/(app)");
     } catch (e) {
@@ -142,7 +137,7 @@ export default function RegisterScreen() {
                 Your day,{"\n"}made easier.
               </Text>
               <Text style={{ color: MUTED, fontSize: 14, lineHeight: 22, maxWidth: 350 }}>
-                Create your account to request everyday help or apply to complete errands in your community.
+                Apply to complete errands in your community. SaMi reviews provider applications before activation.
               </Text>
             </View>
 
@@ -163,46 +158,9 @@ export default function RegisterScreen() {
               <Field label="Phone number" icon="call-outline" value={phone} onChangeText={setPhone}
                 placeholder="07XX XXX XXX" keyboardType="phone-pad" textContentType="telephoneNumber" />
 
-              <View style={{ gap: 9 }}>
-                <Text style={{ color: INK, fontSize: 12, fontWeight: "800", letterSpacing: 0.25 }}>HOW WILL YOU USE SAMI?</Text>
-                <View style={{ flexDirection: "row", gap: 10 }}>
-                  {([
-                    { value: "customer" as const, title: "I need help", detail: "Request errands", icon: "bag-handle-outline" as const },
-                    { value: "provider" as const, title: "I can help", detail: "Complete errands", icon: "bicycle-outline" as const },
-                  ]).map((option) => {
-                    const selected = role === option.value;
-                    return (
-                      <Pressable
-                        key={option.value}
-                        accessibilityRole="radio"
-                        accessibilityState={{ selected }}
-                        onPress={() => setRole(option.value)}
-                        style={{
-                          flex: 1, minHeight: 106, padding: 13, borderRadius: 16, gap: 8,
-                          borderWidth: selected ? 1.5 : 1, borderColor: selected ? BLUE : BORDER,
-                          backgroundColor: selected ? "#F1F6FF" : "#FFFFFF",
-                        }}
-                      >
-                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                          <Ionicons name={option.icon} size={21} color={selected ? BLUE : MUTED} />
-                          <Ionicons name={selected ? "checkmark-circle" : "ellipse-outline"} size={18} color={selected ? BLUE : "#A8B3C2"} />
-                        </View>
-                        <View style={{ gap: 3 }}>
-                          <Text style={{ color: NAVY, fontSize: 13, fontWeight: "800" }}>{option.title}</Text>
-                          <Text style={{ color: MUTED, fontSize: 11, lineHeight: 15 }}>{option.detail}</Text>
-                        </View>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-                {role === "provider" ? (
-                  <View style={{ flexDirection: "row", gap: 7, alignItems: "flex-start", padding: 10, borderRadius: 12, backgroundColor: "#F5F7FB" }}>
-                    <Ionicons name="information-circle-outline" size={17} color={BLUE} />
-                    <Text style={{ flex: 1, color: MUTED, fontSize: 12, lineHeight: 18 }}>
-                      Provider applications are reviewed by SaMi before you can accept errands.
-                    </Text>
-                  </View>
-                ) : null}
+              <View style={{ flexDirection: "row", gap: 7, alignItems: "flex-start", padding: 10, borderRadius: 12, backgroundColor: "#F5F7FB" }}>
+                <Ionicons name="information-circle-outline" size={17} color={BLUE} />
+                <Text style={{ flex: 1, color: MUTED, fontSize: 12, lineHeight: 18 }}>Provider applications are reviewed by SaMi before you can accept errands.</Text>
               </View>
 
               <View style={{ gap: 7 }}>
@@ -254,7 +212,7 @@ export default function RegisterScreen() {
                 {busy ? <ActivityIndicator color="#FFFFFF" /> : (
                   <>
                     <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "800" }}>
-                      {role === "provider" ? "Apply as an errand provider" : "Create account"}
+                      Apply as an errand provider
                     </Text>
                     <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
                   </>

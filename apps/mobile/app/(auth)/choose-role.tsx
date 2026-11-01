@@ -27,7 +27,7 @@ export default function ChooseRoleScreen() {
           </View>
 
           <View style={{ gap: 13 }}>
-            <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: "/(auth)/register", params: { role: "customer" } })}
+            <Pressable accessibilityRole="button" onPress={() => router.push("/(auth)/register-customer")}
               style={({ pressed }) => ({ backgroundColor: pressed ? "#F0F5FE" : "#FFFFFF", borderWidth: 1.5, borderColor: "#DCE5F2", borderRadius: 22, padding: 19, flexDirection: "row", alignItems: "center", gap: 15 })}>
               <View style={{ width: 54, height: 54, borderRadius: 17, backgroundColor: "#EAF1FC", alignItems: "center", justifyContent: "center" }}>
                 <Ionicons name="bag-handle-outline" size={26} color="#2463B8" />

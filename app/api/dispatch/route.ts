@@ -6,6 +6,7 @@ import { createSession, destroySession, getCurrentUser } from "@/lib/auth";
 import { getRoadRoute } from "@/lib/location";
 import { ensureErrandLocationSchema } from "@/lib/errand-location-schema";
 import { ensureErrandCallSchema } from "@/lib/errand-call-schema";
+import { checkOtp, createEmailOtpCode, isOtpProviderConfigured, maskOtpDestination, normalizeKenyanPhone, phoneAliases, sendEmailOtp, sendOtp, verifyEmailOtp, type OtpChannel } from "@/lib/otp";
 
 export const runtime = "nodejs";
 type UserRole = "customer" | "provider" | "admin";
@@ -58,6 +59,41 @@ function sameOrigin(request: Request) {
 function safeHref(value: string) {
   return value.startsWith("/") && !value.startsWith("//") && !value.includes("\\") ? value.slice(0, 300) : null;
 }
+async function passwordlessAuthSchemaReady() {
+  const result = await query<{ ready: boolean }>(`
+    SELECT to_regclass('public.auth_otp_challenges') IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='users'
+          AND column_name='password_hash' AND is_nullable='YES'
+      )
+      AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='users'
+          AND column_name='phone_verified_at'
+      ) AS ready
+  `);
+  return Boolean(result.rows[0]?.ready);
+}
+
+async function findUserByContact(email: string, phone: string | null) {
+  const aliases = phone ? phoneAliases(phone) : [];
+  const result = await query<{
+    id: string; full_name: string; email: string; phone: string | null;
+    role: UserRole; is_active: boolean;
+  }>(
+    `SELECT id,full_name,email,phone,role,is_active
+     FROM users
+     WHERE ($1<>'' AND lower(email)=$1)
+        OR (cardinality($2::text[])>0
+            AND regexp_replace(COALESCE(phone,''),'[^0-9]','','g')=ANY($2::text[]))
+     LIMIT 1`,
+    [email, aliases],
+  );
+  return result.rows[0] || null;
+}
+
+
 async function attemptCount(identifierHash: string, attemptType: string) {
   const result = await query<{ count: string }>(
     "SELECT count(*)::text AS count FROM auth_attempts WHERE identifier_hash=$1 AND attempt_type=$2 AND succeeded=false AND attempted_at > now() - interval '15 minutes'",
@@ -361,11 +397,258 @@ export async function POST(request: Request) {
   if (!body || typeof body !== "object") return error("A valid JSON request is required.");
   const action = text(body.action, 50);
 
+  if (action === "requestOtp") {
+    const purpose = body.purpose === "register" ? "register" : body.purpose === "login" ? "login" : "";
+    if (!purpose) return error("Choose registration or sign-in.");
+    if (body.channel !== "email") return error("Email is currently the only available verification method.");
+    const channel: OtpChannel = "email";
+    if (!(await passwordlessAuthSchemaReady())) {
+      return error("Passwordless authentication database migration is not applied. Apply database/migrations/2026-11-01-sami-passwordless-auth.sql, then redeploy.", 503);
+    }
+    if (!isOtpProviderConfigured(channel)) {
+      return error("Email verification is not configured. Contact SaMi support.", 503);
+    }
+
+    let email = "";
+    let phone: string | null = null;
+    let fullName: string | null = null;
+    let userId: string | null = null;
+    let destination = "";
+
+    if (purpose === "register") {
+      fullName = text(body.fullName, 120);
+      email = emailText(body.email);
+      phone = normalizeKenyanPhone(text(body.phone, 40));
+      if (fullName.length < 2) return error("Enter your full name.");
+      if (!validEmail(email)) return error("Enter a valid email address.");
+      if (!phone) return error("Enter a valid Kenyan mobile number, such as 0712345678 or +254712345678.");
+      const existing = await findUserByContact(email, phone);
+      if (existing) return error("That email address or phone number is already registered. Sign in instead.", 409);
+      destination = channel === "email" ? email : phone;
+    } else {
+      const identifier = text(body.identifier, 254);
+      if (identifier.includes("@")) {
+        email = emailText(identifier);
+        if (!validEmail(email)) return error("Enter a valid email address or Kenyan phone number.");
+      } else {
+        phone = normalizeKenyanPhone(identifier);
+        if (!phone) return error("Enter your registered email address or Kenyan mobile number.");
+      }
+      const account = await findUserByContact(email, phone);
+      if (!account || !account.is_active) return error("No active SaMi account matches those details.", 404);
+      userId = account.id;
+      email = account.email;
+      fullName = account.full_name;
+      phone = account.phone ? normalizeKenyanPhone(account.phone) : null;
+      if (channel === "email") destination = email;
+      else {
+        if (!phone) return error("This account has no valid mobile number. Choose Email for verification.");
+        destination = phone;
+      }
+    }
+
+    const attemptType = purpose;
+    const requestHash = hash(purpose + ":" + email);
+    try {
+      if (await attemptCount(requestHash, attemptType) >= 6) {
+        return error("Too many verification requests. Try again in 15 minutes.", 429);
+      }
+
+      await query(
+        "UPDATE auth_otp_challenges SET status='superseded' WHERE purpose=$1 AND lower(email)=$2 AND status='pending'",
+        [purpose, email],
+      );
+      const challenge = await query<{ id: string }>(
+        `INSERT INTO auth_otp_challenges
+          (purpose,channel,destination,email,phone,full_name,user_id)
+         VALUES($1,$2,$3,$4,$5,$6,$7)
+         RETURNING id`,
+        [purpose, channel, destination, email, phone, fullName, userId],
+      );
+      try {
+        const challengeId = challenge.rows[0].id;
+        let providerSid: string | null = null;
+        if (channel === "email") {
+          const emailCode = createEmailOtpCode(challengeId);
+          await sendEmailOtp(destination, emailCode);
+        } else {
+          providerSid = await sendOtp(destination, channel);
+        }
+        await query(
+          "UPDATE auth_otp_challenges SET provider_sid=$2 WHERE id=$1",
+          [challengeId, providerSid],
+        );
+      } catch (providerError) {
+        await query(
+          "UPDATE auth_otp_challenges SET status='failed' WHERE id=$1",
+          [challenge.rows[0].id],
+        ).catch(() => undefined);
+        console.error("[SaMi OTP] Could not start verification.", providerError instanceof Error ? providerError.message : "unknown error");
+        return error("SaMi could not send the code. Check the selected delivery channel and try again.", 503);
+      }
+
+      await recordAttempt(requestHash, attemptType, false).catch(() => undefined);
+      return NextResponse.json({
+        ok: true,
+        challengeId: challenge.rows[0].id,
+        purpose,
+        channel,
+        deliveryHint: maskOtpDestination(destination, channel),
+      });
+    } catch (requestError) {
+      console.error("[SaMi OTP] Could not create verification challenge.", requestError instanceof Error ? requestError.message : "unknown error");
+      return error("Verification could not be started. Please try again.", 503);
+    }
+  }
+
+  if (action === "verifyOtp") {
+    const challengeId = text(body.challengeId, 64);
+    const code = text(body.code, 10);
+    if (!/^[0-9a-f-]{36}$/i.test(challengeId)) return error("This verification request is invalid.");
+    if (!/^[0-9]{6}$/.test(code)) return error("Enter the six-digit verification code.");
+    if (!(await passwordlessAuthSchemaReady())) {
+      return error("Passwordless authentication database migration is not applied. Apply the auth migration, then redeploy.", 503);
+    }
+    try {
+      const found = await query<{
+        id: string; purpose: "register" | "login"; channel: OtpChannel;
+        destination: string; email: string; phone: string | null;
+        full_name: string | null; user_id: string | null; attempt_count: number;
+      }>(
+        "SELECT id,purpose,channel,destination,email,phone,full_name,user_id,attempt_count FROM auth_otp_challenges WHERE id=$1 AND status='pending' AND expires_at>now() LIMIT 1",
+        [challengeId],
+      );
+      const challenge = found.rows[0];
+      if (!challenge) {
+        await query("UPDATE auth_otp_challenges SET status='expired' WHERE id=$1 AND status='pending' AND expires_at<=now()", [challengeId]).catch(() => undefined);
+        return error("This code has expired. Go back and request a new code.", 410);
+      }
+      if (challenge.channel !== "email") return error("Email is currently the only available verification method.", 503);
+      if (!isOtpProviderConfigured("email")) return error("Email verification is not configured.", 503);
+      if (challenge.attempt_count >= 5) return error("Too many incorrect codes. Request a new code.", 429);
+
+      const verifyHash = hash("verify:" + challenge.id);
+      if (await attemptCount(verifyHash, challenge.purpose) >= 5) {
+        return error("Too many incorrect codes. Request a new code.", 429);
+      }
+      const approved = challenge.channel === "email"
+        ? verifyEmailOtp(challenge.id, code)
+        : await checkOtp(challenge.destination, code);
+      if (!approved) {
+        await query(
+          "UPDATE auth_otp_challenges SET attempt_count=attempt_count+1, status=CASE WHEN attempt_count+1>=5 THEN 'failed' ELSE status END WHERE id=$1 AND status='pending'",
+          [challenge.id],
+        );
+        await recordAttempt(verifyHash, challenge.purpose, false).catch(() => undefined);
+        return error("That code is incorrect or has expired.", 401);
+      }
+
+      if (challenge.purpose === "register") {
+        if (!challenge.full_name || !validEmail(challenge.email) || !challenge.phone) {
+          await query("UPDATE auth_otp_challenges SET status='failed' WHERE id=$1", [challenge.id]);
+          return error("The registration details are incomplete. Start registration again.", 400);
+        }
+        const client = await databasePool().connect();
+        let created: any = null;
+        try {
+          await client.query("BEGIN");
+          await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", ["sami-otp-register-email:" + challenge.email]);
+          await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", ["sami-otp-register-phone:" + challenge.phone]);
+          const duplicate = await client.query(
+            `SELECT id FROM users
+             WHERE lower(email)=$1
+                OR regexp_replace(COALESCE(phone,''),'[^0-9]','','g')=ANY($2::text[])
+             LIMIT 1`,
+            [challenge.email, phoneAliases(challenge.phone)],
+          );
+          if (duplicate.rowCount) {
+            await client.query("UPDATE auth_otp_challenges SET status='failed' WHERE id=$1", [challenge.id]);
+            await client.query("COMMIT");
+            return error("That email address or phone number is already registered. Sign in instead.", 409);
+          }
+          const claimed = await client.query(
+            "UPDATE auth_otp_challenges SET status='consumed',verified_at=now(),consumed_at=now() WHERE id=$1 AND status='pending' AND expires_at>now() RETURNING id",
+            [challenge.id],
+          );
+          if (!claimed.rowCount) {
+            await client.query("ROLLBACK");
+            return error("This code has already been used. Request a new one.", 409);
+          }
+          const account = await client.query(
+            `INSERT INTO users
+              (full_name,email,phone,password_hash,role,email_verified_at,phone_verified_at)
+             VALUES($1,$2,$3,NULL,'customer',
+               CASE WHEN $4='email' THEN now() ELSE NULL END,
+               CASE WHEN $4 IN ('sms','whatsapp') THEN now() ELSE NULL END)
+             RETURNING id,full_name,email,role,phone`,
+            [challenge.full_name, challenge.email, challenge.phone, challenge.channel],
+          );
+          created = account.rows[0];
+          await client.query(
+            "UPDATE auth_otp_challenges SET user_id=$2 WHERE id=$1",
+            [challenge.id, created.id],
+          );
+          await client.query("COMMIT");
+        } catch (databaseError) {
+          await client.query("ROLLBACK").catch(() => undefined);
+          if (typeof databaseError === "object" && databaseError !== null && "code" in databaseError && (databaseError as { code?: string }).code === "23505") {
+            return error("That email address is already registered. Sign in instead.", 409);
+          }
+          console.error("[SaMi OTP] Registration transaction failed.", databaseError instanceof Error ? databaseError.message : "unknown error");
+          return error("Account creation could not be completed. Please request a new code and retry.", 503);
+        } finally {
+          client.release();
+        }
+        const sessionToken = await createSession(created.id);
+        await recordAttempt(hash("register:" + challenge.email), "register", true).catch(() => undefined);
+        return NextResponse.json({
+          ok: true,
+          user: created,
+          ...(isNativeClient(request) ? { token: sessionToken } : {}),
+        }, { status: 201 });
+      }
+
+      const account = await query<{
+        id: string; full_name: string; email: string; role: UserRole;
+        phone: string | null; is_active: boolean;
+      }>(
+        "SELECT id,full_name,email,role,phone,is_active FROM users WHERE id=$1 LIMIT 1",
+        [challenge.user_id],
+      );
+      const user = account.rows[0];
+      if (!user || !user.is_active) {
+        await query("UPDATE auth_otp_challenges SET status='failed' WHERE id=$1", [challenge.id]);
+        return error("This SaMi account is unavailable.", 403);
+      }
+      const consumed = await query(
+        "UPDATE auth_otp_challenges SET status='consumed',verified_at=now(),consumed_at=now() WHERE id=$1 AND status='pending' RETURNING id",
+        [challenge.id],
+      );
+      if (!consumed.rowCount) return error("This code has already been used. Request a new one.", 409);
+      if (challenge.channel === "email") {
+        await query("UPDATE users SET email_verified_at=COALESCE(email_verified_at,now()) WHERE id=$1", [user.id]);
+      } else {
+        await query("UPDATE users SET phone_verified_at=COALESCE(phone_verified_at,now()) WHERE id=$1", [user.id]);
+      }
+      const sessionToken = await createSession(user.id);
+      await recordAttempt(hash("login:" + user.email), "login", true).catch(() => undefined);
+      return NextResponse.json({
+        ok: true,
+        user: { id: user.id, full_name: user.full_name, email: user.email, role: user.role, phone: user.phone },
+        ...(isNativeClient(request) ? { token: sessionToken } : {}),
+      });
+    } catch (verificationError) {
+      console.error("[SaMi OTP] Verification failed.", verificationError instanceof Error ? verificationError.message : "unknown error");
+      return error("Verification could not be completed. Try again or request a new code.", 503);
+    }
+  }
+
   if (action === "register") {
     const fullName = text(body.fullName, 120);
     const email = emailText(body.email);
     const phone = text(body.phone, 32);
     const role: Exclude<UserRole, "admin"> = body.role === "provider" ? "provider" : "customer";
+    if (role !== "provider") return error("Customer registration now requires email verification.");
     const password = typeof body.password === "string" ? body.password : "";
     if (fullName.length < 2) return error("Enter your full name.");
     if (!validEmail(email)) return error("Enter a valid email address.");
