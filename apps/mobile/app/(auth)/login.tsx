@@ -4,50 +4,119 @@ import { Link, router } from "expo-router";
 import { dispatchPost } from "@/api";
 import { colors, common } from "@/theme";
 
+type OtpChannel = "sms" | "whatsapp" | "email";
+const channels: { value: OtpChannel; label: string }[] = [
+  { value: "sms", label: "SMS" },
+  { value: "whatsapp", label: "WhatsApp" },
+  { value: "email", label: "Email" },
+];
+
 export default function LoginScreen() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [identifier, setIdentifier] = useState("");
+  const [channel, setChannel] = useState<OtpChannel>("sms");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  async function signIn() {
-    setBusy(true); setError("");
+  async function sendCode() {
+    setBusy(true);
+    setError("");
     try {
-      await dispatchPost("login", { email: email.trim().toLowerCase(), password });
-      router.replace("/(app)");
+      const result = await dispatchPost<{
+        challengeId: string; deliveryHint: string; channel: OtpChannel;
+      }>("requestOtp", {
+        purpose: "login",
+        identifier: identifier.trim(),
+        channel,
+      });
+      router.push({
+        pathname: "/(auth)/verify",
+        params: {
+          challengeId: result.challengeId,
+          purpose: "login",
+          deliveryHint: result.deliveryHint,
+          channel: result.channel,
+        },
+      });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Sign-in failed.");
-    } finally { setBusy(false); }
+      setError(e instanceof Error ? e.message : "Could not send the verification code.");
+    } finally {
+      setBusy(false);
+    }
   }
+
+  const disabled = busy || !identifier.trim();
 
   return (
     <SafeAreaView style={common.screen}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <ScrollView contentContainerStyle={[common.content, { flexGrow: 1, justifyContent: "center", paddingTop: 34 }]}>
-          <View style={{ gap: 8, marginBottom: 14 }}>
-            <Text style={{ color: colors.blue, fontSize: 14, fontWeight: "900", letterSpacing: 1.4 }}>SaMi</Text>
-            <Text style={common.title}>Get things done.</Text>
-            <Text style={common.subtitle}>Sign in to request help, follow progress, and manage your errands.</Text>
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[common.content, { flexGrow: 1, justifyContent: "center" }]}>
+          <View style={{ gap: 8, marginBottom: 8 }}>
+            <Text style={{ color: colors.blue, fontSize: 15, fontWeight: "900", letterSpacing: 1.4 }}>SaMi</Text>
+            <Text style={common.title}>Welcome back</Text>
+            <Text style={common.subtitle}>Sign in securely with a one-time verification code. No password required.</Text>
           </View>
+
           <View style={common.card}>
             <View>
-              <Text style={common.label}>Email address</Text>
-              <TextInput autoCapitalize="none" autoCorrect={false} keyboardType="email-address" textContentType="emailAddress" placeholder="you@example.com" placeholderTextColor="#929BAD" value={email} onChangeText={setEmail} style={common.input} />
+              <Text style={common.label}>Email address or phone number</Text>
+              <TextInput
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                textContentType="username"
+                placeholder="Email or 07XX XXX XXX"
+                placeholderTextColor="#929BAD"
+                value={identifier}
+                onChangeText={setIdentifier}
+                style={common.input}
+                returnKeyType="done"
+              />
             </View>
-            <View>
-              <Text style={common.label}>Password</Text>
-              <TextInput secureTextEntry textContentType="password" placeholder="Your password" placeholderTextColor="#929BAD" value={password} onChangeText={setPassword} style={common.input} />
+
+            <View style={{ gap: 9 }}>
+              <Text style={common.label}>Send verification code by</Text>
+              <View style={{ flexDirection: "row", gap: 7 }}>
+                {channels.map((item) => {
+                  const selected = channel === item.value;
+                  return (
+                    <Pressable
+                      key={item.value}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      onPress={() => setChannel(item.value)}
+                      style={{
+                        flex: 1,
+                        minHeight: 44,
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: selected ? colors.navy : colors.border,
+                        backgroundColor: selected ? colors.navy : colors.white,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        paddingHorizontal: 4,
+                      }}
+                    >
+                      <Text style={{ color: selected ? colors.white : colors.ink, fontSize: 12, fontWeight: "800" }}>
+                        {item.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 17 }}>
+                {channel === "email" ? "Code will be sent to the account email address." : "Code will be sent to the account phone number."}
+              </Text>
             </View>
+
             {error ? <Text accessibilityRole="alert" style={common.error}>{error}</Text> : null}
-            <Pressable accessibilityRole="button" disabled={busy || !email.trim() || !password} onPress={signIn} style={[common.primaryButton, (busy || !email.trim() || !password) && { opacity: 0.55 }]}>
-              {busy ? <ActivityIndicator color="#fff" /> : <Text style={common.primaryButtonText}>Sign in</Text>}
+            <Pressable accessibilityRole="button" disabled={disabled} onPress={sendCode} style={[common.primaryButton, disabled && { opacity: 0.55 }]}>
+              {busy ? <ActivityIndicator color="#fff" /> : <Text style={common.primaryButtonText}>Send verification code</Text>}
             </Pressable>
             <View style={{ flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
               <Text style={{ color: colors.muted }}>New to SaMi?</Text>
               <Link href="/(auth)/register" style={{ color: colors.blue, fontWeight: "800" }}>Create an account</Link>
             </View>
           </View>
-          <Text style={{ color: colors.muted, fontSize: 12, textAlign: "center", lineHeight: 18 }}>Your account and errands are protected by SaMi's server-side access controls.</Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
