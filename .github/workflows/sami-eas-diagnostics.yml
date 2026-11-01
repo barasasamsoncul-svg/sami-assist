@@ -1,4 +1,4 @@
-name: SaMi EAS failed-build diagnostics # refresh6
+name: SaMi EAS build compatibility diagnostics # refresh7
 
 on:
   push:
@@ -39,7 +39,7 @@ jobs:
       - name: Inspect latest production EAS build and collect available logs
         shell: bash
         env:
-          TARGET_SHA: 76fdaa27d552c0b12b0046a95d3e97fe0fc8bf5e
+          TARGET_SHA: 923217d8231e5bec5c9e27be91e6c587c30a51e7
         run: |
           set -euo pipefail
           DIAG="$RUNNER_TEMP/sami-eas-diagnostics"
@@ -68,6 +68,13 @@ jobs:
             status: build.status,
             platform: build.platform,
             buildProfile: build.buildProfile,
+            channel: build.channel,
+            distribution: build.distribution,
+            appIdentifier: build.appIdentifier,
+            appVersion: build.appVersion,
+            appBuildVersion: build.appBuildVersion,
+            runtimeVersion: build.runtimeVersion,
+            fingerprint: build.fingerprint,
             gitCommitHash: build.gitCommitHash,
             createdAt: build.createdAt,
             completedAt: build.completedAt,
