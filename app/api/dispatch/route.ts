@@ -273,9 +273,9 @@ export async function POST(request: Request) {
 
   if (action === "requestOtp") {
     const purpose = body.purpose === "register" ? "register" : body.purpose === "login" ? "login" : "";
-    const channel = body.channel as OtpChannel;
     if (!purpose) return error("Choose registration or sign-in.");
-    if (!["sms", "whatsapp", "email"].includes(channel)) return error("Choose SMS, WhatsApp or Email.");
+    if (body.channel !== "email") return error("Email is currently the only available verification method.");
+    const channel: OtpChannel = "email";
     if (!(await passwordlessAuthSchemaReady())) {
       return error("Passwordless authentication database migration is not applied. Apply database/migrations/2026-11-01-sami-passwordless-auth.sql, then redeploy.", 503);
     }
@@ -399,7 +399,8 @@ export async function POST(request: Request) {
         await query("UPDATE auth_otp_challenges SET status='expired' WHERE id=$1 AND status='pending' AND expires_at<=now()", [challengeId]).catch(() => undefined);
         return error("This code has expired. Go back and request a new code.", 410);
       }
-      if (!isOtpProviderConfigured(challenge.channel)) return error("The selected verification channel is not configured.", 503);
+      if (challenge.channel !== "email") return error("Email is currently the only available verification method.", 503);
+      if (!isOtpProviderConfigured("email")) return error("Email verification is not configured.", 503);
       if (challenge.attempt_count >= 5) return error("Too many incorrect codes. Request a new code.", 429);
 
       const verifyHash = hash("verify:" + challenge.id);
