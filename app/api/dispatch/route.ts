@@ -417,7 +417,8 @@ export async function POST(request: Request) {
         let created: any = null;
         try {
           await client.query("BEGIN");
-          await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", ["sami-otp-register:" + challenge.email]);
+          await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", ["sami-otp-register-email:" + challenge.email]);
+          await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", ["sami-otp-register-phone:" + challenge.phone]);
           const duplicate = await client.query(
             `SELECT id FROM users
              WHERE lower(email)=$1
