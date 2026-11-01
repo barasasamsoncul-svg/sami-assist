@@ -42,6 +42,7 @@ test("email OTP uses SMTP while Twilio remains a separate future provider", () =
   assert.match(otp, /createEmailOtpCode/);
   assert.match(otp, /timingSafeEqual/);
   assert.ok(dispatch.includes("isOtpProviderConfigured(channel)"));
+  assert.match(dispatch, /Email verification is not configured\. Contact SaMi support/);
   assert.ok(dispatch.includes("sendEmailOtp(destination, emailCode)"));
   assert.ok(dispatch.includes("verifyEmailOtp(challenge.id, code)"));
 });
