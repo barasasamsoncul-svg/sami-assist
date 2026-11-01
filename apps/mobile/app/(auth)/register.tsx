@@ -4,18 +4,13 @@ import { Link, router } from "expo-router";
 import { dispatchPost } from "@/api";
 import { colors, common } from "@/theme";
 
-type OtpChannel = "sms" | "whatsapp" | "email";
-const channels: { value: OtpChannel; label: string }[] = [
-  { value: "sms", label: "SMS" },
-  { value: "whatsapp", label: "WhatsApp" },
-  { value: "email", label: "Email" },
-];
+type OtpChannel = "email";
 
 export default function RegisterScreen() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [channel, setChannel] = useState<OtpChannel>("sms");
+  const channel: OtpChannel = "email";
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -57,7 +52,7 @@ export default function RegisterScreen() {
           <View style={{ gap: 8, marginBottom: 8 }}>
             <Text style={{ color: colors.blue, fontSize: 15, fontWeight: "900", letterSpacing: 1.4 }}>SaMi</Text>
             <Text style={common.title}>Create your account</Text>
-            <Text style={common.subtitle}>Your everyday help, organised. Enter your details and choose where to receive your verification code.</Text>
+            <Text style={common.subtitle}>Your everyday help, organised. Enter your details and we’ll send a verification code to your email address.</Text>
           </View>
 
           <View style={common.card}>
@@ -104,38 +99,10 @@ export default function RegisterScreen() {
               />
             </View>
 
-            <View style={{ gap: 9 }}>
-              <Text style={common.label}>Send verification code by</Text>
-              <View style={{ flexDirection: "row", gap: 7 }}>
-                {channels.map((item) => {
-                  const selected = channel === item.value;
-                  return (
-                    <Pressable
-                      key={item.value}
-                      accessibilityRole="radio"
-                      accessibilityState={{ selected }}
-                      onPress={() => setChannel(item.value)}
-                      style={{
-                        flex: 1,
-                        minHeight: 44,
-                        borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: selected ? colors.navy : colors.border,
-                        backgroundColor: selected ? colors.navy : colors.white,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        paddingHorizontal: 4,
-                      }}
-                    >
-                      <Text style={{ color: selected ? colors.white : colors.ink, fontSize: 12, fontWeight: "800" }}>
-                        {item.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+            <View style={{ gap: 6 }}>
+              <Text style={common.label}>Verification code delivery</Text>
               <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 17 }}>
-                {channel === "email" ? "The code will be sent to your email address." : "The code will be sent to your Kenyan phone number."}
+                We’ll send your six-digit code to the email address above.
               </Text>
             </View>
 
