@@ -280,9 +280,7 @@ export async function POST(request: Request) {
       return error("Passwordless authentication database migration is not applied. Apply database/migrations/2026-11-01-sami-passwordless-auth.sql, then redeploy.", 503);
     }
     if (!isOtpProviderConfigured(channel)) {
-      return error(channel === "email"
-        ? "Email verification is not configured. Choose SMS or WhatsApp, or contact SaMi support."
-        : "SMS and WhatsApp verification are not configured yet. Contact SaMi support.", 503);
+      return error("Email verification is not configured. Contact SaMi support.", 503);
     }
 
     let email = "";
