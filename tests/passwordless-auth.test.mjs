@@ -34,7 +34,7 @@ test("dispatch exposes separate OTP request and one-time verification actions", 
   assert.match(dispatch, /sami-otp-register-phone:/);
 });
 
-test("SMS and WhatsApp use Twilio while optional email OTP uses SMTP", () => {
+test("email OTP uses SMTP while Twilio remains a separate future provider", () => {
   assert.ok(otp.includes("https://verify.twilio.com/v2/Services/"));
   assert.match(otp, /VerificationCheck/);
   assert.match(otp, /createTransport/);
@@ -52,11 +52,18 @@ test("registration collects mandatory identity fields without a password", () =>
   assert.match(register, /Email address/);
   assert.match(register, /Send verification code/);
   assert.doesNotMatch(register, /secureTextEntry|textContentType="password"|name="password"/);
+  assert.match(register, /const channel: OtpChannel = "email"/);
+  assert.doesNotMatch(register, /SMS|WhatsApp|channels\.map/);
 });
 
 test("login and verification use OTP and continue to the customer app", () => {
   assert.match(login, /Email address or phone number/);
   assert.match(login, /Send verification code/);
+  assert.match(login, /Email is currently the only available verification method/);
+  assert.match(login, /const channel: OtpChannel = "email"/);
+  assert.doesNotMatch(login, /SMS|WhatsApp|channels\.map/);
+  assert.match(dispatch, /body\.channel !== "email"/);
+  assert.match(dispatch, /challenge\.channel !== "email"/);
   assert.match(verify, /oneTimeCode/);
   assert.match(verify, /Verify and continue/);
   assert.match(verify, /router\.replace\("\/\(app\)"\)/);
