@@ -216,7 +216,7 @@ CREATE TABLE IF NOT EXISTS auth_otp_challenges (
  verified_at timestamptz, consumed_at timestamptz,
  CHECK(expires_at>created_at),
  CHECK(
-   (purpose='register' AND full_name IS NOT NULL AND user_id IS NULL)
+   (purpose='register' AND full_name IS NOT NULL)
    OR
    (purpose='login' AND user_id IS NOT NULL)
  )
