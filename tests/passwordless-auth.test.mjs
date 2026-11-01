@@ -35,15 +35,15 @@ test("dispatch exposes separate OTP request and one-time verification actions", 
 });
 
 test("SMS and WhatsApp use Twilio while optional email OTP uses SMTP", () => {
-  assert.match(otp, /verify\\.twilio\\.com\\/v2\\/Services/);
+  assert.ok(otp.includes("https://verify.twilio.com/v2/Services/"));
   assert.match(otp, /VerificationCheck/);
   assert.match(otp, /createTransport/);
   assert.match(otp, /sendEmailOtp/);
   assert.match(otp, /createEmailOtpCode/);
   assert.match(otp, /timingSafeEqual/);
-  assert.match(dispatch, /isOtpProviderConfigured\\(channel\\)/);
-  assert.match(dispatch, /channel === "email"[\\s\\S]*sendEmailOtp/);
-  assert.match(dispatch, /challenge.channel === "email"[\\s\\S]*verifyEmailOtp/);
+  assert.ok(dispatch.includes("isOtpProviderConfigured(channel)"));
+  assert.ok(dispatch.includes("sendEmailOtp(destination, emailCode)"));
+  assert.ok(dispatch.includes("verifyEmailOtp(challenge.id, code)"));
 });
 
 test("registration collects mandatory identity fields without a password", () => {
