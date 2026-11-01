@@ -1,5 +1,6 @@
 -- SaMi passwordless customer authentication.
--- Twilio Verify stores and checks OTPs; this database stores challenge metadata only.
+-- SMS and WhatsApp use Twilio Verify; optional email OTPs are HMAC-derived and sent through SMTP.
+-- This database stores challenge metadata only.
 ALTER TABLE public.users
   ALTER COLUMN password_hash DROP NOT NULL,
   ADD COLUMN IF NOT EXISTS phone_verified_at timestamptz;
