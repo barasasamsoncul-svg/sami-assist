@@ -39,6 +39,9 @@ CREATE INDEX IF NOT EXISTS auth_otp_pending_expiry_idx
   ON public.auth_otp_challenges (expires_at)
   WHERE status = 'pending';
 
+-- The API connects through the least-privilege application role.
+GRANT SELECT, INSERT, UPDATE ON public.auth_otp_challenges TO sami_errands_app;
+
 INSERT INTO public.schema_migrations(version)
 VALUES ('2026-11-01-sami-passwordless-otp-auth')
 ON CONFLICT (version) DO NOTHING;
