@@ -120,8 +120,9 @@ export async function sendEmailOtp(
 
   const recipientName = options.recipientName?.trim().slice(0, 80) || "";
   const greeting = recipientName
-    ? "Hello " + escapeEmailHtml(recipientName) + ","
+    ? "Hello " + recipientName + ","
     : "Hello,";
+  const htmlGreeting = escapeEmailHtml(greeting);
 
   const isRegistration = options.purpose === "register";
   const subject = isRegistration
@@ -171,7 +172,7 @@ export async function sendEmailOtp(
     '<div style="width:54px;height:3px;margin:18px auto 0;background:#4D8BFF;border-radius:3px;"></div>' +
     "</td></tr>" +
     '<tr><td style="padding:34px 34px 18px;">' +
-    '<p style="margin:0 0 18px;color:#172033;font-size:16px;line-height:25px;">' + greeting + "</p>" +
+    '<p style="margin:0 0 18px;color:#172033;font-size:16px;line-height:25px;">' + htmlGreeting + "</p>" +
     '<h1 style="margin:0 0 12px;color:#000535;font-size:24px;line-height:31px;font-weight:700;">' + heading + "</h1>" +
     '<p style="margin:0;color:#5E687C;font-size:15px;line-height:25px;">Use the verification code below to ' + purposeText + ".</p>" +
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:28px auto 22px;"><tr>' +
