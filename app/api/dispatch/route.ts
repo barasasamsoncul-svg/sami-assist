@@ -5,7 +5,7 @@ import { databasePool, query } from "@/lib/db";
 import { createSession, destroySession, getCurrentUser } from "@/lib/auth";
 import { getRoadRoute } from "@/lib/location";
 import { ensureErrandLocationSchema } from "@/lib/errand-location-schema";
-import { checkOtp, isOtpProviderConfigured, maskOtpDestination, normalizeKenyanPhone, phoneAliases, sendOtp, type OtpChannel } from "@/lib/otp";
+import { checkOtp, createEmailOtpCode, isOtpProviderConfigured, maskOtpDestination, normalizeKenyanPhone, phoneAliases, sendEmailOtp, sendOtp, verifyEmailOtp, type OtpChannel } from "@/lib/otp";
 
 export const runtime = "nodejs";
 type UserRole = "customer" | "provider" | "admin";
@@ -279,8 +279,10 @@ export async function POST(request: Request) {
     if (!(await passwordlessAuthSchemaReady())) {
       return error("Passwordless authentication database migration is not applied. Apply database/migrations/2026-11-01-sami-passwordless-auth.sql, then redeploy.", 503);
     }
-    if (!isOtpProviderConfigured()) {
-      return error("OTP delivery is not configured yet. SaMi support must finish the verification provider setup.", 503);
+    if (!isOtpProviderConfigured(channel)) {
+      return error(channel === "email"
+        ? "Email verification is not configured. Choose SMS or WhatsApp, or contact SaMi support."
+        : "SMS and WhatsApp verification are not configured yet. Contact SaMi support.", 503);
     }
 
     let email = "";
@@ -340,10 +342,17 @@ export async function POST(request: Request) {
         [purpose, channel, destination, email, phone, fullName, userId],
       );
       try {
-        const providerSid = await sendOtp(destination, channel);
+        const challengeId = challenge.rows[0].id;
+        let providerSid: string | null = null;
+        if (channel === "email") {
+          const emailCode = createEmailOtpCode(challengeId);
+          await sendEmailOtp(destination, emailCode);
+        } else {
+          providerSid = await sendOtp(destination, channel);
+        }
         await query(
           "UPDATE auth_otp_challenges SET provider_sid=$2 WHERE id=$1",
-          [challenge.rows[0].id, providerSid],
+          [challengeId, providerSid],
         );
       } catch (providerError) {
         await query(
@@ -376,8 +385,6 @@ export async function POST(request: Request) {
     if (!(await passwordlessAuthSchemaReady())) {
       return error("Passwordless authentication database migration is not applied. Apply the auth migration, then redeploy.", 503);
     }
-    if (!isOtpProviderConfigured()) return error("OTP delivery is not configured yet.", 503);
-
     try {
       const found = await query<{
         id: string; purpose: "register" | "login"; channel: OtpChannel;
@@ -392,13 +399,16 @@ export async function POST(request: Request) {
         await query("UPDATE auth_otp_challenges SET status='expired' WHERE id=$1 AND status='pending' AND expires_at<=now()", [challengeId]).catch(() => undefined);
         return error("This code has expired. Go back and request a new code.", 410);
       }
+      if (!isOtpProviderConfigured(challenge.channel)) return error("The selected verification channel is not configured.", 503);
       if (challenge.attempt_count >= 5) return error("Too many incorrect codes. Request a new code.", 429);
 
       const verifyHash = hash("verify:" + challenge.id);
       if (await attemptCount(verifyHash, challenge.purpose) >= 5) {
         return error("Too many incorrect codes. Request a new code.", 429);
       }
-      const approved = await checkOtp(challenge.destination, code);
+      const approved = challenge.channel === "email"
+        ? verifyEmailOtp(challenge.id, code)
+        : await checkOtp(challenge.destination, code);
       if (!approved) {
         await query(
           "UPDATE auth_otp_challenges SET attempt_count=attempt_count+1, status=CASE WHEN attempt_count+1>=5 THEN 'failed' ELSE status END WHERE id=$1 AND status='pending'",
