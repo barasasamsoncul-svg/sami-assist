@@ -7,6 +7,7 @@ import {
   SafeAreaView,
   ScrollView,
   StatusBar,
+  Image,
   Text,
   TextInput,
   View,
@@ -100,31 +101,19 @@ export default function RegisterScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#F5F7FB" }}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F5F7FB" />
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#FFFFFF" }}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{
           flexGrow: 1, paddingHorizontal: 22, paddingTop: 22, paddingBottom: 30,
         }}>
           <View style={{ width: "100%", maxWidth: 480, alignSelf: "center", gap: 22 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 11 }}>
-              <View style={{
-                width: 50, height: 50, borderRadius: 16, backgroundColor: NAVY,
-                alignItems: "center", justifyContent: "center",
-              }}>
-                <Text style={{ color: "#FFFFFF", fontSize: 24, fontWeight: "900", letterSpacing: -1.4 }}>SaMi</Text>
-                <View style={{
-                  position: "absolute", bottom: 7, width: 22, height: 7,
-                  borderBottomWidth: 2.5, borderColor: "#F0B64D",
-                  borderBottomLeftRadius: 20, borderBottomRightRadius: 20,
-                }} />
-              </View>
-              <View style={{ gap: 3 }}>
-                <Text style={{ color: NAVY, fontSize: 24, fontWeight: "900", letterSpacing: -1 }}>SaMi</Text>
-                <Text style={{ color: MUTED, fontSize: 10, fontWeight: "800", letterSpacing: 1.1 }}>ERRANDS, MADE EASIER</Text>
-              </View>
-            </View>
-
+            <Image
+              source={require("../../assets/sami-welcome-wordmark-transparent.png")}
+              style={{ width: 184, height: 52, alignSelf: "flex-start" }}
+              resizeMode="contain"
+              accessibilityLabel="SaMi - Consider it done"
+            />
             <View style={{ gap: 10 }}>
               <View style={{
                 alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 7,

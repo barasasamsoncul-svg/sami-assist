@@ -1,11 +1,11 @@
-import { Pressable, SafeAreaView, ScrollView, StatusBar, Text, View } from "react-native";
+import { Pressable, SafeAreaView, ScrollView, StatusBar, Image, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 
 export default function ChooseRoleScreen() {
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#F5F7FB" }}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F5F7FB" />
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#FFFFFF" }}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <ScrollView contentContainerStyle={{ flexGrow: 1, padding: 22, paddingTop: 18, paddingBottom: 28 }}>
         <View style={{ width: "100%", maxWidth: 460, alignSelf: "center", flex: 1, gap: 25 }}>
           <Pressable accessibilityRole="button" onPress={() => router.back()} style={{ flexDirection: "row", alignItems: "center", gap: 8, alignSelf: "flex-start", paddingVertical: 8 }}>
@@ -14,10 +14,7 @@ export default function ChooseRoleScreen() {
           </Pressable>
 
           <View style={{ gap: 10 }}>
-            <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: "#173B67", alignItems: "center", justifyContent: "center" }}>
-              <Text style={{ color: "#FFFFFF", fontSize: 22, fontWeight: "900", letterSpacing: -1 }}>SaMi</Text>
-              <View style={{ position: "absolute", bottom: 6, width: 20, height: 6, borderBottomWidth: 2, borderColor: "#F0B64D", borderBottomLeftRadius: 16, borderBottomRightRadius: 16 }} />
-            </View>
+            <Image source={require("../../assets/sami-welcome-wordmark-transparent.png")} style={{ width: 184, height: 52 }} resizeMode="contain" accessibilityLabel="SaMi - Consider it done" />
             <Text style={{ color: "#173B67", fontSize: 32, lineHeight: 38, fontWeight: "900", letterSpacing: -1 }}>
               How would you like{"\n"}to use SaMi?
             </Text>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StatusBar, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StatusBar, Image, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { dispatchPost } from "@/api";
@@ -24,13 +24,13 @@ export default function VerifyScreen() {
     } finally { setBusy(false); }
   }
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#F5F7FB" }}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F5F7FB" />
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#FFFFFF" }}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 22, paddingTop: 22, paddingBottom: 30, justifyContent: "center" }}>
           <View style={{ width: "100%", maxWidth: 460, alignSelf: "center", gap: 22 }}>
             <View style={{ gap: 8 }}>
-              <Text style={{ color: "#2463B8", fontSize: 15, fontWeight: "900", letterSpacing: 1.4 }}>SaMi</Text>
+              <Image source={require("../../assets/sami-welcome-wordmark-transparent.png")} style={{ width: 184, height: 52 }} resizeMode="contain" accessibilityLabel="SaMi - Consider it done" />
               <Text style={{ color: "#173B67", fontSize: 31, lineHeight: 38, fontWeight: "900", letterSpacing: -0.8 }}>Verify your email</Text>
               <Text style={{ color: "#69788D", fontSize: 14, lineHeight: 22 }}>Enter the six-digit code we sent to {deliveryHint}.</Text>
             </View>

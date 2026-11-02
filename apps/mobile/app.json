@@ -11,12 +11,13 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#000005",
-          "image": "./assets/icon.png",
-          "imageWidth": 160,
+          "backgroundColor": "#000535",
+          "image": "./assets/sami-splash-logo-1024.png",
+          "imageWidth": 288,
+          "resizeMode": "contain",
           "dark": {
-            "backgroundColor": "#000005",
-            "image": "./assets/icon.png"
+            "backgroundColor": "#000535",
+            "image": "./assets/sami-splash-logo-1024.png"
           }
         }
       ],
@@ -47,7 +48,7 @@
         "NSLocationWhenInUseUsageDescription": "SaMi uses your location to set pickup points and share provider location during active errands.",
         "NSMicrophoneUsageDescription": "SaMi uses your microphone only while you are on an in-app voice call with the assigned participant for an errand."
       },
-      "backgroundColor": "#000005"
+      "backgroundColor": "#000535"
     },
     "android": {
       "package": "com.sami.errands",
@@ -58,10 +59,10 @@
         "MODIFY_AUDIO_SETTINGS"
       ],
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0A1A40"
+        "foregroundImage": "./assets/sami-app-icon-1024.png",
+        "backgroundColor": "#000535"
       },
-      "backgroundColor": "#000005"
+      "backgroundColor": "#000535"
     },
     "experiments": {
       "typedRoutes": true
@@ -69,18 +70,18 @@
     "runtimeVersion": {
       "policy": "fingerprint"
     },
-    "icon": "./assets/icon.png",
+    "icon": "./assets/sami-app-icon-1024.png",
     "extra": {
       "eas": {
         "projectId": "c09e119e-8a6b-4a1e-a7c6-b85cfd4e330d"
       }
     },
-    "backgroundColor": "#000005",
+    "backgroundColor": "#000535",
     "web": {
-      "backgroundColor": "#000005"
+      "backgroundColor": "#000535"
     },
     "androidStatusBar": {
-      "backgroundColor": "#000005",
+      "backgroundColor": "#000535",
       "barStyle": "light-content",
       "translucent": false
     }
