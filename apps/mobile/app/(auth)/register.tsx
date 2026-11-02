@@ -1,8 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -15,6 +13,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Link, router } from "expo-router";
 import { dispatchPost } from "@/api";
+import { useKeyboardAwareScroll } from "@/hooks/useKeyboardAwareScroll";
 
 const BLUE = "#2463B8";
 const NAVY = "#173B67";
@@ -31,6 +30,11 @@ export default function RegisterScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const fullNameFieldRef = useRef<View>(null);
+  const emailFieldRef = useRef<View>(null);
+  const phoneFieldRef = useRef<View>(null);
+  const passwordFieldRef = useRef<View>(null);
+  const { scrollRef, viewportRef, keyboardHeight, onFieldFocus, onScroll } = useKeyboardAwareScroll();
 
   async function createAccount() {
     if (fullName.trim().length < 2 || !email.trim() || !phone.trim() || password.length < 12) {
@@ -64,6 +68,8 @@ export default function RegisterScreen() {
     keyboardType,
     autoCapitalize,
     textContentType,
+    fieldRef,
+    onFocus,
   }: {
     label: string;
     icon: React.ComponentProps<typeof Ionicons>["name"];
@@ -73,11 +79,13 @@ export default function RegisterScreen() {
     keyboardType?: "default" | "email-address" | "phone-pad";
     autoCapitalize?: "none" | "words";
     textContentType?: "name" | "emailAddress" | "telephoneNumber";
+    fieldRef: React.Ref<View>;
+    onFocus: () => void;
   }) {
     return (
       <View style={{ gap: 7 }}>
         <Text style={{ color: INK, fontSize: 12, fontWeight: "800", letterSpacing: 0.25 }}>{label.toUpperCase()}</Text>
-        <View style={{
+        <View ref={fieldRef} collapsable={false} style={{
           minHeight: 52, flexDirection: "row", alignItems: "center", gap: 11,
           paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: BORDER,
           backgroundColor: "#FBFCFF",
@@ -93,6 +101,7 @@ export default function RegisterScreen() {
             autoCapitalize={autoCapitalize}
             autoCorrect={false}
             textContentType={textContentType}
+            onFocus={onFocus}
             style={{ flex: 1, color: NAVY, fontSize: 15, paddingVertical: 12 }}
           />
         </View>
@@ -103,10 +112,19 @@ export default function RegisterScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#FFFFFF" }}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{
-          flexGrow: 1, paddingHorizontal: 22, paddingTop: 22, paddingBottom: 30,
-        }}>
+      <View ref={viewportRef} collapsable={false} style={{ flex: 1 }}>
+        <ScrollView
+          ref={scrollRef}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScroll={onScroll}
+          contentContainerStyle={{
+            flexGrow: 1, paddingHorizontal: 22, paddingTop: 22,
+            paddingBottom: Math.max(30, keyboardHeight + 30),
+          }}
+        >
           <View style={{ width: "100%", maxWidth: 480, alignSelf: "center", gap: 22 }}>
             <Image
               source={require("../../assets/sami-welcome-wordmark-transparent.png")}
@@ -140,11 +158,11 @@ export default function RegisterScreen() {
                 <Text style={{ color: MUTED, fontSize: 13, lineHeight: 19 }}>A few details and you’re ready to go.</Text>
               </View>
 
-              <Field label="Full name" icon="person-outline" value={fullName} onChangeText={setFullName}
+              <Field fieldRef={fullNameFieldRef} onFocus={() => onFieldFocus(fullNameFieldRef.current)} label="Full name" icon="person-outline" value={fullName} onChangeText={setFullName}
                 placeholder="Enter your full name" autoCapitalize="words" textContentType="name" />
-              <Field label="Email address" icon="mail-outline" value={email} onChangeText={setEmail}
+              <Field fieldRef={emailFieldRef} onFocus={() => onFieldFocus(emailFieldRef.current)} label="Email address" icon="mail-outline" value={email} onChangeText={setEmail}
                 placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" textContentType="emailAddress" />
-              <Field label="Phone number" icon="call-outline" value={phone} onChangeText={setPhone}
+              <Field fieldRef={phoneFieldRef} onFocus={() => onFieldFocus(phoneFieldRef.current)} label="Phone number" icon="call-outline" value={phone} onChangeText={setPhone}
                 placeholder="07XX XXX XXX" keyboardType="phone-pad" textContentType="telephoneNumber" />
 
               <View style={{ flexDirection: "row", gap: 7, alignItems: "flex-start", padding: 10, borderRadius: 12, backgroundColor: "#F5F7FB" }}>
@@ -154,7 +172,7 @@ export default function RegisterScreen() {
 
               <View style={{ gap: 7 }}>
                 <Text style={{ color: INK, fontSize: 12, fontWeight: "800", letterSpacing: 0.25 }}>PASSWORD</Text>
-                <View style={{
+                <View ref={passwordFieldRef} collapsable={false} style={{
                   minHeight: 52, flexDirection: "row", alignItems: "center", gap: 11,
                   paddingLeft: 14, paddingRight: 7, borderRadius: 14, borderWidth: 1,
                   borderColor: BORDER, backgroundColor: "#FBFCFF",
@@ -170,6 +188,7 @@ export default function RegisterScreen() {
                     autoCapitalize="none"
                     autoCorrect={false}
                     textContentType="newPassword"
+                    onFocus={() => onFieldFocus(passwordFieldRef.current)}
                     style={{ flex: 1, color: NAVY, fontSize: 15, paddingVertical: 12 }}
                   />
                   <Pressable accessibilityRole="button" accessibilityLabel={showPassword ? "Hide password" : "Show password"}
@@ -220,7 +239,7 @@ export default function RegisterScreen() {
             </View>
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }
