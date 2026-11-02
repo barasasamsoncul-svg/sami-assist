@@ -10,7 +10,7 @@ const androidSafeAreaEdges: Array<"top" | "right" | "bottom" | "left"> = [
   "left",
 ];
 
-const welcomeNavy = "#04142D";
+const welcomeNavy = "#000535";
 
 export default function RootLayout() {
   const pathname = usePathname();
