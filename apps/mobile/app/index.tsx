@@ -1,5 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import * as SecureStore from "expo-secure-store";
+import * as SplashScreen from "expo-splash-screen";
+import { router } from "expo-router";
+
 import {
   Image,
   ImageBackground,
@@ -7,40 +10,77 @@ import {
   StatusBar,
   Text,
   View,
+  useColorScheme,
 } from "react-native";
-import { router } from "expo-router";
+
 import { dispatchGet } from "@/api";
 
 const SESSION_KEY = "sami_errands_access_token";
 const NAVY = "#000535";
 
 export default function WelcomeScreen() {
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === "dark";
+
+  const [welcomeReady, setWelcomeReady] = useState(false);
+
   useEffect(() => {
     let active = true;
 
-    async function decideInitialRoute() {
+    function openCustomerApp() {
+      if (!active) return;
+
+      router.replace("/(app)");
+
+      requestAnimationFrame(() => {
+        void SplashScreen.hideAsync().catch(
+          () => undefined,
+        );
+      });
+    }
+
+    async function checkSession() {
       const savedToken = await SecureStore.getItemAsync(
         SESSION_KEY,
       ).catch(() => null);
 
-      if (!active || !savedToken) return;
+      if (!active) return;
+
+      if (!savedToken) {
+        setWelcomeReady(true);
+        return;
+      }
 
       try {
-        // Verify an existing session before opening the customer app.
         await dispatchGet("me");
 
         if (active) {
-          router.replace("/(app)");
+          openCustomerApp();
         }
       } catch {
-        // If the session cannot be verified, leave the welcome
-        // screen visible with Get started and Sign in.
-        // Do not delete the saved token during a network failure.
+        if (!active) return;
+
+        const remainingToken =
+          await SecureStore.getItemAsync(
+            SESSION_KEY,
+          ).catch(() => null);
+
+        if (!active) return;
+
+        if (remainingToken) {
+          // Keep the saved session during temporary network problems.
+          openCustomerApp();
+        } else {
+          // The server rejected the saved session.
+          setWelcomeReady(true);
+        }
       }
     }
 
-    void decideInitialRoute().catch(() => {
-      // Keep the welcome screen available if startup checks fail.
+    void checkSession().catch(() => {
+      if (active) {
+        setWelcomeReady(true);
+      }
     });
 
     return () => {
@@ -48,10 +88,37 @@ export default function WelcomeScreen() {
     };
   }, []);
 
+  function hideNativeSplash() {
+    void SplashScreen.hideAsync().catch(
+      () => undefined,
+    );
+  }
+
+  if (!welcomeReady) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: NAVY,
+        }}
+      />
+    );
+  }
+
+  const primaryBackground = isDark ? "#FFFFFF" : NAVY;
+  const primaryText = isDark ? NAVY : "#FFFFFF";
+
+  const secondaryBackground = isDark
+    ? "rgba(255,255,255,0.10)"
+    : "rgba(255,255,255,0.94)";
+
+  const secondaryText = isDark ? "#FFFFFF" : NAVY;
+
   return (
     <ImageBackground
       source={require("../assets/sami-welcome-photo.png")}
       resizeMode="cover"
+      onLayout={hideNativeSplash}
       style={{
         flex: 1,
         backgroundColor: NAVY,
@@ -69,25 +136,25 @@ export default function WelcomeScreen() {
           alignItems: "center",
         }}
       >
-        {/* Original SaMi wordmark PNG — preserved */}
+        {/* Original SaMi wordmark */}
         <Image
           source={require("../assets/sami-welcome-wordmark-transparent.png")}
           resizeMode="contain"
           accessibilityLabel="SaMi - Consider it done"
           style={{
             position: "absolute",
-            top: 150,
-            width: "88%",
+            top: 42,
+            width: "90%",
             maxWidth: 460,
             aspectRatio: 852 / 382,
           }}
         />
 
-        {/* Welcome actions: exactly two */}
+        {/* Welcome buttons */}
         <View
           style={{
             position: "absolute",
-            bottom: 185,
+            bottom: 105,
             width: "100%",
             alignItems: "center",
             paddingHorizontal: 28,
@@ -97,20 +164,23 @@ export default function WelcomeScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Get started"
-            onPress={() => router.push("/(auth)/register")}
-            style={{
+            onPress={() =>
+              router.push("/(auth)/register")
+            }
+            style={({ pressed }) => ({
               width: "100%",
               maxWidth: 360,
               height: 58,
               borderRadius: 17,
-              backgroundColor: "#FFFFFF",
+              backgroundColor: primaryBackground,
               alignItems: "center",
               justifyContent: "center",
-            }}
+              opacity: pressed ? 0.85 : 1,
+            })}
           >
             <Text
               style={{
-                color: NAVY,
+                color: primaryText,
                 fontSize: 16,
                 fontWeight: "800",
               }}
@@ -122,22 +192,25 @@ export default function WelcomeScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Sign in"
-            onPress={() => router.push("/(auth)/login")}
-            style={{
+            onPress={() =>
+              router.push("/(auth)/login")
+            }
+            style={({ pressed }) => ({
               width: "100%",
               maxWidth: 360,
               height: 58,
               borderRadius: 17,
               borderWidth: 1.5,
               borderColor: "#FFFFFF",
-              backgroundColor: "rgba(255,255,255,0.10)",
+              backgroundColor: secondaryBackground,
               alignItems: "center",
               justifyContent: "center",
-            }}
+              opacity: pressed ? 0.85 : 1,
+            })}
           >
             <Text
               style={{
-                color: "#FFFFFF",
+                color: secondaryText,
                 fontSize: 16,
                 fontWeight: "800",
               }}

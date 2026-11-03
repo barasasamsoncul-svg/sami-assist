@@ -1,13 +1,12 @@
-
 import {
   Stack,
   router,
   usePathname,
   type Href,
 } from "expo-router";
-import type { ComponentProps } from "react";
+
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useState } from "react";
+
 import {
   Pressable,
   StyleSheet,
@@ -15,17 +14,13 @@ import {
   View,
   useColorScheme,
 } from "react-native";
-import { dispatchGet } from "@/api";
-
-type Role = "customer" | "provider" | "admin";
-type IoniconName = ComponentProps<typeof Ionicons>["name"];
 
 type NavItem = {
   path: string;
   href: Href;
   label: string;
-  icon: IoniconName;
-  activeIcon?: IoniconName;
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  activeIcon: React.ComponentProps<typeof Ionicons>["name"];
 };
 
 const customerTabs: NavItem[] = [
@@ -59,72 +54,11 @@ const customerTabs: NavItem[] = [
   },
 ];
 
-const providerTabs: NavItem[] = [
-  {
-    path: "/",
-    href: "/(app)",
-    label: "Home",
-    icon: "home-outline",
-    activeIcon: "home",
-  },
-  {
-    path: "/errands",
-    href: "/(app)/errands",
-    label: "Errands",
-    icon: "receipt-outline",
-    activeIcon: "receipt",
-  },
-  {
-    path: "/payments",
-    href: "/(app)/payments",
-    label: "Earnings",
-    icon: "wallet-outline",
-    activeIcon: "wallet",
-  },
-  {
-    path: "/account",
-    href: "/(app)/account",
-    label: "Account",
-    icon: "person-outline",
-    activeIcon: "person",
-  },
-];
-
-const adminTabs: NavItem[] = [
-  {
-    path: "/",
-    href: "/(app)",
-    label: "Overview",
-    icon: "home-outline",
-    activeIcon: "home",
-  },
-  {
-    path: "/errands",
-    href: "/(app)/errands",
-    label: "Errands",
-    icon: "receipt-outline",
-    activeIcon: "receipt",
-  },
-  {
-    path: "/operations",
-    href: "/(app)/operations",
-    label: "Operations",
-    icon: "settings-outline",
-    activeIcon: "settings",
-  },
-  {
-    path: "/account",
-    href: "/(app)/account",
-    label: "Account",
-    icon: "person-outline",
-    activeIcon: "person",
-  },
-];
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+
   tabBar: {
     minHeight: 70,
     flexDirection: "row",
@@ -135,6 +69,7 @@ const styles = StyleSheet.create({
     paddingBottom: 5,
     borderTopWidth: 1,
   },
+
   tabButton: {
     flex: 1,
     minWidth: 0,
@@ -143,6 +78,7 @@ const styles = StyleSheet.create({
     gap: 3,
     borderRadius: 13,
   },
+
   iconWrap: {
     width: 44,
     height: 29,
@@ -150,6 +86,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
   createTabButton: {
     flex: 1,
     minWidth: 0,
@@ -157,6 +94,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 2,
   },
+
   createTabIcon: {
     width: 48,
     height: 38,
@@ -166,21 +104,20 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 4,
   },
+
   createTabLabel: {
     fontSize: 10,
     fontWeight: "900",
   },
+
   tabLabel: {
     fontSize: 10,
     fontWeight: "700",
     letterSpacing: 0.1,
   },
-  activeTabLabel: {
-    fontWeight: "900",
-  },
 });
 
-export default function AppLayout() {
+export default function CustomerAppLayout() {
   const pathname = usePathname();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
@@ -203,35 +140,9 @@ export default function AppLayout() {
         accentSoft: "#EAF1FC",
       };
 
-  const [role, setRole] = useState<Role>("customer");
+  const currentPath = pathname === "/index" ? "/" : pathname;
 
-  useEffect(() => {
-    let active = true;
-
-    dispatchGet<{ user: { role: Role } }>("me")
-      .then(({ user }) => {
-        if (active && user?.role) {
-          setRole(user.role);
-        }
-      })
-      .catch(() => undefined);
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const tabs =
-    role === "provider"
-      ? providerTabs
-      : role === "admin"
-        ? adminTabs
-        : customerTabs;
-
-  const currentPath =
-    pathname === "/index" ? "/" : pathname;
-
-  const showTabBar = tabs.some(
+  const showTabBar = customerTabs.some(
     (tab) => tab.path === currentPath,
   );
 
@@ -245,7 +156,9 @@ export default function AppLayout() {
         accessibilityLabel={tab.label}
         accessibilityState={{ selected }}
         onPress={() => {
-          if (!selected) router.replace(tab.href);
+          if (!selected) {
+            router.replace(tab.href);
+          }
         }}
         style={styles.tabButton}
       >
@@ -258,15 +171,9 @@ export default function AppLayout() {
           ]}
         >
           <Ionicons
-            name={
-              (selected
-                ? tab.activeIcon || tab.icon
-                : tab.icon) as IoniconName
-            }
+            name={selected ? tab.activeIcon : tab.icon}
             size={22}
-            color={
-              selected ? palette.blue : palette.muted
-            }
+            color={selected ? palette.blue : palette.muted}
           />
         </View>
 
@@ -275,10 +182,10 @@ export default function AppLayout() {
           style={[
             styles.tabLabel,
             { color: palette.muted },
-            selected && [
-              styles.activeTabLabel,
-              { color: palette.blue },
-            ],
+            selected && {
+              color: palette.blue,
+              fontWeight: "900",
+            },
           ]}
         >
           {tab.label}
@@ -291,7 +198,9 @@ export default function AppLayout() {
     <View
       style={[
         styles.container,
-        { backgroundColor: palette.background },
+        {
+          backgroundColor: palette.background,
+        },
       ]}
     >
       <Stack
@@ -315,61 +224,45 @@ export default function AppLayout() {
             },
           ]}
         >
-          {role === "customer" ? (
-            <>
-              {tabs
-                .filter(
-                  (tab) =>
-                    tab.path === "/" ||
-                    tab.path === "/errands",
-                )
-                .map(renderTab)}
+          {renderTab(customerTabs[0])}
+          {renderTab(customerTabs[1])}
 
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Create an errand"
-                onPress={() =>
-                  router.push("/(app)/request")
-                }
-                style={styles.createTabButton}
-              >
-                <View
-                  style={[
-                    styles.createTabIcon,
-                    {
-                      backgroundColor: palette.blue,
-                      borderColor: palette.surface,
-                    },
-                  ]}
-                >
-                  <Ionicons
-                    name="add"
-                    size={30}
-                    color="#FFFFFF"
-                  />
-                </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Create an errand"
+            onPress={() =>
+              router.push("/(app)/request")
+            }
+            style={styles.createTabButton}
+          >
+            <View
+              style={[
+                styles.createTabIcon,
+                {
+                  backgroundColor: palette.blue,
+                  borderColor: palette.surface,
+                },
+              ]}
+            >
+              <Ionicons
+                name="add"
+                size={30}
+                color="#FFFFFF"
+              />
+            </View>
 
-                <Text
-                  style={[
-                    styles.createTabLabel,
-                    { color: palette.blue },
-                  ]}
-                >
-                  Create
-                </Text>
-              </Pressable>
+            <Text
+              style={[
+                styles.createTabLabel,
+                { color: palette.blue },
+              ]}
+            >
+              Create
+            </Text>
+          </Pressable>
 
-              {tabs
-                .filter(
-                  (tab) =>
-                    tab.path === "/messages" ||
-                    tab.path === "/account",
-                )
-                .map(renderTab)}
-            </>
-          ) : (
-            tabs.map(renderTab)
-          )}
+          {renderTab(customerTabs[2])}
+          {renderTab(customerTabs[3])}
         </View>
       ) : null}
     </View>

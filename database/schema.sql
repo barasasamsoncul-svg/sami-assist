@@ -232,11 +232,21 @@ CREATE INDEX IF NOT EXISTS payment_attempts_errand_idx ON payment_attempts(erran
 CREATE INDEX IF NOT EXISTS payment_attempts_pending_idx ON payment_attempts(status,created_at DESC) WHERE status IN ('initiating','pending','verification_pending');
 
 CREATE TABLE IF NOT EXISTS user_sessions (
- id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
- token_hash text NOT NULL UNIQUE, expires_at timestamptz NOT NULL,
- created_at timestamptz NOT NULL DEFAULT now(),last_seen_at timestamptz NOT NULL DEFAULT now()
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash text NOT NULL UNIQUE,
+  client_type text NOT NULL DEFAULT 'web'
+    CHECK (client_type IN ('web', 'mobile')),
+  expires_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  last_seen_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS user_sessions_user_expiry_idx ON user_sessions(user_id,expires_at);
+
+CREATE INDEX IF NOT EXISTS user_sessions_user_expiry_idx
+  ON user_sessions(user_id, expires_at);
+
+CREATE INDEX IF NOT EXISTS user_sessions_user_client_idx
+  ON user_sessions(user_id, client_type, expires_at);
 
 CREATE TABLE IF NOT EXISTS notifications (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -280,5 +290,6 @@ INSERT INTO schema_migrations(version) VALUES
  ('2026-10-25-sami-errands-mpesa-payment-attempts'),
  ('2026-10-25-sami-errands-route-item-pricing'),
  ('2026-10-26-sami-errands-location-tracking'),
- ('2026-11-01-sami-passwordless-otp-auth')
+ ('2026-11-01-sami-passwordless-otp-auth'),
+ ('2026-11-04-sami-mobile-persistent-sessions')
 ON CONFLICT DO NOTHING;
