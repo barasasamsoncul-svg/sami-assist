@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "SaMi",
@@ -5,7 +6,7 @@
     "scheme": "sami",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "plugins": [
       "expo-router",
       [
@@ -38,6 +39,13 @@
         "@config-plugins/react-native-webrtc",
         {
           "microphonePermission": "SaMi uses the microphone for voice calls with the customer or assigned errand provider."
+        }
+      ],
+      [
+        "expo-status-bar",
+        {
+          "hidden": false,
+          "style": "light"
         }
       ]
     ],
@@ -79,11 +87,6 @@
     "backgroundColor": "#000535",
     "web": {
       "backgroundColor": "#000535"
-    },
-    "androidStatusBar": {
-      "backgroundColor": "#000535",
-      "barStyle": "light-content",
-      "translucent": false
     }
   }
 }

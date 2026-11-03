@@ -1,241 +1,641 @@
+
 import { useRef, useState } from "react";
+import type { ComponentProps, RefObject } from "react";
 import {
   ActivityIndicator,
+  Image,
+  Keyboard,
+  KeyboardTypeOptions,
   Pressable,
   SafeAreaView,
   ScrollView,
   StatusBar,
-  Image,
   Text,
   TextInput,
+  type TextInputProps,
   View,
+  useColorScheme,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Link, router } from "expo-router";
 import { dispatchPost } from "@/api";
 import { useKeyboardAwareScroll } from "@/hooks/useKeyboardAwareScroll";
 
-const BLUE = "#2463B8";
-const NAVY = "#173B67";
-const INK = "#24364F";
-const MUTED = "#6C7B91";
-const BORDER = "#DCE5F2";
-const PALE_BLUE = "#EAF1FC";
+type Palette = {
+  background: string;
+  surface: string;
+  input: string;
+  text: string;
+  heading: string;
+  muted: string;
+  border: string;
+  accent: string;
+  accentSoft: string;
+  accentText: string;
+  icon: string;
+  errorBackground: string;
+  errorText: string;
+  buttonText: string;
+};
+
+const LIGHT: Palette = {
+  background: "#F4F7FC",
+  surface: "#FFFFFF",
+  input: "#FBFCFF",
+  text: "#24364F",
+  heading: "#173B67",
+  muted: "#6C7B91",
+  border: "#DCE5F2",
+  accent: "#2463B8",
+  accentSoft: "#EAF1FC",
+  accentText: "#214E8C",
+  icon: "#71839B",
+  errorBackground: "#FFF0ED",
+  errorText: "#9E2921",
+  buttonText: "#FFFFFF",
+};
+
+const DARK: Palette = {
+  background: "#080F1D",
+  surface: "#111C2E",
+  input: "#0B1628",
+  text: "#D7E1EF",
+  heading: "#F2F6FC",
+  muted: "#AAB8CC",
+  border: "#2A3A52",
+  accent: "#79AEFF",
+  accentSoft: "#142A49",
+  accentText: "#C3DBFF",
+  icon: "#9FB0C7",
+  errorBackground: "#3B1D27",
+  errorText: "#FFB8B4",
+  buttonText: "#FFFFFF",
+};
+
+type FormFieldProps = {
+  label: string;
+  icon: ComponentProps<typeof Ionicons>["name"];
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder: string;
+  fieldRef: RefObject<View | null>;
+  inputRef: RefObject<TextInput | null>;
+  onFocus: () => void;
+  palette: Palette;
+  keyboardType?: KeyboardTypeOptions;
+  autoCapitalize?: TextInputProps["autoCapitalize"];
+  textContentType?: TextInputProps["textContentType"];
+  returnKeyType?: TextInputProps["returnKeyType"];
+  onSubmitEditing?: TextInputProps["onSubmitEditing"];
+};
+
+function FormField({
+  label,
+  icon,
+  value,
+  onChangeText,
+  placeholder,
+  fieldRef,
+  inputRef,
+  onFocus,
+  palette,
+  keyboardType = "default",
+  autoCapitalize = "none",
+  textContentType,
+  returnKeyType = "next",
+  onSubmitEditing,
+}: FormFieldProps) {
+  return (
+    <View style={{ gap: 8 }}>
+      <Text
+        style={{
+          color: palette.text,
+          fontSize: 12,
+          fontWeight: "800",
+          letterSpacing: 0.35,
+        }}
+      >
+        {label.toUpperCase()}
+      </Text>
+
+      <View
+        ref={fieldRef}
+        collapsable={false}
+        style={{
+          minHeight: 56,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 12,
+          paddingHorizontal: 15,
+          borderRadius: 15,
+          borderWidth: 1,
+          borderColor: palette.border,
+          backgroundColor: palette.input,
+        }}
+      >
+        <Ionicons name={icon} size={20} color={palette.icon} />
+
+        <TextInput
+          ref={inputRef}
+          accessibilityLabel={label}
+          value={value}
+          onChangeText={onChangeText}
+          onFocus={onFocus}
+          onSubmitEditing={onSubmitEditing}
+          placeholder={placeholder}
+          placeholderTextColor={palette.muted}
+          keyboardType={keyboardType}
+          autoCapitalize={autoCapitalize}
+          autoCorrect={false}
+          textContentType={textContentType}
+          returnKeyType={returnKeyType}
+          blurOnSubmit={false}
+          style={{
+            flex: 1,
+            minHeight: 52,
+            color: palette.heading,
+            fontSize: 15,
+            paddingVertical: 12,
+          }}
+        />
+      </View>
+    </View>
+  );
+}
+
+function formatKenyanPhone(value: string) {
+  const digits = value.replace(/\D/g, "");
+
+  if (digits.startsWith("254")) {
+    return `+${digits}`;
+  }
+
+  if (digits.startsWith("0")) {
+    return `+254${digits.slice(1)}`;
+  }
+
+  return digits ? `+254${digits}` : "";
+}
 
 export default function RegisterScreen() {
+  const colorScheme = useColorScheme();
+  const palette = colorScheme === "dark" ? DARK : LIGHT;
+  const darkMode = colorScheme === "dark";
+
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
   const fullNameFieldRef = useRef<View>(null);
   const emailFieldRef = useRef<View>(null);
   const phoneFieldRef = useRef<View>(null);
-  const passwordFieldRef = useRef<View>(null);
-  const { scrollRef, viewportRef, keyboardHeight, onFieldFocus, onScroll } = useKeyboardAwareScroll();
 
-  async function createAccount() {
-    if (fullName.trim().length < 2 || !email.trim() || !phone.trim() || password.length < 12) {
-      setError("Complete all fields and use a password of at least 12 characters.");
+  const fullNameInputRef = useRef<TextInput>(null);
+  const emailInputRef = useRef<TextInput>(null);
+  const phoneInputRef = useRef<TextInput>(null);
+
+  const {
+    scrollRef,
+    viewportRef,
+    keyboardHeight,
+    onFieldFocus,
+    onScroll,
+  } = useKeyboardAwareScroll();
+
+  const phoneDigits = phone.replace(/\D/g, "");
+  const validName = fullName.trim().length >= 2;
+  const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+    email.trim(),
+  );
+  const validPhone =
+    phoneDigits.length >= 9 && phoneDigits.length <= 12;
+
+  const canSubmit = validName && validEmail && validPhone && !busy;
+
+  async function sendCode() {
+    const cleanName = fullName.trim();
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!validName) {
+      setError("Enter your full name.");
       return;
     }
+
+    if (!validEmail) {
+      setError("Enter a valid email address.");
+      return;
+    }
+
+    if (!validPhone) {
+      setError("Enter a valid Kenyan mobile number.");
+      return;
+    }
+
+    Keyboard.dismiss();
     setBusy(true);
     setError("");
+
     try {
-      await dispatchPost("register", {
-        fullName: fullName.trim(),
-        email: email.trim().toLowerCase(),
-        phone: phone.trim(),
-        password,
-        role: "provider",
+      const result = await dispatchPost<{
+        challengeId: string;
+        deliveryHint: string;
+        channel: "email";
+      }>("requestOtp", {
+        purpose: "register",
+        fullName: cleanName,
+        email: cleanEmail,
+        phone: formatKenyanPhone(phone),
+        channel: "email",
       });
-      router.replace("/(app)");
+
+      router.push({
+        pathname: "/(auth)/verify",
+        params: {
+          challengeId: result.challengeId,
+          purpose: "register",
+          deliveryHint: result.deliveryHint,
+          channel: result.channel,
+        },
+      });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Account creation failed. Please try again.");
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Could not send your verification code. Please try again.",
+      );
     } finally {
       setBusy(false);
     }
   }
 
-  function Field({
-    label,
-    icon,
-    value,
-    onChangeText,
-    placeholder,
-    keyboardType,
-    autoCapitalize,
-    textContentType,
-    fieldRef,
-    onFocus,
-  }: {
-    label: string;
-    icon: React.ComponentProps<typeof Ionicons>["name"];
-    value: string;
-    onChangeText: (value: string) => void;
-    placeholder: string;
-    keyboardType?: "default" | "email-address" | "phone-pad";
-    autoCapitalize?: "none" | "words";
-    textContentType?: "name" | "emailAddress" | "telephoneNumber";
-    fieldRef: React.Ref<View>;
-    onFocus: () => void;
-  }) {
-    return (
-      <View style={{ gap: 7 }}>
-        <Text style={{ color: INK, fontSize: 12, fontWeight: "800", letterSpacing: 0.25 }}>{label.toUpperCase()}</Text>
-        <View ref={fieldRef} collapsable={false} style={{
-          minHeight: 52, flexDirection: "row", alignItems: "center", gap: 11,
-          paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: BORDER,
-          backgroundColor: "#FBFCFF",
-        }}>
-          <Ionicons name={icon} size={19} color="#71839B" />
-          <TextInput
-            accessibilityLabel={label}
-            value={value}
-            onChangeText={onChangeText}
-            placeholder={placeholder}
-            placeholderTextColor="#94A2B6"
-            keyboardType={keyboardType}
-            autoCapitalize={autoCapitalize}
-            autoCorrect={false}
-            textContentType={textContentType}
-            onFocus={onFocus}
-            style={{ flex: 1, color: NAVY, fontSize: 15, paddingVertical: 12 }}
-          />
-        </View>
-      </View>
-    );
-  }
-
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#FFFFFF" }}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      <View ref={viewportRef} collapsable={false} style={{ flex: 1 }}>
+    <SafeAreaView
+      style={{
+        flex: 1,
+        backgroundColor: palette.background,
+      }}
+    >
+      <StatusBar
+        barStyle={darkMode ? "light-content" : "dark-content"}
+        backgroundColor={palette.background}
+      />
+
+      <View
+        ref={viewportRef}
+        collapsable={false}
+        style={{ flex: 1 }}
+      >
         <ScrollView
           ref={scrollRef}
+          style={{ flex: 1 }}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
           scrollEventThrottle={16}
           onScroll={onScroll}
           contentContainerStyle={{
-            flexGrow: 1, paddingHorizontal: 22, paddingTop: 22,
-            paddingBottom: Math.max(30, keyboardHeight + 30),
+            flexGrow: 1,
+            justifyContent:
+              keyboardHeight > 0 ? "flex-start" : "center",
+            paddingHorizontal: 22,
+            paddingTop: keyboardHeight > 0 ? 18 : 26,
+            paddingBottom:
+              keyboardHeight > 0
+                ? Math.max(28, keyboardHeight + 20)
+                : 26,
           }}
         >
-          <View style={{ width: "100%", maxWidth: 480, alignSelf: "center", gap: 22 }}>
-            <Image
-              source={require("../../assets/sami-welcome-wordmark-transparent.png")}
-              style={{ width: 184, height: 52, alignSelf: "flex-start" }}
-              resizeMode="contain"
-              accessibilityLabel="SaMi - Consider it done"
-            />
-            <View style={{ gap: 10 }}>
-              <View style={{
-                alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 7,
-                paddingHorizontal: 11, paddingVertical: 7, borderRadius: 30, backgroundColor: PALE_BLUE,
-              }}>
-                <Ionicons name="sparkles-outline" size={14} color={BLUE} />
-                <Text style={{ color: BLUE, fontSize: 10, fontWeight: "800", letterSpacing: 0.9 }}>GET STARTED WITH SAMI</Text>
+          <View
+            style={{
+              width: "100%",
+              maxWidth: 460,
+              alignSelf: "center",
+              gap: 22,
+            }}
+          >
+            {/* Original SaMi wordmark */}
+            <View style={{ gap: 17 }}>
+              <Image
+                source={require("../../assets/sami-welcome-wordmark-transparent.png")}
+                style={{
+                  width: 190,
+                  height: 58,
+                  alignSelf: "flex-start",
+                }}
+                resizeMode="contain"
+                accessibilityLabel="SaMi - Consider it done"
+              />
+
+              <View style={{ gap: 10 }}>
+                <View
+                  style={{
+                    alignSelf: "flex-start",
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 7,
+                    paddingHorizontal: 11,
+                    paddingVertical: 7,
+                    borderRadius: 30,
+                    backgroundColor: palette.accentSoft,
+                  }}
+                >
+                  <Ionicons
+                    name="sparkles-outline"
+                    size={14}
+                    color={palette.accent}
+                  />
+                  <Text
+                    style={{
+                      color: palette.accentText,
+                      fontSize: 10,
+                      fontWeight: "800",
+                      letterSpacing: 0.9,
+                    }}
+                  >
+                    YOUR EVERYDAY HELP, ORGANISED
+                  </Text>
+                </View>
+
+                <Text
+                  style={{
+                    color: palette.heading,
+                    fontSize: 33,
+                    lineHeight: 40,
+                    fontWeight: "900",
+                    letterSpacing: -1.1,
+                  }}
+                >
+                  Your day,{"\n"}made easier.
+                </Text>
+
+                <Text
+                  style={{
+                    color: palette.muted,
+                    fontSize: 14,
+                    lineHeight: 22,
+                    maxWidth: 360,
+                  }}
+                >
+                  Create your SaMi account and let everyday errands
+                  become easier to organise.
+                </Text>
               </View>
-              <Text style={{ color: NAVY, fontSize: 32, lineHeight: 38, fontWeight: "900", letterSpacing: -1.1 }}>
-                Your day,{"\n"}made easier.
-              </Text>
-              <Text style={{ color: MUTED, fontSize: 14, lineHeight: 22, maxWidth: 350 }}>
-                Apply to complete errands in your community. SaMi reviews provider applications before activation.
-              </Text>
             </View>
 
-            <View style={{
-              backgroundColor: "#FFFFFF", borderRadius: 25, borderWidth: 1, borderColor: BORDER,
-              padding: 19, gap: 17, shadowColor: NAVY, shadowOpacity: 0.05,
-              shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 2,
-            }}>
-              <View style={{ gap: 4 }}>
-                <Text style={{ color: NAVY, fontSize: 20, fontWeight: "900", letterSpacing: -0.4 }}>Create your account</Text>
-                <Text style={{ color: MUTED, fontSize: 13, lineHeight: 19 }}>A few details and you’re ready to go.</Text>
+            {/* Customer registration form */}
+            <View
+              style={{
+                backgroundColor: palette.surface,
+                borderRadius: 25,
+                borderWidth: 1,
+                borderColor: palette.border,
+                padding: 20,
+                gap: 17,
+                shadowColor: "#000000",
+                shadowOpacity: darkMode ? 0.18 : 0.05,
+                shadowRadius: 20,
+                shadowOffset: { width: 0, height: 8 },
+                elevation: 2,
+              }}
+            >
+              <View style={{ gap: 5 }}>
+                <Text
+                  style={{
+                    color: palette.heading,
+                    fontSize: 21,
+                    fontWeight: "900",
+                    letterSpacing: -0.45,
+                  }}
+                >
+                  Create your account
+                </Text>
+
+                <Text
+                  style={{
+                    color: palette.muted,
+                    fontSize: 13,
+                    lineHeight: 20,
+                  }}
+                >
+                  Enter your details to get started with SaMi.
+                </Text>
               </View>
 
-              <Field fieldRef={fullNameFieldRef} onFocus={() => onFieldFocus(fullNameFieldRef.current)} label="Full name" icon="person-outline" value={fullName} onChangeText={setFullName}
-                placeholder="Enter your full name" autoCapitalize="words" textContentType="name" />
-              <Field fieldRef={emailFieldRef} onFocus={() => onFieldFocus(emailFieldRef.current)} label="Email address" icon="mail-outline" value={email} onChangeText={setEmail}
-                placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" textContentType="emailAddress" />
-              <Field fieldRef={phoneFieldRef} onFocus={() => onFieldFocus(phoneFieldRef.current)} label="Phone number" icon="call-outline" value={phone} onChangeText={setPhone}
-                placeholder="07XX XXX XXX" keyboardType="phone-pad" textContentType="telephoneNumber" />
+              <FormField
+                fieldRef={fullNameFieldRef}
+                inputRef={fullNameInputRef}
+                onFocus={() =>
+                  onFieldFocus(fullNameFieldRef.current)
+                }
+                palette={palette}
+                label="Full name"
+                icon="person-outline"
+                value={fullName}
+                onChangeText={(value) => {
+                  setFullName(value);
+                  setError("");
+                }}
+                placeholder="Enter your full name"
+                autoCapitalize="words"
+                textContentType="name"
+                onSubmitEditing={() => emailInputRef.current?.focus()}
+              />
 
-              <View style={{ flexDirection: "row", gap: 7, alignItems: "flex-start", padding: 10, borderRadius: 12, backgroundColor: "#F5F7FB" }}>
-                <Ionicons name="information-circle-outline" size={17} color={BLUE} />
-                <Text style={{ flex: 1, color: MUTED, fontSize: 12, lineHeight: 18 }}>Provider applications are reviewed by SaMi before you can accept errands.</Text>
-              </View>
+              <FormField
+                fieldRef={emailFieldRef}
+                inputRef={emailInputRef}
+                onFocus={() =>
+                  onFieldFocus(emailFieldRef.current)
+                }
+                palette={palette}
+                label="Email address"
+                icon="mail-outline"
+                value={email}
+                onChangeText={(value) => {
+                  setEmail(value);
+                  setError("");
+                }}
+                placeholder="you@example.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                textContentType="emailAddress"
+                onSubmitEditing={() => phoneInputRef.current?.focus()}
+              />
 
-              <View style={{ gap: 7 }}>
-                <Text style={{ color: INK, fontSize: 12, fontWeight: "800", letterSpacing: 0.25 }}>PASSWORD</Text>
-                <View ref={passwordFieldRef} collapsable={false} style={{
-                  minHeight: 52, flexDirection: "row", alignItems: "center", gap: 11,
-                  paddingLeft: 14, paddingRight: 7, borderRadius: 14, borderWidth: 1,
-                  borderColor: BORDER, backgroundColor: "#FBFCFF",
-                }}>
-                  <Ionicons name="lock-closed-outline" size={19} color="#71839B" />
-                  <TextInput
-                    accessibilityLabel="Password"
-                    value={password}
-                    onChangeText={setPassword}
-                    placeholder="At least 12 characters"
-                    placeholderTextColor="#94A2B6"
-                    secureTextEntry={!showPassword}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    textContentType="newPassword"
-                    onFocus={() => onFieldFocus(passwordFieldRef.current)}
-                    style={{ flex: 1, color: NAVY, fontSize: 15, paddingVertical: 12 }}
-                  />
-                  <Pressable accessibilityRole="button" accessibilityLabel={showPassword ? "Hide password" : "Show password"}
-                    hitSlop={10} onPress={() => setShowPassword((value) => !value)}
-                    style={{ width: 36, height: 40, alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={19} color="#71839B" />
-                  </Pressable>
-                </View>
-                <Text style={{ color: MUTED, fontSize: 11, lineHeight: 16 }}>Use at least 12 characters to help protect your account.</Text>
+              <FormField
+                fieldRef={phoneFieldRef}
+                inputRef={phoneInputRef}
+                onFocus={() =>
+                  onFieldFocus(phoneFieldRef.current)
+                }
+                palette={palette}
+                label="Phone number"
+                icon="call-outline"
+                value={phone}
+                onChangeText={(value) => {
+                  setPhone(value);
+                  setError("");
+                }}
+                placeholder="07XX XXX XXX"
+                keyboardType="phone-pad"
+                autoCapitalize="none"
+                textContentType="telephoneNumber"
+                returnKeyType="done"
+                onSubmitEditing={sendCode}
+              />
+
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 9,
+                  padding: 12,
+                  borderRadius: 13,
+                  backgroundColor: palette.accentSoft,
+                }}
+              >
+                <Ionicons
+                  name="mail-unread-outline"
+                  size={19}
+                  color={palette.accent}
+                />
+                <Text
+                  style={{
+                    flex: 1,
+                    color: palette.accentText,
+                    fontSize: 12,
+                    lineHeight: 18,
+                  }}
+                >
+                  We will send a six-digit verification code to your
+                  email address.
+                </Text>
               </View>
 
               {error ? (
-                <View accessibilityRole="alert" style={{ flexDirection: "row", gap: 8, padding: 12, borderRadius: 13, backgroundColor: "#FFF0ED" }}>
-                  <Ionicons name="alert-circle-outline" size={18} color="#B42318" />
-                  <Text style={{ flex: 1, color: "#9E2921", fontSize: 13, lineHeight: 19 }}>{error}</Text>
+                <View
+                  accessibilityRole="alert"
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "flex-start",
+                    gap: 8,
+                    padding: 12,
+                    borderRadius: 13,
+                    backgroundColor: palette.errorBackground,
+                  }}
+                >
+                  <Ionicons
+                    name="alert-circle-outline"
+                    size={18}
+                    color="#D0443C"
+                  />
+                  <Text
+                    style={{
+                      flex: 1,
+                      color: palette.errorText,
+                      fontSize: 13,
+                      lineHeight: 19,
+                    }}
+                  >
+                    {error}
+                  </Text>
                 </View>
               ) : null}
 
               <Pressable
                 accessibilityRole="button"
-                disabled={busy || fullName.trim().length < 2 || !email.trim() || !phone.trim() || password.length < 12}
-                onPress={createAccount}
+                accessibilityLabel="Create account and send verification code"
+                disabled={!canSubmit}
+                onPress={sendCode}
                 style={({ pressed }) => ({
-                  minHeight: 55, borderRadius: 15, backgroundColor: pressed ? "#1C5299" : BLUE,
-                  flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9,
-                  opacity: busy ? 0.75 : (!fullName.trim() || !email.trim() || !phone.trim() || password.length < 12 ? 0.55 : 1),
+                  minHeight: 56,
+                  borderRadius: 16,
+                  backgroundColor: palette.accent,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 9,
+                  opacity: !canSubmit ? 0.55 : pressed ? 0.85 : 1,
                 })}
               >
-                {busy ? <ActivityIndicator color="#FFFFFF" /> : (
+                {busy ? (
+                  <ActivityIndicator color={palette.buttonText} />
+                ) : (
                   <>
-                    <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "800" }}>
-                      Apply as an errand provider
+                    <Text
+                      style={{
+                        color: palette.buttonText,
+                        fontSize: 15,
+                        fontWeight: "800",
+                      }}
+                    >
+                      Create account
                     </Text>
-                    <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+                    <Ionicons
+                      name="arrow-forward"
+                      size={18}
+                      color={palette.buttonText}
+                    />
                   </>
                 )}
               </Pressable>
 
-              <View style={{ flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-                <Text style={{ color: MUTED, fontSize: 13 }}>Already have an account?</Text>
-                <Link href="/(auth)/login" style={{ color: BLUE, fontSize: 13, fontWeight: "800" }}>Sign in</Link>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  gap: 5,
+                  flexWrap: "wrap",
+                }}
+              >
+                <Text
+                  style={{
+                    color: palette.muted,
+                    fontSize: 13,
+                  }}
+                >
+                  Already have an account?
+                </Text>
+
+                <Link
+                  href="/(auth)/login"
+                  style={{
+                    color: palette.accent,
+                    fontSize: 13,
+                    fontWeight: "800",
+                  }}
+                >
+                  Sign in
+                </Link>
               </View>
             </View>
 
-            <View style={{ flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6 }}>
-              <Ionicons name="shield-checkmark-outline" size={15} color={MUTED} />
-              <Text style={{ color: MUTED, fontSize: 11, fontWeight: "700" }}>Your Everyday Help Organised.</Text>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "center",
+                alignItems: "center",
+                gap: 6,
+                paddingBottom: 4,
+              }}
+            >
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={15}
+                color={palette.muted}
+              />
+              <Text
+                style={{
+                  color: palette.muted,
+                  fontSize: 11,
+                  fontWeight: "700",
+                }}
+              >
+                Your everyday help, organised.
+              </Text>
             </View>
           </View>
         </ScrollView>

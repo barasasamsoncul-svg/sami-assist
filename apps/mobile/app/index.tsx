@@ -11,12 +11,6 @@ import {
 import { router } from "expo-router";
 import { dispatchGet } from "@/api";
 
-type BootstrapStatus = {
-  adminExists: boolean;
-  tokenConfigured: boolean;
-  setupAvailable: boolean;
-};
-
 const SESSION_KEY = "sami_errands_access_token";
 const NAVY = "#000535";
 
@@ -25,40 +19,28 @@ export default function WelcomeScreen() {
     let active = true;
 
     async function decideInitialRoute() {
-      const savedToken = await SecureStore.getItemAsync(SESSION_KEY).catch(
-        () => null,
-      );
-      if (!active) return;
+      const savedToken = await SecureStore.getItemAsync(
+        SESSION_KEY,
+      ).catch(() => null);
 
-      if (savedToken) {
-        try {
-          await dispatchGet("me");
-          if (active) router.replace("/(app)");
-          return;
-        } catch {
-          const remainingToken = await SecureStore.getItemAsync(
-            SESSION_KEY,
-          ).catch(() => null);
-          if (!active) return;
-          if (remainingToken) {
-            router.replace("/(app)");
-            return;
-          }
-        }
-      }
+      if (!active || !savedToken) return;
 
       try {
-        const status = await dispatchGet<BootstrapStatus>("bootstrapStatus");
-        if (active && !status.adminExists) {
-          router.replace("/(auth)/setup-admin");
+        // Verify an existing session before opening the customer app.
+        await dispatchGet("me");
+
+        if (active) {
+          router.replace("/(app)");
         }
       } catch {
-        // Keep the welcome actions available while the network is unavailable.
+        // If the session cannot be verified, leave the welcome
+        // screen visible with Get started and Sign in.
+        // Do not delete the saved token during a network failure.
       }
     }
 
     void decideInitialRoute().catch(() => {
-      // The welcome screen remains usable when startup checks cannot reach the API.
+      // Keep the welcome screen available if startup checks fail.
     });
 
     return () => {
@@ -70,7 +52,10 @@ export default function WelcomeScreen() {
     <ImageBackground
       source={require("../assets/sami-welcome-photo.png")}
       resizeMode="cover"
-      style={{ flex: 1, backgroundColor: NAVY }}
+      style={{
+        flex: 1,
+        backgroundColor: NAVY,
+      }}
     >
       <StatusBar
         translucent
@@ -81,11 +66,10 @@ export default function WelcomeScreen() {
       <View
         style={{
           flex: 1,
-          backgroundColor: "rgba(0, 5, 35, 0.20)",
           alignItems: "center",
         }}
       >
-        {/* Original SaMi wordmark and tagline */}
+        {/* Original SaMi wordmark PNG — preserved */}
         <Image
           source={require("../assets/sami-welcome-wordmark-transparent.png")}
           resizeMode="contain"
@@ -94,11 +78,12 @@ export default function WelcomeScreen() {
             position: "absolute",
             top: 150,
             width: "88%",
+            maxWidth: 460,
             aspectRatio: 852 / 382,
           }}
         />
 
-        {/* Welcome actions */}
+        {/* Welcome actions: exactly two */}
         <View
           style={{
             position: "absolute",
@@ -112,7 +97,7 @@ export default function WelcomeScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Get started"
-            onPress={() => router.push("/(auth)/choose-role")}
+            onPress={() => router.push("/(auth)/register")}
             style={{
               width: "100%",
               maxWidth: 360,

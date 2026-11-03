@@ -1,11 +1,14 @@
+
 import type { ConfigContext, ExpoConfig } from "expo/config";
 
 export default ({ config }: ConfigContext): ExpoConfig => {
   const projectId =
     process.env.EXPO_PROJECT_ID?.trim() || config.extra?.eas?.projectId;
+
   // Keep the restricted key in the EAS production environment; never commit it.
   // Google Maps embeds this key in the APK, so its Android package/certificate restrictions are required.
   const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim();
+
   const android = googleMapsApiKey
     ? {
         ...config.android,
@@ -18,31 +21,53 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         },
       }
     : config.android;
+
   const updateUrl =
     process.env.EXPO_UPDATE_URL?.trim() ||
     config.updates?.url ||
     (projectId ? `https://u.expo.dev/${projectId}` : undefined);
+
   const updateChannel =
     process.env.EXPO_UPDATE_CHANNEL?.trim() ||
     config.updates?.requestHeaders?.["expo-channel-name"] ||
     "production";
 
+  // Preserve existing plugins and inject the Google Maps API key.
   const plugins = (config.plugins ?? []).map((plugin) => {
     const entry = Array.isArray(plugin) ? plugin : [plugin, {}];
-    if (entry[0] !== "react-native-maps") return plugin;
+
+    if (entry[0] !== "react-native-maps") {
+      return plugin;
+    }
+
     return [
       "react-native-maps",
       {
-        ...(Array.isArray(entry) && typeof entry[1] === "object" ? entry[1] : {}),
-        ...(googleMapsApiKey ? { androidGoogleMapsApiKey: googleMapsApiKey } : {}),
+        ...(typeof entry[1] === "object" && entry[1] !== null
+          ? entry[1]
+          : {}),
+        ...(googleMapsApiKey
+          ? { androidGoogleMapsApiKey: googleMapsApiKey }
+          : {}),
       },
     ] as [string, Record<string, unknown>];
   });
+
+  // Register Expo Sharing without duplicating an existing plugin entry.
+  const hasSharingPlugin = plugins.some((plugin) => {
+    const entry = Array.isArray(plugin) ? plugin : [plugin, {}];
+    return entry[0] === "expo-sharing";
+  });
+
+  if (!hasSharingPlugin) {
+    plugins.push("expo-sharing");
+  }
 
   const requestHeaders = {
     ...config.updates?.requestHeaders,
     "expo-channel-name": updateChannel,
   };
+
   const updates = updateUrl
     ? {
         ...config.updates,
