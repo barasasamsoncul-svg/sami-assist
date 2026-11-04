@@ -136,26 +136,26 @@ export default function WelcomeScreen() {
       >
         {/* SaMi wordmark anchored at the absolute top */}
         <View
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            alignItems: "center",
-            zIndex: 10,
-          }}
-        >
-          <Image
-            source={require("../assets/sami-welcome-wordmark-transparent.png")}
-            resizeMode="contain"
-            accessibilityLabel="SaMi - Consider it done"
-            style={{
-              width: "90%",
-              maxWidth: 460,
-              aspectRatio: 852 / 382,
-            }}
-          />
-        </View>
+  style={{
+    position: "absolute",
+    top: (StatusBar.currentHeight ?? 48) + 38,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 10,
+  }}
+>
+  <Image
+    source={require("../assets/sami-welcome-wordmark-transparent.png")}
+    resizeMode="contain"
+    accessibilityLabel="SaMi - Consider it done"
+    style={{
+      width: "90%",
+      maxWidth: 460,
+      aspectRatio: 852 / 382,
+    }}
+  />
+</View>
 
         {/* Welcome buttons */}
         <View
