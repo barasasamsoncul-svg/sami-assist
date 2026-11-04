@@ -1,12 +1,16 @@
 
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type ComponentProps,
+} from "react";
 
 import {
   ActivityIndicator,
   Image,
   Pressable,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   Text,
@@ -15,144 +19,197 @@ import {
   useColorScheme,
 } from "react-native";
 
+import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { dispatchGet } from "@/api";
+
+type IconName = ComponentProps<typeof Ionicons>["name"];
 
 type User = {
   id: string;
   full_name: string;
   email: string;
   phone: string | null;
-  role: "customer";
   avatar_url?: string | null;
+};
+
+type Service = {
+  id: string;
+  category: string;
+  icon: IconName;
+  title: string;
+  keywords: string;
+  color: string;
+  lightBg: string;
+  darkBg: string;
 };
 
 const NAVY = "#000535";
 const BLUE = "#2463B8";
 
-const customerServices = [
+const customerServices: Service[] = [
   {
     id: "groceries",
     category: "groceries",
-    icon: "basket-outline",
+    icon: "basket",
     title: "Groceries",
     keywords: "food supermarket market shopping",
-    color: "#D99528",
+    color: "#E49A22",
     lightBg: "#FFF1D8",
-    darkBg: "#3D301D",
+    darkBg: "#49371D",
   },
   {
     id: "food",
     category: "food_delivery",
-    icon: "fast-food-outline",
+    icon: "fast-food",
     title: "Food & Delivery",
     keywords: "restaurant meals takeaway food",
     color: "#E87970",
     lightBg: "#FFF0ED",
-    darkBg: "#3D2729",
+    darkBg: "#472B2C",
   },
   {
     id: "pickup",
     category: "pickup_delivery",
-    icon: "cube-outline",
+    icon: "cube",
     title: "Pick Up & Drop Off",
     keywords: "parcel package collection delivery",
     color: "#5879C5",
     lightBg: "#EAF0FF",
-    darkBg: "#253352",
+    darkBg: "#29395B",
   },
   {
     id: "bills",
     category: "bill_payments",
-    icon: "receipt-outline",
+    icon: "receipt",
     title: "Bills & Payments",
     keywords: "pay bills utilities payments",
-    color: "#D99A2B",
+    color: "#E8A12B",
     lightBg: "#FFF3DF",
-    darkBg: "#3C301F",
+    darkBg: "#48371F",
   },
   {
     id: "laundry",
     category: "laundry_cleaning",
-    icon: "shirt-outline",
+    icon: "shirt",
     title: "Laundry & Dry Cleaning",
     keywords: "clothes washing ironing cleaning",
     color: "#5489C9",
     lightBg: "#EAF2FC",
-    darkBg: "#25354C",
+    darkBg: "#293D58",
   },
   {
     id: "documents",
     category: "documents_admin",
-    icon: "document-text-outline",
+    icon: "document-text",
     title: "Documents & Government",
     keywords: "forms offices paperwork administration",
-    color: "#5B80B8",
+    color: "#6084C2",
     lightBg: "#EBF1FA",
-    darkBg: "#28354A",
+    darkBg: "#2C3A56",
   },
   {
     id: "gifts",
     category: "shopping_gifts",
-    icon: "gift-outline",
+    icon: "gift",
     title: "Shopping & Gifts",
     keywords: "purchases presents gifts retail",
     color: "#D66F9A",
     lightBg: "#FCECF3",
-    darkBg: "#3B2938",
+    darkBg: "#462D3F",
   },
   {
     id: "home",
     category: "home_services",
-    icon: "home-outline",
+    icon: "home",
     title: "Home Services",
     keywords: "house household home tasks",
     color: "#398F83",
     lightBg: "#E8F5F1",
-    darkBg: "#213B37",
+    darkBg: "#25443E",
   },
   {
     id: "pharmacy",
     category: "pharmacy_health",
-    icon: "medkit-outline",
+    icon: "medkit",
     title: "Pharmacy & Health",
     keywords: "medicine pharmacy healthcare collection",
     color: "#31966F",
     lightBg: "#E8F6EE",
-    darkBg: "#203B30",
+    darkBg: "#254637",
   },
   {
     id: "petcare",
     category: "pet_care",
-    icon: "paw-outline",
+    icon: "paw",
     title: "Pet Care",
     keywords: "pets animals pet supplies",
     color: "#D99A40",
     lightBg: "#FFF2E1",
-    darkBg: "#3A3022",
+    darkBg: "#453621",
   },
   {
     id: "personal",
     category: "personal_errand",
-    icon: "person-outline",
+    icon: "person",
     title: "Personal Assistance",
     keywords: "personal help assistance tasks",
     color: "#319B82",
     lightBg: "#E7F6F1",
-    darkBg: "#203B36",
+    darkBg: "#25443C",
   },
   {
     id: "other",
     category: "other",
-    icon: "add-circle-outline",
+    icon: "construct",
     title: "Custom Errand",
-    keywords: "other different special request",
+    keywords: "other different special request custom",
     color: "#507AB8",
     lightBg: "#EAF0FA",
-    darkBg: "#25334A",
+    darkBg: "#2B3B55",
   },
-] as const;
+  {
+    id: "shopping",
+    category: "shopping",
+    icon: "cart",
+    title: "Shopping & Essentials",
+    keywords: "shopping essentials store purchases",
+    color: "#DA982C",
+    lightBg: "#FFF2DF",
+    darkBg: "#46371F",
+  },
+  {
+    id: "clothing",
+    category: "clothing_retail",
+    icon: "pricetag",
+    title: "Clothing & Returns",
+    keywords: "clothes fashion retail exchange returns",
+    color: "#D66F9A",
+    lightBg: "#FCECF3",
+    darkBg: "#462D3F",
+  },
+  {
+    id: "queues",
+    category: "queue_appointments",
+    icon: "time",
+    title: "Queues & Appointments",
+    keywords: "waiting bookings appointments queue",
+    color: "#398F83",
+    lightBg: "#E8F5F1",
+    darkBg: "#25443E",
+  },
+  {
+    id: "business",
+    category: "business_support",
+    icon: "briefcase",
+    title: "Business Errands",
+    keywords: "business office company work support",
+    color: "#507AB8",
+    lightBg: "#EAF0FA",
+    darkBg: "#2B3B55",
+  },
+];
 
 export default function HomeScreen() {
   const systemScheme = useColorScheme();
@@ -161,34 +218,31 @@ export default function HomeScreen() {
   const palette = isDark
     ? {
         background: "#080F1D",
-        surface: "#111C2E",
         heading: "#F4F7FF",
         text: "#D8E2F1",
         muted: "#AAB8CC",
         border: "#293951",
-        input: "#142238",
-        hero: "#142A43",
-        heroArtwork: "#203F60",
+        input: "#172337",
+        hero: "#152B43",
+        heroCircle: "#244766",
         blue: "#79AEFF",
         avatar: "#223D5E",
       }
     : {
         background: "#F7F8FA",
-        surface: "#FFFFFF",
         heading: NAVY,
         text: "#24344C",
         muted: "#78869A",
         border: "#E5EAF1",
         input: "#F0F2F5",
-        hero: "#EAF2FB",
-        heroArtwork: "#D6E6F8",
+        hero: "#E4F2EA",
+        heroCircle: "#D0E9DA",
         blue: BLUE,
         avatar: "#EAF1FC",
       };
 
   const [user, setUser] = useState<User | null>(null);
-  const [unreadNotifications, setUnreadNotifications] =
-    useState(0);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [serviceSearch, setServiceSearch] = useState("");
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
@@ -224,33 +278,34 @@ export default function HomeScreen() {
   const firstName =
     user?.full_name?.trim().split(/\s+/)[0] || "there";
 
-  const filteredServices = customerServices.filter(
-    (service) => {
-      const searchableText = (
-        service.title +
-        " " +
-        service.keywords
-      ).toLowerCase();
-
-      return searchableText.includes(
-        serviceSearch.trim().toLowerCase(),
-      );
-    },
+  // Search filters only the service grid.
+  const filteredServices = customerServices.filter((service) =>
+    (
+      service.title +
+      " " +
+      service.keywords
+    )
+      .toLowerCase()
+      .includes(serviceSearch.trim().toLowerCase()),
   );
 
   function startCustomerRequest(category: string) {
     const serviceRoutes: Record<string, string> = {
+      shopping: "/(app)/services/shopping",
       groceries: "/(app)/services/groceries",
       food_delivery: "/(app)/services/food",
       pickup_delivery: "/(app)/services/pickup",
       bill_payments: "/(app)/services/bills",
       laundry_cleaning: "/(app)/services/laundry",
       documents_admin: "/(app)/services/documents",
+      clothing_retail: "/(app)/services/clothing",
       shopping_gifts: "/(app)/services/gifts",
       home_services: "/(app)/services/home",
       pharmacy_health: "/(app)/services/pharmacy",
       pet_care: "/(app)/services/petcare",
+      queue_appointments: "/(app)/services/queues",
       personal_errand: "/(app)/services/personal",
+      business_support: "/(app)/services/business",
       other: "/(app)/services/other",
     };
 
@@ -263,22 +318,23 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView
+      edges={["top", "left", "right"]}
       style={{
         flex: 1,
         backgroundColor: palette.background,
       }}
     >
       <StatusBar
-        barStyle={isDark ? "light-content" : "dark-content"}
+        translucent={false}
         backgroundColor={palette.background}
+        barStyle={isDark ? "light-content" : "dark-content"}
       />
 
       <ScrollView
         contentContainerStyle={{
           paddingHorizontal: 15,
-          paddingTop: 7,
-          paddingBottom: 24,
-          gap: 14,
+          paddingTop: 8,
+          paddingBottom: 28,
         }}
         refreshControl={
           <RefreshControl
@@ -289,13 +345,14 @@ export default function HomeScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
+        {/* Header. Its left edge aligns with the search field below. */}
         <View
           style={{
-            minHeight: 44,
+            minHeight: 50,
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
+            marginBottom: 13,
           }}
         >
           <Image
@@ -303,8 +360,8 @@ export default function HomeScreen() {
             resizeMode="contain"
             accessibilityLabel="SaMi"
             style={{
-              width: 105,
-              height: 47,
+              width: 112,
+              height: 48,
             }}
           />
 
@@ -312,9 +369,10 @@ export default function HomeScreen() {
             style={{
               flexDirection: "row",
               alignItems: "center",
-              gap: 13,
+              gap: 14,
             }}
           >
+            {/* Notifications, immediately before the profile photo */}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Notifications"
@@ -323,14 +381,14 @@ export default function HomeScreen() {
               }
               style={{
                 width: 34,
-                height: 38,
+                height: 40,
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
               <Ionicons
                 name="notifications-outline"
-                size={23}
+                size={25}
                 color={palette.heading}
               />
 
@@ -339,7 +397,7 @@ export default function HomeScreen() {
                   style={{
                     position: "absolute",
                     top: 4,
-                    right: 2,
+                    right: 1,
                     width: 9,
                     height: 9,
                     borderRadius: 5,
@@ -351,16 +409,15 @@ export default function HomeScreen() {
               ) : null}
             </Pressable>
 
+            {/* Circular user photo */}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Open profile"
-              onPress={() =>
-                router.push("/(app)/account")
-              }
+              onPress={() => router.push("/(app)/account")}
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: 18,
+                width: 40,
+                height: 40,
+                borderRadius: 20,
                 overflow: "hidden",
                 borderWidth: 1.5,
                 borderColor: palette.border,
@@ -374,15 +431,15 @@ export default function HomeScreen() {
                   source={{ uri: user.avatar_url }}
                   resizeMode="cover"
                   style={{
-                    width: 36,
-                    height: 36,
+                    width: 40,
+                    height: 40,
                   }}
                 />
               ) : (
                 <Text
                   style={{
                     color: palette.blue,
-                    fontSize: 15,
+                    fontSize: 16,
                     fontWeight: "900",
                   }}
                 >
@@ -393,21 +450,22 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Service search - affects only the icons below */}
+        {/* Search bar */}
         <View
           style={{
-            height: 43,
+            height: 46,
             flexDirection: "row",
             alignItems: "center",
-            gap: 9,
-            paddingHorizontal: 13,
-            borderRadius: 14,
+            gap: 10,
+            paddingHorizontal: 14,
+            borderRadius: 15,
             backgroundColor: palette.input,
+            marginBottom: 15,
           }}
         >
           <Ionicons
             name="search-outline"
-            size={19}
+            size={20}
             color={palette.muted}
           />
 
@@ -419,9 +477,9 @@ export default function HomeScreen() {
             returnKeyType="search"
             style={{
               flex: 1,
-              height: 43,
+              height: 46,
               color: palette.heading,
-              fontSize: 12,
+              fontSize: 13,
             }}
             accessibilityLabel="Search errand services"
           />
@@ -434,41 +492,42 @@ export default function HomeScreen() {
             >
               <Ionicons
                 name="close-circle"
-                size={18}
+                size={19}
                 color={palette.muted}
               />
             </Pressable>
           ) : null}
         </View>
 
-        {/* Small hero banner */}
+        {/* Hero banner */}
         <View
           style={{
-            minHeight: 103,
+            minHeight: 112,
             flexDirection: "row",
             alignItems: "center",
             borderRadius: 17,
             backgroundColor: palette.hero,
-            paddingLeft: 15,
+            paddingLeft: 16,
             paddingRight: 8,
             overflow: "hidden",
+            marginBottom: 19,
           }}
         >
           <View
             style={{
               flex: 1,
               justifyContent: "center",
-              gap: 6,
-              paddingVertical: 12,
+              gap: 7,
+              paddingVertical: 13,
             }}
           >
             <Text
               style={{
                 color: palette.heading,
-                fontSize: 16,
-                lineHeight: 20,
+                fontSize: 17,
+                lineHeight: 21,
                 fontWeight: "900",
-                letterSpacing: -0.3,
+                letterSpacing: -0.35,
               }}
             >
               Big or small,{"\n"}we run your errands.
@@ -477,8 +536,8 @@ export default function HomeScreen() {
             <Text
               style={{
                 color: palette.muted,
-                fontSize: 10,
-                lineHeight: 15,
+                fontSize: 11,
+                lineHeight: 16,
                 fontWeight: "600",
               }}
             >
@@ -486,10 +545,11 @@ export default function HomeScreen() {
             </Text>
           </View>
 
+          {/* Illustration area */}
           <View
             style={{
-              width: 112,
-              height: 96,
+              width: 120,
+              height: 108,
               alignItems: "center",
               justifyContent: "center",
             }}
@@ -497,70 +557,55 @@ export default function HomeScreen() {
             <View
               style={{
                 position: "absolute",
-                right: 9,
-                top: 8,
-                width: 78,
-                height: 78,
-                borderRadius: 39,
-                backgroundColor: palette.heroArtwork,
+                right: 8,
+                top: 9,
+                width: 87,
+                height: 87,
+                borderRadius: 44,
+                backgroundColor: palette.heroCircle,
               }}
             />
 
             <Ionicons
-              name="person-outline"
-              size={54}
+              name="person"
+              size={76}
               color={palette.blue}
               style={{
-                marginTop: 7,
+                marginTop: 15,
               }}
             />
 
             <View
               style={{
                 position: "absolute",
-                right: 8,
-                bottom: 8,
-                width: 34,
-                height: 34,
-                borderRadius: 12,
-                backgroundColor: isDark
-                  ? "#1D584E"
-                  : "#D9F1E9",
-                alignItems: "center",
-                justifyContent: "center",
+                right: 5,
+                bottom: 5,
+                width: 39,
+                height: 39,
+                borderRadius: 13,
+                backgroundColor: isDark ? "#254D45" : "#D0EDE0",
                 borderWidth: 2,
                 borderColor: palette.hero,
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
               <Ionicons
-                name="bag-handle-outline"
-                size={19}
-                color={isDark ? "#63D1B4" : "#278B75"}
+                name="bag-handle"
+                size={23}
+                color={isDark ? "#70D2B5" : "#278B75"}
               />
             </View>
-
-            <View
-              style={{
-                position: "absolute",
-                left: 8,
-                bottom: 9,
-                width: 9,
-                height: 9,
-                borderRadius: 5,
-                backgroundColor: "#E7AD4D",
-              }}
-            />
           </View>
         </View>
 
-        {/* Four-column service icon grid */}
+        {/* Large service icons: four columns, all 16 categories */}
         <View
           style={{
             flexDirection: "row",
             flexWrap: "wrap",
             justifyContent: "space-between",
-            rowGap: 15,
-            paddingTop: 2,
+            rowGap: 19,
           }}
         >
           {filteredServices.map((service) => (
@@ -573,18 +618,18 @@ export default function HomeScreen() {
               }
               style={({ pressed }) => ({
                 width: "23.5%",
-                minHeight: 78,
+                minHeight: 94,
                 alignItems: "center",
                 justifyContent: "flex-start",
-                gap: 6,
-                opacity: pressed ? 0.72 : 1,
+                gap: 7,
+                opacity: pressed ? 0.7 : 1,
               })}
             >
               <View
                 style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 12,
+                  width: 54,
+                  height: 54,
+                  borderRadius: 15,
                   backgroundColor: isDark
                     ? service.darkBg
                     : service.lightBg,
@@ -594,7 +639,7 @@ export default function HomeScreen() {
               >
                 <Ionicons
                   name={service.icon}
-                  size={22}
+                  size={31}
                   color={service.color}
                 />
               </View>
@@ -603,10 +648,10 @@ export default function HomeScreen() {
                 numberOfLines={2}
                 style={{
                   width: "100%",
-                  minHeight: 27,
+                  minHeight: 29,
                   color: palette.text,
-                  fontSize: 10,
-                  lineHeight: 13,
+                  fontSize: 11,
+                  lineHeight: 14,
                   fontWeight: "700",
                   textAlign: "center",
                 }}
@@ -615,21 +660,20 @@ export default function HomeScreen() {
               </Text>
             </Pressable>
           ))}
-
-          {filteredServices.length === 0 ? (
-            <Text
-              style={{
-                width: "100%",
-                color: palette.muted,
-                fontSize: 12,
-                textAlign: "center",
-                paddingVertical: 20,
-              }}
-            >
-              No matching service found.
-            </Text>
-          ) : null}
         </View>
+
+        {filteredServices.length === 0 ? (
+          <Text
+            style={{
+              color: palette.muted,
+              fontSize: 13,
+              textAlign: "center",
+              paddingVertical: 28,
+            }}
+          >
+            No matching service found.
+          </Text>
+        ) : null}
 
         {error ? (
           <Text
@@ -640,6 +684,7 @@ export default function HomeScreen() {
               borderRadius: 12,
               padding: 12,
               lineHeight: 19,
+              marginTop: 14,
             }}
           >
             {error}
@@ -647,7 +692,10 @@ export default function HomeScreen() {
         ) : null}
 
         {busy && !user ? (
-          <ActivityIndicator color={palette.blue} />
+          <ActivityIndicator
+            color={palette.blue}
+            style={{ marginTop: 14 }}
+          />
         ) : null}
       </ScrollView>
     </SafeAreaView>
