@@ -15,12 +15,14 @@ export default function HomeSearch({
 }: Props) {
   const palette = isDark
     ? {
-        background: "#172337",
+        background: "#14243A",
+        border: "#263B55",
         text: "#F4F7FF",
         muted: "#AAB8CC",
       }
     : {
-        background: "#F0F2F5",
+        background: "#FFFFFF",
+        border: "#E5EBF3",
         text: "#000535",
         muted: "#78869A",
       };
@@ -29,12 +31,14 @@ export default function HomeSearch({
     <View
       style={{
         width: "100%",
-        height: 48,
+        height: 52,
+        borderWidth: 1,
+        borderColor: palette.border,
         flexDirection: "row",
         alignItems: "center",
         paddingHorizontal: 14,
         gap: 10,
-        borderRadius: 15,
+        borderRadius: 17,
         backgroundColor: palette.background,
       }}
     >

@@ -28,6 +28,13 @@ const tabs: TabItem[] = [
     activeIcon: "receipt",
   },
   {
+    path: "/messages",
+    href: "/(app)/messages",
+    label: "Messages",
+    icon: "chatbubble-ellipses-outline",
+    activeIcon: "chatbubble-ellipses",
+  },
+  {
     path: "/account",
     href: "/(app)/account",
     label: "Profile",
@@ -43,12 +50,12 @@ export default function CustomerFooter() {
 
   const palette = isDark
     ? {
-        background: "#111C2E",
-        border: "#293951",
-        muted: "#AAB8CC",
-        blue: "#79AEFF",
-        selected: "#1B3150",
-        create: "#2463B8",
+        background: "#0E1B2D",
+        border: "#20364F",
+        muted: "#9AABC1",
+        blue: "#83B4FF",
+        selected: "#193552",
+        create: "#2D73CC",
       }
     : {
         background: "#FFFFFF",
@@ -61,7 +68,7 @@ export default function CustomerFooter() {
 
   const currentPath = pathname === "/index" ? "/" : pathname;
 
-  const visiblePaths = ["/", "/errands", "/account"];
+  const visiblePaths = ["/", "/errands", "/messages", "/account"];
 
   if (!visiblePaths.includes(currentPath)) {
     return null;
@@ -153,14 +160,9 @@ export default function CustomerFooter() {
         </Pressable>
       </View>
 
-      {/* Reserved navigation position: Messages is not shown */}
-      <View
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
-        style={styles.tabButton}
-      />
-
       {renderTab(tabs[2])}
+
+      {renderTab(tabs[3])}
     </View>
   );
 }

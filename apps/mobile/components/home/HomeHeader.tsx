@@ -46,7 +46,7 @@ export default function HomeHeader({
       {/* SaMi watermark, notifications and profile */}
       <View
         style={{
-          minHeight: 48,
+          minHeight: 50,
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
@@ -57,8 +57,8 @@ export default function HomeHeader({
           resizeMode="contain"
           accessibilityLabel="SaMi - Consider it done"
           style={{
-            width: 112,
-            height: 48,
+            width: 120,
+            height: 50,
           }}
         />
 
@@ -66,7 +66,7 @@ export default function HomeHeader({
           style={{
             flexDirection: "row",
             alignItems: "center",
-            gap: 15,
+            gap: 14,
           }}
         >
           {/* Notification icon */}

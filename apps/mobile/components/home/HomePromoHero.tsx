@@ -1,4 +1,3 @@
-
 import {
   Image,
   Pressable,
@@ -26,20 +25,22 @@ export default function HomePromoHero({
 }: Props) {
   const palette = isDark
     ? {
-        background: "#142B40",
-        artworkBackground: "#1E4056",
+        background: "#142B43",
+        artworkBackground: "#1B3D59",
         heading: "#FFFFFF",
-        subtitle: "#C5D5E5",
-        accent: "#75C9AB",
-        bagBackground: "#245447",
+        subtitle: "#C6D5E6",
+        accent: "#7AD0B6",
+        bagBackground: "#205849",
+        sparkle: "#E9BD75",
       }
     : {
-        background: "#DDF1E4",
-        artworkBackground: "#C9E7D3",
-        heading: "#000535",
-        subtitle: "#526B60",
-        accent: "#2463B8",
-        bagBackground: "#BFE5D1",
+        background: "#EAF2FF",
+        artworkBackground: "#D7E7FF",
+        heading: "#102A4A",
+        subtitle: "#5C6F87",
+        accent: "#2872C8",
+        bagBackground: "#D5F0E5",
+        sparkle: "#D9A64C",
       };
 
   return (
@@ -50,33 +51,32 @@ export default function HomePromoHero({
       disabled={!onPress}
       style={({ pressed }) => ({
         width: "100%",
-        minHeight: 124,
-        borderRadius: 16,
+        minHeight: 138,
+        borderRadius: 19,
         backgroundColor: palette.background,
         flexDirection: "row",
         alignItems: "center",
         overflow: "hidden",
-        opacity: pressed ? 0.9 : 1,
+        opacity: pressed ? 0.92 : 1,
       })}
     >
-      {/* Promotional text */}
       <View
         style={{
-          width: "59%",
-          paddingLeft: 17,
-          paddingVertical: 16,
+          width: "58%",
+          paddingLeft: 18,
+          paddingVertical: 18,
           justifyContent: "center",
-          gap: 8,
+          gap: 9,
           zIndex: 2,
         }}
       >
         <Text
           style={{
             color: palette.heading,
-            fontSize: 17,
-            lineHeight: 21,
+            fontSize: 18,
+            lineHeight: 23,
             fontWeight: "900",
-            letterSpacing: -0.35,
+            letterSpacing: -0.45,
           }}
         >
           {title}
@@ -85,8 +85,8 @@ export default function HomePromoHero({
         <Text
           style={{
             color: palette.subtitle,
-            fontSize: 11,
-            lineHeight: 16,
+            fontSize: 12,
+            lineHeight: 17,
             fontWeight: "600",
           }}
         >
@@ -94,12 +94,11 @@ export default function HomePromoHero({
         </Text>
       </View>
 
-      {/* Promotional artwork */}
       <View
         style={{
-          width: "41%",
+          width: "42%",
           height: "100%",
-          minHeight: 124,
+          minHeight: 138,
           alignItems: "center",
           justifyContent: "center",
           position: "relative",
@@ -119,27 +118,49 @@ export default function HomePromoHero({
           />
         ) : (
           <>
-            {/* Temporary branded artwork until an advert image is supplied */}
             <View
               style={{
                 position: "absolute",
-                width: 104,
-                height: 104,
-                borderRadius: 52,
+                width: 116,
+                height: 116,
+                borderRadius: 58,
                 backgroundColor: palette.artworkBackground,
-                right: 8,
-                top: 10,
+                right: 7,
+                top: 11,
+              }}
+            />
+
+            <View
+              style={{
+                position: "absolute",
+                width: 12,
+                height: 12,
+                borderRadius: 6,
+                backgroundColor: palette.sparkle,
+                top: 23,
+                left: 17,
+              }}
+            />
+
+            <Ionicons
+              name="sparkles"
+              size={17}
+              color={palette.sparkle}
+              style={{
+                position: "absolute",
+                top: 17,
+                right: 17,
               }}
             />
 
             <Ionicons
               name="person"
-              size={83}
-              color={isDark ? "#79AEFF" : "#2463B8"}
+              size={88}
+              color={isDark ? "#82B2F6" : "#6D9FE8"}
               style={{
                 position: "absolute",
-                bottom: 3,
-                right: 27,
+                bottom: 1,
+                right: 29,
               }}
             />
 
@@ -148,17 +169,19 @@ export default function HomePromoHero({
                 position: "absolute",
                 right: 9,
                 bottom: 10,
-                width: 39,
-                height: 39,
-                borderRadius: 13,
+                width: 43,
+                height: 43,
+                borderRadius: 15,
                 backgroundColor: palette.bagBackground,
+                borderWidth: 1,
+                borderColor: isDark ? "#356C61" : "#B8DECE",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
               <Ionicons
                 name="bag-handle"
-                size={23}
+                size={24}
                 color={palette.accent}
               />
             </View>

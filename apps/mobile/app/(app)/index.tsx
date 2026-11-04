@@ -123,8 +123,8 @@ export default function HomeScreen() {
       <View
         style={{
           flex: 1,
-          paddingHorizontal: 16,
-          paddingTop: 10,
+          paddingHorizontal: 18,
+          paddingTop: 9,
         }}
       >
         {/* Fixed header */}
@@ -169,8 +169,8 @@ export default function HomeScreen() {
           }}
           contentContainerStyle={{
             flexGrow: 1,
-            paddingTop: 3,
-            paddingBottom: 22,
+            paddingTop: 5,
+            paddingBottom: 26,
           }}
           refreshControl={
             <RefreshControl
