@@ -1,6 +1,4 @@
-
 import { useCallback, useEffect, useState } from "react";
-
 import {
   ActivityIndicator,
   RefreshControl,
@@ -10,7 +8,6 @@ import {
   View,
   useColorScheme,
 } from "react-native";
-
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { dispatchGet } from "@/api";
@@ -34,20 +31,9 @@ const BLUE = "#2463B8";
 
 export default function HomeScreen() {
   const isDark = useColorScheme() === "dark";
-
   const palette = isDark
-    ? {
-        background: "#080F1D",
-        heading: "#F4F7FF",
-        muted: "#AAB8CC",
-        blue: "#79AEFF",
-      }
-    : {
-        background: "#F7F8FA",
-        heading: NAVY,
-        muted: "#78869A",
-        blue: BLUE,
-      };
+    ? { background: "#080F1D", heading: "#F4F7FF", muted: "#AAB8CC", blue: "#79AEFF" }
+    : { background: "#F7F8FA", heading: NAVY, muted: "#78869A", blue: BLUE };
 
   const [user, setUser] = useState<User | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -57,16 +43,11 @@ export default function HomeScreen() {
   const loadHome = useCallback(async () => {
     setBusy(true);
     setError("");
-
     try {
       const result = await dispatchGet<{ user: User }>("me");
       setUser(result.user);
     } catch (e) {
-      setError(
-        e instanceof Error
-          ? e.message
-          : "Your SaMi home screen could not be loaded.",
-      );
+      setError(e instanceof Error ? e.message : "Your SaMi home screen could not be loaded.");
     } finally {
       setBusy(false);
     }
@@ -76,8 +57,7 @@ export default function HomeScreen() {
     void loadHome();
   }, [loadHome]);
 
-  const firstName =
-    user?.full_name?.trim().split(/\s+/)[0] || "there";
+  const firstName = user?.full_name?.trim().split(/\\s+/)[0] || "there";
 
   function openService(category: string) {
     const serviceRoutes: Record<string, string> = {
@@ -98,96 +78,55 @@ export default function HomeScreen() {
       shopping: "/(app)/services/shopping",
       other: "/(app)/services/other",
     };
-
     const destination = serviceRoutes[category];
-
-    if (destination) {
-      router.push(destination as never);
-    }
+    if (destination) router.push(destination as never);
   }
 
   return (
     <SafeAreaView
       edges={["top", "left", "right"]}
-      style={{
-        flex: 1,
-        backgroundColor: palette.background,
-      }}
+      style={{ flex: 1, backgroundColor: palette.background }}
     >
       <StatusBar
         translucent={false}
         backgroundColor={palette.background}
         barStyle={isDark ? "light-content" : "dark-content"}
       />
-
-      <View
-        style={{
-          flex: 1,
-          paddingHorizontal: 18,
-          paddingTop: 9,
-        }}
-      >
-        {/* Fixed header */}
-        <View style={{ marginBottom: 17 }}>
+      <View style={{ flex: 1, paddingHorizontal: 18, paddingTop: 8 }}>
+        <View style={{ marginBottom: 15 }}>
           <HomeHeader
             firstName={firstName}
             avatarUri={user?.avatar_url}
             locationLabel="Set your location"
             unreadNotifications={0}
             isDark={isDark}
-            onNotificationsPress={() =>
-              router.push("/(app)/notifications")
-            }
-            onProfilePress={() =>
-              router.push("/(app)/account")
-            }
+            onNotificationsPress={() => router.push("/(app)/notifications")}
+            onProfilePress={() => router.push("/(app)/account")}
           />
         </View>
 
-        {/* Fixed search */}
-        <View style={{ marginBottom: 17 }}>
-          <HomeSearch
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            isDark={isDark}
-          />
+        <View style={{ marginBottom: 16 }}>
+          <HomeSearch value={searchQuery} onChangeText={setSearchQuery} isDark={isDark} />
         </View>
 
-        {/* Fixed promotional area */}
         <View style={{ marginBottom: 19 }}>
           <HomePromoHero
             isDark={isDark}
-            title={"Big or small,\nwe run your errands."}
+            title={"Big or small,\\nwe run your errands."}
             subtitle="Save time. Live more."
           />
         </View>
 
-        {/* Service grid gets the remaining screen height and scrolls */}
         <ScrollView
-          style={{
-            flex: 1,
-          }}
-          contentContainerStyle={{
-            flexGrow: 1,
-            paddingTop: 5,
-            paddingBottom: 26,
-          }}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingTop: 2, paddingBottom: 24 }}
           refreshControl={
-            <RefreshControl
-              refreshing={busy}
-              onRefresh={loadHome}
-              tintColor={palette.blue}
-            />
+            <RefreshControl refreshing={busy} onRefresh={loadHome} tintColor={palette.blue} />
           }
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <HomeServicesGrid
-            isDark={isDark}
-            searchQuery={searchQuery}
-            onSelect={openService}
-          />
-
+          <HomeServicesGrid isDark={isDark} searchQuery={searchQuery} onSelect={openService} />
           {error ? (
             <Text
               accessibilityRole="alert"
@@ -203,13 +142,7 @@ export default function HomeScreen() {
               {error}
             </Text>
           ) : null}
-
-          {busy && !user ? (
-            <ActivityIndicator
-              color={palette.blue}
-              style={{ marginTop: 18 }}
-            />
-          ) : null}
+          {busy && !user ? <ActivityIndicator color={palette.blue} style={{ marginTop: 18 }} /> : null}
         </ScrollView>
       </View>
     </SafeAreaView>

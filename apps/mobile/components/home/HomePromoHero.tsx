@@ -1,192 +1,241 @@
-import {
-  Image,
-  Pressable,
-  Text,
-  View,
-  type ImageSourcePropType,
-} from "react-native";
-
+import { Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 type Props = {
   isDark: boolean;
   title?: string;
   subtitle?: string;
-  imageSource?: ImageSourcePropType;
   onPress?: () => void;
 };
 
 export default function HomePromoHero({
   isDark,
-  title = "Big or small,\nwe run your errands.",
+  title = "Big or small,\\nwe run your errands.",
   subtitle = "Save time. Live more.",
-  imageSource,
   onPress,
 }: Props) {
-  const palette = isDark
+  const colors = isDark
     ? {
         background: "#142B43",
-        artworkBackground: "#1B3D59",
-        heading: "#FFFFFF",
+        heading: "#F8FBFF",
         subtitle: "#C6D5E6",
-        accent: "#7AD0B6",
-        bagBackground: "#205849",
+        halo: "#1D405D",
+        hair: "#172A46",
+        skin: "#D99C79",
+        shirt: "#78A9EF",
+        shirtShade: "#568DD9",
+        bag: "#205849",
+        bagIcon: "#8AD2B9",
         sparkle: "#E9BD75",
       }
     : {
-        background: "#EAF2FF",
-        artworkBackground: "#D7E7FF",
+        background: "#E8F1FF",
         heading: "#102A4A",
-        subtitle: "#5C6F87",
-        accent: "#2872C8",
-        bagBackground: "#D5F0E5",
-        sparkle: "#D9A64C",
+        subtitle: "#657991",
+        halo: "#D5E6FF",
+        hair: "#172C4D",
+        skin: "#D99C79",
+        shirt: "#6399E8",
+        shirtShade: "#477FCF",
+        bag: "#D2EFE4",
+        bagIcon: "#278A70",
+        sparkle: "#D7A34A",
       };
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${title.replace("\n", " ")} ${subtitle}`}
+      accessibilityLabel={`${title.replace("\\n", " ")} ${subtitle}`}
       onPress={onPress}
       disabled={!onPress}
       style={({ pressed }) => ({
         width: "100%",
-        minHeight: 138,
-        borderRadius: 19,
-        backgroundColor: palette.background,
+        height: 158,
+        borderRadius: 22,
+        backgroundColor: colors.background,
         flexDirection: "row",
         alignItems: "center",
         overflow: "hidden",
-        opacity: pressed ? 0.92 : 1,
+        opacity: pressed ? 0.94 : 1,
       })}
     >
       <View
         style={{
           width: "58%",
-          paddingLeft: 18,
-          paddingVertical: 18,
+          paddingLeft: 19,
+          paddingRight: 4,
           justifyContent: "center",
-          gap: 9,
+          gap: 10,
           zIndex: 2,
         }}
       >
         <Text
           style={{
-            color: palette.heading,
+            color: colors.heading,
             fontSize: 18,
-            lineHeight: 23,
+            lineHeight: 24,
             fontWeight: "900",
-            letterSpacing: -0.45,
+            letterSpacing: -0.55,
           }}
         >
           {title}
         </Text>
-
         <Text
           style={{
-            color: palette.subtitle,
+            color: colors.subtitle,
             fontSize: 12,
             lineHeight: 17,
             fontWeight: "600",
+            letterSpacing: 0.05,
           }}
         >
           {subtitle}
         </Text>
       </View>
 
+      {/* Original SaMi character artwork, built from native shapes so it
+          stays crisp on every Android density and needs no remote image. */}
       <View
+        accessible={false}
         style={{
           width: "42%",
           height: "100%",
-          minHeight: 138,
+          position: "relative",
           alignItems: "center",
           justifyContent: "center",
-          position: "relative",
         }}
       >
-        {imageSource ? (
-          <Image
-            source={imageSource}
-            resizeMode="cover"
-            style={{
-              width: "100%",
-              height: "100%",
-              position: "absolute",
-              right: 0,
-              bottom: 0,
-            }}
-          />
-        ) : (
-          <>
-            <View
-              style={{
-                position: "absolute",
-                width: 116,
-                height: 116,
-                borderRadius: 58,
-                backgroundColor: palette.artworkBackground,
-                right: 7,
-                top: 11,
-              }}
-            />
+        <View
+          style={{
+            position: "absolute",
+            width: 132,
+            height: 132,
+            borderRadius: 66,
+            right: 6,
+            top: 12,
+            backgroundColor: colors.halo,
+          }}
+        />
+        <View
+          style={{
+            position: "absolute",
+            width: 9,
+            height: 9,
+            borderRadius: 5,
+            left: 18,
+            top: 29,
+            backgroundColor: colors.sparkle,
+          }}
+        />
+        <Ionicons
+          name="sparkles"
+          size={19}
+          color={colors.sparkle}
+          style={{ position: "absolute", right: 17, top: 19 }}
+        />
 
-            <View
-              style={{
-                position: "absolute",
-                width: 12,
-                height: 12,
-                borderRadius: 6,
-                backgroundColor: palette.sparkle,
-                top: 23,
-                left: 17,
-              }}
-            />
-
-            <Ionicons
-              name="sparkles"
-              size={17}
-              color={palette.sparkle}
-              style={{
-                position: "absolute",
-                top: 17,
-                right: 17,
-              }}
-            />
-
-            <Ionicons
-              name="person"
-              size={88}
-              color={isDark ? "#82B2F6" : "#6D9FE8"}
-              style={{
-                position: "absolute",
-                bottom: 1,
-                right: 29,
-              }}
-            />
-
-            <View
-              style={{
-                position: "absolute",
-                right: 9,
-                bottom: 10,
-                width: 43,
-                height: 43,
-                borderRadius: 15,
-                backgroundColor: palette.bagBackground,
-                borderWidth: 1,
-                borderColor: isDark ? "#356C61" : "#B8DECE",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Ionicons
-                name="bag-handle"
-                size={24}
-                color={palette.accent}
-              />
-            </View>
-          </>
-        )}
+        {/* Hair silhouette */}
+        <View
+          style={{
+            position: "absolute",
+            width: 82,
+            height: 104,
+            right: 33,
+            bottom: 9,
+            borderTopLeftRadius: 42,
+            borderTopRightRadius: 42,
+            borderBottomLeftRadius: 30,
+            borderBottomRightRadius: 28,
+            backgroundColor: colors.hair,
+            transform: [{ rotate: "5deg" }],
+          }}
+        />
+        {/* Face and neck */}
+        <View
+          style={{
+            position: "absolute",
+            width: 43,
+            height: 49,
+            right: 52,
+            top: 39,
+            borderRadius: 23,
+            backgroundColor: colors.skin,
+            zIndex: 2,
+          }}
+        />
+        <View
+          style={{
+            position: "absolute",
+            width: 17,
+            height: 20,
+            right: 65,
+            top: 78,
+            backgroundColor: colors.skin,
+            zIndex: 1,
+          }}
+        />
+        {/* Hair fringe */}
+        <View
+          style={{
+            position: "absolute",
+            width: 48,
+            height: 22,
+            right: 49,
+            top: 35,
+            borderTopLeftRadius: 25,
+            borderTopRightRadius: 23,
+            borderBottomRightRadius: 17,
+            backgroundColor: colors.hair,
+            transform: [{ rotate: "-8deg" }],
+            zIndex: 3,
+          }}
+        />
+        {/* Shoulder and shirt */}
+        <View
+          style={{
+            position: "absolute",
+            width: 105,
+            height: 57,
+            right: 19,
+            bottom: -7,
+            borderTopLeftRadius: 55,
+            borderTopRightRadius: 55,
+            backgroundColor: colors.shirt,
+            zIndex: 2,
+          }}
+        />
+        <View
+          style={{
+            position: "absolute",
+            width: 32,
+            height: 44,
+            right: 96,
+            bottom: 1,
+            borderRadius: 20,
+            backgroundColor: colors.shirtShade,
+            transform: [{ rotate: "22deg" }],
+            zIndex: 3,
+          }}
+        />
+        {/* Shopping tote */}
+        <View
+          style={{
+            position: "absolute",
+            width: 48,
+            height: 44,
+            right: 8,
+            bottom: 10,
+            borderRadius: 15,
+            backgroundColor: colors.bag,
+            borderWidth: 1,
+            borderColor: isDark ? "#356C61" : "#B7DECF",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 4,
+          }}
+        >
+          <Ionicons name="bag-handle" size={25} color={colors.bagIcon} />
+        </View>
       </View>
     </Pressable>
   );

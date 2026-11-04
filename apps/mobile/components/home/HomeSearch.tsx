@@ -1,4 +1,3 @@
-
 import { Pressable, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -8,46 +7,27 @@ type Props = {
   isDark: boolean;
 };
 
-export default function HomeSearch({
-  value,
-  onChangeText,
-  isDark,
-}: Props) {
+export default function HomeSearch({ value, onChangeText, isDark }: Props) {
   const palette = isDark
-    ? {
-        background: "#14243A",
-        border: "#263B55",
-        text: "#F4F7FF",
-        muted: "#AAB8CC",
-      }
-    : {
-        background: "#FFFFFF",
-        border: "#E5EBF3",
-        text: "#000535",
-        muted: "#78869A",
-      };
+    ? { background: "#14243A", border: "#263B55", text: "#F4F7FF", muted: "#AAB8CC" }
+    : { background: "#EEF1F6", border: "#E9EDF3", text: "#102A4A", muted: "#8290A2" };
 
   return (
     <View
       style={{
         width: "100%",
-        height: 52,
+        height: 54,
         borderWidth: 1,
         borderColor: palette.border,
         flexDirection: "row",
         alignItems: "center",
-        paddingHorizontal: 14,
-        gap: 10,
+        paddingHorizontal: 16,
+        gap: 11,
         borderRadius: 17,
         backgroundColor: palette.background,
       }}
     >
-      <Ionicons
-        name="search-outline"
-        size={20}
-        color={palette.muted}
-      />
-
+      <Ionicons name="search-outline" size={21} color={palette.muted} />
       <TextInput
         value={value}
         onChangeText={onChangeText}
@@ -65,25 +45,15 @@ export default function HomeSearch({
         }}
         accessibilityLabel="Search errand services"
       />
-
       {value.length > 0 ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Clear search"
           onPress={() => onChangeText("")}
           hitSlop={8}
-          style={{
-            width: 28,
-            height: 36,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
+          style={{ width: 28, height: 36, alignItems: "center", justifyContent: "center" }}
         >
-          <Ionicons
-            name="close-circle"
-            size={19}
-            color={palette.muted}
-          />
+          <Ionicons name="close-circle" size={19} color={palette.muted} />
         </Pressable>
       ) : null}
     </View>
