@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import * as SecureStore from "expo-secure-store";
 import * as SplashScreen from "expo-splash-screen";
@@ -134,28 +135,27 @@ export default function WelcomeScreen() {
           alignItems: "center",
         }}
       >
-        {/* SaMi wordmark anchored at the absolute top */}
+        {/* SaMi wordmark anchored at the top */}
         <View
-  style={{
-    position: "absolute",
-    top: (StatusBar.currentHeight ?? 48) + 38,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-    zIndex: 10,
-  }}
->
-  <Image
-    source={require("../assets/sami-welcome-wordmark-transparent.png")}
-    resizeMode="contain"
-    accessibilityLabel="SaMi - Consider it done"
-    style={{
-      width: "30%",
-      maxWidth: 460,
-      aspectRatio: 852 / 382,
-    }}
-  />
-</View>
+          style={{
+            position: "absolute",
+            top: (StatusBar.currentHeight ?? 48) + 38,
+            left: 0,
+            right: 0,
+            alignItems: "center",
+            zIndex: 10,
+          }}
+        >
+          <Image
+            source={require("../assets/sami-welcome-wordmark-transparent.png")}
+            style={{
+              width: 190,
+              height: 62,
+            }}
+            resizeMode="contain"
+            accessibilityLabel="SaMi - Consider it done"
+          />
+        </View>
 
         {/* Welcome buttons */}
         <View
