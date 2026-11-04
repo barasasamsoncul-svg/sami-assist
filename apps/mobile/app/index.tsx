@@ -150,7 +150,7 @@ export default function WelcomeScreen() {
     resizeMode="contain"
     accessibilityLabel="SaMi - Consider it done"
     style={{
-      width: "90%",
+      width: "30%",
       maxWidth: 460,
       aspectRatio: 852 / 382,
     }}
