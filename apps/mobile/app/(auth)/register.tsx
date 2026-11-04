@@ -1,6 +1,6 @@
-
 import { useRef, useState } from "react";
 import type { ComponentProps, RefObject } from "react";
+
 import {
   ActivityIndicator,
   Image,
@@ -16,8 +16,10 @@ import {
   View,
   useColorScheme,
 } from "react-native";
+
 import { Ionicons } from "@expo/vector-icons";
 import { Link, router } from "expo-router";
+
 import { dispatchPost } from "@/api";
 import { useKeyboardAwareScroll } from "@/hooks/useKeyboardAwareScroll";
 
@@ -25,8 +27,8 @@ type Palette = {
   background: string;
   surface: string;
   input: string;
-  text: string;
   heading: string;
+  text: string;
   muted: string;
   border: string;
   accent: string;
@@ -41,14 +43,14 @@ type Palette = {
 const LIGHT: Palette = {
   background: "#F4F7FC",
   surface: "#FFFFFF",
-  input: "#FBFCFF",
+  input: "#F8FAFE",
+  heading: "#071A3D",
   text: "#24364F",
-  heading: "#173B67",
-  muted: "#6C7B91",
-  border: "#DCE5F2",
-  accent: "#2463B8",
-  accentSoft: "#EAF1FC",
-  accentText: "#214E8C",
+  muted: "#78869B",
+  border: "#E1E8F2",
+  accent: "#174A91",
+  accentSoft: "#EDF3FC",
+  accentText: "#174A91",
   icon: "#71839B",
   errorBackground: "#FFF0ED",
   errorText: "#9E2921",
@@ -59,8 +61,8 @@ const DARK: Palette = {
   background: "#080F1D",
   surface: "#111C2E",
   input: "#0B1628",
-  text: "#D7E1EF",
   heading: "#F2F6FC",
+  text: "#D7E1EF",
   muted: "#AAB8CC",
   border: "#2A3A52",
   accent: "#79AEFF",
@@ -112,7 +114,7 @@ function FormField({
           color: palette.text,
           fontSize: 12,
           fontWeight: "800",
-          letterSpacing: 0.35,
+          letterSpacing: 0.45,
         }}
       >
         {label.toUpperCase()}
@@ -122,18 +124,22 @@ function FormField({
         ref={fieldRef}
         collapsable={false}
         style={{
-          minHeight: 56,
+          minHeight: 58,
           flexDirection: "row",
           alignItems: "center",
           gap: 12,
-          paddingHorizontal: 15,
-          borderRadius: 15,
+          paddingHorizontal: 16,
+          borderRadius: 16,
           borderWidth: 1,
           borderColor: palette.border,
           backgroundColor: palette.input,
         }}
       >
-        <Ionicons name={icon} size={20} color={palette.icon} />
+        <Ionicons
+          name={icon}
+          size={20}
+          color={palette.icon}
+        />
 
         <TextInput
           ref={inputRef}
@@ -152,7 +158,7 @@ function FormField({
           blurOnSubmit={false}
           style={{
             flex: 1,
-            minHeight: 52,
+            minHeight: 54,
             color: palette.heading,
             fontSize: 15,
             paddingVertical: 12,
@@ -205,14 +211,22 @@ export default function RegisterScreen() {
   } = useKeyboardAwareScroll();
 
   const phoneDigits = phone.replace(/\D/g, "");
+
   const validName = fullName.trim().length >= 2;
+
   const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
     email.trim(),
   );
-  const validPhone =
-    phoneDigits.length >= 9 && phoneDigits.length <= 12;
 
-  const canSubmit = validName && validEmail && validPhone && !busy;
+  const validPhone =
+    phoneDigits.length >= 9 &&
+    phoneDigits.length <= 12;
+
+  const canSubmit =
+    validName &&
+    validEmail &&
+    validPhone &&
+    !busy;
 
   async function sendCode() {
     const cleanName = fullName.trim();
@@ -278,7 +292,9 @@ export default function RegisterScreen() {
       }}
     >
       <StatusBar
-        barStyle={darkMode ? "light-content" : "dark-content"}
+        barStyle={
+          darkMode ? "light-content" : "dark-content"
+        }
         backgroundColor={palette.background}
       />
 
@@ -300,11 +316,11 @@ export default function RegisterScreen() {
             justifyContent:
               keyboardHeight > 0 ? "flex-start" : "center",
             paddingHorizontal: 22,
-            paddingTop: keyboardHeight > 0 ? 18 : 26,
+            paddingTop: keyboardHeight > 0 ? 16 : 28,
             paddingBottom:
               keyboardHeight > 0
-                ? Math.max(28, keyboardHeight + 20)
-                : 26,
+                ? Math.max(30, keyboardHeight + 20)
+                : 24,
           }}
         >
           <View
@@ -312,117 +328,59 @@ export default function RegisterScreen() {
               width: "100%",
               maxWidth: 460,
               alignSelf: "center",
-              gap: 22,
+              gap: 26,
             }}
           >
-            {/* Original SaMi wordmark */}
-            <View style={{ gap: 17 }}>
+            {/* SaMi brand */}
+            <View
+              style={{
+                alignItems: "center",
+                paddingVertical: 2,
+              }}
+            >
               <Image
                 source={require("../../assets/sami-welcome-wordmark-transparent.png")}
                 style={{
                   width: 190,
-                  height: 58,
-                  alignSelf: "flex-start",
+                  height: 62,
                 }}
                 resizeMode="contain"
                 accessibilityLabel="SaMi - Consider it done"
               />
-
-              <View style={{ gap: 10 }}>
-                <View
-                  style={{
-                    alignSelf: "flex-start",
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 7,
-                    paddingHorizontal: 11,
-                    paddingVertical: 7,
-                    borderRadius: 30,
-                    backgroundColor: palette.accentSoft,
-                  }}
-                >
-                  <Ionicons
-                    name="sparkles-outline"
-                    size={14}
-                    color={palette.accent}
-                  />
-                  <Text
-                    style={{
-                      color: palette.accentText,
-                      fontSize: 10,
-                      fontWeight: "800",
-                      letterSpacing: 0.9,
-                    }}
-                  >
-                    YOUR EVERYDAY HELP, ORGANISED
-                  </Text>
-                </View>
-
-                <Text
-                  style={{
-                    color: palette.heading,
-                    fontSize: 33,
-                    lineHeight: 40,
-                    fontWeight: "900",
-                    letterSpacing: -1.1,
-                  }}
-                >
-                  Your day,{"\n"}made easier.
-                </Text>
-
-                <Text
-                  style={{
-                    color: palette.muted,
-                    fontSize: 14,
-                    lineHeight: 22,
-                    maxWidth: 360,
-                  }}
-                >
-                  Create your SaMi account and let everyday errands
-                  become easier to organise.
-                </Text>
-              </View>
             </View>
 
-            {/* Customer registration form */}
+            {/* Registration card */}
             <View
               style={{
                 backgroundColor: palette.surface,
-                borderRadius: 25,
+                borderRadius: 26,
                 borderWidth: 1,
                 borderColor: palette.border,
-                padding: 20,
-                gap: 17,
+                padding: 22,
+                gap: 21,
                 shadowColor: "#000000",
-                shadowOpacity: darkMode ? 0.18 : 0.05,
-                shadowRadius: 20,
-                shadowOffset: { width: 0, height: 8 },
-                elevation: 2,
+                shadowOpacity: darkMode ? 0.20 : 0.055,
+                shadowRadius: 24,
+                shadowOffset: {
+                  width: 0,
+                  height: 10,
+                },
+                elevation: 3,
               }}
             >
-              <View style={{ gap: 5 }}>
-                <Text
-                  style={{
-                    color: palette.heading,
-                    fontSize: 21,
-                    fontWeight: "900",
-                    letterSpacing: -0.45,
-                  }}
-                >
-                  Create your account
-                </Text>
+              {/* Heading */}
+              <Text
+                style={{
+                  color: palette.heading,
+                  fontSize: 25,
+                  fontWeight: "900",
+                  letterSpacing: -0.8,
+                }}
+              >
+                Create your account
+              </Text>
 
-                <Text
-                  style={{
-                    color: palette.muted,
-                    fontSize: 13,
-                    lineHeight: 20,
-                  }}
-                >
-                  Enter your details to get started with SaMi.
-                </Text>
-              </View>
-
+              {/* Full name */}
               <FormField
                 fieldRef={fullNameFieldRef}
                 inputRef={fullNameInputRef}
@@ -440,9 +398,12 @@ export default function RegisterScreen() {
                 placeholder="Enter your full name"
                 autoCapitalize="words"
                 textContentType="name"
-                onSubmitEditing={() => emailInputRef.current?.focus()}
+                onSubmitEditing={() =>
+                  emailInputRef.current?.focus()
+                }
               />
 
+              {/* Email */}
               <FormField
                 fieldRef={emailFieldRef}
                 inputRef={emailInputRef}
@@ -461,9 +422,12 @@ export default function RegisterScreen() {
                 keyboardType="email-address"
                 autoCapitalize="none"
                 textContentType="emailAddress"
-                onSubmitEditing={() => phoneInputRef.current?.focus()}
+                onSubmitEditing={() =>
+                  phoneInputRef.current?.focus()
+                }
               />
 
+              {/* Phone */}
               <FormField
                 fieldRef={phoneFieldRef}
                 inputRef={phoneInputRef}
@@ -486,51 +450,25 @@ export default function RegisterScreen() {
                 onSubmitEditing={sendCode}
               />
 
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 9,
-                  padding: 12,
-                  borderRadius: 13,
-                  backgroundColor: palette.accentSoft,
-                }}
-              >
-                <Ionicons
-                  name="mail-unread-outline"
-                  size={19}
-                  color={palette.accent}
-                />
-                <Text
-                  style={{
-                    flex: 1,
-                    color: palette.accentText,
-                    fontSize: 12,
-                    lineHeight: 18,
-                  }}
-                >
-                  We will send a six-digit verification code to your
-                  email address.
-                </Text>
-              </View>
-
+              {/* Validation feedback */}
               {error ? (
                 <View
                   accessibilityRole="alert"
                   style={{
                     flexDirection: "row",
                     alignItems: "flex-start",
-                    gap: 8,
-                    padding: 12,
-                    borderRadius: 13,
+                    gap: 9,
+                    padding: 13,
+                    borderRadius: 14,
                     backgroundColor: palette.errorBackground,
                   }}
                 >
                   <Ionicons
                     name="alert-circle-outline"
-                    size={18}
+                    size={19}
                     color="#D0443C"
                   />
+
                   <Text
                     style={{
                       flex: 1,
@@ -544,44 +482,53 @@ export default function RegisterScreen() {
                 </View>
               ) : null}
 
+              {/* Create account */}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Create account and send verification code"
                 disabled={!canSubmit}
                 onPress={sendCode}
                 style={({ pressed }) => ({
-                  minHeight: 56,
-                  borderRadius: 16,
+                  minHeight: 58,
+                  borderRadius: 17,
                   backgroundColor: palette.accent,
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "center",
-                  gap: 9,
-                  opacity: !canSubmit ? 0.55 : pressed ? 0.85 : 1,
+                  gap: 10,
+                  opacity: !canSubmit
+                    ? 0.50
+                    : pressed
+                      ? 0.86
+                      : 1,
                 })}
               >
                 {busy ? (
-                  <ActivityIndicator color={palette.buttonText} />
+                  <ActivityIndicator
+                    color={palette.buttonText}
+                  />
                 ) : (
                   <>
                     <Text
                       style={{
                         color: palette.buttonText,
                         fontSize: 15,
-                        fontWeight: "800",
+                        fontWeight: "900",
                       }}
                     >
                       Create account
                     </Text>
+
                     <Ionicons
                       name="arrow-forward"
-                      size={18}
+                      size={19}
                       color={palette.buttonText}
                     />
                   </>
                 )}
               </Pressable>
 
+              {/* Existing account */}
               <View
                 style={{
                   flexDirection: "row",
@@ -589,6 +536,7 @@ export default function RegisterScreen() {
                   alignItems: "center",
                   gap: 5,
                   flexWrap: "wrap",
+                  paddingTop: 2,
                 }}
               >
                 <Text
@@ -605,7 +553,7 @@ export default function RegisterScreen() {
                   style={{
                     color: palette.accent,
                     fontSize: 13,
-                    fontWeight: "800",
+                    fontWeight: "900",
                   }}
                 >
                   Sign in
@@ -613,28 +561,23 @@ export default function RegisterScreen() {
               </View>
             </View>
 
+            {/* Official SaMi tagline */}
             <View
               style={{
-                flexDirection: "row",
-                justifyContent: "center",
                 alignItems: "center",
-                gap: 6,
-                paddingBottom: 4,
+                paddingTop: 2,
+                paddingBottom: 5,
               }}
             >
-              <Ionicons
-                name="shield-checkmark-outline"
-                size={15}
-                color={palette.muted}
-              />
               <Text
                 style={{
                   color: palette.muted,
-                  fontSize: 11,
-                  fontWeight: "700",
+                  fontSize: 12,
+                  fontWeight: "800",
+                  letterSpacing: 0.5,
                 }}
               >
-                Your everyday help, organised.
+                SaMi. Consider it done.
               </Text>
             </View>
           </View>

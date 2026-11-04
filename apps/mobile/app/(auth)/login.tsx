@@ -1,5 +1,6 @@
 
 import { useRef, useState } from "react";
+
 import {
   ActivityIndicator,
   Image,
@@ -13,22 +14,24 @@ import {
   View,
   useColorScheme,
 } from "react-native";
+
 import { Ionicons } from "@expo/vector-icons";
 import { Link, router } from "expo-router";
+
 import { dispatchPost } from "@/api";
 import { useKeyboardAwareScroll } from "@/hooks/useKeyboardAwareScroll";
 
 const LIGHT = {
   background: "#F4F7FC",
   surface: "#FFFFFF",
-  input: "#FBFCFF",
-  heading: "#173B67",
+  input: "#F8FAFE",
+  heading: "#071A3D",
   text: "#24364F",
-  muted: "#6C7B91",
-  border: "#DCE5F2",
-  accent: "#2463B8",
-  accentSoft: "#EAF1FC",
-  accentText: "#214E8C",
+  muted: "#78869B",
+  border: "#E1E8F2",
+  accent: "#174A91",
+  accentSoft: "#EDF3FC",
+  accentText: "#174A91",
   icon: "#71839B",
   errorBackground: "#FFF0ED",
   errorText: "#9E2921",
@@ -89,7 +92,10 @@ export default function LoginScreen() {
       return;
     }
 
-    if (!isEmail && value.replace(/\D/g, "").length < 9) {
+    if (
+      !isEmail &&
+      value.replace(/\D/g, "").length < 9
+    ) {
       setError("Enter a valid Kenyan phone number.");
       return;
     }
@@ -105,7 +111,9 @@ export default function LoginScreen() {
         channel: "email";
       }>("requestOtp", {
         purpose: "login",
-        identifier: isEmail ? value.toLowerCase() : value,
+        identifier: isEmail
+          ? value.toLowerCase()
+          : value,
         channel: "email",
       });
 
@@ -139,7 +147,9 @@ export default function LoginScreen() {
       }}
     >
       <StatusBar
-        barStyle={darkMode ? "light-content" : "dark-content"}
+        barStyle={
+          darkMode ? "light-content" : "dark-content"
+        }
         backgroundColor={palette.background}
       />
 
@@ -159,9 +169,11 @@ export default function LoginScreen() {
           contentContainerStyle={{
             flexGrow: 1,
             justifyContent: compact ? "flex-start" : "center",
-            paddingHorizontal: 24,
-            paddingTop: compact ? 12 : 24,
-            paddingBottom: 30,
+            paddingHorizontal: 22,
+            paddingTop: compact ? 16 : 28,
+            paddingBottom: compact
+              ? Math.max(30, keyboardHeight + 20)
+              : 24,
           }}
         >
           <View
@@ -169,129 +181,66 @@ export default function LoginScreen() {
               width: "100%",
               maxWidth: 460,
               alignSelf: "center",
-              gap: compact ? 16 : 26,
+              gap: 26,
             }}
           >
-            {/* Original SaMi wordmark */}
-            <View style={{ gap: compact ? 12 : 21 }}>
+            {/* SaMi brand */}
+            <View
+              style={{
+                alignItems: "center",
+                paddingVertical: 2,
+              }}
+            >
               <Image
                 source={require("../../assets/sami-welcome-wordmark-transparent.png")}
                 style={{
                   width: 190,
-                  height: 58,
-                  alignSelf: "flex-start",
+                  height: 62,
                 }}
                 resizeMode="contain"
                 accessibilityLabel="SaMi - Consider it done"
               />
-
-              <View style={{ gap: 11 }}>
-                <View
-                  style={{
-                    alignSelf: "flex-start",
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 7,
-                    paddingHorizontal: 11,
-                    paddingVertical: 7,
-                    borderRadius: 30,
-                    backgroundColor: palette.accentSoft,
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: 3,
-                      backgroundColor: palette.accent,
-                    }}
-                  />
-                  <Text
-                    style={{
-                      color: palette.accentText,
-                      fontSize: 10,
-                      fontWeight: "800",
-                      letterSpacing: 1,
-                    }}
-                  >
-                    YOUR DAY, A LITTLE LIGHTER
-                  </Text>
-                </View>
-
-                <Text
-                  style={{
-                    color: palette.heading,
-                    fontSize: 34,
-                    lineHeight: 41,
-                    fontWeight: "900",
-                    letterSpacing: -1.1,
-                  }}
-                >
-                  Good to have{"\n"}you back.
-                </Text>
-
-                <Text
-                  style={{
-                    color: palette.muted,
-                    fontSize: 14,
-                    lineHeight: 22,
-                    maxWidth: 360,
-                  }}
-                >
-                  Sign in securely using a one-time verification code.
-                  No password needed.
-                </Text>
-              </View>
             </View>
 
             {/* Sign-in card */}
             <View
               style={{
                 backgroundColor: palette.surface,
-                borderRadius: 25,
+                borderRadius: 26,
                 borderWidth: 1,
                 borderColor: palette.border,
-                padding: compact ? 18 : 21,
-                gap: compact ? 15 : 18,
+                padding: compact ? 20 : 22,
+                gap: 21,
                 shadowColor: "#000000",
-                shadowOpacity: darkMode ? 0.18 : 0.05,
-                shadowRadius: 22,
-                shadowOffset: { width: 0, height: 9 },
-                elevation: 2,
+                shadowOpacity: darkMode ? 0.20 : 0.055,
+                shadowRadius: 24,
+                shadowOffset: {
+                  width: 0,
+                  height: 10,
+                },
+                elevation: 3,
               }}
             >
-              <View style={{ gap: 5 }}>
-                <Text
-                  style={{
-                    color: palette.heading,
-                    fontSize: 21,
-                    fontWeight: "900",
-                    letterSpacing: -0.45,
-                  }}
-                >
-                  Sign in
-                </Text>
+              {/* Heading */}
+              <Text
+                style={{
+                  color: palette.heading,
+                  fontSize: 25,
+                  fontWeight: "900",
+                  letterSpacing: -0.8,
+                }}
+              >
+                Sign in
+              </Text>
 
-                <Text
-                  style={{
-                    color: palette.muted,
-                    fontSize: 13,
-                    lineHeight: 20,
-                  }}
-                >
-                  Enter the email address or Kenyan phone number
-                  linked to your SaMi account.
-                </Text>
-              </View>
-
-              {/* Email or phone input */}
+              {/* Email or phone */}
               <View style={{ gap: 8 }}>
                 <Text
                   style={{
                     color: palette.text,
                     fontSize: 12,
                     fontWeight: "800",
-                    letterSpacing: 0.3,
+                    letterSpacing: 0.45,
                   }}
                 >
                   EMAIL ADDRESS OR PHONE NUMBER
@@ -301,12 +250,12 @@ export default function LoginScreen() {
                   ref={identifierFieldRef}
                   collapsable={false}
                   style={{
-                    minHeight: 56,
+                    minHeight: 58,
                     flexDirection: "row",
                     alignItems: "center",
-                    gap: 11,
-                    paddingHorizontal: 14,
-                    borderRadius: 15,
+                    gap: 12,
+                    paddingHorizontal: 16,
+                    borderRadius: 16,
                     borderWidth: 1,
                     borderColor: palette.border,
                     backgroundColor: palette.input,
@@ -339,60 +288,31 @@ export default function LoginScreen() {
                     }
                     style={{
                       flex: 1,
-                      minHeight: 52,
+                      minHeight: 54,
                       color: palette.heading,
                       fontSize: 15,
-                      paddingVertical: 13,
+                      paddingVertical: 12,
                     }}
                   />
                 </View>
               </View>
 
-              {/* Verification information */}
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "flex-start",
-                  gap: 9,
-                  padding: 13,
-                  borderRadius: 14,
-                  backgroundColor: palette.accentSoft,
-                }}
-              >
-                <Ionicons
-                  name="mail-unread-outline"
-                  size={19}
-                  color={palette.accent}
-                />
-
-                <Text
-                  style={{
-                    flex: 1,
-                    color: palette.accentText,
-                    fontSize: 12,
-                    lineHeight: 19,
-                  }}
-                >
-                  Your verification code is delivered to the email
-                  address registered to your SaMi account.
-                </Text>
-              </View>
-
+              {/* Error feedback */}
               {error ? (
                 <View
                   accessibilityRole="alert"
                   style={{
                     flexDirection: "row",
                     alignItems: "flex-start",
-                    gap: 8,
+                    gap: 9,
                     backgroundColor: palette.errorBackground,
-                    borderRadius: 13,
-                    padding: 12,
+                    borderRadius: 14,
+                    padding: 13,
                   }}
                 >
                   <Ionicons
                     name="alert-circle-outline"
-                    size={18}
+                    size={19}
                     color="#D0443C"
                   />
 
@@ -409,24 +329,32 @@ export default function LoginScreen() {
                 </View>
               ) : null}
 
+              {/* Sign-in action */}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Send verification code"
                 disabled={disabled}
                 onPress={sendCode}
                 style={({ pressed }) => ({
-                  minHeight: 56,
-                  borderRadius: 16,
+                  minHeight: 58,
+                  borderRadius: 17,
                   backgroundColor: palette.accent,
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "center",
-                  gap: 9,
-                  opacity: disabled ? 0.55 : pressed ? 0.85 : 1,
+                  gap: 10,
+                  opacity: disabled
+                    ? 0.50
+                    : pressed
+                      ? 0.86
+                      : 1,
                   shadowColor: palette.accent,
-                  shadowOpacity: darkMode ? 0.08 : 0.17,
+                  shadowOpacity: darkMode ? 0.08 : 0.14,
                   shadowRadius: 10,
-                  shadowOffset: { width: 0, height: 5 },
+                  shadowOffset: {
+                    width: 0,
+                    height: 5,
+                  },
                   elevation: 2,
                 })}
               >
@@ -438,7 +366,7 @@ export default function LoginScreen() {
                       style={{
                         color: "#FFFFFF",
                         fontSize: 15,
-                        fontWeight: "800",
+                        fontWeight: "900",
                       }}
                     >
                       Send verification code
@@ -446,13 +374,14 @@ export default function LoginScreen() {
 
                     <Ionicons
                       name="arrow-forward"
-                      size={18}
+                      size={19}
                       color="#FFFFFF"
                     />
                   </>
                 )}
               </Pressable>
 
+              {/* Registration link */}
               <View
                 style={{
                   flexDirection: "row",
@@ -460,6 +389,7 @@ export default function LoginScreen() {
                   justifyContent: "center",
                   gap: 5,
                   flexWrap: "wrap",
+                  paddingTop: 2,
                 }}
               >
                 <Text
@@ -476,7 +406,7 @@ export default function LoginScreen() {
                   style={{
                     color: palette.accent,
                     fontSize: 13,
-                    fontWeight: "800",
+                    fontWeight: "900",
                   }}
                 >
                   Create an account
@@ -484,47 +414,23 @@ export default function LoginScreen() {
               </View>
             </View>
 
-            {/* Security footer */}
+            {/* Official SaMi tagline */}
             <View
               style={{
                 alignItems: "center",
-                gap: 8,
-                paddingBottom: 4,
+                paddingTop: 2,
+                paddingBottom: 5,
               }}
             >
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                }}
-              >
-                <Ionicons
-                  name="shield-checkmark-outline"
-                  size={15}
-                  color={palette.muted}
-                />
-                <Text
-                  style={{
-                    color: palette.muted,
-                    fontSize: 11,
-                    fontWeight: "700",
-                  }}
-                >
-                  Your account stays protected
-                </Text>
-              </View>
-
               <Text
                 style={{
                   color: palette.muted,
-                  fontSize: 11,
-                  textAlign: "center",
-                  lineHeight: 17,
+                  fontSize: 12,
+                  fontWeight: "800",
+                  letterSpacing: 0.5,
                 }}
               >
-                Consider it done.
+                SaMi. Consider it done.
               </Text>
             </View>
           </View>

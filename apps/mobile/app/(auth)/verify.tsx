@@ -1,5 +1,6 @@
 
 import { useRef, useState } from "react";
+
 import {
   ActivityIndicator,
   Image,
@@ -13,23 +14,22 @@ import {
   View,
   useColorScheme,
 } from "react-native";
+
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
+
 import { dispatchPost } from "@/api";
 import { useKeyboardAwareScroll } from "@/hooks/useKeyboardAwareScroll";
 
 const LIGHT = {
   background: "#F4F7FC",
   surface: "#FFFFFF",
-  input: "#FBFCFF",
-  heading: "#173B67",
+  input: "#F8FAFE",
+  heading: "#071A3D",
   text: "#24364F",
-  muted: "#6C7B91",
-  border: "#DCE5F2",
-  accent: "#2463B8",
-  accentSoft: "#EAF1FC",
-  accentText: "#214E8C",
-  icon: "#71839B",
+  muted: "#78869B",
+  border: "#E1E8F2",
+  accent: "#174A91",
   errorBackground: "#FFF0ED",
   errorText: "#9E2921",
 };
@@ -43,9 +43,6 @@ const DARK = {
   muted: "#AAB8CC",
   border: "#2A3A52",
   accent: "#79AEFF",
-  accentSoft: "#142A49",
-  accentText: "#C3DBFF",
-  icon: "#9FB0C7",
   errorBackground: "#3B1D27",
   errorText: "#FFB8B4",
 };
@@ -65,11 +62,6 @@ export default function VerifyScreen() {
 
   const purpose =
     params.purpose === "register" ? "register" : "login";
-
-  const deliveryHint =
-    typeof params.deliveryHint === "string"
-      ? params.deliveryHint
-      : "your registered email address";
 
   const colorScheme = useColorScheme();
   const palette = colorScheme === "dark" ? DARK : LIGHT;
@@ -95,14 +87,12 @@ export default function VerifyScreen() {
 
   async function verify() {
     if (!challengeId) {
-      setError(
-        "This verification request is missing or expired. Please return and request a new code.",
-      );
+      setError("Request a new verification code.");
       return;
     }
 
     if (!validCode) {
-      setError("Enter the complete six-digit verification code.");
+      setError("Enter the complete six-digit code.");
       return;
     }
 
@@ -121,7 +111,7 @@ export default function VerifyScreen() {
       setError(
         e instanceof Error
           ? e.message
-          : "Verification failed. Check your code and try again.",
+          : "Verification failed. Please try again.",
       );
     } finally {
       setBusy(false);
@@ -146,7 +136,9 @@ export default function VerifyScreen() {
       }}
     >
       <StatusBar
-        barStyle={darkMode ? "light-content" : "dark-content"}
+        barStyle={
+          darkMode ? "light-content" : "dark-content"
+        }
         backgroundColor={palette.background}
       />
 
@@ -167,8 +159,10 @@ export default function VerifyScreen() {
             flexGrow: 1,
             justifyContent: compact ? "flex-start" : "center",
             paddingHorizontal: 22,
-            paddingTop: compact ? 14 : 26,
-            paddingBottom: compact ? 28 : 30,
+            paddingTop: compact ? 16 : 28,
+            paddingBottom: compact
+              ? Math.max(30, keyboardHeight + 20)
+              : 24,
           }}
         >
           <View
@@ -176,163 +170,69 @@ export default function VerifyScreen() {
               width: "100%",
               maxWidth: 460,
               alignSelf: "center",
-              gap: compact ? 17 : 25,
+              gap: 26,
             }}
           >
-            {/* Original SaMi wordmark */}
-            <View style={{ gap: compact ? 12 : 19 }}>
+            {/* SaMi brand */}
+            <View
+              style={{
+                alignItems: "center",
+                paddingVertical: 2,
+              }}
+            >
               <Image
                 source={require("../../assets/sami-welcome-wordmark-transparent.png")}
                 style={{
                   width: 190,
-                  height: 58,
-                  alignSelf: "flex-start",
+                  height: 62,
                 }}
                 resizeMode="contain"
                 accessibilityLabel="SaMi - Consider it done"
               />
-
-              <View style={{ gap: 10 }}>
-                <View
-                  style={{
-                    alignSelf: "flex-start",
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 7,
-                    paddingHorizontal: 11,
-                    paddingVertical: 7,
-                    borderRadius: 30,
-                    backgroundColor: palette.accentSoft,
-                  }}
-                >
-                  <Ionicons
-                    name="shield-checkmark-outline"
-                    size={14}
-                    color={palette.accent}
-                  />
-                  <Text
-                    style={{
-                      color: palette.accentText,
-                      fontSize: 10,
-                      fontWeight: "800",
-                      letterSpacing: 1,
-                    }}
-                  >
-                    SECURE ACCOUNT VERIFICATION
-                  </Text>
-                </View>
-
-                <Text
-                  style={{
-                    color: palette.heading,
-                    fontSize: 33,
-                    lineHeight: 40,
-                    fontWeight: "900",
-                    letterSpacing: -1,
-                  }}
-                >
-                  Verify your{"\n"}email address.
-                </Text>
-
-                <Text
-                  style={{
-                    color: palette.muted,
-                    fontSize: 14,
-                    lineHeight: 22,
-                    maxWidth: 370,
-                  }}
-                >
-                  Enter the six-digit verification code sent to{" "}
-                  <Text
-                    style={{
-                      color: palette.heading,
-                      fontWeight: "800",
-                    }}
-                  >
-                    {deliveryHint}
-                  </Text>
-                  .
-                </Text>
-              </View>
             </View>
 
             {/* Verification card */}
             <View
               style={{
                 backgroundColor: palette.surface,
-                borderRadius: 25,
+                borderRadius: 26,
                 borderWidth: 1,
                 borderColor: palette.border,
-                padding: compact ? 18 : 21,
-                gap: compact ? 16 : 19,
+                padding: compact ? 20 : 22,
+                gap: 22,
                 shadowColor: "#000000",
-                shadowOpacity: darkMode ? 0.18 : 0.05,
-                shadowRadius: 22,
-                shadowOffset: { width: 0, height: 9 },
-                elevation: 2,
+                shadowOpacity: darkMode ? 0.20 : 0.055,
+                shadowRadius: 24,
+                shadowOffset: {
+                  width: 0,
+                  height: 10,
+                },
+                elevation: 3,
               }}
             >
-              {/* Email illustration */}
-              <View
+              {/* Heading */}
+              <Text
                 style={{
-                  alignItems: "center",
-                  gap: 9,
-                  paddingVertical: compact ? 2 : 8,
+                  color: palette.heading,
+                  fontSize: 25,
+                  fontWeight: "900",
+                  letterSpacing: -0.8,
                 }}
               >
-                <View
-                  style={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: 21,
-                    backgroundColor: palette.accentSoft,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Ionicons
-                    name="mail-open-outline"
-                    size={29}
-                    color={palette.accent}
-                  />
-                </View>
+                Verify code
+              </Text>
 
-                <Text
-                  style={{
-                    color: palette.heading,
-                    fontSize: 19,
-                    fontWeight: "900",
-                    letterSpacing: -0.35,
-                  }}
-                >
-                  Check your inbox
-                </Text>
-
-                <Text
-                  style={{
-                    color: palette.muted,
-                    fontSize: 12,
-                    lineHeight: 19,
-                    textAlign: "center",
-                    maxWidth: 300,
-                  }}
-                >
-                  Your one-time code is valid for a limited time.
-                  Check your spam folder if you cannot find the email.
-                </Text>
-              </View>
-
-              {/* OTP input */}
+              {/* Six-digit code */}
               <View style={{ gap: 9 }}>
                 <Text
                   style={{
                     color: palette.text,
                     fontSize: 12,
                     fontWeight: "800",
-                    letterSpacing: 0.35,
+                    letterSpacing: 0.45,
                   }}
                 >
-                  SIX-DIGIT VERIFICATION CODE
+                  VERIFICATION CODE
                 </Text>
 
                 <View
@@ -342,7 +242,6 @@ export default function VerifyScreen() {
                   <TextInput
                     ref={codeInputRef}
                     accessibilityLabel="Six-digit verification code"
-                    accessibilityHint="Enter the six-digit code sent to your email"
                     autoCapitalize="none"
                     autoCorrect={false}
                     keyboardType="number-pad"
@@ -360,7 +259,7 @@ export default function VerifyScreen() {
                       onFieldFocus(codeFieldRef.current)
                     }
                     style={{
-                      minHeight: 64,
+                      minHeight: 66,
                       borderWidth: 1.5,
                       borderColor: validCode
                         ? palette.accent
@@ -371,7 +270,7 @@ export default function VerifyScreen() {
                       textAlign: "center",
                       fontSize: 27,
                       fontWeight: "900",
-                      letterSpacing: 9,
+                      letterSpacing: 10,
                       paddingHorizontal: 12,
                       paddingVertical: 12,
                     }}
@@ -382,16 +281,6 @@ export default function VerifyScreen() {
                     selectTextOnFocus
                   />
                 </View>
-
-                <Text
-                  style={{
-                    color: palette.muted,
-                    fontSize: 11,
-                    textAlign: "center",
-                  }}
-                >
-                  {code.length} of 6 digits entered
-                </Text>
               </View>
 
               {/* Error feedback */}
@@ -402,8 +291,8 @@ export default function VerifyScreen() {
                     flexDirection: "row",
                     alignItems: "flex-start",
                     gap: 9,
-                    padding: 12,
-                    borderRadius: 13,
+                    padding: 13,
+                    borderRadius: 14,
                     backgroundColor: palette.errorBackground,
                   }}
                 >
@@ -433,18 +322,18 @@ export default function VerifyScreen() {
                 disabled={busy || !validCode || !challengeId}
                 onPress={verify}
                 style={({ pressed }) => ({
-                  minHeight: 56,
-                  borderRadius: 16,
+                  minHeight: 58,
+                  borderRadius: 17,
                   backgroundColor: palette.accent,
+                  flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "center",
-                  flexDirection: "row",
-                  gap: 9,
+                  gap: 10,
                   opacity:
                     busy || !validCode || !challengeId
-                      ? 0.55
+                      ? 0.50
                       : pressed
-                        ? 0.85
+                        ? 0.86
                         : 1,
                 })}
               >
@@ -456,7 +345,7 @@ export default function VerifyScreen() {
                       style={{
                         color: "#FFFFFF",
                         fontSize: 15,
-                        fontWeight: "800",
+                        fontWeight: "900",
                       }}
                     >
                       Verify and continue
@@ -464,25 +353,25 @@ export default function VerifyScreen() {
 
                     <Ionicons
                       name="arrow-forward"
-                      size={18}
+                      size={19}
                       color="#FFFFFF"
                     />
                   </>
                 )}
               </Pressable>
 
-              {/* Return to the correct authentication screen */}
+              {/* Back navigation */}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={
                   purpose === "register"
-                    ? "Return to registration"
-                    : "Return to sign in"
+                    ? "Back to registration"
+                    : "Back to sign in"
                 }
                 disabled={busy}
                 onPress={goBack}
                 style={({ pressed }) => ({
-                  minHeight: 48,
+                  minHeight: 46,
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "center",
@@ -500,7 +389,7 @@ export default function VerifyScreen() {
                   style={{
                     color: palette.accent,
                     fontSize: 14,
-                    fontWeight: "800",
+                    fontWeight: "900",
                   }}
                 >
                   {purpose === "register"
@@ -510,47 +399,23 @@ export default function VerifyScreen() {
               </Pressable>
             </View>
 
-            {/* Security footer */}
+            {/* SaMi tagline */}
             <View
               style={{
                 alignItems: "center",
-                gap: 7,
-                paddingBottom: 4,
+                paddingTop: 2,
+                paddingBottom: 5,
               }}
             >
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                }}
-              >
-                <Ionicons
-                  name="lock-closed-outline"
-                  size={14}
-                  color={palette.muted}
-                />
-
-                <Text
-                  style={{
-                    color: palette.muted,
-                    fontSize: 11,
-                    fontWeight: "700",
-                  }}
-                >
-                  Your verification stays private and secure.
-                </Text>
-              </View>
-
               <Text
                 style={{
                   color: palette.muted,
-                  fontSize: 11,
-                  textAlign: "center",
+                  fontSize: 12,
+                  fontWeight: "800",
+                  letterSpacing: 0.5,
                 }}
               >
-                SaMi — Consider it done.
+                SaMi. Consider it done.
               </Text>
             </View>
           </View>
