@@ -57,7 +57,7 @@ export default function HomeScreen() {
     void loadHome();
   }, [loadHome]);
 
-  const firstName = user?.full_name?.trim().split(/\\s+/)[0] || "there";
+  const firstName = user?.full_name?.trim().split(/\s+/)[0] || "there";
 
   function openService(category: string) {
     const serviceRoutes: Record<string, string> = {
@@ -112,7 +112,7 @@ export default function HomeScreen() {
         <View style={{ marginBottom: 19 }}>
           <HomePromoHero
             isDark={isDark}
-            title={"Big or small,\\nwe run your errands."}
+            title={"Big or small,\nwe run your errands."}
             subtitle="Save time. Live more."
           />
         </View>

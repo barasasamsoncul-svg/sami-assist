@@ -10,7 +10,7 @@ type Props = {
 
 export default function HomePromoHero({
   isDark,
-  title = "Big or small,\\nwe run your errands.",
+  title = "Big or small,\nwe run your errands.",
   subtitle = "Save time. Live more.",
   onPress,
 }: Props) {
@@ -45,7 +45,7 @@ export default function HomePromoHero({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${title.replace("\\n", " ")} ${subtitle}`}
+      accessibilityLabel={`${title.replace("\n", " ")} ${subtitle}`}
       onPress={onPress}
       disabled={!onPress}
       style={({ pressed }) => ({
