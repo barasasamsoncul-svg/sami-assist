@@ -1,6 +1,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
+import { File as ExpoFile } from "expo-file-system";
 import {
   ActivityIndicator,
   Alert,
@@ -210,27 +211,24 @@ export default function PersonalProfileScreen() {
           "Please choose a JPEG, PNG or WebP image.",
         );
       }
+const form = new FormData();
 
-      const form = new FormData();
+const imageFile = new ExpoFile(asset.uri);
 
-      form.append(
-        "avatar",
-        {
-          uri: asset.uri,
-          name: asset.fileName || "sami-avatar.jpg",
-          type: asset.mimeType || "image/jpeg",
-        } as unknown as Blob,
-      );
+form.append(
+  "avatar",
+  imageFile,
+  asset.fileName || "sami-avatar.jpg",
+);
 
-      const result = await apiRequest<{
-        ok: boolean;
-        message: string;
-        avatar_url: string;
-      }>("/api/customer/profile/avatar", {
-        method: "POST",
-        body: form,
-      });
-
+const result = await apiRequest<{
+  ok: boolean;
+  message: string;
+  avatar_url: string;
+}>("/api/customer/profile/avatar", {
+  method: "POST",
+  body: form,
+});
       setProfile((current) =>
         current
           ? {

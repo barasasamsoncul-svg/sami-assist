@@ -1,4 +1,6 @@
+
 import * as SecureStore from "expo-secure-store";
+import { fetch as expoFetch } from "expo/fetch";
 
 const SESSION_KEY = "sami_errands_access_token";
 
@@ -101,7 +103,7 @@ export async function apiRequest<T = any>(
   let response: Response;
 
   try {
-    response = await fetch(requestUrl, {
+    response = await expoFetch(requestUrl, {
       method,
       headers,
       body: requestBody,
