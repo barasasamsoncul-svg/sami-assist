@@ -1,8 +1,9 @@
-
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   ActivityIndicator,
+  DimensionValue,
+  Pressable,
   RefreshControl,
   ScrollView,
   StatusBar,
@@ -11,7 +12,10 @@ import {
   useColorScheme,
 } from "react-native";
 
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { dispatchGet } from "@/api";
 
@@ -32,27 +36,113 @@ type User = {
 const NAVY = "#000535";
 const BLUE = "#2463B8";
 
-export default function HomeScreen() {
+/** Spacing scale — every gap in this screen comes from here. */
+const SPACE = {
+  screenX: 20,
+  section: 22,
+  header: 18,
+  bottom: 32,
+};
+
+/** Routes hoisted to module scope (was inside the component). */
+const SERVICE_ROUTES: Record<string, string> = {
+  groceries: "/(app)/services/groceries",
+  food_delivery: "/(app)/services/food",
+  pickup_delivery: "/(app)/services/pickup",
+  bill_payments: "/(app)/services/bills",
+  laundry_cleaning: "/(app)/services/laundry",
+  documents_admin: "/(app)/services/documents",
+  clothing_retail: "/(app)/services/clothing",
+  shopping_gifts: "/(app)/services/gifts",
+  home_services: "/(app)/services/home",
+  pharmacy_health: "/(app)/services/pharmacy",
+  pet_care: "/(app)/services/petcare",
+  queue_appointments: "/(app)/services/queues",
+  personal_errand: "/(app)/services/personal",
+  business_support: "/(app)/services/business",
+  shopping: "/(app)/services/shopping",
+  other: "/(app)/services/other",
+};
+
+function usePalette() {
   const isDark = useColorScheme() === "dark";
 
-  const palette = isDark
-    ? {
-        background: "#080F1D",
-        heading: "#F4F7FF",
-        muted: "#AAB8CC",
-        blue: "#79AEFF",
-      }
-    : {
-        background: "#F7F8FA",
-        heading: NAVY,
-        muted: "#78869A",
-        blue: BLUE,
-      };
+  return useMemo(
+    () =>
+      isDark
+        ? {
+            isDark,
+            background: "#080F1D",
+            surface: "#111A2C",
+            border: "#1E2A40",
+            heading: "#F4F7FF",
+            muted: "#AAB8CC",
+            blue: "#79AEFF",
+            dangerText: "#FFB8B8",
+            dangerBg: "#3B2028",
+          }
+        : {
+            isDark,
+            background: "#F7F8FA",
+            surface: "#FFFFFF",
+            border: "#E6E9EF",
+            heading: NAVY,
+            muted: "#78869A",
+            blue: BLUE,
+            dangerText: "#B42318",
+            dangerBg: "#FDECEC",
+          },
+    [isDark],
+  );
+}
+
+function SkeletonBlock({
+  width,
+  height,
+  radius = 10,
+  color,
+}: {
+  width: DimensionValue;
+  height: number;
+  radius?: number;
+  color: string;
+}) {
+  return (
+    <View
+      style={{
+        width,
+        height,
+        borderRadius: radius,
+        backgroundColor: color,
+      }}
+    />
+  );
+}
+
+function HomeGridSkeleton({ surface }: { surface: string }) {
+  return (
+    <View style={{ gap: 12 }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+        <SkeletonBlock width="48%" height={92} radius={18} color={surface} />
+        <SkeletonBlock width="48%" height={92} radius={18} color={surface} />
+      </View>
+      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+        <SkeletonBlock width="48%" height={92} radius={18} color={surface} />
+        <SkeletonBlock width="48%" height={92} radius={18} color={surface} />
+      </View>
+    </View>
+  );
+}
+
+export default function HomeScreen() {
+  const palette = usePalette();
+  const insets = useSafeAreaInsets();
 
   const [user, setUser] = useState<User | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
+  const hasLoadedOnce = useRef(false);
 
   const loadHome = useCallback(async () => {
     setBusy(true);
@@ -69,6 +159,7 @@ export default function HomeScreen() {
       );
     } finally {
       setBusy(false);
+      hasLoadedOnce.current = true;
     }
   }, []);
 
@@ -76,142 +167,172 @@ export default function HomeScreen() {
     void loadHome();
   }, [loadHome]);
 
-  const firstName =
-    user?.full_name?.trim().split(/\s+/)[0] || "there";
+  const firstName = useMemo(() => {
+    const trimmed = user?.full_name?.trim();
+    return trimmed ? trimmed.split(/\s+/)[0] : "there";
+  }, [user?.full_name]);
 
-  function openService(category: string) {
-    const serviceRoutes: Record<string, string> = {
-      groceries: "/(app)/services/groceries",
-      food_delivery: "/(app)/services/food",
-      pickup_delivery: "/(app)/services/pickup",
-      bill_payments: "/(app)/services/bills",
-      laundry_cleaning: "/(app)/services/laundry",
-      documents_admin: "/(app)/services/documents",
-      clothing_retail: "/(app)/services/clothing",
-      shopping_gifts: "/(app)/services/gifts",
-      home_services: "/(app)/services/home",
-      pharmacy_health: "/(app)/services/pharmacy",
-      pet_care: "/(app)/services/petcare",
-      queue_appointments: "/(app)/services/queues",
-      personal_errand: "/(app)/services/personal",
-      business_support: "/(app)/services/business",
-      shopping: "/(app)/services/shopping",
-      other: "/(app)/services/other",
-    };
-
-    const destination = serviceRoutes[category];
-
+  const openService = useCallback((category: string) => {
+    const destination = SERVICE_ROUTES[category];
     if (destination) {
       router.push(destination as never);
     }
-  }
+  }, []);
+
+  const showSkeleton = !hasLoadedOnce.current && !user && busy;
 
   return (
     <SafeAreaView
       edges={["top", "left", "right"]}
-      style={{
-        flex: 1,
-        backgroundColor: palette.background,
-      }}
+      style={{ flex: 1, backgroundColor: palette.background }}
     >
       <StatusBar
         translucent={false}
         backgroundColor={palette.background}
-        barStyle={isDark ? "light-content" : "dark-content"}
+        barStyle={palette.isDark ? "light-content" : "dark-content"}
       />
 
+      {/* Header stays pinned — the only fixed element on the screen. */}
       <View
         style={{
-          flex: 1,
-          paddingHorizontal: 18,
-          paddingTop: 9,
+          paddingHorizontal: SPACE.screenX,
+          paddingTop: 8,
+          paddingBottom: SPACE.header,
         }}
       >
-        {/* Fixed header */}
-        <View style={{ marginBottom: 17 }}>
-          <HomeHeader
-            firstName={firstName}
-            avatarUri={user?.avatar_url}
-            locationLabel="Set your location"
-            unreadNotifications={0}
-            isDark={isDark}
-            onNotificationsPress={() =>
-              router.push("/(app)/notifications")
-            }
-            onProfilePress={() =>
-              router.push("/(app)/account")
-            }
+        <HomeHeader
+          firstName={firstName}
+          avatarUri={user?.avatar_url}
+          locationLabel="Set your location"
+          unreadNotifications={0}
+          isDark={palette.isDark}
+          onNotificationsPress={() => router.push("/(app)/notifications")}
+          onProfilePress={() => router.push("/(app)/account")}
+        />
+      </View>
+
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingHorizontal: SPACE.screenX,
+          paddingBottom: insets.bottom + SPACE.bottom,
+          gap: SPACE.section,
+        }}
+        refreshControl={
+          <RefreshControl
+            refreshing={busy && hasLoadedOnce.current}
+            onRefresh={loadHome}
+            tintColor={palette.blue}
+            colors={[palette.blue]}
           />
+        }
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Search */}
+        <HomeSearch
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          isDark={palette.isDark}
+        />
+
+        {/* Promo */}
+        <HomePromoHero
+          isDark={palette.isDark}
+          title={"Big or small,\nwe run your errands."}
+          subtitle="Save time. Live more."
+        />
+
+        {/* Section heading */}
+        <View style={{ gap: 4 }}>
+          <Text
+            style={{
+              color: palette.heading,
+              fontSize: 18,
+              fontWeight: "700",
+              letterSpacing: -0.2,
+            }}
+          >
+            What do you need today?
+          </Text>
+          <Text style={{ color: palette.muted, fontSize: 13 }}>
+            Tap a service to start your errand
+          </Text>
         </View>
 
-        {/* Fixed search */}
-        <View style={{ marginBottom: 17 }}>
-          <HomeSearch
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            isDark={isDark}
-          />
-        </View>
-
-        {/* Fixed promotional area */}
-        <View style={{ marginBottom: 19 }}>
-          <HomePromoHero
-            isDark={isDark}
-            title={"Big or small,\nwe run your errands."}
-            subtitle="Save time. Live more."
-          />
-        </View>
-
-        {/* Service grid gets the remaining screen height and scrolls */}
-        <ScrollView
-          style={{
-            flex: 1,
-          }}
-          contentContainerStyle={{
-            flexGrow: 1,
-            paddingTop: 5,
-            paddingBottom: 26,
-          }}
-          refreshControl={
-            <RefreshControl
-              refreshing={busy}
-              onRefresh={loadHome}
-              tintColor={palette.blue}
-            />
-          }
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
-          <HomeServicesGrid
-            isDark={isDark}
-            searchQuery={searchQuery}
-            onSelect={openService}
-          />
-
-          {error ? (
+        {/* Error card with retry */}
+        {error ? (
+          <View
+            accessibilityRole="alert"
+            style={{
+              backgroundColor: palette.dangerBg,
+              borderRadius: 14,
+              padding: 14,
+              gap: 10,
+            }}
+          >
             <Text
-              accessibilityRole="alert"
               style={{
-                color: isDark ? "#FFB8B8" : "#B42318",
-                backgroundColor: isDark ? "#3B2028" : "#FDECEC",
-                borderRadius: 12,
-                padding: 12,
+                color: palette.dangerText,
+                fontSize: 14,
                 lineHeight: 19,
-                marginTop: 15,
               }}
             >
               {error}
             </Text>
-          ) : null}
 
-          {busy && !user ? (
-            <ActivityIndicator
-              color={palette.blue}
-              style={{ marginTop: 18 }}
-            />
-          ) : null}
-        </ScrollView>
-      </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Retry loading your home screen"
+              onPress={loadHome}
+              style={{
+                alignSelf: "flex-start",
+                paddingHorizontal: 14,
+                paddingVertical: 8,
+                borderRadius: 10,
+                backgroundColor: palette.blue,
+              }}
+            >
+              <Text
+                style={{
+                  color: palette.isDark ? "#06101F" : "#FFFFFF",
+                  fontSize: 13,
+                  fontWeight: "600",
+                }}
+              >
+                Try again
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {/* Grid — replaced by skeleton on first load only */}
+        {showSkeleton ? (
+          <HomeGridSkeleton surface={palette.surface} />
+        ) : (
+          <HomeServicesGrid
+            isDark={palette.isDark}
+            searchQuery={searchQuery}
+            onSelect={openService}
+          />
+        )}
+
+        {busy && !user && hasLoadedOnce.current ? (
+          <ActivityIndicator color={palette.blue} style={{ marginTop: 8 }} />
+        ) : null}
+
+        {/* Closing trust line */}
+        <Text
+          style={{
+            color: palette.muted,
+            fontSize: 12,
+            textAlign: "center",
+            lineHeight: 18,
+          }}
+        >
+          Verified runners · Upfront pricing · Live tracking
+        </Text>
+      </ScrollView>
     </SafeAreaView>
   );
 }

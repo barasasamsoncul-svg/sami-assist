@@ -1,4 +1,3 @@
-
 import { Image, Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -12,6 +11,9 @@ type Props = {
   onProfilePress: () => void;
   onLocationPress?: () => void;
 };
+
+const AVATAR_SIZE = 54;
+const BELL_SIZE = 46;
 
 export default function HomeHeader({
   firstName,
@@ -41,12 +43,16 @@ export default function HomeHeader({
         background: "#F7F8FA",
       };
 
+  const initial = firstName?.trim()?.charAt(0)?.toUpperCase() || "S";
+  const badgeLabel =
+    unreadNotifications > 9 ? "9+" : String(unreadNotifications);
+
   return (
-    <View style={{ width: "100%", gap: 11 }}>
-      {/* SaMi watermark, notifications and profile */}
+    <View style={{ width: "100%", gap: 12 }}>
+      {/* Top row — wordmark, notifications, avatar */}
       <View
         style={{
-          minHeight: 50,
+          minHeight: AVATAR_SIZE + 2,
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
@@ -56,34 +62,38 @@ export default function HomeHeader({
           source={require("../../assets/sami-welcome-wordmark-transparent.png")}
           resizeMode="contain"
           accessibilityLabel="SaMi - Consider it done"
-          style={{
-            width: 120,
-            height: 50,
-          }}
+          style={{ width: 118, height: 48 }}
         />
 
         <View
           style={{
             flexDirection: "row",
             alignItems: "center",
-            gap: 14,
+            gap: 8,
           }}
         >
-          {/* Notification icon */}
+          {/* Notifications */}
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Notifications"
+            accessibilityLabel={
+              unreadNotifications > 0
+                ? `Notifications, ${unreadNotifications} unread`
+                : "Notifications"
+            }
             onPress={onNotificationsPress}
-            style={{
-              width: 36,
-              height: 42,
+            hitSlop={6}
+            style={({ pressed }) => ({
+              width: BELL_SIZE,
+              height: BELL_SIZE,
+              borderRadius: BELL_SIZE / 2,
               alignItems: "center",
               justifyContent: "center",
-            }}
+              opacity: pressed ? 0.55 : 1,
+            })}
           >
             <Ionicons
               name="notifications-outline"
-              size={25}
+              size={24}
               color={palette.heading}
             />
 
@@ -91,72 +101,91 @@ export default function HomeHeader({
               <View
                 style={{
                   position: "absolute",
-                  top: 4,
-                  right: 2,
-                  width: 9,
-                  height: 9,
-                  borderRadius: 5,
+                  top: 5,
+                  right: 4,
+                  minWidth: 18,
+                  height: 18,
+                  paddingHorizontal: 5,
+                  borderRadius: 9,
                   backgroundColor: "#E34D59",
-                  borderWidth: 1.5,
+                  borderWidth: 2,
                   borderColor: palette.background,
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
-              />
+              >
+                <Text
+                  style={{
+                    color: "#FFFFFF",
+                    fontSize: 10,
+                    fontWeight: "800",
+                    lineHeight: 12,
+                  }}
+                >
+                  {badgeLabel}
+                </Text>
+              </View>
             ) : null}
           </Pressable>
 
-          {/* User profile photo */}
+          {/* Profile avatar */}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Open profile"
             onPress={onProfilePress}
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: 21,
+            hitSlop={4}
+            style={({ pressed }) => ({
+              width: AVATAR_SIZE,
+              height: AVATAR_SIZE,
+              borderRadius: AVATAR_SIZE / 2,
               overflow: "hidden",
-              borderWidth: 1.5,
+              borderWidth: 2,
               borderColor: palette.border,
               backgroundColor: palette.avatar,
               alignItems: "center",
               justifyContent: "center",
-            }}
+              opacity: pressed ? 0.72 : 1,
+            })}
           >
             {avatarUri ? (
               <Image
                 source={{ uri: avatarUri }}
                 resizeMode="cover"
                 style={{
-                  width: 42,
-                  height: 42,
+                  width: AVATAR_SIZE,
+                  height: AVATAR_SIZE,
                 }}
               />
             ) : (
               <Text
                 style={{
                   color: palette.blue,
-                  fontSize: 17,
+                  fontSize: 22,
                   fontWeight: "900",
                 }}
               >
-                {firstName.charAt(0).toUpperCase()}
+                {initial}
               </Text>
             )}
           </Pressable>
         </View>
       </View>
 
-      {/* User's current location */}
+      {/* Location row */}
       {onLocationPress ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Current location: ${locationLabel}`}
           onPress={onLocationPress}
-          style={{
-            minHeight: 26,
+          hitSlop={6}
+          style={({ pressed }) => ({
+            minHeight: 28,
             flexDirection: "row",
             alignItems: "center",
             gap: 6,
-          }}
+            alignSelf: "flex-start",
+            opacity: pressed ? 0.6 : 1,
+          })}
         >
           <Ionicons
             name="location-sharp"
@@ -168,7 +197,7 @@ export default function HomeHeader({
             numberOfLines={1}
             style={{
               color: palette.heading,
-              fontSize: 12,
+              fontSize: 13,
               fontWeight: "700",
             }}
           >
@@ -184,10 +213,11 @@ export default function HomeHeader({
       ) : (
         <View
           style={{
-            minHeight: 26,
+            minHeight: 28,
             flexDirection: "row",
             alignItems: "center",
             gap: 6,
+            alignSelf: "flex-start",
           }}
         >
           <Ionicons
@@ -200,7 +230,7 @@ export default function HomeHeader({
             numberOfLines={1}
             style={{
               color: palette.heading,
-              fontSize: 12,
+              fontSize: 13,
               fontWeight: "700",
             }}
           >

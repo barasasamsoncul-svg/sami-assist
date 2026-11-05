@@ -1,15 +1,24 @@
-
-import { Pressable, StyleSheet, Text, View, useColorScheme } from "react-native";
+import { ComponentProps } from "react";
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useColorScheme,
+} from "react-native";
 import { router, usePathname, type Href } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+type IoniconName = ComponentProps<typeof Ionicons>["name"];
 
 type TabItem = {
   path: string;
   href: Href;
   label: string;
-  icon: React.ComponentProps<typeof Ionicons>["name"];
-  activeIcon: React.ComponentProps<typeof Ionicons>["name"];
+  icon: IoniconName;
+  activeIcon: IoniconName;
 };
 
 const tabs: TabItem[] = [
@@ -43,6 +52,8 @@ const tabs: TabItem[] = [
   },
 ];
 
+const VISIBLE_PATHS = new Set(["/", "/errands", "/messages", "/account"]);
+
 export default function CustomerFooter() {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
@@ -56,6 +67,7 @@ export default function CustomerFooter() {
         blue: "#83B4FF",
         selected: "#193552",
         create: "#2D73CC",
+        createShadow: "#000000",
       }
     : {
         background: "#FFFFFF",
@@ -64,13 +76,16 @@ export default function CustomerFooter() {
         blue: "#2463B8",
         selected: "#EAF1FC",
         create: "#2463B8",
+        createShadow: "#102A4A",
       };
 
-  const currentPath = pathname === "/index" ? "/" : pathname;
+  // expo-router exposes the index as "/", but guard against "/index" and "/(app)".
+  const currentPath =
+    pathname === "/index" || pathname === "/(app)" || pathname === ""
+      ? "/"
+      : pathname;
 
-  const visiblePaths = ["/", "/errands", "/messages", "/account"];
-
-  if (!visiblePaths.includes(currentPath)) {
+  if (!VISIBLE_PATHS.has(currentPath)) {
     return null;
   }
 
@@ -88,19 +103,21 @@ export default function CustomerFooter() {
             router.replace(tab.href);
           }
         }}
-        style={styles.tabButton}
+        hitSlop={{ top: 6, bottom: 6 }}
+        style={({ pressed }) => [
+          styles.tabButton,
+          { opacity: pressed ? 0.6 : 1 },
+        ]}
       >
         <View
           style={[
             styles.iconWrap,
-            selected && {
-              backgroundColor: palette.selected,
-            },
+            selected && { backgroundColor: palette.selected },
           ]}
         >
           <Ionicons
             name={selected ? tab.activeIcon : tab.icon}
-            size={23}
+            size={22}
             color={selected ? palette.blue : palette.muted}
           />
         </View>
@@ -111,7 +128,7 @@ export default function CustomerFooter() {
             styles.tabLabel,
             {
               color: selected ? palette.blue : palette.muted,
-              fontWeight: selected ? "900" : "600",
+              fontWeight: selected ? "800" : "600",
             },
           ]}
         >
@@ -129,12 +146,11 @@ export default function CustomerFooter() {
         {
           backgroundColor: palette.background,
           borderTopColor: palette.border,
-          paddingBottom: Math.max(insets.bottom, 7),
+          paddingBottom: Math.max(insets.bottom, 8),
         },
       ]}
     >
       {renderTab(tabs[0])}
-
       {renderTab(tabs[1])}
 
       {/* Central create button */}
@@ -142,26 +158,34 @@ export default function CustomerFooter() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Create an errand"
+          accessibilityHint="Opens the new errand form"
           onPress={() => router.push("/(app)/request")}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           style={({ pressed }) => [
             styles.createButton,
             {
               backgroundColor: palette.create,
               borderColor: palette.background,
-              opacity: pressed ? 0.8 : 1,
+              opacity: pressed ? 0.86 : 1,
+              transform: [{ scale: pressed ? 0.94 : 1 }],
+              shadowColor: palette.createShadow,
+              ...Platform.select({
+                ios: {
+                  shadowOpacity: isDark ? 0.5 : 0.18,
+                  shadowRadius: 8,
+                  shadowOffset: { width: 0, height: 5 },
+                },
+                android: { elevation: 6 },
+                default: {},
+              }),
             },
           ]}
         >
-          <Ionicons
-            name="add"
-            size={30}
-            color="#FFFFFF"
-          />
+          <Ionicons name="add" size={28} color="#FFFFFF" />
         </Pressable>
       </View>
 
       {renderTab(tabs[2])}
-
       {renderTab(tabs[3])}
     </View>
   );
@@ -169,11 +193,10 @@ export default function CustomerFooter() {
 
 const styles = StyleSheet.create({
   footer: {
-    minHeight: 66,
+    minHeight: 64,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-around",
-    paddingHorizontal: 5,
+    paddingHorizontal: 4,
     paddingTop: 6,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
@@ -188,16 +211,16 @@ const styles = StyleSheet.create({
   },
 
   iconWrap: {
-    width: 42,
-    height: 27,
+    width: 44,
+    height: 28,
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
 
   tabLabel: {
-    fontSize: 10,
-    letterSpacing: 0.1,
+    fontSize: 10.5,
+    letterSpacing: 0.05,
   },
 
   centerSlot: {
@@ -208,12 +231,12 @@ const styles = StyleSheet.create({
   },
 
   createButton: {
-    width: 45,
-    height: 45,
-    borderRadius: 23,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 3,
-    marginTop: -12,
+    marginTop: -16,
   },
 });
