@@ -176,17 +176,48 @@ jobs:
           }
           NODE
 
-      - name: Align Expo SDK dependencies with the installed SDK
-        run: npx expo install --fix
-
-      - name: Check Expo SDK dependency compatibility
-        run: npx expo install --check
+      - name: Check Expo SDK dependency compatibility without changing native packages
+        shell: bash
+        run: |
+          if ! npx expo install --check; then
+            echo "::warning::The committed dependency versions differ from the latest Expo patch recommendations. They are intentionally not auto-upgraded in OTA CI because changing native package versions changes the runtime fingerprint and can make this update incompatible with the installed APK."
+          fi
 
       - name: Type-check app
         run: npm run typecheck
 
       - name: Check Expo project health
-        run: npx expo-doctor
+        shell: bash
+        run: |
+          set -uo pipefail
+          DOCTOR_LOG="$RUNNER_TEMP/sami-expo-doctor.log"
+          DOCTOR_STATUS=0
+
+          npx expo-doctor 2>&1 | tee "$DOCTOR_LOG" || DOCTOR_STATUS=$?
+
+          if [[ "$DOCTOR_STATUS" -eq 0 ]]; then
+            exit 0
+          fi
+
+          # The production APK is pinned to this exact native package set.
+          # Allow only this known SDK patch-version advisory; the fingerprint
+          # gate below still blocks any OTA incompatible with the installed APK.
+          if grep -Fq "20/21 checks passed. 1 checks failed." "$DOCTOR_LOG" \
+            && grep -Fq "Check that packages match versions required by installed Expo SDK" "$DOCTOR_LOG" \
+            && grep -Fq "7 packages out of date." "$DOCTOR_LOG" \
+            && grep -Fq "expo                ~57.0.32  57.0.31" "$DOCTOR_LOG" \
+            && grep -Fq "expo-constants      ~57.0.23  57.0.22" "$DOCTOR_LOG" \
+            && grep -Fq "expo-location       ~57.0.23  57.0.22" "$DOCTOR_LOG" \
+            && grep -Fq "expo-router         ~57.0.30  57.0.29" "$DOCTOR_LOG" \
+            && grep -Fq "expo-sharing        ~57.0.25  57.0.24" "$DOCTOR_LOG" \
+            && grep -Fq "expo-splash-screen  ~57.0.11  57.0.10" "$DOCTOR_LOG" \
+            && grep -Fq "expo-updates        ~57.0.27  57.0.26" "$DOCTOR_LOG"; then
+            echo "::warning::Expo Doctor passed all non-dependency checks. The seven pinned patch versions are retained to match the installed production APK."
+            exit 0
+          fi
+
+          echo "Expo Doctor reported an issue beyond the known production APK patch-version set." >&2
+          exit "$DOCTOR_STATUS"
 
       - name: Verify production Android JavaScript bundle
         run: npx expo export --platform android --output-dir "$RUNNER_TEMP/sami-production-ota-bundle"
@@ -227,6 +258,80 @@ jobs:
           fs.unlinkSync(envPath);
 
           console.log("Restricted Google Maps key loaded; value was not logged.");
+          NODE
+
+      - name: Verify OTA fingerprint matches the latest production APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BUILD_LIST="$RUNNER_TEMP/sami-production-build-list.json"
+          FINGERPRINT_COMPARE="$RUNNER_TEMP/sami-production-fingerprint-compare.json"
+
+          npx eas-cli@latest build:list \
+            --platform android \
+            --build-profile production \
+            --channel production \
+            --status finished \
+            --limit 1 \
+            --json \
+            --non-interactive > "$BUILD_LIST"
+
+          BUILD_ID="$(node - "$BUILD_LIST" <<'NODE'
+          const fs = require("node:fs");
+          const parsed = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const builds = Array.isArray(parsed)
+            ? parsed
+            : parsed.builds ?? parsed.data ?? parsed.items ?? [];
+          const finished = builds
+            .filter((build) => String(build.status ?? "").toUpperCase() === "FINISHED")
+            .sort((a, b) => Date.parse(b.createdAt ?? b.created_at ?? 0) - Date.parse(a.createdAt ?? a.created_at ?? 0));
+          process.stdout.write(finished[0]?.id ?? "");
+          NODE
+          )"
+
+          test -n "$BUILD_ID" || {
+            echo "No finished production Android APK was found on the production channel." >&2
+            exit 1
+          }
+
+          echo "Checking runtime compatibility against production APK: $BUILD_ID"
+
+          npx eas-cli@latest fingerprint:compare \
+            --build-id "$BUILD_ID" \
+            --environment production \
+            --json \
+            --non-interactive > "$FINGERPRINT_COMPARE"
+
+          node - "$FINGERPRINT_COMPARE" "$BUILD_ID" <<'NODE'
+          const fs = require("node:fs");
+          const [file, buildId] = process.argv.slice(2);
+          const raw = fs.readFileSync(file, "utf8");
+          const jsonStart = raw.indexOf("{");
+          const jsonEnd = raw.lastIndexOf("}");
+
+          if (jsonStart < 0 || jsonEnd < jsonStart) {
+            throw new Error("EAS fingerprint comparison did not return a JSON result.");
+          }
+
+          const comparison = JSON.parse(raw.slice(jsonStart, jsonEnd + 1));
+          const hashes = ["fingerprint1", "fingerprint2"]
+            .map((key) => comparison[key]?.hash)
+            .filter(Boolean);
+
+          if (hashes.length !== 2) {
+            throw new Error("EAS fingerprint comparison did not return both the production APK and current project fingerprints.");
+          }
+
+          if (hashes[0] !== hashes[1]) {
+            console.error("The current OTA project fingerprint does not match the latest production APK.");
+            console.error("APK/project comparison: " + hashes.join(" vs "));
+            console.error("Refusing to publish an OTA update that the installed production APK cannot receive.");
+            process.exit(1);
+          }
+
+          console.log("Runtime compatibility verified for production APK " + buildId + ".");
+          console.log("Both fingerprints: " + hashes[0]);
           NODE
 
       - name: Publish compatible production Android update
