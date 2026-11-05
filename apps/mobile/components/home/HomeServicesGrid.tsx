@@ -1,13 +1,12 @@
-import { ComponentProps, useMemo } from "react";
-import { Pressable, Text, View } from "react-native";
+import { useMemo } from "react";
+import { Image, Pressable, Text, View } from "react-native";
+import type { ImageSourcePropType } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-
-type IoniconName = ComponentProps<typeof Ionicons>["name"];
 
 type Service = {
   id: string;
   category: string;
-  icon: IoniconName;
+  illustration: ImageSourcePropType;
   title: string;
   keywords: string;
   color: string;
@@ -20,22 +19,22 @@ type Props = {
 };
 
 const services: Service[] = [
-  { id: "groceries", category: "groceries", icon: "basket", title: "Groceries", keywords: "food supermarket market shopping milk bread", color: "#D99A37" },
-  { id: "food", category: "food_delivery", icon: "fast-food", title: "Food & Delivery", keywords: "restaurant meals takeaway lunch dinner", color: "#D97770" },
-  { id: "pickup", category: "pickup_delivery", icon: "cube", title: "Pick Up & Drop Off", keywords: "parcel package collection courier send", color: "#6284C9" },
-  { id: "bills", category: "bill_payments", icon: "receipt", title: "Bills & Payments", keywords: "pay bills utilities airtime electricity water", color: "#D8A14A" },
-  { id: "laundry", category: "laundry_cleaning", icon: "shirt", title: "Laundry & Dry Cleaning", keywords: "clothes washing ironing cleaning", color: "#6D9BCB" },
-  { id: "documents", category: "documents_admin", icon: "document-text", title: "Documents & Government", keywords: "forms offices paperwork administration", color: "#7897CC" },
-  { id: "clothing", category: "clothing_retail", icon: "pricetag", title: "Clothing & Returns", keywords: "clothes fashion retail exchange returns", color: "#C87EA0" },
-  { id: "gifts", category: "shopping_gifts", icon: "gift", title: "Shopping & Gifts", keywords: "purchases presents gifts retail", color: "#C87EA0" },
-  { id: "home", category: "home_services", icon: "home", title: "Home Services", keywords: "house household repair plumbing electrician", color: "#5CA99B" },
-  { id: "pharmacy", category: "pharmacy_health", icon: "medkit", title: "Pharmacy & Health", keywords: "medicine pharmacy healthcare clinic drugs", color: "#59A985" },
-  { id: "petcare", category: "pet_care", icon: "paw", title: "Pet Care", keywords: "pets animals dog cat supplies", color: "#D0A05A" },
-  { id: "personal", category: "personal_errand", icon: "person", title: "Personal Assistance", keywords: "personal help assistance custom tasks", color: "#5CA995" },
-  { id: "queues", category: "queue_appointments", icon: "time", title: "Queues & Appointments", keywords: "waiting bookings appointments line", color: "#5CA99B" },
-  { id: "business", category: "business_support", icon: "briefcase", title: "Business Errands", keywords: "business office company work support", color: "#7193C8" },
-  { id: "shopping", category: "shopping", icon: "cart", title: "Shopping & Essentials", keywords: "shopping essentials store purchases", color: "#D2A051" },
-  { id: "other", category: "other", icon: "construct", title: "Custom Errand", keywords: "other different special request custom anything", color: "#7193C8" },
+  { id: "groceries", category: "groceries", illustration: require("../../assets/service-illustrations/groceries.png"), title: "Groceries", keywords: "food supermarket market shopping milk bread", color: "#D99A37" },
+  { id: "food", category: "food_delivery", illustration: require("../../assets/service-illustrations/food.png"), title: "Food & Delivery", keywords: "restaurant meals takeaway lunch dinner", color: "#D97770" },
+  { id: "pickup", category: "pickup_delivery", illustration: require("../../assets/service-illustrations/pickup.png"), title: "Pick Up & Drop Off", keywords: "parcel package collection courier send", color: "#6284C9" },
+  { id: "bills", category: "bill_payments", illustration: require("../../assets/service-illustrations/bills.png"), title: "Bills & Payments", keywords: "pay bills utilities airtime electricity water", color: "#D8A14A" },
+  { id: "laundry", category: "laundry_cleaning", illustration: require("../../assets/service-illustrations/laundry.png"), title: "Laundry & Dry Cleaning", keywords: "clothes washing ironing cleaning", color: "#6D9BCB" },
+  { id: "documents", category: "documents_admin", illustration: require("../../assets/service-illustrations/documents.png"), title: "Documents & Government", keywords: "forms offices paperwork administration", color: "#7897CC" },
+  { id: "clothing", category: "clothing_retail", illustration: require("../../assets/service-illustrations/clothing.png"), title: "Clothing & Returns", keywords: "clothes fashion retail exchange returns", color: "#C87EA0" },
+  { id: "gifts", category: "shopping_gifts", illustration: require("../../assets/service-illustrations/gifts.png"), title: "Shopping & Gifts", keywords: "purchases presents gifts retail", color: "#C87EA0" },
+  { id: "home", category: "home_services", illustration: require("../../assets/service-illustrations/home.png"), title: "Home Services", keywords: "house household repair plumbing electrician", color: "#5CA99B" },
+  { id: "pharmacy", category: "pharmacy_health", illustration: require("../../assets/service-illustrations/pharmacy.png"), title: "Pharmacy & Health", keywords: "medicine pharmacy healthcare clinic drugs", color: "#59A985" },
+  { id: "petcare", category: "pet_care", illustration: require("../../assets/service-illustrations/petcare.png"), title: "Pet Care", keywords: "pets animals dog cat supplies", color: "#D0A05A" },
+  { id: "personal", category: "personal_errand", illustration: require("../../assets/service-illustrations/personal.png"), title: "Personal Assistance", keywords: "personal help assistance custom tasks", color: "#5CA995" },
+  { id: "queues", category: "queue_appointments", illustration: require("../../assets/service-illustrations/queues.png"), title: "Queues & Appointments", keywords: "waiting bookings appointments line", color: "#5CA99B" },
+  { id: "business", category: "business_support", illustration: require("../../assets/service-illustrations/business.png"), title: "Business Errands", keywords: "business office company work support", color: "#7193C8" },
+  { id: "shopping", category: "shopping", illustration: require("../../assets/service-illustrations/shopping.png"), title: "Shopping & Essentials", keywords: "shopping essentials store purchases", color: "#D2A051" },
+  { id: "other", category: "other", illustration: require("../../assets/service-illustrations/other.png"), title: "Custom Errand", keywords: "other different special request custom anything", color: "#7193C8" },
 ];
 
 const darkIconColors: Record<string, string> = {
@@ -198,7 +197,11 @@ export default function HomeServicesGrid({
                 backgroundColor: `${iconColor}${isDark ? "2E" : "16"}`,
               }}
             >
-              <Ionicons name={service.icon} size={19} color={iconColor} />
+              <Image
+                source={service.illustration}
+                resizeMode="contain"
+                style={{ width: 36, height: 36 }}
+              />
             </View>
 
             <Text
