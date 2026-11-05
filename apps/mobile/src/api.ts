@@ -1,4 +1,3 @@
-
 import * as SecureStore from "expo-secure-store";
 
 const SESSION_KEY = "sami_errands_access_token";
@@ -38,6 +37,20 @@ async function clearSession() {
   );
 }
 
+function describeError(cause: unknown): string {
+  if (cause instanceof Error) {
+    const nested = (cause as Error & { cause?: unknown }).cause;
+
+    if (nested instanceof Error && nested.message) {
+      return `${cause.message}: ${nested.message}`;
+    }
+
+    return cause.message || cause.name;
+  }
+
+  return String(cause || "Unknown network error");
+}
+
 export async function apiRequest<T = any>(
   path: string,
   options: ApiOptions = {},
@@ -45,6 +58,9 @@ export async function apiRequest<T = any>(
   const token = await SecureStore.getItemAsync(
     SESSION_KEY,
   ).catch(() => null);
+
+  const method = options.method || "GET";
+  const requestUrl = apiBase() + path;
 
   const headers: Record<string, string> = {
     Accept: "application/json",
@@ -85,18 +101,26 @@ export async function apiRequest<T = any>(
   let response: Response;
 
   try {
-    response = await fetch(apiBase() + path, {
-      method: options.method || "GET",
+    response = await fetch(requestUrl, {
+      method,
       headers,
       body: requestBody,
     });
-  } catch {
+  } catch (cause) {
+    const detail = describeError(cause);
+
+    console.error("[SaMi API] Network request failed.", {
+      method,
+      path,
+      error: detail,
+    });
+
     if (isLogout) {
       await clearSession();
     }
 
     throw new Error(
-      "Could not reach SaMi. Check your connection and API URL, then try again.",
+      `SaMi network request failed (${method} ${path}): ${detail}`,
     );
   }
 
@@ -116,7 +140,7 @@ export async function apiRequest<T = any>(
     throw new Error(
       typeof payload?.error === "string"
         ? payload.error
-        : "SaMi could not complete that request.",
+        : `SaMi request failed with HTTP ${response.status}.`,
     );
   }
 
