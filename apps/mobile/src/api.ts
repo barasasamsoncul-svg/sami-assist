@@ -1,3 +1,4 @@
+
 import * as SecureStore from "expo-secure-store";
 
 const SESSION_KEY = "sami_errands_access_token";
@@ -25,7 +26,7 @@ function apiBase(): string {
 }
 
 export type ApiOptions = {
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "DELETE";
   body?: unknown;
   nativeAuth?: boolean;
   headers?: Record<string, string>;
@@ -50,7 +51,11 @@ export async function apiRequest<T = any>(
     "x-sami-client": "native",
   };
 
-  if (options.body !== undefined) {
+  const isFormData =
+    typeof FormData !== "undefined" &&
+    options.body instanceof FormData;
+
+  if (options.body !== undefined && !isFormData) {
     headers["Content-Type"] = "application/json";
   }
 
@@ -70,16 +75,20 @@ export async function apiRequest<T = any>(
     action === "logout" ||
     path.includes("action=logout");
 
+  const requestBody =
+    options.body === undefined
+      ? undefined
+      : isFormData
+        ? options.body as FormData
+        : JSON.stringify(options.body);
+
   let response: Response;
 
   try {
     response = await fetch(apiBase() + path, {
       method: options.method || "GET",
       headers,
-      body:
-        options.body === undefined
-          ? undefined
-          : JSON.stringify(options.body),
+      body: requestBody,
     });
   } catch {
     if (isLogout) {

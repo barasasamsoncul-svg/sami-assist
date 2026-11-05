@@ -48,7 +48,13 @@
           "hidden": false,
           "style": "light"
         }
-      ]
+      ],
+      [
+  "expo-image-picker",
+  {
+    "photosPermission": "SaMi needs access to your photos so you can choose a profile picture."
+  }
+]
     ],
     "ios": {
       "supportsTablet": true,
