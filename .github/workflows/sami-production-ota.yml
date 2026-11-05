@@ -176,11 +176,12 @@ jobs:
           }
           NODE
 
-      - name: Align Expo SDK dependencies with the installed SDK
-        run: npx expo install --fix
-
-      - name: Check Expo SDK dependency compatibility
-        run: npx expo install --check
+      - name: Check Expo SDK dependency compatibility without changing native packages
+        shell: bash
+        run: |
+          if ! npx expo install --check; then
+            echo "::warning::The committed dependency versions differ from the latest Expo patch recommendations. They are intentionally not auto-upgraded in OTA CI because changing native package versions changes the runtime fingerprint and can make this update incompatible with the installed APK."
+          fi
 
       - name: Type-check app
         run: npm run typecheck
@@ -227,6 +228,72 @@ jobs:
           fs.unlinkSync(envPath);
 
           console.log("Restricted Google Maps key loaded; value was not logged.");
+          NODE
+
+      - name: Verify OTA fingerprint matches the latest production APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BUILD_LIST="$RUNNER_TEMP/sami-production-build-list.json"
+          FINGERPRINT_COMPARE="$RUNNER_TEMP/sami-production-fingerprint-compare.json"
+
+          npx eas-cli@latest build:list \
+            --platform android \
+            --build-profile production \
+            --channel production \
+            --status finished \
+            --limit 1 \
+            --json \
+            --non-interactive > "$BUILD_LIST"
+
+          BUILD_ID="$(node - "$BUILD_LIST" <<'NODE'
+          const fs = require("node:fs");
+          const parsed = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const builds = Array.isArray(parsed)
+            ? parsed
+            : parsed.builds ?? parsed.data ?? parsed.items ?? [];
+          const finished = builds
+            .filter((build) => String(build.status ?? "").toUpperCase() === "FINISHED")
+            .sort((a, b) => Date.parse(b.createdAt ?? b.created_at ?? 0) - Date.parse(a.createdAt ?? a.created_at ?? 0));
+          process.stdout.write(finished[0]?.id ?? "");
+          NODE
+          )"
+
+          test -n "$BUILD_ID" || {
+            echo "No finished production Android APK was found on the production channel." >&2
+            exit 1
+          }
+
+          echo "Checking runtime compatibility against production APK: $BUILD_ID"
+
+          npx eas-cli@latest fingerprint:compare \
+            --build-id "$BUILD_ID" \
+            --environment production \
+            --json \
+            --non-interactive > "$FINGERPRINT_COMPARE"
+
+          node - "$FINGERPRINT_COMPARE" "$BUILD_ID" <<'NODE'
+          const fs = require("node:fs");
+          const [file, buildId] = process.argv.slice(2);
+          const comparison = JSON.parse(fs.readFileSync(file, "utf8"));
+          const hashes = ["fingerprint1", "fingerprint2"]
+            .map((key) => comparison[key]?.hash)
+            .filter(Boolean);
+
+          if (hashes.length !== 2) {
+            throw new Error("EAS fingerprint comparison did not return both the production APK and current project fingerprints.");
+          }
+
+          if (hashes[0] !== hashes[1]) {
+            console.error("The current OTA project fingerprint does not match the latest production APK.");
+            console.error("APK/project comparison: " + hashes.join(" vs "));
+            console.error("Refusing to publish an OTA update that the installed production APK cannot receive.");
+            process.exit(1);
+          }
+
+          console.log("Runtime compatibility verified for production APK " + buildId + ".");
+          console.log("Both fingerprints: " + hashes[0]);
           NODE
 
       - name: Publish compatible production Android update
