@@ -10,6 +10,7 @@ on:
       - "apps/mobile/components/**"
       - "apps/mobile/src/**"
       - "apps/mobile/assets/**"
+      - ".github/workflows/sami-production-ota.yml"
       - "!apps/mobile/assets/icon.png"
       - "!apps/mobile/assets/adaptive-icon.png"
       - "!apps/mobile/assets/sami-app-icon-1024.png"
@@ -174,6 +175,9 @@ jobs:
             throw new Error("OTA updates require fingerprint runtime compatibility.");
           }
           NODE
+
+      - name: Align Expo SDK dependencies with the installed SDK
+        run: npx expo install --fix
 
       - name: Check Expo SDK dependency compatibility
         run: npx expo install --check
