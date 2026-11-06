@@ -23,7 +23,12 @@ const STATUSES = [
   "closed",
 ] as const;
 
+const ERRAND_HELP_OPENING_MESSAGE =
+  "Hi, tell me a little more about what happened so I can help.";
+
 type SupportCategory = (typeof CATEGORIES)[number];
+
+type SupportFlow = "general" | "errand_help";
 
 function error(message: string, status = 400) {
   return NextResponse.json(
@@ -82,7 +87,10 @@ export async function GET(request: Request) {
   }
 
   if (user.role === "customer" && !isNativeClient(request)) {
-    return error("Customer support requests must use the SaMi mobile app.", 403);
+    return error(
+      "Customer support requests must use the SaMi mobile app.",
+      403,
+    );
   }
 
   if (user.role !== "customer" && user.role !== "admin") {
@@ -205,19 +213,33 @@ export async function GET(request: Request) {
 /**
  * POST /api/support/tickets
  *
- * Creates a customer support ticket and its first message.
+ * Creates a customer support ticket and its opening message.
  *
- * Request body:
+ * General request:
  * {
- *   "category": "errand",
- *   "subject": "Issue with my errand",
- *   "message": "Describe the problem here.",
- *   "relatedErrandId": "optional-errand-uuid"
+ *   "category": "account",
+ *   "subject": "Account access problem",
+ *   "message": "Describe the problem here."
  * }
+ *
+ * Errand-help request:
+ * {
+ *   "flow": "errand_help",
+ *   "category": "errand",
+ *   "subject": "Errand help: My provider is late",
+ *   "message": "I need help with: My provider is late",
+ *   "relatedErrandId": "errand-uuid"
+ * }
+ *
+ * Errand-help conversations also receive a persistent opening
+ * message from SaMi Support.
  */
 export async function POST(request: Request) {
   if (!isNativeClient(request)) {
-    return error("Support requests must be submitted through the SaMi mobile app.", 403);
+    return error(
+      "Support requests must be submitted through the SaMi mobile app.",
+      403,
+    );
   }
 
   const user = await getCurrentUser(request).catch(() => null);
@@ -227,7 +249,10 @@ export async function POST(request: Request) {
   }
 
   if (user.role !== "customer") {
-    return error("Only customer accounts can submit support requests.", 403);
+    return error(
+      "Only customer accounts can submit support requests.",
+      403,
+    );
   }
 
   let body: Record<string, unknown>;
@@ -243,6 +268,19 @@ export async function POST(request: Request) {
   } catch {
     return error("The support request body is invalid.");
   }
+
+  const requestedFlow = body.flow === undefined
+    ? "general"
+    : body.flow;
+
+  if (
+    requestedFlow !== "general" &&
+    requestedFlow !== "errand_help"
+  ) {
+    return error("Select a valid support request type.");
+  }
+
+  const flow: SupportFlow = requestedFlow;
 
   const category = cleanText(body.category, 30);
   const subject = cleanText(body.subject, 160);
@@ -269,6 +307,24 @@ export async function POST(request: Request) {
     return error("The related errand reference is invalid.");
   }
 
+  if (flow === "errand_help") {
+    if (!relatedErrandId) {
+      return error("An errand must be attached to an errand-help conversation.");
+    }
+
+    if (!subject.startsWith("Errand help: ")) {
+      return error("Select the errand issue before opening the conversation.");
+    }
+
+    if (!message.startsWith("I need help with: ")) {
+      return error("The selected errand issue is missing.");
+    }
+
+    if (category === "account") {
+      return error("Choose an errand-related support category.");
+    }
+  }
+
   try {
     if (relatedErrandId) {
       const errand = await query(
@@ -281,7 +337,10 @@ export async function POST(request: Request) {
       );
 
       if (!errand.rows[0]) {
-        return error("The selected errand could not be found in your account.", 404);
+        return error(
+          "The selected errand could not be found in your account.",
+          404,
+        );
       }
     }
 
@@ -321,7 +380,8 @@ export async function POST(request: Request) {
 
       const ticket = ticketResult.rows[0];
 
-      const messageResult = await client.query(
+      // The initial customer message preserves the issue selected.
+      const firstMessageResult = await client.query(
         `INSERT INTO public.support_ticket_messages (
            ticket_id,
            sender_id,
@@ -339,6 +399,39 @@ export async function POST(request: Request) {
         [ticket.id, user.id, message],
       );
 
+      // Create a persistent SaMi welcome message for the
+      // dedicated errand-help conversation flow.
+      //
+      // sender_id is NULL because this is an automated SaMi message.
+      // The existing support API displays admin-role messages as
+      // "SaMi Support" and exposes public messages to the customer.
+      let openingMessage = null;
+
+      if (flow === "errand_help") {
+        const openingMessageResult = await client.query(
+          `INSERT INTO public.support_ticket_messages (
+             ticket_id,
+             sender_id,
+             sender_role,
+             message,
+             is_internal
+           )
+           VALUES ($1, NULL, 'admin', $2, false)
+           RETURNING
+             id,
+             ticket_id,
+             sender_role,
+             message,
+             created_at`,
+          [
+            ticket.id,
+            ERRAND_HELP_OPENING_MESSAGE,
+          ],
+        );
+
+        openingMessage = openingMessageResult.rows[0];
+      }
+
       await client.query(
         `UPDATE public.support_tickets
          SET updated_at = now()
@@ -352,7 +445,8 @@ export async function POST(request: Request) {
         {
           message: "Your support request has been submitted.",
           ticket,
-          firstMessage: messageResult.rows[0],
+          firstMessage: firstMessageResult.rows[0],
+          openingMessage,
         },
         {
           status: 201,
@@ -371,6 +465,9 @@ export async function POST(request: Request) {
       cause instanceof Error ? cause.message : "Unknown error",
     );
 
-    return error("Your support request could not be submitted. Please try again.", 503);
+    return error(
+      "Your support request could not be submitted. Please try again.",
+      503,
+    );
   }
 }

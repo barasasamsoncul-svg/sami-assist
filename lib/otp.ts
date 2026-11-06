@@ -9,7 +9,8 @@ export type OtpChannel = "sms" | "whatsapp" | "email";
 export type EmailOtpPurpose =
   | "register"
   | "login"
-  | "delete_account";
+  | "delete_account"
+  | "change_contact";
 
 export interface EmailOtpOptions {
   purpose: EmailOtpPurpose;
@@ -19,6 +20,7 @@ export interface EmailOtpOptions {
 export function isOtpProviderConfigured(channel: OtpChannel): boolean {
   if (channel === "email") {
     const port = Number(process.env.SMTP_PORT);
+
     return Boolean(
       process.env.EMAIL_PROVIDER?.trim().toLowerCase() === "smtp" &&
       process.env.SMTP_HOST?.trim() &&
@@ -93,7 +95,10 @@ function emailOtpPepper(): string {
   return pepper;
 }
 
-/** Per-challenge code derivation avoids storing OTPs or hashes in PostgreSQL. */
+/**
+ * Derives a unique code per challenge.
+ * Verification codes and hashes are not stored in PostgreSQL.
+ */
 export function createEmailOtpCode(challengeId: string): string {
   const digest = createHmac("sha256", emailOtpPepper())
     .update("sami-email-otp:" + challengeId)
@@ -188,36 +193,47 @@ export async function sendEmailOtp(
 
   const isRegistration = options.purpose === "register";
   const isDeletion = options.purpose === "delete_account";
+  const isContactChange = options.purpose === "change_contact";
 
   const subject = isRegistration
     ? "Verify your email to join SaMi"
     : isDeletion
       ? "Confirm your SaMi account deletion request"
-      : "Your SaMi sign-in code";
+      : isContactChange
+        ? "Verify your new SaMi email address"
+        : "Your SaMi sign-in code";
 
   const action = isRegistration
     ? "finish creating your SaMi account"
     : isDeletion
       ? "confirm your request to delete your SaMi account"
-      : "sign in to your SaMi account";
+      : isContactChange
+        ? "confirm your new email address"
+        : "sign in to your SaMi account";
 
   const heading = isRegistration
     ? "Welcome to SaMi"
     : isDeletion
       ? "Confirm account deletion"
-      : "Your sign-in code";
+      : isContactChange
+        ? "Verify your new email"
+        : "Your sign-in code";
 
   const purposeText = isRegistration
     ? "complete your SaMi account registration"
     : isDeletion
       ? "verify your identity before permanently deleting your account"
-      : "securely sign in to your SaMi account";
+      : isContactChange
+        ? "verify the new email address you want associated with your SaMi account"
+        : "securely sign in to your SaMi account";
 
   const eyebrow = isRegistration
     ? "WELCOME TO SAMI"
     : isDeletion
       ? "ACCOUNT DELETION"
-      : "SECURE SIGN IN";
+      : isContactChange
+        ? "CONTACT VERIFICATION"
+        : "SECURE SIGN IN";
 
   const safeCode = escapeEmailHtml(code);
 

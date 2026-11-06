@@ -7,26 +7,60 @@ import {
   StatusBar,
   Text,
   View,
+  useColorScheme,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 
 import { dispatchGet } from "@/api";
-import { colors, common } from "@/theme";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
+
+type Palette = {
+  background: string;
+  surface: string;
+  surfaceRaised: string;
+  border: string;
+  heading: string;
+  text: string;
+  muted: string;
+  accent: string;
+  accentSoft: string;
+  successBackground: string;
+  successText: string;
+  dangerBackground: string;
+  dangerText: string;
+  dangerBorder: string;
+  white: string;
+};
+
+type ExportResponse = {
+  exportVersion?: number;
+  exportedAt?: string;
+  retentionNote?: string;
+  profile?: Record<string, unknown> | null;
+  errands?: unknown[];
+  payments?: unknown[];
+  notifications?: unknown[];
+  messages?: unknown[];
+  ratings?: unknown[];
+  events?: unknown[];
+  calls?: unknown[];
+};
 
 function PrivacyItem({
   icon,
   title,
   description,
+  palette,
 }: {
   icon: IconName;
   title: string;
   description: string;
+  palette: Palette;
 }) {
   return (
     <View
@@ -34,26 +68,26 @@ function PrivacyItem({
         flexDirection: "row",
         alignItems: "flex-start",
         gap: 12,
-        paddingVertical: 13,
+        paddingVertical: 14,
       }}
     >
       <View
         style={{
-          width: 40,
-          height: 40,
-          borderRadius: 12,
-          backgroundColor: colors.blueSoft,
+          width: 42,
+          height: 42,
+          borderRadius: 13,
+          backgroundColor: palette.accentSoft,
           alignItems: "center",
           justifyContent: "center",
         }}
       >
-        <Ionicons name={icon} size={20} color={colors.navy} />
+        <Ionicons name={icon} size={20} color={palette.accent} />
       </View>
 
-      <View style={{ flex: 1, gap: 4 }}>
+      <View style={{ flex: 1, gap: 5 }}>
         <Text
           style={{
-            color: colors.navy,
+            color: palette.heading,
             fontSize: 13,
             fontWeight: "900",
           }}
@@ -63,9 +97,9 @@ function PrivacyItem({
 
         <Text
           style={{
-            color: colors.muted,
+            color: palette.muted,
             fontSize: 12,
-            lineHeight: 18,
+            lineHeight: 19,
           }}
         >
           {description}
@@ -75,7 +109,78 @@ function PrivacyItem({
   );
 }
 
+function SectionHeading({
+  eyebrow,
+  title,
+  description,
+  palette,
+}: {
+  eyebrow: string;
+  title: string;
+  description?: string;
+  palette: Palette;
+}) {
+  return (
+    <View style={{ gap: 6 }}>
+      <Text
+        style={{
+          color: palette.accent,
+          fontSize: 11,
+          fontWeight: "900",
+          letterSpacing: 1.2,
+        }}
+      >
+        {eyebrow}
+      </Text>
+
+      <Text
+        style={{
+          color: palette.heading,
+          fontSize: 19,
+          fontWeight: "900",
+          letterSpacing: -0.3,
+        }}
+      >
+        {title}
+      </Text>
+
+      {description ? (
+        <Text
+          style={{
+            color: palette.muted,
+            fontSize: 13,
+            lineHeight: 20,
+          }}
+        >
+          {description}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 export default function CustomerPrivacyScreen() {
+  const insets = useSafeAreaInsets();
+  const isDark = useColorScheme() === "dark";
+
+  const palette: Palette = {
+    background: isDark ? "#080F1D" : "#F7F8FA",
+    surface: isDark ? "#111A2C" : "#FFFFFF",
+    surfaceRaised: isDark ? "#17243A" : "#F1F5FB",
+    border: isDark ? "#293951" : "#E6E9EF",
+    heading: isDark ? "#F4F7FF" : "#000535",
+    text: isDark ? "#E7EEF9" : "#24324A",
+    muted: isDark ? "#AAB8CC" : "#78869A",
+    accent: isDark ? "#79AEFF" : "#2463B8",
+    accentSoft: isDark ? "#172D4D" : "#EAF1FC",
+    successBackground: isDark ? "#14372F" : "#E8F7EF",
+    successText: isDark ? "#83DDB8" : "#18794E",
+    dangerBackground: isDark ? "#3E2026" : "#FFF0EF",
+    dangerText: isDark ? "#FF9B94" : "#B42318",
+    dangerBorder: isDark ? "#67343D" : "#F0D5D2",
+    white: "#FFFFFF",
+  };
+
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -87,12 +192,20 @@ export default function CustomerPrivacyScreen() {
     setError("");
     setNotice("");
 
+    let fileUri: string | null = null;
+
     try {
-      const data = await dispatchGet<Record<string, unknown>>(
+      const data = await dispatchGet<ExportResponse>(
         "exportMyData",
       );
 
-      const root = FileSystem.documentDirectory;
+      if (!data || typeof data !== "object") {
+        throw new Error(
+          "SaMi returned an invalid data export. Please try again.",
+        );
+      }
+
+      const root = FileSystem.cacheDirectory;
 
       if (!root) {
         throw new Error(
@@ -104,7 +217,7 @@ export default function CustomerPrivacyScreen() {
         .toISOString()
         .replace(/[:.]/g, "-");
 
-      const fileUri =
+      fileUri =
         root + "sami-data-export-" + timestamp + ".json";
 
       await FileSystem.writeAsStringAsync(
@@ -130,7 +243,7 @@ export default function CustomerPrivacyScreen() {
       });
 
       setNotice(
-        "Your SaMi data export is ready to save or share.",
+        "Your SaMi data export is ready to save or share. Keep the file somewhere private because it contains personal account information.",
       );
     } catch (cause) {
       setError(
@@ -146,24 +259,25 @@ export default function CustomerPrivacyScreen() {
   return (
     <SafeAreaView
       edges={["top", "left", "right", "bottom"]}
-      style={common.screen}
+      style={{
+        flex: 1,
+        backgroundColor: palette.background,
+      }}
     >
       <StatusBar
         hidden={false}
         translucent={false}
-        backgroundColor={colors.paper}
-        barStyle="dark-content"
+        backgroundColor={palette.background}
+        barStyle={isDark ? "light-content" : "dark-content"}
       />
 
       <ScrollView
-        contentContainerStyle={[
-          common.content,
-          {
-            paddingTop: 18,
-            paddingBottom: 45,
-            gap: 21,
-          },
-        ]}
+        contentContainerStyle={{
+          paddingHorizontal: 20,
+          paddingTop: 16,
+          paddingBottom: Math.max(insets.bottom, 26) + 16,
+          gap: 21,
+        }}
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
@@ -180,12 +294,12 @@ export default function CustomerPrivacyScreen() {
             accessibilityLabel="Back to Account"
             onPress={() => router.back()}
             style={{
-              width: 42,
-              height: 42,
-              borderRadius: 14,
-              backgroundColor: colors.white,
+              width: 46,
+              height: 46,
+              borderRadius: 15,
+              backgroundColor: palette.surface,
               borderWidth: 1,
-              borderColor: colors.border,
+              borderColor: palette.border,
               alignItems: "center",
               justifyContent: "center",
             }}
@@ -193,44 +307,64 @@ export default function CustomerPrivacyScreen() {
             <Ionicons
               name="arrow-back"
               size={20}
-              color={colors.navy}
+              color={palette.heading}
             />
           </Pressable>
 
-          <View style={{ flex: 1, gap: 3 }}>
-            <Text style={common.eyebrow}>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text
+              style={{
+                color: palette.accent,
+                fontSize: 11,
+                fontWeight: "900",
+                letterSpacing: 1.3,
+              }}
+            >
               YOUR INFORMATION
             </Text>
 
-            <Text style={common.title}>
+            <Text
+              style={{
+                color: palette.heading,
+                fontSize: 23,
+                fontWeight: "900",
+                letterSpacing: -0.5,
+              }}
+            >
               Data & Privacy
             </Text>
           </View>
         </View>
 
-        <Text style={common.subtitle}>
-          Understand how your personal information is handled
-          and access a copy of the data associated with your
-          SaMi account.
+        <Text
+          style={{
+            color: palette.muted,
+            fontSize: 13,
+            lineHeight: 21,
+          }}
+        >
+          Understand the information associated with your SaMi
+          account and request a copy of the available personal data.
         </Text>
 
         {/* Privacy introduction */}
 
         <View
-          style={[
-            common.card,
-            {
-              padding: 18,
-              gap: 12,
-            },
-          ]}
+          style={{
+            padding: 19,
+            borderRadius: 22,
+            backgroundColor: palette.surface,
+            borderWidth: 1,
+            borderColor: palette.border,
+            gap: 13,
+          }}
         >
           <View
             style={{
-              width: 52,
-              height: 52,
-              borderRadius: 16,
-              backgroundColor: colors.blueSoft,
+              width: 54,
+              height: 54,
+              borderRadius: 17,
+              backgroundColor: palette.accentSoft,
               alignItems: "center",
               justifyContent: "center",
             }}
@@ -238,146 +372,153 @@ export default function CustomerPrivacyScreen() {
             <Ionicons
               name="shield-checkmark-outline"
               size={27}
-              color={colors.navy}
+              color={palette.accent}
             />
           </View>
 
           <Text
             style={{
-              color: colors.navy,
-              fontSize: 17,
+              color: palette.heading,
+              fontSize: 19,
               fontWeight: "900",
             }}
           >
-            Your data belongs to you
+            Your information matters
           </Text>
 
           <Text
             style={{
-              color: colors.muted,
+              color: palette.muted,
               fontSize: 13,
               lineHeight: 21,
             }}
           >
-            SaMi maintains information required to provide
-            your account and errand services. You can request
-            an export of the personal information associated
-            with your account.
+            SaMi maintains information needed to provide your
+            account, errand services, customer support and payment
+            history. You can request an export of the information
+            currently returned by the SaMi data-export service.
           </Text>
         </View>
 
-        {/* Information categories */}
+        {/* Data categories */}
 
-        <View style={{ gap: 5 }}>
-          <Text style={common.eyebrow}>
-            YOUR INFORMATION
-          </Text>
+        <SectionHeading
+          eyebrow="YOUR INFORMATION"
+          title="Information associated with your account"
+          description="The export service includes the following categories where records are available."
+          palette={palette}
+        />
 
-          <Text
-            style={{
-              color: colors.navy,
-              fontSize: 18,
-              fontWeight: "900",
-            }}
-          >
-            Information associated with your account
-          </Text>
-
-          <Text style={common.subtitle}>
-            Your export can include the following categories
-            where records exist.
-          </Text>
-        </View>
-
-        <View style={[common.card, { paddingHorizontal: 14 }]}>
+        <View
+          style={{
+            paddingHorizontal: 15,
+            paddingVertical: 3,
+            borderRadius: 20,
+            backgroundColor: palette.surface,
+            borderWidth: 1,
+            borderColor: palette.border,
+          }}
+        >
           <PrivacyItem
             icon="person-outline"
             title="Personal profile"
-            description="Your registered name, email address, phone number and account information."
+            description="Your registered name, email address, phone number and account details."
+            palette={palette}
           />
 
-          <View style={{ height: 1, backgroundColor: colors.border }} />
+          <View style={{ height: 1, backgroundColor: palette.border }} />
 
           <PrivacyItem
             icon="receipt-outline"
             title="Errand records"
             description="Your errand requests, descriptions, statuses and associated activity."
+            palette={palette}
           />
 
-          <View style={{ height: 1, backgroundColor: colors.border }} />
+          <View style={{ height: 1, backgroundColor: palette.border }} />
 
           <PrivacyItem
             icon="wallet-outline"
             title="Payment information"
             description="Available payment records, transaction references and payment statuses."
+            palette={palette}
           />
 
-          <View style={{ height: 1, backgroundColor: colors.border }} />
+          <View style={{ height: 1, backgroundColor: palette.border }} />
 
           <PrivacyItem
             icon="notifications-outline"
             title="Notifications"
             description="Notifications and service updates associated with your account."
+            palette={palette}
           />
 
-          <View style={{ height: 1, backgroundColor: colors.border }} />
+          <View style={{ height: 1, backgroundColor: palette.border }} />
 
           <PrivacyItem
             icon="chatbubbles-outline"
             title="Messages and ratings"
-            description="Available errand conversations, ratings and review records."
+            description="Available errand conversations, rating comments and review records."
+            palette={palette}
+          />
+
+          <View style={{ height: 1, backgroundColor: palette.border }} />
+
+          <PrivacyItem
+            icon="time-outline"
+            title="Activity and call history"
+            description="Available errand event history and call records associated with your errands."
+            palette={palette}
           />
         </View>
 
-        {/* Export data */}
+        {/* Data export */}
 
-        <View style={{ gap: 7 }}>
-          <Text style={common.eyebrow}>
-            DATA ACCESS
-          </Text>
-
-          <Text
-            style={{
-              color: colors.navy,
-              fontSize: 18,
-              fontWeight: "900",
-            }}
-          >
-            Export your data
-          </Text>
-
-          <Text style={common.subtitle}>
-            Generate a JSON file containing the personal data
-            returned by SaMi and save or share it on your device.
-          </Text>
-        </View>
+        <SectionHeading
+          eyebrow="DATA ACCESS"
+          title="Export your data"
+          description="Generate a JSON file containing the personal data returned by SaMi and save or share it on your device."
+          palette={palette}
+        />
 
         <View
-          style={[
-            common.card,
-            {
-              padding: 17,
-              gap: 13,
-            },
-          ]}
+          style={{
+            padding: 18,
+            borderRadius: 20,
+            backgroundColor: palette.surface,
+            borderWidth: 1,
+            borderColor: palette.border,
+            gap: 15,
+          }}
         >
           <View
             style={{
               flexDirection: "row",
               alignItems: "center",
-              gap: 11,
+              gap: 12,
             }}
           >
-            <Ionicons
-              name="document-text-outline"
-              size={27}
-              color={colors.navy}
-            />
+            <View
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 15,
+                backgroundColor: palette.accentSoft,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons
+                name="document-text-outline"
+                size={25}
+                color={palette.accent}
+              />
+            </View>
 
-            <View style={{ flex: 1, gap: 3 }}>
+            <View style={{ flex: 1, gap: 4 }}>
               <Text
                 style={{
-                  color: colors.navy,
+                  color: palette.heading,
                   fontSize: 14,
                   fontWeight: "900",
                 }}
@@ -387,64 +528,109 @@ export default function CustomerPrivacyScreen() {
 
               <Text
                 style={{
-                  color: colors.muted,
+                  color: palette.muted,
                   fontSize: 11,
                 }}
               >
-                JSON format
+                JSON file · Device sharing
               </Text>
             </View>
 
-            <View style={common.pill}>
+            <View
+              style={{
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 20,
+                backgroundColor: palette.accentSoft,
+              }}
+            >
               <Text
                 style={{
-                  color: colors.navy,
+                  color: palette.accent,
                   fontSize: 10,
-                  fontWeight: "800",
+                  fontWeight: "900",
+                  letterSpacing: 0.5,
                 }}
               >
-                DOWNLOAD
+                EXPORT
               </Text>
             </View>
           </View>
 
           <Text
             style={{
-              color: colors.muted,
+              color: palette.muted,
               fontSize: 12,
-              lineHeight: 18,
+              lineHeight: 19,
             }}
           >
-            SaMi requests your account data, prepares a file
-            on your device and opens the system sharing menu.
+            SaMi securely requests your account data, prepares a
+            JSON file locally and opens your device's sharing menu.
+            You can save the file or share it with an app of your choice.
           </Text>
+
+          <View
+            style={{
+              padding: 12,
+              borderRadius: 13,
+              backgroundColor: palette.surfaceRaised,
+              flexDirection: "row",
+              alignItems: "flex-start",
+              gap: 9,
+            }}
+          >
+            <Ionicons
+              name="lock-closed-outline"
+              size={17}
+              color={palette.accent}
+            />
+
+            <Text
+              style={{
+                flex: 1,
+                color: palette.muted,
+                fontSize: 11,
+                lineHeight: 17,
+              }}
+            >
+              Your export may contain personal, errand and payment
+              information. Store it securely and share it only with
+              people or services you trust.
+            </Text>
+          </View>
 
           <Pressable
             accessibilityRole="button"
             disabled={exporting}
             onPress={() => void exportData()}
-            style={[
-              common.primaryButton,
-              {
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 9,
-                opacity: exporting ? 0.6 : 1,
-              },
-            ]}
+            style={{
+              minHeight: 53,
+              borderRadius: 15,
+              backgroundColor: palette.accent,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 9,
+              opacity: exporting ? 0.6 : 1,
+            }}
           >
             {exporting ? (
-              <ActivityIndicator color={colors.white} />
+              <ActivityIndicator color={palette.white} />
             ) : (
               <Ionicons
                 name="download-outline"
                 size={19}
-                color={colors.white}
+                color={palette.white}
               />
             )}
 
-            <Text style={common.primaryButtonText}>
+            <Text
+              style={{
+                color: palette.white,
+                fontSize: 14,
+                fontWeight: "900",
+              }}
+            >
               {exporting
                 ? "Preparing your export..."
                 : "Export my data"}
@@ -455,26 +641,60 @@ export default function CustomerPrivacyScreen() {
         {/* Feedback */}
 
         {error ? (
-          <Text
-            accessibilityRole="alert"
-            style={common.error}
+          <View
+            style={{
+              padding: 13,
+              borderRadius: 13,
+              backgroundColor: palette.dangerBackground,
+              borderWidth: 1,
+              borderColor: palette.dangerBorder,
+              flexDirection: "row",
+              alignItems: "flex-start",
+              gap: 9,
+            }}
           >
-            {error}
-          </Text>
+            <Ionicons
+              name="alert-circle-outline"
+              size={19}
+              color={palette.dangerText}
+            />
+
+            <Text
+              accessibilityRole="alert"
+              style={{
+                flex: 1,
+                color: palette.dangerText,
+                fontSize: 12,
+                lineHeight: 19,
+              }}
+            >
+              {error}
+            </Text>
+          </View>
         ) : null}
 
         {notice ? (
           <View
             style={{
               padding: 13,
-              borderRadius: 12,
-              backgroundColor: colors.blueSoft,
+              borderRadius: 13,
+              backgroundColor: palette.successBackground,
+              flexDirection: "row",
+              alignItems: "flex-start",
+              gap: 9,
             }}
           >
+            <Ionicons
+              name="checkmark-circle-outline"
+              size={19}
+              color={palette.successText}
+            />
+
             <Text
               style={{
-                color: colors.navy,
-                fontSize: 13,
+                flex: 1,
+                color: palette.successText,
+                fontSize: 12,
                 fontWeight: "700",
                 lineHeight: 19,
               }}
@@ -484,51 +704,64 @@ export default function CustomerPrivacyScreen() {
           </View>
         ) : null}
 
-        {/* Account deletion navigation */}
+        {/* Account deletion */}
 
         <View
           style={{
-            padding: 15,
-            borderRadius: 15,
-            backgroundColor: "#FFF8F7",
+            padding: 16,
+            borderRadius: 18,
+            backgroundColor: palette.surface,
             borderWidth: 1,
-            borderColor: "#F0D5D2",
-            gap: 8,
+            borderColor: palette.dangerBorder,
+            gap: 10,
           }}
         >
           <View
             style={{
               flexDirection: "row",
               alignItems: "center",
-              gap: 8,
+              gap: 9,
             }}
           >
-            <Ionicons
-              name="trash-outline"
-              size={19}
-              color={colors.red}
-            />
+            <View
+              style={{
+                width: 39,
+                height: 39,
+                borderRadius: 12,
+                backgroundColor: palette.dangerBackground,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons
+                name="trash-outline"
+                size={19}
+                color={palette.dangerText}
+              />
+            </View>
 
             <Text
               style={{
-                color: colors.red,
+                flex: 1,
+                color: palette.heading,
                 fontSize: 14,
                 fontWeight: "900",
               }}
             >
-              Want to delete your account?
+              Account deletion
             </Text>
           </View>
 
           <Text
             style={{
-              color: colors.muted,
+              color: palette.muted,
               fontSize: 12,
-              lineHeight: 18,
+              lineHeight: 19,
             }}
           >
-            Account deletion and personal information removal
-            are handled separately.
+            Deactivating your account and removing eligible
+            personal information is handled separately from
+            downloading your data.
           </Text>
 
           <Pressable
@@ -537,16 +770,19 @@ export default function CustomerPrivacyScreen() {
               router.push("/(app)/account/delete-account" as never)
             }
             style={{
+              minHeight: 43,
+              borderRadius: 12,
+              backgroundColor: palette.dangerBackground,
               flexDirection: "row",
               alignItems: "center",
-              gap: 6,
-              paddingVertical: 5,
+              justifyContent: "center",
+              gap: 8,
             }}
           >
             <Text
               style={{
-                color: colors.red,
-                fontSize: 13,
+                color: palette.dangerText,
+                fontSize: 12,
                 fontWeight: "900",
               }}
             >
@@ -556,33 +792,41 @@ export default function CustomerPrivacyScreen() {
             <Ionicons
               name="arrow-forward"
               size={16}
-              color={colors.red}
+              color={palette.dangerText}
             />
           </Pressable>
         </View>
 
-        {/* Footer */}
+        {/* Back to Account */}
 
         <Pressable
           accessibilityRole="button"
           onPress={() => router.replace("/(app)/account")}
-          style={[
-            common.secondaryButton,
-            {
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 8,
-            },
-          ]}
+          style={{
+            minHeight: 51,
+            borderRadius: 15,
+            backgroundColor: palette.surface,
+            borderWidth: 1,
+            borderColor: palette.border,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 9,
+          }}
         >
           <Ionicons
             name="arrow-back"
             size={17}
-            color={colors.navy}
+            color={palette.heading}
           />
 
-          <Text style={common.secondaryButtonText}>
+          <Text
+            style={{
+              color: palette.heading,
+              fontSize: 14,
+              fontWeight: "900",
+            }}
+          >
             Back to Account
           </Text>
         </Pressable>

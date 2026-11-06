@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   ActivityIndicator,
@@ -16,8 +22,9 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { router } from "expo-router";
-import { dispatchGet } from "@/api";
+import { router, useFocusEffect } from "expo-router";
+
+import { apiRequest } from "@/api";
 
 import HomeHeader from "../../components/home/HomeHeader";
 import HomeSearch from "../../components/home/HomeSearch";
@@ -29,14 +36,16 @@ type User = {
   full_name: string;
   email: string;
   phone: string | null;
-  role: "customer";
-  avatar_url?: string | null;
+  avatar_url: string | null;
+};
+
+type ProfileResponse = {
+  profile: User;
 };
 
 const NAVY = "#000535";
 const BLUE = "#2463B8";
 
-/** Spacing scale — every gap in this screen comes from here. */
 const SPACE = {
   screenX: 20,
   section: 22,
@@ -44,7 +53,6 @@ const SPACE = {
   bottom: 32,
 };
 
-/** Routes hoisted to module scope (was inside the component). */
 const SERVICE_ROUTES: Record<string, string> = {
   groceries: "/(app)/services/groceries",
   food_delivery: "/(app)/services/food",
@@ -122,11 +130,22 @@ function SkeletonBlock({
 function HomeGridSkeleton({ surface }: { surface: string }) {
   return (
     <View style={{ gap: 12 }}>
-      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+        }}
+      >
         <SkeletonBlock width="48%" height={92} radius={18} color={surface} />
         <SkeletonBlock width="48%" height={92} radius={18} color={surface} />
       </View>
-      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+        }}
+      >
         <SkeletonBlock width="48%" height={92} radius={18} color={surface} />
         <SkeletonBlock width="48%" height={92} radius={18} color={surface} />
       </View>
@@ -142,6 +161,7 @@ export default function HomeScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
+
   const hasLoadedOnce = useRef(false);
 
   const loadHome = useCallback(async () => {
@@ -149,8 +169,19 @@ export default function HomeScreen() {
     setError("");
 
     try {
-      const result = await dispatchGet<{ user: User }>("me");
-      setUser(result.user);
+      // This endpoint returns the signed avatar URL as well as
+      // the customer's current name and contact information.
+      const result = await apiRequest<ProfileResponse>(
+        "/api/customer/profile",
+      );
+
+      if (!result.profile) {
+        throw new Error(
+          "Your customer profile could not be loaded.",
+        );
+      }
+
+      setUser(result.profile);
     } catch (e) {
       setError(
         e instanceof Error
@@ -163,36 +194,52 @@ export default function HomeScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    void loadHome();
-  }, [loadHome]);
+  // Refresh when returning from Account or Personal Profile.
+  // This also obtains a fresh signed URL after an avatar change.
+  useFocusEffect(
+    useCallback(() => {
+      void loadHome();
+    }, [loadHome]),
+  );
 
   const firstName = useMemo(() => {
     const trimmed = user?.full_name?.trim();
-    return trimmed ? trimmed.split(/\s+/)[0] : "there";
+
+    return trimmed
+      ? trimmed.split(/\s+/)[0]
+      : "there";
   }, [user?.full_name]);
 
   const openService = useCallback((category: string) => {
     const destination = SERVICE_ROUTES[category];
+
     if (destination) {
       router.push(destination as never);
     }
   }, []);
 
-  const showSkeleton = !hasLoadedOnce.current && !user && busy;
+  const showSkeleton =
+    !hasLoadedOnce.current && !user && busy;
 
   return (
     <SafeAreaView
       edges={["top", "left", "right"]}
-      style={{ flex: 1, backgroundColor: palette.background }}
+      style={{
+        flex: 1,
+        backgroundColor: palette.background,
+      }}
     >
       <StatusBar
         translucent={false}
         backgroundColor={palette.background}
-        barStyle={palette.isDark ? "light-content" : "dark-content"}
+        barStyle={
+          palette.isDark
+            ? "light-content"
+            : "dark-content"
+        }
       />
 
-      {/* Header stays pinned — the only fixed element on the screen. */}
+      {/* Header stays pinned. */}
       <View
         style={{
           paddingHorizontal: SPACE.screenX,
@@ -206,8 +253,12 @@ export default function HomeScreen() {
           locationLabel="Set your location"
           unreadNotifications={0}
           isDark={palette.isDark}
-          onNotificationsPress={() => router.push("/(app)/notifications")}
-          onProfilePress={() => router.push("/(app)/account")}
+          onNotificationsPress={() =>
+            router.push("/(app)/notifications")
+          }
+          onProfilePress={() =>
+            router.push("/(app)/account")
+          }
         />
       </View>
 
@@ -229,21 +280,18 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Search */}
         <HomeSearch
           value={searchQuery}
           onChangeText={setSearchQuery}
           isDark={palette.isDark}
         />
 
-        {/* Promo */}
         <HomePromoHero
           isDark={palette.isDark}
           title={"Big or small,\nwe run your errands."}
           subtitle="Save time. Live more."
         />
 
-        {/* Section heading */}
         <View style={{ gap: 4 }}>
           <Text
             style={{
@@ -255,12 +303,17 @@ export default function HomeScreen() {
           >
             What do you need today?
           </Text>
-          <Text style={{ color: palette.muted, fontSize: 13 }}>
+
+          <Text
+            style={{
+              color: palette.muted,
+              fontSize: 13,
+            }}
+          >
             Tap a service to start your errand
           </Text>
         </View>
 
-        {/* Error card with retry */}
         {error ? (
           <View
             accessibilityRole="alert"
@@ -295,7 +348,9 @@ export default function HomeScreen() {
             >
               <Text
                 style={{
-                  color: palette.isDark ? "#06101F" : "#FFFFFF",
+                  color: palette.isDark
+                    ? "#06101F"
+                    : "#FFFFFF",
                   fontSize: 13,
                   fontWeight: "600",
                 }}
@@ -306,7 +361,6 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
-        {/* Grid — replaced by skeleton on first load only */}
         {showSkeleton ? (
           <HomeGridSkeleton surface={palette.surface} />
         ) : (
@@ -318,10 +372,12 @@ export default function HomeScreen() {
         )}
 
         {busy && !user && hasLoadedOnce.current ? (
-          <ActivityIndicator color={palette.blue} style={{ marginTop: 8 }} />
+          <ActivityIndicator
+            color={palette.blue}
+            style={{ marginTop: 8 }}
+          />
         ) : null}
 
-        {/* Closing trust line */}
         <Text
           style={{
             color: palette.muted,

@@ -1,5 +1,5 @@
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
 import { File as ExpoFile } from "expo-file-system";
 import {
@@ -14,13 +14,13 @@ import {
   Text,
   TextInput,
   View,
+  useColorScheme,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 
 import { apiRequest } from "@/api";
-import { colors, common } from "@/theme";
 
 type CustomerProfile = {
   id: string;
@@ -39,6 +39,17 @@ type ProfileResponse = {
   profile: CustomerProfile;
 };
 
+type ProfileUpdateResponse = {
+  ok: boolean;
+  message: string;
+  user: {
+    id: string;
+    full_name: string;
+    email: string;
+    phone: string | null;
+  };
+};
+
 function initials(name: string) {
   return (
     name
@@ -51,6 +62,28 @@ function initials(name: string) {
 }
 
 export default function PersonalProfileScreen() {
+  const insets = useSafeAreaInsets();
+  const isDark = useColorScheme() === "dark";
+
+  const palette = {
+    background: isDark ? "#080F1D" : "#F7F8FA",
+    surface: isDark ? "#111A2C" : "#FFFFFF",
+    surfaceRaised: isDark ? "#17243A" : "#F1F5FB",
+    input: isDark ? "#0B1424" : "#FFFFFF",
+    border: isDark ? "#293951" : "#E6E9EF",
+    heading: isDark ? "#F4F7FF" : "#000535",
+    text: isDark ? "#E7EEF9" : "#24324A",
+    muted: isDark ? "#AAB8CC" : "#78869A",
+    accent: isDark ? "#79AEFF" : "#2463B8",
+    accentSoft: isDark ? "#172D4D" : "#EAF1FC",
+    successBackground: isDark ? "#14372F" : "#E8F7EF",
+    successText: isDark ? "#83DDB8" : "#18794E",
+    dangerBackground: isDark ? "#3E2026" : "#FFF0EF",
+    dangerText: isDark ? "#FF9B94" : "#B42318",
+    dangerBorder: isDark ? "#67343D" : "#F0D5D2",
+    white: "#FFFFFF",
+  };
+
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
   const [fullName, setFullName] = useState("");
   const [originalName, setOriginalName] = useState("");
@@ -66,7 +99,6 @@ export default function PersonalProfileScreen() {
   const loadProfile = useCallback(async () => {
     setLoading(true);
     setError("");
-    setNotice("");
 
     try {
       const result = await apiRequest<ProfileResponse>(
@@ -92,20 +124,23 @@ export default function PersonalProfileScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    void loadProfile();
-  }, [loadProfile]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadProfile();
+    }, [loadProfile]),
+  );
 
   async function saveProfile() {
     const cleanName = fullName.trim().replace(/\s+/g, " ");
 
     if (cleanName.length < 2 || cleanName.length > 120) {
       setError("Your name must be between 2 and 120 characters.");
+      setNotice("");
       return;
     }
 
     if (cleanName === originalName.trim()) {
-      setNotice("There are no changes to save.");
+      setNotice("There are no profile changes to save.");
       setError("");
       return;
     }
@@ -115,21 +150,19 @@ export default function PersonalProfileScreen() {
     setNotice("");
 
     try {
-      const result = await apiRequest<{
-        ok: boolean;
-        message: string;
-        user: {
-          id: string;
-          full_name: string;
-          email: string;
-          phone: string | null;
-        };
-      }>("/api/customer/profile", {
-        method: "POST",
-        body: {
-          fullName: cleanName,
+      const result = await apiRequest<ProfileUpdateResponse>(
+        "/api/customer/profile",
+        {
+          method: "POST",
+          body: {
+            fullName: cleanName,
+          },
         },
-      });
+      );
+
+      if (!result.ok || !result.user) {
+        throw new Error("Your profile could not be updated.");
+      }
 
       setProfile((current) =>
         current
@@ -176,13 +209,12 @@ export default function PersonalProfileScreen() {
         return;
       }
 
-      const selection =
-        await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ["images"],
-          allowsEditing: true,
-          aspect: [1, 1],
-          quality: 0.86,
-        });
+      const selection = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.86,
+      });
 
       if (selection.canceled || !selection.assets[0]) {
         return;
@@ -211,24 +243,29 @@ export default function PersonalProfileScreen() {
           "Please choose a JPEG, PNG or WebP image.",
         );
       }
-const form = new FormData();
 
-const imageFile = new ExpoFile(asset.uri);
+      const form = new FormData();
+      const imageFile = new ExpoFile(asset.uri);
 
-form.append(
-  "avatar",
-  imageFile,
-  asset.fileName || "sami-avatar.jpg",
-);
+      form.append(
+        "avatar",
+        imageFile,
+        asset.fileName || "sami-avatar.jpg",
+      );
 
-const result = await apiRequest<{
-  ok: boolean;
-  message: string;
-  avatar_url: string;
-}>("/api/customer/profile/avatar", {
-  method: "POST",
-  body: form,
-});
+      const result = await apiRequest<{
+        ok: boolean;
+        message: string;
+        avatar_url: string;
+      }>("/api/customer/profile/avatar", {
+        method: "POST",
+        body: form,
+      });
+
+      if (!result.ok || !result.avatar_url) {
+        throw new Error("Your profile photo could not be uploaded.");
+      }
+
       setProfile((current) =>
         current
           ? {
@@ -267,6 +304,10 @@ const result = await apiRequest<{
       }>("/api/customer/profile/avatar", {
         method: "DELETE",
       });
+
+      if (!result.ok) {
+        throw new Error("Your profile photo could not be removed.");
+      }
 
       setProfile((current) =>
         current
@@ -313,26 +354,57 @@ const result = await apiRequest<{
   }
 
   const cleanName = fullName.trim().replace(/\s+/g, " ");
+  const hasChanges = cleanName !== originalName.trim();
+  const displayName = fullName.trim() || "Your profile";
+  const showAvatar = Boolean(profile?.avatar_url) && !avatarFailed;
 
-  const hasChanges =
-    cleanName !== originalName.trim();
+  function VerificationStatus({ verified }: { verified: boolean }) {
+    return (
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 5,
+          paddingHorizontal: 9,
+          paddingVertical: 6,
+          borderRadius: 20,
+          backgroundColor: verified
+            ? palette.successBackground
+            : palette.surfaceRaised,
+        }}
+      >
+        <Ionicons
+          name={verified ? "checkmark-circle" : "time-outline"}
+          size={13}
+          color={verified ? palette.successText : palette.muted}
+        />
 
-  const displayName =
-    fullName.trim() || "Your profile";
-
-  const showAvatar =
-    Boolean(profile?.avatar_url) && !avatarFailed;
+        <Text
+          style={{
+            color: verified ? palette.successText : palette.muted,
+            fontSize: 10,
+            fontWeight: "900",
+          }}
+        >
+          {verified ? "VERIFIED" : "NOT VERIFIED"}
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView
       edges={["top", "left", "right", "bottom"]}
-      style={common.screen}
+      style={{
+        flex: 1,
+        backgroundColor: palette.background,
+      }}
     >
       <StatusBar
         hidden={false}
         translucent={false}
-        backgroundColor={colors.paper}
-        barStyle="dark-content"
+        backgroundColor={palette.background}
+        barStyle={isDark ? "light-content" : "dark-content"}
       />
 
       <KeyboardAvoidingView
@@ -342,7 +414,7 @@ const result = await apiRequest<{
         <ScrollView
           contentContainerStyle={{
             padding: 20,
-            paddingBottom: 48,
+            paddingBottom: Math.max(insets.bottom, 28) + 20,
             gap: 20,
           }}
           keyboardShouldPersistTaps="handled"
@@ -362,12 +434,12 @@ const result = await apiRequest<{
               accessibilityLabel="Go back"
               onPress={() => router.back()}
               style={{
-                width: 42,
-                height: 42,
-                borderRadius: 14,
-                backgroundColor: colors.white,
+                width: 46,
+                height: 46,
+                borderRadius: 15,
+                backgroundColor: palette.surface,
                 borderWidth: 1,
-                borderColor: colors.border,
+                borderColor: palette.border,
                 alignItems: "center",
                 justifyContent: "center",
               }}
@@ -375,20 +447,28 @@ const result = await apiRequest<{
               <Ionicons
                 name="arrow-back"
                 size={20}
-                color={colors.navy}
+                color={palette.heading}
               />
             </Pressable>
 
-            <View style={{ flex: 1, gap: 3 }}>
-              <Text style={common.eyebrow}>
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text
+                style={{
+                  color: palette.accent,
+                  fontSize: 11,
+                  fontWeight: "900",
+                  letterSpacing: 1.3,
+                }}
+              >
                 YOUR ACCOUNT
               </Text>
 
               <Text
                 style={{
-                  color: colors.navy,
+                  color: palette.heading,
                   fontSize: 23,
                   fontWeight: "900",
+                  letterSpacing: -0.5,
                 }}
               >
                 Personal profile
@@ -396,45 +476,57 @@ const result = await apiRequest<{
             </View>
           </View>
 
+          {/* Loading state */}
+
           {loading ? (
             <View
               style={{
-                paddingVertical: 70,
+                paddingVertical: 72,
                 alignItems: "center",
-                gap: 12,
+                gap: 13,
               }}
             >
               <ActivityIndicator
                 size="large"
-                color={colors.blue}
+                color={palette.accent}
               />
 
-              <Text style={common.subtitle}>
+              <Text
+                style={{
+                  color: palette.muted,
+                  fontSize: 13,
+                }}
+              >
                 Loading your profile...
               </Text>
             </View>
-          ) : profile ? (
+          ) : null}
+
+          {/* Profile content */}
+
+          {!loading && profile ? (
             <>
-              {/* Profile photograph */}
+              {/* Profile identity and photo */}
 
               <View
-                style={[
-                  common.card,
-                  {
-                    alignItems: "center",
-                    paddingVertical: 25,
-                    gap: 12,
-                  },
-                ]}
+                style={{
+                  padding: 20,
+                  borderRadius: 22,
+                  backgroundColor: palette.surface,
+                  borderWidth: 1,
+                  borderColor: palette.border,
+                  alignItems: "center",
+                  gap: 12,
+                }}
               >
                 <View
                   style={{
-                    width: 104,
-                    height: 104,
-                    borderRadius: 52,
-                    backgroundColor: colors.blueSoft,
+                    width: 112,
+                    height: 112,
+                    borderRadius: 56,
+                    backgroundColor: palette.accentSoft,
                     borderWidth: 3,
-                    borderColor: colors.border,
+                    borderColor: palette.border,
                     alignItems: "center",
                     justifyContent: "center",
                     overflow: "hidden",
@@ -443,21 +535,19 @@ const result = await apiRequest<{
                   {showAvatar ? (
                     <Image
                       key={profile.avatar_url}
-                      source={{
-                        uri: profile.avatar_url!,
-                      }}
+                      source={{ uri: profile.avatar_url! }}
                       resizeMode="cover"
                       onError={() => setAvatarFailed(true)}
                       style={{
-                        width: 104,
-                        height: 104,
+                        width: 112,
+                        height: 112,
                       }}
                     />
                   ) : (
                     <Text
                       style={{
-                        color: colors.navy,
-                        fontSize: 34,
+                        color: palette.accent,
+                        fontSize: 36,
                         fontWeight: "900",
                       }}
                     >
@@ -473,38 +563,39 @@ const result = await apiRequest<{
                         bottom: 0,
                         left: 0,
                         right: 0,
-                        backgroundColor: "rgba(0,0,0,0.45)",
+                        backgroundColor: "rgba(0,0,0,0.48)",
                         alignItems: "center",
                         justifyContent: "center",
                       }}
                     >
                       <ActivityIndicator
-                        color={colors.white}
+                        color={palette.white}
                         size="large"
                       />
                     </View>
                   ) : null}
                 </View>
 
-                <Text
-                  style={{
-                    color: colors.navy,
-                    fontSize: 17,
-                    fontWeight: "900",
-                  }}
-                >
-                  {displayName}
-                </Text>
+                <View style={{ alignItems: "center", gap: 4 }}>
+                  <Text
+                    style={{
+                      color: palette.heading,
+                      fontSize: 18,
+                      fontWeight: "900",
+                    }}
+                  >
+                    {displayName}
+                  </Text>
 
-                <Text
-                  style={{
-                    color: colors.muted,
-                    fontSize: 12,
-                    textAlign: "center",
-                  }}
-                >
-                  Your SaMi customer account
-                </Text>
+                  <Text
+                    style={{
+                      color: palette.muted,
+                      fontSize: 12,
+                    }}
+                  >
+                    SaMi customer account
+                  </Text>
+                </View>
 
                 <View
                   style={{
@@ -517,27 +608,36 @@ const result = await apiRequest<{
                     accessibilityRole="button"
                     disabled={avatarBusy}
                     onPress={() => void chooseAvatar()}
-                    style={[
-                      common.primaryButton,
-                      {
-                        flex: 1,
-                        flexDirection: "row",
-                        gap: 7,
-                        opacity: avatarBusy ? 0.55 : 1,
-                      },
-                    ]}
+                    style={{
+                      flex: 1,
+                      minHeight: 48,
+                      borderRadius: 14,
+                      backgroundColor: palette.accent,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 7,
+                      paddingHorizontal: 9,
+                      opacity: avatarBusy ? 0.55 : 1,
+                    }}
                   >
                     {avatarBusy ? (
-                      <ActivityIndicator color={colors.white} />
+                      <ActivityIndicator color={palette.white} />
                     ) : (
                       <Ionicons
                         name="camera-outline"
                         size={18}
-                        color={colors.white}
+                        color={palette.white}
                       />
                     )}
 
-                    <Text style={common.primaryButtonText}>
+                    <Text
+                      style={{
+                        color: palette.white,
+                        fontSize: 12,
+                        fontWeight: "900",
+                      }}
+                    >
                       {avatarBusy ? "Please wait" : "Change photo"}
                     </Text>
                   </Pressable>
@@ -547,24 +647,35 @@ const result = await apiRequest<{
                       accessibilityRole="button"
                       disabled={avatarBusy}
                       onPress={confirmRemoveAvatar}
-                      style={[
-                        common.secondaryButton,
-                        {
-                          flex: 1,
-                          borderWidth: 1,
-                          borderColor: "#F0D5D2",
-                          opacity: avatarBusy ? 0.55 : 1,
-                        },
-                      ]}
+                      style={{
+                        flex: 1,
+                        minHeight: 48,
+                        borderRadius: 14,
+                        backgroundColor: palette.dangerBackground,
+                        borderWidth: 1,
+                        borderColor: palette.dangerBorder,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 6,
+                        paddingHorizontal: 9,
+                        opacity: avatarBusy ? 0.55 : 1,
+                      }}
                     >
+                      <Ionicons
+                        name="trash-outline"
+                        size={16}
+                        color={palette.dangerText}
+                      />
+
                       <Text
                         style={{
-                          color: colors.red,
-                          fontSize: 13,
-                          fontWeight: "800",
+                          color: palette.dangerText,
+                          fontSize: 12,
+                          fontWeight: "900",
                         }}
                       >
-                        Remove photo
+                        Remove
                       </Text>
                     </Pressable>
                   ) : null}
@@ -572,44 +683,74 @@ const result = await apiRequest<{
 
                 <Text
                   style={{
-                    color: colors.muted,
+                    color: palette.muted,
                     fontSize: 11,
                     lineHeight: 17,
                     textAlign: "center",
                   }}
                 >
-                  JPEG, PNG or WebP. Maximum 5 MB.
-                  Your photo is stored privately.
+                  JPEG, PNG or WebP. Maximum 5 MB. Your profile photo
+                  is stored privately.
                 </Text>
               </View>
 
-              {/* Profile details */}
+              {/* Personal information */}
 
-              <View style={{ gap: 7 }}>
-                <Text style={common.eyebrow}>
+              <View style={{ gap: 6 }}>
+                <Text
+                  style={{
+                    color: palette.accent,
+                    fontSize: 11,
+                    fontWeight: "900",
+                    letterSpacing: 1.2,
+                  }}
+                >
                   PROFILE DETAILS
                 </Text>
 
                 <Text
                   style={{
-                    color: colors.navy,
-                    fontSize: 18,
+                    color: palette.heading,
+                    fontSize: 19,
                     fontWeight: "900",
                   }}
                 >
                   Your personal information
                 </Text>
 
-                <Text style={common.subtitle}>
-                  Keep your details accurate so SaMi can identify
-                  your account correctly.
+                <Text
+                  style={{
+                    color: palette.muted,
+                    fontSize: 13,
+                    lineHeight: 20,
+                  }}
+                >
+                  Keep your name and contact information accurate so
+                  SaMi can identify and reach you.
                 </Text>
               </View>
 
-              <View style={common.card}>
-                <View>
-                  <Text style={common.label}>
-                    Full name
+              <View
+                style={{
+                  padding: 17,
+                  borderRadius: 20,
+                  backgroundColor: palette.surface,
+                  borderWidth: 1,
+                  borderColor: palette.border,
+                  gap: 17,
+                }}
+              >
+                {/* Full name */}
+
+                <View style={{ gap: 7 }}>
+                  <Text
+                    style={{
+                      color: palette.text,
+                      fontSize: 12,
+                      fontWeight: "900",
+                    }}
+                  >
+                    FULL NAME
                   </Text>
 
                   <TextInput
@@ -620,28 +761,75 @@ const result = await apiRequest<{
                       setNotice("");
                     }}
                     placeholder="Enter your full name"
-                    placeholderTextColor={colors.muted}
+                    placeholderTextColor={palette.muted}
                     autoCapitalize="words"
                     autoCorrect={false}
                     maxLength={120}
                     returnKeyType="done"
-                    style={common.input}
+                    selectionColor={palette.accent}
+                    keyboardAppearance={isDark ? "dark" : "light"}
+                    editable={!saving}
+                    style={{
+                      minHeight: 52,
+                      borderWidth: 1,
+                      borderColor: palette.border,
+                      borderRadius: 13,
+                      backgroundColor: palette.input,
+                      paddingHorizontal: 14,
+                      color: palette.text,
+                      fontSize: 14,
+                    }}
                   />
+
+                  <Text
+                    style={{
+                      color: palette.muted,
+                      fontSize: 11,
+                    }}
+                  >
+                    Use the name you want displayed on your account.
+                  </Text>
                 </View>
 
-                <View>
-                  <Text style={common.label}>
-                    Email address
-                  </Text>
+                <View
+                  style={{
+                    height: 1,
+                    backgroundColor: palette.border,
+                  }}
+                />
+
+                {/* Email */}
+
+                <View style={{ gap: 8 }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: palette.text,
+                        fontSize: 12,
+                        fontWeight: "900",
+                      }}
+                    >
+                      EMAIL ADDRESS
+                    </Text>
+
+                    <VerificationStatus verified={profile.email_verified} />
+                  </View>
 
                   <View
                     style={{
-                      minHeight: 50,
-                      paddingHorizontal: 14,
+                      minHeight: 51,
+                      paddingHorizontal: 13,
                       borderWidth: 1,
-                      borderColor: colors.border,
+                      borderColor: palette.border,
                       borderRadius: 13,
-                      backgroundColor: "#F0F3F8",
+                      backgroundColor: palette.surfaceRaised,
                       flexDirection: "row",
                       alignItems: "center",
                       gap: 10,
@@ -650,14 +838,16 @@ const result = await apiRequest<{
                     <Ionicons
                       name="mail-outline"
                       size={18}
-                      color={colors.muted}
+                      color={palette.muted}
                     />
 
                     <Text
+                      selectable
                       style={{
                         flex: 1,
-                        color: colors.ink,
-                        fontSize: 14,
+                        color: palette.text,
+                        fontSize: 13,
+                        fontWeight: "600",
                       }}
                     >
                       {profile.email || "Not available"}
@@ -665,25 +855,51 @@ const result = await apiRequest<{
 
                     <Ionicons
                       name="lock-closed-outline"
-                      size={16}
-                      color={colors.muted}
+                      size={15}
+                      color={palette.muted}
                     />
                   </View>
                 </View>
 
-                <View>
-                  <Text style={common.label}>
-                    Phone number
-                  </Text>
+                <View
+                  style={{
+                    height: 1,
+                    backgroundColor: palette.border,
+                  }}
+                />
+
+                {/* Phone */}
+
+                <View style={{ gap: 8 }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: palette.text,
+                        fontSize: 12,
+                        fontWeight: "900",
+                      }}
+                    >
+                      PHONE NUMBER
+                    </Text>
+
+                    <VerificationStatus verified={profile.phone_verified} />
+                  </View>
 
                   <View
                     style={{
-                      minHeight: 50,
-                      paddingHorizontal: 14,
+                      minHeight: 51,
+                      paddingHorizontal: 13,
                       borderWidth: 1,
-                      borderColor: colors.border,
+                      borderColor: palette.border,
                       borderRadius: 13,
-                      backgroundColor: "#F0F3F8",
+                      backgroundColor: palette.surfaceRaised,
                       flexDirection: "row",
                       alignItems: "center",
                       gap: 10,
@@ -692,14 +908,16 @@ const result = await apiRequest<{
                     <Ionicons
                       name="call-outline"
                       size={18}
-                      color={colors.muted}
+                      color={palette.muted}
                     />
 
                     <Text
+                      selectable
                       style={{
                         flex: 1,
-                        color: colors.ink,
-                        fontSize: 14,
+                        color: palette.text,
+                        fontSize: 13,
+                        fontWeight: "600",
                       }}
                     >
                       {profile.phone || "Not added"}
@@ -707,49 +925,111 @@ const result = await apiRequest<{
 
                     <Ionicons
                       name="lock-closed-outline"
-                      size={16}
-                      color={colors.muted}
+                      size={15}
+                      color={palette.muted}
                     />
                   </View>
                 </View>
 
-                <Text
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() =>
+                    router.push("/(app)/account/sign-in" as never)
+                  }
                   style={{
-                    color: colors.muted,
-                    fontSize: 12,
-                    lineHeight: 18,
+                    minHeight: 48,
+                    borderRadius: 13,
+                    backgroundColor: palette.accentSoft,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    paddingHorizontal: 12,
                   }}
                 >
-                  Email and phone changes are managed separately
-                  through Sign-in & Verification.
-                </Text>
+                  <Ionicons
+                    name="shield-checkmark-outline"
+                    size={18}
+                    color={palette.accent}
+                  />
+
+                  <Text
+                    style={{
+                      color: palette.accent,
+                      fontSize: 12,
+                      fontWeight: "900",
+                    }}
+                  >
+                    Manage email and phone
+                  </Text>
+
+                  <Ionicons
+                    name="chevron-forward"
+                    size={16}
+                    color={palette.accent}
+                  />
+                </Pressable>
               </View>
 
               {/* Feedback */}
 
               {error ? (
-                <Text
-                  accessibilityRole="alert"
-                  style={common.error}
+                <View
+                  style={{
+                    padding: 13,
+                    borderRadius: 13,
+                    backgroundColor: palette.dangerBackground,
+                    borderWidth: 1,
+                    borderColor: palette.dangerBorder,
+                    flexDirection: "row",
+                    alignItems: "flex-start",
+                    gap: 9,
+                  }}
                 >
-                  {error}
-                </Text>
+                  <Ionicons
+                    name="alert-circle-outline"
+                    size={18}
+                    color={palette.dangerText}
+                  />
+
+                  <Text
+                    accessibilityRole="alert"
+                    style={{
+                      flex: 1,
+                      color: palette.dangerText,
+                      fontSize: 12,
+                      lineHeight: 18,
+                    }}
+                  >
+                    {error}
+                  </Text>
+                </View>
               ) : null}
 
               {notice ? (
                 <View
                   style={{
-                    padding: 12,
-                    borderRadius: 12,
-                    backgroundColor: colors.blueSoft,
+                    padding: 13,
+                    borderRadius: 13,
+                    backgroundColor: palette.successBackground,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 9,
                   }}
                 >
+                  <Ionicons
+                    name="checkmark-circle-outline"
+                    size={19}
+                    color={palette.successText}
+                  />
+
                   <Text
                     style={{
-                      color: colors.navy,
-                      fontSize: 13,
-                      lineHeight: 19,
-                      fontWeight: "600",
+                      flex: 1,
+                      color: palette.successText,
+                      fontSize: 12,
+                      lineHeight: 18,
+                      fontWeight: "700",
                     }}
                   >
                     {notice}
@@ -757,73 +1037,131 @@ const result = await apiRequest<{
                 </View>
               ) : null}
 
-              {/* Save profile */}
+              {/* Save name */}
 
               <Pressable
                 accessibilityRole="button"
-                disabled={saving || !hasChanges}
+                disabled={saving || avatarBusy || !hasChanges}
                 onPress={() => void saveProfile()}
-                style={[
-                  common.primaryButton,
-                  {
-                    flexDirection: "row",
-                    gap: 9,
-                    opacity: saving || !hasChanges ? 0.55 : 1,
-                  },
-                ]}
+                style={{
+                  minHeight: 53,
+                  borderRadius: 15,
+                  backgroundColor: palette.accent,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 9,
+                  opacity: saving || avatarBusy || !hasChanges ? 0.5 : 1,
+                }}
               >
                 {saving ? (
-                  <ActivityIndicator color={colors.white} />
+                  <ActivityIndicator color={palette.white} />
                 ) : (
                   <Ionicons
                     name="save-outline"
                     size={19}
-                    color={colors.white}
+                    color={palette.white}
                   />
                 )}
 
-                <Text style={common.primaryButtonText}>
-                  {saving ? "Saving profile..." : "Save changes"}
+                <Text
+                  style={{
+                    color: palette.white,
+                    fontSize: 14,
+                    fontWeight: "900",
+                  }}
+                >
+                  {saving ? "Saving profile..." : "Save profile changes"}
+                </Text>
+              </Pressable>
+
+              {/* Refresh */}
+
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => void loadProfile()}
+                disabled={saving || avatarBusy}
+                style={{
+                  alignItems: "center",
+                  paddingVertical: 8,
+                  opacity: saving || avatarBusy ? 0.5 : 1,
+                }}
+              >
+                <Text
+                  style={{
+                    color: palette.accent,
+                    fontSize: 12,
+                    fontWeight: "900",
+                  }}
+                >
+                  Refresh profile
                 </Text>
               </Pressable>
             </>
-          ) : (
-            <View style={{ gap: 14 }}>
-              <Text style={common.error}>
-                Your profile could not be displayed.
+          ) : null}
+
+          {/* Error state */}
+
+          {!loading && !profile ? (
+            <View
+              style={{
+                padding: 18,
+                borderRadius: 18,
+                backgroundColor: palette.surface,
+                borderWidth: 1,
+                borderColor: palette.border,
+                gap: 13,
+              }}
+            >
+              <Ionicons
+                name="alert-circle-outline"
+                size={27}
+                color={palette.dangerText}
+              />
+
+              <Text
+                style={{
+                  color: palette.heading,
+                  fontSize: 16,
+                  fontWeight: "900",
+                }}
+              >
+                Your profile could not be displayed
+              </Text>
+
+              <Text
+                accessibilityRole="alert"
+                style={{
+                  color: palette.muted,
+                  fontSize: 13,
+                  lineHeight: 20,
+                }}
+              >
+                {error || "Please try loading your profile again."}
               </Text>
 
               <Pressable
+                accessibilityRole="button"
                 onPress={() => void loadProfile()}
-                style={common.primaryButton}
+                style={{
+                  minHeight: 48,
+                  borderRadius: 13,
+                  backgroundColor: palette.accent,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
               >
-                <Text style={common.primaryButtonText}>
+                <Text
+                  style={{
+                    color: palette.white,
+                    fontSize: 13,
+                    fontWeight: "900",
+                  }}
+                >
                   Try again
                 </Text>
               </Pressable>
             </View>
-          )}
-
-          {!loading && profile ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => void loadProfile()}
-              disabled={saving || avatarBusy}
-              style={{
-                alignItems: "center",
-                padding: 8,
-              }}
-            >
-              <Text
-                style={{
-                  color: colors.blue,
-                  fontSize: 13,
-                  fontWeight: "800",
-                }}
-              >
-                Refresh profile
-              </Text>
-            </Pressable>
           ) : null}
         </ScrollView>
       </KeyboardAvoidingView>

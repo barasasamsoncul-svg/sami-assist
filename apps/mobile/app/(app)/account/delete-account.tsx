@@ -11,13 +11,13 @@ import {
   Text,
   TextInput,
   View,
+  useColorScheme,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { apiRequest, dispatchPost } from "@/api";
-import { colors, common } from "@/theme";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -71,6 +71,30 @@ const deletionConsequences: {
 ];
 
 export default function DeleteAccountScreen() {
+  const insets = useSafeAreaInsets();
+  const isDark = useColorScheme() === "dark";
+
+  const palette = {
+    background: isDark ? "#080F1D" : "#F7F8FA",
+    surface: isDark ? "#111A2C" : "#FFFFFF",
+    surfaceRaised: isDark ? "#17243A" : "#F1F5FB",
+    input: isDark ? "#0B1424" : "#FFFFFF",
+    border: isDark ? "#293951" : "#E6E9EF",
+    heading: isDark ? "#F4F7FF" : "#000535",
+    text: isDark ? "#E7EEF9" : "#24324A",
+    muted: isDark ? "#AAB8CC" : "#78869A",
+    accent: isDark ? "#79AEFF" : "#2463B8",
+    accentSoft: isDark ? "#172D4D" : "#EAF1FC",
+    danger: isDark ? "#FF8F88" : "#B42318",
+    dangerBackground: isDark ? "#3E2026" : "#FFF0EF",
+    dangerBorder: isDark ? "#67343D" : "#F0D5D2",
+    dangerSoft: isDark ? "#52282E" : "#FFE0DD",
+    warningText: isDark ? "#F5C66B" : "#8A5A00",
+    successBackground: isDark ? "#14372F" : "#E8F7EF",
+    successText: isDark ? "#83DDB8" : "#18794E",
+    white: "#FFFFFF",
+  };
+
   const [confirmation, setConfirmation] = useState("");
   const [otp, setOtp] = useState("");
 
@@ -85,8 +109,7 @@ export default function DeleteAccountScreen() {
 
   const confirmed = confirmation.trim() === "DELETE";
   const validOtp = /^[0-9]{6}$/.test(otp);
-  const canDelete =
-    confirmed && validOtp && Boolean(challengeId);
+  const canDelete = confirmed && validOtp && Boolean(challengeId);
 
   async function requestDeletionCode() {
     if (!confirmed || requestingCode || deleting) return;
@@ -95,19 +118,18 @@ export default function DeleteAccountScreen() {
     setError("");
     setNotice("");
 
-    // A new request supersedes the previous challenge.
+    // A new request replaces the previous challenge.
     setChallengeId("");
     setOtp("");
     setDeliveryHint("");
 
     try {
-      const result =
-        await apiRequest<DeletionOtpResponse>(
-          "/api/customer/account-deletion/otp",
-          {
-            method: "POST",
-          },
-        );
+      const result = await apiRequest<DeletionOtpResponse>(
+        "/api/customer/account-deletion/otp",
+        {
+          method: "POST",
+        },
+      );
 
       if (!result.ok || !result.challengeId) {
         throw new Error(
@@ -116,9 +138,7 @@ export default function DeleteAccountScreen() {
       }
 
       setChallengeId(result.challengeId);
-      setDeliveryHint(
-        result.deliveryHint || "your registered email",
-      );
+      setDeliveryHint(result.deliveryHint || "your registered email");
 
       setNotice(
         result.message ||
@@ -143,38 +163,32 @@ export default function DeleteAccountScreen() {
     setNotice("");
 
     try {
-      const result =
-        await apiRequest<DeletionResponse>(
-          "/api/customer/account-deletion",
-          {
-            method: "POST",
-            body: {
-              confirmation: "DELETE",
-              challengeId,
-              code: otp,
-            },
+      const result = await apiRequest<DeletionResponse>(
+        "/api/customer/account-deletion",
+        {
+          method: "POST",
+          body: {
+            confirmation: "DELETE",
+            challengeId,
+            code: otp,
           },
-        );
+        },
+      );
 
       if (!result.ok) {
         throw new Error(
-          result.message ||
-            "Account deletion could not be completed.",
+          result.message || "Account deletion could not be completed.",
         );
       }
 
       Alert.alert(
         "Account deletion completed",
-        result.message ||
-          "Your SaMi account has been deactivated.",
+        result.message || "Your SaMi account has been deactivated.",
         [
           {
             text: "Continue",
             onPress: () => {
-              void dispatchPost("logout").catch(
-                () => undefined,
-              );
-
+              void dispatchPost("logout").catch(() => undefined);
               router.replace("/(auth)/login");
             },
           },
@@ -216,29 +230,103 @@ export default function DeleteAccountScreen() {
     );
   }
 
+  function ConsequenceItem({
+    icon,
+    title,
+    description,
+    last,
+  }: {
+    icon: IconName;
+    title: string;
+    description: string;
+    last: boolean;
+  }) {
+    return (
+      <View>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "flex-start",
+            gap: 12,
+            paddingVertical: 14,
+          }}
+        >
+          <View
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 13,
+              backgroundColor: palette.accentSoft,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons
+              name={icon}
+              size={20}
+              color={palette.accent}
+            />
+          </View>
+
+          <View style={{ flex: 1, gap: 5 }}>
+            <Text
+              style={{
+                color: palette.heading,
+                fontSize: 13,
+                fontWeight: "900",
+              }}
+            >
+              {title}
+            </Text>
+
+            <Text
+              style={{
+                color: palette.muted,
+                fontSize: 12,
+                lineHeight: 19,
+              }}
+            >
+              {description}
+            </Text>
+          </View>
+        </View>
+
+        {!last ? (
+          <View
+            style={{
+              height: 1,
+              backgroundColor: palette.border,
+            }}
+          />
+        ) : null}
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView
       edges={["top", "left", "right", "bottom"]}
-      style={common.screen}
+      style={{
+        flex: 1,
+        backgroundColor: palette.background,
+      }}
     >
       <StatusBar
         hidden={false}
         translucent={false}
-        backgroundColor={colors.paper}
-        barStyle="dark-content"
+        backgroundColor={palette.background}
+        barStyle={isDark ? "light-content" : "dark-content"}
       />
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={
-          Platform.OS === "ios" ? "padding" : undefined
-        }
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView
           contentContainerStyle={{
-            padding: 20,
-            paddingTop: 18,
-            paddingBottom: 48,
+            paddingHorizontal: 20,
+            paddingTop: 16,
+            paddingBottom: Math.max(insets.bottom, 28) + 18,
             gap: 21,
           }}
           keyboardShouldPersistTaps="handled"
@@ -255,15 +343,15 @@ export default function DeleteAccountScreen() {
           >
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Go back"
+              accessibilityLabel="Go back to Account"
               onPress={() => router.back()}
               style={{
-                width: 42,
-                height: 42,
-                borderRadius: 14,
-                backgroundColor: colors.white,
+                width: 46,
+                height: 46,
+                borderRadius: 15,
+                backgroundColor: palette.surface,
                 borderWidth: 1,
-                borderColor: colors.border,
+                borderColor: palette.border,
                 alignItems: "center",
                 justifyContent: "center",
               }}
@@ -271,20 +359,28 @@ export default function DeleteAccountScreen() {
               <Ionicons
                 name="arrow-back"
                 size={20}
-                color={colors.navy}
+                color={palette.heading}
               />
             </Pressable>
 
-            <View style={{ flex: 1, gap: 3 }}>
-              <Text style={common.eyebrow}>
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text
+                style={{
+                  color: palette.accent,
+                  fontSize: 11,
+                  fontWeight: "900",
+                  letterSpacing: 1.3,
+                }}
+              >
                 ACCOUNT MANAGEMENT
               </Text>
 
               <Text
                 style={{
-                  color: colors.navy,
+                  color: palette.heading,
                   fontSize: 23,
                   fontWeight: "900",
+                  letterSpacing: -0.5,
                 }}
               >
                 Delete Account
@@ -292,24 +388,24 @@ export default function DeleteAccountScreen() {
             </View>
           </View>
 
-          {/* Warning */}
+          {/* Permanent deletion warning */}
 
           <View
             style={{
-              backgroundColor: "#FFF0EF",
-              borderRadius: 17,
+              backgroundColor: palette.dangerBackground,
+              borderRadius: 20,
               borderWidth: 1,
-              borderColor: "#F0D5D2",
-              padding: 17,
+              borderColor: palette.dangerBorder,
+              padding: 19,
               gap: 12,
             }}
           >
             <View
               style={{
-                width: 49,
-                height: 49,
-                borderRadius: 15,
-                backgroundColor: "#FFE0DD",
+                width: 52,
+                height: 52,
+                borderRadius: 16,
+                backgroundColor: palette.dangerSoft,
                 alignItems: "center",
                 justifyContent: "center",
               }}
@@ -317,14 +413,14 @@ export default function DeleteAccountScreen() {
               <Ionicons
                 name="warning-outline"
                 size={27}
-                color={colors.red}
+                color={palette.danger}
               />
             </View>
 
             <Text
               style={{
-                color: colors.red,
-                fontSize: 17,
+                color: palette.danger,
+                fontSize: 18,
                 fontWeight: "900",
               }}
             >
@@ -333,7 +429,7 @@ export default function DeleteAccountScreen() {
 
             <Text
               style={{
-                color: "#70413E",
+                color: palette.text,
                 fontSize: 13,
                 lineHeight: 21,
               }}
@@ -341,122 +437,87 @@ export default function DeleteAccountScreen() {
               Deleting your SaMi account will deactivate your
               account and remove eligible personal information.
               You will no longer be able to sign in using this
-              account.
+              account. This action cannot be undone.
             </Text>
           </View>
 
           {/* Consequences */}
 
           <View style={{ gap: 7 }}>
-            <Text style={common.eyebrow}>
+            <Text
+              style={{
+                color: palette.accent,
+                fontSize: 11,
+                fontWeight: "900",
+                letterSpacing: 1.2,
+              }}
+            >
               BEFORE YOU CONTINUE
             </Text>
 
             <Text
               style={{
-                color: colors.navy,
-                fontSize: 18,
+                color: palette.heading,
+                fontSize: 19,
                 fontWeight: "900",
               }}
             >
               What happens when you delete your account?
             </Text>
 
-            <Text style={common.subtitle}>
+            <Text
+              style={{
+                color: palette.muted,
+                fontSize: 13,
+                lineHeight: 20,
+              }}
+            >
               Review the effects of account deletion carefully.
             </Text>
           </View>
 
           <View
-            style={[
-              common.card,
-              { paddingHorizontal: 15 },
-            ]}
+            style={{
+              paddingHorizontal: 15,
+              borderRadius: 20,
+              backgroundColor: palette.surface,
+              borderWidth: 1,
+              borderColor: palette.border,
+            }}
           >
             {deletionConsequences.map((item, index) => (
-              <View key={item.title}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "flex-start",
-                    gap: 12,
-                    paddingVertical: 13,
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 12,
-                      backgroundColor: colors.blueSoft,
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Ionicons
-                      name={item.icon}
-                      size={20}
-                      color={colors.navy}
-                    />
-                  </View>
-
-                  <View style={{ flex: 1, gap: 4 }}>
-                    <Text
-                      style={{
-                        color: colors.navy,
-                        fontSize: 13,
-                        fontWeight: "900",
-                      }}
-                    >
-                      {item.title}
-                    </Text>
-
-                    <Text
-                      style={{
-                        color: colors.muted,
-                        fontSize: 12,
-                        lineHeight: 18,
-                      }}
-                    >
-                      {item.description}
-                    </Text>
-                  </View>
-                </View>
-
-                {index < deletionConsequences.length - 1 ? (
-                  <View
-                    style={{
-                      height: 1,
-                      backgroundColor: colors.border,
-                    }}
-                  />
-                ) : null}
-              </View>
+              <ConsequenceItem
+                key={item.title}
+                icon={item.icon}
+                title={item.title}
+                description={item.description}
+                last={index === deletionConsequences.length - 1}
+              />
             ))}
           </View>
 
-          {/* Eligibility */}
+          {/* Eligibility warning */}
 
           <View
             style={{
-              padding: 15,
-              backgroundColor: colors.blueSoft,
-              borderRadius: 15,
+              padding: 16,
+              backgroundColor: palette.accentSoft,
+              borderRadius: 17,
               flexDirection: "row",
               alignItems: "flex-start",
-              gap: 10,
+              gap: 11,
             }}
           >
             <Ionicons
               name="information-circle-outline"
-              size={21}
-              color={colors.navy}
+              size={22}
+              color={palette.accent}
             />
 
-            <View style={{ flex: 1, gap: 5 }}>
+            <View style={{ flex: 1, gap: 6 }}>
               <Text
                 style={{
-                  color: colors.navy,
+                  color: palette.heading,
                   fontSize: 13,
                   fontWeight: "900",
                 }}
@@ -466,7 +527,7 @@ export default function DeleteAccountScreen() {
 
               <Text
                 style={{
-                  color: colors.muted,
+                  color: palette.text,
                   fontSize: 12,
                   lineHeight: 19,
                 }}
@@ -479,38 +540,65 @@ export default function DeleteAccountScreen() {
             </View>
           </View>
 
-          {/* Confirmation */}
+          {/* Confirmation heading */}
 
           <View style={{ gap: 7 }}>
-            <Text style={common.eyebrow}>
+            <Text
+              style={{
+                color: palette.accent,
+                fontSize: 11,
+                fontWeight: "900",
+                letterSpacing: 1.2,
+              }}
+            >
               DELETION CONFIRMATION
             </Text>
 
             <Text
               style={{
-                color: colors.navy,
-                fontSize: 18,
+                color: palette.heading,
+                fontSize: 19,
                 fontWeight: "900",
               }}
             >
               Confirm your decision
             </Text>
 
-            <Text style={common.subtitle}>
+            <Text
+              style={{
+                color: palette.muted,
+                fontSize: 13,
+                lineHeight: 20,
+              }}
+            >
               Type DELETE below to confirm that you understand
               this action is permanent.
             </Text>
           </View>
 
+          {/* Confirmation and verification card */}
+
           <View
-            style={[
-              common.card,
-              { gap: 13 },
-            ]}
+            style={{
+              padding: 17,
+              borderRadius: 20,
+              backgroundColor: palette.surface,
+              borderWidth: 1,
+              borderColor: palette.border,
+              gap: 16,
+            }}
           >
-            <View style={{ gap: 6 }}>
-              <Text style={common.label}>
-                Type DELETE to continue
+            {/* Typed confirmation */}
+
+            <View style={{ gap: 8 }}>
+              <Text
+                style={{
+                  color: palette.text,
+                  fontSize: 12,
+                  fontWeight: "900",
+                }}
+              >
+                TYPE DELETE TO CONTINUE
               </Text>
 
               <TextInput
@@ -522,31 +610,55 @@ export default function DeleteAccountScreen() {
                 }}
                 autoCapitalize="characters"
                 autoCorrect={false}
+                autoComplete="off"
                 maxLength={6}
                 placeholder="DELETE"
-                placeholderTextColor={colors.muted}
-                style={[
-                  common.input,
-                  {
-                    borderColor: confirmed
-                      ? colors.red
-                      : colors.border,
-                  },
-                ]}
+                placeholderTextColor={palette.muted}
+                selectionColor={palette.accent}
+                keyboardAppearance={isDark ? "dark" : "light"}
+                editable={!deleting}
+                style={{
+                  minHeight: 53,
+                  borderWidth: 1,
+                  borderColor: confirmed
+                    ? palette.danger
+                    : palette.border,
+                  borderRadius: 13,
+                  backgroundColor: palette.input,
+                  paddingHorizontal: 14,
+                  color: palette.text,
+                  fontSize: 15,
+                  fontWeight: "800",
+                  letterSpacing: 1.5,
+                }}
               />
+
+              <Text
+                style={{
+                  color: confirmed ? palette.successText : palette.muted,
+                  fontSize: 11,
+                  fontWeight: confirmed ? "800" : "500",
+                }}
+              >
+                {confirmed
+                  ? "Confirmation accepted."
+                  : "Enter the exact word DELETE."}
+              </Text>
             </View>
 
             <View
               style={{
                 height: 1,
-                backgroundColor: colors.border,
+                backgroundColor: palette.border,
               }}
             />
 
-            <View style={{ gap: 8 }}>
+            {/* OTP request */}
+
+            <View style={{ gap: 9 }}>
               <Text
                 style={{
-                  color: colors.navy,
+                  color: palette.heading,
                   fontSize: 14,
                   fontWeight: "900",
                 }}
@@ -556,9 +668,9 @@ export default function DeleteAccountScreen() {
 
               <Text
                 style={{
-                  color: colors.muted,
+                  color: palette.muted,
                   fontSize: 12,
-                  lineHeight: 18,
+                  lineHeight: 19,
                 }}
               >
                 SaMi will send a one-time verification code to
@@ -567,73 +679,99 @@ export default function DeleteAccountScreen() {
               </Text>
 
               {deliveryHint ? (
-                <Text
+                <View
                   style={{
-                    color: colors.blue,
-                    fontSize: 12,
-                    fontWeight: "800",
+                    padding: 12,
+                    backgroundColor: palette.accentSoft,
+                    borderRadius: 12,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 9,
                   }}
                 >
-                  Code sent to {deliveryHint}
-                </Text>
+                  <Ionicons
+                    name="mail-outline"
+                    size={18}
+                    color={palette.accent}
+                  />
+
+                  <Text
+                    style={{
+                      flex: 1,
+                      color: palette.text,
+                      fontSize: 12,
+                      fontWeight: "700",
+                    }}
+                  >
+                    Code sent to {deliveryHint}
+                  </Text>
+                </View>
               ) : null}
 
               <Pressable
                 accessibilityRole="button"
-                disabled={
-                  !confirmed ||
-                  requestingCode ||
-                  deleting
-                }
+                disabled={!confirmed || requestingCode || deleting}
                 onPress={() => void requestDeletionCode()}
-                style={[
-                  common.secondaryButton,
-                  {
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 9,
-                    opacity:
-                      !confirmed ||
-                      requestingCode ||
-                      deleting
-                        ? 0.55
-                        : 1,
-                  },
-                ]}
+                style={{
+                  minHeight: 49,
+                  borderRadius: 13,
+                  backgroundColor: palette.accentSoft,
+                  borderWidth: 1,
+                  borderColor: palette.border,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 9,
+                  opacity:
+                    !confirmed || requestingCode || deleting
+                      ? 0.5
+                      : 1,
+                }}
               >
                 {requestingCode ? (
-                  <ActivityIndicator color={colors.navy} />
+                  <ActivityIndicator color={palette.accent} />
                 ) : (
                   <Ionicons
                     name="mail-outline"
-                    size={19}
-                    color={colors.navy}
+                    size={18}
+                    color={palette.accent}
                   />
                 )}
 
-                <Text style={common.secondaryButtonText}>
+                <Text
+                  style={{
+                    color: palette.accent,
+                    fontSize: 13,
+                    fontWeight: "900",
+                  }}
+                >
                   {requestingCode
                     ? "Sending code..."
                     : challengeId
-                      ? "Send new verification code"
+                      ? "Send a new verification code"
                       : "Send verification code"}
                 </Text>
               </Pressable>
 
+              {/* OTP entry */}
+
               {challengeId ? (
-                <View style={{ gap: 6 }}>
-                  <Text style={common.label}>
-                    Six-digit verification code
+                <View style={{ gap: 8, paddingTop: 3 }}>
+                  <Text
+                    style={{
+                      color: palette.text,
+                      fontSize: 12,
+                      fontWeight: "900",
+                    }}
+                  >
+                    SIX-DIGIT VERIFICATION CODE
                   </Text>
 
                   <TextInput
                     value={otp}
                     onChangeText={(value) => {
                       setOtp(
-                        value
-                          .replace(/[^0-9]/g, "")
-                          .slice(0, 6),
+                        value.replace(/[^0-9]/g, "").slice(0, 6),
                       );
                       setError("");
                     }}
@@ -641,27 +779,32 @@ export default function DeleteAccountScreen() {
                     maxLength={6}
                     autoComplete="one-time-code"
                     placeholder="000000"
-                    placeholderTextColor={colors.muted}
-                    style={[
-                      common.input,
-                      {
-                        textAlign: "center",
-                        letterSpacing: 8,
-                        fontSize: 19,
-                        fontWeight: "900",
-                      },
-                    ]}
+                    placeholderTextColor={palette.muted}
+                    selectionColor={palette.accent}
+                    keyboardAppearance={isDark ? "dark" : "light"}
+                    editable={!deleting}
+                    textAlign="center"
+                    style={{
+                      minHeight: 57,
+                      borderWidth: 1,
+                      borderColor: palette.border,
+                      borderRadius: 13,
+                      backgroundColor: palette.input,
+                      color: palette.heading,
+                      fontSize: 22,
+                      fontWeight: "900",
+                      letterSpacing: 8,
+                    }}
                   />
 
                   <Text
                     style={{
-                      color: colors.muted,
+                      color: palette.muted,
                       fontSize: 11,
                       lineHeight: 17,
                     }}
                   >
-                    The verification code expires after
-                    10 minutes.
+                    The verification code expires after 10 minutes.
                   </Text>
                 </View>
               ) : null}
@@ -671,26 +814,60 @@ export default function DeleteAccountScreen() {
           {/* Feedback */}
 
           {error ? (
-            <Text
-              accessibilityRole="alert"
-              style={common.error}
+            <View
+              style={{
+                padding: 13,
+                borderRadius: 13,
+                backgroundColor: palette.dangerBackground,
+                borderWidth: 1,
+                borderColor: palette.dangerBorder,
+                flexDirection: "row",
+                alignItems: "flex-start",
+                gap: 9,
+              }}
             >
-              {error}
-            </Text>
+              <Ionicons
+                name="alert-circle-outline"
+                size={19}
+                color={palette.danger}
+              />
+
+              <Text
+                accessibilityRole="alert"
+                style={{
+                  flex: 1,
+                  color: palette.danger,
+                  fontSize: 12,
+                  lineHeight: 19,
+                }}
+              >
+                {error}
+              </Text>
+            </View>
           ) : null}
 
           {notice ? (
             <View
               style={{
-                backgroundColor: colors.blueSoft,
-                padding: 12,
-                borderRadius: 12,
+                padding: 13,
+                borderRadius: 13,
+                backgroundColor: palette.successBackground,
+                flexDirection: "row",
+                alignItems: "flex-start",
+                gap: 9,
               }}
             >
+              <Ionicons
+                name="checkmark-circle-outline"
+                size={19}
+                color={palette.successText}
+              />
+
               <Text
                 style={{
-                  color: colors.navy,
-                  fontSize: 13,
+                  flex: 1,
+                  color: palette.successText,
+                  fontSize: 12,
                   fontWeight: "700",
                   lineHeight: 19,
                 }}
@@ -700,47 +877,40 @@ export default function DeleteAccountScreen() {
             </View>
           ) : null}
 
-          {/* Delete button */}
+          {/* Permanent deletion action */}
 
           <Pressable
             accessibilityRole="button"
-            disabled={
-              !canDelete ||
-              deleting ||
-              requestingCode
-            }
+            accessibilityLabel="Permanently delete my SaMi account"
+            disabled={!canDelete || deleting || requestingCode}
             onPress={confirmDeletion}
             style={{
-              minHeight: 54,
-              borderRadius: 14,
-              backgroundColor: colors.red,
+              minHeight: 55,
+              borderRadius: 15,
+              backgroundColor: palette.danger,
               alignItems: "center",
               justifyContent: "center",
               flexDirection: "row",
               gap: 9,
               paddingHorizontal: 16,
               opacity:
-                !canDelete ||
-                deleting ||
-                requestingCode
-                  ? 0.45
-                  : 1,
+                !canDelete || deleting || requestingCode ? 0.45 : 1,
             }}
           >
             {deleting ? (
-              <ActivityIndicator color={colors.white} />
+              <ActivityIndicator color={palette.white} />
             ) : (
               <Ionicons
                 name="trash-outline"
                 size={19}
-                color={colors.white}
+                color={palette.white}
               />
             )}
 
             <Text
               style={{
-                color: colors.white,
-                fontSize: 14,
+                color: palette.white,
+                fontSize: 13,
                 fontWeight: "900",
               }}
             >
@@ -750,31 +920,38 @@ export default function DeleteAccountScreen() {
             </Text>
           </Pressable>
 
-          {/* Cancel */}
+          {/* Keep account */}
 
           <Pressable
             accessibilityRole="button"
             disabled={deleting}
-            onPress={() =>
-              router.replace("/(app)/account")
-            }
-            style={[
-              common.secondaryButton,
-              {
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-              },
-            ]}
+            onPress={() => router.replace("/(app)/account")}
+            style={{
+              minHeight: 51,
+              borderRadius: 15,
+              backgroundColor: palette.surface,
+              borderWidth: 1,
+              borderColor: palette.border,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 9,
+              opacity: deleting ? 0.5 : 1,
+            }}
           >
             <Ionicons
               name="arrow-back"
               size={17}
-              color={colors.navy}
+              color={palette.heading}
             />
 
-            <Text style={common.secondaryButtonText}>
+            <Text
+              style={{
+                color: palette.heading,
+                fontSize: 14,
+                fontWeight: "900",
+              }}
+            >
               Keep my account
             </Text>
           </Pressable>
