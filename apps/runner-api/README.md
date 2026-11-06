@@ -1,40 +1,45 @@
-# SaMi Runner API
+# SaMi Runner backend
 
-Independent Next.js API service for the SaMi Runner mobile app.
+Runner-specific API handlers are deployed as part of the existing root Next.js application:
 
-## Isolation
-
-- Deploy root directory: apps/runner-api
-- Database: Neon project SaMi Runner
+- Runtime routes: `app/api/runner/**`
+- Runner-only server code: `lib/runner/**`
+- Database migration: `apps/runner-api/database/migrations/`
+- Neon project: SaMi Runner
 - Neon branch: main
 - Database: sami_runner
-- Connection variable: RUNNER_DATABASE_URL
+- Server environment variable: `RUNNER_DATABASE_URL`
 
-Do not set RUNNER_DATABASE_URL to the Customer production connection string. The Runner API never imports Customer server libraries and never queries the Customer database.
+There is one Vercel project for the SaMi repository. The Runner API is not deployed as a second Vercel project. Pushing the root application changes to `main` deploys Runner API routes with the existing SaMi web/API application.
 
-Customer errand references are stored as opaque text identifiers. Future integration will use authenticated inbox/outbox events, not direct cross-database queries.
+## Database isolation
 
-## Environment variables
+The root app's existing `DATABASE_URL` continues to serve the existing SaMi web and Customer APIs. Runner endpoints use the dedicated `RUNNER_DATABASE_URL` pool in `lib/runner/db.ts`. They do not query Customer tables or use the Customer DB connection.
 
-Copy .env.example into the Runner API deployment environment. Set RUNNER_DATABASE_URL and the three RUNNER_TWILIO variables. RUNNER_SESSION_DAYS is optional and defaults to 30.
+The Runner database stores an opaque `customer_errand_ref` for future authenticated integration events; it does not create cross-database foreign keys.
 
-The mobile app requires EXPO_PUBLIC_RUNNER_API_URL pointing to this service.
+## Configuration
 
-## Local development
+Configure `RUNNER_DATABASE_URL` as an encrypted environment variable on the existing Vercel project `sami-assist`. Do not replace or edit `DATABASE_URL`.
 
-    npm install
-    npm run dev
+Configure the Runner Twilio Verify values on that same Vercel project:
+- `RUNNER_TWILIO_API_KEY`
+- `RUNNER_TWILIO_API_SECRET`
+- `RUNNER_TWILIO_VERIFY_SERVICE_SID`
+- Optional `RUNNER_SESSION_DAYS` (default 30)
+
+Local root API development uses these variables in the repository-root `.env.local`.
 
 ## Database
 
-The initial schema is in database/migrations/2026-11-07-runner-initial-schema.sql.
+The schema is in `database/migrations/2026-11-07-runner-initial-schema.sql`. Apply it only to Neon project SaMi Runner, branch main, database sami_runner.
 
-Apply it only to the SaMi Runner Neon project, main branch, sami_runner database. /api/health reports whether the schema is ready.
+The `/api/runner/health` endpoint reports Runner database connectivity and schema readiness.
 
-## Deployment
+## Mobile API
 
-Create a separate Vercel project with root directory apps/runner-api. Configure the Runner environment variables in that project only. Do not change the existing Customer Vercel project or its environment variables.
+The Runner Expo app uses `EXPO_PUBLIC_SAMI_API_URL`, the same API base URL as the Customer mobile app. Its session token and server-side authentication remain Runner-specific.
 
-The first service includes Runner OTP authentication, profile setup, verification-gated availability, offers, accept/start/submit-completion actions and foreground location updates.
+## Integration status
 
-The inbox/outbox tables are foundations only. The live Customer-to-Runner event receiver, Runner-to-Customer publisher and signed integration contract are not enabled yet.
+Runner offers and Runner-side transitions write to the Runner database and its integration outbox. The trusted Customer-to-Runner inbox receiver and Runner-to-Customer outbox delivery worker are not yet enabled; this app foundation must not be treated as live matching until that boundary is completed.

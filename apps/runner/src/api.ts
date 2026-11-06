@@ -43,13 +43,13 @@ export type RunnerJob = {
 };
 
 function apiBase(): string {
-  const value = process.env.EXPO_PUBLIC_RUNNER_API_URL
+  const value = process.env.EXPO_PUBLIC_SAMI_API_URL
     ?.trim()
     .replace(/\/+$/, "");
 
   if (!value) {
     throw new Error(
-      "Set EXPO_PUBLIC_RUNNER_API_URL in apps/runner/.env before using SaMi Runner.",
+      "Set EXPO_PUBLIC_SAMI_API_URL in apps/runner/.env before using SaMi Runner.",
     );
   }
 
@@ -98,7 +98,7 @@ export async function apiRequest<T>(
     });
   } catch {
     throw new Error(
-      "Could not reach SaMi Runner. Check your connection and Runner API URL.",
+      "Could not reach SaMi Runner. Check your connection and SaMi API URL.",
     );
   }
 

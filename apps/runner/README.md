@@ -3,7 +3,7 @@
 Independent Runner mobile application.
 
 - Mobile app: apps/runner
-- API service: apps/runner-api
+- Runner API routes: app/api/runner (shared SaMi deployment)
 - Neon project: SaMi Runner
 - Neon branch: main
 - Neon database: sami_runner
@@ -11,7 +11,7 @@ Independent Runner mobile application.
 - Android package: com.sami.runner
 - iOS bundle: com.sami.runner
 
-The Runner app and API use only the Runner database. They do not share the Customer database. Customer errand references are retained only as opaque integration identifiers when a trusted event is eventually received.
+The Runner app calls the shared SaMi API deployment. Runner API routes use only the Runner database. They do not share the Customer database. Customer errand references are retained only as opaque integration identifiers when a trusted event is eventually received.
 
 ## Local setup
 
@@ -22,7 +22,7 @@ From the repository root:
     Copy-Item .env.example .env
     npx expo start
 
-Set EXPO_PUBLIC_RUNNER_API_URL to the separately deployed Runner API URL.
+Set EXPO_PUBLIC_SAMI_API_URL to the same SaMi production API URL used by Customer mobile.
 
 ## Native builds
 
