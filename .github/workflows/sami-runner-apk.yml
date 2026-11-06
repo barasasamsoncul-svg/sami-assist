@@ -52,7 +52,7 @@ jobs:
           CUSTOMER_PROJECT_ID="c09e119e-8a6b-4a1e-a7c6-b85cfd4e330d"
 
           if [[ -z "$CURRENT_PROJECT_ID" ]]; then
-            npx eas-cli@latest init --non-interactive --json
+            npx eas-cli@latest init --account sami-assist --non-interactive --json
           fi
 
           RUNNER_PROJECT_ID="$(node -e 'const a=require("./app.json").expo; process.stdout.write(a.extra?.eas?.projectId || "")')"
