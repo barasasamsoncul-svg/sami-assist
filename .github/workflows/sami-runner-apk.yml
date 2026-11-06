@@ -1,0 +1,169 @@
+name: SaMi Runner production APK
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/runner/**"
+      - ".github/workflows/sami-runner-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sami-runner-production-apk
+  cancel-in-progress: false
+
+jobs:
+  build-runner-apk:
+    name: Build signed SaMi Runner Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: apps/runner
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EXPO_PUBLIC_SAMI_API_URL: https://sami-assist.vercel.app
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/runner/package.json
+
+      - name: Install Runner dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Create or link Runner's dedicated Expo project
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$EXPO_TOKEN" || { echo "EXPO_TOKEN is missing from GitHub Actions secrets." >&2; exit 1; }
+
+          CURRENT_PROJECT_ID="$(node -e 'const a=require("./app.json").expo; process.stdout.write(a.extra?.eas?.projectId || "")')"
+          CUSTOMER_PROJECT_ID="c09e119e-8a6b-4a1e-a7c6-b85cfd4e330d"
+
+          if [[ -z "$CURRENT_PROJECT_ID" ]]; then
+            npx eas-cli@latest init --non-interactive --json
+          fi
+
+          RUNNER_PROJECT_ID="$(node -e 'const a=require("./app.json").expo; process.stdout.write(a.extra?.eas?.projectId || "")')"
+          test -n "$RUNNER_PROJECT_ID" || { echo "EAS did not link a Runner project." >&2; exit 1; }
+          [[ "$RUNNER_PROJECT_ID" != "$CUSTOMER_PROJECT_ID" ]] || { echo "Runner must not reuse the Customer EAS project." >&2; exit 1; }
+
+          node - <<'NODE'
+          const fs = require("node:fs");
+          const app = JSON.parse(fs.readFileSync("app.json", "utf8")).expo;
+          if (app.slug !== "sami-runner") throw new Error("Unexpected Runner Expo slug.");
+          if (app.android?.package !== "com.sami.runner") throw new Error("Unexpected Runner Android package.");
+          if (app.extra?.eas?.projectId === "c09e119e-8a6b-4a1e-a7c6-b85cfd4e330d") {
+            throw new Error("Runner cannot use the Customer EAS project ID.");
+          }
+          console.log("Runner Expo project linked: " + app.extra.eas.projectId);
+          console.log("Runner Android package: " + app.android.package);
+          NODE
+
+      - name: Save Runner Expo project ID to the repository
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+            const path = "apps/runner/app.json";
+            const content = fs.readFileSync(path, "utf8");
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const base = await github.rest.repos.getContent({
+              owner, repo, path, ref: context.sha
+            });
+            const current = await github.rest.repos.getContent({
+              owner, repo, path, ref: "main"
+            });
+            if (base.data.sha !== current.data.sha) {
+              throw new Error("apps/runner/app.json changed on main during this build; refusing to overwrite it.");
+            }
+            const original = Buffer.from(current.data.content, "base64").toString("utf8");
+            if (original === content) {
+              core.info("Runner EAS project ID is already saved in main.");
+              return;
+            }
+            await github.rest.repos.createOrUpdateFileContents({
+              owner,
+              repo,
+              path,
+              message: "Link SaMi Runner to its dedicated Expo project [skip ci]",
+              content: Buffer.from(content, "utf8").toString("base64"),
+              sha: current.data.sha,
+              branch: "main"
+            });
+            core.info("Saved the dedicated Runner EAS project ID to apps/runner/app.json.");
+
+      - name: Type-check Runner
+        run: npm run typecheck
+
+      - name: Build production Android APK with EAS
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx eas-cli@latest build --platform android --profile production --wait --non-interactive 2>&1 | tee "$RUNNER_TEMP/sami-runner-eas-build.log"
+
+          BUILD_ID="$(grep -Eo '/builds/[0-9a-fA-F-]{36}' "$RUNNER_TEMP/sami-runner-eas-build.log" | tail -n 1 | cut -d/ -f3 || true)"
+          if [[ -z "$BUILD_ID" ]]; then
+            npx eas-cli@latest build:list --platform android --build-profile production --limit 1 --json --non-interactive > "$RUNNER_TEMP/sami-runner-build-list.json"
+            BUILD_ID="$(node - "$RUNNER_TEMP/sami-runner-build-list.json" <<'NODE'
+            const fs = require("node:fs");
+            const raw = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+            const builds = Array.isArray(raw) ? raw : (raw.builds || raw.data || raw.items || []);
+            process.stdout.write(builds[0]?.id || "");
+            NODE
+            )"
+          fi
+          test -n "$BUILD_ID" || { echo "Could not identify the completed Runner EAS build." >&2; exit 1; }
+
+          echo "$BUILD_ID" > "$RUNNER_TEMP/sami-runner-build-id.txt"
+          npx eas-cli@latest build:download --build-id "$BUILD_ID" --non-interactive
+
+          APK_PATH="$(find /tmp/runner/eas-cli-nodejs/eas-build-run-cache -maxdepth 4 -type f -iname '*.apk' -print -quit 2>/dev/null || true)"
+          if [[ -z "$APK_PATH" ]]; then
+            APK_PATH="$(find . -maxdepth 6 -type f -iname '*.apk' -not -path '*/node_modules/*' -print -quit)"
+          fi
+          test -n "$APK_PATH" && test -s "$APK_PATH" || { echo "EAS did not provide a non-empty APK." >&2; exit 1; }
+
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          APKSIGNER="$(find "$SDK_ROOT/build-tools" -name apksigner -print 2>/dev/null | sort -V | tail -n 1 || true)"
+          test -n "$APKSIGNER" || { echo "Android apksigner was not found; cannot verify the APK signature." >&2; exit 1; }
+          "$APKSIGNER" verify "$APK_PATH"
+
+          mkdir -p "$RUNNER_TEMP/sami-runner-release"
+          cp "$APK_PATH" "$RUNNER_TEMP/sami-runner-release/SaMi-Runner-production.apk"
+          sha256sum "$RUNNER_TEMP/sami-runner-release/SaMi-Runner-production.apk" > "$RUNNER_TEMP/sami-runner-release/SHA256SUMS.txt"
+
+          echo "EAS build: $BUILD_ID" >> "$GITHUB_STEP_SUMMARY"
+          echo "Package: com.sami.runner" >> "$GITHUB_STEP_SUMMARY"
+          echo "API: https://sami-assist.vercel.app" >> "$GITHUB_STEP_SUMMARY"
+          echo "Profile: production (APK)" >> "$GITHUB_STEP_SUMMARY"
+          echo "APK signature verification: passed" >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/sami-runner-release/SHA256SUMS.txt" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload installable Runner APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: sami-runner-production-apk
+          path: ${{ runner.temp }}/sami-runner-release/SaMi-Runner-production.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Runner EAS configuration snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: sami-runner-eas-config
+          path: apps/runner/app.json
+          if-no-files-found: error
+          retention-days: 7
