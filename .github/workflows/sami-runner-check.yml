@@ -1,0 +1,74 @@
+name: SaMi Runner checks
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/runner/**"
+      - "apps/runner-api/**"
+      - ".github/workflows/sami-runner-check.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "apps/runner/**"
+      - "apps/runner-api/**"
+      - ".github/workflows/sami-runner-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runner-mobile:
+    name: Runner mobile type-check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/runner
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/runner/package.json
+
+      - name: Install Runner mobile dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Generate Expo Router route types
+        run: npx expo export --platform android --output-dir .expo/ci-export
+
+      - name: Type-check Runner mobile app
+        run: npx tsc --noEmit
+
+  runner-api:
+    name: Runner API build and type-check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/runner-api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/runner-api/package.json
+
+      - name: Install Runner API dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Type-check Runner API
+        run: npm run typecheck
+
+      - name: Build Runner API
+        run: npm run build

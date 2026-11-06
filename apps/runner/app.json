@@ -20,13 +20,6 @@
         {
           "configureAndroidBackup": true
         }
-      ],
-      [
-        "expo-status-bar",
-        {
-          "hidden": false,
-          "style": "light"
-        }
       ]
     ],
     "ios": {
@@ -40,7 +33,11 @@
     "android": {
       "package": "com.sami.runner",
       "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"],
-      "backgroundColor": "#000535"
+      "backgroundColor": "#000535",
+      "androidStatusBar": {
+        "backgroundColor": "#000535",
+        "barStyle": "light-content"
+      }
     },
     "experiments": {
       "typedRoutes": true
