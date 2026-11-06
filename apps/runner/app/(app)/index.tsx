@@ -517,14 +517,6 @@ export default function RunnerDashboardScreen() {
   );
 }
 
-function money(value: number | null, currency = "KES") {
-  if (value === null || !Number.isFinite(value)) return "To be confirmed";
-  return currency + " " + value.toLocaleString("en-KE", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  });
-}
-
 const styles = StyleSheet.create({
   loadingScreen: { flex: 1, alignItems: "center", justifyContent: "center" },
   screen: { flex: 1 },
