@@ -1,0 +1,53 @@
+{
+  "expo": {
+    "name": "SaMi Runner",
+    "slug": "sami-runner",
+    "scheme": "samirunner",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "platforms": ["android", "ios"],
+    "userInterfaceStyle": "automatic",
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "SaMi Runner uses your location while you are working on an accepted errand so the customer can follow the progress."
+        }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": true
+        }
+      ],
+      [
+        "expo-status-bar",
+        {
+          "hidden": false,
+          "style": "light"
+        }
+      ]
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.sami.runner",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "SaMi Runner shares your location with the customer during an active errand."
+      },
+      "backgroundColor": "#000535"
+    },
+    "android": {
+      "package": "com.sami.runner",
+      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"],
+      "backgroundColor": "#000535"
+    },
+    "experiments": {
+      "typedRoutes": true
+    },
+    "backgroundColor": "#000535",
+    "web": {
+      "backgroundColor": "#000535"
+    }
+  }
+}
