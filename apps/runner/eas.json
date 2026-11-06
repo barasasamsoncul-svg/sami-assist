@@ -10,14 +10,21 @@
     },
     "preview": {
       "distribution": "internal",
-      "android": { "buildType": "apk" }
+      "android": {
+        "buildType": "apk"
+      }
     },
     "production": {
       "distribution": "internal",
       "channel": "runner-production",
       "autoIncrement": true,
-      "android": { "buildType": "apk" },
-      "environment": "production"
+      "android": {
+        "buildType": "apk"
+      },
+      "environment": "production",
+      "env": {
+        "EXPO_PUBLIC_SAMI_API_URL": "https://sami-assist.vercel.app"
+      }
     }
   }
 }
