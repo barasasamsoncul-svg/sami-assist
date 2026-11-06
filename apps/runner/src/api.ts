@@ -20,12 +20,10 @@ export type RunnerProfile = {
   profileComplete: boolean;
 };
 
-export type RunnerMe = {
-  runner: RunnerProfile & {
-    availability: {
-      isOnline: boolean;
-      lastHeartbeatAt: string | null;
-    };
+export type RunnerMe = RunnerProfile & {
+  availability: {
+    isOnline: boolean;
+    lastHeartbeatAt: string | null;
   };
 };
 
@@ -137,8 +135,8 @@ export async function verifyRunnerOtp(
   });
 }
 
-export async function getRunnerMe(): Promise<RunnerMe> {
-  return apiRequest("/api/runner/me");
+export async function getRunnerMe(): Promise<{ runner: RunnerMe }> {
+  return apiRequest<{ runner: RunnerMe }>("/api/runner/me");
 }
 
 export async function updateRunnerProfile(input: {
