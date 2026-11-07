@@ -23,7 +23,9 @@
       },
       "environment": "production",
       "env": {
-        "EXPO_PUBLIC_SAMI_API_URL": "https://sami-assist.vercel.app"
+        "EXPO_PUBLIC_SAMI_API_URL": "https://sami-assist.vercel.app",
+        "EXPO_PROJECT_ID": "8fcd647e-3514-4436-b1ce-c1b417f6c1d3",
+        "EXPO_UPDATE_CHANNEL": "runner-production"
       }
     }
   }
