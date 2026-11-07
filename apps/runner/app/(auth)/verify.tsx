@@ -3,7 +3,11 @@ import { useState } from "react";
 
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
+  ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -15,11 +19,13 @@ import {
   useLocalSearchParams,
 } from "expo-router";
 
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
 import {
   saveRunnerSession,
   verifyRunnerOtp,
+  type RunnerOtpPurpose,
 } from "@/api";
 
 import { useRunnerTheme } from "@/theme";
@@ -30,15 +36,21 @@ export default function VerifyRunnerScreen() {
   const params = useLocalSearchParams<{
     challengeId?: string;
     destination?: string;
+    purpose?: string;
   }>();
 
   const challengeId = String(
-    params.challengeId || ""
+    params.challengeId || "",
   );
 
   const destination = String(
-    params.destination || "your email address"
+    params.destination || "your email address",
   );
+
+  const purpose: RunnerOtpPurpose =
+    params.purpose === "register" ? "register" : "login";
+
+  const isRegistration = purpose === "register";
 
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -47,14 +59,14 @@ export default function VerifyRunnerScreen() {
   async function verify() {
     if (!challengeId) {
       setError(
-        "Your verification session is missing. Start again."
+        "Your verification session is missing. Start again.",
       );
       return;
     }
 
     if (!/^[0-9]{6}$/.test(code)) {
       setError(
-        "Enter the complete six-digit verification code."
+        "Enter the complete six-digit verification code.",
       );
       return;
     }
@@ -65,21 +77,38 @@ export default function VerifyRunnerScreen() {
     try {
       const result = await verifyRunnerOtp(
         challengeId,
-        code
+        code,
       );
 
       await saveRunnerSession(result.sessionToken);
 
-      router.replace(
-        result.profileComplete
-          ? "/(app)"
-          : "/(app)/profile-setup"
-      );
+      // Only an Operations-approved Runner can enter the
+      // operational app. Profile completeness is not approval.
+      switch (result.nextStep) {
+        case "app":
+          router.replace("/(app)");
+          break;
+
+        case "status":
+          router.replace({
+            pathname: "/(app)/profile-setup",
+            params: { mode: "status" },
+          });
+          break;
+
+        case "onboarding":
+        default:
+          router.replace({
+            pathname: "/(app)/profile-setup",
+            params: { mode: "onboarding" },
+          });
+          break;
+      }
     } catch (cause) {
       setError(
         cause instanceof Error
           ? cause.message
-          : "The verification code could not be verified."
+          : "The verification code could not be verified.",
       );
     } finally {
       setBusy(false);
@@ -87,177 +116,277 @@ export default function VerifyRunnerScreen() {
   }
 
   return (
-    <View
+    <SafeAreaView
+      edges={["top", "bottom"]}
       style={[
-        styles.screen,
+        styles.safeArea,
         { backgroundColor: colors.paper },
       ]}
     >
-      <Pressable
-        accessibilityRole="button"
-        disabled={busy}
-        onPress={() => router.back()}
-        style={styles.backButton}
+      <StatusBar
+        barStyle={
+          colors.paper === "#080F1D"
+            ? "light-content"
+            : "dark-content"
+        }
+        backgroundColor={colors.paper}
+      />
+
+      <KeyboardAvoidingView
+        style={styles.keyboardContainer}
+        behavior={
+          Platform.OS === "ios" ? "padding" : "height"
+        }
+        keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
       >
-        <Ionicons
-          name="chevron-back"
-          size={22}
-          color={colors.text}
-        />
-      </Pressable>
-
-      <View style={styles.content}>
-        <View
-          style={[
-            styles.iconWrap,
-            { backgroundColor: colors.blueSoft },
-          ]}
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
+          showsVerticalScrollIndicator={false}
         >
-          <Ionicons
-            name="mail-open-outline"
-            size={29}
-            color={colors.blue}
-          />
-        </View>
-
-        <Text
-          style={[
-            styles.eyebrow,
-            { color: colors.blue },
-          ]}
-        >
-          EMAIL VERIFICATION
-        </Text>
-
-        <Text
-          style={[
-            styles.title,
-            { color: colors.text },
-          ]}
-        >
-          Check your email
-        </Text>
-
-        <Text
-          style={[
-            styles.subtitle,
-            { color: colors.textMuted },
-          ]}
-        >
-          Enter the six-digit code sent to{" "}
-          <Text
-            style={[
-              styles.destination,
-              { color: colors.text },
-            ]}
-          >
-            {destination}
-          </Text>
-          .
-        </Text>
-
-        <TextInput
-          value={code}
-          onChangeText={(value) => {
-            setCode(
-              value.replace(/[^0-9]/g, "").slice(0, 6)
-            );
-            setError("");
-          }}
-          keyboardType="number-pad"
-          textContentType="oneTimeCode"
-          autoComplete="one-time-code"
-          maxLength={6}
-          placeholder="000000"
-          placeholderTextColor={colors.textMuted}
-          style={[
-            styles.codeInput,
-            {
-              backgroundColor: colors.surface,
-              borderColor: colors.border,
-              color: colors.text,
-            },
-          ]}
-          accessibilityLabel="Six digit email verification code"
-        />
-
-        {error ? (
-          <View
-            accessibilityRole="alert"
-            style={[
-              styles.errorContainer,
-              { backgroundColor: colors.dangerSoft },
-            ]}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            disabled={busy}
+            onPress={() => router.back()}
+            style={styles.backButton}
           >
             <Ionicons
-              name="alert-circle-outline"
-              size={18}
-              color={colors.red}
+              name="chevron-back"
+              size={22}
+              color={colors.text}
             />
+          </Pressable>
+
+          <View style={styles.content}>
+            <View
+              style={[
+                styles.iconWrap,
+                { backgroundColor: colors.blueSoft },
+              ]}
+            >
+              <Ionicons
+                name={
+                  isRegistration
+                    ? "person-add-outline"
+                    : "mail-open-outline"
+                }
+                size={29}
+                color={colors.blue}
+              />
+            </View>
 
             <Text
               style={[
-                styles.error,
-                { color: colors.red },
+                styles.eyebrow,
+                { color: colors.blue },
               ]}
             >
-              {error}
+              {isRegistration
+                ? "REGISTRATION VERIFICATION"
+                : "RUNNER SIGN IN"}
             </Text>
-          </View>
-        ) : null}
 
-        <Pressable
-          accessibilityRole="button"
-          disabled={busy}
-          onPress={verify}
-          style={[
-            styles.primaryButton,
-            { backgroundColor: colors.blue },
-            busy && styles.disabled,
-          ]}
-        >
-          {busy ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <>
-              <Text style={styles.primaryButtonText}>
-                Verify and continue
+            <Text
+              style={[
+                styles.title,
+                { color: colors.text },
+              ]}
+            >
+              {isRegistration
+                ? "Verify your email"
+                : "Welcome back"}
+            </Text>
+
+            <Text
+              style={[
+                styles.subtitle,
+                { color: colors.textMuted },
+              ]}
+            >
+              {isRegistration
+                ? "Enter the six-digit code we sent to "
+                : "Enter the six-digit sign-in code sent to "}
+              <Text
+                style={[
+                  styles.destination,
+                  { color: colors.text },
+                ]}
+              >
+                {destination}
               </Text>
+              .
+            </Text>
 
-              <Ionicons
-                name="arrow-forward"
-                size={18}
-                color="#FFFFFF"
-              />
-            </>
-          )}
-        </Pressable>
+            {isRegistration ? (
+              <View
+                style={[
+                  styles.infoBox,
+                  { backgroundColor: colors.blueSoft },
+                ]}
+              >
+                <Ionicons
+                  name="information-circle-outline"
+                  size={18}
+                  color={colors.blue}
+                />
 
-        <Pressable
-          accessibilityRole="button"
-          disabled={busy}
-          onPress={() => router.replace("/(auth)/login")}
-          style={styles.changeEmailButton}
-        >
-          <Text
-            style={[
-              styles.changeEmailText,
-              { color: colors.blue },
-            ]}
-          >
-            Use a different email address
-          </Text>
-        </Pressable>
-      </View>
-    </View>
+                <Text
+                  style={[
+                    styles.infoText,
+                    { color: colors.text },
+                  ]}
+                >
+                  Verifying your email creates your
+                  Runner account. You will then complete
+                  your category-specific onboarding and
+                  document verification.
+                </Text>
+              </View>
+            ) : null}
+
+            <Text
+              style={[
+                styles.label,
+                { color: colors.text },
+              ]}
+            >
+              Verification code
+            </Text>
+
+            <TextInput
+              value={code}
+              onChangeText={(value) => {
+                setCode(
+                  value
+                    .replace(/[^0-9]/g, "")
+                    .slice(0, 6),
+                );
+                setError("");
+              }}
+              keyboardType="number-pad"
+              textContentType="oneTimeCode"
+              autoComplete="one-time-code"
+              maxLength={6}
+              placeholder="000000"
+              placeholderTextColor={colors.textMuted}
+              returnKeyType="done"
+              onSubmitEditing={() => {
+                if (code.length === 6 && !busy) {
+                  void verify();
+                }
+              }}
+              style={[
+                styles.codeInput,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: colors.border,
+                  color: colors.text,
+                },
+              ]}
+              accessibilityLabel="Six digit email verification code"
+            />
+
+            {error ? (
+              <View
+                accessibilityRole="alert"
+                style={[
+                  styles.errorContainer,
+                  { backgroundColor: colors.dangerSoft },
+                ]}
+              >
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={18}
+                  color={colors.red}
+                />
+
+                <Text
+                  style={[
+                    styles.error,
+                    { color: colors.red },
+                  ]}
+                >
+                  {error}
+                </Text>
+              </View>
+            ) : null}
+
+            <Pressable
+              accessibilityRole="button"
+              disabled={busy}
+              onPress={() => void verify()}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                { backgroundColor: colors.blue },
+                busy && styles.disabled,
+                pressed && !busy && styles.pressed,
+              ]}
+            >
+              {busy ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <>
+                  <Text style={styles.primaryButtonText}>
+                    {isRegistration
+                      ? "Verify and create account"
+                      : "Verify and continue"}
+                  </Text>
+
+                  <Ionicons
+                    name="arrow-forward"
+                    size={18}
+                    color="#FFFFFF"
+                  />
+                </>
+              )}
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              disabled={busy}
+              onPress={() =>
+                router.replace(
+                  isRegistration
+                    ? "/(auth)/register"
+                    : "/(auth)/login",
+                )
+              }
+              style={styles.changeEmailButton}
+            >
+              <Text
+                style={[
+                  styles.changeEmailText,
+                  { color: colors.blue },
+                ]}
+              >
+                {isRegistration
+                  ? "Change registration details"
+                  : "Use a different email address"}
+              </Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
+  safeArea: {
     flex: 1,
-    padding: 24,
-    paddingTop: 30,
+  },
+
+  keyboardContainer: {
+    flex: 1,
+  },
+
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 32,
   },
 
   backButton: {
@@ -268,10 +397,11 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: "center",
-    gap: 17,
-    paddingBottom: 60,
+    gap: 16,
+    paddingTop: 30,
+    paddingBottom: 30,
   },
 
   iconWrap: {
@@ -304,6 +434,26 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
 
+  infoBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    borderRadius: 13,
+    padding: 12,
+    gap: 9,
+  },
+
+  infoText: {
+    flex: 1,
+    fontSize: 11,
+    lineHeight: 17,
+  },
+
+  label: {
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: 5,
+  },
+
   codeInput: {
     minHeight: 64,
     borderWidth: 1,
@@ -312,7 +462,7 @@ const styles = StyleSheet.create({
     fontSize: 25,
     fontWeight: "900",
     letterSpacing: 9,
-    marginTop: 9,
+    marginTop: 2,
   },
 
   errorContainer: {
@@ -341,7 +491,7 @@ const styles = StyleSheet.create({
 
   primaryButtonText: {
     color: "#FFFFFF",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "900",
   },
 
@@ -357,5 +507,9 @@ const styles = StyleSheet.create({
 
   disabled: {
     opacity: 0.55,
+  },
+
+  pressed: {
+    opacity: 0.82,
   },
 });

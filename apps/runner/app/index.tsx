@@ -28,11 +28,7 @@ export default function IndexScreen() {
   useEffect(() => {
     let active = true;
 
-    function openRunnerApp() {
-      if (!active) return;
-
-      router.replace("/(app)");
-
+    function hideSplash() {
       requestAnimationFrame(() => {
         void SplashScreen.hideAsync().catch(
           () => undefined,
@@ -51,24 +47,42 @@ export default function IndexScreen() {
       }
 
       try {
-        await getRunnerMe();
+        const result = await getRunnerMe();
 
         if (!active) return;
 
-        openRunnerApp();
+        const runner = result.runner;
+
+        // Only an active, Operations-approved Runner may
+        // enter the operational workspace.
+        const approved =
+          runner.accountStatus === "active" &&
+          runner.verificationStatus === "approved";
+
+        if (approved) {
+          router.replace("/(app)");
+        } else {
+          // Submitted applications go to their review status.
+          // Incomplete or rejected applications return to onboarding.
+          router.replace({
+            pathname: "/(app)/profile-setup",
+            params: {
+              mode:
+                runner.verificationStatus === "submitted"
+                  ? "status"
+                  : "onboarding",
+            },
+          });
+        }
+
+        hideSplash();
       } catch {
         if (!active) return;
 
-        // Preserve an existing session during a network failure.
-        const remainingToken = await getRunnerSession();
-
-        if (!active) return;
-
-        if (remainingToken) {
-          openRunnerApp();
-        } else {
-          setWelcomeReady(true);
-        }
+        // Never send a Runner into the operational workspace
+        // when their approval status cannot be confirmed.
+        // Preserve the session in case this is only a network issue.
+        setWelcomeReady(true);
       }
     }
 
@@ -90,7 +104,7 @@ export default function IndexScreen() {
   }
 
   function getStarted() {
-    router.push("/(auth)/login");
+    router.push("/(auth)/register");
   }
 
   function signIn() {

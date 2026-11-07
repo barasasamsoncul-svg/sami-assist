@@ -56,6 +56,112 @@ export type RunnerAuthenticatedAccount = {
   fullName: string | null;
   accountStatus: string;
   verificationStatus: string;
+  serviceArea: string | null;
+  vehicleType: string | null;
+  selectedCategories: string[];
+};
+
+export type RunnerOtpPurpose = "login" | "register";
+
+export type RunnerOtpChallenge = {
+  ok: boolean;
+  purpose: RunnerOtpPurpose;
+  challengeId: string;
+  destination: string;
+  expiresInSeconds: number;
+  message: string;
+};
+
+export type RunnerRegistrationInput = {
+  fullName: string;
+  email: string;
+  categoryKeys: string[];
+};
+
+export type RunnerOnboardingStatus =
+  | "incomplete"
+  | "pending_review"
+  | "approved"
+  | "changes_required";
+
+export type RunnerNextStep =
+  | "onboarding"
+  | "status"
+  | "app";
+
+export type RunnerOtpVerificationResult = {
+  ok: boolean;
+  sessionToken: string;
+  expiresInDays: number;
+  profileComplete: boolean;
+  onboardingStatus: RunnerOnboardingStatus;
+  nextStep: RunnerNextStep;
+  runner: RunnerAuthenticatedAccount;
+};
+
+export type RunnerCategory = {
+  key: string;
+};
+
+export type RunnerDocumentRequirement = {
+  key: string;
+  categoryKey: string | null;
+  vehicleType: string;
+  documentType: string;
+  title: string;
+  instructions: string | null;
+  required: boolean;
+};
+
+export type RunnerUploadedDocument = {
+  id: string;
+  documentType: string;
+  categoryKey: string | null;
+  requirementKey: string | null;
+  reviewStatus: "pending" | "approved" | "rejected";
+  rejectionReason: string | null;
+  submittedAt: string;
+  reviewedAt: string | null;
+};
+
+export type RunnerOnboardingData = {
+  ok: boolean;
+  onboardingStatus: RunnerOnboardingStatus;
+  runner: {
+    id: string;
+    fullName: string | null;
+    email: string | null;
+    accountStatus: string;
+    verificationStatus: string;
+    serviceArea: string | null;
+    vehicleType: string | null;
+    vehicleRegistration: string | null;
+    selectedCategories: string[];
+  };
+  requirements: RunnerDocumentRequirement[];
+  documents: RunnerUploadedDocument[];
+};
+
+export type RunnerDocumentFile = {
+  uri: string;
+  name: string;
+  mimeType?: string | null;
+};
+
+export type RunnerDocumentUploadResult = {
+  ok: boolean;
+  message: string;
+  document: RunnerUploadedDocument;
+};
+
+export type RunnerOnboardingSubmissionResult = {
+  ok: boolean;
+  message: string;
+  onboardingStatus: "pending_review";
+  runner: {
+    accountStatus: string;
+    verificationStatus: string;
+  };
 };
 
 function apiBase(): string {
@@ -92,6 +198,22 @@ function describeError(cause: unknown): string {
   }
 
   return String(cause || "Unknown network error");
+}
+
+function getApiError(
+  payload: unknown,
+  fallback: string,
+): string {
+  if (
+    payload !== null &&
+    typeof payload === "object" &&
+    "error" in payload &&
+    typeof payload.error === "string"
+  ) {
+    return payload.error;
+  }
+
+  return fallback;
 }
 
 export async function getRunnerSession(): Promise<string | null> {
@@ -162,10 +284,13 @@ export async function apiRequest<T>(
     );
   }
 
-  const payload = await response.json().catch(() => ({}));
+  const payload: unknown = await response.json().catch(
+    () => ({}),
+  );
 
   if (!response.ok) {
-    const isPublicAuthRequest = PUBLIC_AUTH_PATHS.includes(path);
+    const isPublicAuthRequest =
+      PUBLIC_AUTH_PATHS.includes(path);
 
     if (
       response.status === 401 &&
@@ -176,13 +301,80 @@ export async function apiRequest<T>(
     }
 
     throw new Error(
-      typeof payload?.error === "string"
-        ? payload.error
-        : `SaMi Runner request failed with HTTP ${response.status}.`,
+      getApiError(
+        payload,
+        `SaMi Runner request failed with HTTP ${response.status}.`,
+      ),
     );
   }
 
   return payload as T;
+}
+
+/* -----------------------------------------
+   MULTIPART DOCUMENT UPLOAD
+------------------------------------------ */
+
+async function uploadRunnerFile<T>(
+  path: string,
+  formData: FormData,
+): Promise<T> {
+  const token = await getRunnerSession();
+
+  if (!token) {
+    throw new Error(
+      "Your Runner session has expired. Sign in again.",
+    );
+  }
+
+  const requestUrl = apiBase() + path;
+
+  try {
+    const response = await expoFetch(requestUrl, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "x-sami-client": "runner",
+        Authorization: "Bearer " + token,
+        // Do not set Content-Type here.
+        // The native fetch implementation supplies the
+        // multipart boundary for FormData automatically.
+      },
+      body: formData,
+    });
+
+    const payload: unknown = await response.json().catch(
+      () => ({}),
+    );
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        await clearSession();
+      }
+
+      throw new Error(
+        getApiError(
+          payload,
+          `Document upload failed with HTTP ${response.status}.`,
+        ),
+      );
+    }
+
+    return payload as T;
+  } catch (cause) {
+    if (cause instanceof Error) {
+      throw cause;
+    }
+
+    console.error(
+      "[SaMi Runner API] Document upload failed.",
+      describeError(cause),
+    );
+
+    throw new Error(
+      "Could not upload your document. Check your connection and try again.",
+    );
+  }
 }
 
 /* -----------------------------------------
@@ -191,18 +383,56 @@ export async function apiRequest<T>(
 
 export async function requestRunnerOtp(
   email: string,
-): Promise<{
-  ok: boolean;
-  challengeId: string;
-  destination: string;
-  expiresInSeconds: number;
-  message: string;
-}> {
-  return apiRequest(
+): Promise<RunnerOtpChallenge> {
+  return apiRequest<RunnerOtpChallenge>(
     "/api/runner/auth/request-otp",
     {
       method: "POST",
-      body: { email },
+      body: {
+        email: email.trim().toLowerCase(),
+        purpose: "login",
+      },
+    },
+  );
+}
+
+export async function requestRunnerRegistrationOtp(
+  input: RunnerRegistrationInput,
+): Promise<RunnerOtpChallenge> {
+  const fullName = input.fullName.trim();
+  const email = input.email.trim().toLowerCase();
+  const categoryKeys = [...new Set(input.categoryKeys)];
+
+  if (fullName.length < 2 || fullName.length > 120) {
+    throw new Error("Enter your full name.");
+  }
+
+  if (
+    email.length > 254 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  ) {
+    throw new Error("Enter a valid email address.");
+  }
+
+  if (
+    categoryKeys.length < 1 ||
+    categoryKeys.length > 20
+  ) {
+    throw new Error(
+      "Select at least one task category you can perform.",
+    );
+  }
+
+  return apiRequest<RunnerOtpChallenge>(
+    "/api/runner/auth/request-otp",
+    {
+      method: "POST",
+      body: {
+        email,
+        purpose: "register",
+        fullName,
+        categoryKeys,
+      },
     },
   );
 }
@@ -210,14 +440,8 @@ export async function requestRunnerOtp(
 export async function verifyRunnerOtp(
   challengeId: string,
   code: string,
-): Promise<{
-  ok: boolean;
-  sessionToken: string;
-  expiresInDays: number;
-  profileComplete: boolean;
-  runner: RunnerAuthenticatedAccount;
-}> {
-  return apiRequest(
+): Promise<RunnerOtpVerificationResult> {
+  return apiRequest<RunnerOtpVerificationResult>(
     "/api/runner/auth/verify-otp",
     {
       method: "POST",
@@ -227,6 +451,17 @@ export async function verifyRunnerOtp(
       },
     },
   );
+}
+
+/* -----------------------------------------
+   RUNNER TASK CATEGORIES
+------------------------------------------ */
+
+export async function getRunnerCategories(): Promise<{
+  ok: boolean;
+  categories: RunnerCategory[];
+}> {
+  return apiRequest("/api/runner/categories");
 }
 
 /* -----------------------------------------
@@ -251,6 +486,83 @@ export async function updateRunnerProfile(input: {
     method: "PUT",
     body: input,
   });
+}
+
+/* -----------------------------------------
+   RUNNER ONBOARDING
+------------------------------------------ */
+
+export async function getRunnerOnboarding(): Promise<RunnerOnboardingData> {
+  return apiRequest<RunnerOnboardingData>(
+    "/api/runner/me/onboarding",
+  );
+}
+
+export async function updateRunnerOnboarding(input: {
+  serviceArea: string;
+  vehicleType: string;
+  vehicleRegistration?: string;
+}): Promise<{
+  ok: boolean;
+  message: string;
+  requirements: RunnerDocumentRequirement[];
+}> {
+  return apiRequest(
+    "/api/runner/me/onboarding",
+    {
+      method: "PUT",
+      body: input,
+    },
+  );
+}
+
+export async function uploadRunnerDocument(input: {
+  requirementKey: string;
+  file: RunnerDocumentFile;
+}): Promise<RunnerDocumentUploadResult> {
+  if (!input.requirementKey.trim()) {
+    throw new Error(
+      "Choose the document requirement before uploading.",
+    );
+  }
+
+  if (!input.file.uri) {
+    throw new Error("Select a document to upload.");
+  }
+
+  const formData = new FormData();
+
+  formData.append(
+    "requirementKey",
+    input.requirementKey.trim(),
+  );
+
+  // React Native uses a URI-backed file object. The cast
+  // bridges React Native's FormData extension to the
+  // standard TypeScript Blob overload.
+  formData.append(
+    "file",
+    {
+      uri: input.file.uri,
+      name: input.file.name || "runner-document",
+      type: input.file.mimeType || "application/octet-stream",
+    } as unknown as Blob,
+  );
+
+  return uploadRunnerFile<RunnerDocumentUploadResult>(
+    "/api/runner/me/onboarding/documents",
+    formData,
+  );
+}
+
+export async function submitRunnerOnboarding(): Promise<RunnerOnboardingSubmissionResult> {
+  return apiRequest<RunnerOnboardingSubmissionResult>(
+    "/api/runner/me/onboarding",
+    {
+      method: "POST",
+      body: {},
+    },
+  );
 }
 
 /* -----------------------------------------
