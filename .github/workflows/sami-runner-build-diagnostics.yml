@@ -1,5 +1,5 @@
 name: SaMi Runner EAS build diagnostics
-# Refresh latest EAS build status after Runner APK compile
+# Refresh Runner APK build log after native compilation
 
 on:
   push:
