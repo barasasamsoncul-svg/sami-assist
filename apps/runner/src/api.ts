@@ -9,6 +9,9 @@ const PUBLIC_AUTH_PATHS = [
   "/api/runner/auth/verify-otp",
 ];
 
+const ONBOARDING_DOCUMENTS_PATH =
+  "/api/runner/me/onboarding/documents";
+
 type ApiOptions = {
   method?: "GET" | "POST" | "PUT";
   body?: unknown;
@@ -72,10 +75,14 @@ export type RunnerOtpChallenge = {
   message: string;
 };
 
+/**
+ * Registration captures identity and contact details only.
+ * Task categories are selected after email verification.
+ */
 export type RunnerRegistrationInput = {
   fullName: string;
   email: string;
-  categoryKeys: string[];
+  phone: string;
 };
 
 export type RunnerOnboardingStatus =
@@ -85,6 +92,7 @@ export type RunnerOnboardingStatus =
   | "changes_required";
 
 export type RunnerNextStep =
+  | "tasks"
   | "onboarding"
   | "status"
   | "app";
@@ -154,6 +162,14 @@ export type RunnerDocumentUploadResult = {
   document: RunnerUploadedDocument;
 };
 
+export type RunnerDocumentGroupUploadResult = {
+  ok: boolean;
+  message: string;
+  documents: RunnerUploadedDocument[];
+  document: RunnerUploadedDocument;
+  uploadCount: number;
+};
+
 export type RunnerOnboardingSubmissionResult = {
   ok: boolean;
   message: string;
@@ -214,6 +230,41 @@ function getApiError(
   }
 
   return fallback;
+}
+
+/**
+ * Normalize common Kenyan mobile number formats to E.164.
+ *
+ * Examples:
+ * 0712345678   -> +254712345678
+ * 0112345678   -> +254112345678
+ * 254712345678 -> +254712345678
+ * +254712345678 -> +254712345678
+ */
+function normalizeKenyanPhone(value: string): string {
+  const trimmed = value.trim();
+
+  if (!/^[+\d\s().-]+$/.test(trimmed)) {
+    throw new Error("Enter a valid Kenyan mobile number.");
+  }
+
+  const digits = trimmed.replace(/\D/g, "");
+
+  if (/^0[17]\d{8}$/.test(digits)) {
+    return `+254${digits.slice(1)}`;
+  }
+
+  if (/^254[17]\d{8}$/.test(digits)) {
+    return `+${digits}`;
+  }
+
+  if (/^[17]\d{8}$/.test(digits)) {
+    return `+254${digits}`;
+  }
+
+  throw new Error(
+    "Enter a valid Kenyan mobile number, such as 0712 345 678.",
+  );
 }
 
 export async function getRunnerSession(): Promise<string | null> {
@@ -315,6 +366,25 @@ export async function apiRequest<T>(
    MULTIPART DOCUMENT UPLOAD
 ------------------------------------------ */
 
+function appendRunnerFile(
+  formData: FormData,
+  fieldName: string,
+  file: RunnerDocumentFile,
+): void {
+  if (!file.uri) {
+    throw new Error("Select a document to upload.");
+  }
+
+  formData.append(
+    fieldName,
+    {
+      uri: file.uri,
+      name: file.name || "runner-document",
+      type: file.mimeType || "application/octet-stream",
+    } as unknown as Blob,
+  );
+}
+
 async function uploadRunnerFile<T>(
   path: string,
   formData: FormData,
@@ -337,8 +407,7 @@ async function uploadRunnerFile<T>(
         "x-sami-client": "runner",
         Authorization: "Bearer " + token,
         // Do not set Content-Type here.
-        // The native fetch implementation supplies the
-        // multipart boundary for FormData automatically.
+        // Native fetch supplies the multipart boundary.
       },
       body: formData,
     });
@@ -384,12 +453,21 @@ async function uploadRunnerFile<T>(
 export async function requestRunnerOtp(
   email: string,
 ): Promise<RunnerOtpChallenge> {
+  const normalizedEmail = email.trim().toLowerCase();
+
+  if (
+    normalizedEmail.length > 254 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
+  ) {
+    throw new Error("Enter a valid email address.");
+  }
+
   return apiRequest<RunnerOtpChallenge>(
     "/api/runner/auth/request-otp",
     {
       method: "POST",
       body: {
-        email: email.trim().toLowerCase(),
+        email: normalizedEmail,
         purpose: "login",
       },
     },
@@ -399,12 +477,17 @@ export async function requestRunnerOtp(
 export async function requestRunnerRegistrationOtp(
   input: RunnerRegistrationInput,
 ): Promise<RunnerOtpChallenge> {
-  const fullName = input.fullName.trim();
+  const fullName = input.fullName
+    .trim()
+    .replace(/\s+/g, " ");
+
   const email = input.email.trim().toLowerCase();
-  const categoryKeys = [...new Set(input.categoryKeys)];
+  const phone = normalizeKenyanPhone(input.phone);
 
   if (fullName.length < 2 || fullName.length > 120) {
-    throw new Error("Enter your full name.");
+    throw new Error(
+      "Your full name must contain between 2 and 120 characters.",
+    );
   }
 
   if (
@@ -412,15 +495,6 @@ export async function requestRunnerRegistrationOtp(
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
   ) {
     throw new Error("Enter a valid email address.");
-  }
-
-  if (
-    categoryKeys.length < 1 ||
-    categoryKeys.length > 20
-  ) {
-    throw new Error(
-      "Select at least one task category you can perform.",
-    );
   }
 
   return apiRequest<RunnerOtpChallenge>(
@@ -431,7 +505,7 @@ export async function requestRunnerRegistrationOtp(
         email,
         purpose: "register",
         fullName,
-        categoryKeys,
+        phone,
       },
     },
   );
@@ -516,43 +590,107 @@ export async function updateRunnerOnboarding(input: {
   );
 }
 
+/**
+ * Upload one document requirement.
+ *
+ * This helper must not be used for either National ID side.
+ * National ID front and back are submitted together using
+ * uploadRunnerNationalId().
+ */
 export async function uploadRunnerDocument(input: {
   requirementKey: string;
   file: RunnerDocumentFile;
 }): Promise<RunnerDocumentUploadResult> {
-  if (!input.requirementKey.trim()) {
+  const requirementKey = input.requirementKey.trim();
+
+  if (!requirementKey) {
     throw new Error(
       "Choose the document requirement before uploading.",
     );
   }
 
-  if (!input.file.uri) {
-    throw new Error("Select a document to upload.");
+  if (
+    requirementKey === "identity_national_id_front" ||
+    requirementKey === "identity_national_id_back"
+  ) {
+    throw new Error(
+      "Submit both sides of your National ID together.",
+    );
+  }
+
+  const formData = new FormData();
+
+  formData.append("requirementKey", requirementKey);
+
+  appendRunnerFile(
+    formData,
+    "file",
+    input.file,
+  );
+
+  return uploadRunnerFile<RunnerDocumentUploadResult>(
+    ONBOARDING_DOCUMENTS_PATH,
+    formData,
+  );
+}
+
+/**
+ * Upload both sides of a National ID in a single request.
+ *
+ * The backend validates both files and creates both
+ * document records in one database transaction.
+ */
+export async function uploadRunnerNationalId(input: {
+  front: RunnerDocumentFile;
+  back: RunnerDocumentFile;
+}): Promise<RunnerDocumentGroupUploadResult> {
+  if (!input.front?.uri || !input.back?.uri) {
+    throw new Error(
+      "Select both the front and back of your National ID.",
+    );
   }
 
   const formData = new FormData();
 
   formData.append(
-    "requirementKey",
-    input.requirementKey.trim(),
+    "requirementKeyFront",
+    "identity_national_id_front",
   );
 
-  // React Native uses a URI-backed file object. The cast
-  // bridges React Native's FormData extension to the
-  // standard TypeScript Blob overload.
-  formData.append(
-    "file",
-    {
-      uri: input.file.uri,
-      name: input.file.name || "runner-document",
-      type: input.file.mimeType || "application/octet-stream",
-    } as unknown as Blob,
-  );
-
-  return uploadRunnerFile<RunnerDocumentUploadResult>(
-    "/api/runner/me/onboarding/documents",
+  appendRunnerFile(
     formData,
+    "fileFront",
+    input.front,
   );
+
+  formData.append(
+    "requirementKeyBack",
+    "identity_national_id_back",
+  );
+
+  appendRunnerFile(
+    formData,
+    "fileBack",
+    input.back,
+  );
+
+  const result =
+    await uploadRunnerFile<RunnerDocumentGroupUploadResult>(
+      ONBOARDING_DOCUMENTS_PATH,
+      formData,
+    );
+
+  if (
+    !Array.isArray(result.documents) ||
+    result.documents.length !== 2 ||
+    result.uploadCount !== 2
+  ) {
+    throw new Error(
+      "The server did not confirm both National ID sides. Refresh your document checklist before continuing.",
+    );
+  }
+
+  return result;
 }
 
 export async function submitRunnerOnboarding(): Promise<RunnerOnboardingSubmissionResult> {

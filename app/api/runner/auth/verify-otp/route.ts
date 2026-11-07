@@ -39,23 +39,25 @@ type RunnerProfile = RunnerAccount & {
 
 type RegistrationData = {
   fullName: string;
-  categoryKeys: string[];
+  phoneE164: string;
 };
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function hashToken(value: string) {
+const KENYAN_PHONE_E164_PATTERN = /^\+254[17][0-9]{8}$/;
+
+function hashToken(value: string): string {
   return createHash("sha256")
     .update(value, "utf8")
     .digest("hex");
 }
 
-function isExpired(value: Date | string) {
+function isExpired(value: Date | string): boolean {
   return new Date(value).getTime() <= Date.now();
 }
 
-function sessionLifetimeDays() {
+function sessionLifetimeDays(): number {
   const configuredDays = Number(
     process.env.RUNNER_SESSION_DAYS || 30,
   );
@@ -64,12 +66,16 @@ function sessionLifetimeDays() {
     90,
     Math.max(
       1,
-      Number.isFinite(configuredDays) ? configuredDays : 30,
+      Number.isFinite(configuredDays)
+        ? configuredDays
+        : 30,
     ),
   );
 }
 
-function parseRegistrationData(value: unknown): RegistrationData | null {
+function parseRegistrationData(
+  value: unknown,
+): RegistrationData | null {
   let parsed = value;
 
   if (typeof parsed === "string") {
@@ -86,40 +92,25 @@ function parseRegistrationData(value: unknown): RegistrationData | null {
 
   const fullName =
     typeof parsed.fullName === "string"
-      ? parsed.fullName.trim()
+      ? parsed.fullName.trim().replace(/\s+/g, " ")
+      : "";
+
+  const phoneE164 =
+    typeof parsed.phoneE164 === "string"
+      ? parsed.phoneE164.trim()
       : "";
 
   if (
     fullName.length < 2 ||
     fullName.length > 120 ||
-    !Array.isArray(parsed.categoryKeys)
+    !KENYAN_PHONE_E164_PATTERN.test(phoneE164)
   ) {
-    return null;
-  }
-
-  const categoryKeys = parsed.categoryKeys;
-
-  if (
-    categoryKeys.length < 1 ||
-    categoryKeys.length > 20 ||
-    !categoryKeys.every(
-      (category): category is string =>
-        typeof category === "string" &&
-        /^[a-z0-9_]+$/.test(category),
-    )
-  ) {
-    return null;
-  }
-
-  const uniqueCategoryKeys = [...new Set(categoryKeys)];
-
-  if (uniqueCategoryKeys.length !== categoryKeys.length) {
     return null;
   }
 
   return {
     fullName,
-    categoryKeys: uniqueCategoryKeys,
+    phoneE164,
   };
 }
 
@@ -153,6 +144,17 @@ function getOnboardingState(account: RunnerAccount) {
     onboardingStatus: "incomplete",
     nextStep: "onboarding",
   };
+}
+
+function isUniqueConstraintViolation(
+  cause: unknown,
+): boolean {
+  return (
+    typeof cause === "object" &&
+    cause !== null &&
+    "code" in cause &&
+    (cause as { code?: unknown }).code === "23505"
+  );
 }
 
 export async function POST(request: Request) {
@@ -374,25 +376,28 @@ export async function POST(request: Request) {
         );
       }
 
-      // Revalidate selected categories against the active catalogue.
-      const categoriesResult = await client.query<{
-        category_key: string;
-      }>(
-        `SELECT category_key
-         FROM public.runner_service_categories
-         WHERE category_key = ANY($1::text[])
-           AND is_active = true`,
-        [registration.categoryKeys],
+      // Use the same phone lock as the registration request route.
+      await client.query(
+        "SELECT pg_advisory_xact_lock(hashtext($1))",
+        ["sami-runner-phone:" + registration.phoneE164],
       );
 
-      if (
-        categoriesResult.rows.length !==
-        registration.categoryKeys.length
-      ) {
+      // Check the phone again during verification. It may have been
+      // registered by another account after the OTP was requested.
+      const phoneResult = await client.query<{ id: string }>(
+        `SELECT id
+         FROM public.runner_accounts
+         WHERE phone_e164 = $1
+         LIMIT 1
+         FOR UPDATE`,
+        [registration.phoneE164],
+      );
+
+      if (phoneResult.rows.length > 0) {
         await client.query("COMMIT");
 
         return errorResponse(
-          "One or more selected task categories are no longer available. Please register again.",
+          "This phone number is already registered to a Runner account. Sign in or use another number.",
           409,
         );
       }
@@ -450,6 +455,7 @@ export async function POST(request: Request) {
         await client.query<RunnerAccount>(
           `INSERT INTO public.runner_accounts (
              email,
+             phone_e164,
              email_verified_at,
              full_name,
              account_status,
@@ -457,8 +463,9 @@ export async function POST(request: Request) {
            )
            VALUES (
              $1,
-             now(),
              $2,
+             now(),
+             $3,
              'pending_verification',
              'pending'
            )
@@ -469,7 +476,11 @@ export async function POST(request: Request) {
              full_name,
              account_status,
              verification_status`,
-          [email, registration!.fullName],
+          [
+            email,
+            registration!.phoneE164,
+            registration!.fullName,
+          ],
         );
 
       account = createdResult.rows[0];
@@ -478,18 +489,8 @@ export async function POST(request: Request) {
         throw new Error("RUNNER_ACCOUNT_CREATION_FAILED");
       }
 
-      await client.query(
-        `INSERT INTO public.runner_account_service_categories (
-           runner_id,
-           category_key
-         )
-         SELECT $1, category_key
-         FROM public.runner_service_categories
-         WHERE category_key = ANY($2::text[])
-           AND is_active = true
-         ON CONFLICT (runner_id, category_key) DO NOTHING`,
-        [account.id, registration!.categoryKeys],
-      );
+      // Task categories are deliberately not assigned here.
+      // The runner must choose them on the separate task-selection page.
     } else {
       const updatedResult =
         await client.query<RunnerAccount>(
@@ -512,10 +513,12 @@ export async function POST(request: Request) {
     }
 
     if (!account) {
-      throw new Error("RUNNER_ACCOUNT_NOT_FOUND_AFTER_VERIFICATION");
+      throw new Error(
+        "RUNNER_ACCOUNT_NOT_FOUND_AFTER_VERIFICATION",
+      );
     }
 
-    // Ensure every authenticated Runner has these base records.
+    // Ensure every authenticated Runner has the required base records.
     await client.query(
       `INSERT INTO public.runner_profiles (runner_id)
        VALUES ($1)
@@ -601,7 +604,15 @@ export async function POST(request: Request) {
       runner.vehicle_type,
     );
 
-    const state = getOnboardingState(runner);
+    // A newly registered account must select its task categories first.
+    // Existing logins continue through their saved onboarding state.
+    const state =
+      purpose === "register"
+        ? {
+            onboardingStatus: "incomplete",
+            nextStep: "tasks",
+          }
+        : getOnboardingState(runner);
 
     return NextResponse.json(
       {
@@ -632,9 +643,18 @@ export async function POST(request: Request) {
   } catch (cause) {
     await client.query("ROLLBACK").catch(() => undefined);
 
+    if (isUniqueConstraintViolation(cause)) {
+      return errorResponse(
+        "These registration details are already in use. Check your email and phone number, then try again.",
+        409,
+      );
+    }
+
     console.error(
       "[SaMi Runner OTP verification] Failed.",
-      cause instanceof Error ? cause.message : "unknown error",
+      cause instanceof Error
+        ? cause.message
+        : "unknown error",
     );
 
     return errorResponse(

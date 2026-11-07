@@ -25,7 +25,6 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   saveRunnerSession,
   verifyRunnerOtp,
-  type RunnerOtpPurpose,
 } from "@/api";
 
 import { useRunnerTheme } from "@/theme";
@@ -39,18 +38,13 @@ export default function VerifyRunnerScreen() {
     purpose?: string;
   }>();
 
-  const challengeId = String(
-    params.challengeId || "",
-  );
+  const challengeId = String(params.challengeId || "");
 
   const destination = String(
     params.destination || "your email address",
   );
 
-  const purpose: RunnerOtpPurpose =
-    params.purpose === "register" ? "register" : "login";
-
-  const isRegistration = purpose === "register";
+  const isRegistration = params.purpose === "register";
 
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -58,16 +52,12 @@ export default function VerifyRunnerScreen() {
 
   async function verify() {
     if (!challengeId) {
-      setError(
-        "Your verification session is missing. Start again.",
-      );
+      setError("Your verification session is missing. Start again.");
       return;
     }
 
     if (!/^[0-9]{6}$/.test(code)) {
-      setError(
-        "Enter the complete six-digit verification code.",
-      );
+      setError("Enter the complete six-digit verification code.");
       return;
     }
 
@@ -75,35 +65,20 @@ export default function VerifyRunnerScreen() {
     setError("");
 
     try {
-      const result = await verifyRunnerOtp(
-        challengeId,
-        code,
-      );
+      const result = await verifyRunnerOtp(challengeId, code);
+
+      if (!result.sessionToken) {
+        throw new Error(
+          "The verification server did not return a valid session.",
+        );
+      }
 
       await saveRunnerSession(result.sessionToken);
 
-      // Only an Operations-approved Runner can enter the
-      // operational app. Profile completeness is not approval.
-      switch (result.nextStep) {
-        case "app":
-          router.replace("/(app)");
-          break;
-
-        case "status":
-          router.replace({
-            pathname: "/(app)/profile-setup",
-            params: { mode: "status" },
-          });
-          break;
-
-        case "onboarding":
-        default:
-          router.replace({
-            pathname: "/(app)/profile-setup",
-            params: { mode: "onboarding" },
-          });
-          break;
-      }
+      // Route both registration and login through the same
+      // startup resolver. It reads the latest server-side
+      // account, categories, transport and document state.
+      router.replace("/");
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -134,9 +109,7 @@ export default function VerifyRunnerScreen() {
 
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
-        behavior={
-          Platform.OS === "ios" ? "padding" : "height"
-        }
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
       >
         <ScrollView
@@ -178,10 +151,7 @@ export default function VerifyRunnerScreen() {
             </View>
 
             <Text
-              style={[
-                styles.eyebrow,
-                { color: colors.blue },
-              ]}
+              style={[styles.eyebrow, { color: colors.blue }]}
             >
               {isRegistration
                 ? "REGISTRATION VERIFICATION"
@@ -189,10 +159,7 @@ export default function VerifyRunnerScreen() {
             </Text>
 
             <Text
-              style={[
-                styles.title,
-                { color: colors.text },
-              ]}
+              style={[styles.title, { color: colors.text }]}
             >
               {isRegistration
                 ? "Verify your email"
@@ -200,14 +167,12 @@ export default function VerifyRunnerScreen() {
             </Text>
 
             <Text
-              style={[
-                styles.subtitle,
-                { color: colors.textMuted },
-              ]}
+              style={[styles.subtitle, { color: colors.textMuted }]}
             >
               {isRegistration
                 ? "Enter the six-digit code we sent to "
                 : "Enter the six-digit sign-in code sent to "}
+
               <Text
                 style={[
                   styles.destination,
@@ -233,24 +198,17 @@ export default function VerifyRunnerScreen() {
                 />
 
                 <Text
-                  style={[
-                    styles.infoText,
-                    { color: colors.text },
-                  ]}
+                  style={[styles.infoText, { color: colors.text }]}
                 >
-                  Verifying your email creates your
-                  Runner account. You will then complete
-                  your category-specific onboarding and
-                  document verification.
+                  Verifying your email creates your Runner account.
+                  You will then complete your task selection,
+                  transport details and document verification.
                 </Text>
               </View>
             ) : null}
 
             <Text
-              style={[
-                styles.label,
-                { color: colors.text },
-              ]}
+              style={[styles.label, { color: colors.text }]}
             >
               Verification code
             </Text>
@@ -259,9 +217,7 @@ export default function VerifyRunnerScreen() {
               value={code}
               onChangeText={(value) => {
                 setCode(
-                  value
-                    .replace(/[^0-9]/g, "")
-                    .slice(0, 6),
+                  value.replace(/[^0-9]/g, "").slice(0, 6),
                 );
                 setError("");
               }}
@@ -303,10 +259,7 @@ export default function VerifyRunnerScreen() {
                 />
 
                 <Text
-                  style={[
-                    styles.error,
-                    { color: colors.red },
-                  ]}
+                  style={[styles.error, { color: colors.red }]}
                 >
                   {error}
                 </Text>
@@ -377,25 +330,21 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
-
   keyboardContainer: {
     flex: 1,
   },
-
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 24,
     paddingTop: 20,
     paddingBottom: 32,
   },
-
   backButton: {
     height: 42,
     width: 42,
     alignItems: "center",
     justifyContent: "center",
   },
-
   content: {
     flexGrow: 1,
     justifyContent: "center",
@@ -403,7 +352,6 @@ const styles = StyleSheet.create({
     paddingTop: 30,
     paddingBottom: 30,
   },
-
   iconWrap: {
     width: 58,
     height: 58,
@@ -412,28 +360,23 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 5,
   },
-
   eyebrow: {
     fontSize: 10,
     fontWeight: "900",
     letterSpacing: 1.3,
   },
-
   title: {
     fontSize: 28,
     fontWeight: "900",
     letterSpacing: -0.5,
   },
-
   subtitle: {
     fontSize: 13,
     lineHeight: 21,
   },
-
   destination: {
     fontWeight: "800",
   },
-
   infoBox: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -441,19 +384,16 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 9,
   },
-
   infoText: {
     flex: 1,
     fontSize: 11,
     lineHeight: 17,
   },
-
   label: {
     fontSize: 12,
     fontWeight: "800",
     marginTop: 5,
   },
-
   codeInput: {
     minHeight: 64,
     borderWidth: 1,
@@ -464,7 +404,6 @@ const styles = StyleSheet.create({
     letterSpacing: 9,
     marginTop: 2,
   },
-
   errorContainer: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -472,13 +411,11 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 9,
   },
-
   error: {
     flex: 1,
     fontSize: 12,
     lineHeight: 18,
   },
-
   primaryButton: {
     minHeight: 55,
     borderRadius: 14,
@@ -488,27 +425,22 @@ const styles = StyleSheet.create({
     gap: 9,
     marginTop: 5,
   },
-
   primaryButtonText: {
     color: "#FFFFFF",
     fontSize: 13,
     fontWeight: "900",
   },
-
   changeEmailButton: {
     alignItems: "center",
     padding: 12,
   },
-
   changeEmailText: {
     fontSize: 12,
     fontWeight: "800",
   },
-
   disabled: {
     opacity: 0.55,
   },
-
   pressed: {
     opacity: 0.82,
   },

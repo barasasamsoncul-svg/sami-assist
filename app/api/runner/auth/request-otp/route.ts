@@ -15,7 +15,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MAX_CATEGORIES = 20;
 
 type AuthPurpose = "login" | "register";
 
@@ -25,6 +24,30 @@ type RunnerAccount = {
   account_status: string;
   verification_status: string;
 };
+
+function normalizeKenyanPhone(value: string): string | null {
+  const trimmed = value.trim();
+
+  if (!/^[+\d\s().-]+$/.test(trimmed)) {
+    return null;
+  }
+
+  const digits = trimmed.replace(/\D/g, "");
+
+  let nationalNumber = digits;
+
+  if (digits.startsWith("254")) {
+    nationalNumber = digits.slice(3);
+  } else if (digits.startsWith("0")) {
+    nationalNumber = digits.slice(1);
+  }
+
+  if (!/^[17]\d{8}$/.test(nationalNumber)) {
+    return null;
+  }
+
+  return `+254${nationalNumber}`;
+}
 
 export async function POST(request: Request) {
   const isNative =
@@ -69,14 +92,16 @@ export async function POST(request: Request) {
   }
 
   let fullName = "";
-  let categoryKeys: string[] = [];
+  let phoneE164: string | null = null;
 
   if (purpose === "register") {
     if (typeof body.fullName !== "string") {
       return errorResponse("Enter your full name.");
     }
 
-    fullName = body.fullName.trim().replace(/\s+/g, " ");
+    fullName = body.fullName
+      .trim()
+      .replace(/\s+/g, " ");
 
     if (fullName.length < 2 || fullName.length > 120) {
       return errorResponse(
@@ -84,34 +109,16 @@ export async function POST(request: Request) {
       );
     }
 
-    if (
-      !Array.isArray(body.categoryKeys) ||
-      body.categoryKeys.length < 1 ||
-      body.categoryKeys.length > MAX_CATEGORIES ||
-      !body.categoryKeys.every(
-        (value: unknown) => typeof value === "string",
-      )
-    ) {
-      return errorResponse(
-        "Select at least one type of errand you can perform.",
-      );
+    if (typeof body.phone !== "string") {
+      return errorResponse("Enter your phone number.");
     }
 
-    categoryKeys = [
-      ...new Set(
-        body.categoryKeys.map((value: string) =>
-          value.trim().toLowerCase(),
-        ),
-      ),
-    ];
+    phoneE164 = normalizeKenyanPhone(body.phone);
 
-    if (
-      categoryKeys.some(
-        (value) =>
-          !/^[a-z0-9_]{2,60}$/.test(value),
-      )
-    ) {
-      return errorResponse("One or more selected categories are invalid.");
+    if (!phoneE164) {
+      return errorResponse(
+        "Enter a valid Kenyan mobile number.",
+      );
     }
   }
 
@@ -130,24 +137,35 @@ export async function POST(request: Request) {
   try {
     await client.query("BEGIN");
 
-    // Serialize all authentication requests for this email.
+    // Serialize authentication requests for this email.
     await client.query(
       "SELECT pg_advisory_xact_lock(hashtext($1))",
       ["sami-runner-email-otp:" + email],
     );
 
-    const accountResult = await client.query<RunnerAccount>(
-      `SELECT
-         id,
-         full_name,
-         account_status,
-         verification_status
-       FROM public.runner_accounts
-       WHERE lower(email) = $1
-       LIMIT 1
-       FOR UPDATE`,
-      [email],
-    );
+    // Phone numbers must also be serialized across registrations.
+    // This protects the unique phone number from concurrent
+    // registrations using different email addresses.
+    if (purpose === "register" && phoneE164) {
+      await client.query(
+        "SELECT pg_advisory_xact_lock(hashtext($1))",
+        ["sami-runner-phone:" + phoneE164],
+      );
+    }
+
+    const accountResult =
+      await client.query<RunnerAccount>(
+        `SELECT
+           id,
+           full_name,
+           account_status,
+           verification_status
+         FROM public.runner_accounts
+         WHERE lower(email) = $1
+         LIMIT 1
+         FOR UPDATE`,
+        [email],
+      );
 
     const existingAccount = accountResult.rows[0];
 
@@ -183,25 +201,24 @@ export async function POST(request: Request) {
       );
     }
 
-    if (purpose === "register") {
-      // Only currently active categories can be selected.
-      const categoryResult = await client.query<{
-        category_key: string;
+    if (purpose === "register" && phoneE164) {
+      const phoneResult = await client.query<{
+        id: string;
       }>(
-        `SELECT category_key
-         FROM public.runner_service_categories
-         WHERE category_key = ANY($1::text[])
-           AND is_active = true
-         FOR SHARE`,
-        [categoryKeys],
+        `SELECT id
+         FROM public.runner_accounts
+         WHERE phone_e164 = $1
+         LIMIT 1
+         FOR UPDATE`,
+        [phoneE164],
       );
 
-      if (categoryResult.rows.length !== categoryKeys.length) {
+      if (phoneResult.rows.length > 0) {
         await client.query("ROLLBACK");
 
         return errorResponse(
-          "One or more selected errand categories are unavailable. Review your selections.",
-          400,
+          "This phone number is already associated with a Runner account. Sign in or use another number.",
+          409,
         );
       }
 
@@ -254,8 +271,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Invalidate older outstanding challenges so a code from
-    // another registration or sign-in attempt cannot be reused.
+    // Invalidate older outstanding challenges so an old code
+    // cannot be used after a new registration or login request.
     await client.query(
       `UPDATE public.runner_email_otp_challenges
        SET consumed_at = now()
@@ -264,11 +281,13 @@ export async function POST(request: Request) {
       [email],
     );
 
+    // Store registration details against the challenge.
+    // Do not create the Runner account until email verification.
     const registrationData =
       purpose === "register"
         ? {
             fullName,
-            categoryKeys,
+            phoneE164,
           }
         : {};
 
@@ -298,7 +317,9 @@ export async function POST(request: Request) {
     challengeId = challengeResult.rows[0]?.id || "";
 
     if (!challengeId) {
-      throw new Error("RUNNER_OTP_CHALLENGE_CREATION_FAILED");
+      throw new Error(
+        "RUNNER_OTP_CHALLENGE_CREATION_FAILED",
+      );
     }
 
     await client.query("COMMIT");
@@ -318,7 +339,8 @@ export async function POST(request: Request) {
     client.release();
   }
 
-  // Deliver the OTP only after the challenge has been committed.
+  // Send the verification code only after the challenge
+  // and registration details have been committed.
   try {
     const code = createEmailOtpCode(challengeId);
 

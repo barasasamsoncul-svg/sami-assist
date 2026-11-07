@@ -15,9 +15,103 @@ import * as SplashScreen from "expo-splash-screen";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import {
-  getRunnerMe,
+  getRunnerOnboarding,
   getRunnerSession,
 } from "@/api";
+
+function isDocumentSatisfied(
+  reviewStatus: string | null | undefined,
+) {
+  return reviewStatus === "pending" || reviewStatus === "approved";
+}
+
+function getRunnerResumeRoute(data: Awaited<
+  ReturnType<typeof getRunnerOnboarding>
+>) {
+  const runner = data.runner;
+
+  if (
+    runner.accountStatus === "suspended" ||
+    runner.accountStatus === "closed"
+  ) {
+    return {
+      pathname: "/(app)/profile-setup" as const,
+      params: { mode: "status" },
+    };
+  }
+
+  if (
+    data.onboardingStatus === "pending_review" ||
+    runner.verificationStatus === "submitted"
+  ) {
+    return {
+      pathname: "/(app)/profile-setup" as const,
+      params: { mode: "status" },
+    };
+  }
+
+  if (
+    runner.accountStatus === "active" &&
+    runner.verificationStatus === "approved"
+  ) {
+    return "/(app)" as const;
+  }
+
+  if (
+    !runner.selectedCategories ||
+    runner.selectedCategories.length === 0
+  ) {
+    return "/(auth)/tasks" as const;
+  }
+
+  const vehicleType = runner.vehicleType ?? "";
+  const serviceArea = runner.serviceArea?.trim() ?? "";
+
+  const needsRegistration = [
+    "motorcycle",
+    "car",
+    "van",
+  ].includes(vehicleType);
+
+  const transportComplete =
+    serviceArea.length >= 2 &&
+    vehicleType.length > 0 &&
+    (!needsRegistration ||
+      Boolean(runner.vehicleRegistration?.trim()));
+
+  if (!transportComplete) {
+    return "/(auth)/transport" as const;
+  }
+
+  const requiredDocuments = data.requirements.filter(
+    (requirement) => requirement.required,
+  );
+
+  // Fail safely. A valid completed onboarding profile should
+  // have its required document requirements loaded.
+  if (requiredDocuments.length === 0) {
+    return "/(auth)/documents" as const;
+  }
+
+  const missingDocument = requiredDocuments.some(
+    (requirement) => {
+      const uploadedDocument = data.documents.find(
+        (document) =>
+          document.requirementKey === requirement.key,
+      );
+
+      return !isDocumentSatisfied(
+        uploadedDocument?.reviewStatus,
+      );
+    },
+  );
+
+  if (missingDocument) {
+    return "/(auth)/documents" as const;
+  }
+
+  return "/(auth)/review" as const;
+}
 
 const NAVY = "#000535";
 const BLUE = "#2769C7";
@@ -47,49 +141,37 @@ export default function IndexScreen() {
       }
 
       try {
-        const result = await getRunnerMe();
+        const onboarding = await getRunnerOnboarding();
 
         if (!active) return;
 
-        const runner = result.runner;
+        const destination = getRunnerResumeRoute(onboarding);
 
-        // Only an active, Operations-approved Runner may
-        // enter the operational workspace.
-        const approved =
-          runner.accountStatus === "active" &&
-          runner.verificationStatus === "approved";
-
-        if (approved) {
-          router.replace("/(app)");
-        } else {
-          // Submitted applications go to their review status.
-          // Incomplete or rejected applications return to onboarding.
-          router.replace({
-            pathname: "/(app)/profile-setup",
-            params: {
-              mode:
-                runner.verificationStatus === "submitted"
-                  ? "status"
-                  : "onboarding",
-            },
-          });
-        }
-
+        router.replace(destination);
         hideSplash();
-      } catch {
+      } catch (cause) {
         if (!active) return;
 
-        // Never send a Runner into the operational workspace
-        // when their approval status cannot be confirmed.
-        // Preserve the session in case this is only a network issue.
+        console.error(
+          "[SaMi Runner] Startup onboarding check failed.",
+          cause instanceof Error ? cause.message : "unknown error",
+        );
+
+        // Preserve the Runner session when the network is
+        // temporarily unavailable. Never assume approval.
         setWelcomeReady(true);
       }
     }
 
-    void bootstrap().catch(() => {
-      if (active) {
-        setWelcomeReady(true);
-      }
+    void bootstrap().catch((cause) => {
+      if (!active) return;
+
+      console.error(
+        "[SaMi Runner] Startup failed.",
+        cause instanceof Error ? cause.message : "unknown error",
+      );
+
+      setWelcomeReady(true);
     });
 
     return () => {

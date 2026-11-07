@@ -1,5 +1,5 @@
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 
 import {
   ActivityIndicator,
@@ -18,247 +18,43 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import {
-  apiRequest,
-  requestRunnerRegistrationOtp,
-} from "@/api";
-
+import { requestRunnerRegistrationOtp } from "@/api";
 import { useRunnerTheme } from "@/theme";
-
-type RunnerCategory = {
-  key: string;
-};
-
-type CategoryPresentation = {
-  title: string;
-  description: string;
-  icon: keyof typeof Ionicons.glyphMap;
-};
-
-const CATEGORY_PRESENTATION: Record<
-  string,
-  CategoryPresentation
-> = {
-  groceries: {
-    title: "Groceries",
-    description: "Shopping for food and daily essentials",
-    icon: "basket-outline",
-  },
-  food_delivery: {
-    title: "Food delivery",
-    description: "Collecting and delivering restaurant orders",
-    icon: "fast-food-outline",
-  },
-  pickup_delivery: {
-    title: "Pick-ups and deliveries",
-    description: "Moving parcels and items between locations",
-    icon: "cube-outline",
-  },
-  bill_payments: {
-    title: "Bill payments",
-    description: "Helping customers make payments",
-    icon: "receipt-outline",
-  },
-  laundry_cleaning: {
-    title: "Laundry and cleaning",
-    description: "Laundry collection and cleaning tasks",
-    icon: "water-outline",
-  },
-  documents_admin: {
-    title: "Documents and admin",
-    description: "Document collection and administrative errands",
-    icon: "document-text-outline",
-  },
-  clothing_retail: {
-    title: "Clothing and retail",
-    description: "Clothing purchases and retail collections",
-    icon: "shirt-outline",
-  },
-  home_services: {
-    title: "Home services",
-    description: "Home assistance and service appointments",
-    icon: "home-outline",
-  },
-  pharmacy_health: {
-    title: "Pharmacy and health",
-    description: "Pharmacy collections and health-related errands",
-    icon: "medkit-outline",
-  },
-  pet_care: {
-    title: "Pet care",
-    description: "Pet supplies and pet-related assistance",
-    icon: "paw-outline",
-  },
-  queue_appointments: {
-    title: "Queues and appointments",
-    description: "Queue assistance and appointment errands",
-    icon: "time-outline",
-  },
-  personal_errand: {
-    title: "Personal errands",
-    description: "Everyday tasks and personal assistance",
-    icon: "person-outline",
-  },
-  business_support: {
-    title: "Business support",
-    description: "Business collections and support errands",
-    icon: "briefcase-outline",
-  },
-  shopping_gifts: {
-    title: "Shopping and gifts",
-    description: "Gift shopping and special purchases",
-    icon: "gift-outline",
-  },
-  shopping: {
-    title: "General shopping",
-    description: "Other shopping and purchase requests",
-    icon: "cart-outline",
-  },
-  other: {
-    title: "Other tasks",
-    description: "Other errands you are comfortable handling",
-    icon: "apps-outline",
-  },
-};
-
-function formatCategoryKey(key: string): string {
-  return key
-    .split("_")
-    .map(
-      (word) =>
-        word.charAt(0).toUpperCase() + word.slice(1),
-    )
-    .join(" ");
-}
-
-function getCategoryPresentation(
-  key: string,
-): CategoryPresentation {
-  return (
-    CATEGORY_PRESENTATION[key] || {
-      title: formatCategoryKey(key),
-      description: "Select this task if you can perform it.",
-      icon: "briefcase-outline",
-    }
-  );
-}
 
 export default function RunnerRegistrationScreen() {
   const { colors } = useRunnerTheme();
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-
-  const [categories, setCategories] = useState<
-    RunnerCategory[]
-  >([]);
-
-  const [selectedCategories, setSelectedCategories] =
-    useState<string[]>([]);
-
-  const [loadingCategories, setLoadingCategories] =
-    useState(true);
+  const [phone, setPhone] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [categoryLoadError, setCategoryLoadError] =
-    useState("");
 
+  const normalizedName = fullName.trim().replace(/\s+/g, " ");
   const normalizedEmail = email.trim().toLowerCase();
-  const normalizedName = fullName.trim();
-
-  const validEmail =
-    normalizedEmail.length <= 254 &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail);
 
   const validName =
     normalizedName.length >= 2 &&
     normalizedName.length <= 120;
 
-  const selectedCount = selectedCategories.length;
+  const validEmail =
+    normalizedEmail.length <= 254 &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail);
 
-  const canContinue =
+  const validPhone = phone.trim().length >= 9;
+
+  const canSubmit =
     validName &&
     validEmail &&
-    selectedCount > 0 &&
-    !loadingCategories &&
-    !categoryLoadError &&
+    validPhone &&
     !submitting;
 
-  const categoryOptions = useMemo(
-    () =>
-      categories.map((category) => ({
-        ...category,
-        presentation: getCategoryPresentation(category.key),
-      })),
-    [categories],
-  );
-
-  async function loadCategories() {
-    setLoadingCategories(true);
-    setCategoryLoadError("");
-
-    try {
-      const result = await apiRequest<{
-        ok: boolean;
-        categories: RunnerCategory[];
-      }>("/api/runner/categories");
-
-      const activeCategories = Array.isArray(
-        result.categories,
-      )
-        ? result.categories.filter(
-            (category) =>
-              typeof category.key === "string" &&
-              /^[a-z0-9_]+$/.test(category.key),
-          )
-        : [];
-
-      if (!activeCategories.length) {
-        throw new Error(
-          "No task categories are currently available.",
-        );
-      }
-
-      setCategories(activeCategories);
-
-      setSelectedCategories((current) =>
-        current.filter((key) =>
-          activeCategories.some(
-            (category) => category.key === key,
-          ),
-        ),
-      );
-    } catch (cause) {
-      setCategoryLoadError(
-        cause instanceof Error
-          ? cause.message
-          : "Could not load task categories.",
-      );
-    } finally {
-      setLoadingCategories(false);
-    }
-  }
-
-  useEffect(() => {
-    void loadCategories();
-  }, []);
-
-  function toggleCategory(key: string) {
-    setSelectedCategories((current) => {
-      if (current.includes(key)) {
-        return current.filter((item) => item !== key);
-      }
-
-      return [...current, key];
-    });
-
+  async function submitRegistration() {
     setError("");
-  }
 
-  async function continueRegistration() {
     if (!validName) {
-      setError("Enter your full name to continue.");
+      setError("Enter your full name.");
       return;
     }
 
@@ -267,21 +63,18 @@ export default function RunnerRegistrationScreen() {
       return;
     }
 
-    if (!selectedCategories.length) {
-      setError(
-        "Choose at least one type of task you can perform.",
-      );
+    if (!validPhone) {
+      setError("Enter your mobile phone number.");
       return;
     }
 
     setSubmitting(true);
-    setError("");
 
     try {
       const result = await requestRunnerRegistrationOtp({
         fullName: normalizedName,
         email: normalizedEmail,
-        categoryKeys: selectedCategories,
+        phone: phone.trim(),
       });
 
       router.push({
@@ -353,7 +146,7 @@ export default function RunnerRegistrationScreen() {
               />
             </Pressable>
 
-            <View style={styles.headerBrand}>
+            <View style={styles.brand}>
               <Text
                 style={[
                   styles.brandName,
@@ -379,39 +172,27 @@ export default function RunnerRegistrationScreen() {
             <View style={styles.headerSpacer} />
           </View>
 
-          <View style={styles.progressHeader}>
+          <View style={styles.intro}>
             <View
               style={[
-                styles.progressTrack,
-                { backgroundColor: colors.border },
+                styles.iconWrap,
+                { backgroundColor: colors.blueSoft },
               ]}
             >
-              <View
-                style={[
-                  styles.progressFill,
-                  { backgroundColor: colors.blue },
-                ]}
+              <Ionicons
+                name="person-add-outline"
+                size={27}
+                color={colors.blue}
               />
             </View>
 
-            <Text
-              style={[
-                styles.progressText,
-                { color: colors.textMuted },
-              ]}
-            >
-              STEP 1 OF 3 · REGISTRATION
-            </Text>
-          </View>
-
-          <View style={styles.intro}>
             <Text
               style={[
                 styles.eyebrow,
                 { color: colors.blue },
               ]}
             >
-              BECOME A RUNNER
+              BECOME A SAMI RUNNER
             </Text>
 
             <Text
@@ -420,7 +201,7 @@ export default function RunnerRegistrationScreen() {
                 { color: colors.text },
               ]}
             >
-              Let's get you started.
+              Create your account.
             </Text>
 
             <Text
@@ -429,23 +210,13 @@ export default function RunnerRegistrationScreen() {
                 { color: colors.textMuted },
               ]}
             >
-              Create your Runner account and tell us
-              which tasks you are able to handle.
-              You can complete your verification
-              documents in the next step.
+              Enter your details below to get started.
+              We will verify your email before moving
+              you to the next registration step.
             </Text>
           </View>
 
-          <View style={styles.formSection}>
-            <Text
-              style={[
-                styles.sectionTitle,
-                { color: colors.text },
-              ]}
-            >
-              Your details
-            </Text>
-
+          <View style={styles.form}>
             <View style={styles.fieldGroup}>
               <Text
                 style={[
@@ -454,6 +225,7 @@ export default function RunnerRegistrationScreen() {
                 ]}
               >
                 Full name
+                <Text style={{ color: colors.red }}> *</Text>
               </Text>
 
               <View
@@ -502,6 +274,7 @@ export default function RunnerRegistrationScreen() {
                 ]}
               >
                 Email address
+                <Text style={{ color: colors.red }}> *</Text>
               </Text>
 
               <View
@@ -532,7 +305,7 @@ export default function RunnerRegistrationScreen() {
                   autoCorrect={false}
                   autoComplete="email"
                   textContentType="emailAddress"
-                  returnKeyType="done"
+                  returnKeyType="next"
                   maxLength={254}
                   style={[
                     styles.input,
@@ -548,192 +321,67 @@ export default function RunnerRegistrationScreen() {
                   { color: colors.textMuted },
                 ]}
               >
-                We will send a verification code to this email.
+                Your email will receive the verification code.
               </Text>
             </View>
-          </View>
 
-          <View style={styles.categorySection}>
-            <View style={styles.categoryHeading}>
-              <View style={styles.categoryHeadingText}>
-                <Text
-                  style={[
-                    styles.sectionTitle,
-                    { color: colors.text },
-                  ]}
-                >
-                  Which tasks can you perform?
-                </Text>
-
-                <Text
-                  style={[
-                    styles.categorySubtitle,
-                    { color: colors.textMuted },
-                  ]}
-                >
-                  Select all that apply. Your choices
-                  help us determine your verification
-                  requirements.
-                </Text>
-              </View>
-
-              <View
+            <View style={styles.fieldGroup}>
+              <Text
                 style={[
-                  styles.selectionCount,
-                  { backgroundColor: colors.blueSoft },
+                  styles.label,
+                  { color: colors.text },
                 ]}
               >
-                <Text
-                  style={[
-                    styles.selectionCountText,
-                    { color: colors.blue },
-                  ]}
-                >
-                  {selectedCount} selected
-                </Text>
-              </View>
-            </View>
+                Phone number
+                <Text style={{ color: colors.red }}> *</Text>
+              </Text>
 
-            {loadingCategories ? (
-              <View style={styles.loadingCategories}>
-                <ActivityIndicator
-                  size="small"
-                  color={colors.blue}
-                />
-
-                <Text
-                  style={[
-                    styles.loadingText,
-                    { color: colors.textMuted },
-                  ]}
-                >
-                  Loading available tasks...
-                </Text>
-              </View>
-            ) : categoryLoadError ? (
               <View
                 style={[
-                  styles.loadError,
-                  { backgroundColor: colors.dangerSoft },
+                  styles.inputContainer,
+                  {
+                    backgroundColor: colors.surface,
+                    borderColor: colors.border,
+                  },
                 ]}
               >
                 <Ionicons
-                  name="alert-circle-outline"
+                  name="call-outline"
                   size={19}
-                  color={colors.red}
+                  color={colors.textMuted}
                 />
 
-                <Text
+                <TextInput
+                  value={phone}
+                  onChangeText={(value) => {
+                    setPhone(value);
+                    setError("");
+                  }}
+                  placeholder="+254 712 345 678"
+                  placeholderTextColor={colors.textMuted}
+                  keyboardType="phone-pad"
+                  autoComplete="tel"
+                  textContentType="telephoneNumber"
+                  returnKeyType="done"
+                  maxLength={24}
                   style={[
-                    styles.loadErrorText,
-                    { color: colors.red },
+                    styles.input,
+                    { color: colors.text },
                   ]}
-                >
-                  {categoryLoadError}
-                </Text>
-
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => void loadCategories()}
-                  style={styles.retryButton}
-                >
-                  <Text
-                    style={[
-                      styles.retryText,
-                      { color: colors.blue },
-                    ]}
-                  >
-                    Retry
-                  </Text>
-                </Pressable>
+                  accessibilityLabel="Phone number"
+                />
               </View>
-            ) : (
-              <View style={styles.categoryGrid}>
-                {categoryOptions.map((category) => {
-                  const selected =
-                    selectedCategories.includes(
-                      category.key,
-                    );
 
-                  return (
-                    <Pressable
-                      key={category.key}
-                      accessibilityRole="checkbox"
-                      accessibilityState={{ checked: selected }}
-                      onPress={() =>
-                        toggleCategory(category.key)
-                      }
-                      style={[
-                        styles.categoryCard,
-                        {
-                          backgroundColor: selected
-                            ? colors.blueSoft
-                            : colors.surface,
-                          borderColor: selected
-                            ? colors.blue
-                            : colors.border,
-                        },
-                      ]}
-                    >
-                      <View
-                        style={[
-                          styles.categoryIcon,
-                          {
-                            backgroundColor: selected
-                              ? colors.blue
-                              : colors.paper,
-                          },
-                        ]}
-                      >
-                        <Ionicons
-                          name={category.presentation.icon}
-                          size={21}
-                          color={
-                            selected
-                              ? "#FFFFFF"
-                              : colors.blue
-                          }
-                        />
-                      </View>
-
-                      <View style={styles.categoryCopy}>
-                        <Text
-                          style={[
-                            styles.categoryTitle,
-                            { color: colors.text },
-                          ]}
-                        >
-                          {category.presentation.title}
-                        </Text>
-
-                        <Text
-                          style={[
-                            styles.categoryDescription,
-                            { color: colors.textMuted },
-                          ]}
-                        >
-                          {category.presentation.description}
-                        </Text>
-                      </View>
-
-                      <Ionicons
-                        name={
-                          selected
-                            ? "checkmark-circle"
-                            : "ellipse-outline"
-                        }
-                        size={21}
-                        color={
-                          selected
-                            ? colors.blue
-                            : colors.muted
-                        }
-                      />
-                    </Pressable>
-                  );
-                })}
-              </View>
-            )}
+              <Text
+                style={[
+                  styles.fieldHint,
+                  { color: colors.textMuted },
+                ]}
+              >
+                Use a Kenyan mobile number. You can enter
+                it with or without the +254 prefix.
+              </Text>
+            </View>
           </View>
 
           {error ? (
@@ -746,7 +394,7 @@ export default function RunnerRegistrationScreen() {
             >
               <Ionicons
                 name="alert-circle-outline"
-                size={18}
+                size={19}
                 color={colors.red}
               />
 
@@ -764,21 +412,21 @@ export default function RunnerRegistrationScreen() {
           <View style={styles.footer}>
             <Pressable
               accessibilityRole="button"
-              disabled={!canContinue}
-              onPress={() => void continueRegistration()}
+              disabled={!canSubmit}
+              onPress={() => void submitRegistration()}
               style={({ pressed }) => [
-                styles.primaryButton,
+                styles.submitButton,
                 { backgroundColor: colors.blue },
-                !canContinue && styles.disabled,
-                pressed && canContinue && styles.pressed,
+                !canSubmit && styles.disabled,
+                pressed && canSubmit && styles.pressed,
               ]}
             >
               {submitting ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
                 <>
-                  <Text style={styles.primaryButtonText}>
-                    Continue
+                  <Text style={styles.submitButtonText}>
+                    Submit
                   </Text>
 
                   <Ionicons
@@ -824,9 +472,10 @@ export default function RunnerRegistrationScreen() {
                 { color: colors.textMuted },
               ]}
             >
-              Your account will remain pending until
-              you complete verification and SaMi
-              Operations approves your application.
+              Your details are used to create and manage
+              your SaMi Runner account. Task selection
+              and verification documents are completed
+              in separate steps.
             </Text>
           </View>
         </ScrollView>
@@ -846,10 +495,10 @@ const styles = StyleSheet.create({
 
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: 22,
+    paddingHorizontal: 24,
     paddingTop: 12,
-    paddingBottom: 30,
-    gap: 25,
+    paddingBottom: 32,
+    gap: 28,
   },
 
   header: {
@@ -860,15 +509,15 @@ const styles = StyleSheet.create({
   },
 
   backButton: {
-    height: 42,
     width: 42,
+    height: 42,
     borderRadius: 13,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  headerBrand: {
+  brand: {
     alignItems: "center",
     gap: 3,
   },
@@ -890,62 +539,44 @@ const styles = StyleSheet.create({
     width: 42,
   },
 
-  progressHeader: {
-    gap: 9,
-  },
-
-  progressTrack: {
-    height: 5,
-    borderRadius: 5,
-    overflow: "hidden",
-  },
-
-  progressFill: {
-    width: "33.33%",
-    height: "100%",
-    borderRadius: 5,
-  },
-
-  progressText: {
-    fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 1.2,
-  },
-
   intro: {
-    gap: 10,
+    gap: 11,
+  },
+
+  iconWrap: {
+    width: 54,
+    height: 54,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 3,
   },
 
   eyebrow: {
     fontSize: 10,
     fontWeight: "900",
-    letterSpacing: 1.4,
+    letterSpacing: 1.5,
   },
 
   title: {
-    fontSize: 29,
-    lineHeight: 36,
+    fontSize: 30,
+    lineHeight: 38,
     fontWeight: "900",
-    letterSpacing: -0.7,
+    letterSpacing: -0.8,
   },
 
   subtitle: {
     fontSize: 13,
     lineHeight: 21,
+    maxWidth: 340,
   },
 
-  formSection: {
-    gap: 17,
-  },
-
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "900",
-    letterSpacing: -0.2,
+  form: {
+    gap: 23,
   },
 
   fieldGroup: {
-    gap: 8,
+    gap: 9,
   },
 
   label: {
@@ -954,19 +585,19 @@ const styles = StyleSheet.create({
   },
 
   inputContainer: {
-    minHeight: 55,
-    borderRadius: 14,
+    minHeight: 58,
+    borderRadius: 15,
     borderWidth: 1,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
-    gap: 11,
+    paddingHorizontal: 15,
+    gap: 12,
   },
 
   input: {
     flex: 1,
-    minHeight: 53,
-    paddingVertical: 10,
+    minHeight: 56,
+    paddingVertical: 11,
     fontSize: 14,
   },
 
@@ -975,112 +606,9 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
 
-  categorySection: {
-    gap: 14,
-  },
-
-  categoryHeading: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-
-  categoryHeadingText: {
-    flex: 1,
-    gap: 6,
-  },
-
-  categorySubtitle: {
-    fontSize: 11,
-    lineHeight: 17,
-  },
-
-  selectionCount: {
-    borderRadius: 20,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-  },
-
-  selectionCountText: {
-    fontSize: 9,
-    fontWeight: "900",
-  },
-
-  loadingCategories: {
-    minHeight: 120,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-  },
-
-  loadingText: {
-    fontSize: 11,
-  },
-
-  categoryGrid: {
-    gap: 10,
-  },
-
-  categoryCard: {
-    minHeight: 83,
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 11,
-  },
-
-  categoryIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  categoryCopy: {
-    flex: 1,
-    gap: 4,
-  },
-
-  categoryTitle: {
-    fontSize: 12,
-    fontWeight: "900",
-  },
-
-  categoryDescription: {
-    fontSize: 10,
-    lineHeight: 15,
-  },
-
-  loadError: {
-    padding: 13,
-    borderRadius: 13,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 9,
-  },
-
-  loadErrorText: {
-    flex: 1,
-    fontSize: 11,
-    lineHeight: 17,
-  },
-
-  retryButton: {
-    padding: 5,
-  },
-
-  retryText: {
-    fontSize: 11,
-    fontWeight: "900",
-  },
-
   errorContainer: {
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 13,
+    padding: 13,
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 9,
@@ -1093,12 +621,12 @@ const styles = StyleSheet.create({
   },
 
   footer: {
-    gap: 14,
-    paddingTop: 3,
+    gap: 17,
+    paddingTop: 2,
   },
 
-  primaryButton: {
-    minHeight: 56,
+  submitButton: {
+    minHeight: 57,
     borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
@@ -1106,7 +634,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
 
-  primaryButtonText: {
+  submitButtonText: {
     color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "900",
@@ -1133,6 +661,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     lineHeight: 16,
     textAlign: "center",
+    paddingHorizontal: 8,
   },
 
   disabled: {
