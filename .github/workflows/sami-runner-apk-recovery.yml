@@ -1,0 +1,102 @@
+name: SaMi Runner APK artifact recovery
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/sami-runner-apk-recovery.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  recover-runner-apk:
+    name: Recover signed SaMi Runner production APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/runner
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      BUILD_ID: 6780b30f-6864-4f19-8124-962df50e10bf
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Runner dependencies for Expo config resolution
+        run: npm install --no-audit --no-fund
+
+      - name: Install EAS CLI
+        run: npm install --global eas-cli@latest
+
+      - name: Verify completed Runner EAS build
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$EXPO_TOKEN" || { echo "EXPO_TOKEN is missing." >&2; exit 1; }
+          eas build:view "$BUILD_ID" --json > "$RUNNER_TEMP/runner-build.json"
+          node - "$RUNNER_TEMP/runner-build.json" <<'NODE'
+          const fs = require("node:fs");
+          const data = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const build = data.build || data;
+          if (build.id !== process.env.BUILD_ID) throw new Error("Unexpected EAS build ID.");
+          if (String(build.status).toUpperCase() !== "FINISHED") throw new Error("EAS build is not finished: " + build.status);
+          if (String(build.platform).toUpperCase() !== "ANDROID") throw new Error("EAS build is not Android.");
+          if (build.buildProfile !== "production") throw new Error("EAS build is not the production profile.");
+          if (build.appIdentifier !== "com.sami.runner") throw new Error("EAS build is not the Runner app: " + build.appIdentifier);
+          if (!build.artifacts?.applicationArchiveUrl) throw new Error("EAS build has no application archive URL.");
+          console.log("Verified completed signed Runner production build: " + build.id);
+          console.log("Package: " + build.appIdentifier);
+          console.log("Artifact URL is available from EAS.");
+          NODE
+
+      - name: Download signed Runner APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          eas build:download --build-id "$BUILD_ID" --non-interactive
+          APK_PATH="$(find /tmp/runner/eas-cli-nodejs/eas-build-run-cache -maxdepth 4 -type f -iname '*.apk' -print -quit 2>/dev/null || true)"
+          if [[ -z "$APK_PATH" ]]; then
+            APK_PATH="$(find . -maxdepth 6 -type f -iname '*.apk' -not -path '*/node_modules/*' -print -quit)"
+          fi
+          test -n "$APK_PATH" && test -s "$APK_PATH" || { echo "EAS did not provide a non-empty APK." >&2; exit 1; }
+
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          APKSIGNER="$(find "$SDK_ROOT/build-tools" -name apksigner -print 2>/dev/null | sort -V | tail -n 1 || true)"
+          test -n "$APKSIGNER" || { echo "Android apksigner was not found." >&2; exit 1; }
+          "$APKSIGNER" verify "$APK_PATH"
+
+          mkdir -p "$RUNNER_TEMP/sami-runner-release"
+          cp "$APK_PATH" "$RUNNER_TEMP/sami-runner-release/SaMi-Runner-production.apk"
+          sha256sum "$RUNNER_TEMP/sami-runner-release/SaMi-Runner-production.apk" > "$RUNNER_TEMP/sami-runner-release/SHA256SUMS.txt"
+
+          echo "EAS build: $BUILD_ID" >> "$GITHUB_STEP_SUMMARY"
+          echo "Package: com.sami.runner" >> "$GITHUB_STEP_SUMMARY"
+          echo "Profile: production APK" >> "$GITHUB_STEP_SUMMARY"
+          echo "APK signature verification: passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "SHA-256:" >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/sami-runner-release/SHA256SUMS.txt" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload installable Runner APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: sami-runner-production-apk
+          path: ${{ runner.temp }}/sami-runner-release/SaMi-Runner-production.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: sami-runner-apk-checksum
+          path: ${{ runner.temp }}/sami-runner-release/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
