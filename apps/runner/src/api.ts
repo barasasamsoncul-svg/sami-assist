@@ -1,7 +1,13 @@
 
 import * as SecureStore from "expo-secure-store";
+import { fetch as expoFetch } from "expo/fetch";
 
 const SESSION_KEY = "sami_runner_access_token";
+
+const PUBLIC_AUTH_PATHS = [
+  "/api/runner/auth/request-otp",
+  "/api/runner/auth/verify-otp",
+];
 
 type ApiOptions = {
   method?: "GET" | "POST" | "PUT";
@@ -43,6 +49,15 @@ export type RunnerJob = {
   offerExpiresAt?: string | null;
 };
 
+export type RunnerAuthenticatedAccount = {
+  id: string;
+  email: string;
+  phone: string | null;
+  fullName: string | null;
+  accountStatus: string;
+  verificationStatus: string;
+};
+
 function apiBase(): string {
   const value = process.env.EXPO_PUBLIC_SAMI_API_URL
     ?.trim()
@@ -50,25 +65,47 @@ function apiBase(): string {
 
   if (!value) {
     throw new Error(
-      "Set EXPO_PUBLIC_SAMI_API_URL in apps/runner/.env before using SaMi Runner."
+      "Set EXPO_PUBLIC_SAMI_API_URL in apps/runner/.env before using SaMi Runner.",
     );
   }
 
   return value;
 }
 
+async function clearSession(): Promise<void> {
+  await SecureStore.deleteItemAsync(SESSION_KEY).catch(
+    () => undefined,
+  );
+}
+
+function describeError(cause: unknown): string {
+  if (cause instanceof Error) {
+    const nested = (cause as Error & {
+      cause?: unknown;
+    }).cause;
+
+    if (nested instanceof Error && nested.message) {
+      return `${cause.message}: ${nested.message}`;
+    }
+
+    return cause.message || cause.name;
+  }
+
+  return String(cause || "Unknown network error");
+}
+
 export async function getRunnerSession(): Promise<string | null> {
   return SecureStore.getItemAsync(SESSION_KEY).catch(
-    () => null
+    () => null,
   );
 }
 
 export async function saveRunnerSession(
-  token: string
+  token: string,
 ): Promise<void> {
   if (!token || token.length < 40) {
     throw new Error(
-      "The Runner server returned an invalid session."
+      "The Runner server returned an invalid session.",
     );
   }
 
@@ -76,16 +113,16 @@ export async function saveRunnerSession(
 }
 
 export async function clearRunnerSession(): Promise<void> {
-  await SecureStore.deleteItemAsync(SESSION_KEY).catch(
-    () => undefined
-  );
+  await clearSession();
 }
 
 export async function apiRequest<T>(
   path: string,
-  options: ApiOptions = {}
+  options: ApiOptions = {},
 ): Promise<T> {
   const token = await getRunnerSession();
+  const method = options.method || "GET";
+  const requestUrl = apiBase() + path;
 
   const headers: Record<string, string> = {
     Accept: "application/json",
@@ -103,31 +140,45 @@ export async function apiRequest<T>(
   let response: Response;
 
   try {
-    response = await fetch(apiBase() + path, {
-      method: options.method || "GET",
+    response = await expoFetch(requestUrl, {
+      method,
       headers,
       body:
         options.body === undefined
           ? undefined
           : JSON.stringify(options.body),
     });
-  } catch {
+  } catch (cause) {
+    const detail = describeError(cause);
+
+    console.error("[SaMi Runner API] Network request failed.", {
+      method,
+      path,
+      detail,
+    });
+
     throw new Error(
-      "Could not reach SaMi Runner. Check your connection and SaMi API URL."
+      "Could not reach SaMi Runner. Check your connection and SaMi API URL.",
     );
   }
 
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    if (response.status === 401 && token) {
-      await clearRunnerSession();
+    const isPublicAuthRequest = PUBLIC_AUTH_PATHS.includes(path);
+
+    if (
+      response.status === 401 &&
+      token &&
+      !isPublicAuthRequest
+    ) {
+      await clearSession();
     }
 
     throw new Error(
       typeof payload?.error === "string"
         ? payload.error
-        : "SaMi Runner could not complete that request."
+        : `SaMi Runner request failed with HTTP ${response.status}.`,
     );
   }
 
@@ -139,26 +190,32 @@ export async function apiRequest<T>(
 ------------------------------------------ */
 
 export async function requestRunnerOtp(
-  email: string
+  email: string,
 ): Promise<{
+  ok: boolean;
   challengeId: string;
   destination: string;
+  expiresInSeconds: number;
+  message: string;
 }> {
   return apiRequest(
     "/api/runner/auth/request-otp",
     {
       method: "POST",
       body: { email },
-    }
+    },
   );
 }
 
 export async function verifyRunnerOtp(
   challengeId: string,
-  code: string
+  code: string,
 ): Promise<{
+  ok: boolean;
   sessionToken: string;
+  expiresInDays: number;
   profileComplete: boolean;
+  runner: RunnerAuthenticatedAccount;
 }> {
   return apiRequest(
     "/api/runner/auth/verify-otp",
@@ -168,7 +225,7 @@ export async function verifyRunnerOtp(
         challengeId,
         code,
       },
-    }
+    },
   );
 }
 
@@ -180,7 +237,7 @@ export async function getRunnerMe(): Promise<{
   runner: RunnerMe;
 }> {
   return apiRequest<{ runner: RunnerMe }>(
-    "/api/runner/me"
+    "/api/runner/me",
   );
 }
 
@@ -201,7 +258,7 @@ export async function updateRunnerProfile(input: {
 ------------------------------------------ */
 
 export async function setRunnerAvailability(
-  isOnline: boolean
+  isOnline: boolean,
 ): Promise<{
   availability: {
     isOnline: boolean;
@@ -213,7 +270,7 @@ export async function setRunnerAvailability(
     {
       method: "POST",
       body: { isOnline },
-    }
+    },
   );
 }
 
@@ -229,7 +286,7 @@ export async function getRunnerJobs(): Promise<{
 }
 
 export async function acceptRunnerJob(
-  jobId: string
+  jobId: string,
 ): Promise<void> {
   await apiRequest(
     "/api/runner/jobs/" +
@@ -238,13 +295,13 @@ export async function acceptRunnerJob(
     {
       method: "POST",
       body: {},
-    }
+    },
   );
 }
 
 export async function updateRunnerJobStatus(
   jobId: string,
-  action: "start" | "submit_completion"
+  action: "start" | "submit_completion",
 ): Promise<void> {
   await apiRequest(
     "/api/runner/jobs/" +
@@ -253,7 +310,7 @@ export async function updateRunnerJobStatus(
     {
       method: "POST",
       body: { action },
-    }
+    },
   );
 }
 

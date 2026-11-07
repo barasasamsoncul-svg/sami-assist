@@ -1,3 +1,4 @@
+
 import "server-only";
 
 import { createHash } from "node:crypto";
@@ -7,7 +8,7 @@ import { errorResponse } from "@/lib/runner/http";
 
 export type RunnerAccount = {
   id: string;
-  phone_e164: string;
+  phone_e164: string | null;
   email: string | null;
   full_name: string | null;
   account_status: string;
@@ -47,6 +48,7 @@ export async function authenticateRunner(request: Request): Promise<
   }
 
   const digest = tokenHash(match[1]);
+
   const result = await query<RunnerAccount>(
     `SELECT
        a.id,
@@ -56,7 +58,8 @@ export async function authenticateRunner(request: Request): Promise<
        a.account_status,
        a.verification_status
      FROM public.runner_sessions AS s
-     JOIN public.runner_accounts AS a ON a.id = s.runner_id
+     JOIN public.runner_accounts AS a
+       ON a.id = s.runner_id
      WHERE s.token_hash = $1
        AND s.revoked_at IS NULL
        AND s.expires_at > now()
@@ -70,12 +73,17 @@ export async function authenticateRunner(request: Request): Promise<
   if (!runner) {
     return {
       runner: null,
-      response: errorResponse("Your Runner session has expired. Sign in again.", 401),
+      response: errorResponse(
+        "Your Runner session has expired. Sign in again.",
+        401,
+      ),
     };
   }
 
   await query(
-    "UPDATE public.runner_sessions SET last_seen_at = now() WHERE token_hash = $1",
+    `UPDATE public.runner_sessions
+     SET last_seen_at = now()
+     WHERE token_hash = $1`,
     [digest],
   );
 

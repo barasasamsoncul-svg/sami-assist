@@ -1,7 +1,8 @@
+
 import { NextResponse } from "next/server";
 
 import { authenticateRunner } from "@/lib/runner/auth";
-import { query } from "@/lib/runner/db";
+import { databasePool, query } from "@/lib/runner/db";
 import { errorResponse, isRecord } from "@/lib/runner/http";
 
 export const runtime = "nodejs";
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 type RunnerProfileRow = {
   id: string;
-  phone_e164: string;
+  phone_e164: string | null;
   email: string | null;
   full_name: string | null;
   account_status: string;
@@ -53,28 +54,53 @@ export async function GET(request: Request) {
 
     const result = await query<RunnerProfileRow>(
       `SELECT
-         a.id, a.phone_e164, a.email, a.full_name,
-         a.account_status, a.verification_status,
-         p.service_area, p.vehicle_type, p.vehicle_registration,
-         coalesce(v.is_online, false) AS is_online,
+         a.id,
+         a.phone_e164,
+         a.email,
+         a.full_name,
+         a.account_status,
+         a.verification_status,
+         p.service_area,
+         p.vehicle_type,
+         p.vehicle_registration,
+         COALESCE(v.is_online, false) AS is_online,
          v.last_heartbeat_at
        FROM public.runner_accounts AS a
-       LEFT JOIN public.runner_profiles AS p ON p.runner_id = a.id
-       LEFT JOIN public.runner_availability AS v ON v.runner_id = a.id
+       LEFT JOIN public.runner_profiles AS p
+         ON p.runner_id = a.id
+       LEFT JOIN public.runner_availability AS v
+         ON v.runner_id = a.id
        WHERE a.id = $1
        LIMIT 1`,
       [auth.runner.id],
     );
 
     const row = result.rows[0];
-    if (!row) return errorResponse("Runner profile not found.", 404);
+
+    if (!row) {
+      return errorResponse("Runner profile not found.", 404);
+    }
 
     return NextResponse.json(
-      { runner: shapeRunner(row) },
-      { headers: { "Cache-Control": "no-store, private" } },
+      {
+        runner: shapeRunner(row),
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, private",
+        },
+      },
     );
-  } catch {
-    return errorResponse("Your Runner profile could not be loaded.", 503);
+  } catch (cause) {
+    console.error(
+      "[SaMi Runner profile] Read failed.",
+      cause instanceof Error ? cause.message : "unknown error",
+    );
+
+    return errorResponse(
+      "Your Runner profile could not be loaded.",
+      503,
+    );
   }
 }
 
@@ -84,38 +110,67 @@ export async function PUT(request: Request) {
     if (auth.response) return auth.response;
 
     const body: unknown = await request.json().catch(() => null);
+
     if (
       !isRecord(body) ||
       typeof body.fullName !== "string" ||
       typeof body.serviceArea !== "string" ||
       typeof body.vehicleType !== "string"
     ) {
-      return errorResponse("Complete the required Runner profile details.");
+      return errorResponse(
+        "Complete the required Runner profile details.",
+      );
     }
 
-    const fullName = body.fullName.trim().replace(/\s+/g, " ");
-    const serviceArea = body.serviceArea.trim().slice(0, 120);
-    const vehicleType = body.vehicleType.trim();
+    const fullName = body.fullName
+      .trim()
+      .replace(/\s+/g, " ");
+
+    const serviceArea = body.serviceArea
+      .trim()
+      .slice(0, 120);
+
+    const vehicleType = body.vehicleType
+      .trim()
+      .toLowerCase();
+
     const vehicleRegistration =
       typeof body.vehicleRegistration === "string"
-        ? body.vehicleRegistration.trim().toUpperCase().slice(0, 30)
+        ? body.vehicleRegistration
+            .trim()
+            .toUpperCase()
+            .slice(0, 30)
         : "";
 
     const allowedVehicles = new Set([
-      "motorcycle", "bicycle", "car", "van", "other",
+      "motorcycle",
+      "bicycle",
+      "car",
+      "van",
+      "other",
     ]);
 
     if (fullName.length < 2 || fullName.length > 120) {
-      return errorResponse("Your full name must be between 2 and 120 characters.");
-    }
-    if (serviceArea.length < 2) {
-      return errorResponse("Enter your main service area.");
-    }
-    if (!allowedVehicles.has(vehicleType)) {
-      return errorResponse("Choose a valid vehicle type.");
+      return errorResponse(
+        "Your full name must be between 2 and 120 characters.",
+      );
     }
 
-    const client = await (await import("@/lib/db")).databasePool().connect();
+    if (serviceArea.length < 2) {
+      return errorResponse(
+        "Enter your main service area.",
+      );
+    }
+
+    if (!allowedVehicles.has(vehicleType)) {
+      return errorResponse(
+        "Choose a valid vehicle type.",
+      );
+    }
+
+    // Runner profile writes must always use the isolated
+    // Runner database, never the Customer database.
+    const client = await databasePool().connect();
 
     try {
       await client.query("BEGIN");
@@ -125,23 +180,35 @@ export async function PUT(request: Request) {
          SET
            full_name = $2,
            account_status = CASE
-             WHEN verification_status = 'approved' THEN 'active'
+             WHEN verification_status = 'approved'
+               THEN 'active'
              ELSE 'pending_verification'
            END,
            updated_at = now()
          WHERE id = $1
          RETURNING id`,
-        [auth.runner.id, fullName],
+        [
+          auth.runner.id,
+          fullName,
+        ],
       );
 
       if (!updatedAccount.rowCount) {
         await client.query("ROLLBACK");
-        return errorResponse("Your Runner account could not be found.", 404);
+
+        return errorResponse(
+          "Your Runner account could not be found.",
+          404,
+        );
       }
 
       await client.query(
         `INSERT INTO public.runner_profiles (
-           runner_id, service_area, vehicle_type, vehicle_registration, updated_at
+           runner_id,
+           service_area,
+           vehicle_type,
+           vehicle_registration,
+           updated_at
          )
          VALUES ($1, $2, $3, $4, now())
          ON CONFLICT (runner_id)
@@ -167,10 +234,25 @@ export async function PUT(request: Request) {
     }
 
     return NextResponse.json(
-      { ok: true, message: "Your Runner profile has been saved." },
-      { headers: { "Cache-Control": "no-store" } },
+      {
+        ok: true,
+        message: "Your Runner profile has been saved.",
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, private",
+        },
+      },
     );
-  } catch {
-    return errorResponse("Your Runner profile could not be saved.", 503);
+  } catch (cause) {
+    console.error(
+      "[SaMi Runner profile] Update failed.",
+      cause instanceof Error ? cause.message : "unknown error",
+    );
+
+    return errorResponse(
+      "Your Runner profile could not be saved.",
+      503,
+    );
   }
 }
