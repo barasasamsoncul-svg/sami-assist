@@ -37,15 +37,9 @@
       "package": "com.sami.runner",
       "permissions": [
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "ACCESS_FINE_LOCATION"
       ],
-      "backgroundColor": "#000535",
-      "androidStatusBar": {
-        "backgroundColor": "#000535",
-        "barStyle": "light-content"
-      }
+      "backgroundColor": "#000535"
     },
     "experiments": {
       "typedRoutes": true
@@ -60,6 +54,10 @@
         "projectId": "8fcd647e-3514-4436-b1ce-c1b417f6c1d3"
       }
     },
-    "owner": "sami-assist"
+    "owner": "sami-assist",
+    "androidStatusBar": {
+      "backgroundColor": "#000535",
+      "barStyle": "light-content"
+    }
   }
 }
