@@ -20,7 +20,7 @@ jobs:
         working-directory: apps/runner
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-      BUILD_ID: latest
+      BUILD_ID: 1ff96d65-e134-45a6-b60f-d73004315d37
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -90,6 +90,6 @@ jobs:
               out.push(line);
             }
           }
-          const relevant = out.filter(line => /INSTALL_DEPENDENCIES|npm error|ERESOLVE|error|failed|FAIL|ERR!/i.test(line));
-          console.log(relevant.slice(-180).join("\n") || out.slice(-120).join("\n"));
+          const relevant = out.filter(line => /\\[(RUN_EXPO_DOCTOR|PREBUILD|RUN_GRADLEW)\\]/i.test(line));
+          console.log(relevant.slice(-320).join("\\n") || out.slice(-180).join("\\n"));
           NODE
