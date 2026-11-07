@@ -1,0 +1,80 @@
+name: SaMi Runner EAS build diagnostics
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/sami-runner-build-diagnostics.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-runner-build:
+    name: Inspect failed Runner EAS build log
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/runner
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      BUILD_ID: 246f1dfe-bab3-4777-afba-ee3e6e266f0b
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Fetch and summarize EAS build logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$EXPO_TOKEN" || { echo "EXPO_TOKEN is missing." >&2; exit 1; }
+          npx eas-cli@latest build:view "$BUILD_ID" --json > "$RUNNER_TEMP/build-raw.json"
+
+          node - "$RUNNER_TEMP/build-raw.json" "$RUNNER_TEMP/build-summary.json" <<'NODE'
+          const fs = require("node:fs");
+          const raw = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const b = raw.build || raw;
+          const safe = {
+            id: b.id,
+            status: b.status,
+            platform: b.platform,
+            buildProfile: b.buildProfile,
+            appIdentifier: b.appIdentifier,
+            error: b.error,
+            logFiles: Array.isArray(b.logFiles) ? b.logFiles.length : 0
+          };
+          fs.writeFileSync(process.argv[3], JSON.stringify(safe, null, 2));
+          fs.writeFileSync(process.argv[3] + ".url", Array.isArray(b.logFiles) ? (b.logFiles[0] || "") : "");
+          console.log(JSON.stringify(safe, null, 2));
+          NODE
+
+          LOG_URL="$(cat "$RUNNER_TEMP/build-summary.json.url")"
+          test -n "$LOG_URL" || { echo "EAS did not return a build log URL." >&2; exit 1; }
+          curl --fail --silent --show-error --location "$LOG_URL" --output "$RUNNER_TEMP/build-log.br"
+          node - "$RUNNER_TEMP/build-log.br" "$RUNNER_TEMP/build-log.jsonl" <<'NODE'
+          const fs = require("node:fs");
+          const zlib = require("node:zlib");
+          fs.writeFileSync(process.argv[3], zlib.brotliDecompressSync(fs.readFileSync(process.argv[2])));
+          NODE
+          node - "$RUNNER_TEMP/build-log.jsonl" <<'NODE'
+          const fs = require("node:fs");
+          const rows = fs.readFileSync(process.argv[2], "utf8").split(/\r?\n/).filter(Boolean);
+          const out = [];
+          for (const line of rows) {
+            try {
+              const item = JSON.parse(line);
+              out.push(`${item.time || ""} [${item.phase || ""}] ${item.source || "stdout"}: ${item.msg || ""}`);
+            } catch {
+              out.push(line);
+            }
+          }
+          const relevant = out.filter(line => /INSTALL_DEPENDENCIES|npm error|ERESOLVE|error|failed|FAIL|ERR!/i.test(line));
+          console.log(relevant.slice(-180).join("\n") || out.slice(-120).join("\n"));
+          NODE
