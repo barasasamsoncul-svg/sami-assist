@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "SaMi Runner",
@@ -5,13 +6,24 @@
     "scheme": "samirunner",
     "version": "1.0.0",
     "orientation": "portrait",
-    "platforms": [
-      "android",
-      "ios"
-    ],
+    "platforms": ["android", "ios"],
     "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
     "plugins": [
       "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#000535",
+          "image": "./assets/icon.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
+          "dark": {
+            "backgroundColor": "#000535",
+            "image": "./assets/icon.png"
+          }
+        }
+      ],
       [
         "expo-location",
         {
@@ -39,7 +51,11 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION"
       ],
-      "backgroundColor": "#000535"
+      "backgroundColor": "#000535",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#000535"
+      }
     },
     "experiments": {
       "typedRoutes": true
@@ -47,6 +63,15 @@
     "backgroundColor": "#000535",
     "web": {
       "backgroundColor": "#000535"
+    },
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/8fcd647e-3514-4436-b1ce-c1b417f6c1d3",
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
     },
     "extra": {
       "router": {},

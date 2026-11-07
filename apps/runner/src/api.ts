@@ -1,3 +1,4 @@
+
 import * as SecureStore from "expo-secure-store";
 
 const SESSION_KEY = "sami_runner_access_token";
@@ -9,9 +10,9 @@ type ApiOptions = {
 
 export type RunnerProfile = {
   id: string;
-  phone: string;
-  fullName: string | null;
+  phone: string | null;
   email: string | null;
+  fullName: string | null;
   accountStatus: string;
   verificationStatus: string;
   serviceArea: string | null;
@@ -49,7 +50,7 @@ function apiBase(): string {
 
   if (!value) {
     throw new Error(
-      "Set EXPO_PUBLIC_SAMI_API_URL in apps/runner/.env before using SaMi Runner.",
+      "Set EXPO_PUBLIC_SAMI_API_URL in apps/runner/.env before using SaMi Runner."
     );
   }
 
@@ -57,25 +58,35 @@ function apiBase(): string {
 }
 
 export async function getRunnerSession(): Promise<string | null> {
-  return SecureStore.getItemAsync(SESSION_KEY).catch(() => null);
+  return SecureStore.getItemAsync(SESSION_KEY).catch(
+    () => null
+  );
 }
 
-export async function saveRunnerSession(token: string): Promise<void> {
+export async function saveRunnerSession(
+  token: string
+): Promise<void> {
   if (!token || token.length < 40) {
-    throw new Error("The Runner server returned an invalid session.");
+    throw new Error(
+      "The Runner server returned an invalid session."
+    );
   }
+
   await SecureStore.setItemAsync(SESSION_KEY, token);
 }
 
 export async function clearRunnerSession(): Promise<void> {
-  await SecureStore.deleteItemAsync(SESSION_KEY).catch(() => undefined);
+  await SecureStore.deleteItemAsync(SESSION_KEY).catch(
+    () => undefined
+  );
 }
 
 export async function apiRequest<T>(
   path: string,
-  options: ApiOptions = {},
+  options: ApiOptions = {}
 ): Promise<T> {
   const token = await getRunnerSession();
+
   const headers: Record<string, string> = {
     Accept: "application/json",
     "x-sami-client": "runner",
@@ -84,9 +95,13 @@ export async function apiRequest<T>(
   if (options.body !== undefined) {
     headers["Content-Type"] = "application/json";
   }
-  if (token) headers.Authorization = "Bearer " + token;
+
+  if (token) {
+    headers.Authorization = "Bearer " + token;
+  }
 
   let response: Response;
+
   try {
     response = await fetch(apiBase() + path, {
       method: options.method || "GET",
@@ -98,7 +113,7 @@ export async function apiRequest<T>(
     });
   } catch {
     throw new Error(
-      "Could not reach SaMi Runner. Check your connection and SaMi API URL.",
+      "Could not reach SaMi Runner. Check your connection and SaMi API URL."
     );
   }
 
@@ -108,35 +123,65 @@ export async function apiRequest<T>(
     if (response.status === 401 && token) {
       await clearRunnerSession();
     }
+
     throw new Error(
       typeof payload?.error === "string"
         ? payload.error
-        : "SaMi Runner could not complete that request.",
+        : "SaMi Runner could not complete that request."
     );
   }
 
   return payload as T;
 }
 
-export async function requestRunnerOtp(phone: string): Promise<void> {
-  await apiRequest("/api/runner/auth/request-otp", {
-    method: "POST",
-    body: { phone },
-  });
+/* -----------------------------------------
+   RUNNER EMAIL AUTHENTICATION
+------------------------------------------ */
+
+export async function requestRunnerOtp(
+  email: string
+): Promise<{
+  challengeId: string;
+  destination: string;
+}> {
+  return apiRequest(
+    "/api/runner/auth/request-otp",
+    {
+      method: "POST",
+      body: { email },
+    }
+  );
 }
 
 export async function verifyRunnerOtp(
-  phone: string,
-  code: string,
-): Promise<{ sessionToken: string; profileComplete: boolean }> {
-  return apiRequest("/api/runner/auth/verify-otp", {
-    method: "POST",
-    body: { phone, code },
-  });
+  challengeId: string,
+  code: string
+): Promise<{
+  sessionToken: string;
+  profileComplete: boolean;
+}> {
+  return apiRequest(
+    "/api/runner/auth/verify-otp",
+    {
+      method: "POST",
+      body: {
+        challengeId,
+        code,
+      },
+    }
+  );
 }
 
-export async function getRunnerMe(): Promise<{ runner: RunnerMe }> {
-  return apiRequest<{ runner: RunnerMe }>("/api/runner/me");
+/* -----------------------------------------
+   RUNNER PROFILE
+------------------------------------------ */
+
+export async function getRunnerMe(): Promise<{
+  runner: RunnerMe;
+}> {
+  return apiRequest<{ runner: RunnerMe }>(
+    "/api/runner/me"
+  );
 }
 
 export async function updateRunnerProfile(input: {
@@ -151,19 +196,30 @@ export async function updateRunnerProfile(input: {
   });
 }
 
+/* -----------------------------------------
+   RUNNER AVAILABILITY
+------------------------------------------ */
+
 export async function setRunnerAvailability(
-  isOnline: boolean,
+  isOnline: boolean
 ): Promise<{
   availability: {
     isOnline: boolean;
     lastHeartbeatAt: string | null;
   };
 }> {
-  return apiRequest("/api/runner/me/availability", {
-    method: "POST",
-    body: { isOnline },
-  });
+  return apiRequest(
+    "/api/runner/me/availability",
+    {
+      method: "POST",
+      body: { isOnline },
+    }
+  );
 }
+
+/* -----------------------------------------
+   RUNNER ERRANDS
+------------------------------------------ */
 
 export async function getRunnerJobs(): Promise<{
   offers: RunnerJob[];
@@ -172,22 +228,38 @@ export async function getRunnerJobs(): Promise<{
   return apiRequest("/api/runner/jobs");
 }
 
-export async function acceptRunnerJob(jobId: string): Promise<void> {
+export async function acceptRunnerJob(
+  jobId: string
+): Promise<void> {
   await apiRequest(
-    "/api/runner/jobs/" + encodeURIComponent(jobId) + "/accept",
-    { method: "POST", body: {} },
+    "/api/runner/jobs/" +
+      encodeURIComponent(jobId) +
+      "/accept",
+    {
+      method: "POST",
+      body: {},
+    }
   );
 }
 
 export async function updateRunnerJobStatus(
   jobId: string,
-  action: "start" | "submit_completion",
+  action: "start" | "submit_completion"
 ): Promise<void> {
   await apiRequest(
-    "/api/runner/jobs/" + encodeURIComponent(jobId) + "/status",
-    { method: "POST", body: { action } },
+    "/api/runner/jobs/" +
+      encodeURIComponent(jobId) +
+      "/status",
+    {
+      method: "POST",
+      body: { action },
+    }
   );
 }
+
+/* -----------------------------------------
+   RUNNER LIVE LOCATION
+------------------------------------------ */
 
 export async function publishRunnerLocation(input: {
   latitude: number;
