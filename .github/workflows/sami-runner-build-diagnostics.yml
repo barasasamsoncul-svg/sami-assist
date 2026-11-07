@@ -1,4 +1,5 @@
 name: SaMi Runner EAS build diagnostics
+# Inspect latest build after current APK attempt
 
 on:
   push:
