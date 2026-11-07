@@ -20,7 +20,7 @@ jobs:
         working-directory: apps/runner
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-      BUILD_ID: 1ff96d65-e134-45a6-b60f-d73004315d37
+      BUILD_ID: latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
