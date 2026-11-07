@@ -20,7 +20,7 @@ jobs:
         working-directory: apps/runner
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-      BUILD_ID: 246f1dfe-bab3-4777-afba-ee3e6e266f0b
+      BUILD_ID: latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,6 +38,18 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$EXPO_TOKEN" || { echo "EXPO_TOKEN is missing." >&2; exit 1; }
+          if [[ "$BUILD_ID" == "latest" ]]; then
+            npx eas-cli@latest build:list --platform android --build-profile production --limit 10 --json --non-interactive > "$RUNNER_TEMP/build-list.json"
+            BUILD_ID="$(node - "$RUNNER_TEMP/build-list.json" <<'NODE'
+          const fs = require("node:fs");
+          const raw = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const builds = Array.isArray(raw) ? raw : (raw.builds || raw.data || raw.items || []);
+          process.stdout.write(builds[0]?.id || "");
+          NODE
+          )"
+          fi
+          test -n "$BUILD_ID" || { echo "No Runner production EAS build found." >&2; exit 1; }
+          echo "Inspecting EAS build: $BUILD_ID"
           npx eas-cli@latest build:view "$BUILD_ID" --json > "$RUNNER_TEMP/build-raw.json"
 
           node - "$RUNNER_TEMP/build-raw.json" "$RUNNER_TEMP/build-summary.json" <<'NODE'
