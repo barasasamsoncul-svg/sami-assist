@@ -73,14 +73,37 @@ async function getMigrationFiles() {
 }
 
 async function migrate() {
-  const connectionString =
+   const configuredConnectionString =
     process.env.DATABASE_MIGRATION_URL?.trim();
 
-  if (!connectionString) {
+  if (!configuredConnectionString) {
     throw new Error(
       "DATABASE_MIGRATION_URL is missing. Configure it as a GitHub Actions production secret.",
     );
   }
+
+  let migrationUrl;
+
+  try {
+    migrationUrl = new URL(configuredConnectionString);
+  } catch {
+    throw new Error(
+      "DATABASE_MIGRATION_URL must be a valid PostgreSQL connection URL.",
+    );
+  }
+
+  if (
+    migrationUrl.protocol !== "postgres:" &&
+    migrationUrl.protocol !== "postgresql:"
+  ) {
+    throw new Error(
+      "DATABASE_MIGRATION_URL must use the PostgreSQL protocol.",
+    );
+  }
+
+  migrationUrl.searchParams.set("sslmode", "verify-full");
+
+  const connectionString = migrationUrl.toString();
 
   // Discover and validate migration files before connecting.
   const files = await getMigrationFiles();

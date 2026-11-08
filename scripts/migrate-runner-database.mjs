@@ -21,13 +21,37 @@ const MIGRATIONS_DIR = path.join(
 const MIGRATION_LOCK_ID = "73420520261107";
 
 async function migrateRunnerDatabase() {
-  const connectionString = process.env.RUNNER_DATABASE_MIGRATION_URL?.trim();
+    const configuredConnectionString =
+    process.env.RUNNER_DATABASE_MIGRATION_URL?.trim();
 
-  if (!connectionString) {
+  if (!configuredConnectionString) {
     throw new Error(
       "RUNNER_DATABASE_MIGRATION_URL is missing. Configure it as a GitHub Actions production secret.",
     );
   }
+
+  let migrationUrl;
+
+  try {
+    migrationUrl = new URL(configuredConnectionString);
+  } catch {
+    throw new Error(
+      "RUNNER_DATABASE_MIGRATION_URL must be a valid PostgreSQL connection URL.",
+    );
+  }
+
+  if (
+    migrationUrl.protocol !== "postgres:" &&
+    migrationUrl.protocol !== "postgresql:"
+  ) {
+    throw new Error(
+      "RUNNER_DATABASE_MIGRATION_URL must use the PostgreSQL protocol.",
+    );
+  }
+
+  migrationUrl.searchParams.set("sslmode", "verify-full");
+
+  const connectionString = migrationUrl.toString();
 
   const client = new Client({
     connectionString,
