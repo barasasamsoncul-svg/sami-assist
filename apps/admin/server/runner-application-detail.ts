@@ -1,8 +1,8 @@
+
 import { NextResponse } from "next/server";
 
-import { getCurrentUser } from "@/lib/auth";
+import { authenticateAdmin } from "@/apps/admin/server/auth";
 import { query as runnerQuery } from "@/apps/runner/server/db";
-import { errorResponse } from "@/apps/runner/server/http";
 import { createR2ReadUrl } from "@/lib/storage/r2";
 
 const UUID_PATTERN =
@@ -45,26 +45,26 @@ type DocumentRow = {
   reviewed_at: string | null;
 };
 
+function errorResponse(message: string, status = 400) {
+  return NextResponse.json(
+    { error: message },
+    {
+      status,
+      headers: {
+        "Cache-Control": "no-store, private",
+      },
+    },
+  );
+}
+
 export async function getRunnerApplicationDetail(
   request: Request,
   runnerId: string,
 ) {
-  const user = await getCurrentUser(request).catch(
-    () => null,
-  );
+  const auth = await authenticateAdmin(request);
 
-  if (!user) {
-    return errorResponse(
-      "Sign in to access Runner applications.",
-      401,
-    );
-  }
-
-  if (user.role !== "admin") {
-    return errorResponse(
-      "Administrator access is required.",
-      403,
-    );
+  if (auth.response) {
+    return auth.response;
   }
 
   if (!UUID_PATTERN.test(runnerId)) {

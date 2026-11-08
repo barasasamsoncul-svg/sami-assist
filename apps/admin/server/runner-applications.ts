@@ -1,9 +1,8 @@
 
-import { getCurrentUser } from "@/lib/auth";
-import { query as runnerQuery } from "@/apps/runner/server/db";
-import { errorResponse } from "@/apps/runner/server/http";
-
 import { NextResponse } from "next/server";
+
+import { authenticateAdmin } from "@/apps/admin/server/auth";
+import { query as runnerQuery } from "@/apps/runner/server/db";
 
 type ApplicationRow = {
   id: string;
@@ -32,28 +31,29 @@ const APPLICATION_STATUSES = new Set([
   "all",
 ]);
 
+function errorResponse(message: string, status = 400) {
+  return NextResponse.json(
+    { error: message },
+    {
+      status,
+      headers: {
+        "Cache-Control": "no-store, private",
+      },
+    },
+  );
+}
+
 export async function listRunnerApplications(
   request: Request,
 ) {
-  const user = await getCurrentUser(request).catch(
-    () => null,
-  );
+  const auth = await authenticateAdmin(request);
 
-  if (!user) {
-    return errorResponse(
-      "Sign in to access Runner applications.",
-      401,
-    );
-  }
-
-  if (user.role !== "admin") {
-    return errorResponse(
-      "Administrator access is required.",
-      403,
-    );
+  if (auth.response) {
+    return auth.response;
   }
 
   const params = new URL(request.url).searchParams;
+
   const status = (
     params.get("status") || "submitted"
   ).trim().toLowerCase();
