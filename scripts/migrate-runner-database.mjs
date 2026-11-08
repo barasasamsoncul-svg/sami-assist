@@ -13,7 +13,7 @@ const ROOT_DIR = path.resolve(
 const MIGRATIONS_DIR = path.join(
   ROOT_DIR,
   "apps",
-  "runner-api",
+  "runner",
   "database",
   "migrations",
 );
