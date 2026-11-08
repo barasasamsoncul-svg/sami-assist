@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 
 import {
@@ -186,11 +185,11 @@ export default function IndexScreen() {
   }
 
   function getStarted() {
-    router.push("/(auth)/register");
+    router.replace("/(auth)/register");
   }
 
   function signIn() {
-    router.push("/(auth)/login");
+    router.replace("/(auth)/login");
   }
 
   if (!welcomeReady) {

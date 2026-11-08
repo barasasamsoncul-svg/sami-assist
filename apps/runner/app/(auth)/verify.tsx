@@ -118,9 +118,13 @@ export default function VerifyRunnerScreen() {
 
       await saveRunnerSession(result.sessionToken);
 
-      // Route both registration and login through the same
-      // startup resolver. It reads the latest server-side
-      // account, categories, transport and document state.
+      // Clear the authentication navigation history.
+      // The saved session remains intact.
+      router.dismissAll();
+
+      // The startup resolver checks the server and sends the
+      // Runner to the correct onboarding step, status screen
+      // or approved Runner dashboard.
       router.replace("/");
     } catch (cause) {
       setError(

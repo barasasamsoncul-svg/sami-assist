@@ -1,7 +1,7 @@
-
 import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  BackHandler,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -263,6 +263,12 @@ export default function RunnerApplicationReviewScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const goToDocuments = useCallback(() => {
+    // Return to Documents if it exists in history.
+    // If it does not, replace Review with Documents.
+    router.dismissTo("/(auth)/documents");
+  }, [router]);
+
   const loadReview = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -272,8 +278,10 @@ export default function RunnerApplicationReviewScreen() {
       setData(result);
 
       if (result.onboardingStatus === "approved") {
+        router.dismissAll();
         router.replace("/(app)");
       } else if (result.onboardingStatus === "pending_review") {
+        router.dismissAll();
         router.replace("/(app)/profile-setup?mode=status");
       }
     } catch (cause) {
@@ -291,6 +299,26 @@ export default function RunnerApplicationReviewScreen() {
     useCallback(() => {
       void loadReview();
     }, [loadReview]),
+  );
+
+  // Android hardware Back follows the same rule as the
+  // visible Back control: return to the Documents checklist.
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener(
+        "hardwareBackPress",
+        () => {
+          if (submitting) {
+            return true;
+          }
+
+          goToDocuments();
+          return true;
+        },
+      );
+
+      return () => subscription.remove();
+    }, [goToDocuments, submitting]),
   );
 
   const runner = data?.runner;
@@ -354,6 +382,10 @@ export default function RunnerApplicationReviewScreen() {
     try {
       await submitRunnerOnboarding();
 
+      // Remove the onboarding history before opening the
+      // Operations waiting screen. Back must not reveal Login,
+      // Register, Welcome or the completed application flow.
+      router.dismissAll();
       router.replace("/(app)/profile-setup?mode=status");
     } catch (cause) {
       setError(
@@ -414,13 +446,8 @@ export default function RunnerApplicationReviewScreen() {
           </Pressable>
 
           <Pressable
-            onPress={() => {
-              if (router.canGoBack()) {
-                router.back();
-              } else {
-                router.replace("/(auth)/documents");
-              }
-            }}
+            disabled={submitting}
+            onPress={goToDocuments}
             style={styles.backLink}
           >
             <Text style={[styles.backLinkText, { color: colors.blue }]}>
@@ -439,13 +466,8 @@ export default function RunnerApplicationReviewScreen() {
     >
       <View style={styles.header}>
         <Pressable
-          onPress={() => {
-            if (router.canGoBack()) {
-              router.back();
-            } else {
-              router.replace("/(auth)/documents");
-            }
-          }}
+          disabled={submitting}
+          onPress={goToDocuments}
           style={styles.backLink}
         >
           <Text style={[styles.backLinkText, { color: colors.blue }]}>

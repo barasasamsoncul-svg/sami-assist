@@ -1,5 +1,3 @@
-
-
 import { useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -90,6 +88,12 @@ export default function RunnerLoginScreen() {
     router.push("/(auth)/register");
   }
 
+  function goToWelcome() {
+    if (busy) return;
+    Keyboard.dismiss();
+    router.replace("/");
+  }
+
   return (
     <SafeAreaView
       style={[
@@ -118,8 +122,9 @@ export default function RunnerLoginScreen() {
             <View style={styles.topBar}>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Go back"
-                onPress={() => router.back()}
+                accessibilityLabel="Back to welcome"
+                disabled={busy}
+                onPress={goToWelcome}
                 hitSlop={10}
                 style={[
                   styles.backButton,
@@ -127,6 +132,7 @@ export default function RunnerLoginScreen() {
                     backgroundColor: colors.surface,
                     borderColor: colors.border,
                   },
+                  busy && styles.disabled,
                 ]}
               >
                 <Ionicons
