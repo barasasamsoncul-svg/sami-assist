@@ -1,4 +1,3 @@
-
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -161,17 +160,33 @@ export default function RunnerApplicationStatusScreen() {
     }, [loadStatus]),
   );
 
-  const signOut = async () => {
+  async function signOut() {
+    if (signingOut || refreshing) {
+      return;
+    }
+
     setSigningOut(true);
+    setError(null);
 
     try {
+      // Remove the saved authentication session.
       await clearRunnerSession();
-      router.replace("/");
+
+      // Remove the signed-in application history and open
+      // Welcome in explicit signed-out mode.
+      router.dismissAll();
+
+      router.replace({
+        pathname: "/",
+        params: {
+          signedOut: "1",
+        },
+      });
     } catch {
       setError("Could not sign out. Please try again.");
       setSigningOut(false);
     }
-  };
+  }
 
   const restricted =
     data?.runner.accountStatus === "suspended" ||
@@ -236,8 +251,11 @@ export default function RunnerApplicationStatusScreen() {
 
           <Pressable
             onPress={() => void loadStatus(true)}
-            disabled={refreshing}
-            style={[styles.primaryButton, { backgroundColor: colors.blue }]}
+            disabled={refreshing || signingOut}
+            style={[
+              styles.primaryButton,
+              { backgroundColor: colors.blue },
+            ]}
           >
             {refreshing ? (
               <ActivityIndicator color="#FFFFFF" />
@@ -250,12 +268,16 @@ export default function RunnerApplicationStatusScreen() {
 
           <Pressable
             onPress={() => void signOut()}
-            disabled={signingOut}
+            disabled={signingOut || refreshing}
             style={styles.signOutButton}
           >
-            <Text style={[styles.signOutText, { color: colors.blue }]}>
-              Sign out
-            </Text>
+            {signingOut ? (
+              <ActivityIndicator color={colors.blue} />
+            ) : (
+              <Text style={[styles.signOutText, { color: colors.blue }]}>
+                Sign out
+              </Text>
+            )}
           </Pressable>
         </View>
       </SafeAreaView>

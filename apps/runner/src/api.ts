@@ -285,9 +285,50 @@ export async function saveRunnerSession(
   await SecureStore.setItemAsync(SESSION_KEY, token);
 }
 
+
 export async function clearRunnerSession(): Promise<void> {
-  await clearSession();
+  const token = await getRunnerSession();
+
+  try {
+    if (token) {
+      const response = await expoFetch(
+        apiBase() + "/api/runner/auth/logout",
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "x-sami-client": "runner",
+            Authorization: "Bearer " + token,
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const payload: unknown = await response.json().catch(
+          () => ({}),
+        );
+
+        console.warn(
+          "[SaMi Runner Auth] Server-side logout was not confirmed.",
+          getApiError(
+            payload,
+            `Logout failed with HTTP ${response.status}.`,
+          ),
+        );
+      }
+    }
+  } catch (cause) {
+    console.warn(
+      "[SaMi Runner Auth] Could not reach the logout endpoint.",
+      describeError(cause),
+    );
+  } finally {
+    // Always remove the local credential, even if the
+    // device is offline or the server cannot be reached.
+    await clearSession();
+  }
 }
+
 
 export async function apiRequest<T>(
   path: string,

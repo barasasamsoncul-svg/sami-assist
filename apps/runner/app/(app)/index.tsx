@@ -207,7 +207,7 @@ export default function RunnerDashboardScreen() {
         onPress: async () => {
           locationSubscription.current?.remove();
           await clearRunnerSession();
-          router.replace("/(auth)/login");
+          router.replace("/");
         },
       },
     ]);

@@ -15,11 +15,20 @@ export type RunnerAccount = {
   verification_status: string;
 };
 
+type AuthenticateRunnerOptions = {
+  allowRestricted?: boolean;
+};
+
 function tokenHash(token: string) {
-  return createHash("sha256").update(token, "utf8").digest("hex");
+  return createHash("sha256")
+    .update(token, "utf8")
+    .digest("hex");
 }
 
-export async function authenticateRunner(request: Request): Promise<
+export async function authenticateRunner(
+  request: Request,
+  options: AuthenticateRunnerOptions = {},
+): Promise<
   | { runner: RunnerAccount; response: null }
   | { runner: null; response: ReturnType<typeof errorResponse> }
 > {
@@ -37,17 +46,25 @@ export async function authenticateRunner(request: Request): Promise<
     };
   }
 
-  const authorization = request.headers.get("authorization") || "";
-  const match = /^Bearer\s+([A-Za-z0-9_-]{40,128})$/i.exec(authorization);
+  const authorization =
+    request.headers.get("authorization") || "";
+
+  const match = /^Bearer\s+([A-Za-z0-9_-]{40,128})$/i.exec(
+    authorization,
+  );
 
   if (!match) {
     return {
       runner: null,
-      response: errorResponse("Sign in to continue.", 401),
+      response: errorResponse(
+        "Sign in to continue.",
+        401,
+      ),
     };
   }
 
   const digest = tokenHash(match[1]);
+  const allowRestricted = options.allowRestricted === true;
 
   const result = await query<RunnerAccount>(
     `SELECT
@@ -63,9 +80,12 @@ export async function authenticateRunner(request: Request): Promise<
      WHERE s.token_hash = $1
        AND s.revoked_at IS NULL
        AND s.expires_at > now()
-       AND a.account_status NOT IN ('suspended', 'closed')
+       AND (
+         $2::boolean = true
+         OR a.account_status NOT IN ('suspended', 'closed')
+       )
      LIMIT 1`,
-    [digest],
+    [digest, allowRestricted],
   );
 
   const runner = result.rows[0];

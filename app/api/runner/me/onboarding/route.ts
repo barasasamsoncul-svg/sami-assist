@@ -82,7 +82,9 @@ function response(
  */
 export async function GET(request: Request) {
   try {
-    const auth = await authenticateRunner(request);
+    const auth = await authenticateRunner(request, {
+  allowRestricted: true,
+});
     if (auth.response) return auth.response;
 
     const profileResult = await query<OnboardingProfile>(
@@ -165,7 +167,7 @@ export async function GET(request: Request) {
          reviewed_at
        FROM public.runner_verification_documents
        WHERE runner_id = $1
-       ORDER BY submitted_at DESC`,
+       ORDER BY submitted_at DESC, id DESC`,
       [auth.runner.id],
     );
 
@@ -499,39 +501,43 @@ export async function POST(request: Request) {
       );
     }
 
-    const missingResult =
-      await client.query<{
-        requirement_key: string;
-        title: string;
-      }>(
-        `SELECT
-           r.requirement_key,
-           r.title
-         FROM public.runner_onboarding_document_requirements AS r
-         WHERE r.is_active = true
-           AND r.is_required = true
-           AND (
-             r.category_key IS NULL
-             OR r.category_key = ANY($1::text[])
-           )
-           AND (
-             r.vehicle_type = 'any'
-             OR r.vehicle_type = $2
-           )
-           AND NOT EXISTS (
-             SELECT 1
-             FROM public.runner_verification_documents AS d
-             WHERE d.runner_id = $3
-               AND d.requirement_key = r.requirement_key
-               AND d.review_status IN ('pending', 'approved')
-           )
-         ORDER BY r.requirement_key`,
-        [
-          categories,
-          profile.vehicle_type,
-          auth.runner.id,
-        ],
-      );
+ const missingResult =
+  await client.query<{
+    requirement_key: string;
+    title: string;
+  }>(
+    `SELECT
+       r.requirement_key,
+       r.title
+     FROM public.runner_onboarding_document_requirements AS r
+     WHERE r.is_active = true
+       AND r.is_required = true
+       AND (
+         r.category_key IS NULL
+         OR r.category_key = ANY($1::text[])
+       )
+       AND (
+         r.vehicle_type = 'any'
+         OR r.vehicle_type = $2
+       )
+       AND NOT COALESCE(
+         (
+           SELECT d.review_status IN ('pending', 'approved')
+           FROM public.runner_verification_documents AS d
+           WHERE d.runner_id = $3
+             AND d.requirement_key = r.requirement_key
+           ORDER BY d.submitted_at DESC, d.id DESC
+           LIMIT 1
+         ),
+         false
+       )
+     ORDER BY r.requirement_key`,
+    [
+      categories,
+      profile.vehicle_type,
+      auth.runner.id,
+    ],
+  );
 
     if (missingResult.rows.length > 0) {
       await client.query("ROLLBACK");

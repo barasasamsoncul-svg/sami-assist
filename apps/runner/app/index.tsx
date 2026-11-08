@@ -9,7 +9,11 @@ import {
   View,
 } from "react-native";
 
-import { router } from "expo-router";
+import {
+  router,
+  useLocalSearchParams,
+} from "expo-router";
+
 import * as SplashScreen from "expo-splash-screen";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -86,8 +90,6 @@ function getRunnerResumeRoute(data: Awaited<
     (requirement) => requirement.required,
   );
 
-  // Fail safely. A valid completed onboarding profile should
-  // have its required document requirements loaded.
   if (requiredDocuments.length === 0) {
     return "/(auth)/documents" as const;
   }
@@ -116,18 +118,31 @@ const NAVY = "#000535";
 const BLUE = "#2769C7";
 
 export default function IndexScreen() {
-  const [welcomeReady, setWelcomeReady] = useState(false);
+  const params = useLocalSearchParams<{
+    signedOut?: string | string[];
+  }>();
+
+  const forceWelcome =
+    params.signedOut === "1" ||
+    (Array.isArray(params.signedOut) &&
+      params.signedOut[0] === "1");
+
+  const [welcomeReady, setWelcomeReady] = useState(forceWelcome);
 
   useEffect(() => {
     let active = true;
 
-    function hideSplash() {
-      requestAnimationFrame(() => {
-        void SplashScreen.hideAsync().catch(
-          () => undefined,
-        );
-      });
+    if (forceWelcome) {
+      // Explicit logout must never run the authenticated
+      // startup resolver or redirect back to the dashboard.
+      setWelcomeReady(true);
+
+      return () => {
+        active = false;
+      };
     }
+
+    setWelcomeReady(false);
 
     async function bootstrap() {
       const token = await getRunnerSession();
@@ -147,7 +162,12 @@ export default function IndexScreen() {
         const destination = getRunnerResumeRoute(onboarding);
 
         router.replace(destination);
-        hideSplash();
+
+        requestAnimationFrame(() => {
+          void SplashScreen.hideAsync().catch(
+            () => undefined,
+          );
+        });
       } catch (cause) {
         if (!active) return;
 
@@ -176,7 +196,7 @@ export default function IndexScreen() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [forceWelcome]);
 
   function hideNativeSplash() {
     void SplashScreen.hideAsync().catch(
