@@ -9,6 +9,9 @@ import { verifyEmailOtp } from "@/lib/otp";
 
 const MAX_OTP_ATTEMPTS = 5;
 
+const INVALID_CODE_MESSAGE =
+  "The verification code is invalid or expired. Request a new code.";
+
 type PasswordResetChallengeRow = {
   id: string;
   admin_user_id: string;
@@ -115,10 +118,7 @@ export async function verifyAdminPasswordReset(request: Request) {
       : "";
 
   if (!isValidChallengeId(challengeId)) {
-    return errorResponse(
-      "Your verification session is invalid. Request a new code.",
-      400,
-    );
+    return errorResponse(INVALID_CODE_MESSAGE, 401);
   }
 
   if (!/^[0-9]{6}$/.test(code)) {
@@ -169,24 +169,22 @@ export async function verifyAdminPasswordReset(request: Request) {
 
     const challenge = challengeResult.rows[0];
 
+    /*
+     * Do not distinguish an unknown challenge from an
+     * incorrect code. This prevents account enumeration.
+     */
     if (!challenge) {
       await client.query("ROLLBACK");
       transactionOpen = false;
 
-      return errorResponse(
-        "This verification code is invalid or no longer available. Request a new code.",
-        400,
-      );
+      return errorResponse(INVALID_CODE_MESSAGE, 401);
     }
 
     if (challenge.status !== "pending") {
       await client.query("ROLLBACK");
       transactionOpen = false;
 
-      return errorResponse(
-        "This verification code has already been used or is no longer valid. Request a new code.",
-        410,
-      );
+      return errorResponse(INVALID_CODE_MESSAGE, 401);
     }
 
     if (new Date(challenge.expires_at).getTime() <= Date.now()) {
@@ -201,10 +199,7 @@ export async function verifyAdminPasswordReset(request: Request) {
       await client.query("COMMIT");
       transactionOpen = false;
 
-      return errorResponse(
-        "Your verification code has expired. Request a new code.",
-        410,
-      );
+      return errorResponse(INVALID_CODE_MESSAGE, 401);
     }
 
     if (challenge.attempt_count >= MAX_OTP_ATTEMPTS) {
@@ -219,10 +214,7 @@ export async function verifyAdminPasswordReset(request: Request) {
       await client.query("COMMIT");
       transactionOpen = false;
 
-      return errorResponse(
-        "Too many incorrect attempts. Request a new verification code.",
-        429,
-      );
+      return errorResponse(INVALID_CODE_MESSAGE, 401);
     }
 
     /*
@@ -261,22 +253,13 @@ export async function verifyAdminPasswordReset(request: Request) {
       await client.query("COMMIT");
       transactionOpen = false;
 
-      if (nextStatus === "failed") {
-        return errorResponse(
-          "You have used all five verification attempts. Request a new code.",
-          429,
-        );
-      }
-
-      return errorResponse(
-        "The verification code is incorrect. Check the code and try again.",
-        401,
-      );
+      return errorResponse(INVALID_CODE_MESSAGE, 401);
     }
 
     /*
      * Prevent the Admin from using the same password again.
-     * The verification challenge remains usable if this check fails.
+     * If this check fails, the transaction is rolled back and
+     * the valid recovery challenge remains available.
      */
     if (challenge.password_hash) {
       const passwordIsUnchanged = await bcrypt.compare(
@@ -365,7 +348,7 @@ export async function verifyAdminPasswordReset(request: Request) {
      * Revoke every Admin session.
      *
      * This affects public.admin_sessions only.
-     * Customer and Runner sessions remain untouched.
+     * Customer and Runner sessions are not modified.
      */
     await client.query(
       `UPDATE public.admin_sessions

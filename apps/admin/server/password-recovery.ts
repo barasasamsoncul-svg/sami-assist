@@ -10,22 +10,29 @@ import {
   maskOtpDestination,
   sendEmailOtp,
 } from "@/lib/otp";
+import { databasePool } from "@/lib/db";
 
-import { databasePool, query } from "@/lib/db";
-
-const OTP_EXPIRY_SECONDS = 600;
+const OTP_EXPIRY_SECONDS = 10 * 60;
 const MAX_REQUESTS_PER_HOUR = 3;
 const MINIMUM_REQUEST_INTERVAL_SECONDS = 60;
 
-function hashValue(value: string): string {
-  return createHash("sha256")
-    .update(value)
-    .digest("hex");
-}
+type AdminRecoveryAccount = {
+  id: string;
+  full_name: string;
+  email: string;
+};
+
+type RecoveryRequestStats = {
+  request_count: number;
+  last_request_at: Date | string | null;
+};
 
 function errorResponse(message: string, status = 400) {
   return NextResponse.json(
-    { ok: false, error: message },
+    {
+      ok: false,
+      error: message,
+    },
     {
       status,
       headers: {
@@ -33,28 +40,6 @@ function errorResponse(message: string, status = 400) {
       },
     },
   );
-}
-
-function normalizeEmail(value: unknown): string {
-  return typeof value === "string"
-    ? value.trim().toLowerCase().slice(0, 254)
-    : "";
-}
-
-function isValidEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-}
-
-function isSameOrigin(request: Request): boolean {
-  const origin = request.headers.get("origin");
-
-  if (!origin) return true;
-
-  try {
-    return origin === new URL(request.url).origin;
-  } catch {
-    return false;
-  }
 }
 
 function genericSuccessResponse(
@@ -78,6 +63,39 @@ function genericSuccessResponse(
   );
 }
 
+function normalizeEmail(value: unknown) {
+  return typeof value === "string"
+    ? value.trim().toLowerCase().slice(0, 254)
+    : "";
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function hashValue(value: string) {
+  return createHash("sha256")
+    .update(value)
+    .digest("hex");
+}
+
+function isSameOrigin(request: Request) {
+  const origin = request.headers.get("origin");
+
+  return !origin || origin === new URL(request.url).origin;
+}
+
+/**
+ * Requests an Admin password-recovery OTP.
+ *
+ * Security controls:
+ * - Does not reveal whether an email belongs to an Admin.
+ * - Limits requests to three per hour per email.
+ * - Enforces a minimum interval between requests.
+ * - Supersedes older pending recovery challenges.
+ * - Stores no plaintext OTP.
+ * - Returns a generic response for known and unknown emails.
+ */
 export async function requestAdminPasswordReset(
   request: Request,
 ) {
@@ -108,150 +126,149 @@ export async function requestAdminPasswordReset(
   const email = normalizeEmail(input.email);
 
   if (!isValidEmail(email)) {
-    return errorResponse("Enter a valid administrator email address.");
+    return errorResponse("Enter a valid email address.");
   }
 
   if (!isOtpProviderConfigured("email")) {
+    console.error(
+      "[SaMi Admin password recovery] Email OTP provider is not configured.",
+    );
+
     return errorResponse(
-      "SaMi email verification is not configured. Contact the deployment administrator.",
+      "Administrator password recovery is temporarily unavailable.",
       503,
     );
   }
 
   const emailHash = hashValue(
-    "sami-admin-password-reset-otp:" + email,
+    "admin-password-recovery:" + email,
   );
 
   const client = await databasePool().connect();
 
-  let challengeId = "";
-  let adminEmail = "";
-  let adminName: string | null = null;
-  let shouldSendCode = false;
+  let challengeId = randomUUID();
+  let accountForDelivery: AdminRecoveryAccount | null = null;
 
   try {
     await client.query("BEGIN");
 
-    // Serialize concurrent recovery requests for this email.
+    /*
+     * Serialize requests for the same email address.
+     * This prevents concurrent requests from bypassing
+     * the rate limit or creating multiple active challenges.
+     */
     await client.query(
-      "SELECT pg_advisory_xact_lock(hashtext($1))",
-      ["sami-admin-password-reset-otp:" + emailHash],
-    );
-
-    // Check the request history before recording this request.
-    const requestHistory = await client.query<{
-      request_count: string;
-      last_requested_at: Date | null;
-    }>(
-      `SELECT
-         count(*)::text AS request_count,
-         max(requested_at) AS last_requested_at
-       FROM public.admin_password_reset_otp_requests
-       WHERE email_hash = $1
-         AND requested_at > now() - interval '1 hour'`,
+      `SELECT pg_advisory_xact_lock(
+         hashtextextended($1, 0)
+       )`,
       [emailHash],
     );
 
+    const statsResult =
+      await client.query<RecoveryRequestStats>(
+        `SELECT
+           count(*)::int AS request_count,
+           max(requested_at) AS last_request_at
+         FROM public.admin_password_reset_otp_requests
+         WHERE email_hash = $1
+           AND requested_at > now() - interval '1 hour'`,
+        [emailHash],
+      );
+
+    const stats = statsResult.rows[0];
+
     const requestCount = Number(
-      requestHistory.rows[0]?.request_count || 0,
+      stats?.request_count || 0,
     );
 
-    const lastRequestedAt =
-      requestHistory.rows[0]?.last_requested_at;
+    const lastRequestTime = stats?.last_request_at
+      ? new Date(stats.last_request_at).getTime()
+      : 0;
 
-    // Record every attempt, including throttled and unknown emails.
+    const requestedTooRecently =
+      lastRequestTime > 0 &&
+      Date.now() - lastRequestTime <
+        MINIMUM_REQUEST_INTERVAL_SECONDS * 1000;
+
+    const rateLimited =
+      requestCount >= MAX_REQUESTS_PER_HOUR ||
+      requestedTooRecently;
+
+    /*
+     * Record every request, including unknown addresses
+     * and rate-limited attempts.
+     */
     await client.query(
-      `INSERT INTO public.admin_password_reset_otp_requests (
-         email_hash,
-         requested_at
-       )
+      `INSERT INTO public.admin_password_reset_otp_requests
+        (email_hash, requested_at)
        VALUES ($1, now())`,
       [emailHash],
     );
 
-    const recentlyRequested =
-      lastRequestedAt !== null &&
-      lastRequestedAt !== undefined &&
-      Date.now() - new Date(lastRequestedAt).getTime() <
-        MINIMUM_REQUEST_INTERVAL_SECONDS * 1000;
+    if (!rateLimited) {
+      const accountResult =
+        await client.query<AdminRecoveryAccount>(
+          `SELECT
+             id,
+             full_name,
+             email
+           FROM public.users
+           WHERE lower(email) = $1
+             AND role = 'admin'
+             AND is_active = true
+           LIMIT 1
+           FOR UPDATE`,
+          [email],
+        );
 
-    if (
-      requestCount >= MAX_REQUESTS_PER_HOUR ||
-      recentlyRequested
-    ) {
-      await client.query("COMMIT");
+      const account = accountResult.rows[0];
 
-      return genericSuccessResponse(email, randomUUID());
+      if (account) {
+        challengeId = randomUUID();
+
+        /*
+         * Invalidate any older outstanding recovery codes
+         * for this administrator.
+         */
+        await client.query(
+          `UPDATE public.admin_password_reset_otp_challenges
+           SET status = 'superseded'
+           WHERE admin_user_id = $1
+             AND status = 'pending'`,
+          [account.id],
+        );
+
+        /*
+         * Store the challenge, not the verification code.
+         * The OTP is derived from the challenge ID through
+         * the shared AUTH_EMAIL_OTP_PEPPER secret.
+         */
+        await client.query(
+          `INSERT INTO public.admin_password_reset_otp_challenges
+            (
+              id,
+              admin_user_id,
+              email,
+              status,
+              expires_at
+            )
+           VALUES (
+             $1,
+             $2,
+             $3,
+             'pending',
+             now() + interval '10 minutes'
+           )`,
+          [
+            challengeId,
+            account.id,
+            account.email,
+          ],
+        );
+
+        accountForDelivery = account;
+      }
     }
-
-    // Only active Admin accounts are eligible for recovery.
-    const accountResult = await client.query<{
-      id: string;
-      email: string;
-      full_name: string | null;
-    }>(
-      `SELECT
-         id,
-         email,
-         full_name
-       FROM public.users
-       WHERE lower(email) = $1
-         AND role = 'admin'
-         AND is_active = true
-       LIMIT 1
-       FOR UPDATE`,
-      [email],
-    );
-
-    const admin = accountResult.rows[0];
-
-    if (!admin) {
-      await client.query("COMMIT");
-
-      // A decoy challenge ID keeps the response format consistent.
-      return genericSuccessResponse(email, randomUUID());
-    }
-
-    // Supersede older outstanding recovery challenges.
-    await client.query(
-      `UPDATE public.admin_password_reset_otp_challenges
-       SET status = 'superseded'
-       WHERE admin_user_id = $1
-         AND status = 'pending'`,
-      [admin.id],
-    );
-
-    // Create a challenge that expires after ten minutes.
-    const challengeResult = await client.query<{
-      id: string;
-    }>(
-      `INSERT INTO public.admin_password_reset_otp_challenges (
-         admin_user_id,
-         email,
-         status,
-         expires_at
-       )
-       VALUES (
-         $1,
-         $2,
-         'pending',
-         now() + interval '10 minutes'
-       )
-       RETURNING id`,
-      [admin.id, admin.email],
-    );
-
-    challengeId = challengeResult.rows[0]?.id || "";
-
-    if (!challengeId) {
-      throw new Error(
-        "ADMIN_PASSWORD_RECOVERY_CHALLENGE_CREATION_FAILED",
-      );
-    }
-
-    adminEmail = admin.email;
-    adminName = admin.full_name;
-    shouldSendCode = true;
 
     await client.query("COMMIT");
   } catch (cause) {
@@ -260,38 +277,37 @@ export async function requestAdminPasswordReset(
     );
 
     console.error(
-      "[SaMi Admin password recovery] Challenge creation failed.",
+      "[SaMi Admin password recovery] OTP issuance failed.",
       cause instanceof Error
         ? cause.message
         : "unknown error",
     );
 
     return errorResponse(
-      "Password recovery is temporarily unavailable. Please try again.",
+      "Administrator password recovery is temporarily unavailable.",
       503,
     );
   } finally {
     client.release();
   }
 
-  if (shouldSendCode && challengeId && adminEmail) {
+  /*
+   * Send the email after committing the challenge.
+   * SMTP activity must not hold a database transaction open.
+   */
+  if (accountForDelivery) {
     try {
       const code = createEmailOtpCode(challengeId);
 
-      await sendEmailOtp(adminEmail, code, {
-        purpose: "admin_password_reset",
-        recipientName: adminName,
-      });
+      await sendEmailOtp(
+        accountForDelivery.email,
+        code,
+        {
+          purpose: "admin_password_reset",
+          recipientName: accountForDelivery.full_name,
+        },
+      );
     } catch (cause) {
-      // An undelivered code must never remain usable.
-      await query(
-        `UPDATE public.admin_password_reset_otp_challenges
-         SET status = 'failed'
-         WHERE id = $1
-           AND status = 'pending'`,
-        [challengeId],
-      ).catch(() => undefined);
-
       console.error(
         "[SaMi Admin password recovery] OTP email delivery failed.",
         cause instanceof Error
@@ -299,11 +315,45 @@ export async function requestAdminPasswordReset(
           : "unknown error",
       );
 
-      // Keep the public response generic to avoid revealing
-      // whether the supplied email belongs to an Admin.
-      return genericSuccessResponse(email, randomUUID());
+      /*
+       * Do not leave an unusable challenge active if
+       * the email provider reports a delivery failure.
+       */
+      const failureClient = await databasePool().connect();
+
+      try {
+        await failureClient.query(
+          `UPDATE public.admin_password_reset_otp_challenges
+           SET status = 'failed'
+           WHERE id = $1
+             AND status = 'pending'`,
+          [challengeId],
+        );
+      } catch (updateError) {
+        console.error(
+          "[SaMi Admin password recovery] Failed to invalidate undelivered OTP.",
+          updateError instanceof Error
+            ? updateError.message
+            : "unknown error",
+        );
+      } finally {
+        failureClient.release();
+      }
+
+      /*
+       * Return the same generic response used for unknown
+       * addresses. Do not reveal email delivery or account status.
+       */
+      return genericSuccessResponse(
+        email,
+        randomUUID(),
+      );
     }
   }
 
-  return genericSuccessResponse(email, challengeId || randomUUID());
+  /*
+   * Known, unknown and rate-limited addresses all receive
+   * the same response structure and message.
+   */
+  return genericSuccessResponse(email, challengeId);
 }

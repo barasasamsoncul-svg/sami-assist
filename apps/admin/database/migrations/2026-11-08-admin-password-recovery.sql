@@ -1,91 +1,91 @@
 
--- SaMi Admin: OTP-based password recovery.
--- No password-reset links or bearer reset tokens are used.
-
 BEGIN;
 
--- Retire the previous reset-link schema, if it was created.
-DROP TABLE IF EXISTS public.admin_password_reset_tokens;
-DROP TABLE IF EXISTS public.admin_password_reset_requests;
+-- Remove the obsolete password-reset-link implementation.
+DROP TABLE IF EXISTS public.admin_password_reset_tokens CASCADE;
+DROP TABLE IF EXISTS public.admin_password_reset_requests CASCADE;
 
-
+-- Each challenge represents one Admin password-recovery OTP.
 CREATE TABLE IF NOT EXISTS public.admin_password_reset_otp_challenges (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-  admin_user_id uuid NOT NULL
-    REFERENCES public.users(id)
-    ON DELETE CASCADE,
+    admin_user_id UUID NOT NULL
+        REFERENCES public.users(id)
+        ON DELETE CASCADE,
 
-  email text NOT NULL,
+    email TEXT NOT NULL,
 
-  status text NOT NULL DEFAULT 'pending'
-    CHECK (
-      status IN (
-        'pending',
-        'consumed',
-        'failed',
-        'expired',
-        'superseded'
-      )
-    ),
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (
+            status IN (
+                'pending',
+                'consumed',
+                'failed',
+                'expired',
+                'superseded'
+            )
+        ),
 
-  attempt_count integer NOT NULL DEFAULT 0
-    CHECK (attempt_count BETWEEN 0 AND 5),
+    attempt_count INTEGER NOT NULL DEFAULT 0
+        CHECK (attempt_count BETWEEN 0 AND 5),
 
-  created_at timestamptz NOT NULL DEFAULT now(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-  expires_at timestamptz NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
 
-  verified_at timestamptz,
+    verified_at TIMESTAMPTZ,
 
-  consumed_at timestamptz,
+    consumed_at TIMESTAMPTZ,
 
-  CHECK (expires_at > created_at)
+    CONSTRAINT admin_password_reset_otp_expiry_check
+        CHECK (expires_at > created_at)
 );
 
-CREATE INDEX IF NOT EXISTS admin_password_reset_otp_user_idx
-  ON public.admin_password_reset_otp_challenges (
+-- Efficiently retrieve an Admin's latest recovery challenges.
+CREATE INDEX IF NOT EXISTS
+    idx_admin_password_reset_otp_admin_created
+ON public.admin_password_reset_otp_challenges (
     admin_user_id,
     created_at DESC
-  );
-
-CREATE INDEX IF NOT EXISTS admin_password_reset_otp_pending_idx
-  ON public.admin_password_reset_otp_challenges (
-    admin_user_id,
-    expires_at
-  )
-  WHERE status = 'pending';
-
-
--- Request history supports rate limiting without revealing
--- whether an email address belongs to an Admin account.
-
-CREATE TABLE IF NOT EXISTS public.admin_password_reset_otp_requests (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-
-  email_hash text NOT NULL
-    CHECK (email_hash ~ '^[0-9a-f]{64}$'),
-
-  requested_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS admin_password_reset_otp_requests_idx
-  ON public.admin_password_reset_otp_requests (
+-- Efficiently locate outstanding challenges.
+CREATE INDEX IF NOT EXISTS
+    idx_admin_password_reset_otp_pending_expiry
+ON public.admin_password_reset_otp_challenges (
+    admin_user_id,
+    expires_at
+)
+WHERE status = 'pending';
+
+-- Rate-limit recovery requests without storing raw email addresses.
+CREATE TABLE IF NOT EXISTS public.admin_password_reset_otp_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    email_hash TEXT NOT NULL
+        CHECK (email_hash ~ '^[a-f0-9]{64}$'),
+
+    requested_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS
+    idx_admin_password_reset_otp_requests_email_time
+ON public.admin_password_reset_otp_requests (
     email_hash,
     requested_at DESC
-  );
+);
 
+-- Allow the application database role to operate the recovery tables.
+GRANT SELECT, INSERT, UPDATE, DELETE
+ON public.admin_password_reset_otp_challenges
+TO sami_errands_app;
 
 GRANT SELECT, INSERT, UPDATE, DELETE
-  ON public.admin_password_reset_otp_challenges
-  TO sami_errands_app;
+ON public.admin_password_reset_otp_requests
+TO sami_errands_app;
 
-GRANT SELECT, INSERT, UPDATE, DELETE
-  ON public.admin_password_reset_otp_requests
-  TO sami_errands_app;
-
-
-INSERT INTO public.schema_migrations(version)
+-- Record this migration.
+INSERT INTO public.schema_migrations (version)
 VALUES ('2026-11-08-admin-password-recovery-otp')
 ON CONFLICT (version) DO NOTHING;
 

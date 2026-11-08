@@ -97,8 +97,8 @@ function emailOtpPepper(): string {
 }
 
 /**
- * Derives a unique code per challenge.
- * Verification codes and hashes are not stored in PostgreSQL.
+ * Derives a unique six-digit code per challenge.
+ * Verification codes and their hashes are not stored in PostgreSQL.
  */
 export function createEmailOtpCode(challengeId: string): string {
   const digest = createHmac("sha256", emailOtpPepper())
@@ -205,7 +205,7 @@ export async function sendEmailOtp(
       : isContactChange
         ? "Verify your new SaMi email address"
         : isAdminPasswordReset
-          ? "Your SaMi Admin password recovery code"
+          ? "Your SaMi administrator password recovery code"
           : "Your SaMi sign-in code";
 
   const action = isRegistration
@@ -225,17 +225,17 @@ export async function sendEmailOtp(
       : isContactChange
         ? "Verify your new email"
         : isAdminPasswordReset
-          ? "Admin password recovery"
+          ? "Reset your administrator password"
           : "Your sign-in code";
 
   const purposeText = isRegistration
     ? "complete your SaMi account registration"
     : isDeletion
-      ? "verify your identity before permanently deleting your account"
+      ? "verify your identity before permanently deleting your SaMi account"
       : isContactChange
         ? "verify the new email address you want associated with your SaMi account"
         : isAdminPasswordReset
-          ? "verify your identity before changing your administrator password"
+          ? "verify your identity and choose a new password for your SaMi administrator account"
           : "securely sign in to your SaMi account";
 
   const eyebrow = isRegistration
@@ -245,22 +245,20 @@ export async function sendEmailOtp(
       : isContactChange
         ? "CONTACT VERIFICATION"
         : isAdminPasswordReset
-          ? "ADMIN ACCOUNT RECOVERY"
+          ? "ADMIN PASSWORD RECOVERY"
           : "SECURE SIGN IN";
 
-  const codeEntryInstruction = isAdminPasswordReset
-    ? "Only enter this code on the official SaMi Admin password recovery screen."
-    : "Only enter it in the SaMi app to continue.";
-
   const safeCode = escapeEmailHtml(code);
-  const safeCodeEntryInstruction = escapeEmailHtml(
-    codeEntryInstruction,
-  );
+
+  const codeDescription = isAdminPasswordReset
+    ? "Your SaMi administrator password recovery code is:"
+    : "Your SaMi one-time verification code is:";
 
   const textBody =
     greeting +
     "\n\n" +
-    "Your SaMi one-time verification code is:\n\n" +
+    codeDescription +
+    "\n\n" +
     code +
     "\n\n" +
     "Use this code to " +
@@ -314,9 +312,7 @@ export async function sendEmailOtp(
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:28px 0 0;"><tr>' +
     '<td style="padding:16px 17px;background:#F5F8FE;border-left:3px solid #3478E5;border-radius:8px;">' +
     '<p style="margin:0 0 5px;color:#000535;font-size:13px;line-height:19px;font-weight:700;">Keep this code private</p>' +
-    '<p style="margin:0;color:#657087;font-size:13px;line-height:21px;">SaMi will never ask you to share this code. ' +
-    safeCodeEntryInstruction +
-    "</p>" +
+    '<p style="margin:0;color:#657087;font-size:13px;line-height:21px;">SaMi will never ask you to share this code. Only enter it in the SaMi administrator password recovery screen to continue.</p>' +
     "</td></tr></table>" +
     '<p style="margin:21px 0 0;color:#7B8495;font-size:12px;line-height:21px;">Did not request this code? You can ignore this email. No changes will be made to your account.</p>' +
     "</td></tr>" +
